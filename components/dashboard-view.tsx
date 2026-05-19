@@ -11,8 +11,9 @@ import TrendChart from "@/components/trend-chart";
 import {
   getFilteredView,
   getFunnelForPeriod,
+  getRegionColorToken,
+  getRegionOptions,
   PERIOD_LABELS,
-  REGION_LABELS,
   topPerformer,
   pipelineAtRisk,
   type Period,
@@ -23,16 +24,9 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = (
   ["7d", "30d", "90d", "6m", "12m", "ytd"] as Period[]
 ).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
 
-const REGION_OPTIONS: { value: RegionFilter; label: string }[] = (
-  ["all", "Suffolk", "Nassau", "Queens", "Brooklyn"] as RegionFilter[]
-).map((v) => ({ value: v, label: REGION_LABELS[v] }));
-
-const REGION_COLOR: Record<string, string> = {
-  Suffolk: "ppp-blue",
-  Nassau: "ppp-green",
-  Queens: "ppp-orange",
-  Brooklyn: "ppp-blue-600",
-};
+// Derived from data so when SF adds/removes a region, the filter list updates
+// automatically with no UI change required.
+const REGION_OPTIONS = getRegionOptions();
 
 function fmtMoneyK(v: number) {
   if (v >= 1000) return `$${(v / 1000).toFixed(1)}M`;
@@ -147,7 +141,7 @@ export default function DashboardView() {
               data={view.series}
               colorToken="ppp-blue"
               yFormat="currency-k"
-              height={260}
+              heightClassName="h-[200px] sm:h-[260px]"
             />
           </div>
         </div>
@@ -216,7 +210,7 @@ export default function DashboardView() {
                   label: r.region,
                   value: r.revenue,
                   sublabel: `${r.reps} rep${r.reps === 1 ? "" : "s"} · ${r.closeRate.toFixed(1)}% close`,
-                  colorToken: REGION_COLOR[r.region],
+                  colorToken: getRegionColorToken(r.region),
                 }))}
               formatValue={(v) => `$${v}K`}
             />

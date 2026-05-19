@@ -154,7 +154,7 @@ export default async function RepDetailPage({
               data={monthly.map((m) => ({ label: m.month, value: m.revenue }))}
               colorToken="ppp-blue"
               yFormat="currency-k"
-              height={240}
+              heightClassName="h-[200px] sm:h-[240px]"
             />
           </div>
         </div>
@@ -171,7 +171,7 @@ export default async function RepDetailPage({
             data={monthly.map((m) => ({ label: m.month, value: m.closeRate }))}
             colorToken="ppp-green"
             yFormat="percent"
-            height={180}
+            heightClassName="h-[160px] sm:h-[180px]"
           />
         </div>
 
@@ -184,7 +184,7 @@ export default async function RepDetailPage({
             data={monthly.map((m) => ({ label: m.month, value: m.avgTicket }))}
             colorToken="ppp-orange"
             yFormat="currency-k"
-            height={180}
+            heightClassName="h-[160px] sm:h-[180px]"
           />
         </div>
       </section>

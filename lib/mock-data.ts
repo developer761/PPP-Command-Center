@@ -349,7 +349,7 @@ export function getRepRecentDeals(repId: string): Deal[] {
  * ─────────────────────────────────────────────────────────────── */
 
 export type Period = "7d" | "30d" | "90d" | "6m" | "12m" | "ytd";
-export type RegionFilter = "all" | Rep["region"];
+export type RegionFilter = "all" | string; // intentionally open — Salesforce may add/rename regions
 
 export const PERIOD_LABELS: Record<Period, string> = {
   "7d": "Last 7 days",
@@ -360,13 +360,34 @@ export const PERIOD_LABELS: Record<Period, string> = {
   ytd: "Year to date",
 };
 
-export const REGION_LABELS: Record<RegionFilter, string> = {
-  all: "All Regions",
-  Suffolk: "Suffolk",
-  Nassau: "Nassau",
-  Queens: "Queens",
-  Brooklyn: "Brooklyn",
-};
+/**
+ * Region filter options derived from current rep data. When SF connects and
+ * adds/removes regions, this list updates automatically — no hardcoded list
+ * to maintain. Sorted alphabetically with "all" pinned first.
+ */
+export function getRegionOptions(): { value: RegionFilter; label: string }[] {
+  const unique = new Set<string>();
+  for (const r of reps) unique.add(r.region);
+  const sorted = Array.from(unique).sort((a, b) => a.localeCompare(b));
+  return [
+    { value: "all", label: "All Regions" },
+    ...sorted.map((r) => ({ value: r as RegionFilter, label: r })),
+  ];
+}
+
+/**
+ * Color token for a region. Falls back to a neutral charcoal for unknown regions
+ * so the dashboard never crashes if SF surfaces a region we haven't styled yet.
+ */
+export function getRegionColorToken(region: string): string {
+  const map: Record<string, string> = {
+    Suffolk: "ppp-blue",
+    Nassau: "ppp-green",
+    Queens: "ppp-orange",
+    Brooklyn: "ppp-blue-600",
+  };
+  return map[region] ?? "ppp-charcoal-500";
+}
 
 const PERIOD_SHAPE: Record<
   Period,
@@ -664,10 +685,9 @@ export function getFilteredView(period: Period, region: RegionFilter): FilteredV
     },
   };
 
-  /* ─── Regional rollup ─── */
-  const regionalFiltered: RegionRollup[] = (
-    ["Suffolk", "Nassau", "Queens", "Brooklyn"] as const
-  )
+  /* ─── Regional rollup — derived from actual rep data (no hardcoded region list) ─── */
+  const uniqueRegions = Array.from(new Set(reps.map((r) => r.region))).sort();
+  const regionalFiltered: RegionRollup[] = uniqueRegions
     .filter((reg) => region === "all" || reg === region)
     .map((reg) => {
       const inRegion = repList.filter((r) => r.region === reg);
