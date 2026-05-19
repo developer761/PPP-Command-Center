@@ -26,7 +26,7 @@ export default function Topbar() {
     <header className="bg-white border-b border-ppp-charcoal-100 px-8 py-4 flex items-center justify-between">
       <div>
         <h2 className="text-base font-semibold text-ppp-charcoal">
-          {greeting}, Aaron
+          {greeting}, PPP
         </h2>
         <p className="text-xs text-ppp-charcoal-500 mt-0.5">{dateText}</p>
       </div>
@@ -45,7 +45,7 @@ export default function Topbar() {
         </button>
 
         <div className="h-9 w-9 rounded-full bg-ppp-blue text-white flex items-center justify-center font-semibold text-sm shadow-sm shadow-ppp-blue/30">
-          A
+          P
         </div>
       </div>
     </header>
