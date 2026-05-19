@@ -18,7 +18,7 @@ export default function PageHeader({ title, subtitle, actions }: Props) {
         )}
       </div>
       {actions && (
-        <div className="flex items-center gap-2 -mx-1 sm:mx-0 overflow-x-auto sm:overflow-visible scrollbar-thin pb-1 sm:pb-0">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
           {actions}
         </div>
       )}

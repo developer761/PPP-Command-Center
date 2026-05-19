@@ -10,6 +10,7 @@ import PageHeader from "@/components/page-header";
 import TrendChart from "@/components/trend-chart";
 import {
   getFilteredView,
+  getFunnelForPeriod,
   PERIOD_LABELS,
   REGION_LABELS,
   topPerformer,
@@ -45,9 +46,17 @@ function sign(n: number) {
 export default function DashboardView() {
   const [period, setPeriod] = useState<Period>("30d");
   const [region, setRegion] = useState<RegionFilter>("all");
+  const [funnelPeriod, setFunnelPeriod] = useState<Period | "page">("page");
 
-  // Re-derive everything from the filter selections
   const view = useMemo(() => getFilteredView(period, region), [period, region]);
+
+  // Pipeline funnel can show either the page-level period or its own override
+  const funnel = useMemo(() => {
+    if (funnelPeriod === "page") return view.pipelineFunnel;
+    return getFunnelForPeriod(funnelPeriod, region);
+  }, [funnelPeriod, view.pipelineFunnel, region]);
+
+  const effectiveFunnelPeriod: Period = funnelPeriod === "page" ? period : funnelPeriod;
 
   return (
     <div className="space-y-8 sm:space-y-10 animate-fade-up">
@@ -57,7 +66,7 @@ export default function DashboardView() {
           region === "all" ? "all regions" : region
         }`}
         actions={
-          <div className="flex items-center gap-2">
+          <>
             <FilterDropdown<RegionFilter>
               value={region}
               options={REGION_OPTIONS}
@@ -72,7 +81,7 @@ export default function DashboardView() {
               srLabel="Period"
               icon={<IconCalendar />}
             />
-          </div>
+          </>
         }
       />
 
@@ -119,9 +128,9 @@ export default function DashboardView() {
                 Revenue · {PERIOD_LABELS[period]}
               </h3>
               <p className="text-xs text-ppp-charcoal-500 mt-1">
-                {view.months.length === 1
-                  ? "Single-month view — hover the bar for details."
-                  : `Monthly revenue sold across ${view.months.length} months. Hover any point for the exact value.`}
+                {view.granularity === "daily"
+                  ? `Daily revenue across ${view.series.length} day${view.series.length === 1 ? "" : "s"}. Hover or tap a point for the top region + top rep that day.`
+                  : `Monthly revenue across ${view.series.length} month${view.series.length === 1 ? "" : "s"}. Hover or tap a point for the top region + top rep that month.`}
               </p>
             </div>
             <div className="sm:text-right">
@@ -134,19 +143,12 @@ export default function DashboardView() {
             </div>
           </div>
           <div className="mt-5">
-            {view.isSingleMonth ? (
-              <SingleMonthBar
-                month={view.months[0]?.month ?? PERIOD_LABELS[period]}
-                value={view.totalRevenue}
-              />
-            ) : (
-              <TrendChart
-                data={view.months.map((m) => ({ label: m.month, value: m.revenue }))}
-                colorToken="ppp-blue"
-                yFormat="currency-k"
-                height={260}
-              />
-            )}
+            <TrendChart
+              data={view.series}
+              colorToken="ppp-blue"
+              yFormat="currency-k"
+              height={260}
+            />
           </div>
         </div>
       </section>
@@ -225,30 +227,46 @@ export default function DashboardView() {
       {/* ─── Pipeline funnel + Insights ─── */}
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
         <div className="lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
-          <h3 className="text-base font-semibold text-ppp-charcoal">Pipeline Funnel</h3>
-          <p className="text-xs text-ppp-charcoal-500 mt-1 mb-5">
-            Lead → quote → closed deal · {PERIOD_LABELS[period].toLowerCase()}
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
+            <div>
+              <h3 className="text-base font-semibold text-ppp-charcoal">Pipeline Funnel</h3>
+              <p className="text-xs text-ppp-charcoal-500 mt-1">
+                Lead → quote → closed deal · {PERIOD_LABELS[effectiveFunnelPeriod].toLowerCase()}
+              </p>
+            </div>
+            <FilterDropdown<Period | "page">
+              value={funnelPeriod}
+              options={[
+                { value: "page", label: "Match page filter" },
+                ...PERIOD_OPTIONS,
+              ]}
+              onChange={setFunnelPeriod}
+              srLabel="Funnel period"
+              icon={<IconCalendar />}
+            />
+          </div>
 
-          {view.pipelineFunnel[0].count === 0 ? (
+          {funnel[0].count === 0 ? (
             <EmptyHint message="No pipeline activity in this filter." />
           ) : (
             <div className="space-y-3">
-              {view.pipelineFunnel.map((s, i) => {
-                const max = Math.max(...view.pipelineFunnel.map((x) => x.count), 1);
+              {funnel.map((s, i) => {
+                const max = Math.max(...funnel.map((x) => x.count), 1);
                 const pct = Math.max(8, Math.round((s.count / max) * 100));
                 const nextDrop =
-                  i < view.pipelineFunnel.length - 1 && s.count > 0
-                    ? Math.round(((s.count - view.pipelineFunnel[i + 1].count) / s.count) * 100)
+                  i < funnel.length - 1 && s.count > 0
+                    ? Math.round(((s.count - funnel[i + 1].count) / s.count) * 100)
                     : null;
                 return (
                   <div key={s.stage}>
-                    <div className="flex items-baseline justify-between mb-1.5">
+                    <div className="flex items-baseline justify-between mb-1.5 gap-2">
                       <span className="text-sm font-semibold text-ppp-charcoal">{s.stage}</span>
-                      <span className="text-sm font-semibold text-ppp-charcoal">
-                        {s.count}
+                      <span className="text-sm font-semibold text-ppp-charcoal shrink-0">
+                        {s.count.toLocaleString()}
                         {s.value > 0 && (
-                          <span className="ml-2 text-[11px] text-ppp-charcoal-500">${s.value}K</span>
+                          <span className="ml-2 text-[11px] text-ppp-charcoal-500">
+                            ${s.value.toLocaleString()}K
+                          </span>
                         )}
                       </span>
                     </div>
@@ -256,9 +274,9 @@ export default function DashboardView() {
                       <div
                         className={[
                           "h-full rounded transition-[width] duration-500",
-                          i === view.pipelineFunnel.length - 1
+                          i === funnel.length - 1
                             ? "bg-ppp-green"
-                            : i === view.pipelineFunnel.length - 2
+                            : i === funnel.length - 2
                             ? "bg-ppp-orange"
                             : "bg-ppp-blue",
                         ].join(" ")}
@@ -329,28 +347,6 @@ export default function DashboardView() {
   );
 }
 
-function SingleMonthBar({ month, value }: { month: string; value: number }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-6 sm:py-8">
-      <div className="text-[11px] uppercase tracking-wide text-ppp-charcoal-500 mb-2">
-        {month}
-      </div>
-      <div className="text-3xl sm:text-4xl font-bold text-ppp-charcoal tracking-tight">
-        {fmtMoneyK(value)}
-      </div>
-      <div className="mt-3 h-2 w-full max-w-md bg-ppp-blue-50 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-ppp-blue rounded-full transition-[width] duration-500"
-          style={{ width: "100%" }}
-        />
-      </div>
-      <div className="mt-2 text-[11px] text-ppp-charcoal-500">
-        Switch to a longer period to see the trend chart.
-      </div>
-    </div>
-  );
-}
-
 function MixCard({
   label,
   revenue,
@@ -402,6 +398,9 @@ function EmptyHint({ message }: { message: string }) {
   return (
     <div className="text-center py-8">
       <p className="text-sm text-ppp-charcoal-500">{message}</p>
+      <p className="text-[11px] text-ppp-charcoal-500/80 mt-1">
+        Try a wider period or a different region.
+      </p>
     </div>
   );
 }

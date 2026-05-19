@@ -121,10 +121,12 @@ export default function FilterDropdown<T extends string>({
           tabIndex={-1}
           onKeyDown={onMenuKey}
           className={[
-            "absolute right-0 mt-1.5 z-30 min-w-[180px] py-1 rounded-lg",
+            "absolute right-0 mt-1.5 z-40 min-w-[180px] py-1 rounded-lg",
+            "max-w-[calc(100vw-2rem)]",
             "bg-white border border-ppp-charcoal-100",
-            "shadow-lg shadow-ppp-charcoal/10",
+            "shadow-xl shadow-ppp-charcoal/15",
             "focus:outline-none",
+            "animate-fade-in",
           ].join(" ")}
         >
           {options.map((opt, i) => {
