@@ -24,8 +24,8 @@ function formatValue(v: number, fmt: YFormat): string {
 }
 
 /**
- * Lightweight SVG line/area chart. Renders nicely from ~6 to ~60 points.
- * No external charting lib — keeps bundle lean and styling 100% on-brand.
+ * Lightweight chart with HTML-rendered axis labels and an SVG line/area body.
+ * Text outside the SVG never distorts when the chart stretches to fill width.
  */
 export default function TrendChart({
   data,
@@ -35,12 +35,8 @@ export default function TrendChart({
   area = true,
 }: Props) {
   const gradientId = useId();
-  const width = 800; // viewBox width; SVG scales to container
-  const padX = 28;
-  const padTop = 16;
-  const padBottom = 28;
-  const innerW = width - padX * 2;
-  const innerH = height - padTop - padBottom;
+  const Y_LABEL_W = 44;
+  const X_LABEL_H = 22;
 
   if (data.length === 0) {
     return (
@@ -57,132 +53,139 @@ export default function TrendChart({
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = Math.max(1, max - min);
-  // Add a little headroom so the line doesn't kiss the top edge.
   const yMax = max + range * 0.18;
   const yMin = Math.max(0, min - range * 0.1);
   const yRange = Math.max(1, yMax - yMin);
 
-  const x = (i: number) =>
-    padX + (data.length === 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
-  const y = (v: number) => padTop + (1 - (v - yMin) / yRange) * innerH;
+  // Coordinates in viewBox 0..100 (both axes). SVG stretches to fill container;
+  // text labels live outside the SVG so they always render crisp.
+  const xAt = (i: number) =>
+    data.length === 1 ? 50 : (i / (data.length - 1)) * 100;
+  const yAt = (v: number) => (1 - (v - yMin) / yRange) * 100;
 
-  // Smooth curve via cardinal-spline-ish midpoint interpolation
   const linePath = data
     .map((d, i) => {
-      const px = x(i);
-      const py = y(d.value);
+      const px = xAt(i);
+      const py = yAt(d.value);
       if (i === 0) return `M ${px} ${py}`;
-      const prevX = x(i - 1);
-      const prevY = y(data[i - 1].value);
+      const prevX = xAt(i - 1);
+      const prevY = yAt(data[i - 1].value);
       const cx = (prevX + px) / 2;
       return `C ${cx} ${prevY}, ${cx} ${py}, ${px} ${py}`;
     })
     .join(" ");
 
-  const areaPath = `${linePath} L ${x(data.length - 1)} ${padTop + innerH} L ${x(0)} ${
-    padTop + innerH
-  } Z`;
+  const areaPath = `${linePath} L ${xAt(data.length - 1)} 100 L ${xAt(0)} 100 Z`;
 
-  // Reference grid lines (4 horizontal)
-  const gridY = [0, 0.25, 0.5, 0.75, 1].map((p) => padTop + p * innerH);
-
-  // X-axis labels — show every Nth so they don't overlap on long series
-  const labelEvery = Math.max(1, Math.round(data.length / 8));
-
-  const fmt = (v: number) => formatValue(v, yFormat);
+  // Show every label up to 8 points; every other label beyond that.
+  const labelEvery = data.length > 8 ? 2 : 1;
 
   return (
-    <div className="w-full">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-        className="w-full"
-        style={{ height }}
-        role="img"
+    <div
+      className="relative w-full"
+      style={{ height, paddingLeft: Y_LABEL_W, paddingBottom: X_LABEL_H }}
+    >
+      {/* Y-axis labels (top + bottom) */}
+      <div
+        className="absolute left-0 top-0 text-[10px] font-medium text-ppp-charcoal-500"
+        style={{ width: Y_LABEL_W, paddingRight: 8, textAlign: "right" }}
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={`var(--color-${colorToken})`} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={`var(--color-${colorToken})`} stopOpacity="0" />
-          </linearGradient>
-        </defs>
+        {formatValue(yMax, yFormat)}
+      </div>
+      <div
+        className="absolute left-0 text-[10px] font-medium text-ppp-charcoal-500"
+        style={{
+          width: Y_LABEL_W,
+          paddingRight: 8,
+          textAlign: "right",
+          bottom: X_LABEL_H,
+          transform: "translateY(50%)",
+        }}
+      >
+        {formatValue(yMin, yFormat)}
+      </div>
 
-        {/* Grid */}
-        {gridY.map((gy, i) => (
-          <line
-            key={i}
-            x1={padX}
-            x2={width - padX}
-            y1={gy}
-            y2={gy}
-            stroke="var(--color-ppp-charcoal-100)"
-            strokeDasharray={i === gridY.length - 1 ? "0" : "3 4"}
-          />
-        ))}
+      {/* SVG chart body (fills the inner area) */}
+      <div className="relative w-full h-full">
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full h-full"
+          role="img"
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor={`var(--color-${colorToken})`} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={`var(--color-${colorToken})`} stopOpacity="0" />
+            </linearGradient>
+          </defs>
 
-        {area && (
-          <path d={areaPath} fill={`url(#${gradientId})`} />
-        )}
-        <path
-          d={linePath}
-          fill="none"
-          stroke={`var(--color-${colorToken})`}
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {/* Points */}
-        {data.map((d, i) => (
-          <g key={i}>
-            <circle
-              cx={x(i)}
-              cy={y(d.value)}
-              r={i === data.length - 1 ? 4.5 : 3}
-              fill="white"
-              stroke={`var(--color-${colorToken})`}
-              strokeWidth="2"
+          {[0, 25, 50, 75, 100].map((p, i) => (
+            <line
+              key={p}
+              x1="0"
+              x2="100"
+              y1={p}
+              y2={p}
+              stroke="var(--color-ppp-charcoal-100)"
+              strokeWidth="0.25"
+              strokeDasharray={i === 4 ? "0" : "0.6 0.8"}
+              vectorEffect="non-scaling-stroke"
             />
-          </g>
-        ))}
+          ))}
 
-        {/* X labels */}
+          {area && <path d={areaPath} fill={`url(#${gradientId})`} />}
+          <path
+            d={linePath}
+            fill="none"
+            stroke={`var(--color-${colorToken})`}
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+
+        {/* Data point markers (HTML, never distort with SVG stretching) */}
         {data.map((d, i) => {
-          if (i % labelEvery !== 0 && i !== data.length - 1) return null;
+          const isLast = i === data.length - 1;
           return (
-            <text
+            <span
               key={i}
-              x={x(i)}
-              y={height - 8}
-              textAnchor="middle"
-              className="fill-ppp-charcoal-500"
-              style={{ fontSize: 10, fontWeight: 500 }}
-            >
-              {d.label}
-            </text>
+              className="absolute rounded-full border-2 bg-white pointer-events-none"
+              style={{
+                left: `${xAt(i)}%`,
+                top: `${yAt(d.value)}%`,
+                width: isLast ? 9 : 6,
+                height: isLast ? 9 : 6,
+                transform: "translate(-50%, -50%)",
+                borderColor: `var(--color-${colorToken})`,
+              }}
+            />
           );
         })}
+      </div>
 
-        {/* Y axis: min + max labels */}
-        <text
-          x={padX - 6}
-          y={y(yMin) + 3}
-          textAnchor="end"
-          className="fill-ppp-charcoal-500"
-          style={{ fontSize: 10 }}
-        >
-          {fmt(Math.round(yMin))}
-        </text>
-        <text
-          x={padX - 6}
-          y={y(yMax) + 3}
-          textAnchor="end"
-          className="fill-ppp-charcoal-500"
-          style={{ fontSize: 10 }}
-        >
-          {fmt(Math.round(yMax))}
-        </text>
-      </svg>
+      {/* X-axis labels (anchored under each data point column) */}
+      <div
+        className="absolute left-0 right-0 bottom-0 pointer-events-none"
+        style={{ paddingLeft: Y_LABEL_W, height: X_LABEL_H }}
+      >
+        <div className="relative w-full h-full">
+          {data.map((d, i) => {
+            if (i % labelEvery !== 0 && i !== data.length - 1) return null;
+            return (
+              <span
+                key={i}
+                className="absolute top-1.5 text-[10px] font-medium text-ppp-charcoal-500 whitespace-nowrap"
+                style={{ left: `${xAt(i)}%`, transform: "translateX(-50%)" }}
+              >
+                {d.label}
+              </span>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

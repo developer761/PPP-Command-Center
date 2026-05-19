@@ -9,18 +9,11 @@ type NavItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
-  section?: string;
 };
 
 const navItems: NavItem[] = [
-  { label: "Overview", href: "/dashboard", icon: <IconSparkle />, section: "Analytics" },
+  { label: "Overview", href: "/dashboard", icon: <IconSparkle /> },
   { label: "Rep Profiles", href: "/dashboard/rep", icon: <IconUser /> },
-  { label: "Leaderboard", href: "/dashboard/leaderboard", icon: <IconTrophy /> },
-  { label: "Trends", href: "/dashboard/trends", icon: <IconChart /> },
-  { label: "Time Patterns", href: "/dashboard/time-patterns", icon: <IconClock /> },
-  { label: "Inconsistencies", href: "/dashboard/inconsistencies", icon: <IconAlert /> },
-  { label: "Pipeline Health", href: "/dashboard/pipeline", icon: <IconPipe /> },
-  { label: "Lost Reasons", href: "/dashboard/lost-reasons", icon: <IconClose /> },
 ];
 
 export default function Sidebar() {
@@ -49,7 +42,10 @@ export default function Sidebar() {
         </div>
         <ul className="space-y-0.5">
           {navItems.map((item) => {
-            const active = pathname === item.href;
+            const active =
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : pathname.startsWith(item.href);
             return (
               <li key={item.href}>
                 <Link
@@ -93,51 +89,6 @@ function IconUser() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21v-1a8 8 0 0 1 16 0v1" />
-    </svg>
-  );
-}
-function IconTrophy() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M6 4h12v4a6 6 0 0 1-12 0V4z M6 4H4v2a2 2 0 0 0 2 2 M18 4h2v2a2 2 0 0 1-2 2 M12 14v3 M8 21h8 M10 17h4" />
-    </svg>
-  );
-}
-function IconChart() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 3v18h18 M7 14l4-4 4 4 5-7" />
-    </svg>
-  );
-}
-function IconClock() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
-    </svg>
-  );
-}
-function IconAlert() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 3l10 17H2L12 3z M12 10v4 M12 17h.01" />
-    </svg>
-  );
-}
-function IconPipe() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="3" y="6" width="18" height="4" rx="1" />
-      <rect x="3" y="14" width="13" height="4" rx="1" />
-    </svg>
-  );
-}
-function IconClose() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9 9l6 6 M15 9l-6 6" />
     </svg>
   );
 }
