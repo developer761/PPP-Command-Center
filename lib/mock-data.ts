@@ -341,3 +341,212 @@ export function getRepRecentDeals(repId: string): Deal[] {
     };
   });
 }
+
+/* ─────────────────────────────────────────────────────────────────
+ * Interactive filter layer (period + region) — derives everything
+ * on the Company Overview from the user's current selections.
+ * Salesforce-bound queries will replace this engine when access lands.
+ * ─────────────────────────────────────────────────────────────── */
+
+export type Period = "7d" | "30d" | "90d" | "6m" | "12m" | "ytd";
+export type RegionFilter = "all" | Rep["region"];
+
+export const PERIOD_LABELS: Record<Period, string> = {
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  "90d": "Last 90 days",
+  "6m": "Last 6 months",
+  "12m": "Last 12 months",
+  ytd: "Year to date",
+};
+
+export const REGION_LABELS: Record<RegionFilter, string> = {
+  all: "All Regions",
+  Suffolk: "Suffolk",
+  Nassau: "Nassau",
+  Queens: "Queens",
+  Brooklyn: "Brooklyn",
+};
+
+// Each period maps to (months of monthlyCompany to use, scalar applied to the latest
+// month's value when the period is shorter than 1 month).
+const PERIOD_SHAPE: Record<Period, { months: number; latestMonthScalar?: number }> = {
+  "7d": { months: 1, latestMonthScalar: 7 / 30 },
+  "30d": { months: 1 },
+  "90d": { months: 3 },
+  "6m": { months: 6 },
+  "12m": { months: 12 },
+  ytd: { months: 5 }, // Mock "current date" anchored at May → Jan-May = 5 months
+};
+
+function filteredReps(region: RegionFilter): Rep[] {
+  return region === "all" ? reps : reps.filter((r) => r.region === region);
+}
+
+function sumRepMonthly(filtered: Rep[]): number[] {
+  // Total monthly revenue across the filtered reps. Length = 12.
+  return MONTH_LABELS.map((_, monthIdx) =>
+    filtered.reduce((sum, r) => {
+      const profile = REP_MONTHLY_PROFILE[r.id] ?? Array(12).fill(1);
+      return sum + r.revenueSold * profile[monthIdx];
+    }, 0)
+  );
+}
+
+export type FilteredView = {
+  period: Period;
+  region: RegionFilter;
+  /** Months included in the active period, oldest→newest */
+  months: { month: string; revenue: number; closeRate: number; avgTicket: number }[];
+  kpis: {
+    revenueSold: { value: number; change: number; trend: "up" | "down" | "flat" };
+    closeRate: { value: number; change: number; trend: "up" | "down" | "flat" };
+    avgTicket: { value: number; change: number; trend: "up" | "down" | "flat" };
+    openQuotes: { value: number; change: number; trend: "up" | "down" | "flat" };
+  };
+  serviceLineMix: {
+    residential: { revenue: number; pct: number; reps: number; avgTicket: number };
+    commercial: { revenue: number; pct: number; reps: number; avgTicket: number };
+  };
+  regionalRollup: RegionRollup[];
+  pipelineFunnel: { stage: string; count: number; value: number }[];
+  /** Filtered reps for the leaderboard */
+  leaderboard: Rep[];
+  /** Convenience scalar so the chart can show a meaningful selection bar */
+  totalRevenue: number;
+  /** True when the period covers a single month so the chart can hide a useless line */
+  isSingleMonth: boolean;
+};
+
+function trendOf(change: number): "up" | "down" | "flat" {
+  if (change > 0.5) return "up";
+  if (change < -0.5) return "down";
+  return "flat";
+}
+
+export function getFilteredView(period: Period, region: RegionFilter): FilteredView {
+  const repList = filteredReps(region);
+  const shape = PERIOD_SHAPE[period];
+
+  // Region-weighted monthly company series
+  const monthlyRevenue = sumRepMonthly(repList).map((v) => Math.round(v));
+  const monthsForPeriod = MONTH_LABELS.map((m, i) => ({
+    month: m,
+    revenue: monthlyRevenue[i],
+    closeRate: monthlyCompany[i].closeRate,
+    avgTicket: monthlyCompany[i].avgTicket,
+  })).slice(-shape.months);
+
+  // ─── KPIs ───
+  let revTotal: number;
+  if (shape.latestMonthScalar) {
+    // 7d: scale the most recent month
+    revTotal = Math.round(monthsForPeriod[monthsForPeriod.length - 1].revenue * shape.latestMonthScalar);
+  } else {
+    revTotal = monthsForPeriod.reduce((s, m) => s + m.revenue, 0);
+  }
+
+  // Period-over-period delta — compare to the equivalent prior window.
+  const priorStart = Math.max(0, 12 - shape.months * 2);
+  const priorEnd = 12 - shape.months;
+  const priorRev =
+    priorEnd <= 0
+      ? revTotal
+      : monthlyRevenue.slice(priorStart, priorEnd).reduce((s, v) => s + v, 0) ||
+        revTotal;
+  const revChangePct = priorRev === 0 ? 0 : Math.round(((revTotal - priorRev) / priorRev) * 100);
+
+  // Close rate + avg ticket: weighted across the filtered reps for the period
+  const closeRate = repList.length === 0
+    ? 0
+    : +(
+        repList.reduce((s, r) => s + r.closeRate * r.quotesSent, 0) /
+        Math.max(1, repList.reduce((s, r) => s + r.quotesSent, 0))
+      ).toFixed(1);
+  const avgTicket = repList.length === 0
+    ? 0
+    : +(
+        repList.reduce((s, r) => s + r.avgTicket * r.appointmentsHeld, 0) /
+        Math.max(1, repList.reduce((s, r) => s + r.appointmentsHeld, 0))
+      ).toFixed(1);
+  const openQuotes = repList.reduce((s, r) => s + r.quotesSent, 0);
+
+  // Compute prior-period close rate from monthlyCompany series to derive a delta
+  const recentClose = monthsForPeriod.length === 0
+    ? closeRate
+    : monthsForPeriod[monthsForPeriod.length - 1].closeRate;
+  const priorCloseSlice = monthlyCompany.slice(priorStart, priorEnd).map((m) => m.closeRate);
+  const priorClose = priorCloseSlice.length === 0
+    ? recentClose
+    : priorCloseSlice.reduce((s, v) => s + v, 0) / priorCloseSlice.length;
+  const closeChange = +(recentClose - priorClose).toFixed(1);
+
+  // ─── Service line mix on filtered reps ───
+  const res = repList.filter((r) => r.serviceLine === "Residential");
+  const com = repList.filter((r) => r.serviceLine === "Commercial");
+  const resRev = res.reduce((s, r) => s + r.revenueSold, 0);
+  const comRev = com.reduce((s, r) => s + r.revenueSold, 0);
+  const totalRev = resRev + comRev || 1;
+  const serviceLineMixFiltered = {
+    residential: {
+      revenue: resRev,
+      pct: Math.round((resRev / totalRev) * 100),
+      reps: res.length,
+      avgTicket: res.length === 0 ? 0 : +(res.reduce((s, r) => s + r.avgTicket, 0) / res.length).toFixed(1),
+    },
+    commercial: {
+      revenue: comRev,
+      pct: Math.round((comRev / totalRev) * 100),
+      reps: com.length,
+      avgTicket: com.length === 0 ? 0 : +(com.reduce((s, r) => s + r.avgTicket, 0) / com.length).toFixed(1),
+    },
+  };
+
+  // ─── Regional rollup ───
+  const regionalFiltered: RegionRollup[] = (["Suffolk", "Nassau", "Queens", "Brooklyn"] as const)
+    .filter((reg) => region === "all" || reg === region)
+    .map((reg) => {
+      const inRegion = repList.filter((r) => r.region === reg);
+      const regRev = inRegion.reduce((s, r) => s + r.revenueSold, 0);
+      const pipeline = inRegion.reduce((s, r) => s + r.openPipeline, 0);
+      const cRate =
+        inRegion.length === 0
+          ? 0
+          : +(
+              inRegion.reduce((s, r) => s + r.closeRate * r.quotesSent, 0) /
+              Math.max(1, inRegion.reduce((s, r) => s + r.quotesSent, 0))
+            ).toFixed(1);
+      return { region: reg, revenue: regRev, reps: inRegion.length, closeRate: cRate, pipeline };
+    });
+
+  // ─── Pipeline funnel ───
+  const totalQuotes = repList.reduce((s, r) => s + r.quotesSent, 0);
+  const totalAppts = repList.reduce((s, r) => s + r.appointmentsHeld, 0);
+  const totalClosed = Math.round(repList.reduce((s, r) => s + (r.quotesSent * r.closeRate) / 100, 0));
+  const totalPipelineValue = repList.reduce((s, r) => s + r.openPipeline, 0);
+  const totalClosedValue = repList.reduce((s, r) => s + r.revenueSold, 0);
+  const funnel = [
+    { stage: "Leads worked", count: Math.round(totalAppts * 1.6), value: 0 },
+    { stage: "Appointments held", count: totalAppts, value: 0 },
+    { stage: "Quotes sent", count: totalQuotes, value: totalPipelineValue },
+    { stage: "Closed won", count: totalClosed, value: totalClosedValue },
+  ];
+
+  return {
+    period,
+    region,
+    months: monthsForPeriod,
+    kpis: {
+      revenueSold: { value: revTotal, change: revChangePct, trend: trendOf(revChangePct) },
+      closeRate: { value: closeRate, change: closeChange, trend: trendOf(closeChange) },
+      avgTicket: { value: avgTicket, change: -2.1, trend: "down" }, // mock — wired to history in next pass
+      openQuotes: { value: openQuotes, change: 18, trend: "up" },
+    },
+    serviceLineMix: serviceLineMixFiltered,
+    regionalRollup: regionalFiltered,
+    pipelineFunnel: funnel,
+    leaderboard: repList,
+    totalRevenue: revTotal,
+    isSingleMonth: shape.months <= 1,
+  };
+}

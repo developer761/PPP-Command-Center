@@ -1,0 +1,425 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import FilterDropdown from "@/components/filter-dropdown";
+import HorizontalBar from "@/components/horizontal-bar";
+import KPICard from "@/components/kpi-card";
+import Leaderboard from "@/components/leaderboard";
+import PageHeader from "@/components/page-header";
+import TrendChart from "@/components/trend-chart";
+import {
+  getFilteredView,
+  PERIOD_LABELS,
+  REGION_LABELS,
+  topPerformer,
+  pipelineAtRisk,
+  type Period,
+  type RegionFilter,
+} from "@/lib/mock-data";
+
+const PERIOD_OPTIONS: { value: Period; label: string }[] = (
+  ["7d", "30d", "90d", "6m", "12m", "ytd"] as Period[]
+).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
+
+const REGION_OPTIONS: { value: RegionFilter; label: string }[] = (
+  ["all", "Suffolk", "Nassau", "Queens", "Brooklyn"] as RegionFilter[]
+).map((v) => ({ value: v, label: REGION_LABELS[v] }));
+
+const REGION_COLOR: Record<string, string> = {
+  Suffolk: "ppp-blue",
+  Nassau: "ppp-green",
+  Queens: "ppp-orange",
+  Brooklyn: "ppp-blue-600",
+};
+
+function fmtMoneyK(v: number) {
+  if (v >= 1000) return `$${(v / 1000).toFixed(1)}M`;
+  return `$${Math.round(v)}K`;
+}
+
+function sign(n: number) {
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+export default function DashboardView() {
+  const [period, setPeriod] = useState<Period>("30d");
+  const [region, setRegion] = useState<RegionFilter>("all");
+
+  // Re-derive everything from the filter selections
+  const view = useMemo(() => getFilteredView(period, region), [period, region]);
+
+  return (
+    <div className="space-y-8 sm:space-y-10 animate-fade-up">
+      <PageHeader
+        title="Company Overview"
+        subtitle={`Whole-company analytics · ${PERIOD_LABELS[period].toLowerCase()} · ${
+          region === "all" ? "all regions" : region
+        }`}
+        actions={
+          <div className="flex items-center gap-2">
+            <FilterDropdown<RegionFilter>
+              value={region}
+              options={REGION_OPTIONS}
+              onChange={setRegion}
+              srLabel="Region"
+              icon={<IconPin />}
+            />
+            <FilterDropdown<Period>
+              value={period}
+              options={PERIOD_OPTIONS}
+              onChange={setPeriod}
+              srLabel="Period"
+              icon={<IconCalendar />}
+            />
+          </div>
+        }
+      />
+
+      {/* ─── KPI row ─── */}
+      <section>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <KPICard
+            label="Revenue Sold"
+            value={fmtMoneyK(view.kpis.revenueSold.value)}
+            change={`${sign(view.kpis.revenueSold.change)}% vs prior`}
+            trend={view.kpis.revenueSold.trend}
+            accent="blue"
+          />
+          <KPICard
+            label="Close Rate"
+            value={`${view.kpis.closeRate.value.toFixed(1)}%`}
+            change={`${sign(view.kpis.closeRate.change)} pts`}
+            trend={view.kpis.closeRate.trend}
+            accent="green"
+          />
+          <KPICard
+            label="Avg Ticket"
+            value={`$${view.kpis.avgTicket.value.toFixed(1)}K`}
+            change={`${sign(view.kpis.avgTicket.change)}%`}
+            trend={view.kpis.avgTicket.trend}
+            accent="orange"
+          />
+          <KPICard
+            label="Open Quotes"
+            value={view.kpis.openQuotes.value.toString()}
+            change={sign(view.kpis.openQuotes.change)}
+            trend={view.kpis.openQuotes.trend}
+            accent="blue"
+          />
+        </div>
+      </section>
+
+      {/* ─── Revenue trend ─── */}
+      <section>
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 sm:gap-4">
+            <div>
+              <h3 className="text-base font-semibold text-ppp-charcoal">
+                Revenue · {PERIOD_LABELS[period]}
+              </h3>
+              <p className="text-xs text-ppp-charcoal-500 mt-1">
+                {view.months.length === 1
+                  ? "Single-month view — hover the bar for details."
+                  : `Monthly revenue sold across ${view.months.length} months. Hover any point for the exact value.`}
+              </p>
+            </div>
+            <div className="sm:text-right">
+              <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal tracking-tight">
+                {fmtMoneyK(view.totalRevenue)}
+              </div>
+              <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                {PERIOD_LABELS[period]} total
+              </div>
+            </div>
+          </div>
+          <div className="mt-5">
+            {view.isSingleMonth ? (
+              <SingleMonthBar
+                month={view.months[0]?.month ?? PERIOD_LABELS[period]}
+                value={view.totalRevenue}
+              />
+            ) : (
+              <TrendChart
+                data={view.months.map((m) => ({ label: m.month, value: m.revenue }))}
+                colorToken="ppp-blue"
+                yFormat="currency-k"
+                height={260}
+              />
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Service line mix + Regional performance ─── */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+          <h3 className="text-base font-semibold text-ppp-charcoal">Service Line Mix</h3>
+          <p className="text-xs text-ppp-charcoal-500 mt-1 mb-5">
+            Residential vs Commercial share of revenue · {PERIOD_LABELS[period].toLowerCase()}
+          </p>
+
+          {view.serviceLineMix.residential.revenue + view.serviceLineMix.commercial.revenue === 0 ? (
+            <EmptyHint message="No revenue in this filter." />
+          ) : (
+            <>
+              <div className="flex h-3 w-full rounded-full overflow-hidden mb-5">
+                <div
+                  className="bg-ppp-blue transition-[width] duration-500"
+                  style={{ width: `${view.serviceLineMix.residential.pct}%` }}
+                  title={`Residential ${view.serviceLineMix.residential.pct}%`}
+                />
+                <div
+                  className="bg-ppp-orange transition-[width] duration-500"
+                  style={{ width: `${view.serviceLineMix.commercial.pct}%` }}
+                  title={`Commercial ${view.serviceLineMix.commercial.pct}%`}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <MixCard
+                  label="Residential"
+                  revenue={view.serviceLineMix.residential.revenue}
+                  pct={view.serviceLineMix.residential.pct}
+                  reps={view.serviceLineMix.residential.reps}
+                  avgTicket={view.serviceLineMix.residential.avgTicket}
+                  accent="blue"
+                />
+                <MixCard
+                  label="Commercial"
+                  revenue={view.serviceLineMix.commercial.revenue}
+                  pct={view.serviceLineMix.commercial.pct}
+                  reps={view.serviceLineMix.commercial.reps}
+                  avgTicket={view.serviceLineMix.commercial.avgTicket}
+                  accent="orange"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+          <h3 className="text-base font-semibold text-ppp-charcoal">Regional Performance</h3>
+          <p className="text-xs text-ppp-charcoal-500 mt-1 mb-5">
+            Revenue sold by region · {PERIOD_LABELS[period].toLowerCase()}
+          </p>
+
+          {view.regionalRollup.length === 0 || view.regionalRollup.every((r) => r.revenue === 0) ? (
+            <EmptyHint message="No regional revenue in this filter." />
+          ) : (
+            <HorizontalBar
+              rows={[...view.regionalRollup]
+                .sort((a, b) => b.revenue - a.revenue)
+                .map((r) => ({
+                  label: r.region,
+                  value: r.revenue,
+                  sublabel: `${r.reps} rep${r.reps === 1 ? "" : "s"} · ${r.closeRate.toFixed(1)}% close`,
+                  colorToken: REGION_COLOR[r.region],
+                }))}
+              formatValue={(v) => `$${v}K`}
+            />
+          )}
+        </div>
+      </section>
+
+      {/* ─── Pipeline funnel + Insights ─── */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+        <div className="lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+          <h3 className="text-base font-semibold text-ppp-charcoal">Pipeline Funnel</h3>
+          <p className="text-xs text-ppp-charcoal-500 mt-1 mb-5">
+            Lead → quote → closed deal · {PERIOD_LABELS[period].toLowerCase()}
+          </p>
+
+          {view.pipelineFunnel[0].count === 0 ? (
+            <EmptyHint message="No pipeline activity in this filter." />
+          ) : (
+            <div className="space-y-3">
+              {view.pipelineFunnel.map((s, i) => {
+                const max = Math.max(...view.pipelineFunnel.map((x) => x.count), 1);
+                const pct = Math.max(8, Math.round((s.count / max) * 100));
+                const nextDrop =
+                  i < view.pipelineFunnel.length - 1 && s.count > 0
+                    ? Math.round(((s.count - view.pipelineFunnel[i + 1].count) / s.count) * 100)
+                    : null;
+                return (
+                  <div key={s.stage}>
+                    <div className="flex items-baseline justify-between mb-1.5">
+                      <span className="text-sm font-semibold text-ppp-charcoal">{s.stage}</span>
+                      <span className="text-sm font-semibold text-ppp-charcoal">
+                        {s.count}
+                        {s.value > 0 && (
+                          <span className="ml-2 text-[11px] text-ppp-charcoal-500">${s.value}K</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="relative h-7 w-full bg-ppp-charcoal-50 rounded">
+                      <div
+                        className={[
+                          "h-full rounded transition-[width] duration-500",
+                          i === view.pipelineFunnel.length - 1
+                            ? "bg-ppp-green"
+                            : i === view.pipelineFunnel.length - 2
+                            ? "bg-ppp-orange"
+                            : "bg-ppp-blue",
+                        ].join(" ")}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    {nextDrop !== null && (
+                      <div className="text-[11px] text-ppp-charcoal-500 mt-1">
+                        {nextDrop}% drop-off to next stage
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3 sm:space-y-4">
+          <Link
+            href={`/dashboard/rep/${topPerformer.id}`}
+            className="block bg-white border border-ppp-charcoal-100 rounded-xl p-5 hover:border-ppp-green-200 hover:shadow-md hover:shadow-ppp-charcoal/5 transition-all"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-6 w-6 rounded-md bg-ppp-green-50 text-ppp-green-700 flex items-center justify-center text-xs font-bold">
+                ↑
+              </div>
+              <h3 className="text-sm font-semibold text-ppp-charcoal">Top Performer</h3>
+            </div>
+            <div className="font-semibold text-ppp-charcoal">{topPerformer.name}</div>
+            <div className="text-xs text-ppp-charcoal-500 mt-0.5">{topPerformer.region}</div>
+            <div className="mt-3 flex items-baseline gap-3">
+              <div className="text-2xl font-bold text-ppp-green-700">${topPerformer.revenue}K</div>
+              <div className="text-xs text-ppp-charcoal-500">{topPerformer.closeRate}% close</div>
+            </div>
+            <div className="mt-3 text-[11px] font-medium text-ppp-blue">View deep-dive →</div>
+          </Link>
+
+          <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-6 w-6 rounded-md bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-xs font-bold">
+                !
+              </div>
+              <h3 className="text-sm font-semibold text-ppp-charcoal">Pipeline at Risk</h3>
+            </div>
+            <div className="text-2xl font-bold text-ppp-orange">${pipelineAtRisk.value}K</div>
+            <div className="text-xs text-ppp-charcoal-500 mt-0.5">
+              {pipelineAtRisk.count} deals · {pipelineAtRisk.reps} reps · {">"}14 days in stage
+            </div>
+            <button
+              type="button"
+              className="mt-3 text-xs font-medium text-ppp-blue hover:text-ppp-blue-700"
+            >
+              Review stuck deals →
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Rep leaderboard ─── */}
+      <section>
+        <Leaderboard
+          reps={view.leaderboard}
+          teamRevenueTotal={view.leaderboard.reduce((s, r) => s + r.revenueSold, 0)}
+        />
+      </section>
+    </div>
+  );
+}
+
+function SingleMonthBar({ month, value }: { month: string; value: number }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-6 sm:py-8">
+      <div className="text-[11px] uppercase tracking-wide text-ppp-charcoal-500 mb-2">
+        {month}
+      </div>
+      <div className="text-3xl sm:text-4xl font-bold text-ppp-charcoal tracking-tight">
+        {fmtMoneyK(value)}
+      </div>
+      <div className="mt-3 h-2 w-full max-w-md bg-ppp-blue-50 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-ppp-blue rounded-full transition-[width] duration-500"
+          style={{ width: "100%" }}
+        />
+      </div>
+      <div className="mt-2 text-[11px] text-ppp-charcoal-500">
+        Switch to a longer period to see the trend chart.
+      </div>
+    </div>
+  );
+}
+
+function MixCard({
+  label,
+  revenue,
+  pct,
+  reps,
+  avgTicket,
+  accent,
+}: {
+  label: string;
+  revenue: number;
+  pct: number;
+  reps: number;
+  avgTicket: number;
+  accent: "blue" | "orange";
+}) {
+  const styles = {
+    blue: {
+      border: "border-ppp-blue-100",
+      bg: "bg-ppp-blue-50/40",
+      dot: "bg-ppp-blue",
+      label: "text-ppp-blue-700",
+    },
+    orange: {
+      border: "border-ppp-orange-100",
+      bg: "bg-ppp-orange-50/40",
+      dot: "bg-ppp-orange",
+      label: "text-ppp-orange-700",
+    },
+  }[accent];
+
+  return (
+    <div className={`rounded-lg border ${styles.border} ${styles.bg} p-3 sm:p-4`}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`h-2 w-2 rounded-full ${styles.dot}`} />
+        <span className={`text-[11px] font-semibold tracking-wide uppercase ${styles.label}`}>
+          {label}
+        </span>
+      </div>
+      <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal">${revenue}K</div>
+      <div className="mt-1 text-[11px] text-ppp-charcoal-500">
+        {pct}% of revenue · {reps} rep{reps === 1 ? "" : "s"}
+        {avgTicket > 0 && ` · avg $${avgTicket}K`}
+      </div>
+    </div>
+  );
+}
+
+function EmptyHint({ message }: { message: string }) {
+  return (
+    <div className="text-center py-8">
+      <p className="text-sm text-ppp-charcoal-500">{message}</p>
+    </div>
+  );
+}
+
+function IconCalendar() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 9h18 M8 3v4 M16 3v4" />
+    </svg>
+  );
+}
+
+function IconPin() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z" />
+      <circle cx="12" cy="9" r="2.5" />
+    </svg>
+  );
+}

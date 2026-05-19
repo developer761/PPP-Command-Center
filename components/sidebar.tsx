@@ -16,13 +16,18 @@ const navItems: NavItem[] = [
   { label: "Rep Profiles", href: "/dashboard/rep", icon: <IconUser /> },
 ];
 
-export default function Sidebar() {
+type SidebarProps = {
+  /** Called when any nav link is clicked — used by the mobile drawer to auto-close */
+  onNavigate?: () => void;
+};
+
+export default function Sidebar({ onNavigate }: SidebarProps = {}) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
-      <div className="px-6 py-6 border-b border-ppp-charcoal-100">
-        <Link href="/dashboard" className="block">
+    <aside className="w-64 lg:w-64 h-full bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
+      <div className="px-6 py-5 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
+        <Link href="/dashboard" className="block" onClick={onNavigate}>
           <Image
             src="/brand/logo.svg"
             alt="Precision Painting Plus"
@@ -34,6 +39,18 @@ export default function Sidebar() {
             Command Center
           </div>
         </Link>
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={onNavigate}
+            aria-label="Close menu"
+            className="lg:hidden flex items-center justify-center h-8 w-8 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M6 6l12 12 M18 6l-12 12" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
@@ -50,11 +67,12 @@ export default function Sidebar() {
               <li key={item.href}>
                 <Link
                   href={item.href}
+                  onClick={onNavigate}
                   className={[
-                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                     active
                       ? "bg-ppp-blue/10 text-ppp-blue"
-                      : "text-ppp-charcoal hover:bg-ppp-charcoal-50",
+                      : "text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-50",
                   ].join(" ")}
                 >
                   <span className={active ? "text-ppp-blue" : "text-ppp-charcoal-500"}>

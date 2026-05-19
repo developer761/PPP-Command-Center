@@ -4,13 +4,13 @@ import { reps, teamTotals } from "@/lib/mock-data";
 
 export default function RepIndexPage() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8 animate-fade-up">
       <PageHeader
         title="Rep Profiles"
         subtitle="Pick a rep to view their full analytics — multi-month revenue trend, close rate, avg ticket, recent deals"
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {[...reps]
           .sort((a, b) => b.revenueSold - a.revenueSold)
           .map((r) => {

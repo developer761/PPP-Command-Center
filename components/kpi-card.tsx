@@ -28,26 +28,27 @@ export default function KPICard({ label, value, change, trend, accent = "blue" }
   return (
     <div
       className={[
-        "relative overflow-hidden bg-white rounded-xl border border-ppp-charcoal-100 p-5 transition-shadow hover:shadow-md hover:shadow-ppp-charcoal/5 cursor-pointer",
+        "relative overflow-hidden bg-white rounded-xl border border-ppp-charcoal-100",
+        "p-4 sm:p-5",
+        "transition-all hover:shadow-md hover:shadow-ppp-charcoal/5 hover:-translate-y-px",
         "before:absolute before:top-0 before:left-0 before:h-1 before:w-full",
         accentRing[accent],
       ].join(" ")}
     >
-      <div className="text-[11px] font-semibold tracking-[0.15em] text-ppp-charcoal-500 uppercase">
+      <div className="text-[10px] sm:text-[11px] font-semibold tracking-[0.15em] text-ppp-charcoal-500 uppercase">
         {label}
       </div>
-      <div className="mt-3 text-3xl font-bold text-ppp-charcoal tracking-tight">
+      <div className="mt-2 sm:mt-3 text-2xl sm:text-3xl font-bold text-ppp-charcoal tracking-tight">
         {value}
       </div>
       <div
         className={[
-          "mt-3 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border",
+          "mt-2 sm:mt-3 inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-md border",
           trendColor[trend],
         ].join(" ")}
       >
         <span>{trendIcon[trend]}</span>
-        <span>{change}</span>
-        <span className="font-normal opacity-70">vs prior period</span>
+        <span className="whitespace-nowrap">{change}</span>
       </div>
     </div>
   );

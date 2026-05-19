@@ -10,22 +10,23 @@ export default function LoginLanding() {
       <div className="absolute -top-32 -right-32 -z-10 h-96 w-96 rounded-full bg-ppp-blue/10 blur-3xl" />
       <div className="absolute -bottom-32 -left-32 -z-10 h-96 w-96 rounded-full bg-ppp-orange/10 blur-3xl" />
 
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-ppp-charcoal-100 p-10">
-        <div className="flex justify-center mb-8">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-ppp-charcoal-100 p-6 sm:p-10 animate-fade-up">
+        <div className="flex justify-center mb-6 sm:mb-8">
           <Image
             src="/brand/logo.svg"
             alt={PPP_BRAND.name}
             width={240}
             height={80}
             priority
+            className="w-48 sm:w-60 h-auto"
           />
         </div>
 
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-ppp-charcoal tracking-tight">
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-xl sm:text-2xl font-semibold text-ppp-charcoal tracking-tight">
             Command Center
           </h1>
-          <p className="mt-2 text-sm text-ppp-charcoal-500">
+          <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500">
             Internal operations platform · sign in to continue
           </p>
         </div>
@@ -38,12 +39,12 @@ export default function LoginLanding() {
           Sign in with Google
         </Link>
 
-        <div className="mt-6 text-center text-xs text-ppp-charcoal-500">
+        <div className="mt-6 text-center text-[11px] sm:text-xs text-ppp-charcoal-500">
           PPP staff only. Access controlled by your Google Workspace account.
         </div>
       </div>
 
-      <p className="mt-8 text-xs text-ppp-charcoal-500 text-center">
+      <p className="mt-6 sm:mt-8 text-[11px] sm:text-xs text-ppp-charcoal-500 text-center px-4">
         {PPP_BRAND.name} · {PPP_BRAND.tagline}
       </p>
     </main>
