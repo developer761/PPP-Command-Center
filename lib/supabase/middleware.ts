@@ -47,6 +47,8 @@ export async function updateSession(request: NextRequest) {
     if (!user) {
       const loginUrl = url.clone();
       loginUrl.pathname = "/";
+      // Only store the path; never store a full URL or external value. The path is
+      // already same-origin since it comes from request.nextUrl.
       loginUrl.searchParams.set("redirectTo", path);
       return NextResponse.redirect(loginUrl);
     }

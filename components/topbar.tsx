@@ -53,7 +53,8 @@ export default function Topbar({ onOpenMenu, user }: Props) {
   });
 
   const ago = Math.floor((now.getTime() - syncedAt.getTime()) / 1000);
-  const greetingTarget = user.firstName ?? "team";
+  // Drop the comma-name when we don't have a real first name (avoids the cold "Good morning, team").
+  const greetingLine = user.firstName ? `${greeting}, ${user.firstName}` : greeting;
 
   return (
     <header className="bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
@@ -72,7 +73,7 @@ export default function Topbar({ onOpenMenu, user }: Props) {
         )}
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-semibold text-ppp-charcoal truncate">
-            {greeting}, {greetingTarget}
+            {greetingLine}
           </h2>
           <p className="text-[10px] sm:text-xs text-ppp-charcoal-500 mt-0.5">
             <span className="hidden sm:inline">{dateText}</span>

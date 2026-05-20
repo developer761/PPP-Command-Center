@@ -405,11 +405,18 @@ function filteredReps(region: RegionFilter): Rep[] {
   return region === "all" ? reps : reps.filter((r) => r.region === region);
 }
 
-/* ─── Daily series (last 30 days, deterministic) ─── */
+/* ─── Daily series (last 30 days, deterministic per UTC day) ─── */
 
-// Day labels for the last 30 days. "Today" is anchored at 2026-05-19 to keep
-// mock data deterministic — when SF connects we'll use Date.now() instead.
-const TODAY = new Date("2026-05-19");
+// Daily labels relative to "today." Computed once per server boot/render —
+// not strictly per-request — which means labels can be up to 24h stale; fine
+// for mock data. When SF connects, swap to live `new Date()` at query time.
+const TODAY = (() => {
+  // Anchor to the START of today UTC so SSR + client hydration match within
+  // the same day (avoids React hydration mismatches from millisecond drift).
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+})();
 const DAY_LABELS: string[] = Array.from({ length: 30 }, (_, i) => {
   const d = new Date(TODAY);
   d.setDate(d.getDate() - (29 - i)); // oldest → newest

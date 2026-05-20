@@ -20,7 +20,10 @@ export default async function LoginLanding({
 }) {
   const sp = await searchParams;
   const errorMessage = sp.error ? ERROR_COPY[sp.error] ?? null : null;
-  const redirectTo = sp.redirectTo || "/dashboard";
+  // Only honor same-origin relative paths to defeat open-redirect attempts.
+  const rawRedirect = sp.redirectTo || "/dashboard";
+  const redirectTo =
+    rawRedirect.startsWith("/") && !rawRedirect.startsWith("//") ? rawRedirect : "/dashboard";
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 relative overflow-hidden">
