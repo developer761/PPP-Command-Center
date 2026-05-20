@@ -11,9 +11,25 @@ type NavItem = {
   icon: React.ReactNode;
 };
 
-const navItems: NavItem[] = [
-  { label: "Overview", href: "/dashboard", icon: <IconSparkle /> },
-  { label: "Rep Profiles", href: "/dashboard/rep", icon: <IconUser /> },
+type NavSection = {
+  heading: string;
+  items: NavItem[];
+};
+
+const navSections: NavSection[] = [
+  {
+    heading: "Sales Analytics",
+    items: [
+      { label: "Overview", href: "/dashboard", icon: <IconSparkle /> },
+      { label: "Rep Profiles", href: "/dashboard/rep", icon: <IconUser /> },
+    ],
+  },
+  {
+    heading: "Admin",
+    items: [
+      { label: "Integrations", href: "/dashboard/integrations", icon: <IconPlug /> },
+    ],
+  },
 ];
 
 type SidebarProps = {
@@ -54,36 +70,40 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
-          Sales Analytics
-        </div>
-        <ul className="space-y-0.5">
-          {navItems.map((item) => {
-            const active =
-              item.href === "/dashboard"
-                ? pathname === "/dashboard"
-                : pathname.startsWith(item.href);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={onNavigate}
-                  className={[
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                    active
-                      ? "bg-ppp-blue/10 text-ppp-blue"
-                      : "text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-50",
-                  ].join(" ")}
-                >
-                  <span className={active ? "text-ppp-blue" : "text-ppp-charcoal-500"}>
-                    {item.icon}
-                  </span>
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        {navSections.map((section, sectionIdx) => (
+          <div key={section.heading} className={sectionIdx > 0 ? "mt-6" : ""}>
+            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
+              {section.heading}
+            </div>
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const active =
+                  item.href === "/dashboard"
+                    ? pathname === "/dashboard"
+                    : pathname.startsWith(item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      className={[
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                        active
+                          ? "bg-ppp-blue/10 text-ppp-blue"
+                          : "text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-50",
+                      ].join(" ")}
+                    >
+                      <span className={active ? "text-ppp-blue" : "text-ppp-charcoal-500"}>
+                        {item.icon}
+                      </span>
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <div className="px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
@@ -107,6 +127,13 @@ function IconUser() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21v-1a8 8 0 0 1 16 0v1" />
+    </svg>
+  );
+}
+function IconPlug() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9 2v6 M15 2v6 M5 8h14v3a7 7 0 0 1-14 0V8z M12 18v4" />
     </svg>
   );
 }
