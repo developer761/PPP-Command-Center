@@ -5,16 +5,24 @@ import { usePathname } from "next/navigation";
 import Sidebar from "@/components/sidebar";
 import Topbar from "@/components/topbar";
 
-export default function DashboardChrome({ children }: { children: React.ReactNode }) {
+type Props = {
+  children: React.ReactNode;
+  user: {
+    email: string;
+    fullName: string | null;
+    firstName: string | null;
+    initial: string;
+  };
+};
+
+export default function DashboardChrome({ children, user }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
-  // Auto-close the mobile drawer on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Lock body scroll while drawer open
   useEffect(() => {
     if (mobileOpen) {
       const prev = document.body.style.overflow;
@@ -25,7 +33,6 @@ export default function DashboardChrome({ children }: { children: React.ReactNod
     }
   }, [mobileOpen]);
 
-  // ESC closes drawer
   useEffect(() => {
     if (!mobileOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -37,12 +44,10 @@ export default function DashboardChrome({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen bg-[var(--color-surface-muted)]">
-      {/* Desktop sidebar (always visible at lg+) */}
       <aside className="hidden lg:block shrink-0">
         <Sidebar />
       </aside>
 
-      {/* Mobile drawer + backdrop */}
       {mobileOpen && (
         <div
           className="lg:hidden fixed inset-0 z-40 bg-ppp-charcoal/40 backdrop-blur-sm animate-fade-in"
@@ -62,7 +67,7 @@ export default function DashboardChrome({ children }: { children: React.ReactNod
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <Topbar onOpenMenu={() => setMobileOpen(true)} />
+        <Topbar onOpenMenu={() => setMobileOpen(true)} user={user} />
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
             {children}

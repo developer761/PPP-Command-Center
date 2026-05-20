@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import UserMenu from "@/components/user-menu";
 
 type Props = {
   onOpenMenu?: () => void;
+  user: {
+    email: string;
+    fullName: string | null;
+    firstName: string | null;
+    initial: string;
+  };
 };
 
 function formatAgo(seconds: number): string {
@@ -15,7 +22,7 @@ function formatAgo(seconds: number): string {
   return `${hr}h ago`;
 }
 
-export default function Topbar({ onOpenMenu }: Props) {
+export default function Topbar({ onOpenMenu, user }: Props) {
   const [now, setNow] = useState<Date | null>(null);
   const [syncedAt] = useState<Date>(() => new Date());
   const [, setTick] = useState(0);
@@ -24,7 +31,7 @@ export default function Topbar({ onOpenMenu }: Props) {
     setNow(new Date());
     const id = setInterval(() => {
       setNow(new Date());
-      setTick((t) => t + 1); // also re-renders the "synced X ago" pill
+      setTick((t) => t + 1);
     }, 1000);
     return () => clearInterval(id);
   }, []);
@@ -46,6 +53,7 @@ export default function Topbar({ onOpenMenu }: Props) {
   });
 
   const ago = Math.floor((now.getTime() - syncedAt.getTime()) / 1000);
+  const greetingTarget = user.firstName ?? "team";
 
   return (
     <header className="bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
@@ -64,7 +72,7 @@ export default function Topbar({ onOpenMenu }: Props) {
         )}
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-semibold text-ppp-charcoal truncate">
-            {greeting}, PPP
+            {greeting}, {greetingTarget}
           </h2>
           <p className="text-[10px] sm:text-xs text-ppp-charcoal-500 mt-0.5">
             <span className="hidden sm:inline">{dateText}</span>
@@ -81,14 +89,18 @@ export default function Topbar({ onOpenMenu }: Props) {
           </span>
         </div>
 
-        {/* Compact sync indicator on mobile (just the dot) */}
-        <div className="sm:hidden flex items-center justify-center h-9 w-9 rounded-lg bg-ppp-green-50 border border-ppp-green-100" title={`Synced ${formatAgo(ago)}`}>
+        <div
+          className="sm:hidden flex items-center justify-center h-9 w-9 rounded-lg bg-ppp-green-50 border border-ppp-green-100"
+          title={`Synced ${formatAgo(ago)}`}
+        >
           <span className="h-2 w-2 rounded-full bg-ppp-green animate-pulse" />
         </div>
 
-        <div className="h-9 w-9 rounded-full bg-ppp-blue text-white flex items-center justify-center font-semibold text-sm shadow-sm shadow-ppp-blue/30">
-          P
-        </div>
+        <UserMenu
+          name={user.fullName}
+          email={user.email}
+          initial={user.initial}
+        />
       </div>
     </header>
   );
