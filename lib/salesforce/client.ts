@@ -19,25 +19,32 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
  * service-role access can read (RLS denies everything else).
  */
 
-const REQUIRED_ENV_VARS = [
-  "SF_LOGIN_URL",
-  "SF_CONSUMER_KEY",
-  "SF_CONSUMER_SECRET",
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "SUPABASE_SECRET_KEY",
-] as const;
-
-function assertEnv() {
-  for (const key of REQUIRED_ENV_VARS) {
-    if (!process.env[key]) {
-      throw new Error(`Missing required env var: ${key}`);
-    }
+/** Throw if Supabase service-role env vars are missing. Required for ANY credential storage operation. */
+function assertSupabaseEnv() {
+  for (const key of ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECRET_KEY"] as const) {
+    if (!process.env[key]) throw new Error(`Missing required env var: ${key}`);
   }
+}
+
+/** Throw if Salesforce OAuth env vars are missing. Required for the dance + queries. */
+function assertSalesforceOAuthEnv() {
+  for (const key of ["SF_LOGIN_URL", "SF_CONSUMER_KEY", "SF_CONSUMER_SECRET"] as const) {
+    if (!process.env[key]) throw new Error(`Missing required env var: ${key}`);
+  }
+}
+
+/** Returns true if all SF OAuth env vars are present without throwing. */
+export function isSalesforceConfigured(): boolean {
+  return Boolean(
+    process.env.SF_LOGIN_URL &&
+      process.env.SF_CONSUMER_KEY &&
+      process.env.SF_CONSUMER_SECRET
+  );
 }
 
 /** Server-only Supabase client w/ service role. Used to read/write system_credentials. */
 function getSupabaseServiceClient() {
-  assertEnv();
+  assertSupabaseEnv();
   return createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SECRET_KEY!,
@@ -49,7 +56,7 @@ function getSupabaseServiceClient() {
 
 /** Build the Salesforce authorization URL the admin must visit to start the OAuth dance. */
 export function getSalesforceAuthorizationUrl(redirectUri: string): string {
-  assertEnv();
+  assertSalesforceOAuthEnv();
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.SF_CONSUMER_KEY!,
@@ -62,7 +69,7 @@ export function getSalesforceAuthorizationUrl(redirectUri: string): string {
 
 /** Exchange an OAuth authorization code for tokens. Called from the callback route. */
 export async function exchangeCodeForTokens(code: string, redirectUri: string) {
-  assertEnv();
+  assertSalesforceOAuthEnv();
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -153,7 +160,8 @@ export async function getStoredSalesforceCredentials(): Promise<
  * message in the UI.
  */
 export async function getSalesforceClient(): Promise<Connection> {
-  assertEnv();
+  assertSupabaseEnv();
+  assertSalesforceOAuthEnv();
   const creds = await getStoredSalesforceCredentials();
   if (!creds) {
     throw new Error(

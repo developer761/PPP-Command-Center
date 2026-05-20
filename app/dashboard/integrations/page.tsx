@@ -2,6 +2,7 @@ import Link from "next/link";
 import PageHeader from "@/components/page-header";
 import {
   getStoredSalesforceCredentials,
+  isSalesforceConfigured,
   pingSalesforce,
 } from "@/lib/salesforce/client";
 
@@ -26,15 +27,29 @@ export default async function IntegrationsPage({
   const justConnected = sp.sf_connected === "1";
   const errorMessage = pretty(sp.sf_error);
 
+  // Defensive: if SF OAuth env vars aren't deployed yet, show a clean "not configured"
+  // state instead of crashing. Page must render even before Vercel env vars are set.
+  const sfConfigured = isSalesforceConfigured();
+
   // Try a live ping to confirm credentials work, not just that they exist.
   let liveStatus:
     | { ok: true; userInfo: { id: string; organizationId: string; url: string } }
     | { ok: false; reason: string }
     | { ok: false; reason: "not_connected" } = { ok: false, reason: "not_connected" };
 
-  const creds = await getStoredSalesforceCredentials();
-  if (creds) {
-    liveStatus = await pingSalesforce();
+  let creds: Awaited<ReturnType<typeof getStoredSalesforceCredentials>> = null;
+  try {
+    creds = await getStoredSalesforceCredentials();
+    if (creds && sfConfigured) {
+      liveStatus = await pingSalesforce();
+    }
+  } catch (err) {
+    // e.g. Supabase env vars missing or system_credentials table not yet created.
+    // Fall through to the not-configured render path instead of 500-ing.
+    liveStatus = {
+      ok: false,
+      reason: err instanceof Error ? err.message : "unknown_error",
+    };
   }
 
   const isConnected = liveStatus.ok === true;
@@ -65,7 +80,11 @@ export default async function IntegrationsPage({
               <span
                 className={[
                   "inline-block h-2 w-2 rounded-full",
-                  isConnected ? "bg-ppp-green animate-pulse" : "bg-ppp-orange",
+                  isConnected
+                    ? "bg-ppp-green animate-pulse"
+                    : sfConfigured
+                    ? "bg-ppp-orange"
+                    : "bg-ppp-charcoal-200",
                 ].join(" ")}
               />
               <h3 className="font-condensed text-base font-bold text-ppp-navy uppercase tracking-wide">
@@ -73,24 +92,40 @@ export default async function IntegrationsPage({
               </h3>
             </div>
             <p className="text-xs text-ppp-charcoal-500">
-              OAuth 2.0 Connected App · {process.env.SF_LOGIN_URL?.includes("test.salesforce.com") ? "sandbox" : "production"}
+              {sfConfigured ? (
+                <>
+                  OAuth 2.0 Connected App ·{" "}
+                  {process.env.SF_LOGIN_URL?.includes("test.salesforce.com") ? "sandbox" : "production"}
+                </>
+              ) : (
+                "Salesforce env vars not deployed yet — add them in Vercel + redeploy"
+              )}
             </p>
           </div>
 
-          {isConnected ? (
-            <Link
-              href="/api/auth/salesforce/login"
-              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40 transition-colors"
-            >
-              Reconnect
-            </Link>
+          {sfConfigured ? (
+            isConnected ? (
+              <Link
+                href="/api/auth/salesforce/login"
+                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40 transition-colors"
+              >
+                Reconnect
+              </Link>
+            ) : (
+              <Link
+                href="/api/auth/salesforce/login"
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-ppp-blue text-white hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+              >
+                Connect Salesforce
+              </Link>
+            )
           ) : (
-            <Link
-              href="/api/auth/salesforce/login"
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-ppp-blue text-white hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+            <span
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-ppp-charcoal-50 text-ppp-charcoal-500 border border-ppp-charcoal-100"
+              title="Add SF_LOGIN_URL, SF_CONSUMER_KEY, SF_CONSUMER_SECRET in Vercel"
             >
-              Connect Salesforce
-            </Link>
+              Awaiting env vars
+            </span>
           )}
         </div>
 
