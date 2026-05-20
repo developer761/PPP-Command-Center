@@ -14,12 +14,20 @@ import {
   getRegionColorToken,
   getRegionOptionsFor,
   PERIOD_LABELS,
-  topPerformer,
-  pipelineAtRisk,
+  reps as mockReps,
+  topPerformer as mockTopPerformer,
+  pipelineAtRisk as mockPipelineAtRisk,
   type Period,
   type RegionFilter,
-  type Rep,
 } from "@/lib/mock-data";
+import {
+  deriveCompanyTrend,
+  derivePeriodDelta,
+  derivePipelineAtRisk,
+  deriveRepsForPeriod,
+  deriveTopPerformer,
+} from "@/lib/salesforce/derive";
+import type { LiveDashboardBundle } from "@/lib/data-source";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
   ["7d", "30d", "90d", "6m", "12m", "ytd"] as Period[]
@@ -35,29 +43,61 @@ function sign(n: number) {
 }
 
 type Props = {
-  /** Rep array fetched server-side — comes from Salesforce (when connected) or the mock layer. */
-  reps: Rep[];
-  /** Where the rep data came from — surfaces a small banner when running on mock. */
-  dataSource?: "salesforce" | "mock";
-  /** When source is "mock", the reason (helps surface "not connected" vs "sandbox empty"). */
-  dataSourceReason?: string;
+  bundle: LiveDashboardBundle;
 };
 
-export default function DashboardView({ reps, dataSource, dataSourceReason }: Props) {
+export default function DashboardView({ bundle }: Props) {
   const [period, setPeriod] = useState<Period>("30d");
   const [region, setRegion] = useState<RegionFilter>("all");
   const [funnelPeriod, setFunnelPeriod] = useState<Period | "page">("page");
 
-  // Region options derived from the server-fetched rep set — works for real SF
-  // reps and mock alike.
+  const dataSource = bundle.source;
+  const dataSourceReason = bundle.reason;
+  const snapshot = bundle.snapshot;
+
+  // Reps for the active period — recomputes from snapshot when SF is live.
+  const reps = useMemo(() => {
+    if (snapshot) return deriveRepsForPeriod(snapshot, period);
+    return mockReps;
+  }, [snapshot, period]);
+
+  // Region options derived from the actual rep set (live or mock).
   const REGION_OPTIONS = useMemo(() => getRegionOptionsFor(reps), [reps]);
 
+  // Base view computed from reps (handles service-line mix, regional rollup, etc).
   const view = useMemo(
     () => getFilteredView(period, region, reps),
     [period, region, reps]
   );
 
-  // Pipeline funnel can show either the page-level period or its own override
+  // Override the trendline series with live data when available.
+  const trendSeries = useMemo(() => {
+    if (snapshot) {
+      const live = deriveCompanyTrend(snapshot, period);
+      return live.series;
+    }
+    return view.series;
+  }, [snapshot, period, view.series]);
+
+  // Override the revenue KPI with live period delta.
+  const revenueKpi = useMemo(() => {
+    if (snapshot) return derivePeriodDelta(snapshot, period);
+    return view.kpis.revenueSold;
+  }, [snapshot, period, view.kpis.revenueSold]);
+
+  // Top performer (live or mock).
+  const topPerformer = useMemo(() => {
+    if (snapshot) return deriveTopPerformer(snapshot, period) ?? mockTopPerformer;
+    return mockTopPerformer;
+  }, [snapshot, period]);
+
+  // Pipeline at risk (live or mock).
+  const pipelineAtRisk = useMemo(() => {
+    if (snapshot) return derivePipelineAtRisk(snapshot) ?? mockPipelineAtRisk;
+    return mockPipelineAtRisk;
+  }, [snapshot]);
+
+  // Pipeline funnel can show either the page-level period or its own override.
   const funnel = useMemo(() => {
     if (funnelPeriod === "page") return view.pipelineFunnel;
     return getFunnelForPeriod(funnelPeriod, region, reps);
@@ -122,9 +162,9 @@ export default function DashboardView({ reps, dataSource, dataSourceReason }: Pr
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <KPICard
             label="Revenue Sold"
-            value={fmtMoneyK(view.kpis.revenueSold.value)}
-            change={`${sign(view.kpis.revenueSold.change)}% vs prior`}
-            trend={view.kpis.revenueSold.trend}
+            value={fmtMoneyK(revenueKpi.value)}
+            change={`${sign(revenueKpi.change)}% vs prior`}
+            trend={revenueKpi.trend}
             accent="blue"
           />
           <KPICard
@@ -160,14 +200,16 @@ export default function DashboardView({ reps, dataSource, dataSourceReason }: Pr
                 Revenue · {PERIOD_LABELS[period]}
               </h3>
               <p className="text-xs text-ppp-charcoal-500 mt-1">
-                {view.granularity === "daily"
-                  ? `Daily revenue across ${view.series.length} day${view.series.length === 1 ? "" : "s"}. Hover or tap a point for the top region + top rep that day.`
-                  : `Monthly revenue across ${view.series.length} month${view.series.length === 1 ? "" : "s"}. Hover or tap a point for the top region + top rep that month.`}
+                {trendSeries.length === 0
+                  ? "No closed-won activity in this period yet."
+                  : period === "7d" || period === "30d"
+                  ? `Daily revenue across ${trendSeries.length} day${trendSeries.length === 1 ? "" : "s"}. Hover or tap a point for the top region + top rep that day.`
+                  : `Monthly revenue across ${trendSeries.length} month${trendSeries.length === 1 ? "" : "s"}. Hover or tap a point for the top region + top rep that month.`}
               </p>
             </div>
             <div className="sm:text-right">
               <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy tracking-tight">
-                {fmtMoneyK(view.totalRevenue)}
+                {fmtMoneyK(revenueKpi.value)}
               </div>
               <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                 {PERIOD_LABELS[period]} total
@@ -176,7 +218,7 @@ export default function DashboardView({ reps, dataSource, dataSourceReason }: Pr
           </div>
           <div className="mt-5">
             <TrendChart
-              data={view.series}
+              data={trendSeries}
               colorToken="ppp-blue"
               yFormat="currency-k"
               heightClassName="h-[200px] sm:h-[260px]"

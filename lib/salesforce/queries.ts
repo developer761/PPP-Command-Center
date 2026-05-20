@@ -1,27 +1,20 @@
 import "server-only";
 
 import { getSalesforceClient } from "@/lib/salesforce/client";
-import type { Rep } from "@/lib/mock-data";
 
 /**
- * SOQL query layer. Returns PPP-shaped data (compatible with the existing
- * mock-data exports) so the UI doesn't have to care whether it's SF or mock.
+ * Bulk Salesforce snapshot. One server-side fetch on each page load
+ * (cached 5 min) gets every row we need to drive the entire dashboard.
  *
- * Defensive against:
- *   - Empty sandbox (returns empty arrays, not errors)
- *   - Missing custom fields (falls back to defaults — Residential, Suffolk, etc.)
- *   - Non-rep users (filters by profile + by having Opportunities)
- *   - Inactive users
+ * The client / pages then DERIVE per-period and per-rep views from this
+ * snapshot — no further SF roundtrips on filter changes.
+ *
+ * This pattern wins three ways:
+ *   1. Fewer SF roundtrips → page is much faster
+ *   2. All derivations stay consistent (no "this card uses 30 days,
+ *      that card uses 365 days" drift)
+ *   3. Period changes are instant client-side recomputes
  */
-
-/* ─────────────────────────────────────────────────────────────────
- * Lightweight per-request cache (5-min TTL).
- *
- * Why: dashboard re-renders on every filter dropdown change. Without a
- * cache, we'd run several SOQL queries on every interaction. SF rate
- * limits are generous but not infinite. 5 minutes is a good balance —
- * fresh enough for dashboard analytics, slow enough to not thrash SF.
- * ─────────────────────────────────────────────────────────────── */
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 type CacheEntry<T> = { value: T; expiresAt: number };
@@ -36,16 +29,46 @@ async function cached<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
   return value;
 }
 
-/** Force-clear the cache. Useful after a reconnect or admin action. */
 export function clearSalesforceCache() {
   cache.clear();
 }
 
 /* ─────────────────────────────────────────────────────────────────
- * SOQL helpers
+ * Snapshot shapes
  * ─────────────────────────────────────────────────────────────── */
 
-type SfUser = {
+export type SnapshotRep = {
+  id: string;
+  name: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  profileName: string | null;
+  roleName: string | null;
+  department: string | null;
+  createdDate: string; // ISO
+};
+
+export type SnapshotOpp = {
+  id: string;
+  ownerId: string;
+  accountName: string | null;
+  amount: number;
+  isClosed: boolean;
+  isWon: boolean;
+  stageName: string;
+  createdDate: string; // ISO
+  closeDate: string | null; // ISO date (YYYY-MM-DD typically)
+  lastActivityDate: string | null; // ISO date — used for "at risk" detection
+};
+
+export type SalesforceSnapshot = {
+  reps: SnapshotRep[];
+  opportunities: SnapshotOpp[];
+  fetchedAt: string;
+};
+
+type SfUserRow = {
   Id: string;
   Name: string;
   FirstName: string | null;
@@ -53,188 +76,117 @@ type SfUser = {
   Email: string | null;
   IsActive: boolean;
   CreatedDate: string;
+  UserType: string | null;
   Profile: { Name: string | null } | null;
   UserRole: { Name: string | null } | null;
   Department: string | null;
 };
 
-type OppAgg = {
+type SfOppRow = {
+  Id: string;
   OwnerId: string;
-  cnt: number;
-  total: number;
-  won: number;
-  wonRevenue: number;
+  Account: { Name: string | null } | null;
+  Amount: number | null;
+  IsClosed: boolean;
+  IsWon: boolean;
+  StageName: string;
+  CreatedDate: string;
+  CloseDate: string | null;
+  LastActivityDate: string | null;
 };
 
-/** Best-effort region mapping. PPP-specific; refine when we know their schema. */
-function deriveRegion(user: SfUser): Rep["region"] {
-  const role = user.UserRole?.Name?.toLowerCase() ?? "";
-  const dept = user.Department?.toLowerCase() ?? "";
-  const probe = `${role} ${dept}`;
-  if (probe.includes("suffolk")) return "Suffolk";
-  if (probe.includes("nassau")) return "Nassau";
-  if (probe.includes("queens")) return "Queens";
-  if (probe.includes("brooklyn")) return "Brooklyn";
-  // Default — at least the dashboard renders. Real region mapping comes when
-  // we know what field PPP uses (likely a custom Region__c on User or a
-  // Service_Territory__c lookup on Opportunity).
-  return "Suffolk";
-}
-
-/** Best-effort service line. Without a User-level field, default to Residential. */
-function deriveServiceLine(user: SfUser): Rep["serviceLine"] {
-  const role = user.UserRole?.Name?.toLowerCase() ?? "";
-  if (role.includes("commercial")) return "Commercial";
-  return "Residential";
-}
-
-/** Detect "real reps" vs system / admin / portal users.
- *
- * Heuristic: skip Profile names that contain Admin / System / Integration / Portal /
- * Chatter. Otherwise treat as a candidate rep. Will tighten once we see PPP's
- * actual Profile names.
- */
-function isLikelyRep(user: SfUser): boolean {
-  if (!user.IsActive) return false;
-  const profile = user.Profile?.Name?.toLowerCase() ?? "";
-  const skip = ["admin", "system", "integration", "portal", "chatter", "guest", "automated"];
-  return !skip.some((token) => profile.includes(token));
+/** Identify "real reps" vs system / admin / portal / integration users. */
+function isLikelyRep(profileName: string | null, isActive: boolean): boolean {
+  if (!isActive) return false;
+  if (!profileName) return true; // permissive — if no profile, give them benefit of doubt
+  const p = profileName.toLowerCase();
+  const skip = [
+    "system administrator",
+    "marketing user",
+    "read only",
+    "chatter only",
+    "chatter free",
+    "chatter external",
+    "high volume customer portal",
+    "customer community",
+    "partner community",
+    "integration",
+    "automated process",
+    "guest license",
+    "platform integration",
+  ];
+  return !skip.some((tok) => p.includes(tok));
 }
 
 /* ─────────────────────────────────────────────────────────────────
- * Public API — used by data-source.ts
+ * Public — one bulk snapshot fetch, parallel queries
  * ─────────────────────────────────────────────────────────────── */
 
-export async function getRepsFromSalesforce(): Promise<Rep[]> {
-  return cached("reps", async () => {
+export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
+  return cached("snapshot", async () => {
     const conn = await getSalesforceClient();
 
-    // 1. All active standard users (broad — we'll filter to "real reps" in code)
-    const usersResult = await conn.query<SfUser>(`
-      SELECT Id, Name, FirstName, LastName, Email, IsActive, CreatedDate,
-             Profile.Name, UserRole.Name, Department
-      FROM User
-      WHERE IsActive = true
-        AND UserType = 'Standard'
-      LIMIT 200
-    `);
-    const allUsers = usersResult.records;
-    const candidateReps = allUsers.filter(isLikelyRep);
+    // Run both queries in parallel — saves ~half the wall time.
+    const [usersResult, oppsResult] = await Promise.all([
+      conn.query<SfUserRow>(`
+        SELECT Id, Name, FirstName, LastName, Email, IsActive, CreatedDate,
+               UserType, Profile.Name, UserRole.Name, Department
+        FROM User
+        WHERE IsActive = true
+        LIMIT 500
+      `),
+      conn.query<SfOppRow>(`
+        SELECT Id, OwnerId, Account.Name, Amount, IsClosed, IsWon, StageName,
+               CreatedDate, CloseDate, LastActivityDate
+        FROM Opportunity
+        WHERE CreatedDate = LAST_N_DAYS:730
+        LIMIT 5000
+      `),
+    ]);
 
-    if (candidateReps.length === 0) return [];
-
-    const candidateIds = candidateReps.map((u) => `'${u.Id}'`).join(",");
-
-    // 2. Opportunity aggregates per owner — last 365 days
-    type OppRow = {
-      OwnerId: string;
-      Id: string;
-      Amount: number | null;
-      IsWon: boolean;
-      IsClosed: boolean;
-      CreatedDate: string;
-      CloseDate: string | null;
-    };
-
-    const oppsResult = await conn.query<OppRow>(`
-      SELECT OwnerId, Id, Amount, IsWon, IsClosed, CreatedDate, CloseDate
-      FROM Opportunity
-      WHERE OwnerId IN (${candidateIds})
-        AND CreatedDate = LAST_N_DAYS:365
-      LIMIT 5000
-    `);
-    const opps = oppsResult.records;
-
-    // Aggregate per OwnerId in code (more flexible than SOQL GROUP BY for our shape)
-    const aggByOwner = new Map<string, {
-      total: number;
-      closed: number;
-      won: number;
-      wonRevenue: number;
-      openPipeline: number;
-      daysToCloseSum: number;
-      daysToCloseCount: number;
-      ticketSum: number;
-      ticketCount: number;
-    }>();
-
-    for (const o of opps) {
-      const a = aggByOwner.get(o.OwnerId) ?? {
-        total: 0, closed: 0, won: 0, wonRevenue: 0, openPipeline: 0,
-        daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
-      };
-      a.total += 1;
-      if (o.IsClosed) a.closed += 1;
-      if (o.IsWon) {
-        a.won += 1;
-        a.wonRevenue += o.Amount ?? 0;
-        a.ticketSum += o.Amount ?? 0;
-        a.ticketCount += 1;
-        if (o.CloseDate) {
-          const created = new Date(o.CreatedDate).getTime();
-          const closed = new Date(o.CloseDate).getTime();
-          a.daysToCloseSum += Math.max(0, Math.round((closed - created) / 86_400_000));
-          a.daysToCloseCount += 1;
-        }
-      }
-      if (!o.IsClosed) a.openPipeline += o.Amount ?? 0;
-      aggByOwner.set(o.OwnerId, a);
-    }
-
-    // 3. Build Rep[] in the shape the UI expects
-    const reps: Rep[] = candidateReps.map((u) => {
-      const a = aggByOwner.get(u.Id) ?? {
-        total: 0, closed: 0, won: 0, wonRevenue: 0, openPipeline: 0,
-        daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
-      };
-      const closeRate = a.closed > 0 ? (a.won / a.closed) * 100 : 0;
-      const avgTicket = a.ticketCount > 0 ? a.ticketSum / a.ticketCount : 0;
-      const daysAvgClose = a.daysToCloseCount > 0
-        ? Math.round(a.daysToCloseSum / a.daysToCloseCount)
-        : 0;
-
-      return {
+    const reps: SnapshotRep[] = usersResult.records
+      .filter((u) => u.UserType === "Standard" || u.UserType === "PowerPartner" || u.UserType === null)
+      .filter((u) => isLikelyRep(u.Profile?.Name ?? null, u.IsActive))
+      .map((u) => ({
         id: u.Id,
         name: u.Name,
-        region: deriveRegion(u),
-        serviceLine: deriveServiceLine(u),
-        revenueSold: Math.round(a.wonRevenue / 1000), // $K (UI expects K units)
-        closeRate: +closeRate.toFixed(1),
-        avgTicket: +(avgTicket / 1000).toFixed(1), // $K
-        openPipeline: Math.round(a.openPipeline / 1000), // $K
-        daysAvgClose,
-        appointmentsHeld: 0, // TBD — needs Service_Appointment__c query
-        quotesSent: a.total, // proxy: total Opportunities = quotes sent
-        startedAt: u.CreatedDate.split("T")[0], // YYYY-MM-DD
-      };
-    });
+        firstName: u.FirstName,
+        lastName: u.LastName,
+        email: u.Email,
+        profileName: u.Profile?.Name ?? null,
+        roleName: u.UserRole?.Name ?? null,
+        department: u.Department,
+        createdDate: u.CreatedDate,
+      }));
 
-    // Sort by revenue, only include reps with SOME activity (filters out brand new admin-promoted reps)
-    return reps
-      .filter((r) => r.revenueSold > 0 || r.openPipeline > 0 || r.quotesSent > 0)
-      .sort((a, b) => b.revenueSold - a.revenueSold);
+    const opportunities: SnapshotOpp[] = oppsResult.records.map((o) => ({
+      id: o.Id,
+      ownerId: o.OwnerId,
+      accountName: o.Account?.Name ?? null,
+      amount: o.Amount ?? 0,
+      isClosed: o.IsClosed,
+      isWon: o.IsWon,
+      stageName: o.StageName,
+      createdDate: o.CreatedDate,
+      closeDate: o.CloseDate,
+      lastActivityDate: o.LastActivityDate,
+    }));
+
+    return {
+      reps,
+      opportunities,
+      fetchedAt: new Date().toISOString(),
+    };
   });
 }
 
-/** Quick proof-of-life query — returns counts so we can confirm the sandbox isn't empty. */
+/** Lightweight summary for the integrations dashboard. */
 export async function getSalesforceDataSummary() {
-  return cached("data-summary", async () => {
-    const conn = await getSalesforceClient();
-    const [users, accounts, opps, workOrders] = await Promise.all([
-      conn.query<{ cnt: number }>(`SELECT COUNT(Id) cnt FROM User WHERE IsActive = true AND UserType = 'Standard'`),
-      conn.query<{ cnt: number }>(`SELECT COUNT(Id) cnt FROM Account`),
-      conn.query<{ cnt: number }>(`SELECT COUNT(Id) cnt FROM Opportunity`),
-      // Work_Order__c might not exist or might be named differently — try, swallow error
-      conn
-        .query<{ cnt: number }>(`SELECT COUNT(Id) cnt FROM WorkOrder`)
-        .then((r) => r.records[0]?.cnt ?? 0)
-        .catch(() => 0),
-    ]);
-    return {
-      users: users.records[0]?.cnt ?? 0,
-      accounts: accounts.records[0]?.cnt ?? 0,
-      opportunities: opps.records[0]?.cnt ?? 0,
-      workOrders: typeof workOrders === "number" ? workOrders : 0,
-    };
-  });
+  const snap = await loadSalesforceSnapshot();
+  return {
+    users: snap.reps.length,
+    accounts: new Set(snap.opportunities.map((o) => o.accountName).filter(Boolean)).size,
+    opportunities: snap.opportunities.length,
+    workOrders: 0, // TBD
+  };
 }

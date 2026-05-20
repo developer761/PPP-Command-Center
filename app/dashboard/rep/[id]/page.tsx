@@ -4,11 +4,16 @@ import KPICard from "@/components/kpi-card";
 import TrendChart from "@/components/trend-chart";
 import {
   reps as mockReps,
-  getRepMonthly,
-  getRepRecentDeals,
+  getRepMonthly as getMockRepMonthly,
+  getRepRecentDeals as getMockRepRecentDeals,
   type Rep,
 } from "@/lib/mock-data";
-import { getReps } from "@/lib/data-source";
+import {
+  loadDashboardData,
+  getRepMonthlyFor,
+  getRepRecentDealsFor,
+} from "@/lib/data-source";
+import { deriveRepsForPeriod } from "@/lib/salesforce/derive";
 
 export function generateStaticParams() {
   // Pre-build mock rep routes; SF rep routes render on-demand.
@@ -58,20 +63,21 @@ export default async function RepDetailPage({
 }) {
   const { id } = await params;
 
-  // Fetch the live rep list (SF when connected, mock fallback otherwise).
-  const { reps, source: dataSource } = await getReps();
+  // Pull the full snapshot bundle so we can derive everything from one fetch.
+  const bundle = await loadDashboardData();
+  const reps: Rep[] = bundle.snapshot
+    ? deriveRepsForPeriod(bundle.snapshot, "12m")
+    : mockReps;
   const rep: Rep | undefined = reps.find((r) => r.id === id);
   if (!rep) notFound();
 
-  // Per-rep history. Mock-only for now — getRepMonthly / getRepRecentDeals
-  // are keyed on mock rep IDs. For real SF reps the helpers fall through to
-  // empty arrays gracefully (no crash, just blank chart). Phase 2+ will add
-  // per-rep SOQL queries for real monthly history.
-  const monthly = getRepMonthly(rep.id);
-  const recentDeals = getRepRecentDeals(rep.id);
-  const noHistoricalData = monthly.length === 0;
-  // For real SF reps, monthly/recentDeals will be empty until we wire per-rep SOQL queries.
-  void dataSource; // intentional: reserved for a future "Live data" badge on the header
+  // Per-rep monthly history + recent deals — live from snapshot when available.
+  const monthly =
+    getRepMonthlyFor(bundle, rep.id) ?? getMockRepMonthly(rep.id);
+  const recentDeals =
+    getRepRecentDealsFor(bundle, rep.id) ?? getMockRepRecentDeals(rep.id);
+  const hasActivity = monthly.some((m) => m.revenue > 0) || recentDeals.length > 0;
+  const noHistoricalData = !hasActivity;
 
   // Team averages computed from the actual loaded reps (not module-level mock).
   const teamRevenue = reps.reduce((s, r) => s + r.revenueSold, 0);
@@ -170,8 +176,8 @@ export default async function RepDetailPage({
       </section>
 
       {noHistoricalData && (
-        <div className="rounded-lg border border-ppp-blue-100 bg-ppp-blue-50/60 text-ppp-blue-700 text-xs sm:text-sm px-4 py-3">
-          <strong>Per-rep historical data is pending.</strong> The KPI tiles above use live Salesforce numbers, but the 12-month trend charts + recent-deals table below require additional SOQL queries we&apos;ll wire next. For now those sections will appear empty for this rep.
+        <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50 text-ppp-charcoal-500 text-xs sm:text-sm px-4 py-3">
+          <strong>No closed-won activity in the last 12 months.</strong> {rep.name.split(" ")[0]} doesn&apos;t have any deals to chart yet. The charts below will populate as their pipeline progresses.
         </div>
       )}
 

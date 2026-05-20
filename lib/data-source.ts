@@ -1,25 +1,40 @@
 import "server-only";
 
-import { getStoredSalesforceCredentials } from "@/lib/salesforce/client";
-import { getRepsFromSalesforce } from "@/lib/salesforce/queries";
-import type { Rep } from "@/lib/mock-data";
+import {
+  getStoredSalesforceCredentials,
+} from "@/lib/salesforce/client";
+import {
+  loadSalesforceSnapshot,
+  type SalesforceSnapshot,
+} from "@/lib/salesforce/queries";
+import {
+  deriveCompanyTrend,
+  deriveRepMonthly,
+  deriveRepRecentDeals,
+  deriveRepsForPeriod,
+  derivePeriodDelta,
+  derivePipelineAtRisk,
+  deriveTopPerformer,
+} from "@/lib/salesforce/derive";
 import { reps as mockReps } from "@/lib/mock-data";
+import type {
+  Deal,
+  Period,
+  Rep,
+  RepMonthlyPoint,
+  SeriesPoint,
+} from "@/lib/mock-data";
 
 /**
- * Single-file data adapter for the Command Center.
+ * Data adapter for the Command Center.
  *
- * - If Salesforce is connected (refresh_token in Supabase), pull live data
- *   from SF and return PPP-shaped records.
- * - If SF isn't connected yet OR a query fails, transparently fall back to
- *   the mock data so the UI never crashes.
- *
- * The UI imports type definitions + pure helpers from `lib/mock-data` directly.
- * For live data, the UI awaits these async getters server-side and passes
- * results down to client components.
+ * When SF is connected and queryable, every page pulls from `loadDashboardData`,
+ * which returns a single snapshot-derived bundle. When SF isn't connected, the
+ * mock data fills in. UI doesn't care which source it's reading from — same shape.
  */
 
 export {
-  // Data shapes — stable across mock + live
+  // Data shape re-exports — stable across mock + live
   type Period,
   type RegionFilter,
   type SeriesPoint,
@@ -29,62 +44,120 @@ export {
   type RegionRollup,
   type RepMonthlyPoint,
 
-  // Filter / derivation engine — works against any Rep[] passed in via the
-  // optional `repsOverride` param. UI calls these client-side with the
-  // server-fetched rep array.
+  // Pure derivation helpers (work for any rep source)
   getFilteredView,
   getFunnelForPeriod,
-  getRepMonthly,
-  getRepRecentDeals,
-  getRegionOptions,
   getRegionColorToken,
+  getRegionOptionsFor,
 
   // Static metadata
   PERIOD_LABELS,
-
-  // Reference exports (mock-only until we wire them to SF)
-  topPerformer,
-  pipelineAtRisk,
-  teamTotals,
 } from "./mock-data";
 
-/**
- * Returns the list of reps to populate the dashboard. Tries Salesforce first;
- * falls back to mock data if SF isn't connected or a query fails.
- *
- * Server-only. Call from Server Components / Route Handlers, then pass the
- * result down to Client Components as a prop.
- */
-export async function getReps(): Promise<{ reps: Rep[]; source: "salesforce" | "mock"; reason?: string }> {
-  // 1. Is SF connected at all?
+/** Source label so the UI can show a small banner when running on mock. */
+export type DataSource = "salesforce" | "mock";
+
+export type LiveDashboardBundle = {
+  source: DataSource;
+  reason?: string;
+  /** Snapshot of raw SF data, when available. Pages re-derive everything from this. */
+  snapshot: SalesforceSnapshot | null;
+};
+
+/* ─── Live-data accessor used by every page ─── */
+
+export async function loadDashboardData(): Promise<LiveDashboardBundle> {
   let creds: Awaited<ReturnType<typeof getStoredSalesforceCredentials>> = null;
   try {
     creds = await getStoredSalesforceCredentials();
   } catch (err) {
     return {
-      reps: mockReps,
       source: "mock",
       reason: err instanceof Error ? err.message : "supabase_unavailable",
+      snapshot: null,
     };
   }
-
   if (!creds) {
-    return { reps: mockReps, source: "mock", reason: "sf_not_connected" };
+    return { source: "mock", reason: "sf_not_connected", snapshot: null };
   }
-
-  // 2. Try the SF query
   try {
-    const reps = await getRepsFromSalesforce();
-    if (reps.length === 0) {
-      // Sandbox might be empty — degrade to mock so the dashboard still has something to show.
-      return { reps: mockReps, source: "mock", reason: "sf_returned_empty" };
+    const snapshot = await loadSalesforceSnapshot();
+    if (snapshot.reps.length === 0) {
+      return { source: "mock", reason: "sf_returned_no_reps", snapshot: null };
     }
-    return { reps, source: "salesforce" };
+    return { source: "salesforce", snapshot };
   } catch (err) {
     return {
-      reps: mockReps,
       source: "mock",
       reason: err instanceof Error ? err.message : "sf_query_failed",
+      snapshot: null,
     };
   }
+}
+
+/* ─── Convenience getters used by individual pages ─── */
+
+/** Reps for the given period — derived from snapshot when live, else mock. */
+export function getRepsFor(bundle: LiveDashboardBundle, period: Period): Rep[] {
+  if (bundle.snapshot) return deriveRepsForPeriod(bundle.snapshot, period);
+  return mockReps;
+}
+
+export function getTopPerformerFor(
+  bundle: LiveDashboardBundle,
+  period: Period
+): { id: string; name: string; region: string; revenue: number; closeRate: number } | null {
+  if (bundle.snapshot) return deriveTopPerformer(bundle.snapshot, period);
+  return null;
+}
+
+export function getPipelineAtRiskFor(
+  bundle: LiveDashboardBundle
+): { value: number; count: number; reps: number } | null {
+  if (bundle.snapshot) return derivePipelineAtRisk(bundle.snapshot);
+  return null;
+}
+
+export function getCompanyTrendFor(
+  bundle: LiveDashboardBundle,
+  period: Period
+): { granularity: "daily" | "monthly"; series: SeriesPoint[] } | null {
+  if (bundle.snapshot) return deriveCompanyTrend(bundle.snapshot, period);
+  return null;
+}
+
+export function getRevenueKpiFor(
+  bundle: LiveDashboardBundle,
+  period: Period
+): { value: number; change: number; trend: "up" | "down" | "flat" } | null {
+  if (bundle.snapshot) return derivePeriodDelta(bundle.snapshot, period);
+  return null;
+}
+
+export function getRepMonthlyFor(
+  bundle: LiveDashboardBundle,
+  repId: string
+): RepMonthlyPoint[] | null {
+  if (bundle.snapshot) return deriveRepMonthly(bundle.snapshot, repId);
+  return null;
+}
+
+export function getRepRecentDealsFor(
+  bundle: LiveDashboardBundle,
+  repId: string
+): Deal[] | null {
+  if (bundle.snapshot) return deriveRepRecentDeals(bundle.snapshot, repId);
+  return null;
+}
+
+/**
+ * Convenience for back-compat with pages that haven't been refactored to the
+ * bundle pattern yet — returns the current reps as before, period default = 30d.
+ */
+export async function getReps(): Promise<{ reps: Rep[]; source: DataSource; reason?: string }> {
+  const bundle = await loadDashboardData();
+  if (bundle.snapshot) {
+    return { reps: deriveRepsForPeriod(bundle.snapshot, "30d"), source: bundle.source };
+  }
+  return { reps: mockReps, source: bundle.source, reason: bundle.reason };
 }

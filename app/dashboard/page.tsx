@@ -1,7 +1,11 @@
 import DashboardView from "@/components/dashboard-view";
-import { getReps } from "@/lib/data-source";
+import { loadDashboardData } from "@/lib/data-source";
+
+// Force dynamic rendering so SF data refreshes per page load (subject to the
+// 5-min server-side snapshot cache inside lib/salesforce/queries.ts).
+export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { reps, source, reason } = await getReps();
-  return <DashboardView reps={reps} dataSource={source} dataSourceReason={reason} />;
+  const bundle = await loadDashboardData();
+  return <DashboardView bundle={bundle} />;
 }
