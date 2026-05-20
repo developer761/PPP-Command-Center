@@ -163,6 +163,18 @@ export default function DashboardView({ bundle }: Props) {
         }
       />
 
+      {snapshot?.isSandbox && (
+        <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
+          <strong>Connected to PPP Salesforce SANDBOX.</strong> Numbers reflect ~50 test
+          opportunities and ~13 work orders in the sandbox — not the production data
+          you see in PPP reports. To pull real revenue/reps, Katie needs to grant
+          production OAuth access (or recreate the Connected App in production).
+          {snapshot.workOrders.length > 0 && (
+            <> Currently showing {snapshot.workOrders.length} work orders.</>
+          )}
+        </div>
+      )}
+
       {dataSource === "mock" && dataSourceReason && (
         <div
           className={[

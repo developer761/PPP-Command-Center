@@ -75,6 +75,15 @@ export default function RepIndexView({ bundle }: Props) {
         }
       />
 
+      {snapshot?.isSandbox && (
+        <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
+          <strong>Sandbox data.</strong> These reps own deals in PPP&apos;s
+          Salesforce sandbox — not production. Production reps like Stephen
+          Sandoval, Andres Grajales, etc. will appear once Katie grants
+          production access.
+        </div>
+      )}
+
       {source === "mock" && reason && reason !== "sf_not_connected" && (
         <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
           <strong>Live data unavailable:</strong> {reason}. Falling back to demo data.

@@ -11,7 +11,31 @@ import type {
   SalesforceSnapshot,
   SnapshotOpp,
   SnapshotRep,
+  SnapshotWorkOrder,
 } from "@/lib/salesforce/queries";
+
+/**
+ * PPP's revenue truth lives on Work Orders, not Opportunities. PPP's
+ * "Opportunities with Work Orders" report sums Net Value across WO rows
+ * (a single Opp can have multiple WOs). Summing per-Opp under-counts. We
+ * therefore prefer the WO array when available, falling back to Opp totals
+ * only if the WO query returned zero records.
+ */
+function revenueRows(snapshot: SalesforceSnapshot) {
+  return snapshot.workOrders.length > 0
+    ? snapshot.workOrders.map((w) => ({
+        ownerId: w.ownerId ?? "",
+        amount: w.amount,
+        closeDate: w.closeDate,
+        createdDate: w.createdDate,
+      }))
+    : snapshot.opportunities.map((o) => ({
+        ownerId: o.ownerId,
+        amount: o.amount,
+        closeDate: o.closeDate,
+        createdDate: o.createdDate,
+      }));
+}
 import type {
   Deal,
   Period,
@@ -110,63 +134,52 @@ export function deriveRepsForPeriod(
     ticketCount: number;
   }>();
 
-  // PPP's revenue model — IMPORTANT:
-  //
-  // PPP uses custom Stage values ("Coordination", "Work In Progress", "On Hold",
-  // "Complete Paid in Full", "Complete Balance Owed", "Closed"). Many of these
-  // are flagged IsClosed=false even though they have Net Value populated and
-  // appear in PPP's "Opportunities with Work Orders" report.
-  //
-  // The PPP report defines revenue as: SUM(Net_Value__c) across opps whose
-  // CloseDate is in the period — regardless of IsWon/IsClosed. Any opp with a
-  // populated Net Value has been committed (it's already attached to a Work
-  // Order). We match that definition here so the dashboard total reconciles to
-  // the report total ($1.26M lifetime).
+  // Revenue rows come from Work Orders (PPP's report unit). Multiple WOs
+  // per Opp = multiple rows in the report. We mirror that exactly.
+  for (const row of revenueRows(snapshot)) {
+    if (!row.ownerId) continue;
+    if (row.amount <= 0) continue;
+    const closedInPeriod = isInRange(row.closeDate, periodStart, periodEnd);
+    if (!closedInPeriod) continue;
+
+    const a = byOwner.get(row.ownerId) ?? {
+      total: 0, closed: 0, won: 0, wonRevenue: 0, openPipeline: 0,
+      daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
+    };
+    a.total += 1;
+    a.closed += 1;
+    a.won += 1;
+    a.wonRevenue += row.amount;
+    a.ticketSum += row.amount;
+    a.ticketCount += 1;
+    if (row.closeDate) {
+      const created = new Date(row.createdDate).getTime();
+      const closed = new Date(row.closeDate).getTime();
+      if (!isNaN(created) && !isNaN(closed)) {
+        a.daysToCloseSum += Math.max(0, Math.round((closed - created) / 86_400_000));
+        a.daysToCloseCount += 1;
+      }
+    }
+    byOwner.set(row.ownerId, a);
+  }
+
+  // Open pipeline = opps not closed and not yet attached to a Work Order.
+  const oppsWithWO = new Set(
+    snapshot.workOrders.map((w) => w.opportunityId).filter(Boolean)
+  );
   for (const o of snapshot.opportunities) {
-    const hasCommittedRevenue = o.amount > 0; // populated Net_Value/Quoted_Subtotal = committed
-    const closedInPeriod = isInRange(o.closeDate, periodStart, periodEnd);
-    const createdInPeriod = isInRange(o.createdDate, periodStart, periodEnd);
-    const stillOpen = !o.isClosed && !hasCommittedRevenue; // truly-open = no WO yet
-
-    // Skip opps that have no period activity AND aren't currently open.
-    if (!closedInPeriod && !createdInPeriod && !stillOpen) continue;
-
+    if (o.isClosed) continue;
+    if (oppsWithWO.has(o.id)) continue;
+    if (o.amount <= 0) continue;
     const a = byOwner.get(o.ownerId) ?? {
       total: 0, closed: 0, won: 0, wonRevenue: 0, openPipeline: 0,
       daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
     };
-
-    if (closedInPeriod || createdInPeriod) a.total += 1;
-
-    if (closedInPeriod && hasCommittedRevenue) {
-      // Counts as a "won" deal in PPP's model — Net Value committed within the
-      // period. Drives Revenue Sold, Avg Ticket, Close Rate numerator.
-      a.closed += 1;
-      a.won += 1;
-      a.wonRevenue += o.amount;
-      a.ticketSum += o.amount;
-      a.ticketCount += 1;
-      if (o.closeDate) {
-        const created = new Date(o.createdDate).getTime();
-        const closed = new Date(o.closeDate).getTime();
-        if (!isNaN(created) && !isNaN(closed)) {
-          a.daysToCloseSum += Math.max(0, Math.round((closed - created) / 86_400_000));
-          a.daysToCloseCount += 1;
-        }
-      }
-    } else if (closedInPeriod && o.isClosed && !hasCommittedRevenue) {
-      // Closed without Net Value = closed-lost. Drives Close Rate denominator.
-      a.closed += 1;
-    }
-
-    // Open pipeline = opps not yet committed (no Net Value, not closed).
-    // Once an opp gets a Work Order (Net Value populated) it's already booked
-    // revenue per PPP's model — not pipeline.
-    if (stillOpen) a.openPipeline += o.amount;
+    a.openPipeline += o.amount;
     byOwner.set(o.ownerId, a);
   }
 
-  return snapshot.reps.map((u) => {
+  const cards: Rep[] = snapshot.reps.map((u) => {
     const a = byOwner.get(u.id) ?? {
       total: 0, closed: 0, won: 0, wonRevenue: 0, openPipeline: 0,
       daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
@@ -191,6 +204,39 @@ export function deriveRepsForPeriod(
       startedAt: u.createdDate.split("T")[0],
     };
   });
+
+  // Surface orphan owners — users who own revenue-bearing WOs but aren't in
+  // our canonical rep filter (e.g., admin profiles that still own deals). We
+  // resolve their name from the WO join data so they get a proper card.
+  const canonicalIds = new Set(snapshot.reps.map((r) => r.id));
+  const ownerNameLookup = new Map<string, string>();
+  for (const w of snapshot.workOrders) {
+    if (w.ownerId && w.ownerName) ownerNameLookup.set(w.ownerId, w.ownerName);
+  }
+  for (const [ownerId, a] of byOwner.entries()) {
+    if (canonicalIds.has(ownerId)) continue;
+    if (a.wonRevenue === 0 && a.openPipeline === 0) continue;
+    const closeRate = a.closed > 0 ? (a.won / a.closed) * 100 : 0;
+    const avgTicket = a.ticketCount > 0 ? a.ticketSum / a.ticketCount : 0;
+    cards.push({
+      id: ownerId,
+      name: ownerNameLookup.get(ownerId) ?? ownerId,
+      region: "Suffolk",
+      serviceLine: "Residential",
+      revenueSold: Math.round(a.wonRevenue / 1000),
+      closeRate: +closeRate.toFixed(1),
+      avgTicket: +(avgTicket / 1000).toFixed(1),
+      openPipeline: Math.round(a.openPipeline / 1000),
+      daysAvgClose: a.daysToCloseCount > 0
+        ? Math.round(a.daysToCloseSum / a.daysToCloseCount)
+        : 0,
+      appointmentsHeld: a.total,
+      quotesSent: a.total,
+      startedAt: new Date().toISOString().split("T")[0],
+    });
+  }
+
+  return cards;
 }
 
 /* ─── Top performer for the period ─── */
@@ -272,14 +318,14 @@ export function deriveCompanyTrend(
   const granularity: "daily" | "monthly" =
     period === "7d" || period === "30d" ? "daily" : "monthly";
 
-  // For "lifetime", clamp the start to the earliest opp close date in the
+  // For "lifetime", clamp the start to the earliest WO close date in the
   // snapshot so we don't render hundreds of empty monthly buckets back to 2000.
   let effectiveStart = periodStart;
   if (period === "lifetime") {
     let earliest: Date | null = null;
-    for (const o of snapshot.opportunities) {
-      if (o.amount <= 0 || !o.closeDate) continue;
-      const d = new Date(o.closeDate + "T00:00:00Z");
+    for (const row of revenueRows(snapshot)) {
+      if (row.amount <= 0 || !row.closeDate) continue;
+      const d = new Date(row.closeDate + "T00:00:00Z");
       if (!earliest || d < earliest) earliest = d;
     }
     if (earliest) effectiveStart = earliest;
@@ -296,28 +342,28 @@ export function deriveCompanyTrend(
     repInfo.set(r.id, { name: r.name, region: deriveRegion(r) });
   }
 
-  for (const o of snapshot.opportunities) {
-    // PPP revenue model: count any opp with Net Value > 0 whose CloseDate is
-    // in the period, regardless of IsWon. Matches their "Opportunities with
-    // Work Orders" report definition.
-    if (o.amount <= 0 || !o.closeDate) continue;
-    const closed = new Date(o.closeDate + "T00:00:00Z");
+  for (const row of revenueRows(snapshot)) {
+    // PPP revenue model: count revenue from WO rows with closeDate in period.
+    // A single Opp's multiple WOs each contribute their own row — matches the
+    // "Opportunities with Work Orders" report exactly.
+    if (row.amount <= 0 || !row.closeDate) continue;
+    const closed = new Date(row.closeDate + "T00:00:00Z");
     if (closed < effectiveStart) continue;
     const key = granularity === "daily"
-      ? bucketStartDaily(o.closeDate)
-      : bucketStartMonthly(o.closeDate);
+      ? bucketStartDaily(row.closeDate)
+      : bucketStartMonthly(row.closeDate);
     const b = buckets.get(key) ?? {
       revenue: 0,
       deals: 0,
       byRegion: new Map(),
       byRep: new Map(),
     };
-    b.revenue += o.amount;
+    b.revenue += row.amount;
     b.deals += 1;
-    const info = repInfo.get(o.ownerId);
+    const info = row.ownerId ? repInfo.get(row.ownerId) : null;
     if (info) {
-      b.byRegion.set(info.region, (b.byRegion.get(info.region) ?? 0) + o.amount);
-      b.byRep.set(info.name, (b.byRep.get(info.name) ?? 0) + o.amount);
+      b.byRegion.set(info.region, (b.byRegion.get(info.region) ?? 0) + row.amount);
+      b.byRep.set(info.name, (b.byRep.get(info.name) ?? 0) + row.amount);
     }
     buckets.set(key, b);
   }
@@ -386,12 +432,11 @@ export function derivePeriodDelta(
 
   let current = 0;
   let priorTotal = 0;
-  for (const o of snapshot.opportunities) {
-    // PPP revenue model: any opp with Net Value > 0 + CloseDate in window.
-    if (o.amount <= 0 || !o.closeDate) continue;
-    const closed = new Date(o.closeDate + "T00:00:00Z");
-    if (closed >= periodStart && closed <= now) current += o.amount;
-    else if (closed >= prior.from && closed < prior.to) priorTotal += o.amount;
+  for (const row of revenueRows(snapshot)) {
+    if (row.amount <= 0 || !row.closeDate) continue;
+    const closed = new Date(row.closeDate + "T00:00:00Z");
+    if (closed >= periodStart && closed <= now) current += row.amount;
+    else if (closed >= prior.from && closed < prior.to) priorTotal += row.amount;
   }
   const change = priorTotal === 0 ? 0 : Math.round(((current - priorTotal) / priorTotal) * 100);
   return {
@@ -411,19 +456,18 @@ export function deriveRepMonthly(
   const now = new Date();
   const earliest = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1));
 
-  for (const o of snapshot.opportunities) {
-    if (o.ownerId !== repId) continue;
-    if (!o.closeDate) continue;
-    const closed = new Date(o.closeDate + "T00:00:00Z");
+  for (const row of revenueRows(snapshot)) {
+    if (row.ownerId !== repId) continue;
+    if (!row.closeDate) continue;
+    const closed = new Date(row.closeDate + "T00:00:00Z");
     if (closed < earliest) continue;
-    const key = bucketStartMonthly(o.closeDate);
+    const key = bucketStartMonthly(row.closeDate);
     const b = buckets.get(key) ?? { revenue: 0, closeCnt: 0, wonCnt: 0, ticketSum: 0, ticketCount: 0 };
     b.closeCnt += 1;
-    // PPP revenue model: any opp with Net Value > 0 counts as "won".
-    if (o.amount > 0) {
+    if (row.amount > 0) {
       b.wonCnt += 1;
-      b.revenue += o.amount;
-      b.ticketSum += o.amount;
+      b.revenue += row.amount;
+      b.ticketSum += row.amount;
       b.ticketCount += 1;
     }
     buckets.set(key, b);
@@ -451,6 +495,38 @@ export function deriveRepRecentDeals(
   snapshot: SalesforceSnapshot,
   repId: string
 ): Deal[] {
+  // Prefer WO rows (PPP's report unit) so we get the WO number + status the
+  // user expects. Fall back to opps when no WO data is present.
+  if (snapshot.workOrders.length > 0) {
+    const ownerWOs = snapshot.workOrders
+      .filter((w) => w.ownerId === repId)
+      .sort((a, b) => {
+        const ad = a.closeDate ?? a.createdDate;
+        const bd = b.closeDate ?? b.createdDate;
+        return bd.localeCompare(ad);
+      })
+      .slice(0, 8);
+
+    return ownerWOs.map((w) => ({
+      id: w.id,
+      customer: w.accountName ?? "(Account)",
+      amount: +(w.amount / 1000).toFixed(1),
+      stage: woStatusBucket(w.status),
+      closedAt: w.closeDate,
+      daysInStage: daysSince(w.closeDate ?? w.createdDate),
+      // Extra metadata the UI can surface (cast widens Deal at usage sites).
+      workOrderNumber: w.workOrderNumber,
+      status: w.status,
+      quotedSubtotal: +(w.quotedSubtotal / 1000).toFixed(1),
+      netValue: +(w.netValue / 1000).toFixed(1),
+    }) as Deal & {
+      workOrderNumber: string | null;
+      status: string | null;
+      quotedSubtotal: number;
+      netValue: number;
+    });
+  }
+
   const ownerOpps = snapshot.opportunities
     .filter((o) => o.ownerId === repId)
     .sort((a, b) => {
@@ -468,6 +544,16 @@ export function deriveRepRecentDeals(
     closedAt: o.isClosed ? o.closeDate : null,
     daysInStage: o.isClosed ? 0 : daysSince(o.lastActivityDate ?? o.createdDate),
   }));
+}
+
+/** Map PPP's custom WO statuses to our Deal["stage"] union. */
+function woStatusBucket(status: string | null): Deal["stage"] {
+  if (!status) return "Quoted";
+  const s = status.toLowerCase();
+  if (s.includes("paid in full") || s.includes("balance owed") || s.includes("closed")) return "Closed Won";
+  if (s.includes("canceled") || s.includes("cancelled")) return "Closed Lost";
+  if (s.includes("coordination") || s.includes("scheduled")) return "Appointment";
+  return "Quoted";
 }
 
 function stageBucket(o: SnapshotOpp): Deal["stage"] {

@@ -62,12 +62,45 @@ export type SnapshotOpp = {
   lastActivityDate: string | null; // ISO date — used for "at risk" detection
 };
 
+/**
+ * Work Order. PPP's "Opportunities with Work Orders" report is the source of
+ * truth for revenue — sums Net Value across WO rows, not Opp rows. A single
+ * opp can carry multiple work orders so summing per-Opp under-counts.
+ *
+ * The WO carries the canonical revenue figure (Subtotal__c / QuotedSubtotal__c
+ * / NetValue__c). The owner/account come from the linked Opportunity.
+ */
+export type SnapshotWorkOrder = {
+  id: string;
+  workOrderNumber: string | null;
+  status: string | null;
+  /** Canonical revenue (auto-detected: Subtotal__c / QuotedSubtotal__c / NetValue__c). */
+  amount: number;
+  /** Gross quoted (with change orders). */
+  quotedSubtotal: number;
+  /** Net realized. */
+  netValue: number;
+  opportunityId: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  accountName: string | null;
+  closeDate: string | null;
+  createdDate: string;
+};
+
 export type SalesforceSnapshot = {
   reps: SnapshotRep[];
   opportunities: SnapshotOpp[];
+  workOrders: SnapshotWorkOrder[];
   fetchedAt: string;
-  /** Canonical revenue field used for amount derivation (dynamically detected). */
+  /** Canonical Opp revenue field (dynamically detected). */
   revenueFieldUsed: string | null;
+  /** Canonical WO revenue field (dynamically detected). */
+  workOrderRevenueField: string | null;
+  /** True if connected SF instance is a sandbox. */
+  isSandbox: boolean;
+  /** Live instance URL — used for surfacing sandbox/prod state in UI. */
+  instanceUrl: string | null;
 };
 
 type SfUserRow = {
@@ -187,26 +220,30 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       ? `, ${allCurrencyFields.slice(0, 25).join(", ")}`
       : "";
 
-    let oppsResult;
-    try {
-      oppsResult = await conn.query<SfOppRow>(`
-        SELECT Id, OwnerId, Account.Name, Amount,
-               IsClosed, IsWon, StageName,
-               CreatedDate, CloseDate, LastActivityDate${currencyFieldsSelect}
-        FROM Opportunity
-        LIMIT 5000
-      `);
-    } catch (err) {
-      // Fallback: drop custom currency fields if SOQL rejects them.
-      console.error("[SF] Opp query with custom fields failed — narrowing:", err);
-      const fallback = await conn.query<SfOppRow>(`
-        SELECT Id, OwnerId, Account.Name, Amount, IsClosed, IsWon, StageName,
-               CreatedDate, CloseDate, LastActivityDate
-        FROM Opportunity
-        LIMIT 5000
-      `);
-      oppsResult = fallback;
+    // SOQL returns at most 2000 records per batch. PPP has many more opps than
+    // that, so we paginate via queryMore until done. Without this we silently
+    // miss most of the data — exactly the bug that made the dashboard show
+    // ~$507K against PPP's $1.26M report.
+    async function queryAllOpps(withCustomFields: boolean): Promise<SfOppRow[]> {
+      const selectFields = `Id, OwnerId, Account.Name, Amount, IsClosed, IsWon, StageName, CreatedDate, CloseDate, LastActivityDate${withCustomFields ? currencyFieldsSelect : ""}`;
+      const all: SfOppRow[] = [];
+      let result = await conn.query<SfOppRow>(`SELECT ${selectFields} FROM Opportunity`);
+      all.push(...(result.records as SfOppRow[]));
+      while (!result.done && result.nextRecordsUrl) {
+        result = await conn.queryMore<SfOppRow>(result.nextRecordsUrl);
+        all.push(...(result.records as SfOppRow[]));
+      }
+      return all;
     }
+
+    let oppRecords: SfOppRow[];
+    try {
+      oppRecords = await queryAllOpps(true);
+    } catch (err) {
+      console.error("[SF] Opp query with custom fields failed — narrowing:", err);
+      oppRecords = await queryAllOpps(false);
+    }
+    console.log(`[SF] Pulled ${oppRecords.length} opportunities (all batches)`);
     const usersResult = await usersPromise;
 
     const reps: SnapshotRep[] = usersResult.records
@@ -224,7 +261,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         createdDate: u.CreatedDate,
       }));
 
-    const opportunities: SnapshotOpp[] = oppsResult.records.map((o) => {
+    const opportunities: SnapshotOpp[] = oppRecords.map((o) => {
       // Resolve amount per-opp:
       //   1. If we discovered a canonical revenue field, prefer it
       //   2. Fall back to max value across all custom currency fields
@@ -258,11 +295,154 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       };
     });
 
+    /* ─────── Work Orders (PPP's true revenue unit) ─────── */
+
+    // Detect WO revenue field the same way we did Opps. PPP's report sums
+    // "Quoted Subtotal with Change Order" + "Net Value" — both live on WO.
+    // We pick the canonical field by highest aggregate sum.
+    let woRevenueField: string | null = null;
+    let woQuotedField: string | null = null;
+    let woNetField: string | null = null;
+    let woCurrencyFields: string[] = [];
+    let woStatusField: string | null = null;
+    let woNumberField: string | null = null;
+    let woOppLookup: string | null = null;
+    let woOppRelName: string | null = null;
+    let workOrderRecords: Array<Record<string, unknown>> = [];
+
+    try {
+      const woMeta = await conn.sobject("WorkOrder").describe();
+      woCurrencyFields = woMeta.fields
+        .filter((f) => f.custom && (f.type === "currency" || f.type === "double"))
+        .map((f) => f.name);
+
+      // Known field name patterns from the schema deep-dive:
+      //   Subtotal__c (commonly populated baseline)
+      //   QuotedSubtotal__c, Quoted_Subtotal_with_Change_Order__c (gross)
+      //   NetValue__c (net realized)
+      const byName = (re: RegExp) => woCurrencyFields.find((n) => re.test(n)) ?? null;
+      woQuotedField = byName(/^Quoted_?Subtotal_?with_?Change_?Order/i)
+        ?? byName(/^Quoted_?Subtotal/i);
+      woNetField = byName(/^Net_?Value/i);
+      // Canonical = whichever sums highest across all WO records.
+      if (woCurrencyFields.length > 0) {
+        const aggs = woCurrencyFields
+          .slice(0, 25)
+          .map((n) => `SUM(${n}) ${n.toLowerCase()}_sum`)
+          .join(", ");
+        try {
+          const sums = await conn.query<Record<string, number | null>>(
+            `SELECT ${aggs} FROM WorkOrder`
+          );
+          const row = sums.records[0] ?? {};
+          let bestField: string | null = null;
+          let bestSum = 0;
+          for (const fname of woCurrencyFields) {
+            const v = row[`${fname.toLowerCase()}_sum`];
+            if (typeof v === "number" && v > bestSum) {
+              bestSum = v;
+              bestField = fname;
+            }
+          }
+          woRevenueField = bestField;
+          console.log(`[SF] WO revenue field auto-detected: ${woRevenueField} = $${bestSum.toLocaleString()}`);
+        } catch (err) {
+          console.error("[SF] WO aggregate sum failed:", err);
+        }
+      }
+
+      // Identify Status, WorkOrderNumber, Opportunity-lookup field names
+      // (these are standard but defensively detect to handle WO subtypes).
+      woStatusField = woMeta.fields.find((f) => f.name === "Status")?.name ?? null;
+      woNumberField = woMeta.fields.find((f) => f.name === "WorkOrderNumber")?.name ?? null;
+      const oppRef = woMeta.fields.find(
+        (f) => f.type === "reference" && f.referenceTo?.includes("Opportunity")
+      );
+      if (oppRef) {
+        woOppLookup = oppRef.name;
+        woOppRelName = oppRef.relationshipName ?? null;
+      }
+
+      // Build the SOQL with the fields we know about. Skip Opp join fields if
+      // there's no Opportunity lookup on WO (would be unusual but defensive).
+      const woFieldList = [
+        "Id",
+        woNumberField,
+        woStatusField,
+        "CreatedDate",
+        ...woCurrencyFields.slice(0, 20),
+        woOppLookup,
+        woOppRelName ? `${woOppRelName}.OwnerId` : null,
+        woOppRelName ? `${woOppRelName}.Owner.Name` : null,
+        woOppRelName ? `${woOppRelName}.Account.Name` : null,
+        woOppRelName ? `${woOppRelName}.CloseDate` : null,
+      ].filter((x): x is string => Boolean(x));
+
+      // Paginate.
+      let result = await conn.query<Record<string, unknown>>(
+        `SELECT ${woFieldList.join(", ")} FROM WorkOrder`
+      );
+      workOrderRecords.push(...result.records);
+      while (!result.done && result.nextRecordsUrl) {
+        result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+        workOrderRecords.push(...result.records);
+      }
+      console.log(`[SF] Pulled ${workOrderRecords.length} work orders`);
+    } catch (err) {
+      console.error("[SF] WorkOrder query failed (object may not exist in this org):", err);
+    }
+
+    const workOrders: SnapshotWorkOrder[] = workOrderRecords.map((w) => {
+      // Per-WO amount: canonical field → max across currency fields.
+      let resolved = 0;
+      if (woRevenueField) {
+        const v = w[woRevenueField];
+        if (typeof v === "number" && v > 0) resolved = v;
+      }
+      if (resolved === 0) {
+        for (const fname of woCurrencyFields) {
+          const v = w[fname];
+          if (typeof v === "number" && v > resolved) resolved = v;
+        }
+      }
+      const quoted = woQuotedField && typeof w[woQuotedField] === "number"
+        ? (w[woQuotedField] as number) : 0;
+      const net = woNetField && typeof w[woNetField] === "number"
+        ? (w[woNetField] as number) : 0;
+
+      const opp = woOppRelName ? (w[woOppRelName] as Record<string, unknown> | undefined) : undefined;
+      const ownerNested = opp?.Owner as Record<string, unknown> | undefined;
+      const accountNested = opp?.Account as Record<string, unknown> | undefined;
+
+      return {
+        id: w.Id as string,
+        workOrderNumber: woNumberField ? (w[woNumberField] as string | null) ?? null : null,
+        status: woStatusField ? (w[woStatusField] as string | null) ?? null : null,
+        amount: resolved,
+        quotedSubtotal: quoted,
+        netValue: net,
+        opportunityId: woOppLookup ? (w[woOppLookup] as string | null) ?? null : null,
+        ownerId: opp ? (opp.OwnerId as string | null) ?? null : null,
+        ownerName: ownerNested ? (ownerNested.Name as string | null) ?? null : null,
+        accountName: accountNested ? (accountNested.Name as string | null) ?? null : null,
+        closeDate: opp ? (opp.CloseDate as string | null) ?? null : null,
+        createdDate: w.CreatedDate as string,
+      };
+    });
+
+    // Sandbox detection — instance URL contains "sandbox" for any sandbox org.
+    const instanceUrl = conn.instanceUrl ?? null;
+    const isSandbox = instanceUrl ? /sandbox\.my\.salesforce\.com/i.test(instanceUrl) : false;
+
     return {
       reps,
       opportunities,
+      workOrders,
       fetchedAt: new Date().toISOString(),
       revenueFieldUsed: revenueField,
+      workOrderRevenueField: woRevenueField,
+      isSandbox,
+      instanceUrl,
     };
   });
 }

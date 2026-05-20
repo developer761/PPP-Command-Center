@@ -124,7 +124,11 @@ export default async function IntegrationsPage({
               {sfConfigured ? (
                 <>
                   OAuth 2.0 Connected App ·{" "}
-                  {process.env.SF_LOGIN_URL?.includes("test.salesforce.com") ? "sandbox" : "production"}
+                  {creds?.instanceUrl?.includes("sandbox") ? (
+                    <span className="text-ppp-orange-700 font-semibold">SANDBOX</span>
+                  ) : (
+                    <span className="text-ppp-green-700 font-semibold">PRODUCTION</span>
+                  )}
                 </>
               ) : (
                 "Salesforce env vars not deployed yet — add them in Vercel + redeploy"
