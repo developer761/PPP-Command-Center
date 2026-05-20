@@ -238,14 +238,14 @@ export async function getSalesforceDataSummary() {
 export type SchemaInspection = {
   object: string;
   total: number;
-  customFields: Array<{ name: string; label: string; type: string }>;
+  customFields: Array<{ name: string; label: string; type: string; sumLast730?: number | null }>;
   sampleRecord: Record<string, unknown> | null;
   totalRecords: number;
   error?: string;
 };
 
 export async function describeKeySObjects(): Promise<SchemaInspection[]> {
-  return cached("schema-inspection", async () => {
+  return cached("schema-inspection-v2", async () => {
     const conn = await getSalesforceClient();
     const objects = ["Opportunity", "Account", "WorkOrder", "Work_Order__c", "Quote"];
     const out: SchemaInspection[] = [];
@@ -253,16 +253,47 @@ export async function describeKeySObjects(): Promise<SchemaInspection[]> {
     for (const obj of objects) {
       try {
         const meta = await conn.sobject(obj).describe();
-        const customFields = meta.fields
+        const customFieldsRaw = meta.fields
           .filter((f) => f.custom)
           .map((f) => ({ name: f.name, label: f.label, type: f.type }))
           .sort((a, b) => a.name.localeCompare(b.name));
+
+        // For Opportunity, additionally SUM each custom currency/number field
+        // so we can visually identify which field actually holds PPP's revenue
+        // ($1.26M per their report). Skipped for other objects to keep latency down.
+        let customFields = customFieldsRaw as SchemaInspection["customFields"];
+        if (obj === "Opportunity") {
+          const numericFields = customFieldsRaw.filter(
+            (f) => f.type === "currency" || f.type === "double" || f.type === "int" || f.type === "percent"
+          );
+          // SOQL allows multiple aggregates in one query — sum them all in one shot.
+          if (numericFields.length > 0) {
+            const aggregates = numericFields
+              .slice(0, 25) // SOQL aggregate limit safety
+              .map((f) => `SUM(${f.name}) ${f.name.toLowerCase()}_sum`)
+              .join(", ");
+            try {
+              const aggResult = await conn.query<Record<string, unknown>>(
+                `SELECT ${aggregates} FROM Opportunity WHERE CreatedDate = LAST_N_DAYS:730`
+              );
+              const row = aggResult.records[0] ?? {};
+              customFields = customFieldsRaw.map((f) => {
+                if (!numericFields.includes(f)) return f;
+                const v = row[`${f.name.toLowerCase()}_sum`];
+                const num = typeof v === "number" ? v : v === null ? null : Number(v) || null;
+                return { ...f, sumLast730: num };
+              });
+            } catch (err) {
+              console.error("[SF] Aggregate sum for Opportunity custom fields failed:", err);
+            }
+          }
+        }
 
         // Pull one record so we can see what custom fields actually contain values.
         let sampleRecord: Record<string, unknown> | null = null;
         let totalRecords = 0;
         try {
-          const customNames = customFields.slice(0, 30).map((f) => f.name).join(", ");
+          const customNames = customFieldsRaw.slice(0, 30).map((f) => f.name).join(", ");
           const sample = await conn.query<Record<string, unknown>>(
             customNames
               ? `SELECT Id, ${customNames} FROM ${obj} LIMIT 1`

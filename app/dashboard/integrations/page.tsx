@@ -9,7 +9,7 @@ import { describeKeySObjects } from "@/lib/salesforce/queries";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ sf_connected?: string; sf_error?: string }>;
+type SearchParams = Promise<{ sf_connected?: string; sf_error?: string; sf_cache_cleared?: string }>;
 
 const ERROR_COPY: Record<string, string> = {
   no_code: "Salesforce didn't return an authorization code. Please try again.",
@@ -28,6 +28,7 @@ export default async function IntegrationsPage({
 }) {
   const sp = await searchParams;
   const justConnected = sp.sf_connected === "1";
+  const cacheCleared = sp.sf_cache_cleared === "1";
   const errorMessage = pretty(sp.sf_error);
 
   // Defensive: if SF OAuth env vars aren't deployed yet, show a clean "not configured"
@@ -77,7 +78,13 @@ export default async function IntegrationsPage({
 
       {justConnected && isConnected && (
         <div className="rounded-lg border border-ppp-green-100 bg-ppp-green-50 text-ppp-green-700 text-sm px-4 py-3">
-          <strong>Salesforce connected.</strong> Refresh token saved. Command Center can now read from PPP's Salesforce.
+          <strong>Salesforce connected.</strong> Refresh token saved. Command Center can now read from PPP&apos;s Salesforce.
+        </div>
+      )}
+
+      {cacheCleared && (
+        <div className="rounded-lg border border-ppp-blue-100 bg-ppp-blue-50 text-ppp-blue-700 text-sm px-4 py-3">
+          <strong>Cache cleared.</strong> Next page load will re-fetch live from Salesforce.
         </div>
       )}
 
@@ -119,12 +126,23 @@ export default async function IntegrationsPage({
 
           {sfConfigured ? (
             isConnected ? (
-              <Link
-                href="/api/auth/salesforce/login"
-                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40 transition-colors"
-              >
-                Reconnect
-              </Link>
+              <div className="flex items-center gap-2">
+                <form action="/api/admin/sf-refresh-cache" method="POST">
+                  <button
+                    type="submit"
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40 transition-colors"
+                    title="Bust the 5-min snapshot cache and re-fetch from Salesforce"
+                  >
+                    Refresh data
+                  </button>
+                </form>
+                <Link
+                  href="/api/auth/salesforce/login"
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40 transition-colors"
+                >
+                  Reconnect
+                </Link>
+              </div>
             ) : (
               <Link
                 href="/api/auth/salesforce/login"
@@ -202,22 +220,47 @@ export default async function IntegrationsPage({
                   </span>
                 </div>
                 {obj.customFields.length > 0 && (
-                  <div className="text-[11px] sm:text-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-1 font-mono">
-                    {obj.customFields.map((f) => {
-                      const sampleVal = obj.sampleRecord?.[f.name];
-                      const hasValue =
-                        sampleVal !== null && sampleVal !== undefined && sampleVal !== "";
-                      return (
-                        <div
-                          key={f.name}
-                          className={`truncate ${hasValue ? "text-ppp-charcoal" : "text-ppp-charcoal-200"}`}
-                          title={`${f.label} (${f.type})${hasValue ? ` — sample: ${String(sampleVal).slice(0, 80)}` : " — empty in sample record"}`}
-                        >
-                          {f.name}
+                  <>
+                    {obj.object === "Opportunity" && obj.customFields.some((f) => typeof f.sumLast730 === "number") && (
+                      <div className="mb-3 -mx-1 px-3 py-2 bg-ppp-blue-50 border border-ppp-blue-100 rounded text-[11px] sm:text-xs">
+                        <div className="font-semibold text-ppp-navy mb-1">
+                          Revenue field probe (SUM across all Opportunities, last 730 days)
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5 font-mono">
+                          {obj.customFields
+                            .filter((f) => typeof f.sumLast730 === "number" && (f.sumLast730 ?? 0) > 0)
+                            .sort((a, b) => (b.sumLast730 ?? 0) - (a.sumLast730 ?? 0))
+                            .map((f) => (
+                              <div key={f.name} className="flex justify-between gap-2">
+                                <span className="truncate text-ppp-charcoal">{f.name}</span>
+                                <span className="text-ppp-navy font-semibold tabular-nums whitespace-nowrap">
+                                  ${(f.sumLast730 ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                        <div className="mt-1 text-[10px] text-ppp-charcoal-500 italic">
+                          The field with ~$1.26M is PPP&apos;s revenue field (per their report).
+                        </div>
+                      </div>
+                    )}
+                    <div className="text-[11px] sm:text-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-1 font-mono">
+                      {obj.customFields.map((f) => {
+                        const sampleVal = obj.sampleRecord?.[f.name];
+                        const hasValue =
+                          sampleVal !== null && sampleVal !== undefined && sampleVal !== "";
+                        return (
+                          <div
+                            key={f.name}
+                            className={`truncate ${hasValue ? "text-ppp-charcoal" : "text-ppp-charcoal-200"}`}
+                            title={`${f.label} (${f.type})${hasValue ? ` — sample: ${String(sampleVal).slice(0, 80)}` : " — empty in sample record"}`}
+                          >
+                            {f.name}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
             ))}

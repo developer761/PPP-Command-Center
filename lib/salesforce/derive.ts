@@ -101,13 +101,25 @@ export function deriveRepsForPeriod(
     ticketCount: number;
   }>();
 
+  // PPP's revenue model — IMPORTANT:
+  //
+  // PPP uses custom Stage values ("Coordination", "Work In Progress", "On Hold",
+  // "Complete Paid in Full", "Complete Balance Owed", "Closed"). Many of these
+  // are flagged IsClosed=false even though they have Net Value populated and
+  // appear in PPP's "Opportunities with Work Orders" report.
+  //
+  // The PPP report defines revenue as: SUM(Net_Value__c) across opps whose
+  // CloseDate is in the period — regardless of IsWon/IsClosed. Any opp with a
+  // populated Net Value has been committed (it's already attached to a Work
+  // Order). We match that definition here so the dashboard total reconciles to
+  // the report total ($1.26M lifetime).
   for (const o of snapshot.opportunities) {
-    const closedInPeriod = o.isClosed && isInRange(o.closeDate, periodStart, periodEnd);
-    const createdInPeriod = !o.isClosed && isInRange(o.createdDate, periodStart, periodEnd);
-    const stillOpen = !o.isClosed;
+    const hasCommittedRevenue = o.amount > 0; // populated Net_Value/Quoted_Subtotal = committed
+    const closedInPeriod = isInRange(o.closeDate, periodStart, periodEnd);
+    const createdInPeriod = isInRange(o.createdDate, periodStart, periodEnd);
+    const stillOpen = !o.isClosed && !hasCommittedRevenue; // truly-open = no WO yet
 
-    // Skip only OLD CLOSED deals that fall outside the period — they don't
-    // contribute to period revenue OR to current pipeline.
+    // Skip opps that have no period activity AND aren't currently open.
     if (!closedInPeriod && !createdInPeriod && !stillOpen) continue;
 
     const a = byOwner.get(o.ownerId) ?? {
@@ -115,29 +127,32 @@ export function deriveRepsForPeriod(
       daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
     };
 
-    // Period-scoped counters (closed-in-period + created-in-period).
     if (closedInPeriod || createdInPeriod) a.total += 1;
-    if (closedInPeriod) {
+
+    if (closedInPeriod && hasCommittedRevenue) {
+      // Counts as a "won" deal in PPP's model — Net Value committed within the
+      // period. Drives Revenue Sold, Avg Ticket, Close Rate numerator.
       a.closed += 1;
-      if (o.isWon) {
-        a.won += 1;
-        a.wonRevenue += o.amount;
-        a.ticketSum += o.amount;
-        a.ticketCount += 1;
-        if (o.closeDate) {
-          const created = new Date(o.createdDate).getTime();
-          const closed = new Date(o.closeDate).getTime();
-          if (!isNaN(created) && !isNaN(closed)) {
-            a.daysToCloseSum += Math.max(0, Math.round((closed - created) / 86_400_000));
-            a.daysToCloseCount += 1;
-          }
+      a.won += 1;
+      a.wonRevenue += o.amount;
+      a.ticketSum += o.amount;
+      a.ticketCount += 1;
+      if (o.closeDate) {
+        const created = new Date(o.createdDate).getTime();
+        const closed = new Date(o.closeDate).getTime();
+        if (!isNaN(created) && !isNaN(closed)) {
+          a.daysToCloseSum += Math.max(0, Math.round((closed - created) / 86_400_000));
+          a.daysToCloseCount += 1;
         }
       }
+    } else if (closedInPeriod && o.isClosed && !hasCommittedRevenue) {
+      // Closed without Net Value = closed-lost. Drives Close Rate denominator.
+      a.closed += 1;
     }
 
-    // Open pipeline is "what's open right now" — NOT period-bound. Any opp
-    // that's currently open contributes to the rep's pipeline regardless of
-    // when it was created.
+    // Open pipeline = opps not yet committed (no Net Value, not closed).
+    // Once an opp gets a Work Order (Net Value populated) it's already booked
+    // revenue per PPP's model — not pipeline.
     if (stillOpen) a.openPipeline += o.amount;
     byOwner.set(o.ownerId, a);
   }
@@ -260,7 +275,10 @@ export function deriveCompanyTrend(
   }
 
   for (const o of snapshot.opportunities) {
-    if (!o.isWon || !o.closeDate) continue;
+    // PPP revenue model: count any opp with Net Value > 0 whose CloseDate is
+    // in the period, regardless of IsWon. Matches their "Opportunities with
+    // Work Orders" report definition.
+    if (o.amount <= 0 || !o.closeDate) continue;
     const closed = new Date(o.closeDate + "T00:00:00Z");
     if (closed < periodStart) continue;
     const key = granularity === "daily"
@@ -347,7 +365,8 @@ export function derivePeriodDelta(
   let current = 0;
   let priorTotal = 0;
   for (const o of snapshot.opportunities) {
-    if (!o.isWon || !o.closeDate) continue;
+    // PPP revenue model: any opp with Net Value > 0 + CloseDate in window.
+    if (o.amount <= 0 || !o.closeDate) continue;
     const closed = new Date(o.closeDate + "T00:00:00Z");
     if (closed >= periodStart && closed <= now) current += o.amount;
     else if (closed >= prior.from && closed < prior.to) priorTotal += o.amount;
@@ -372,13 +391,14 @@ export function deriveRepMonthly(
 
   for (const o of snapshot.opportunities) {
     if (o.ownerId !== repId) continue;
-    if (!o.isClosed || !o.closeDate) continue;
+    if (!o.closeDate) continue;
     const closed = new Date(o.closeDate + "T00:00:00Z");
     if (closed < earliest) continue;
     const key = bucketStartMonthly(o.closeDate);
     const b = buckets.get(key) ?? { revenue: 0, closeCnt: 0, wonCnt: 0, ticketSum: 0, ticketCount: 0 };
     b.closeCnt += 1;
-    if (o.isWon) {
+    // PPP revenue model: any opp with Net Value > 0 counts as "won".
+    if (o.amount > 0) {
       b.wonCnt += 1;
       b.revenue += o.amount;
       b.ticketSum += o.amount;
