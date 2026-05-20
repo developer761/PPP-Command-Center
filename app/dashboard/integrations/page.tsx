@@ -5,6 +5,9 @@ import {
   isSalesforceConfigured,
   pingSalesforce,
 } from "@/lib/salesforce/client";
+import { describeKeySObjects } from "@/lib/salesforce/queries";
+
+export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ sf_connected?: string; sf_error?: string }>;
 
@@ -53,6 +56,17 @@ export default async function IntegrationsPage({
   }
 
   const isConnected = liveStatus.ok === true;
+
+  // Run schema inspection when connected so we can see what custom fields PPP actually has.
+  // Useful when dashboard numbers look wrong — verifies field API names.
+  let schema: Awaited<ReturnType<typeof describeKeySObjects>> | null = null;
+  if (isConnected) {
+    try {
+      schema = await describeKeySObjects();
+    } catch {
+      // non-fatal; render rest of page without inspector
+    }
+  }
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-up">
@@ -164,6 +178,52 @@ export default async function IntegrationsPage({
           </div>
         )}
       </div>
+
+      {/* ─── Schema Inspector ─── */}
+      {schema && (
+        <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <summary className="cursor-pointer px-5 sm:px-6 py-4 hover:bg-ppp-charcoal-50/50 transition-colors">
+            <span className="font-condensed text-base font-bold text-ppp-navy uppercase tracking-wide">
+              Schema Inspector
+            </span>
+            <span className="ml-2 text-xs text-ppp-charcoal-500">
+              · Click to see PPP&apos;s actual custom fields per object
+            </span>
+          </summary>
+          <div className="border-t border-ppp-charcoal-100 divide-y divide-ppp-charcoal-100">
+            {schema.map((obj) => (
+              <div key={obj.object} className="px-5 sm:px-6 py-4">
+                <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <h4 className="font-semibold text-ppp-navy">{obj.object}</h4>
+                  <span className="text-xs text-ppp-charcoal-500">
+                    {obj.error
+                      ? `error: ${obj.error}`
+                      : `${obj.totalRecords.toLocaleString()} record${obj.totalRecords === 1 ? "" : "s"} · ${obj.customFields.length} custom field${obj.customFields.length === 1 ? "" : "s"}`}
+                  </span>
+                </div>
+                {obj.customFields.length > 0 && (
+                  <div className="text-[11px] sm:text-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-1 font-mono">
+                    {obj.customFields.map((f) => {
+                      const sampleVal = obj.sampleRecord?.[f.name];
+                      const hasValue =
+                        sampleVal !== null && sampleVal !== undefined && sampleVal !== "";
+                      return (
+                        <div
+                          key={f.name}
+                          className={`truncate ${hasValue ? "text-ppp-charcoal" : "text-ppp-charcoal-200"}`}
+                          title={`${f.label} (${f.type})${hasValue ? ` — sample: ${String(sampleVal).slice(0, 80)}` : " — empty in sample record"}`}
+                        >
+                          {f.name}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ type Props = {
 
 export default function RepIndexView({ bundle }: Props) {
   const [period, setPeriod] = useState<Period>("30d");
+  const [search, setSearch] = useState("");
 
   const { source, reason, snapshot } = bundle;
 
@@ -35,10 +36,19 @@ export default function RepIndexView({ bundle }: Props) {
     [reps]
   );
 
-  const sorted = useMemo(
-    () => [...reps].sort((a, b) => b.revenueSold - a.revenueSold),
-    [reps]
-  );
+  const searchLower = search.trim().toLowerCase();
+  const sorted = useMemo(() => {
+    let list = [...reps].sort((a, b) => b.revenueSold - a.revenueSold);
+    if (searchLower) {
+      list = list.filter(
+        (r) =>
+          r.name.toLowerCase().includes(searchLower) ||
+          r.region.toLowerCase().includes(searchLower) ||
+          r.serviceLine.toLowerCase().includes(searchLower)
+      );
+    }
+    return list;
+  }, [reps, searchLower]);
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-up">
@@ -70,12 +80,45 @@ export default function RepIndexView({ bundle }: Props) {
         </div>
       )}
 
+      {reps.length > 0 && (
+        <div className="relative max-w-sm">
+          <span className="absolute inset-y-0 left-3 flex items-center text-ppp-charcoal-300 pointer-events-none">
+            <IconSearch />
+          </span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search reps by name, region, or service line…"
+            className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-ppp-charcoal-100 rounded-lg placeholder:text-ppp-charcoal-300 focus:outline-none focus:ring-2 focus:ring-ppp-blue-100 focus:border-ppp-blue-200"
+          />
+          {searchLower && (
+            <div className="absolute -bottom-5 left-0 text-[11px] text-ppp-charcoal-500">
+              {sorted.length} match{sorted.length === 1 ? "" : "es"}
+            </div>
+          )}
+        </div>
+      )}
+
       {reps.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
           <p className="text-sm font-semibold text-ppp-charcoal">No reps to show</p>
           <p className="text-xs text-ppp-charcoal-500 mt-1">
             Connect Salesforce in Admin → Integrations to populate this view.
           </p>
+        </div>
+      ) : sorted.length === 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+          <p className="text-sm font-semibold text-ppp-charcoal">
+            No reps match &ldquo;{search}&rdquo;
+          </p>
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="text-xs text-ppp-blue hover:underline mt-1"
+          >
+            Clear search
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -159,6 +202,15 @@ function IconCalendar() {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path d="M3 9h18 M8 3v4 M16 3v4" />
+    </svg>
+  );
+}
+
+function IconSearch() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
     </svg>
   );
 }
