@@ -489,6 +489,79 @@ export function deriveRepMonthly(
   return series;
 }
 
+/* ─── Per-rep account stats ─── */
+
+/**
+ * For a rep, count their distinct customers + how many are repeat customers,
+ * plus total lifetime revenue across the accounts they own deals with. Pulled
+ * from Account snapshot (PPP-populated fields). Surfaces on the rep profile
+ * page so the cards stop being just "$X revenue" and start telling a story.
+ */
+export function deriveRepAccountStats(
+  snapshot: SalesforceSnapshot,
+  repId: string
+): {
+  totalCustomers: number;
+  repeatCustomers: number;
+  newCustomers: number;
+  totalLifetimeRevenue: number;
+  bmRetailerCount: number;
+  topAccountName: string | null;
+  topAccountRevenue: number;
+} {
+  const acctIndex = new Map(snapshot.accounts.map((a) => [a.name, a]));
+  const seenAccountNames = new Set<string>();
+
+  // Accumulate revenue per account (across this rep's WOs).
+  const accountRevenue = new Map<string, number>();
+  for (const w of snapshot.workOrders) {
+    if (w.ownerId !== repId) continue;
+    if (!w.accountName) continue;
+    seenAccountNames.add(w.accountName);
+    accountRevenue.set(
+      w.accountName,
+      (accountRevenue.get(w.accountName) ?? 0) + w.amount
+    );
+  }
+  // Also walk opps in case some don't have WOs yet.
+  for (const o of snapshot.opportunities) {
+    if (o.ownerId !== repId) continue;
+    if (!o.accountName) continue;
+    seenAccountNames.add(o.accountName);
+  }
+
+  let repeat = 0;
+  let bmRetailer = 0;
+  let lifetimeRev = 0;
+  for (const name of seenAccountNames) {
+    const a = acctIndex.get(name);
+    if (!a) continue;
+    if ((a.type ?? "").toLowerCase().includes("repeat")) repeat += 1;
+    if (a.isBMRetailer) bmRetailer += 1;
+    lifetimeRev += a.totalLifetimeRevenue;
+  }
+
+  // Top account by this rep's revenue contribution.
+  let topAccountName: string | null = null;
+  let topAccountRevenue = 0;
+  for (const [name, rev] of accountRevenue.entries()) {
+    if (rev > topAccountRevenue) {
+      topAccountRevenue = rev;
+      topAccountName = name;
+    }
+  }
+
+  return {
+    totalCustomers: seenAccountNames.size,
+    repeatCustomers: repeat,
+    newCustomers: seenAccountNames.size - repeat,
+    totalLifetimeRevenue: lifetimeRev,
+    bmRetailerCount: bmRetailer,
+    topAccountName,
+    topAccountRevenue,
+  };
+}
+
 /* ─── Per-rep recent deals (8 most recent) ─── */
 
 export function deriveRepRecentDeals(

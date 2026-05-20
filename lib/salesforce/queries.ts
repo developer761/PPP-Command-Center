@@ -63,6 +63,37 @@ export type SnapshotOpp = {
 };
 
 /**
+ * Account snapshot. Carries the data PPP customers/vendors are described by:
+ *   - Type (Customer / Repeat Customer / Prospect / Marketing Vendor / etc.)
+ *   - Service_Territory__c — territory mapping (production-confirmed)
+ *   - Total_Lifetime_Revenue__c — running total across all WOs
+ *   - VendorBMRetailer__c / VendorBMAutoSubmit__c — Benjamin Moore vendor flags
+ *     (used by Phase 2 Materials Ordering)
+ *   - Total_Won_Oppties__c / Total_Lost_Oppties__c — close-rate denominator
+ *   - Last_Appointment__c / Last_Work_Order_Completed__c — engagement recency
+ */
+export type SnapshotAccount = {
+  id: string;
+  name: string;
+  type: string | null;
+  serviceTerritoryId: string | null;
+  region: string | null;
+  geoZone: string | null;
+  county: string | null;
+  totalLifetimeRevenue: number;
+  totalRevenueCFY: number;
+  totalRevenuePFY: number;
+  totalWonOppties: number;
+  totalLostOppties: number;
+  numberOpenOppties: number;
+  isBMRetailer: boolean;
+  isBMAutoSubmit: boolean;
+  isKeyRelationship: boolean;
+  lastAppointment: string | null;
+  lastWorkOrderCompleted: string | null;
+};
+
+/**
  * Work Order. PPP's "Opportunities with Work Orders" report is the source of
  * truth for revenue — sums Net Value across WO rows, not Opp rows. A single
  * opp can carry multiple work orders so summing per-Opp under-counts.
@@ -92,6 +123,7 @@ export type SalesforceSnapshot = {
   reps: SnapshotRep[];
   opportunities: SnapshotOpp[];
   workOrders: SnapshotWorkOrder[];
+  accounts: SnapshotAccount[];
   fetchedAt: string;
   /** Canonical Opp revenue field (dynamically detected). */
   revenueFieldUsed: string | null;
@@ -430,6 +462,56 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       };
     });
 
+    /* ─────── Accounts ─────── */
+    // Pull all accounts so per-rep cards can surface "X repeat customers",
+    // total lifetime revenue per account, BM-retailer flag (for Phase 2),
+    // and territory data. Wrapped in try/catch — if Account perms are
+    // restricted, snapshot still renders without account context.
+    let accounts: SnapshotAccount[] = [];
+    try {
+      const ACCT_FIELDS = `
+        Id, Name, Type, Service_Territory__c, Region__c, Geo_Zone__c, County__c,
+        Total_Lifetime_Revenue__c, Total_Revenue_CFY__c, Total_Revenue_PFY__c,
+        Total_Won_Oppties__c, Total_Lost_Oppties__c, Number_Open_Oppties__c,
+        VendorBMRetailer__c, VendorBMAutoSubmit__c, Key_Relationship__c,
+        Last_Appointment__c, LastWorkOrderCompleted__c
+      `.replace(/\s+/g, " ").trim();
+
+      const acctRecords: Array<Record<string, unknown>> = [];
+      let acctResult = await conn.query<Record<string, unknown>>(
+        `SELECT ${ACCT_FIELDS} FROM Account`
+      );
+      acctRecords.push(...acctResult.records);
+      while (!acctResult.done && acctResult.nextRecordsUrl) {
+        acctResult = await conn.queryMore<Record<string, unknown>>(acctResult.nextRecordsUrl);
+        acctRecords.push(...acctResult.records);
+      }
+      console.log(`[SF] Pulled ${acctRecords.length} accounts`);
+
+      accounts = acctRecords.map((a) => ({
+        id: a.Id as string,
+        name: (a.Name as string) ?? "",
+        type: (a.Type as string | null) ?? null,
+        serviceTerritoryId: (a.Service_Territory__c as string | null) ?? null,
+        region: (a.Region__c as string | null) ?? null,
+        geoZone: (a.Geo_Zone__c as string | null) ?? null,
+        county: (a.County__c as string | null) ?? null,
+        totalLifetimeRevenue: (a.Total_Lifetime_Revenue__c as number | null) ?? 0,
+        totalRevenueCFY: (a.Total_Revenue_CFY__c as number | null) ?? 0,
+        totalRevenuePFY: (a.Total_Revenue_PFY__c as number | null) ?? 0,
+        totalWonOppties: (a.Total_Won_Oppties__c as number | null) ?? 0,
+        totalLostOppties: (a.Total_Lost_Oppties__c as number | null) ?? 0,
+        numberOpenOppties: (a.Number_Open_Oppties__c as number | null) ?? 0,
+        isBMRetailer: Boolean(a.VendorBMRetailer__c),
+        isBMAutoSubmit: Boolean(a.VendorBMAutoSubmit__c),
+        isKeyRelationship: Boolean(a.Key_Relationship__c),
+        lastAppointment: (a.Last_Appointment__c as string | null) ?? null,
+        lastWorkOrderCompleted: (a.LastWorkOrderCompleted__c as string | null) ?? null,
+      }));
+    } catch (err) {
+      console.error("[SF] Account query failed (some fields may be absent):", err);
+    }
+
     // Sandbox detection — instance URL contains "sandbox" for any sandbox org.
     const instanceUrl = conn.instanceUrl ?? null;
     const isSandbox = instanceUrl ? /sandbox\.my\.salesforce\.com/i.test(instanceUrl) : false;
@@ -438,6 +520,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       reps,
       opportunities,
       workOrders,
+      accounts,
       fetchedAt: new Date().toISOString(),
       revenueFieldUsed: revenueField,
       workOrderRevenueField: woRevenueField,
