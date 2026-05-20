@@ -54,14 +54,23 @@ function getSupabaseServiceClient() {
   );
 }
 
-/** Build the Salesforce authorization URL the admin must visit to start the OAuth dance. */
+/** Build the Salesforce authorization URL the admin must visit to start the OAuth dance.
+ *
+ * Scopes we request:
+ *   - api: REST API access (required for SOQL queries)
+ *   - refresh_token: long-lived refresh token so we don't re-auth every couple hours
+ *
+ * We deliberately do NOT request `openid` because the Connected App may not have
+ * the OpenID Connect scope enabled, and we can fetch user identity via the API
+ * after authentication anyway.
+ */
 export function getSalesforceAuthorizationUrl(redirectUri: string): string {
   assertSalesforceOAuthEnv();
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.SF_CONSUMER_KEY!,
     redirect_uri: redirectUri,
-    scope: "api refresh_token openid",
+    scope: "api refresh_token",
     prompt: "consent",
   });
   return `${process.env.SF_LOGIN_URL}/services/oauth2/authorize?${params.toString()}`;
