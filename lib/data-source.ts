@@ -1,32 +1,25 @@
+import "server-only";
+
+import { getStoredSalesforceCredentials } from "@/lib/salesforce/client";
+import { getRepsFromSalesforce } from "@/lib/salesforce/queries";
+import type { Rep } from "@/lib/mock-data";
+import { reps as mockReps } from "@/lib/mock-data";
+
 /**
- * Single-file adapter boundary between the Command Center UI and its data source.
+ * Single-file data adapter for the Command Center.
  *
- * Today: re-exports the mock data + filter engine from `lib/mock-data.ts`.
- * When Salesforce access lands: rewrite the body of each export to call SF
- *   via a server action / Route Handler. The UI does not change.
+ * - If Salesforce is connected (refresh_token in Supabase), pull live data
+ *   from SF and return PPP-shaped records.
+ * - If SF isn't connected yet OR a query fails, transparently fall back to
+ *   the mock data so the UI never crashes.
  *
- * Contract (keep stable across mock → live):
- *   - `getFilteredView(period, region)` returns the FilteredView shape
- *   - `getFunnelForPeriod(period, region)` returns the funnel rows
- *   - `getRepMonthly(repId)` returns the rep's 12-month series
- *   - `getRepRecentDeals(repId)` returns up to N recent deals
- *   - `getRegionOptions()` returns dropdown options derived from current data
- *   - `getRegionColorToken(region)` returns the Tailwind color token (with fallback)
- *
- * Edge cases to handle inside the adapter (NOT the UI):
- *   - Null / missing SF fields → coalesce to safe defaults
- *   - Region values outside the known set → still flow through; color falls back
- *   - Service line values outside Residential/Commercial → bucket sensibly
- *   - Date / timezone normalization → use the user's locale, not UTC
- *   - SF API rate limits → cache per (period, region) tuple
- *   - Stale auth → surface a reconnect signal so the topbar can switch from green to amber
- *
- * Reference: project memory `project_ppp_salesforce_wiring_edge_cases.md` has the
- * full edge-case audit. Re-read before flipping this file from mock → live.
+ * The UI imports type definitions + pure helpers from `lib/mock-data` directly.
+ * For live data, the UI awaits these async getters server-side and passes
+ * results down to client components.
  */
 
 export {
-  // Data shapes — kept stable
+  // Data shapes — stable across mock + live
   type Period,
   type RegionFilter,
   type SeriesPoint,
@@ -36,7 +29,9 @@ export {
   type RegionRollup,
   type RepMonthlyPoint,
 
-  // Filter / derivation engine — UI calls these
+  // Filter / derivation engine — works against any Rep[] passed in via the
+  // optional `repsOverride` param. UI calls these client-side with the
+  // server-fetched rep array.
   getFilteredView,
   getFunnelForPeriod,
   getRepMonthly,
@@ -47,9 +42,49 @@ export {
   // Static metadata
   PERIOD_LABELS,
 
-  // Reference exports — used by drill-in / insights cards
+  // Reference exports (mock-only until we wire them to SF)
   topPerformer,
   pipelineAtRisk,
   teamTotals,
-  reps,
 } from "./mock-data";
+
+/**
+ * Returns the list of reps to populate the dashboard. Tries Salesforce first;
+ * falls back to mock data if SF isn't connected or a query fails.
+ *
+ * Server-only. Call from Server Components / Route Handlers, then pass the
+ * result down to Client Components as a prop.
+ */
+export async function getReps(): Promise<{ reps: Rep[]; source: "salesforce" | "mock"; reason?: string }> {
+  // 1. Is SF connected at all?
+  let creds: Awaited<ReturnType<typeof getStoredSalesforceCredentials>> = null;
+  try {
+    creds = await getStoredSalesforceCredentials();
+  } catch (err) {
+    return {
+      reps: mockReps,
+      source: "mock",
+      reason: err instanceof Error ? err.message : "supabase_unavailable",
+    };
+  }
+
+  if (!creds) {
+    return { reps: mockReps, source: "mock", reason: "sf_not_connected" };
+  }
+
+  // 2. Try the SF query
+  try {
+    const reps = await getRepsFromSalesforce();
+    if (reps.length === 0) {
+      // Sandbox might be empty — degrade to mock so the dashboard still has something to show.
+      return { reps: mockReps, source: "mock", reason: "sf_returned_empty" };
+    }
+    return { reps, source: "salesforce" };
+  } catch (err) {
+    return {
+      reps: mockReps,
+      source: "mock",
+      reason: err instanceof Error ? err.message : "sf_query_failed",
+    };
+  }
+}

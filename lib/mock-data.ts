@@ -401,8 +401,22 @@ const PERIOD_SHAPE: Record<
   ytd: { granularity: "monthly", count: 5 },
 };
 
-function filteredReps(region: RegionFilter): Rep[] {
-  return region === "all" ? reps : reps.filter((r) => r.region === region);
+function filteredReps(region: RegionFilter, source: Rep[] = reps): Rep[] {
+  return region === "all" ? source : source.filter((r) => r.region === region);
+}
+
+/**
+ * Derive region options from a rep array (defaults to mock reps).
+ * Lets the UI offer accurate region filters even when reps come from SF.
+ */
+export function getRegionOptionsFor(repsSource: Rep[]): { value: RegionFilter; label: string }[] {
+  const unique = new Set<string>();
+  for (const r of repsSource) unique.add(r.region);
+  const sorted = Array.from(unique).sort((a, b) => a.localeCompare(b));
+  return [
+    { value: "all", label: "All Regions" },
+    ...sorted.map((r) => ({ value: r as RegionFilter, label: r })),
+  ];
 }
 
 /* ─── Daily series (last 30 days, deterministic per UTC day) ─── */
@@ -543,8 +557,8 @@ function trendOf(change: number): "up" | "down" | "flat" {
 
 /** Optional override that recomputes ONLY the funnel based on a different period — used by
  *  the Pipeline Funnel card's independent time selector. */
-export function getFunnelForPeriod(period: Period, region: RegionFilter) {
-  const repList = filteredReps(region);
+export function getFunnelForPeriod(period: Period, region: RegionFilter, source: Rep[] = reps) {
+  const repList = filteredReps(region, source);
   const shape = PERIOD_SHAPE[period];
   const scale = shape.granularity === "daily" ? shape.count / 30 : shape.count;
 
@@ -570,8 +584,12 @@ export function getFunnelForPeriod(period: Period, region: RegionFilter) {
   ];
 }
 
-export function getFilteredView(period: Period, region: RegionFilter): FilteredView {
-  const repList = filteredReps(region);
+export function getFilteredView(
+  period: Period,
+  region: RegionFilter,
+  source: Rep[] = reps
+): FilteredView {
+  const repList = filteredReps(region, source);
   const shape = PERIOD_SHAPE[period];
 
   /* ─── Trendline series ─── */
@@ -693,7 +711,7 @@ export function getFilteredView(period: Period, region: RegionFilter): FilteredV
   };
 
   /* ─── Regional rollup — derived from actual rep data (no hardcoded region list) ─── */
-  const uniqueRegions = Array.from(new Set(reps.map((r) => r.region))).sort();
+  const uniqueRegions = Array.from(new Set(source.map((r) => r.region))).sort();
   const regionalFiltered: RegionRollup[] = uniqueRegions
     .filter((reg) => region === "all" || reg === region)
     .map((reg) => {
@@ -711,7 +729,7 @@ export function getFilteredView(period: Period, region: RegionFilter): FilteredV
     });
 
   /* ─── Default pipeline funnel (uses page-level period) ─── */
-  const funnel = getFunnelForPeriod(period, region);
+  const funnel = getFunnelForPeriod(period, region, source);
 
   return {
     period,

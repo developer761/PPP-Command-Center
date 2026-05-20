@@ -12,21 +12,18 @@ import {
   getFilteredView,
   getFunnelForPeriod,
   getRegionColorToken,
-  getRegionOptions,
+  getRegionOptionsFor,
   PERIOD_LABELS,
   topPerformer,
   pipelineAtRisk,
   type Period,
   type RegionFilter,
+  type Rep,
 } from "@/lib/mock-data";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
   ["7d", "30d", "90d", "6m", "12m", "ytd"] as Period[]
 ).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
-
-// Derived from data so when SF adds/removes a region, the filter list updates
-// automatically with no UI change required.
-const REGION_OPTIONS = getRegionOptions();
 
 function fmtMoneyK(v: number) {
   if (v >= 1000) return `$${(v / 1000).toFixed(1)}M`;
@@ -37,18 +34,34 @@ function sign(n: number) {
   return n > 0 ? `+${n}` : `${n}`;
 }
 
-export default function DashboardView() {
+type Props = {
+  /** Rep array fetched server-side — comes from Salesforce (when connected) or the mock layer. */
+  reps: Rep[];
+  /** Where the rep data came from — surfaces a small banner when running on mock. */
+  dataSource?: "salesforce" | "mock";
+  /** When source is "mock", the reason (helps surface "not connected" vs "sandbox empty"). */
+  dataSourceReason?: string;
+};
+
+export default function DashboardView({ reps, dataSource, dataSourceReason }: Props) {
   const [period, setPeriod] = useState<Period>("30d");
   const [region, setRegion] = useState<RegionFilter>("all");
   const [funnelPeriod, setFunnelPeriod] = useState<Period | "page">("page");
 
-  const view = useMemo(() => getFilteredView(period, region), [period, region]);
+  // Region options derived from the server-fetched rep set — works for real SF
+  // reps and mock alike.
+  const REGION_OPTIONS = useMemo(() => getRegionOptionsFor(reps), [reps]);
+
+  const view = useMemo(
+    () => getFilteredView(period, region, reps),
+    [period, region, reps]
+  );
 
   // Pipeline funnel can show either the page-level period or its own override
   const funnel = useMemo(() => {
     if (funnelPeriod === "page") return view.pipelineFunnel;
-    return getFunnelForPeriod(funnelPeriod, region);
-  }, [funnelPeriod, view.pipelineFunnel, region]);
+    return getFunnelForPeriod(funnelPeriod, region, reps);
+  }, [funnelPeriod, view.pipelineFunnel, region, reps]);
 
   const effectiveFunnelPeriod: Period = funnelPeriod === "page" ? period : funnelPeriod;
 
@@ -78,6 +91,31 @@ export default function DashboardView() {
           </>
         }
       />
+
+      {dataSource === "mock" && dataSourceReason && (
+        <div
+          className={[
+            "rounded-lg px-4 py-3 text-xs sm:text-sm",
+            dataSourceReason === "sf_not_connected"
+              ? "border border-ppp-blue-100 bg-ppp-blue-50/60 text-ppp-blue-700"
+              : "border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700",
+          ].join(" ")}
+        >
+          {dataSourceReason === "sf_not_connected" ? (
+            <>
+              <strong>Demo data.</strong> Connect Salesforce in <strong>Admin → Integrations</strong> to see real PPP data.
+            </>
+          ) : dataSourceReason === "sf_returned_empty" ? (
+            <>
+              <strong>Salesforce sandbox has no rep activity yet.</strong> Showing demo data so the dashboard renders. Ask Katie to load test data into the sandbox, or switch to production once that's wired.
+            </>
+          ) : (
+            <>
+              <strong>Live data unavailable:</strong> {dataSourceReason}. Falling back to demo data.
+            </>
+          )}
+        </div>
+      )}
 
       {/* ─── KPI row ─── */}
       <section>

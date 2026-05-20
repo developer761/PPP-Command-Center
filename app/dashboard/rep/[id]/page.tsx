@@ -3,23 +3,30 @@ import { notFound } from "next/navigation";
 import KPICard from "@/components/kpi-card";
 import TrendChart from "@/components/trend-chart";
 import {
-  reps,
-  teamTotals,
+  reps as mockReps,
   getRepMonthly,
   getRepRecentDeals,
   type Rep,
 } from "@/lib/mock-data";
+import { getReps } from "@/lib/data-source";
 
 export function generateStaticParams() {
-  return reps.map((r) => ({ id: r.id }));
+  // Pre-build mock rep routes; SF rep routes render on-demand.
+  return mockReps.map((r) => ({ id: r.id }));
 }
 
-function tenure(startedAt: string) {
+// Force dynamic rendering so SF-fetched reps work alongside the prebuilt mock IDs.
+export const dynamic = "force-dynamic";
+
+function tenure(startedAt: string | null) {
+  if (!startedAt) return "—";
   const start = new Date(startedAt);
-  const now = new Date("2026-05-19");
+  if (isNaN(start.getTime())) return "—";
+  const now = new Date();
   const months =
     (now.getFullYear() - start.getFullYear()) * 12 +
     (now.getMonth() - start.getMonth());
+  if (months <= 0) return "<1 mo";
   const years = Math.floor(months / 12);
   const rem = months % 12;
   if (years === 0) return `${months} mo`;
@@ -50,16 +57,36 @@ export default async function RepDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
+  // Fetch the live rep list (SF when connected, mock fallback otherwise).
+  const { reps, source: dataSource } = await getReps();
   const rep: Rep | undefined = reps.find((r) => r.id === id);
   if (!rep) notFound();
 
+  // Per-rep history. Mock-only for now — getRepMonthly / getRepRecentDeals
+  // are keyed on mock rep IDs. For real SF reps the helpers fall through to
+  // empty arrays gracefully (no crash, just blank chart). Phase 2+ will add
+  // per-rep SOQL queries for real monthly history.
   const monthly = getRepMonthly(rep.id);
   const recentDeals = getRepRecentDeals(rep.id);
+  const noHistoricalData = monthly.length === 0;
+  // For real SF reps, monthly/recentDeals will be empty until we wire per-rep SOQL queries.
+  void dataSource; // intentional: reserved for a future "Live data" badge on the header
 
-  const teamAvgRevenue = teamTotals.revenueSold / reps.length;
-  const teamAvgCloseRate = teamTotals.closeRate;
-  const teamAvgTicket = teamTotals.avgTicket;
-  const teamAvgPipeline = reps.reduce((s, r) => s + r.openPipeline, 0) / reps.length;
+  // Team averages computed from the actual loaded reps (not module-level mock).
+  const teamRevenue = reps.reduce((s, r) => s + r.revenueSold, 0);
+  const totalQuotes = reps.reduce((s, r) => s + r.quotesSent, 0);
+  const totalAppts = reps.reduce((s, r) => s + r.appointmentsHeld, 0);
+  const teamAvgRevenue = teamRevenue / Math.max(1, reps.length);
+  const teamAvgCloseRate =
+    totalQuotes > 0
+      ? reps.reduce((s, r) => s + r.closeRate * r.quotesSent, 0) / totalQuotes
+      : 0;
+  const teamAvgTicket =
+    totalAppts > 0
+      ? reps.reduce((s, r) => s + r.avgTicket * r.appointmentsHeld, 0) / totalAppts
+      : 0;
+  const teamAvgPipeline = reps.reduce((s, r) => s + r.openPipeline, 0) / Math.max(1, reps.length);
 
   const dRev = deltaVsTeam(rep.revenueSold, teamAvgRevenue);
   const dClose = deltaVsTeam(rep.closeRate, teamAvgCloseRate);
@@ -141,6 +168,12 @@ export default async function RepDetailPage({
           <KPICard label="Open Pipeline" value={`$${rep.openPipeline}K`} change={dPipe.text} trend={dPipe.trend} accent="blue" />
         </div>
       </section>
+
+      {noHistoricalData && (
+        <div className="rounded-lg border border-ppp-blue-100 bg-ppp-blue-50/60 text-ppp-blue-700 text-xs sm:text-sm px-4 py-3">
+          <strong>Per-rep historical data is pending.</strong> The KPI tiles above use live Salesforce numbers, but the 12-month trend charts + recent-deals table below require additional SOQL queries we&apos;ll wire next. For now those sections will appear empty for this rep.
+        </div>
+      )}
 
       {/* ─── 12-month revenue trend ─── */}
       <section>
