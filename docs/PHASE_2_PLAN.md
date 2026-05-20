@@ -654,7 +654,7 @@ To keep scope honest:
 
 1. **Karan reviews this doc** and answers the questions in §8
 2. **Confirm with Alex** — anything to add from his side
-3. **Walk it through with Aaron / Katie** for paint-business reality check (do the suppliers really work this way? Are the order formats right?)
+3. **Walk it through with Alex / Katie** for paint-business reality check (do the suppliers really work this way? Are the order formats right?)
 4. **Lock scope** for Phase 2 — decide what's MVP vs nice-to-have
 5. **Begin Week 1 build** once Salesforce sandbox access lands (we can build the customer flow without SF, but the rep flow + quantity calc needs SF history)
 

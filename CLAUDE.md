@@ -12,7 +12,7 @@ This file auto-loads on every Claude Code session opened in `~/Desktop/PPP/ppp-c
 
 **PPP Command Center** — an internal operations platform for **Precision Painting Plus®**, a paint contractor based on Long Island. The platform layers analytics + workflow on top of Salesforce (their existing system of record).
 
-**Client:** Precision Painting Plus · **Primary contact:** Katie · **CEO:** Aaron · **Engagement type:** Fractional AI Ops build (Karan is contractor; Alex is collaborator on roadmap).
+**Client:** Precision Painting Plus · **Primary contact:** Katie · **CEO:** Alex · **Engagement type:** Fractional AI Ops build (Karan is contractor).
 
 **Production URL:** `hub.precisionpaintingplus.net` (DNS CNAME pending PPP IT).
 
@@ -48,7 +48,7 @@ This file auto-loads on every Claude Code session opened in `~/Desktop/PPP/ppp-c
 
 ### Mobile-perfect
 
-PPP CEO Aaron looks at this on his phone every morning. Mobile responsiveness is a hard requirement, not an afterthought. See `feedback_ppp_ui_quality_bar.md`.
+PPP CEO Alex looks at this on his phone every morning. Mobile responsiveness is a hard requirement, not an afterthought. See `feedback_ppp_ui_quality_bar.md`.
 
 ### Brand alignment
 
