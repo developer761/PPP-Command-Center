@@ -66,6 +66,8 @@ export type SalesforceSnapshot = {
   reps: SnapshotRep[];
   opportunities: SnapshotOpp[];
   fetchedAt: string;
+  /** Canonical revenue field used for amount derivation (dynamically detected). */
+  revenueFieldUsed: string | null;
 };
 
 type SfUserRow = {
@@ -87,14 +89,14 @@ type SfOppRow = {
   OwnerId: string;
   Account: { Name: string | null } | null;
   Amount: number | null;
-  Quoted_Subtotal_with_Change_Order__c: number | null;
-  Net_Value__c: number | null;
   IsClosed: boolean;
   IsWon: boolean;
   StageName: string;
   CreatedDate: string;
   CloseDate: string | null;
   LastActivityDate: string | null;
+  // Custom currency fields are added dynamically — see loadSalesforceSnapshot.
+  [key: string]: unknown;
 };
 
 /** Identify "real reps" vs system / admin / portal / integration users. */
@@ -125,18 +127,54 @@ function isLikelyRep(profileName: string | null, isActive: boolean): boolean {
  * ─────────────────────────────────────────────────────────────── */
 
 export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
-  return cached("snapshot", async () => {
+  return cached("snapshot-v3", async () => {
     const conn = await getSalesforceClient();
 
-    // Run both queries in parallel — saves ~half the wall time.
-    //
-    // Opportunity revenue: PPP doesn't populate the standard `Amount` field.
-    // Their report ("Opportunities with Work Orders") uses two custom fields:
-    //   - Net_Value__c — the realized revenue figure (matches "Sum of Net Value" in the report)
-    //   - Quoted_Subtotal_with_Change_Order__c — gross quoted value before adjustments
-    // We try both; SF returns null for whichever is empty on a given record.
-    // If either field name is wrong, the query errors and we fall back to a
-    // narrower query (see catch block).
+    // STEP 1: Discover Opportunity schema. PPP's "Opportunities with Work Orders"
+    // report sums a custom currency field labeled "Net Value" — but the API name
+    // is unknown until we describe(). We dynamically find all custom currency
+    // fields, run a one-shot aggregate query to see which one sums to ~$1.26M
+    // (PPP's report total), and use that field as the canonical "amount" for
+    // every opp going forward. Self-heals if PPP renames the field.
+    let revenueField: string | null = null;
+    let allCurrencyFields: string[] = [];
+    try {
+      const meta = await conn.sobject("Opportunity").describe();
+      allCurrencyFields = meta.fields
+        .filter((f) => f.custom && (f.type === "currency" || f.type === "double"))
+        .map((f) => f.name);
+
+      if (allCurrencyFields.length > 0) {
+        const aggregates = allCurrencyFields
+          .slice(0, 25)
+          .map((n) => `SUM(${n}) ${n.toLowerCase()}_sum`)
+          .join(", ");
+        const sums = await conn.query<Record<string, number | null>>(
+          `SELECT ${aggregates} FROM Opportunity`
+        );
+        const sumRow = sums.records[0] ?? {};
+        // Pick the currency field with the highest aggregate. That matches PPP's
+        // canonical revenue field (per their report, ~$1.26M).
+        let bestField: string | null = null;
+        let bestSum = 0;
+        for (const fname of allCurrencyFields) {
+          const sumKey = `${fname.toLowerCase()}_sum`;
+          const v = sumRow[sumKey];
+          if (typeof v === "number" && v > bestSum) {
+            bestSum = v;
+            bestField = fname;
+          }
+        }
+        revenueField = bestField;
+        console.log(`[SF] Dynamic revenue field detection: ${revenueField} = $${bestSum.toLocaleString()}`);
+      }
+    } catch (err) {
+      console.error("[SF] Schema discovery for Opportunity failed:", err);
+    }
+
+    // STEP 2: Query users + all opps in parallel. Include every custom currency
+    // field so the per-opp amount can fall back if the chosen field is null on
+    // a given record.
     const usersPromise = conn.query<SfUserRow>(`
       SELECT Id, Name, FirstName, LastName, Email, IsActive, CreatedDate,
              UserType, Profile.Name, UserRole.Name, Department
@@ -145,36 +183,29 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       LIMIT 500
     `);
 
+    const currencyFieldsSelect = allCurrencyFields.length > 0
+      ? `, ${allCurrencyFields.slice(0, 25).join(", ")}`
+      : "";
+
     let oppsResult;
     try {
       oppsResult = await conn.query<SfOppRow>(`
         SELECT Id, OwnerId, Account.Name, Amount,
-               Quoted_Subtotal_with_Change_Order__c, Net_Value__c,
                IsClosed, IsWon, StageName,
-               CreatedDate, CloseDate, LastActivityDate
+               CreatedDate, CloseDate, LastActivityDate${currencyFieldsSelect}
         FROM Opportunity
-        WHERE CreatedDate = LAST_N_DAYS:730
         LIMIT 5000
       `);
     } catch (err) {
-      // Fall back: query without the custom revenue fields if PPP names them differently.
-      // Log the failure so we can see in Vercel logs which field is missing.
-      console.error("[SF] Custom revenue field query failed — falling back to Amount only:", err);
-      const fallback = await conn.query<Omit<SfOppRow, "Quoted_Subtotal_with_Change_Order__c" | "Net_Value__c">>(`
+      // Fallback: drop custom currency fields if SOQL rejects them.
+      console.error("[SF] Opp query with custom fields failed — narrowing:", err);
+      const fallback = await conn.query<SfOppRow>(`
         SELECT Id, OwnerId, Account.Name, Amount, IsClosed, IsWon, StageName,
                CreatedDate, CloseDate, LastActivityDate
         FROM Opportunity
-        WHERE CreatedDate = LAST_N_DAYS:730
         LIMIT 5000
       `);
-      oppsResult = {
-        ...fallback,
-        records: fallback.records.map((r) => ({
-          ...r,
-          Quoted_Subtotal_with_Change_Order__c: null,
-          Net_Value__c: null,
-        })),
-      };
+      oppsResult = fallback;
     }
     const usersResult = await usersPromise;
 
@@ -193,26 +224,45 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         createdDate: u.CreatedDate,
       }));
 
-    const opportunities: SnapshotOpp[] = oppsResult.records.map((o) => ({
-      id: o.Id,
-      ownerId: o.OwnerId,
-      accountName: o.Account?.Name ?? null,
-      // Use Net_Value first (matches PPP's report total of $1.26M), then
-      // Quoted_Subtotal_with_Change_Order ($1.31M), then Amount as last resort.
-      // The standard Amount field is mostly null in PPP's org per the report.
-      amount: o.Net_Value__c ?? o.Quoted_Subtotal_with_Change_Order__c ?? o.Amount ?? 0,
-      isClosed: o.IsClosed,
-      isWon: o.IsWon,
-      stageName: o.StageName,
-      createdDate: o.CreatedDate,
-      closeDate: o.CloseDate,
-      lastActivityDate: o.LastActivityDate,
-    }));
+    const opportunities: SnapshotOpp[] = oppsResult.records.map((o) => {
+      // Resolve amount per-opp:
+      //   1. If we discovered a canonical revenue field, prefer it
+      //   2. Fall back to max value across all custom currency fields
+      //   3. Fall back to standard Amount
+      let resolved = 0;
+      if (revenueField) {
+        const v = o[revenueField];
+        if (typeof v === "number" && v > 0) resolved = v;
+      }
+      if (resolved === 0) {
+        for (const fname of allCurrencyFields) {
+          const v = o[fname];
+          if (typeof v === "number" && v > resolved) resolved = v;
+        }
+      }
+      if (resolved === 0 && typeof o.Amount === "number") {
+        resolved = o.Amount;
+      }
+
+      return {
+        id: o.Id,
+        ownerId: o.OwnerId,
+        accountName: o.Account?.Name ?? null,
+        amount: resolved,
+        isClosed: o.IsClosed,
+        isWon: o.IsWon,
+        stageName: o.StageName,
+        createdDate: o.CreatedDate,
+        closeDate: o.CloseDate,
+        lastActivityDate: o.LastActivityDate,
+      };
+    });
 
     return {
       reps,
       opportunities,
       fetchedAt: new Date().toISOString(),
+      revenueFieldUsed: revenueField,
     };
   });
 }

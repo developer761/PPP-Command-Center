@@ -348,10 +348,11 @@ export function getRepRecentDeals(repId: string): Deal[] {
  * Salesforce-bound queries will replace this engine when access lands.
  * ─────────────────────────────────────────────────────────────── */
 
-export type Period = "7d" | "30d" | "90d" | "6m" | "12m" | "ytd";
+export type Period = "lifetime" | "7d" | "30d" | "90d" | "6m" | "12m" | "ytd";
 export type RegionFilter = "all" | string; // intentionally open — Salesforce may add/rename regions
 
 export const PERIOD_LABELS: Record<Period, string> = {
+  lifetime: "All Time",
   "7d": "Last 7 days",
   "30d": "Last 30 days",
   "90d": "Last 90 days",
@@ -393,6 +394,7 @@ const PERIOD_SHAPE: Record<
   Period,
   { granularity: "daily" | "monthly"; count: number }
 > = {
+  lifetime: { granularity: "monthly", count: 12 },
   "7d": { granularity: "daily", count: 7 },
   "30d": { granularity: "daily", count: 30 },
   "90d": { granularity: "monthly", count: 3 },

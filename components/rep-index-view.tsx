@@ -13,7 +13,7 @@ import { deriveRepsForPeriod } from "@/lib/salesforce/derive";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
-  ["7d", "30d", "90d", "6m", "12m", "ytd"] as Period[]
+  ["lifetime", "30d", "90d", "6m", "12m", "ytd"] as Period[]
 ).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
 
 type Props = {
@@ -21,7 +21,8 @@ type Props = {
 };
 
 export default function RepIndexView({ bundle }: Props) {
-  const [period, setPeriod] = useState<Period>("30d");
+  // Default to "lifetime" (matches PPP's SF report); other periods opt-in.
+  const [period, setPeriod] = useState<Period>("lifetime");
   const [search, setSearch] = useState("");
 
   const { source, reason, snapshot } = bundle;

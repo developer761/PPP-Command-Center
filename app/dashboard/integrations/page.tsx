@@ -61,11 +61,19 @@ export default async function IntegrationsPage({
   // Run schema inspection when connected so we can see what custom fields PPP actually has.
   // Useful when dashboard numbers look wrong — verifies field API names.
   let schema: Awaited<ReturnType<typeof describeKeySObjects>> | null = null;
+  let revenueFieldUsed: string | null = null;
   if (isConnected) {
     try {
       schema = await describeKeySObjects();
     } catch {
       // non-fatal; render rest of page without inspector
+    }
+    try {
+      const { loadSalesforceSnapshot } = await import("@/lib/salesforce/queries");
+      const snap = await loadSalesforceSnapshot();
+      revenueFieldUsed = snap.revenueFieldUsed;
+    } catch {
+      // non-fatal
     }
   }
 
@@ -185,6 +193,12 @@ export default async function IntegrationsPage({
               <dt className="text-ppp-charcoal-500 uppercase tracking-wide font-semibold">Instance URL</dt>
               <dd className="mt-0.5 text-ppp-charcoal font-mono break-all">
                 {creds?.instanceUrl}
+              </dd>
+            </div>
+            <div className="sm:col-span-2 pt-2 border-t border-ppp-charcoal-100">
+              <dt className="text-ppp-charcoal-500 uppercase tracking-wide font-semibold">Revenue field (auto-detected)</dt>
+              <dd className="mt-0.5 text-ppp-charcoal font-mono break-all">
+                {revenueFieldUsed ?? <span className="text-ppp-orange-700">none — falling back to Amount</span>}
               </dd>
             </div>
           </dl>

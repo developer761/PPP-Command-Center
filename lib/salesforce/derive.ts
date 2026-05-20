@@ -23,6 +23,7 @@ import type {
 /* ─── Period helpers ─── */
 
 export const PERIOD_DAYS: Record<Period, number> = {
+  lifetime: 0, // no scope — include everything
   "7d": 7,
   "30d": 30,
   "90d": 90,
@@ -31,7 +32,11 @@ export const PERIOD_DAYS: Record<Period, number> = {
   ytd: 0, // computed dynamically
 };
 
+/** Earliest sensible "lifetime" anchor — Salesforce epoch-equivalent. */
+const LIFETIME_START = new Date(Date.UTC(2000, 0, 1));
+
 function startOfPeriod(period: Period, now: Date = new Date()): Date {
+  if (period === "lifetime") return LIFETIME_START;
   if (period === "ytd") {
     return new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
   }
@@ -42,6 +47,10 @@ function startOfPeriod(period: Period, now: Date = new Date()): Date {
 }
 
 function priorPeriodStart(period: Period, now: Date = new Date()): { from: Date; to: Date } {
+  if (period === "lifetime") {
+    // No prior for lifetime — return a 0-width window so no opp matches.
+    return { from: new Date(0), to: new Date(0) };
+  }
   const periodStart = startOfPeriod(period, now);
   const span = now.getTime() - periodStart.getTime();
   const priorEnd = periodStart;
@@ -263,6 +272,19 @@ export function deriveCompanyTrend(
   const granularity: "daily" | "monthly" =
     period === "7d" || period === "30d" ? "daily" : "monthly";
 
+  // For "lifetime", clamp the start to the earliest opp close date in the
+  // snapshot so we don't render hundreds of empty monthly buckets back to 2000.
+  let effectiveStart = periodStart;
+  if (period === "lifetime") {
+    let earliest: Date | null = null;
+    for (const o of snapshot.opportunities) {
+      if (o.amount <= 0 || !o.closeDate) continue;
+      const d = new Date(o.closeDate + "T00:00:00Z");
+      if (!earliest || d < earliest) earliest = d;
+    }
+    if (earliest) effectiveStart = earliest;
+  }
+
   const buckets = new Map<
     string,
     { revenue: number; deals: number; byRegion: Map<string, number>; byRep: Map<string, number> }
@@ -280,7 +302,7 @@ export function deriveCompanyTrend(
     // Work Orders" report definition.
     if (o.amount <= 0 || !o.closeDate) continue;
     const closed = new Date(o.closeDate + "T00:00:00Z");
-    if (closed < periodStart) continue;
+    if (closed < effectiveStart) continue;
     const key = granularity === "daily"
       ? bucketStartDaily(o.closeDate)
       : bucketStartMonthly(o.closeDate);
@@ -303,7 +325,7 @@ export function deriveCompanyTrend(
   // Generate continuous bucket range so empty days/months render zero (not gap)
   const series: SeriesPoint[] = [];
   if (granularity === "daily") {
-    const cursor = new Date(periodStart);
+    const cursor = new Date(effectiveStart);
     while (cursor <= now) {
       const key = bucketStartDaily(cursor.toISOString());
       const b = buckets.get(key);
@@ -321,7 +343,7 @@ export function deriveCompanyTrend(
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
   } else {
-    const cursor = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), 1));
+    const cursor = new Date(Date.UTC(effectiveStart.getUTCFullYear(), effectiveStart.getUTCMonth(), 1));
     const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     while (cursor <= end) {
       const key = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`;

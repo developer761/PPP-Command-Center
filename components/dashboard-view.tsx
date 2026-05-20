@@ -30,7 +30,7 @@ import {
 import type { LiveDashboardBundle } from "@/lib/data-source";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
-  ["7d", "30d", "90d", "6m", "12m", "ytd"] as Period[]
+  ["lifetime", "30d", "90d", "6m", "12m", "ytd"] as Period[]
 ).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
 
 function fmtMoneyK(v: number) {
@@ -47,7 +47,9 @@ type Props = {
 };
 
 export default function DashboardView({ bundle }: Props) {
-  const [period, setPeriod] = useState<Period>("30d");
+  // Default to "lifetime" (matches PPP's Salesforce report which has no date scope).
+  // Other periods are opt-in via the dropdown.
+  const [period, setPeriod] = useState<Period>("lifetime");
   const [region, setRegion] = useState<RegionFilter>("all");
   const [funnelPeriod, setFunnelPeriod] = useState<Period | "page">("page");
 
@@ -85,6 +87,35 @@ export default function DashboardView({ bundle }: Props) {
     return view.kpis.revenueSold;
   }, [snapshot, period, view.kpis.revenueSold]);
 
+  // Derive live close-rate / avg-ticket / open-quotes from the rep set when on
+  // live SF data. Otherwise fall back to the mock view's KPIs.
+  const liveKpis = useMemo(() => {
+    if (!snapshot) return null;
+    const totalRevenue = reps.reduce((s, r) => s + r.revenueSold, 0); // $K
+    const totalDealsWon = reps.reduce((s, r) => s + Math.round(r.appointmentsHeld * (r.closeRate / 100)), 0);
+    // Recompute close/avg-ticket directly from rep numbers to keep everything
+    // self-consistent.
+    const totalClosed = reps.reduce((s, r) => s + r.appointmentsHeld, 0);
+    const totalWon = reps.reduce((s, r) => s + r.quotesSent, 0); // proxies
+    void totalDealsWon;
+    void totalWon;
+    const closeRate = totalClosed > 0
+      ? reps.filter((r) => r.closeRate > 0).reduce((s, r) => s + r.closeRate, 0) /
+        Math.max(1, reps.filter((r) => r.closeRate > 0).length)
+      : 0;
+    const ticketReps = reps.filter((r) => r.avgTicket > 0);
+    const avgTicket = ticketReps.length > 0
+      ? ticketReps.reduce((s, r) => s + r.avgTicket, 0) / ticketReps.length
+      : 0;
+    const openPipelineK = reps.reduce((s, r) => s + r.openPipeline, 0);
+    return {
+      totalRevenue,
+      closeRate: +closeRate.toFixed(1),
+      avgTicket: +avgTicket.toFixed(1),
+      openPipelineK,
+    };
+  }, [snapshot, reps]);
+
   // Top performer (live or mock).
   const topPerformer = useMemo(() => {
     if (snapshot) return deriveTopPerformer(snapshot, period) ?? mockTopPerformer;
@@ -109,9 +140,9 @@ export default function DashboardView({ bundle }: Props) {
     <div className="space-y-8 sm:space-y-10 animate-fade-up">
       <PageHeader
         title="Company Overview"
-        subtitle={`Whole-company analytics · ${PERIOD_LABELS[period].toLowerCase()} · ${
-          region === "all" ? "all regions" : region
-        }`}
+        subtitle={`Whole-company analytics · ${
+          period === "lifetime" ? "all time" : PERIOD_LABELS[period].toLowerCase()
+        } · ${region === "all" ? "all regions" : region}`}
         actions={
           <>
             <FilterDropdown<RegionFilter>
@@ -163,29 +194,41 @@ export default function DashboardView({ bundle }: Props) {
           <KPICard
             label="Revenue Sold"
             value={fmtMoneyK(revenueKpi.value)}
-            change={`${sign(revenueKpi.change)}% vs prior`}
-            trend={revenueKpi.trend}
+            change={period === "lifetime" ? "All time" : `${sign(revenueKpi.change)}% vs prior`}
+            trend={period === "lifetime" ? "flat" : revenueKpi.trend}
             accent="blue"
           />
           <KPICard
             label="Close Rate"
-            value={`${view.kpis.closeRate.value.toFixed(1)}%`}
-            change={`${sign(view.kpis.closeRate.change)} pts`}
-            trend={view.kpis.closeRate.trend}
+            value={`${(liveKpis?.closeRate ?? view.kpis.closeRate.value).toFixed(1)}%`}
+            change={
+              liveKpis
+                ? "Avg across active reps"
+                : `${sign(view.kpis.closeRate.change)} pts`
+            }
+            trend={liveKpis ? "flat" : view.kpis.closeRate.trend}
             accent="green"
           />
           <KPICard
             label="Avg Ticket"
-            value={`$${view.kpis.avgTicket.value.toFixed(1)}K`}
-            change={`${sign(view.kpis.avgTicket.change)}%`}
-            trend={view.kpis.avgTicket.trend}
+            value={`$${(liveKpis?.avgTicket ?? view.kpis.avgTicket.value).toFixed(1)}K`}
+            change={
+              liveKpis
+                ? "Per deal with revenue"
+                : `${sign(view.kpis.avgTicket.change)}%`
+            }
+            trend={liveKpis ? "flat" : view.kpis.avgTicket.trend}
             accent="orange"
           />
           <KPICard
-            label="Open Quotes"
-            value={view.kpis.openQuotes.value.toString()}
-            change={sign(view.kpis.openQuotes.change)}
-            trend={view.kpis.openQuotes.trend}
+            label={liveKpis ? "Open Pipeline" : "Open Quotes"}
+            value={
+              liveKpis
+                ? fmtMoneyK(liveKpis.openPipelineK)
+                : view.kpis.openQuotes.value.toString()
+            }
+            change={liveKpis ? "Not yet committed" : sign(view.kpis.openQuotes.change)}
+            trend={liveKpis ? "flat" : view.kpis.openQuotes.trend}
             accent="blue"
           />
         </div>
