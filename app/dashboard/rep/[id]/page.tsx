@@ -114,10 +114,10 @@ export default async function RepDetailPage({
           </div>
 
           <div className="sm:text-right pt-3 sm:pt-0 border-t sm:border-t-0 border-ppp-charcoal-100 sm:border-none">
-            <div className="text-[10px] sm:text-[11px] uppercase tracking-wide text-ppp-charcoal-500">
+            <div className="font-condensed text-[10px] sm:text-[11px] uppercase tracking-wide text-ppp-charcoal-500">
               Trailing 12-month revenue
             </div>
-            <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1">
+            <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy mt-1">
               ${ttmRevenue.toLocaleString()}K
             </div>
             <div
@@ -295,10 +295,10 @@ function ActivityStat({
 }) {
   return (
     <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/50 p-3 sm:p-4">
-      <div className="text-[10px] sm:text-[11px] uppercase tracking-wide text-ppp-charcoal-500">
+      <div className="font-condensed text-[10px] sm:text-[11px] uppercase tracking-wide text-ppp-charcoal-500">
         {label}
       </div>
-      <div className="mt-1.5 text-xl sm:text-2xl font-bold text-ppp-charcoal">
+      <div className="font-condensed mt-1.5 text-xl sm:text-2xl font-bold text-ppp-navy">
         {value}
         {suffix}
       </div>

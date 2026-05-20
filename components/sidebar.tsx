@@ -35,7 +35,7 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
             height={60}
             priority
           />
-          <div className="mt-3 text-[11px] font-semibold tracking-[0.15em] text-ppp-charcoal-500 uppercase">
+          <div className="font-condensed mt-3 text-[11px] font-bold tracking-[0.18em] text-ppp-navy uppercase">
             Command Center
           </div>
         </Link>
@@ -54,7 +54,7 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        <div className="px-3 mb-2 text-[10px] font-semibold tracking-[0.15em] text-ppp-charcoal-500 uppercase">
+        <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
           Sales Analytics
         </div>
         <ul className="space-y-0.5">

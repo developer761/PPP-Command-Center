@@ -1,30 +1,44 @@
 @import "tailwindcss";
 
 @theme {
-  /* PPP Brand Palette — extracted from official logo SVG */
-  --color-ppp-blue: #2caae2;
+  /* ─── Primary palette (official PPP Brand Guidelines) ─── */
+  --color-ppp-blue: #2baae1;
   --color-ppp-blue-50: #e9f6fc;
   --color-ppp-blue-100: #c4e7f7;
   --color-ppp-blue-200: #9bd6f0;
-  --color-ppp-blue-500: #2caae2;
+  --color-ppp-blue-500: #2baae1;
   --color-ppp-blue-600: #1e8fbf;
   --color-ppp-blue-700: #15749c;
   --color-ppp-blue-900: #0a3d52;
 
-  --color-ppp-orange: #f16824;
-  --color-ppp-orange-50: #fef0e7;
-  --color-ppp-orange-100: #fee0ce;
-  --color-ppp-orange-500: #f16824;
-  --color-ppp-orange-600: #d14c0a;
-  --color-ppp-orange-700: #a83d08;
+  --color-ppp-orange: #ee662e;
+  --color-ppp-orange-50: #fdefe5;
+  --color-ppp-orange-100: #fbdfcc;
+  --color-ppp-orange-500: #ee662e;
+  --color-ppp-orange-600: #cf4f1c;
+  --color-ppp-orange-700: #a83f12;
 
-  --color-ppp-green: #8cc442;
-  --color-ppp-green-50: #f0f8e5;
-  --color-ppp-green-100: #dcefc0;
-  --color-ppp-green-500: #8cc442;
-  --color-ppp-green-600: #6ba02e;
+  --color-ppp-green: #8dc442;
+  --color-ppp-green-50: #f1f8e4;
+  --color-ppp-green-100: #ddedbe;
+  --color-ppp-green-500: #8dc442;
+  --color-ppp-green-600: #6da030;
   --color-ppp-green-700: #527b22;
 
+  /* ─── Secondary palette ─── */
+  --color-ppp-navy: #172b4d;
+  --color-ppp-navy-50: #eaedf2;
+  --color-ppp-navy-100: #c5cddc;
+  --color-ppp-navy-700: #172b4d;
+  --color-ppp-navy-900: #0d1a30;
+
+  --color-ppp-brown: #48342d;
+  --color-ppp-teal: #37738c;
+  --color-ppp-light-blue: #c4dde4;
+  --color-ppp-pale-green: #e9f4d4;
+  --color-ppp-warm-beige: #f0e8dd;
+
+  /* ─── Charcoal neutrals (kept for medium-gray usage) ─── */
   --color-ppp-charcoal: #3f3e40;
   --color-ppp-charcoal-50: #f7f7f7;
   --color-ppp-charcoal-100: #e5e5e6;
@@ -33,28 +47,34 @@
   --color-ppp-charcoal-700: #3f3e40;
   --color-ppp-charcoal-900: #1f1e20;
 
-  /* Surfaces */
+  /* ─── Surfaces ─── */
   --color-surface: #ffffff;
   --color-surface-muted: #fafbfc;
   --color-surface-subtle: #f4f5f7;
 
-  /* Type */
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  /* ─── Type — Roboto is the official PPP primary font ─── */
+  --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
+  --font-condensed: var(--font-roboto-condensed), var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 :root {
   --background: #fafbfc;
-  --foreground: #3f3e40;
+  --foreground: #172b4d; /* Navy — on-brand primary text */
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv11", "ss01";
+}
+
+/* Headlines + label-style text use Roboto Condensed per brand guidelines */
+h1, h2, h3, h4, .font-condensed {
+  font-family: var(--font-roboto-condensed), var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.005em;
 }
 
 /* Smoother scrollbars */
@@ -71,12 +91,12 @@ body {
   border-radius: 4px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #2caae2;
+  background: #2baae1;
 }
 
-/* Focus ring for accessibility */
+/* Focus ring */
 *:focus-visible {
-  outline: 2px solid #2caae2;
+  outline: 2px solid #2baae1;
   outline-offset: 2px;
 }
 
@@ -109,7 +129,7 @@ body {
   }
 }
 
-/* Tap-target sizing on small screens — buttons stay at least 36px high */
+/* Tap-target hygiene on mobile */
 @media (max-width: 640px) {
   button,
   [role="button"],

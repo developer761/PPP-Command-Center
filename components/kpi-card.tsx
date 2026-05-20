@@ -35,10 +35,10 @@ export default function KPICard({ label, value, change, trend, accent = "blue" }
         accentRing[accent],
       ].join(" ")}
     >
-      <div className="text-[10px] sm:text-[11px] font-semibold tracking-[0.15em] text-ppp-charcoal-500 uppercase">
+      <div className="font-condensed text-[10px] sm:text-[11px] font-semibold tracking-[0.15em] text-ppp-charcoal-500 uppercase">
         {label}
       </div>
-      <div className="mt-2 sm:mt-3 text-2xl sm:text-3xl font-bold text-ppp-charcoal tracking-tight">
+      <div className="font-condensed mt-2 sm:mt-3 text-2xl sm:text-3xl font-bold text-ppp-navy tracking-tight">
         {value}
       </div>
       <div

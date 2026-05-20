@@ -37,7 +37,7 @@ export default function RepIndexPage() {
 
                 <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                   <div>
-                    <div className="text-base font-bold text-ppp-charcoal">
+                    <div className="font-condensed text-base font-bold text-ppp-navy">
                       ${r.revenueSold}K
                     </div>
                     <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500 mt-0.5">
@@ -45,7 +45,7 @@ export default function RepIndexPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-base font-bold text-ppp-charcoal">
+                    <div className="font-condensed text-base font-bold text-ppp-navy">
                       {r.closeRate.toFixed(1)}%
                     </div>
                     <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500 mt-0.5">
@@ -53,7 +53,7 @@ export default function RepIndexPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-base font-bold text-ppp-charcoal">
+                    <div className="font-condensed text-base font-bold text-ppp-navy">
                       ${r.avgTicket.toFixed(1)}K
                     </div>
                     <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500 mt-0.5">

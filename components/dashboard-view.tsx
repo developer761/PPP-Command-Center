@@ -128,7 +128,7 @@ export default function DashboardView() {
               </p>
             </div>
             <div className="sm:text-right">
-              <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal tracking-tight">
+              <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy tracking-tight">
                 {fmtMoneyK(view.totalRevenue)}
               </div>
               <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
@@ -303,7 +303,7 @@ export default function DashboardView() {
             <div className="font-semibold text-ppp-charcoal">{topPerformer.name}</div>
             <div className="text-xs text-ppp-charcoal-500 mt-0.5">{topPerformer.region}</div>
             <div className="mt-3 flex items-baseline gap-3">
-              <div className="text-2xl font-bold text-ppp-green-700">${topPerformer.revenue}K</div>
+              <div className="font-condensed text-2xl font-bold text-ppp-green-700">${topPerformer.revenue}K</div>
               <div className="text-xs text-ppp-charcoal-500">{topPerformer.closeRate}% close</div>
             </div>
             <div className="mt-3 text-[11px] font-medium text-ppp-blue">View deep-dive →</div>
@@ -316,7 +316,7 @@ export default function DashboardView() {
               </div>
               <h3 className="text-sm font-semibold text-ppp-charcoal">Pipeline at Risk</h3>
             </div>
-            <div className="text-2xl font-bold text-ppp-orange">${pipelineAtRisk.value}K</div>
+            <div className="font-condensed text-2xl font-bold text-ppp-orange">${pipelineAtRisk.value}K</div>
             <div className="text-xs text-ppp-charcoal-500 mt-0.5">
               {pipelineAtRisk.count} deals · {pipelineAtRisk.reps} reps · {">"}14 days in stage
             </div>
@@ -375,11 +375,11 @@ function MixCard({
     <div className={`rounded-lg border ${styles.border} ${styles.bg} p-3 sm:p-4`}>
       <div className="flex items-center gap-2 mb-2">
         <span className={`h-2 w-2 rounded-full ${styles.dot}`} />
-        <span className={`text-[11px] font-semibold tracking-wide uppercase ${styles.label}`}>
+        <span className={`font-condensed text-[11px] font-semibold tracking-wide uppercase ${styles.label}`}>
           {label}
         </span>
       </div>
-      <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal">${revenue}K</div>
+      <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">${revenue}K</div>
       <div className="mt-1 text-[11px] text-ppp-charcoal-500">
         {pct}% of revenue · {reps} rep{reps === 1 ? "" : "s"}
         {avgTicket > 0 && ` · avg $${avgTicket}K`}

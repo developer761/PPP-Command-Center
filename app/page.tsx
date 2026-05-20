@@ -23,7 +23,7 @@ export default function LoginLanding() {
         </div>
 
         <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-xl sm:text-2xl font-semibold text-ppp-charcoal tracking-tight">
+          <h1 className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy tracking-tight uppercase">
             Command Center
           </h1>
           <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500">

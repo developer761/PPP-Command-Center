@@ -1,9 +1,18 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Roboto, Roboto_Condensed } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+// Roboto + Roboto Condensed = PPP's official primary fonts (Brand Guidelines).
+const roboto = Roboto({
+  variable: "--font-roboto",
+  weight: ["400", "500", "700", "900"],
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const robotoCondensed = Roboto_Condensed({
+  variable: "--font-roboto-condensed",
+  weight: ["400", "500", "700"],
   subsets: ["latin"],
   display: "swap",
 });
@@ -19,7 +28,10 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${roboto.variable} ${robotoCondensed.variable} h-full antialiased`}
+    >
       <body className="min-h-full">{children}</body>
     </html>
   );
