@@ -129,9 +129,11 @@ export default function DashboardView({ bundle }: Props) {
     };
   }, [snapshot, reps]);
 
-  // Top performer (live or mock).
+  // Top performer — fall back to mock ONLY when no snapshot at all.
+  // When on live data with zero activity, return null so the UI can render
+  // an honest empty state (no fake names).
   const topPerformer = useMemo(() => {
-    if (snapshot) return deriveTopPerformer(snapshot, period) ?? mockTopPerformer;
+    if (snapshot) return deriveTopPerformer(snapshot, period);
     return mockTopPerformer;
   }, [snapshot, period]);
 
@@ -158,14 +160,16 @@ export default function DashboardView({ bundle }: Props) {
       if (w.ownerId && w.ownerName) ownerNameLookup.set(w.ownerId, w.ownerName);
     }
     return Array.from(momentum.entries())
-      .filter(([, m]) => m.thisWeek > 0)
+      // Require meaningful revenue (≥ $1K this week) so we don't surface
+      // a "$0.001K trending +infinity%" mirage when a tiny deal closes.
+      .filter(([, m]) => m.thisWeek >= 1000)
       .map(([ownerId, m]) => ({
         id: ownerId,
         name: ownerNameLookup.get(ownerId) ?? "(unknown)",
         thisWeekK: Math.round(m.thisWeek / 1000),
         deltaPct: m.deltaPct,
       }))
-      .sort((a, b) => b.deltaPct - a.deltaPct || b.thisWeekK - a.thisWeekK)
+      .sort((a, b) => b.thisWeekK - a.thisWeekK)
       .slice(0, 5);
   }, [snapshot]);
 
@@ -722,24 +726,38 @@ export default function DashboardView({ bundle }: Props) {
         </div>
 
         <div className="space-y-3 sm:space-y-4">
-          <Link
-            href={`/dashboard/rep/${topPerformer.id}`}
-            className="block bg-white border border-ppp-charcoal-100 rounded-xl p-5 hover:border-ppp-green-200 hover:shadow-md hover:shadow-ppp-charcoal/5 transition-all"
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <div className="h-6 w-6 rounded-md bg-ppp-green-50 text-ppp-green-700 flex items-center justify-center text-xs font-bold">
-                ↑
+          {topPerformer ? (
+            <Link
+              href={`/dashboard/rep/${topPerformer.id}`}
+              className="block bg-white border border-ppp-charcoal-100 rounded-xl p-5 hover:border-ppp-green-200 hover:shadow-md hover:shadow-ppp-charcoal/5 transition-all"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-6 w-6 rounded-md bg-ppp-green-50 text-ppp-green-700 flex items-center justify-center text-xs font-bold">
+                  ↑
+                </div>
+                <h3 className="text-sm font-semibold text-ppp-charcoal">Top Performer</h3>
               </div>
-              <h3 className="text-sm font-semibold text-ppp-charcoal">Top Performer</h3>
+              <div className="font-semibold text-ppp-charcoal">{topPerformer.name}</div>
+              <div className="text-xs text-ppp-charcoal-500 mt-0.5">{topPerformer.region}</div>
+              <div className="mt-3 flex items-baseline gap-3">
+                <div className="font-condensed text-2xl font-bold text-ppp-green-700">{fmtMoneyK(topPerformer.revenue)}</div>
+                <div className="text-xs text-ppp-charcoal-500">{topPerformer.closeRate.toFixed(1)}% conv</div>
+              </div>
+              <div className="mt-3 text-[11px] font-medium text-ppp-blue">View deep-dive →</div>
+            </Link>
+          ) : (
+            <div className="block bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-6 w-6 rounded-md bg-ppp-charcoal-50 text-ppp-charcoal-500 flex items-center justify-center text-xs font-bold">
+                  —
+                </div>
+                <h3 className="text-sm font-semibold text-ppp-charcoal">Top Performer</h3>
+              </div>
+              <p className="text-xs text-ppp-charcoal-500 mt-2">
+                No closed revenue in this period yet.
+              </p>
             </div>
-            <div className="font-semibold text-ppp-charcoal">{topPerformer.name}</div>
-            <div className="text-xs text-ppp-charcoal-500 mt-0.5">{topPerformer.region}</div>
-            <div className="mt-3 flex items-baseline gap-3">
-              <div className="font-condensed text-2xl font-bold text-ppp-green-700">{fmtMoneyK(topPerformer.revenue)}</div>
-              <div className="text-xs text-ppp-charcoal-500">{topPerformer.closeRate}% close</div>
-            </div>
-            <div className="mt-3 text-[11px] font-medium text-ppp-blue">View deep-dive →</div>
-          </Link>
+          )}
 
           <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">

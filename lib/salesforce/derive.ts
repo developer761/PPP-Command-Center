@@ -889,11 +889,16 @@ export function deriveFinancials(
 
   // AR aging is "right now" — not period-scoped. We sum balanceOwed across
   // open WOs and bucket by finalBalanceAging days.
+  // Bug fix: WOs with null `finalBalanceAging` used to fall through to the
+  // "current" bucket via `?? 0`. That overstates current AR. Now we use a
+  // separate "unknown" bucket — the UI keeps the headline total honest but
+  // the bucket breakdown only counts WOs where aging is actually populated.
   const arAging = { current: 0, days30: 0, days60: 0, days90: 0, days90Plus: 0, total: 0 };
   for (const w of snapshot.workOrders) {
     if (w.balanceOwed <= 0) continue;
     arAging.total += w.balanceOwed;
-    const aging = w.finalBalanceAging ?? 0;
+    const aging = w.finalBalanceAging;
+    if (aging == null) continue; // bucket breakdown excludes unknown-aging
     if (aging < 30) arAging.current += w.balanceOwed;
     else if (aging < 60) arAging.days30 += w.balanceOwed;
     else if (aging < 90) arAging.days60 += w.balanceOwed;
@@ -1014,14 +1019,20 @@ export function deriveOperations(
 
     const inPeriod = isInRange(w.closeDate, periodStart, periodEnd);
     if (inPeriod) {
-      totalLaborDaysActual += w.laborDaysActual ?? 0;
-      totalLaborDaysProjected += w.laborDaysProjected ?? 0;
+      const proj = w.laborDaysProjected ?? 0;
+      const act = w.laborDaysActual ?? 0;
+      // Bug fix: only include WOs in utilization math when BOTH actual and
+      // projected are populated. A WO with proj=0 actual=5 was inflating
+      // total actual without contributing to projected → utilization > 100%
+      // for the wrong reason.
+      if (proj > 0 && act > 0) {
+        totalLaborDaysActual += act;
+        totalLaborDaysProjected += proj;
+      }
       totalMaterialsCost += w.costMaterials;
       totalLaborPayout += w.totalPayoutsForLabor;
       periodRevenue += w.amount;
       // Overrun candidate
-      const proj = w.laborDaysProjected ?? 0;
-      const act = w.laborDaysActual ?? 0;
       if (proj > 0 && act > proj) {
         overRuns.push({
           id: w.id,
@@ -1109,11 +1120,17 @@ export function deriveRealFunnel(
   let wosPaid = 0;
   let wosPaidValue = 0;
   for (const w of snapshot.workOrders) {
-    const closedInPeriod = isInRange(w.closeDate, periodStart, periodEnd);
-    if (!closedInPeriod) continue;
-    wosCreated += 1;
-    wosValue += w.amount;
-    if ((w.status ?? "").toLowerCase().includes("paid in full")) {
+    // "WOs Created" — count WOs whose CreatedDate is in the period.
+    // (Previously this used closeDate, which is the projected close on the
+    // joined Opp — different semantic and wrong for this funnel stage.)
+    if (isInRange(w.createdDate, periodStart, periodEnd)) {
+      wosCreated += 1;
+      wosValue += w.amount;
+    }
+    // "Paid in Full" — count WOs paid in the period (closeDate IS the right
+    // anchor here since that's when the Opp finalized).
+    if (isInRange(w.closeDate, periodStart, periodEnd) &&
+        (w.status ?? "").toLowerCase().includes("paid in full")) {
       wosPaid += 1;
       wosPaidValue += w.amount;
     }

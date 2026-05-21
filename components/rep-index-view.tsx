@@ -320,8 +320,17 @@ function RepCard({
   teamShare: number;
   inactive: boolean;
 }) {
-  const hot = momentum && momentum.thisWeek > 0 && momentum.deltaPct >= 25;
-  const cooling = momentum && momentum.priorWeek > 0 && momentum.thisWeek < momentum.priorWeek * 0.5;
+  // "Hot" needs real revenue (≥ $1K this week) AND a real prior-week base
+  // (≥ $1K) so we don't badge a rep as Hot for a $1 deal off a $0 prior week.
+  const hot =
+    momentum &&
+    momentum.thisWeek >= 1000 &&
+    momentum.priorWeek >= 1000 &&
+    momentum.deltaPct >= 25;
+  const cooling =
+    momentum &&
+    momentum.priorWeek >= 1000 &&
+    momentum.thisWeek < momentum.priorWeek * 0.5;
   return (
     <Link
       href={`/dashboard/rep/${r.id}`}

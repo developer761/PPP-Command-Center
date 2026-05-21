@@ -363,7 +363,7 @@ export type Period =
 export type RegionFilter = "all" | string; // intentionally open — Salesforce may add/rename regions
 
 export const PERIOD_LABELS: Record<Period, string> = {
-  lifetime: "Last 24 months",
+  lifetime: "Last 12 months",
   "this-month": "This Month",
   "last-month": "Last Month",
   "this-year": "This Year",
