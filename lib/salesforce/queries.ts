@@ -195,12 +195,27 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
   return cached("snapshot-v3", async () => {
     const conn = await getSalesforceClient();
 
-    // STEP 1: Discover Opportunity schema. PPP's "Opportunities with Work Orders"
-    // report sums a custom currency field labeled "Net Value" — but the API name
-    // is unknown until we describe(). We dynamically find all custom currency
-    // fields, run a one-shot aggregate query to see which one sums to ~$1.26M
-    // (PPP's report total), and use that field as the canonical "amount" for
-    // every opp going forward. Self-heals if PPP renames the field.
+    // STEP 1: Discover Opportunity schema + pick the canonical revenue field.
+    //
+    // PPP's "Opportunities with Work Orders" report displays two headline totals:
+    //   - "Total Net Value" = SUM(NetValue__c) — the realized revenue figure
+    //   - "Total Quoted Subtotal with Change Order" = SUM(QuotedSubtotalWithChangeOrder__c) — gross quoted
+    //
+    // These field names were confirmed against the production org's 89,544
+    // opportunities (2026-05-21 cutover deep-dive). We prefer them BY NAME so
+    // the dashboard headline matches what PPP staff already read in their
+    // reports — NOT the highest-sum field, which would surface TotalAmount__c
+    // (a derived roll-up that's not the canonical "revenue" figure PPP uses).
+    //
+    // If neither named field exists (different org, schema drift), we fall
+    // back to the highest-sum currency field for self-healing safety.
+    const PREFERRED_OPP_REVENUE_FIELDS = [
+      "NetValue__c",                      // PPP's canonical "Net Value"
+      "QuotedSubtotalWithChangeOrder__c", // PPP's gross-quoted figure
+      "Net_Value__c",                     // schema-variant fallback
+      "Quoted_Subtotal_with_Change_Order__c",
+    ];
+
     let revenueField: string | null = null;
     let allCurrencyFields: string[] = [];
     try {
@@ -209,7 +224,17 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         .filter((f) => f.custom && (f.type === "currency" || f.type === "double"))
         .map((f) => f.name);
 
-      if (allCurrencyFields.length > 0) {
+      // First: PPP canonical fields by name.
+      for (const candidate of PREFERRED_OPP_REVENUE_FIELDS) {
+        if (allCurrencyFields.includes(candidate)) {
+          revenueField = candidate;
+          console.log(`[SF] Opp revenue field (PPP canonical): ${revenueField}`);
+          break;
+        }
+      }
+
+      // Fallback: highest-sum (only if none of the preferred names exist).
+      if (!revenueField && allCurrencyFields.length > 0) {
         const aggregates = allCurrencyFields
           .slice(0, 25)
           .map((n) => `SUM(${n}) ${n.toLowerCase()}_sum`)
@@ -218,20 +243,17 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           `SELECT ${aggregates} FROM Opportunity`
         );
         const sumRow = sums.records[0] ?? {};
-        // Pick the currency field with the highest aggregate. That matches PPP's
-        // canonical revenue field (per their report, ~$1.26M).
         let bestField: string | null = null;
         let bestSum = 0;
         for (const fname of allCurrencyFields) {
-          const sumKey = `${fname.toLowerCase()}_sum`;
-          const v = sumRow[sumKey];
+          const v = sumRow[`${fname.toLowerCase()}_sum`];
           if (typeof v === "number" && v > bestSum) {
             bestSum = v;
             bestField = fname;
           }
         }
         revenueField = bestField;
-        console.log(`[SF] Dynamic revenue field detection: ${revenueField} = $${bestSum.toLocaleString()}`);
+        console.log(`[SF] Opp revenue field (fallback by sum): ${revenueField} = $${bestSum.toLocaleString()}`);
       }
     } catch (err) {
       console.error("[SF] Schema discovery for Opportunity failed:", err);
@@ -248,18 +270,34 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       LIMIT 500
     `);
 
-    const currencyFieldsSelect = allCurrencyFields.length > 0
-      ? `, ${allCurrencyFields.slice(0, 25).join(", ")}`
+    // At PPP scale (89k+ opps), pulling 25 custom currency fields per row blows
+    // up payload size + serverless memory. Narrow to just the revenue fields
+    // we actually need — canonical + the explicit gross/net we surface in UI.
+    const NEEDED_OPP_FIELDS = new Set<string>([
+      ...(revenueField ? [revenueField] : []),
+      "NetValue__c",
+      "QuotedSubtotalWithChangeOrder__c",
+      "TotalAmount__c",
+    ].filter((f) => allCurrencyFields.includes(f)));
+    const currencyFieldsSelect = NEEDED_OPP_FIELDS.size > 0
+      ? `, ${[...NEEDED_OPP_FIELDS].join(", ")}`
       : "";
 
-    // SOQL returns at most 2000 records per batch. PPP has many more opps than
-    // that, so we paginate via queryMore until done. Without this we silently
-    // miss most of the data — exactly the bug that made the dashboard show
-    // ~$507K against PPP's $1.26M report.
+    // SOQL returns at most 2000 records per batch. PPP has 89k+ opportunities
+    // (10+ years of history), so we paginate via queryMore.
+    //
+    // Date window: at the full lifetime PPP volume, pulling everything would
+    // hit Vercel's serverless function timeout (60s). 730 days (2 years) gives
+    // a comfortable buffer for any periods we show + matches PPP's report
+    // windows (their reports are typically 12-month or custom-date). When the
+    // dashboard says "All Time" it really means "last 2 years" at this scale.
+    const RECENCY_WINDOW_DAYS = 730;
     async function queryAllOpps(withCustomFields: boolean): Promise<SfOppRow[]> {
       const selectFields = `Id, OwnerId, Account.Name, Amount, IsClosed, IsWon, StageName, CreatedDate, CloseDate, LastActivityDate${withCustomFields ? currencyFieldsSelect : ""}`;
       const all: SfOppRow[] = [];
-      let result = await conn.query<SfOppRow>(`SELECT ${selectFields} FROM Opportunity`);
+      let result = await conn.query<SfOppRow>(
+        `SELECT ${selectFields} FROM Opportunity WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
+      );
       all.push(...(result.records as SfOppRow[]));
       while (!result.done && result.nextRecordsUrl) {
         result = await conn.queryMore<SfOppRow>(result.nextRecordsUrl);
@@ -348,16 +386,33 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         .filter((f) => f.custom && (f.type === "currency" || f.type === "double"))
         .map((f) => f.name);
 
-      // Known field name patterns from the schema deep-dive:
-      //   Subtotal__c (commonly populated baseline)
-      //   QuotedSubtotal__c, Quoted_Subtotal_with_Change_Order__c (gross)
-      //   NetValue__c (net realized)
+      // PPP canonical WO fields (production-verified 2026-05-21):
+      //   NetValue__c — net realized revenue (what the "Net Value" report column sums)
+      //   Quoted_Subtotal_with_Change_Order__c — gross quoted with change orders
+      //   QuotedSubtotal__c — original quoted figure
+      //   Subtotal__c — baseline subtotal
+      const PREFERRED_WO_REVENUE_FIELDS = [
+        "NetValue__c",
+        "Quoted_Subtotal_with_Change_Order__c",
+        "QuotedSubtotalWithChangeOrder__c",
+        "QuotedSubtotal__c",
+        "Subtotal__c",
+      ];
       const byName = (re: RegExp) => woCurrencyFields.find((n) => re.test(n)) ?? null;
       woQuotedField = byName(/^Quoted_?Subtotal_?with_?Change_?Order/i)
         ?? byName(/^Quoted_?Subtotal/i);
       woNetField = byName(/^Net_?Value/i);
-      // Canonical = whichever sums highest across all WO records.
-      if (woCurrencyFields.length > 0) {
+
+      // Canonical revenue field by name preference, fallback to highest-sum.
+      for (const candidate of PREFERRED_WO_REVENUE_FIELDS) {
+        if (woCurrencyFields.includes(candidate)) {
+          woRevenueField = candidate;
+          console.log(`[SF] WO revenue field (PPP canonical): ${woRevenueField}`);
+          break;
+        }
+      }
+
+      if (!woRevenueField && woCurrencyFields.length > 0) {
         const aggs = woCurrencyFields
           .slice(0, 25)
           .map((n) => `SUM(${n}) ${n.toLowerCase()}_sum`)
@@ -377,7 +432,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
             }
           }
           woRevenueField = bestField;
-          console.log(`[SF] WO revenue field auto-detected: ${woRevenueField} = $${bestSum.toLocaleString()}`);
+          console.log(`[SF] WO revenue field (fallback by sum): ${woRevenueField} = $${bestSum.toLocaleString()}`);
         } catch (err) {
           console.error("[SF] WO aggregate sum failed:", err);
         }
@@ -395,14 +450,19 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         woOppRelName = oppRef.relationshipName ?? null;
       }
 
-      // Build the SOQL with the fields we know about. Skip Opp join fields if
-      // there's no Opportunity lookup on WO (would be unusual but defensive).
+      // At PPP scale (88k+ WOs), pulling 20 currency fields per row would blow
+      // up memory. Narrow to just the canonical + the gross/net we surface.
+      const NEEDED_WO_FIELDS = new Set<string>([
+        ...(woRevenueField ? [woRevenueField] : []),
+        ...(woQuotedField ? [woQuotedField] : []),
+        ...(woNetField ? [woNetField] : []),
+      ]);
       const woFieldList = [
         "Id",
         woNumberField,
         woStatusField,
         "CreatedDate",
-        ...woCurrencyFields.slice(0, 20),
+        ...NEEDED_WO_FIELDS,
         woOppLookup,
         woOppRelName ? `${woOppRelName}.OwnerId` : null,
         woOppRelName ? `${woOppRelName}.Owner.Name` : null,
@@ -410,16 +470,16 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         woOppRelName ? `${woOppRelName}.CloseDate` : null,
       ].filter((x): x is string => Boolean(x));
 
-      // Paginate.
+      // Same 2-year window as opps (88,500 WOs lifetime → Vercel timeout risk).
       let result = await conn.query<Record<string, unknown>>(
-        `SELECT ${woFieldList.join(", ")} FROM WorkOrder`
+        `SELECT ${woFieldList.join(", ")} FROM WorkOrder WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
       );
       workOrderRecords.push(...result.records);
       while (!result.done && result.nextRecordsUrl) {
         result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
         workOrderRecords.push(...result.records);
       }
-      console.log(`[SF] Pulled ${workOrderRecords.length} work orders`);
+      console.log(`[SF] Pulled ${workOrderRecords.length} work orders (last ${RECENCY_WINDOW_DAYS}d)`);
     } catch (err) {
       console.error("[SF] WorkOrder query failed (object may not exist in this org):", err);
     }
