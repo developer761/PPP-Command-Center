@@ -611,10 +611,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         "TotalPayoutsForLabor__c", "LaborDaysActual__c", "LaborDaysProjected__c",
         "LaborDaysRemaining__c", "BalanceOwed__c", "Final_Balance_Aging__c",
       ].filter((f) => woCurrencyFields.includes(f) || woMeta.fields.some((mf) => mf.name === f));
+      // Only pull the canonical revenue field + ops fields. Previously also
+      // pulled woQuotedField + woNetField for display, but they're tacked
+      // onto the Deal type via cast and never actually rendered anywhere.
+      // Dropping saves a field per WO × 20k WOs.
       const NEEDED_WO_FIELDS = new Set<string>([
         ...(woRevenueField ? [woRevenueField] : []),
-        ...(woQuotedField ? [woQuotedField] : []),
-        ...(woNetField ? [woNetField] : []),
         ...opsFields,
       ]);
       const woFieldList = [
@@ -660,10 +662,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           if (typeof v === "number" && v > resolved) resolved = v;
         }
       }
-      const quoted = woQuotedField && typeof w[woQuotedField] === "number"
-        ? (w[woQuotedField] as number) : 0;
-      const net = woNetField && typeof w[woNetField] === "number"
-        ? (w[woNetField] as number) : 0;
+      // quotedSubtotal + netValue are unsurfaced in the UI — set to 0 so the
+      // SnapshotWorkOrder shape stays stable. If a future view needs them
+      // (e.g., comparing quoted vs realized per deal), re-add the fields to
+      // the SOQL above and read them here.
+      const quoted = 0;
+      const net = 0;
 
       const opp = woOppRelName ? (w[woOppRelName] as Record<string, unknown> | undefined) : undefined;
       const ownerNested = opp?.Owner as Record<string, unknown> | undefined;

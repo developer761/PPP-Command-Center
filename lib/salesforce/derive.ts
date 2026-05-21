@@ -1251,16 +1251,12 @@ export function deriveRepRecentDeals(
       stage: woStatusBucket(w.status),
       closedAt: w.closeDate,
       daysInStage: daysSince(w.closeDate ?? w.createdDate),
-      // Extra metadata the UI can surface (cast widens Deal at usage sites).
+      // Extra metadata the UI surfaces inline (WO number badge, etc.).
       workOrderNumber: w.workOrderNumber,
       status: w.status,
-      quotedSubtotal: +(w.quotedSubtotal / 1000).toFixed(1),
-      netValue: +(w.netValue / 1000).toFixed(1),
     }) as Deal & {
       workOrderNumber: string | null;
       status: string | null;
-      quotedSubtotal: number;
-      netValue: number;
     });
   }
 
