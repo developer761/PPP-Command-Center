@@ -20,16 +20,28 @@ import { getSalesforceClient } from "@/lib/salesforce/client";
 // in the topbar is always available for instant pulls). At PPP scale (20k+
 // WOs in the 365d window) cold-cache loads are 8-15s; warm-cache is instant.
 const CACHE_TTL_MS = 5 * 60 * 1000;
-type CacheEntry<T> = { value: T; expiresAt: number };
+
+// IMPORTANT: cache the PROMISE, not just the resolved value. On a cold cache,
+// when DashboardLayout + the page component both trigger loadDashboardData()
+// in parallel (which happens on every page navigation), without Promise-level
+// dedupe they BOTH end up fetching the full snapshot — doubling SF API load
+// and wall time. Caching the Promise lets the second caller await the same
+// in-flight request.
+type CacheEntry<T> = { promise: Promise<T>; expiresAt: number };
 const cache = new Map<string, CacheEntry<unknown>>();
 
 async function cached<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
   const now = Date.now();
   const hit = cache.get(key);
-  if (hit && hit.expiresAt > now) return hit.value as T;
-  const value = await fetcher();
-  cache.set(key, { value, expiresAt: now + CACHE_TTL_MS });
-  return value;
+  if (hit && hit.expiresAt > now) return hit.promise as Promise<T>;
+  const promise = fetcher();
+  cache.set(key, { promise, expiresAt: now + CACHE_TTL_MS });
+  // If the fetch rejects, invalidate the cache so the next request retries
+  // instead of returning the same rejection for 5 minutes.
+  promise.catch(() => {
+    if (cache.get(key)?.promise === promise) cache.delete(key);
+  });
+  return promise;
 }
 
 export function clearSalesforceCache() {
@@ -622,16 +634,25 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         Last_Appointment__c, LastWorkOrderCompleted__c
       `.replace(/\s+/g, " ").trim();
 
+      // PPP has 78k+ accounts; pulling all of them was the #1 slowness culprit
+      // (~20-30s alone on cold cache). We only need accounts the UI actually
+      // surfaces: top by lifetime revenue (drives Top Customers card),
+      // accounts referenced by recent WOs (drives per-rep customer stats),
+      // and any account flagged as Key Relationship. Limit to 5,000 by
+      // lifetime revenue DESC NULLS LAST — covers virtually all active
+      // accounts. Edge case: brand-new accounts with zero historical revenue
+      // would miss — they'll still render in WO/Opp lists, just without
+      // lifetime metadata.
       const acctRecords: Array<Record<string, unknown>> = [];
       let acctResult = await conn.query<Record<string, unknown>>(
-        `SELECT ${ACCT_FIELDS} FROM Account`
+        `SELECT ${ACCT_FIELDS} FROM Account ORDER BY Total_Lifetime_Revenue__c DESC NULLS LAST LIMIT 5000`
       );
       acctRecords.push(...acctResult.records);
       while (!acctResult.done && acctResult.nextRecordsUrl) {
         acctResult = await conn.queryMore<Record<string, unknown>>(acctResult.nextRecordsUrl);
         acctRecords.push(...acctResult.records);
       }
-      console.log(`[SF] Pulled ${acctRecords.length} accounts`);
+      console.log(`[SF] Pulled ${acctRecords.length} accounts (top 5k by lifetime revenue)`);
 
       accounts = acctRecords.map((a) => ({
         id: a.Id as string,
