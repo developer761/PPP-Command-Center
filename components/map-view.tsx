@@ -13,6 +13,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import FilterDropdown from "@/components/filter-dropdown";
 import PageHeader from "@/components/page-header";
 import { PERIOD_LABELS, type Period } from "@/lib/mock-data";
+import { periodRange } from "@/lib/salesforce/derive";
 import { fmtMoneyK } from "@/lib/format";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 
@@ -42,16 +43,21 @@ export default function MapView({ bundle }: Props) {
   const mapRef = useRef<MapRef | null>(null);
   const { snapshot } = bundle;
 
-  // Build GeoJSON FeatureCollection from WORK ORDERS — they carry the actual
-  // job-site geocoded lat/lng (20k+ records populated in production). Each WO
-  // is one job at one address with one $ value, perfect for heatmap weighting.
+  // Build GeoJSON FeatureCollection from WORK ORDERS, filtered by the chosen
+  // period. Bug fix: previously the period dropdown was decoration only —
+  // every selection showed the same dataset. Now we filter WOs by closeDate
+  // matching the periodRange().
   const geojson = useMemo(() => {
     if (!snapshot) return { type: "FeatureCollection" as const, features: [] };
+    const { start, end } = periodRange(period);
     const features = snapshot.workOrders
       .filter((w) => {
         if (typeof w.latitude !== "number" || typeof w.longitude !== "number") return false;
         if (w.latitude === 0 || w.longitude === 0) return false;
         if (w.amount === 0) return false;
+        if (!w.closeDate) return false;
+        const closed = new Date(w.closeDate + "T00:00:00Z");
+        if (closed < start || closed >= end) return false;
         return true;
       })
       .map((w) => ({
@@ -70,7 +76,7 @@ export default function MapView({ bundle }: Props) {
         },
       }));
     return { type: "FeatureCollection" as const, features };
-  }, [snapshot]);
+  }, [snapshot, period]);
 
   const pointCount = geojson.features.length;
   const totalRevenue = useMemo(

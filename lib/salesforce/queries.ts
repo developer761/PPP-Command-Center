@@ -379,6 +379,86 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       oppRecords = await queryAllOpps(false);
     }
     console.log(`[SF] Pulled ${oppRecords.length} opportunities (all batches)`);
+
+    // PERF: kick off Account + Quote queries NOW so they run in parallel with
+    // the upcoming WO schema discovery + WO query. Was sequential before
+    // (Opp → WO → Account → Quote = ~25-30s). With these in parallel:
+    // Opp finishes → start [Account, Quote, WO] in parallel → max(WO, ~10s)
+    // saves ~5-10s on cold cache.
+    const accountsPromise: Promise<SnapshotAccount[]> = (async () => {
+      try {
+        const ACCT_FIELDS = `
+          Id, Name, Type, Service_Territory__c, Region__c, Geo_Zone__c, County__c,
+          LeadGroup__c, Account_Manager__c, Primary_Contact__c,
+          Total_Lifetime_Revenue__c, Total_Revenue_CFY__c, Total_Revenue_PFY__c,
+          Total_Won_Oppties__c, Total_Lost_Oppties__c, Number_Open_Oppties__c,
+          VendorBMRetailer__c, VendorBMAutoSubmit__c, Key_Relationship__c,
+          Last_Appointment__c, LastWorkOrderCompleted__c
+        `.replace(/\s+/g, " ").trim();
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT ${ACCT_FIELDS} FROM Account ORDER BY Total_Lifetime_Revenue__c DESC NULLS LAST LIMIT 5000`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} accounts (top 5k by lifetime revenue) — PARALLEL`);
+        return records.map((a) => ({
+          id: a.Id as string,
+          name: (a.Name as string) ?? "",
+          type: (a.Type as string | null) ?? null,
+          serviceTerritoryId: (a.Service_Territory__c as string | null) ?? null,
+          region: (a.Region__c as string | null) ?? null,
+          geoZone: (a.Geo_Zone__c as string | null) ?? null,
+          county: (a.County__c as string | null) ?? null,
+          leadGroup: (a.LeadGroup__c as string | null) ?? null,
+          accountManagerId: (a.Account_Manager__c as string | null) ?? null,
+          primaryContact: (a.Primary_Contact__c as string | null) ?? null,
+          totalLifetimeRevenue: (a.Total_Lifetime_Revenue__c as number | null) ?? 0,
+          totalRevenueCFY: (a.Total_Revenue_CFY__c as number | null) ?? 0,
+          totalRevenuePFY: (a.Total_Revenue_PFY__c as number | null) ?? 0,
+          totalWonOppties: (a.Total_Won_Oppties__c as number | null) ?? 0,
+          totalLostOppties: (a.Total_Lost_Oppties__c as number | null) ?? 0,
+          numberOpenOppties: (a.Number_Open_Oppties__c as number | null) ?? 0,
+          isBMRetailer: Boolean(a.VendorBMRetailer__c),
+          isBMAutoSubmit: Boolean(a.VendorBMAutoSubmit__c),
+          isKeyRelationship: Boolean(a.Key_Relationship__c),
+          lastAppointment: (a.Last_Appointment__c as string | null) ?? null,
+          lastWorkOrderCompleted: (a.LastWorkOrderCompleted__c as string | null) ?? null,
+        }));
+      } catch (err) {
+        console.error("[SF] Account query failed (some fields may be absent):", err);
+        return [];
+      }
+    })();
+
+    const quotesPromise: Promise<SnapshotQuote[]> = (async () => {
+      try {
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT Id, OpportunityId, Subtotal__c, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} quotes (last ${RECENCY_WINDOW_DAYS}d) — PARALLEL`);
+        return records.map((q) => ({
+          id: q.Id as string,
+          opportunityId: (q.OpportunityId as string | null) ?? null,
+          subtotal: typeof q.Subtotal__c === "number" ? q.Subtotal__c : 0,
+          grandTotal: typeof q.GrandTotal__c === "number" ? q.GrandTotal__c : 0,
+          createdDate: q.CreatedDate as string,
+        }));
+      } catch (err) {
+        console.error("[SF] Quote query failed:", err);
+        return [];
+      }
+    })();
+
     const usersResult = await usersPromise;
 
     const reps: SnapshotRep[] = usersResult.records
@@ -618,94 +698,10 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       };
     });
 
-    /* ─────── Accounts ─────── */
-    // Pull all accounts so per-rep cards can surface "X repeat customers",
-    // total lifetime revenue per account, BM-retailer flag (for Phase 2),
-    // and territory data. Wrapped in try/catch — if Account perms are
-    // restricted, snapshot still renders without account context.
-    let accounts: SnapshotAccount[] = [];
-    try {
-      const ACCT_FIELDS = `
-        Id, Name, Type, Service_Territory__c, Region__c, Geo_Zone__c, County__c,
-        LeadGroup__c, Account_Manager__c, Primary_Contact__c,
-        Total_Lifetime_Revenue__c, Total_Revenue_CFY__c, Total_Revenue_PFY__c,
-        Total_Won_Oppties__c, Total_Lost_Oppties__c, Number_Open_Oppties__c,
-        VendorBMRetailer__c, VendorBMAutoSubmit__c, Key_Relationship__c,
-        Last_Appointment__c, LastWorkOrderCompleted__c
-      `.replace(/\s+/g, " ").trim();
-
-      // PPP has 78k+ accounts; pulling all of them was the #1 slowness culprit
-      // (~20-30s alone on cold cache). We only need accounts the UI actually
-      // surfaces: top by lifetime revenue (drives Top Customers card),
-      // accounts referenced by recent WOs (drives per-rep customer stats),
-      // and any account flagged as Key Relationship. Limit to 5,000 by
-      // lifetime revenue DESC NULLS LAST — covers virtually all active
-      // accounts. Edge case: brand-new accounts with zero historical revenue
-      // would miss — they'll still render in WO/Opp lists, just without
-      // lifetime metadata.
-      const acctRecords: Array<Record<string, unknown>> = [];
-      let acctResult = await conn.query<Record<string, unknown>>(
-        `SELECT ${ACCT_FIELDS} FROM Account ORDER BY Total_Lifetime_Revenue__c DESC NULLS LAST LIMIT 5000`
-      );
-      acctRecords.push(...acctResult.records);
-      while (!acctResult.done && acctResult.nextRecordsUrl) {
-        acctResult = await conn.queryMore<Record<string, unknown>>(acctResult.nextRecordsUrl);
-        acctRecords.push(...acctResult.records);
-      }
-      console.log(`[SF] Pulled ${acctRecords.length} accounts (top 5k by lifetime revenue)`);
-
-      accounts = acctRecords.map((a) => ({
-        id: a.Id as string,
-        name: (a.Name as string) ?? "",
-        type: (a.Type as string | null) ?? null,
-        serviceTerritoryId: (a.Service_Territory__c as string | null) ?? null,
-        region: (a.Region__c as string | null) ?? null,
-        geoZone: (a.Geo_Zone__c as string | null) ?? null,
-        county: (a.County__c as string | null) ?? null,
-        leadGroup: (a.LeadGroup__c as string | null) ?? null,
-        accountManagerId: (a.Account_Manager__c as string | null) ?? null,
-        primaryContact: (a.Primary_Contact__c as string | null) ?? null,
-        totalLifetimeRevenue: (a.Total_Lifetime_Revenue__c as number | null) ?? 0,
-        totalRevenueCFY: (a.Total_Revenue_CFY__c as number | null) ?? 0,
-        totalRevenuePFY: (a.Total_Revenue_PFY__c as number | null) ?? 0,
-        totalWonOppties: (a.Total_Won_Oppties__c as number | null) ?? 0,
-        totalLostOppties: (a.Total_Lost_Oppties__c as number | null) ?? 0,
-        numberOpenOppties: (a.Number_Open_Oppties__c as number | null) ?? 0,
-        isBMRetailer: Boolean(a.VendorBMRetailer__c),
-        isBMAutoSubmit: Boolean(a.VendorBMAutoSubmit__c),
-        isKeyRelationship: Boolean(a.Key_Relationship__c),
-        lastAppointment: (a.Last_Appointment__c as string | null) ?? null,
-        lastWorkOrderCompleted: (a.LastWorkOrderCompleted__c as string | null) ?? null,
-      }));
-    } catch (err) {
-      console.error("[SF] Account query failed (some fields may be absent):", err);
-    }
-
-    /* ─────── Quotes ─────── */
-    // For the real Pipeline Funnel. PPP's flow: Lead → Quote → Opp → WO → Paid.
-    // Same 730-day window for performance.
-    let quotes: SnapshotQuote[] = [];
-    try {
-      const qRecords: Array<Record<string, unknown>> = [];
-      let qResult = await conn.query<Record<string, unknown>>(
-        `SELECT Id, OpportunityId, Subtotal__c, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
-      );
-      qRecords.push(...qResult.records);
-      while (!qResult.done && qResult.nextRecordsUrl) {
-        qResult = await conn.queryMore<Record<string, unknown>>(qResult.nextRecordsUrl);
-        qRecords.push(...qResult.records);
-      }
-      console.log(`[SF] Pulled ${qRecords.length} quotes (last ${RECENCY_WINDOW_DAYS}d)`);
-      quotes = qRecords.map((q) => ({
-        id: q.Id as string,
-        opportunityId: (q.OpportunityId as string | null) ?? null,
-        subtotal: typeof q.Subtotal__c === "number" ? q.Subtotal__c : 0,
-        grandTotal: typeof q.GrandTotal__c === "number" ? q.GrandTotal__c : 0,
-        createdDate: q.CreatedDate as string,
-      }));
-    } catch (err) {
-      console.error("[SF] Quote query failed:", err);
-    }
+    // Await the Account + Quote promises that have been running in parallel
+    // with the WO query above. Both already executed concurrently — this is
+    // just collecting their results.
+    const [accounts, quotes] = await Promise.all([accountsPromise, quotesPromise]);
 
     // Sandbox detection — instance URL contains "sandbox" for any sandbox org.
     const instanceUrl = conn.instanceUrl ?? null;
