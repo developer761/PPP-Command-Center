@@ -99,13 +99,20 @@ export default async function RepDetailPage({
   let maxRecentDate: Date | null = null;
   if (bundle.snapshot) {
     const seenAccountIds = new Set<string>();
+    const nowMs = Date.now();
     for (const w of bundle.snapshot.workOrders) {
       if (w.ownerId !== rep.id) continue;
-      // Track most recent activity for "Last Activity" timestamp
-      const dStr = w.closeDate ?? w.createdDate;
-      if (dStr) {
-        const d = new Date(dStr);
-        if (!isNaN(d.getTime()) && (!maxRecentDate || d > maxRecentDate)) maxRecentDate = d;
+      // Track most recent activity. Bug fix: PPP's CloseDate is often a
+      // PROJECTED close in the future. Ignore future-dated entries so the
+      // "Last activity" badge doesn't show a misleading green "today" for
+      // a deal that hasn't actually happened yet. Use createdDate which is
+      // always real, and prefer closeDate only if it's in the past.
+      const closeMs = w.closeDate ? new Date(w.closeDate).getTime() : NaN;
+      const createdMs = new Date(w.createdDate).getTime();
+      const candidate = !isNaN(closeMs) && closeMs <= nowMs ? closeMs : createdMs;
+      if (!isNaN(candidate)) {
+        const d = new Date(candidate);
+        if (!maxRecentDate || d > maxRecentDate) maxRecentDate = d;
       }
       if (!w.accountName) continue;
       const acct = accountByName.get(w.accountName);

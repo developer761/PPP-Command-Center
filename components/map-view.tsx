@@ -54,7 +54,9 @@ export default function MapView({ bundle }: Props) {
       .filter((w) => {
         if (typeof w.latitude !== "number" || typeof w.longitude !== "number") return false;
         if (w.latitude === 0 || w.longitude === 0) return false;
-        if (w.amount === 0) return false;
+        // Exclude zero AND negative amounts — credits/refunds shouldn't
+        // appear as job markers (they have no physical job site to plot).
+        if (w.amount <= 0) return false;
         if (!w.closeDate) return false;
         const closed = new Date(w.closeDate + "T00:00:00Z");
         if (closed < start || closed >= end) return false;
@@ -139,6 +141,14 @@ export default function MapView({ bundle }: Props) {
       {snapshot.isSandbox && (
         <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
           <strong>Sandbox data.</strong> Production map will populate with thousands of geo-located jobs.
+        </div>
+      )}
+
+      {pointCount === 0 && (
+        <div className="rounded-lg border border-ppp-blue-100 bg-ppp-blue-50/60 text-ppp-blue-700 text-xs sm:text-sm px-4 py-3">
+          <strong>No geocoded jobs in this period.</strong> Try widening the
+          period filter (Last 12 months has the most data) or check that
+          WOs have lat/lng populated in Salesforce.
         </div>
       )}
 
