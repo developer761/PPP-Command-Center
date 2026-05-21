@@ -137,3 +137,19 @@ h1, h2, h3, h4, .font-condensed {
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/* Mapbox popup — minimal override to match PPP brand */
+.mapboxgl-popup-content {
+  border-radius: 10px !important;
+  box-shadow: 0 8px 24px -8px rgba(23, 43, 77, 0.18) !important;
+  padding: 12px !important;
+  border: 1px solid var(--color-ppp-charcoal-100, #e5e7eb);
+}
+.mapboxgl-popup-close-button {
+  font-size: 16px !important;
+  padding: 2px 6px !important;
+  color: var(--color-ppp-charcoal-500, #6b7280) !important;
+}
+.mapboxgl-popup-tip {
+  border-top-color: white !important;
+}

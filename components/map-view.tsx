@@ -1,7 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Map, { Source, Layer, NavigationControl, type MapRef } from "react-map-gl/mapbox";
+import { useMemo, useRef, useState } from "react";
+import Map, {
+  Source,
+  Layer,
+  NavigationControl,
+  Popup,
+  type MapRef,
+  type MapMouseEvent,
+} from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import FilterDropdown from "@/components/filter-dropdown";
 import PageHeader from "@/components/page-header";
@@ -17,8 +24,22 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = (
 
 type Props = { bundle: LiveDashboardBundle };
 
+type PopupData = {
+  lat: number;
+  lng: number;
+  amount: number;
+  account: string;
+  status: string;
+  rep: string;
+  wo: string;
+  id: string;
+};
+
 export default function MapView({ bundle }: Props) {
   const [period, setPeriod] = useState<Period>("lifetime");
+  const [popup, setPopup] = useState<PopupData | null>(null);
+  const [cursor, setCursor] = useState<"auto" | "pointer">("auto");
+  const mapRef = useRef<MapRef | null>(null);
   const { snapshot } = bundle;
 
   // Build GeoJSON FeatureCollection from WORK ORDERS — they carry the actual
@@ -118,10 +139,56 @@ export default function MapView({ bundle }: Props) {
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="h-[60vh] sm:h-[70vh] min-h-[500px] w-full">
           <Map
+            ref={mapRef}
             mapboxAccessToken={MAPBOX_TOKEN}
             initialViewState={{ longitude: -73.5, latitude: 40.8, zoom: 8 }}
             mapStyle="mapbox://styles/mapbox/light-v11"
             attributionControl={false}
+            interactiveLayerIds={["clusters", "unclustered-point"]}
+            cursor={cursor}
+            onMouseEnter={() => setCursor("pointer")}
+            onMouseLeave={() => setCursor("auto")}
+            onClick={(e: MapMouseEvent) => {
+              const feature = e.features?.[0];
+              if (!feature) return;
+              const map = mapRef.current?.getMap();
+              if (!map) return;
+
+              // Cluster click → zoom in to expand
+              if (feature.properties?.cluster_id) {
+                const clusterId = feature.properties.cluster_id;
+                const source = map.getSource("jobs") as unknown as {
+                  getClusterExpansionZoom: (
+                    id: number,
+                    cb: (err: Error | null, zoom: number | null) => void
+                  ) => void;
+                };
+                source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+                  if (err || zoom == null) return;
+                  map.easeTo({
+                    center: (feature.geometry as unknown as { coordinates: [number, number] }).coordinates,
+                    zoom: Math.min(zoom, 16),
+                    duration: 400,
+                  });
+                });
+                setPopup(null);
+                return;
+              }
+
+              // Individual job click → open the preview popup
+              const props = feature.properties ?? {};
+              const [lng, lat] = (feature.geometry as unknown as { coordinates: [number, number] }).coordinates;
+              setPopup({
+                lat,
+                lng,
+                amount: (props.amount as number) ?? 0,
+                account: (props.account as string) ?? "(unknown account)",
+                status: (props.status as string) ?? "",
+                rep: (props.rep as string) ?? "",
+                wo: (props.wo as string) ?? "",
+                id: (props.id as string) ?? "",
+              });
+            }}
           >
             <NavigationControl position="top-right" showCompass={false} />
             <Source
@@ -207,6 +274,59 @@ export default function MapView({ bundle }: Props) {
                 }}
               />
             </Source>
+
+            {/* Click preview popup */}
+            {popup && (
+              <Popup
+                longitude={popup.lng}
+                latitude={popup.lat}
+                anchor="bottom"
+                offset={12}
+                closeButton
+                closeOnClick={false}
+                onClose={() => setPopup(null)}
+                maxWidth="320px"
+                className="ppp-map-popup"
+              >
+                <div className="font-sans p-1 min-w-[220px]">
+                  <div className="font-condensed text-[10px] uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                    Work Order {popup.wo || "—"}
+                  </div>
+                  <div className="font-semibold text-ppp-charcoal text-sm leading-tight">
+                    {popup.account}
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between gap-3">
+                    <div className="font-condensed text-xl font-bold text-ppp-navy">
+                      {fmtMoneyK(popup.amount / 1000)}
+                    </div>
+                    {popup.status && (
+                      <span
+                        className={[
+                          "inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold border",
+                          popup.status.toLowerCase().includes("paid in full")
+                            ? "text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100"
+                            : popup.status.toLowerCase().includes("cancel")
+                            ? "text-ppp-charcoal-500 bg-ppp-charcoal-50 border-ppp-charcoal-100"
+                            : popup.status.toLowerCase().includes("complete")
+                            ? "text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100"
+                            : "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100",
+                        ].join(" ")}
+                      >
+                        {popup.status}
+                      </span>
+                    )}
+                  </div>
+                  {popup.rep && (
+                    <div className="mt-2 pt-2 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
+                      Sold by <span className="font-medium text-ppp-charcoal">{popup.rep}</span>
+                    </div>
+                  )}
+                  <div className="mt-2 text-[10px] text-ppp-charcoal-400 font-mono">
+                    {popup.lat.toFixed(4)}, {popup.lng.toFixed(4)}
+                  </div>
+                </div>
+              </Popup>
+            )}
           </Map>
         </div>
       </div>

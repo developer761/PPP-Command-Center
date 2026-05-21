@@ -650,10 +650,15 @@ export default function DashboardView({ bundle }: Props) {
         <div className="lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
             <div>
-              <h3 className="text-base font-semibold text-ppp-charcoal">Pipeline Funnel</h3>
+              <h3 className="text-base font-semibold text-ppp-charcoal">Pipeline Activity</h3>
               <p className="text-xs text-ppp-charcoal-500 mt-1">
-                Lead → quote → closed deal · {PERIOD_LABELS[effectiveFunnelPeriod].toLowerCase()}
+                Per-stage activity · {PERIOD_LABELS[effectiveFunnelPeriod].toLowerCase()}
               </p>
+              {snapshot && (
+                <p className="text-[10px] text-ppp-charcoal-400 mt-1 italic">
+                  Period totals only — not cohort conversion (Opps won this month may have been quoted earlier)
+                </p>
+              )}
             </div>
             <FilterDropdown<Period | "page">
               value={funnelPeriod}
@@ -704,7 +709,7 @@ export default function DashboardView({ bundle }: Props) {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    {nextDrop !== null && (
+                    {nextDrop !== null && !snapshot && (
                       <div className="text-[11px] text-ppp-charcoal-500 mt-1">
                         {nextDrop}% drop-off to next stage
                       </div>

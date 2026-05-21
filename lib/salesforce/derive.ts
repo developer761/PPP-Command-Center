@@ -571,6 +571,21 @@ export function deriveRepMonthly(
  * week. Drives the strip at the top of /dashboard so Alex can glance and know:
  * are we on pace?
  */
+/**
+ * "Today" anchored in America/New_York (PPP HQ).
+ * Logic bug fix: using UTC, at 11pm EST = 4am UTC next day → today's
+ * revenue shifted forward by a day for several hours each night.
+ */
+function startOfTodayInNY(now: Date = new Date()): Date {
+  const nyDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  return new Date(nyDate + "T00:00:00Z");
+}
+
 export function deriveTodaySnapshot(
   snapshot: SalesforceSnapshot
 ): {
@@ -580,15 +595,19 @@ export function deriveTodaySnapshot(
   sameDayLastWeekRevenue: number; // $K
   weekRevenue: number;        // $K (last 7 days)
   weekPriorRevenue: number;   // $K (8-14 days ago, comparison)
-  biggestDealToday: { account: string; amount: number; rep: string | null } | null;
+  biggestDealToday: {
+    account: string;
+    amount: number;
+    rep: string | null;
+    workOrderNumber: string | null;
+    status: string | null;
+  } | null;
 } {
-  const now = new Date();
-  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const startOfToday = startOfTodayInNY();
   const startOfYesterday = new Date(startOfToday.getTime() - 86_400_000);
   const startOfSameDayLastWeek = new Date(startOfToday.getTime() - 7 * 86_400_000);
   const startOfTomorrow = new Date(startOfToday.getTime() + 86_400_000);
   const startOfDayAfterSDLW = new Date(startOfSameDayLastWeek.getTime() + 86_400_000);
-  const startOfYesterdayEnd = startOfToday;
   const startOfWeek = new Date(startOfToday.getTime() - 6 * 86_400_000);
   const startOfPriorWeek = new Date(startOfWeek.getTime() - 7 * 86_400_000);
 
@@ -598,32 +617,23 @@ export function deriveTodaySnapshot(
   let sdLwRev = 0;
   let weekRev = 0;
   let priorWeekRev = 0;
-  let biggest: { account: string; amount: number; rep: string | null } | null = null;
+  let biggestWO: SnapshotWorkOrder | null = null;
 
-  for (const row of revenueRows(snapshot)) {
-    if (row.amount === 0 || !row.closeDate) continue;
-    const d = new Date(row.closeDate + "T00:00:00Z");
+  // Iterate Work Orders directly so we can keep the actual WO reference for
+  // "biggest deal today" — no fragile post-hoc .find() lookup that could
+  // match the wrong WO when two share close date + amount + owner.
+  for (const w of snapshot.workOrders) {
+    if (w.amount === 0 || !w.closeDate) continue;
+    const d = new Date(w.closeDate + "T00:00:00Z");
     if (d >= startOfToday && d < startOfTomorrow) {
-      todayRev += row.amount;
+      todayRev += w.amount;
       todayCnt += 1;
-      if (!biggest || row.amount > biggest.amount) {
-        // Find rep name from WO if available
-        let repName: string | null = null;
-        let accountName = "(unknown account)";
-        if (snapshot.workOrders.length > 0) {
-          const wo = snapshot.workOrders.find((w) => w.closeDate === row.closeDate && w.amount === row.amount && w.ownerId === row.ownerId);
-          if (wo) {
-            repName = wo.ownerName;
-            accountName = wo.accountName ?? accountName;
-          }
-        }
-        biggest = { account: accountName, amount: row.amount, rep: repName };
-      }
+      if (!biggestWO || w.amount > biggestWO.amount) biggestWO = w;
     }
-    if (d >= startOfYesterday && d < startOfYesterdayEnd) yesterdayRev += row.amount;
-    if (d >= startOfSameDayLastWeek && d < startOfDayAfterSDLW) sdLwRev += row.amount;
-    if (d >= startOfWeek && d < startOfTomorrow) weekRev += row.amount;
-    if (d >= startOfPriorWeek && d < startOfWeek) priorWeekRev += row.amount;
+    if (d >= startOfYesterday && d < startOfToday) yesterdayRev += w.amount;
+    if (d >= startOfSameDayLastWeek && d < startOfDayAfterSDLW) sdLwRev += w.amount;
+    if (d >= startOfWeek && d < startOfTomorrow) weekRev += w.amount;
+    if (d >= startOfPriorWeek && d < startOfWeek) priorWeekRev += w.amount;
   }
 
   return {
@@ -633,8 +643,14 @@ export function deriveTodaySnapshot(
     sameDayLastWeekRevenue: Math.round(sdLwRev / 1000),
     weekRevenue: Math.round(weekRev / 1000),
     weekPriorRevenue: Math.round(priorWeekRev / 1000),
-    biggestDealToday: biggest
-      ? { account: biggest.account, amount: Math.round(biggest.amount / 1000), rep: biggest.rep }
+    biggestDealToday: biggestWO
+      ? {
+          account: biggestWO.accountName ?? "(unknown account)",
+          amount: Math.round(biggestWO.amount / 1000),
+          rep: biggestWO.ownerName,
+          workOrderNumber: biggestWO.workOrderNumber,
+          status: biggestWO.status,
+        }
       : null,
   };
 }
@@ -661,9 +677,12 @@ export function deriveMonthForecast(
   const startOfMonth = new Date(Date.UTC(y, m, 1));
   const startOfNextMonth = new Date(Date.UTC(y, m + 1, 1));
   const daysInMonth = Math.round((startOfNextMonth.getTime() - startOfMonth.getTime()) / 86_400_000);
+  // daysElapsed = the day-of-month we're on (1 on the 1st, 2 on the 2nd, etc).
+  // Use floor + 1 instead of round + 1 so we don't roll to "day 2" late on
+  // day 1 just because UTC time-of-day rounds up.
   const daysElapsed = Math.max(
     1,
-    Math.round((now.getTime() - startOfMonth.getTime()) / 86_400_000) + 1
+    Math.floor((now.getTime() - startOfMonth.getTime()) / 86_400_000) + 1
   );
   const daysRemaining = Math.max(0, daysInMonth - daysElapsed);
 
