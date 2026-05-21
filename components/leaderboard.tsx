@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Rep } from "@/lib/mock-data";
+import { fmtMoneyK } from "@/lib/format";
 
 type SortKey = "revenueSold" | "closeRate" | "avgTicket" | "openPipeline";
 type SortDir = "desc" | "asc";
@@ -13,10 +14,10 @@ type Props = {
 };
 
 const COLUMNS: { key: SortKey; label: string; align: "right"; format: (r: Rep) => string }[] = [
-  { key: "revenueSold", label: "Revenue", align: "right", format: (r) => `$${r.revenueSold}K` },
+  { key: "revenueSold", label: "Revenue", align: "right", format: (r) => fmtMoneyK(r.revenueSold) },
   { key: "closeRate", label: "Close Rate", align: "right", format: (r) => `${r.closeRate.toFixed(1)}%` },
-  { key: "avgTicket", label: "Avg Ticket", align: "right", format: (r) => `$${r.avgTicket.toFixed(1)}K` },
-  { key: "openPipeline", label: "Open Pipeline", align: "right", format: (r) => `$${r.openPipeline}K` },
+  { key: "avgTicket", label: "Avg Ticket", align: "right", format: (r) => fmtMoneyK(r.avgTicket) },
+  { key: "openPipeline", label: "Open Pipeline", align: "right", format: (r) => fmtMoneyK(r.openPipeline) },
 ];
 
 export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
@@ -61,7 +62,7 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
           </p>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-sm font-semibold text-ppp-charcoal">${teamRevenueTotal}K</div>
+          <div className="text-sm font-semibold text-ppp-charcoal">{fmtMoneyK(teamRevenueTotal)}</div>
           <div className="text-[10px] sm:text-[11px] text-ppp-charcoal-500">team total</div>
         </div>
       </div>
@@ -119,16 +120,16 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
                   <ServiceLinePill line={r.serviceLine} />
                 </td>
                 <td className={`px-6 py-3.5 text-right ${sortKey === "revenueSold" ? "font-bold text-ppp-charcoal" : "font-semibold text-ppp-charcoal"}`}>
-                  ${r.revenueSold}K
+                  {fmtMoneyK(r.revenueSold)}
                 </td>
                 <td className={`px-6 py-3.5 text-right ${sortKey === "closeRate" ? "font-bold text-ppp-charcoal" : "text-ppp-charcoal"}`}>
                   {r.closeRate.toFixed(1)}%
                 </td>
                 <td className={`px-6 py-3.5 text-right ${sortKey === "avgTicket" ? "font-bold text-ppp-charcoal" : "text-ppp-charcoal"}`}>
-                  ${r.avgTicket.toFixed(1)}K
+                  {fmtMoneyK(r.avgTicket)}
                 </td>
                 <td className={`px-6 py-3.5 text-right ${sortKey === "openPipeline" ? "font-bold text-ppp-charcoal" : "text-ppp-charcoal-500"}`}>
-                  ${r.openPipeline}K
+                  {fmtMoneyK(r.openPipeline)}
                 </td>
                 <td className="px-6 py-3.5 text-right">
                   <Link

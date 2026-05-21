@@ -24,7 +24,13 @@ type Props = {
 };
 
 function formatValue(v: number, fmt: YFormat): string {
-  if (fmt === "currency-k") return `$${Math.round(v)}K`;
+  if (fmt === "currency-k") {
+    // Auto-scale: K → M → B based on magnitude (values are already in $K).
+    const abs = Math.abs(v);
+    if (abs >= 1000) return `$${(v / 1000).toFixed(1)}M`;
+    if (abs >= 1) return `$${Math.round(v)}K`;
+    return `$${Math.round(v * 1000)}`;
+  }
   if (fmt === "percent") return `${v.toFixed(1)}%`;
   return `${Math.round(v)}`;
 }

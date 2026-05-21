@@ -90,13 +90,48 @@ function isInRange(iso: string | null, from: Date, to: Date): boolean {
 
 /* ─── Region / service-line inference ─── */
 
-export function deriveRegion(rep: SnapshotRep): Rep["region"] {
+/**
+ * Derive a rep's primary region. PPP stores territory on Account
+ * (Account.Region__c — values like "Long Island", "NYC", etc.). A rep's
+ * "primary region" = the most common Account.Region__c across their
+ * WorkOrder-attached accounts.
+ *
+ * Falls back to UserRole/Department string match if no WO data exists yet
+ * (sandbox or freshly-loaded production).
+ */
+export function deriveRegion(
+  rep: SnapshotRep,
+  snapshot?: SalesforceSnapshot
+): Rep["region"] {
+  if (snapshot) {
+    const accountByName = new Map(snapshot.accounts.map((a) => [a.name, a]));
+    const regionCounts = new Map<string, number>();
+    for (const w of snapshot.workOrders) {
+      if (w.ownerId !== rep.id) continue;
+      const acct = w.accountName ? accountByName.get(w.accountName) : null;
+      const region = acct?.region;
+      if (!region) continue;
+      regionCounts.set(region, (regionCounts.get(region) ?? 0) + 1);
+    }
+    if (regionCounts.size > 0) {
+      let bestRegion: string | null = null;
+      let bestCount = 0;
+      for (const [r, c] of regionCounts.entries()) {
+        if (c > bestCount) {
+          bestRegion = r;
+          bestCount = c;
+        }
+      }
+      if (bestRegion) return bestRegion;
+    }
+  }
+  // Fallback: heuristic string match on user role/department.
   const probe = `${rep.roleName ?? ""} ${rep.department ?? ""}`.toLowerCase();
   if (probe.includes("suffolk")) return "Suffolk";
   if (probe.includes("nassau")) return "Nassau";
   if (probe.includes("queens")) return "Queens";
   if (probe.includes("brooklyn")) return "Brooklyn";
-  return "Suffolk"; // default — refine when we know PPP's actual region field
+  return "Unassigned";
 }
 
 export function deriveServiceLine(rep: SnapshotRep): Rep["serviceLine"] {
@@ -192,7 +227,7 @@ export function deriveRepsForPeriod(
     return {
       id: u.id,
       name: u.name,
-      region: deriveRegion(u),
+      region: deriveRegion(u, snapshot),
       serviceLine: deriveServiceLine(u),
       revenueSold: Math.round(a.wonRevenue / 1000),
       closeRate: +closeRate.toFixed(1),
@@ -221,7 +256,7 @@ export function deriveRepsForPeriod(
     cards.push({
       id: ownerId,
       name: ownerNameLookup.get(ownerId) ?? ownerId,
-      region: "Suffolk",
+      region: "Unassigned",
       serviceLine: "Residential",
       revenueSold: Math.round(a.wonRevenue / 1000),
       closeRate: +closeRate.toFixed(1),
@@ -339,7 +374,7 @@ export function deriveCompanyTrend(
   // Quick rep id → region/name lookup
   const repInfo = new Map<string, { name: string; region: string }>();
   for (const r of snapshot.reps) {
-    repInfo.set(r.id, { name: r.name, region: deriveRegion(r) });
+    repInfo.set(r.id, { name: r.name, region: deriveRegion(r, snapshot) });
   }
 
   for (const row of revenueRows(snapshot)) {

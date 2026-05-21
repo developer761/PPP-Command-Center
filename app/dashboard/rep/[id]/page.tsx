@@ -14,6 +14,7 @@ import {
   getRepRecentDealsFor,
 } from "@/lib/data-source";
 import { deriveRepsForPeriod } from "@/lib/salesforce/derive";
+import { fmtMoneyK } from "@/lib/format";
 
 export function generateStaticParams() {
   // Pre-build mock rep routes; SF rep routes render on-demand.
@@ -151,7 +152,7 @@ export default async function RepDetailPage({
               Trailing 12-month revenue
             </div>
             <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy mt-1">
-              ${ttmRevenue.toLocaleString()}K
+              {fmtMoneyK(ttmRevenue)}
             </div>
             <div
               className={[
@@ -168,10 +169,10 @@ export default async function RepDetailPage({
       {/* ─── KPI row ─── */}
       <section>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <KPICard label="Revenue Sold" value={`$${rep.revenueSold}K`} change={dRev.text} trend={dRev.trend} accent="blue" />
+          <KPICard label="Revenue Sold" value={fmtMoneyK(rep.revenueSold)} change={dRev.text} trend={dRev.trend} accent="blue" />
           <KPICard label="Close Rate" value={`${rep.closeRate.toFixed(1)}%`} change={dClose.text} trend={dClose.trend} accent="green" />
-          <KPICard label="Avg Ticket" value={`$${rep.avgTicket.toFixed(1)}K`} change={dTicket.text} trend={dTicket.trend} accent="orange" />
-          <KPICard label="Open Pipeline" value={`$${rep.openPipeline}K`} change={dPipe.text} trend={dPipe.trend} accent="blue" />
+          <KPICard label="Avg Ticket" value={fmtMoneyK(rep.avgTicket)} change={dTicket.text} trend={dTicket.trend} accent="orange" />
+          <KPICard label="Open Pipeline" value={fmtMoneyK(rep.openPipeline)} change={dPipe.text} trend={dPipe.trend} accent="blue" />
         </div>
       </section>
 
@@ -279,7 +280,7 @@ export default async function RepDetailPage({
                         {d.stage}
                       </span>
                     </td>
-                    <td className="px-6 py-3.5 text-right font-semibold text-ppp-charcoal">${d.amount}K</td>
+                    <td className="px-6 py-3.5 text-right font-semibold text-ppp-charcoal">{fmtMoneyK(d.amount)}</td>
                     <td className="px-6 py-3.5 text-right text-ppp-charcoal-500">
                       {d.closedAt ? d.closedAt : `${d.daysInStage}d in stage`}
                     </td>
@@ -301,7 +302,7 @@ export default async function RepDetailPage({
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-semibold text-ppp-charcoal">${d.amount}K</div>
+                    <div className="font-semibold text-ppp-charcoal">{fmtMoneyK(d.amount)}</div>
                     <span
                       className={[
                         "inline-flex items-center px-1.5 py-0 mt-1 rounded text-[10px] font-medium border",

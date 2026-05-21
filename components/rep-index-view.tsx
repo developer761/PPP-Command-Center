@@ -10,6 +10,7 @@ import {
   type Period,
 } from "@/lib/mock-data";
 import { deriveRepsForPeriod } from "@/lib/salesforce/derive";
+import { fmtMoneyK } from "@/lib/format";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
@@ -166,7 +167,7 @@ export default function RepIndexView({ bundle }: Props) {
                 <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                   <div>
                     <div className="font-condensed text-base font-bold text-ppp-navy">
-                      ${r.revenueSold}K
+                      {fmtMoneyK(r.revenueSold)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500 mt-0.5">
                       Revenue
@@ -182,7 +183,7 @@ export default function RepIndexView({ bundle }: Props) {
                   </div>
                   <div>
                     <div className="font-condensed text-base font-bold text-ppp-navy">
-                      ${r.avgTicket.toFixed(1)}K
+                      {fmtMoneyK(r.avgTicket)}
                     </div>
                     <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500 mt-0.5">
                       Ticket

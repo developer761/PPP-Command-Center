@@ -4,7 +4,7 @@
 export type Rep = {
   id: string;
   name: string;
-  region: "Suffolk" | "Nassau" | "Queens" | "Brooklyn";
+  region: string; // open — production has many territories beyond the original mock 4
   serviceLine: "Residential" | "Commercial";
   revenueSold: number; // $K — last 30 days
   closeRate: number; // %
@@ -352,7 +352,7 @@ export type Period = "lifetime" | "7d" | "30d" | "90d" | "6m" | "12m" | "ytd";
 export type RegionFilter = "all" | string; // intentionally open — Salesforce may add/rename regions
 
 export const PERIOD_LABELS: Record<Period, string> = {
-  lifetime: "All Time",
+  lifetime: "Last 24 months",
   "7d": "Last 7 days",
   "30d": "Last 30 days",
   "90d": "Last 90 days",
