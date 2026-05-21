@@ -15,7 +15,7 @@ type Props = {
 
 const COLUMNS: { key: SortKey; label: string; align: "right"; format: (r: Rep) => string }[] = [
   { key: "revenueSold", label: "Revenue", align: "right", format: (r) => fmtMoneyK(r.revenueSold) },
-  { key: "closeRate", label: "Close Rate", align: "right", format: (r) => `${r.closeRate.toFixed(1)}%` },
+  { key: "closeRate", label: "Conv.", align: "right", format: (r) => `${r.closeRate.toFixed(1)}%` },
   { key: "avgTicket", label: "Avg Ticket", align: "right", format: (r) => fmtMoneyK(r.avgTicket) },
   { key: "openPipeline", label: "Open Pipeline", align: "right", format: (r) => fmtMoneyK(r.openPipeline) },
 ];

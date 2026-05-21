@@ -218,11 +218,11 @@ export default function DashboardView({ bundle }: Props) {
             accent="blue"
           />
           <KPICard
-            label="Close Rate"
+            label="Conversion Rate"
             value={`${(liveKpis?.closeRate ?? view.kpis.closeRate.value).toFixed(1)}%`}
             change={
               liveKpis
-                ? "Avg across active reps"
+                ? "Opps → Work Orders"
                 : `${sign(view.kpis.closeRate.change)} pts`
             }
             trend={liveKpis ? "flat" : view.kpis.closeRate.trend}

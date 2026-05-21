@@ -16,7 +16,11 @@ import { getSalesforceClient } from "@/lib/salesforce/client";
  *   3. Period changes are instant client-side recomputes
  */
 
-const CACHE_TTL_MS = 5 * 60 * 1000;
+// 2 minutes — balances Vercel function timeout pressure (full snapshot pull
+// is 10-30s at PPP scale) against PPP's "ASAP" data-freshness expectations.
+// The Refresh Data button on /dashboard/integrations + topbar busts the cache
+// on demand for instant fresh data.
+const CACHE_TTL_MS = 2 * 60 * 1000;
 type CacheEntry<T> = { value: T; expiresAt: number };
 const cache = new Map<string, CacheEntry<unknown>>();
 
@@ -82,6 +86,10 @@ export type SnapshotAccount = {
   county: string | null;
   /** Where the lead came from (e.g., "Angi Ads", "Referral", "Google"). */
   leadGroup: string | null;
+  /** Account Manager — the User assigned to handle this account post-sale. */
+  accountManagerId: string | null;
+  /** Free-text "Primary Contact" field on the Account. */
+  primaryContact: string | null;
   totalLifetimeRevenue: number;
   totalRevenueCFY: number;
   totalRevenuePFY: number;
@@ -533,7 +541,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     try {
       const ACCT_FIELDS = `
         Id, Name, Type, Service_Territory__c, Region__c, Geo_Zone__c, County__c,
-        LeadGroup__c,
+        LeadGroup__c, Account_Manager__c, Primary_Contact__c,
         Total_Lifetime_Revenue__c, Total_Revenue_CFY__c, Total_Revenue_PFY__c,
         Total_Won_Oppties__c, Total_Lost_Oppties__c, Number_Open_Oppties__c,
         VendorBMRetailer__c, VendorBMAutoSubmit__c, Key_Relationship__c,
@@ -560,6 +568,8 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         geoZone: (a.Geo_Zone__c as string | null) ?? null,
         county: (a.County__c as string | null) ?? null,
         leadGroup: (a.LeadGroup__c as string | null) ?? null,
+        accountManagerId: (a.Account_Manager__c as string | null) ?? null,
+        primaryContact: (a.Primary_Contact__c as string | null) ?? null,
         totalLifetimeRevenue: (a.Total_Lifetime_Revenue__c as number | null) ?? 0,
         totalRevenueCFY: (a.Total_Revenue_CFY__c as number | null) ?? 0,
         totalRevenuePFY: (a.Total_Revenue_PFY__c as number | null) ?? 0,

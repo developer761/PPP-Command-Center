@@ -230,7 +230,7 @@ export default async function RepDetailPage({
       <section>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <KPICard label="Revenue Sold" value={fmtMoneyK(rep.revenueSold)} change={dRev.text} trend={dRev.trend} accent="blue" />
-          <KPICard label="Close Rate" value={`${rep.closeRate.toFixed(1)}%`} change={dClose.text} trend={dClose.trend} accent="green" />
+          <KPICard label="Conversion Rate" value={`${rep.closeRate.toFixed(1)}%`} change={dClose.text} trend={dClose.trend} accent="green" />
           <KPICard label="Avg Ticket" value={fmtMoneyK(rep.avgTicket)} change={dTicket.text} trend={dTicket.trend} accent="orange" />
           <KPICard label="Open Pipeline" value={fmtMoneyK(rep.openPipeline)} change={dPipe.text} trend={dPipe.trend} accent="blue" />
         </div>

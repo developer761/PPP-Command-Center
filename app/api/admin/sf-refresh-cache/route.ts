@@ -20,5 +20,19 @@ export async function POST(request: Request) {
   clearSalesforceCache();
 
   const { origin } = new URL(request.url);
+  // Redirect back to the page the user clicked from (Referer header) so the
+  // topbar refresh button works from anywhere. Falls back to integrations.
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      const url = new URL(referer);
+      if (url.origin === origin) {
+        // Preserve the user's location, append a freshness pulse.
+        return NextResponse.redirect(referer, 303);
+      }
+    } catch {
+      // bad referer — fall through
+    }
+  }
   return NextResponse.redirect(`${origin}/dashboard/integrations?sf_cache_cleared=1`, 303);
 }

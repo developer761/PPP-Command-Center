@@ -212,31 +212,31 @@ export function deriveRepsForPeriod(
     byOwner.set(row.ownerId, a);
   }
 
-  // Close Rate is derived from Opp data, NOT WO data. An Opp is
-  //   - "closed" when isClosed=true (SF Stage marked Closed Won or Closed Lost)
-  //   - "won" when isWon=true
-  // closeRate = won / closed (or 0 if no closed in period).
-  // Using WO data here would give 100% always — every WO that exists is "won"
-  // (no WO is created for a deal that was never won).
-  for (const o of snapshot.opportunities) {
-    if (!o.ownerId || !o.isClosed) continue;
-    if (!isInRange(o.closeDate, periodStart, periodEnd)) continue;
-    const a = byOwner.get(o.ownerId) ?? initStats();
-    a.closed += 1;
-    a.total += 1;
-    if (o.isWon) a.won += 1;
-    byOwner.set(o.ownerId, a);
-  }
-
-  // Also count opps CREATED in period (for activity volume — drives
-  // appointmentsHeld / quotesSent proxies, separate from closed counts).
+  // Close Rate = Opp → WO conversion rate.
+  //
+  // The traditional definition (IsWon / IsClosed) gives 100% in PPP's org
+  // because their SF Stage config doesn't include a "Closed Lost" type —
+  // every closed opp is also won (confirmed via the audit script). So we use
+  // a more meaningful metric: of all opps the rep created in the period,
+  // what % converted to an actual Work Order (= real job, real revenue)?
+  const oppsWithWOSet = new Set(
+    snapshot.workOrders.map((w) => w.opportunityId).filter(Boolean)
+  );
   for (const o of snapshot.opportunities) {
     if (!o.ownerId) continue;
     if (!isInRange(o.createdDate, periodStart, periodEnd)) continue;
-    if (o.isClosed && isInRange(o.closeDate, periodStart, periodEnd)) continue; // already counted above
     const a = byOwner.get(o.ownerId) ?? initStats();
-    a.total += 1;
+    a.closed += 1; // = "opps worked" in the period
+    if (oppsWithWOSet.has(o.id)) a.won += 1; // = "opps that became jobs"
     byOwner.set(o.ownerId, a);
+  }
+
+  // total = opps the rep worked in period (= same as a.closed from above
+  // since "Opp created in period" is the conversion denominator).
+  // Activity counts are kept separate in case we want appts/quotes
+  // proxies later; for now total = closed.
+  for (const stats of byOwner.values()) {
+    stats.total = stats.closed;
   }
 
   // Open pipeline = currently-open opps without an attached WO.

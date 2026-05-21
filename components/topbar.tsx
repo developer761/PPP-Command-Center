@@ -83,19 +83,43 @@ export default function Topbar({ onOpenMenu, user }: Props) {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-ppp-green-50 border border-ppp-green-100 rounded-full">
-          <span className="h-1.5 w-1.5 rounded-full bg-ppp-green animate-pulse" />
-          <span className="text-[11px] font-medium text-ppp-green-700 whitespace-nowrap">
-            Live · synced {formatAgo(ago)}
-          </span>
-        </div>
+        <form action="/api/admin/sf-refresh-cache" method="POST" className="hidden sm:block">
+          <button
+            type="submit"
+            className="flex items-center gap-2 px-3 py-1.5 bg-ppp-green-50 border border-ppp-green-100 rounded-full hover:bg-ppp-green-100 hover:border-ppp-green-200 transition-colors group"
+            title={`Synced ${formatAgo(ago)} · click to refresh from Salesforce`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-ppp-green animate-pulse" />
+            <span className="text-[11px] font-medium text-ppp-green-700 whitespace-nowrap">
+              Live · synced {formatAgo(ago)}
+            </span>
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-ppp-green-700 opacity-50 group-hover:opacity-100 transition-opacity"
+              aria-hidden
+            >
+              <path d="M21 12a9 9 0 1 1-3-6.7" />
+              <path d="M21 4v6h-6" />
+            </svg>
+          </button>
+        </form>
 
-        <div
-          className="sm:hidden flex items-center justify-center h-9 w-9 rounded-lg bg-ppp-green-50 border border-ppp-green-100"
-          title={`Synced ${formatAgo(ago)}`}
-        >
-          <span className="h-2 w-2 rounded-full bg-ppp-green animate-pulse" />
-        </div>
+        <form action="/api/admin/sf-refresh-cache" method="POST" className="sm:hidden">
+          <button
+            type="submit"
+            className="flex items-center justify-center h-9 w-9 rounded-lg bg-ppp-green-50 border border-ppp-green-100 hover:bg-ppp-green-100 transition-colors"
+            title={`Synced ${formatAgo(ago)} · tap to refresh`}
+          >
+            <span className="h-2 w-2 rounded-full bg-ppp-green animate-pulse" />
+          </button>
+        </form>
 
         <UserMenu
           name={user.fullName}
