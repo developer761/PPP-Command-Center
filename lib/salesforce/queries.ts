@@ -145,6 +145,9 @@ export type SnapshotWorkOrder = {
   laborDaysRemaining: number | null;
   balanceOwed: number;
   finalBalanceAging: number | null; // days
+  // Geographic fields — populated on 20k+ WOs in production
+  latitude: number | null;
+  longitude: number | null;
 };
 
 /**
@@ -526,6 +529,9 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         woNumberField,
         woStatusField,
         "CreatedDate",
+        // Standard SF geocoding fields — 20k+ WOs have these populated
+        "Latitude",
+        "Longitude",
         ...NEEDED_WO_FIELDS,
         woOppLookup,
         woOppRelName ? `${woOppRelName}.OwnerId` : null,
@@ -595,6 +601,8 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         laborDaysRemaining: numOrNull("LaborDaysRemaining__c"),
         balanceOwed: num("BalanceOwed__c"),
         finalBalanceAging: numOrNull("Final_Balance_Aging__c"),
+        latitude: numOrNull("Latitude"),
+        longitude: numOrNull("Longitude"),
       };
     });
 

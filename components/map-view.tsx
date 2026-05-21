@@ -21,27 +21,31 @@ export default function MapView({ bundle }: Props) {
   const [period, setPeriod] = useState<Period>("lifetime");
   const { snapshot } = bundle;
 
-  // Build GeoJSON FeatureCollection from opps with lat/lng.
+  // Build GeoJSON FeatureCollection from WORK ORDERS — they carry the actual
+  // job-site geocoded lat/lng (20k+ records populated in production). Each WO
+  // is one job at one address with one $ value, perfect for heatmap weighting.
   const geojson = useMemo(() => {
     if (!snapshot) return { type: "FeatureCollection" as const, features: [] };
-    const features = snapshot.opportunities
-      .filter((o) => {
-        if (typeof o.latitude !== "number" || typeof o.longitude !== "number") return false;
-        if (o.latitude === 0 || o.longitude === 0) return false;
-        if (o.amount === 0) return false;
+    const features = snapshot.workOrders
+      .filter((w) => {
+        if (typeof w.latitude !== "number" || typeof w.longitude !== "number") return false;
+        if (w.latitude === 0 || w.longitude === 0) return false;
+        if (w.amount === 0) return false;
         return true;
       })
-      .map((o) => ({
+      .map((w) => ({
         type: "Feature" as const,
         geometry: {
           type: "Point" as const,
-          coordinates: [o.longitude as number, o.latitude as number],
+          coordinates: [w.longitude as number, w.latitude as number],
         },
         properties: {
-          id: o.id,
-          amount: o.amount,
-          account: o.accountName ?? "",
-          stage: o.stageName ?? "",
+          id: w.id,
+          amount: w.amount,
+          account: w.accountName ?? "",
+          status: w.status ?? "",
+          rep: w.ownerName ?? "",
+          wo: w.workOrderNumber ?? "",
         },
       }));
     return { type: "FeatureCollection" as const, features };
@@ -115,7 +119,7 @@ export default function MapView({ bundle }: Props) {
         <div className="h-[60vh] sm:h-[70vh] min-h-[500px] w-full">
           <Map
             mapboxAccessToken={MAPBOX_TOKEN}
-            initialViewState={{ longitude: -98, latitude: 39, zoom: 3.5 }}
+            initialViewState={{ longitude: -73.5, latitude: 40.8, zoom: 8 }}
             mapStyle="mapbox://styles/mapbox/light-v11"
             attributionControl={false}
           >
