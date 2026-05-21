@@ -194,7 +194,7 @@ export function deriveRepsForPeriod(
   // "Opportunities with Work Orders" report — multiple WOs per Opp = multiple
   // rows (correct double-counting per their report).
   for (const row of revenueRows(snapshot)) {
-    if (!row.ownerId || row.amount <= 0) continue;
+    if (!row.ownerId || row.amount === 0) continue;
     if (!isInRange(row.closeDate, periodStart, periodEnd)) continue;
 
     const a = byOwner.get(row.ownerId) ?? initStats();
@@ -399,7 +399,7 @@ export function deriveCompanyTrend(
   if (period === "lifetime") {
     let earliest: Date | null = null;
     for (const row of revenueRows(snapshot)) {
-      if (row.amount <= 0 || !row.closeDate) continue;
+      if (row.amount === 0 || !row.closeDate) continue;
       const d = new Date(row.closeDate + "T00:00:00Z");
       if (!earliest || d < earliest) earliest = d;
     }
@@ -421,7 +421,7 @@ export function deriveCompanyTrend(
     // PPP revenue model: count revenue from WO rows with closeDate in period.
     // A single Opp's multiple WOs each contribute their own row — matches the
     // "Opportunities with Work Orders" report exactly.
-    if (row.amount <= 0 || !row.closeDate) continue;
+    if (row.amount === 0 || !row.closeDate) continue;
     const closed = new Date(row.closeDate + "T00:00:00Z");
     if (closed < effectiveStart || closed >= periodEnd) continue;
     const key = granularity === "daily"
@@ -508,7 +508,7 @@ export function derivePeriodDelta(
   let current = 0;
   let priorTotal = 0;
   for (const row of revenueRows(snapshot)) {
-    if (row.amount <= 0 || !row.closeDate) continue;
+    if (row.amount === 0 || !row.closeDate) continue;
     const closed = new Date(row.closeDate + "T00:00:00Z");
     if (closed >= periodStart && closed < periodEnd) current += row.amount;
     else if (closed >= prior.from && closed < prior.to) priorTotal += row.amount;
@@ -601,7 +601,7 @@ export function deriveTodaySnapshot(
   let biggest: { account: string; amount: number; rep: string | null } | null = null;
 
   for (const row of revenueRows(snapshot)) {
-    if (row.amount <= 0 || !row.closeDate) continue;
+    if (row.amount === 0 || !row.closeDate) continue;
     const d = new Date(row.closeDate + "T00:00:00Z");
     if (d >= startOfToday && d < startOfTomorrow) {
       todayRev += row.amount;
@@ -674,7 +674,7 @@ export function deriveMonthForecast(
   let mtdRev = 0;
   let lastMonthRev = 0;
   for (const row of revenueRows(snapshot)) {
-    if (row.amount <= 0 || !row.closeDate) continue;
+    if (row.amount === 0 || !row.closeDate) continue;
     const d = new Date(row.closeDate + "T00:00:00Z");
     if (d >= startOfMonth && d < startOfNextMonth) mtdRev += row.amount;
     if (d >= startOfLastMonth && d < endOfLastMonth) lastMonthRev += row.amount;
