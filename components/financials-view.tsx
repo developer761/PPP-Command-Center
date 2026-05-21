@@ -91,8 +91,20 @@ export default function FinancialsView({ bundle }: Props) {
         <Metric
           label="Gross Profit"
           value={fmtMoneyK(fin.grossProfit / 1000)}
-          sub={`${fin.gpMargin.toFixed(1)}% margin`}
-          accent={fin.gpMargin >= 30 ? "green" : fin.gpMargin >= 20 ? "blue" : "orange"}
+          sub={
+            fin.gpCoveragePct < 50
+              ? `${fin.gpMargin.toFixed(1)}% margin · ⚠ only ${fin.gpCoveragePct.toFixed(0)}% of WOs have cost data`
+              : `${fin.gpMargin.toFixed(1)}% margin · ${fin.gpCoveragePct.toFixed(0)}% data coverage`
+          }
+          accent={
+            fin.gpCoveragePct < 30
+              ? "orange"
+              : fin.gpMargin >= 30
+              ? "green"
+              : fin.gpMargin >= 20
+              ? "blue"
+              : "orange"
+          }
         />
         <Metric
           label="Lead Fee ROI"

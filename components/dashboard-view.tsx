@@ -343,75 +343,95 @@ export default function DashboardView({ bundle }: Props) {
               </div>
             </div>
 
-            {/* Pace vs actual — stacked bars + delta callout */}
+            {/* Simplified pace vs actual — single bar + clear delta callout.
+                FIX: monthToDateRevenue and lastMonthActual are BOTH in $K, so
+                ratios don't need the /1000. Expected = lastMonth * pacePct%. */}
             {(() => {
               const actualPct = forecast.lastMonthActual > 0
-                ? Math.min(150, Math.round((forecast.monthToDateRevenue * 1000 / forecast.lastMonthActual) * 100))
+                ? Math.min(150, Math.round((forecast.monthToDateRevenue / forecast.lastMonthActual) * 100))
                 : forecast.pacePct;
-              const expectedRevByNow = Math.round(forecast.lastMonthActual / 1000 * (forecast.pacePct / 100));
+              const expectedRevByNow = Math.round(forecast.lastMonthActual * (forecast.pacePct / 100));
               const ahead = forecast.monthToDateRevenue >= expectedRevByNow;
               const gap = Math.abs(forecast.monthToDateRevenue - expectedRevByNow);
-              const maxPct = Math.max(100, actualPct, forecast.pacePct);
+              const onPace = expectedRevByNow > 0 ? Math.abs(forecast.monthToDateRevenue - expectedRevByNow) / expectedRevByNow < 0.05 : false;
 
               return (
                 <div className="space-y-3">
-                  {/* Delta callout */}
-                  <div className="flex items-baseline justify-between gap-2 text-[11px]">
-                    <span className="text-ppp-charcoal-500">
-                      {forecast.daysRemaining} days remaining
-                    </span>
+                  {/* The headline: on-pace status */}
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div>
+                      <div className="text-[11px] text-ppp-charcoal-500">
+                        {forecast.daysRemaining} days left · {forecast.pacePct}% of month elapsed
+                      </div>
+                    </div>
                     {forecast.lastMonthActual > 0 && (
-                      <span
+                      <div
                         className={
-                          ahead
-                            ? "font-semibold text-ppp-green-700"
-                            : "font-semibold text-ppp-orange-700"
+                          onPace
+                            ? "text-[11px] font-semibold text-ppp-charcoal"
+                            : ahead
+                            ? "text-[11px] font-semibold text-ppp-green-700"
+                            : "text-[11px] font-semibold text-ppp-orange-700"
                         }
                       >
-                        {ahead ? "▲" : "▼"} {fmtMoneyK(gap)} {ahead ? "ahead of" : "behind"} pace
-                      </span>
+                        {onPace ? (
+                          <>● On pace</>
+                        ) : ahead ? (
+                          <>▲ {fmtMoneyK(gap)} ahead of pace</>
+                        ) : (
+                          <>▼ {fmtMoneyK(gap)} behind pace</>
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  {/* Actual bar */}
+                  {/* Single progress bar — captures everything at a glance */}
                   <div>
-                    <div className="flex justify-between text-[10px] text-ppp-charcoal-500 mb-1">
-                      <span className="font-medium text-ppp-navy">
-                        Actual {fmtMoneyK(forecast.monthToDateRevenue)}
+                    <div className="flex justify-between text-[10px] text-ppp-charcoal-500 mb-1.5">
+                      <span>
+                        <strong className="text-ppp-navy">{fmtMoneyK(forecast.monthToDateRevenue)} captured</strong>
+                        {forecast.lastMonthActual > 0 && (
+                          <span className="ml-1.5 text-ppp-charcoal-400">
+                            ({actualPct}% of last month&apos;s {fmtMoneyK(forecast.lastMonthActual)})
+                          </span>
+                        )}
                       </span>
-                      <span>{actualPct}% of last month</span>
+                      <span>Target {fmtMoneyK(expectedRevByNow)}</span>
                     </div>
-                    <div className="h-2 bg-ppp-charcoal-50 rounded-full overflow-hidden">
+                    <div className="relative h-3 bg-ppp-charcoal-50 rounded-full overflow-hidden">
+                      {/* Filled — actual */}
                       <div
-                        className="h-full bg-ppp-navy rounded-full transition-[width] duration-500"
-                        style={{ width: `${Math.min(100, (actualPct / maxPct) * 100)}%` }}
+                        className="absolute inset-y-0 left-0 bg-ppp-navy rounded-full transition-[width] duration-500"
+                        style={{
+                          width: `${Math.min(100, forecast.lastMonthActual > 0
+                            ? (forecast.monthToDateRevenue / forecast.lastMonthActual) * 100
+                            : 0)}%`,
+                        }}
                       />
+                      {/* Target line — vertical marker */}
+                      {forecast.lastMonthActual > 0 && (
+                        <div
+                          className="absolute inset-y-0 w-0.5 bg-ppp-orange-700"
+                          style={{ left: `calc(${forecast.pacePct}% - 1px)` }}
+                          title={`Expected by today: ${fmtMoneyK(expectedRevByNow)}`}
+                        />
+                      )}
+                    </div>
+                    <div className="mt-1 text-[10px] text-ppp-charcoal-500 flex items-center gap-3">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-sm bg-ppp-navy" /> Actual
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-0.5 bg-ppp-orange-700" /> Today&apos;s target
+                      </span>
+                      {velocity && velocity.sampleCount > 10 && (
+                        <span className="ml-auto">
+                          Quote→Job avg:{" "}
+                          <strong className="text-ppp-charcoal">{velocity.avgDays}d</strong>
+                        </span>
+                      )}
                     </div>
                   </div>
-
-                  {/* Expected pace bar */}
-                  <div>
-                    <div className="flex justify-between text-[10px] text-ppp-charcoal-500 mb-1">
-                      <span>Expected by today {fmtMoneyK(expectedRevByNow)}</span>
-                      <span>{forecast.pacePct}% of month elapsed</span>
-                    </div>
-                    <div className="h-2 bg-ppp-charcoal-50 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-ppp-blue-200 rounded-full"
-                        style={{ width: `${Math.min(100, (forecast.pacePct / maxPct) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {velocity && velocity.sampleCount > 10 && (
-                    <div className="pt-1 text-[10px] text-ppp-charcoal-500">
-                      Avg quote-to-job:{" "}
-                      <strong className="text-ppp-charcoal">{velocity.avgDays} days</strong>
-                      <span className="ml-1">
-                        ({velocity.sampleCount.toLocaleString()} deals · last 90d)
-                      </span>
-                    </div>
-                  )}
                 </div>
               );
             })()}

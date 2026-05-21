@@ -798,6 +798,45 @@ export function deriveRepMomentum(
   return byRep;
 }
 
+/* ─── Cost + margin helpers ─── */
+
+/**
+ * Compute the "trustworthy" gross profit for a WO. PPP's Gross_Profit__c
+ * field defaults to NetValue when costs aren't entered → produces a fake
+ * 100% margin. We instead derive GP from explicit costs (materials + labor
+ * payouts) when both are present; otherwise we don't trust the GP value
+ * and exclude it from leaderboards.
+ *
+ * Returns null when we can't compute a real margin.
+ */
+function trueGrossProfit(
+  amount: number,
+  costMaterials: number,
+  totalPayoutsForLabor: number,
+  reportedGP: number
+): { gp: number; marginPct: number } | null {
+  if (amount <= 0) return null;
+  const explicitCost = costMaterials + totalPayoutsForLabor;
+  // If we have at least some explicit cost data, compute from that.
+  if (explicitCost > 0) {
+    const gp = amount - explicitCost;
+    const marginPct = (gp / amount) * 100;
+    // Sanity range: paint contractor margins typically 15-65%. Anything
+    // outside this likely means cost data is still incomplete on this WO.
+    if (marginPct < -20 || marginPct > 85) return null;
+    return { gp, marginPct };
+  }
+  // No cost data at all → reportedGP is unreliable (likely = amount).
+  if (reportedGP > 0 && reportedGP < amount * 0.95) {
+    // GP looks like a real number, not just a copy of amount.
+    const marginPct = (reportedGP / amount) * 100;
+    if (marginPct >= 5 && marginPct <= 85) {
+      return { gp: reportedGP, marginPct };
+    }
+  }
+  return null;
+}
+
 /* ─── Financials rollups ─── */
 
 /**
@@ -809,24 +848,21 @@ export function deriveFinancials(
   snapshot: SalesforceSnapshot,
   period: Period = "this-month"
 ): {
-  // AR aging buckets — total $ outstanding per bucket
   arAging: { current: number; days30: number; days60: number; days90: number; days90Plus: number; total: number };
-  // GP totals + margin
   grossProfit: number;
   netRevenue: number;
   gpMargin: number; // %
-  // Lead fee economics
+  /** Revenue from WOs where cost data is trustworthy (used as GP denominator). */
+  revenueWithTrustedGP: number;
+  /** % of period revenue that has trustworthy GP data populated. */
+  gpCoveragePct: number;
   totalLeadFee: number;
-  leadFeeRoi: number; // revenue per $1 lead fee
-  // Discounts
+  leadFeeRoi: number;
   totalDiscount: number;
   discountPctOfRevenue: number;
-  // Commissions
   totalCommission: number;
   commissionPctOfRevenue: number;
-  // Top discounters (rep)
   topDiscounters: Array<{ ownerId: string; ownerName: string; discount: number }>;
-  // Top GP contributors (rep)
   topGPContributors: Array<{ ownerId: string; ownerName: string; gp: number }>;
 } {
   const now = new Date();
@@ -849,6 +885,7 @@ export function deriveFinancials(
   // Period-scoped revenue + GP + lead-fee + discount + commission.
   let netRevenue = 0;
   let grossProfit = 0;
+  let revenueWithTrustedGP = 0; // denominator for margin calc — only WOs where we trust the GP figure
   let totalLeadFee = 0;
   let totalDiscount = 0;
   let totalCommission = 0;
@@ -863,10 +900,16 @@ export function deriveFinancials(
   for (const w of snapshot.workOrders) {
     if (!isInRange(w.closeDate, periodStart, periodEnd)) continue;
     netRevenue += w.amount;
-    grossProfit += w.grossProfit;
     totalCommission += w.commissionAmount;
-    if (w.ownerId) {
-      gpByRep.set(w.ownerId, (gpByRep.get(w.ownerId) ?? 0) + w.grossProfit);
+    // Use trustworthy GP only — filters out WOs where cost wasn't entered
+    // and Gross_Profit__c just defaults to the amount.
+    const trueGp = trueGrossProfit(w.amount, w.costMaterials, w.totalPayoutsForLabor, w.grossProfit);
+    if (trueGp) {
+      grossProfit += trueGp.gp;
+      revenueWithTrustedGP += w.amount;
+      if (w.ownerId) {
+        gpByRep.set(w.ownerId, (gpByRep.get(w.ownerId) ?? 0) + trueGp.gp);
+      }
     }
   }
   for (const o of snapshot.opportunities) {
@@ -894,7 +937,11 @@ export function deriveFinancials(
     arAging,
     grossProfit,
     netRevenue,
-    gpMargin: netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0,
+    // Margin computed only against revenue with trustworthy GP data — avoids
+    // the "95% margin" illusion when many WOs have GP = amount (no cost data).
+    gpMargin: revenueWithTrustedGP > 0 ? (grossProfit / revenueWithTrustedGP) * 100 : 0,
+    revenueWithTrustedGP,
+    gpCoveragePct: netRevenue > 0 ? (revenueWithTrustedGP / netRevenue) * 100 : 0,
     totalLeadFee,
     leadFeeRoi: totalLeadFee > 0 ? netRevenue / totalLeadFee : 0,
     totalDiscount,
@@ -966,15 +1013,17 @@ export function deriveOperations(
           overByDays: Math.round(act - proj),
         });
       }
-      // Margin candidate
-      if (w.amount > 0 && w.grossProfit > 0) {
+      // Margin candidate — use the trustworthy GP calc so we don't surface
+      // the "100% margin" WOs where cost data simply wasn't entered.
+      const trueGp = trueGrossProfit(w.amount, w.costMaterials, w.totalPayoutsForLabor, w.grossProfit);
+      if (trueGp) {
         gpMargin.push({
           id: w.id,
           workOrderNumber: w.workOrderNumber,
           account: w.accountName,
           revenue: w.amount,
-          gp: w.grossProfit,
-          marginPct: (w.grossProfit / w.amount) * 100,
+          gp: trueGp.gp,
+          marginPct: trueGp.marginPct,
         });
       }
     }
