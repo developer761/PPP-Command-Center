@@ -217,7 +217,8 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
           className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-ppp-charcoal-500 bg-ppp-charcoal-50/60 hover:bg-ppp-charcoal-50 border border-ppp-charcoal-100 rounded-lg transition-colors"
         >
           <IconSearch />
-          <span>Search reps, customers, work orders…</span>
+          <span className="hidden sm:inline truncate">Search reps, customers, work orders…</span>
+          <span className="sm:hidden truncate">Search…</span>
           <kbd className="ml-auto hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-white border border-ppp-charcoal-100 rounded text-ppp-charcoal-500">
             ⌘K
           </kbd>

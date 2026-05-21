@@ -97,8 +97,8 @@ export default function Topbar({ onOpenMenu, user, searchIndex = null }: Props) 
         </div>
       </div>
 
-      {/* Global search — visible on md+ */}
-      <div className="hidden md:flex flex-1 justify-center">
+      {/* Global search — always visible (CEO uses dashboard on phone) */}
+      <div className="flex flex-1 justify-center min-w-0">
         <GlobalSearch snapshot={searchIndex} />
       </div>
 
