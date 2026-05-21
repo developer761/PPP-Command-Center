@@ -348,11 +348,26 @@ export function getRepRecentDeals(repId: string): Deal[] {
  * Salesforce-bound queries will replace this engine when access lands.
  * ─────────────────────────────────────────────────────────────── */
 
-export type Period = "lifetime" | "7d" | "30d" | "90d" | "6m" | "12m" | "ytd";
+export type Period =
+  | "lifetime"      // last 24 months (constrained by snapshot recency window)
+  | "this-month"    // current calendar month (1st → now)
+  | "last-month"    // prior calendar month (full)
+  | "this-year"     // current calendar year (Jan 1 → now)
+  | "last-year"     // prior calendar year (full)
+  | "7d"
+  | "30d"
+  | "90d"
+  | "6m"
+  | "12m"
+  | "ytd";          // alias for this-year — kept for back-compat
 export type RegionFilter = "all" | string; // intentionally open — Salesforce may add/rename regions
 
 export const PERIOD_LABELS: Record<Period, string> = {
   lifetime: "Last 24 months",
+  "this-month": "This Month",
+  "last-month": "Last Month",
+  "this-year": "This Year",
+  "last-year": "Last Year",
   "7d": "Last 7 days",
   "30d": "Last 30 days",
   "90d": "Last 90 days",
@@ -394,7 +409,11 @@ const PERIOD_SHAPE: Record<
   Period,
   { granularity: "daily" | "monthly"; count: number }
 > = {
-  lifetime: { granularity: "monthly", count: 12 },
+  lifetime: { granularity: "monthly", count: 24 },
+  "this-month": { granularity: "daily", count: 30 },
+  "last-month": { granularity: "daily", count: 30 },
+  "this-year": { granularity: "monthly", count: 12 },
+  "last-year": { granularity: "monthly", count: 12 },
   "7d": { granularity: "daily", count: 7 },
   "30d": { granularity: "daily", count: 30 },
   "90d": { granularity: "monthly", count: 3 },

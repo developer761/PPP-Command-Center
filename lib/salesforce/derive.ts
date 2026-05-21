@@ -47,27 +47,57 @@ import type {
 /* ─── Period helpers ─── */
 
 export const PERIOD_DAYS: Record<Period, number> = {
-  lifetime: 0, // no scope — include everything
+  lifetime: 0,        // no scope — include everything
+  "this-month": 0,    // computed from calendar
+  "last-month": 0,    // computed from calendar
+  "this-year": 0,     // computed from calendar
+  "last-year": 0,     // computed from calendar
   "7d": 7,
   "30d": 30,
   "90d": 90,
   "6m": 180,
   "12m": 365,
-  ytd: 0, // computed dynamically
+  ytd: 0,             // computed dynamically
 };
 
 /** Earliest sensible "lifetime" anchor — Salesforce epoch-equivalent. */
 const LIFETIME_START = new Date(Date.UTC(2000, 0, 1));
 
-function startOfPeriod(period: Period, now: Date = new Date()): Date {
-  if (period === "lifetime") return LIFETIME_START;
-  if (period === "ytd") {
-    return new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+/**
+ * Compute start AND end of a period. Most periods end at "now", but calendar
+ * periods (last-month, last-year) end at a fixed past date.
+ */
+export function periodRange(period: Period, now: Date = new Date()): { start: Date; end: Date } {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  if (period === "lifetime") return { start: LIFETIME_START, end: now };
+  if (period === "ytd" || period === "this-year") {
+    return { start: new Date(Date.UTC(y, 0, 1)), end: now };
   }
+  if (period === "last-year") {
+    return {
+      start: new Date(Date.UTC(y - 1, 0, 1)),
+      end: new Date(Date.UTC(y, 0, 1)),
+    };
+  }
+  if (period === "this-month") {
+    return { start: new Date(Date.UTC(y, m, 1)), end: now };
+  }
+  if (period === "last-month") {
+    return {
+      start: new Date(Date.UTC(y, m - 1, 1)),
+      end: new Date(Date.UTC(y, m, 1)),
+    };
+  }
+  // Rolling windows ending now.
   const start = new Date(now);
   start.setUTCDate(start.getUTCDate() - PERIOD_DAYS[period]);
   start.setUTCHours(0, 0, 0, 0);
-  return start;
+  return { start, end: now };
+}
+
+function startOfPeriod(period: Period, now: Date = new Date()): Date {
+  return periodRange(period, now).start;
 }
 
 function priorPeriodStart(period: Period, now: Date = new Date()): { from: Date; to: Date } {
@@ -152,38 +182,22 @@ export function deriveRepsForPeriod(
   period: Period
 ): Rep[] {
   const now = new Date();
-  const periodStart = startOfPeriod(period, now);
-  const periodEnd = now;
+  const { start: periodStart, end: periodEnd } = periodRange(period, now);
 
-  // Group opps by owner, only counting those touching the period window.
-  // "Touching" = closedDate in range (for won/closed) OR createdDate in range (for open).
-  const byOwner = new Map<string, {
-    total: number;
-    closed: number;
-    won: number;
-    wonRevenue: number;
-    openPipeline: number;
-    daysToCloseSum: number;
-    daysToCloseCount: number;
-    ticketSum: number;
-    ticketCount: number;
-  }>();
+  const initStats = () => ({
+    total: 0, closed: 0, won: 0, wonRevenue: 0, openPipeline: 0,
+    daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
+  });
+  const byOwner = new Map<string, ReturnType<typeof initStats>>();
 
-  // Revenue rows come from Work Orders (PPP's report unit). Multiple WOs
-  // per Opp = multiple rows in the report. We mirror that exactly.
+  // Revenue: SUM(WO Net Value) where CloseDate ∈ period. Matches PPP's
+  // "Opportunities with Work Orders" report — multiple WOs per Opp = multiple
+  // rows (correct double-counting per their report).
   for (const row of revenueRows(snapshot)) {
-    if (!row.ownerId) continue;
-    if (row.amount <= 0) continue;
-    const closedInPeriod = isInRange(row.closeDate, periodStart, periodEnd);
-    if (!closedInPeriod) continue;
+    if (!row.ownerId || row.amount <= 0) continue;
+    if (!isInRange(row.closeDate, periodStart, periodEnd)) continue;
 
-    const a = byOwner.get(row.ownerId) ?? {
-      total: 0, closed: 0, won: 0, wonRevenue: 0, openPipeline: 0,
-      daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
-    };
-    a.total += 1;
-    a.closed += 1;
-    a.won += 1;
+    const a = byOwner.get(row.ownerId) ?? initStats();
     a.wonRevenue += row.amount;
     a.ticketSum += row.amount;
     a.ticketCount += 1;
@@ -198,7 +212,34 @@ export function deriveRepsForPeriod(
     byOwner.set(row.ownerId, a);
   }
 
-  // Open pipeline = opps not closed and not yet attached to a Work Order.
+  // Close Rate is derived from Opp data, NOT WO data. An Opp is
+  //   - "closed" when isClosed=true (SF Stage marked Closed Won or Closed Lost)
+  //   - "won" when isWon=true
+  // closeRate = won / closed (or 0 if no closed in period).
+  // Using WO data here would give 100% always — every WO that exists is "won"
+  // (no WO is created for a deal that was never won).
+  for (const o of snapshot.opportunities) {
+    if (!o.ownerId || !o.isClosed) continue;
+    if (!isInRange(o.closeDate, periodStart, periodEnd)) continue;
+    const a = byOwner.get(o.ownerId) ?? initStats();
+    a.closed += 1;
+    a.total += 1;
+    if (o.isWon) a.won += 1;
+    byOwner.set(o.ownerId, a);
+  }
+
+  // Also count opps CREATED in period (for activity volume — drives
+  // appointmentsHeld / quotesSent proxies, separate from closed counts).
+  for (const o of snapshot.opportunities) {
+    if (!o.ownerId) continue;
+    if (!isInRange(o.createdDate, periodStart, periodEnd)) continue;
+    if (o.isClosed && isInRange(o.closeDate, periodStart, periodEnd)) continue; // already counted above
+    const a = byOwner.get(o.ownerId) ?? initStats();
+    a.total += 1;
+    byOwner.set(o.ownerId, a);
+  }
+
+  // Open pipeline = currently-open opps without an attached WO.
   const oppsWithWO = new Set(
     snapshot.workOrders.map((w) => w.opportunityId).filter(Boolean)
   );
@@ -206,10 +247,7 @@ export function deriveRepsForPeriod(
     if (o.isClosed) continue;
     if (oppsWithWO.has(o.id)) continue;
     if (o.amount <= 0) continue;
-    const a = byOwner.get(o.ownerId) ?? {
-      total: 0, closed: 0, won: 0, wonRevenue: 0, openPipeline: 0,
-      daysToCloseSum: 0, daysToCloseCount: 0, ticketSum: 0, ticketCount: 0,
-    };
+    const a = byOwner.get(o.ownerId) ?? initStats();
     a.openPipeline += o.amount;
     byOwner.set(o.ownerId, a);
   }
@@ -349,9 +387,11 @@ export function deriveCompanyTrend(
   period: Period
 ): { granularity: "daily" | "monthly"; series: SeriesPoint[] } {
   const now = new Date();
-  const periodStart = startOfPeriod(period, now);
+  const { start: periodStart, end: periodEnd } = periodRange(period, now);
   const granularity: "daily" | "monthly" =
-    period === "7d" || period === "30d" ? "daily" : "monthly";
+    period === "7d" || period === "30d" || period === "this-month" || period === "last-month"
+      ? "daily"
+      : "monthly";
 
   // For "lifetime", clamp the start to the earliest WO close date in the
   // snapshot so we don't render hundreds of empty monthly buckets back to 2000.
@@ -383,7 +423,7 @@ export function deriveCompanyTrend(
     // "Opportunities with Work Orders" report exactly.
     if (row.amount <= 0 || !row.closeDate) continue;
     const closed = new Date(row.closeDate + "T00:00:00Z");
-    if (closed < effectiveStart) continue;
+    if (closed < effectiveStart || closed >= periodEnd) continue;
     const key = granularity === "daily"
       ? bucketStartDaily(row.closeDate)
       : bucketStartMonthly(row.closeDate);
@@ -407,7 +447,7 @@ export function deriveCompanyTrend(
   const series: SeriesPoint[] = [];
   if (granularity === "daily") {
     const cursor = new Date(effectiveStart);
-    while (cursor <= now) {
+    while (cursor < periodEnd) {
       const key = bucketStartDaily(cursor.toISOString());
       const b = buckets.get(key);
       const topRegion = b ? topEntry(b.byRegion) : null;
@@ -425,7 +465,7 @@ export function deriveCompanyTrend(
     }
   } else {
     const cursor = new Date(Date.UTC(effectiveStart.getUTCFullYear(), effectiveStart.getUTCMonth(), 1));
-    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const end = new Date(Date.UTC(periodEnd.getUTCFullYear(), periodEnd.getUTCMonth(), 1));
     while (cursor <= end) {
       const key = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`;
       const b = buckets.get(key);
@@ -462,7 +502,7 @@ export function derivePeriodDelta(
   period: Period
 ): { value: number; change: number; trend: "up" | "down" | "flat" } {
   const now = new Date();
-  const periodStart = startOfPeriod(period, now);
+  const { start: periodStart, end: periodEnd } = periodRange(period, now);
   const prior = priorPeriodStart(period, now);
 
   let current = 0;
@@ -470,7 +510,7 @@ export function derivePeriodDelta(
   for (const row of revenueRows(snapshot)) {
     if (row.amount <= 0 || !row.closeDate) continue;
     const closed = new Date(row.closeDate + "T00:00:00Z");
-    if (closed >= periodStart && closed <= now) current += row.amount;
+    if (closed >= periodStart && closed < periodEnd) current += row.amount;
     else if (closed >= prior.from && closed < prior.to) priorTotal += row.amount;
   }
   const change = priorTotal === 0 ? 0 : Math.round(((current - priorTotal) / priorTotal) * 100);

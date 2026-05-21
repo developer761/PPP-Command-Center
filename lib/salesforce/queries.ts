@@ -80,6 +80,8 @@ export type SnapshotAccount = {
   region: string | null;
   geoZone: string | null;
   county: string | null;
+  /** Where the lead came from (e.g., "Angi Ads", "Referral", "Google"). */
+  leadGroup: string | null;
   totalLifetimeRevenue: number;
   totalRevenueCFY: number;
   totalRevenuePFY: number;
@@ -531,6 +533,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     try {
       const ACCT_FIELDS = `
         Id, Name, Type, Service_Territory__c, Region__c, Geo_Zone__c, County__c,
+        LeadGroup__c,
         Total_Lifetime_Revenue__c, Total_Revenue_CFY__c, Total_Revenue_PFY__c,
         Total_Won_Oppties__c, Total_Lost_Oppties__c, Number_Open_Oppties__c,
         VendorBMRetailer__c, VendorBMAutoSubmit__c, Key_Relationship__c,
@@ -556,6 +559,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         region: (a.Region__c as string | null) ?? null,
         geoZone: (a.Geo_Zone__c as string | null) ?? null,
         county: (a.County__c as string | null) ?? null,
+        leadGroup: (a.LeadGroup__c as string | null) ?? null,
         totalLifetimeRevenue: (a.Total_Lifetime_Revenue__c as number | null) ?? 0,
         totalRevenueCFY: (a.Total_Revenue_CFY__c as number | null) ?? 0,
         totalRevenuePFY: (a.Total_Revenue_PFY__c as number | null) ?? 0,

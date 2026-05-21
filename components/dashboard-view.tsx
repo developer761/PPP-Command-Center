@@ -30,7 +30,16 @@ import {
 import type { LiveDashboardBundle } from "@/lib/data-source";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
-  ["lifetime", "30d", "90d", "6m", "12m", "ytd"] as Period[]
+  [
+    "this-month",
+    "last-month",
+    "30d",
+    "90d",
+    "this-year",
+    "last-year",
+    "12m",
+    "lifetime",
+  ] as Period[]
 ).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
 
 import { fmtMoneyK } from "@/lib/format";
@@ -44,9 +53,10 @@ type Props = {
 };
 
 export default function DashboardView({ bundle }: Props) {
-  // Default to "lifetime" (matches PPP's Salesforce report which has no date scope).
-  // Other periods are opt-in via the dropdown.
-  const [period, setPeriod] = useState<Period>("lifetime");
+  // Default to "This Month" — PPP's day-to-day mental model is month-by-month
+  // ("show me May", "what did we do this month"). Their SF reports default
+  // to a similar window. Other periods are opt-in via the dropdown.
+  const [period, setPeriod] = useState<Period>("this-month");
   const [region, setRegion] = useState<RegionFilter>("all");
   const [funnelPeriod, setFunnelPeriod] = useState<Period | "page">("page");
 

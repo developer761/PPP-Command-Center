@@ -13,7 +13,8 @@ import {
   getRepMonthlyFor,
   getRepRecentDealsFor,
 } from "@/lib/data-source";
-import { deriveRepsForPeriod } from "@/lib/salesforce/derive";
+import { deriveRepsForPeriod, deriveRepAccountStats } from "@/lib/salesforce/derive";
+import type { SnapshotAccount } from "@/lib/salesforce/queries";
 import { fmtMoneyK } from "@/lib/format";
 
 export function generateStaticParams() {
@@ -66,8 +67,9 @@ export default async function RepDetailPage({
 
   // Pull the full snapshot bundle so we can derive everything from one fetch.
   const bundle = await loadDashboardData();
+  // Use lifetime for the rep deep-dive so totals/region inference cover the full snapshot.
   const reps: Rep[] = bundle.snapshot
-    ? deriveRepsForPeriod(bundle.snapshot, "12m")
+    ? deriveRepsForPeriod(bundle.snapshot, "lifetime")
     : mockReps;
   const rep: Rep | undefined = reps.find((r) => r.id === id);
   if (!rep) notFound();
@@ -79,6 +81,47 @@ export default async function RepDetailPage({
     getRepRecentDealsFor(bundle, rep.id) ?? getMockRepRecentDeals(rep.id);
   const hasActivity = monthly.some((m) => m.revenue > 0) || recentDeals.length > 0;
   const noHistoricalData = !hasActivity;
+
+  // Account stats — only when on live data. Repeat-customer counts,
+  // lifetime revenue across their accounts, BM-retailer flags, top account.
+  const accountStats = bundle.snapshot
+    ? deriveRepAccountStats(bundle.snapshot, rep.id)
+    : null;
+
+  // Indexed account lookup so the recent-deals table can flag Repeat Customer
+  // accounts inline.
+  const accountByName = bundle.snapshot
+    ? new Map(bundle.snapshot.accounts.map((a) => [a.name, a]))
+    : new Map();
+
+  // Lead Group breakdown — where their accounts came from (Angi Ads, Referral, etc.)
+  const leadGroupCounts = new Map<string, number>();
+  let maxRecentDate: Date | null = null;
+  if (bundle.snapshot) {
+    const seenAccountIds = new Set<string>();
+    for (const w of bundle.snapshot.workOrders) {
+      if (w.ownerId !== rep.id) continue;
+      // Track most recent activity for "Last Activity" timestamp
+      const dStr = w.closeDate ?? w.createdDate;
+      if (dStr) {
+        const d = new Date(dStr);
+        if (!isNaN(d.getTime()) && (!maxRecentDate || d > maxRecentDate)) maxRecentDate = d;
+      }
+      if (!w.accountName) continue;
+      const acct = accountByName.get(w.accountName);
+      if (!acct || seenAccountIds.has(acct.id)) continue;
+      seenAccountIds.add(acct.id);
+      const group = acct.leadGroup ?? "Unknown";
+      leadGroupCounts.set(group, (leadGroupCounts.get(group) ?? 0) + 1);
+    }
+  }
+  const leadGroupList = Array.from(leadGroupCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  const daysSinceLast = maxRecentDate
+    ? Math.floor((Date.now() - maxRecentDate.getTime()) / 86_400_000)
+    : null;
 
   // Team averages computed from the actual loaded reps (not module-level mock).
   const teamRevenue = reps.reduce((s, r) => s + r.revenueSold, 0);
@@ -143,6 +186,23 @@ export default async function RepDetailPage({
                 </span>
                 <span className="text-ppp-charcoal-200">·</span>
                 <span className="text-ppp-charcoal-500">{tenure(rep.startedAt)} at PPP</span>
+                {daysSinceLast !== null && (
+                  <>
+                    <span className="text-ppp-charcoal-200">·</span>
+                    <span
+                      className={[
+                        "inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium",
+                        daysSinceLast <= 7
+                          ? "text-ppp-green-700 bg-ppp-green-50"
+                          : daysSinceLast <= 30
+                          ? "text-ppp-charcoal-500 bg-ppp-charcoal-50"
+                          : "text-ppp-orange-700 bg-ppp-orange-50",
+                      ].join(" ")}
+                    >
+                      Last activity {daysSinceLast === 0 ? "today" : `${daysSinceLast}d ago`}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -175,6 +235,96 @@ export default async function RepDetailPage({
           <KPICard label="Open Pipeline" value={fmtMoneyK(rep.openPipeline)} change={dPipe.text} trend={dPipe.trend} accent="blue" />
         </div>
       </section>
+
+      {/* ─── Account stats card + Lead Group breakdown ─── */}
+      {accountStats && accountStats.totalCustomers > 0 && (
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+          {/* Customer mix */}
+          <div className="lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+            <div className="flex items-baseline justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-base font-semibold text-ppp-charcoal">Customer Mix</h3>
+                <p className="text-xs text-ppp-charcoal-500 mt-1">
+                  Accounts {rep.name.split(" ")[0]} owns deals with
+                </p>
+              </div>
+              <div className="font-condensed text-2xl font-bold text-ppp-navy">
+                {accountStats.totalCustomers}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Stat
+                label="New"
+                value={accountStats.newCustomers.toString()}
+                sub="customers"
+                accent="blue"
+              />
+              <Stat
+                label="Repeat"
+                value={accountStats.repeatCustomers.toString()}
+                sub={accountStats.totalCustomers > 0
+                  ? `${Math.round((accountStats.repeatCustomers / accountStats.totalCustomers) * 100)}% repeat`
+                  : "—"}
+                accent={accountStats.repeatCustomers > 0 ? "green" : "muted"}
+              />
+              <Stat
+                label="Lifetime Rev"
+                value={fmtMoneyK(accountStats.totalLifetimeRevenue / 1000)}
+                sub="across all WOs"
+              />
+              <Stat
+                label="BM Retailers"
+                value={accountStats.bmRetailerCount.toString()}
+                sub="Benjamin Moore"
+                accent={accountStats.bmRetailerCount > 0 ? "orange" : "muted"}
+              />
+            </div>
+            {accountStats.topAccountName && (
+              <div className="mt-4 pt-3 border-t border-ppp-charcoal-100 flex items-baseline justify-between gap-3 text-xs">
+                <span className="text-ppp-charcoal-500">Top account by {rep.name.split(" ")[0]}&apos;s revenue</span>
+                <span className="font-medium text-ppp-charcoal truncate">
+                  {accountStats.topAccountName} · {fmtMoneyK(accountStats.topAccountRevenue / 1000)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Lead Group breakdown */}
+          <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+            <h3 className="text-base font-semibold text-ppp-charcoal">Lead Sources</h3>
+            <p className="text-xs text-ppp-charcoal-500 mt-1 mb-4">
+              How {rep.name.split(" ")[0]}&apos;s customers were sourced
+            </p>
+            {leadGroupList.length > 0 ? (
+              <ul className="space-y-2">
+                {leadGroupList.map(([group, count]) => {
+                  const pct = Math.round((count / accountStats.totalCustomers) * 100);
+                  return (
+                    <li key={group}>
+                      <div className="flex items-baseline justify-between text-[11px] mb-0.5">
+                        <span className="text-ppp-charcoal font-medium truncate pr-2">{group}</span>
+                        <span className="text-ppp-charcoal-500 shrink-0">
+                          {count} · {pct}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-ppp-charcoal-50 rounded">
+                        <div
+                          className="h-full bg-ppp-blue rounded transition-[width] duration-500"
+                          style={{ width: `${Math.max(4, pct)}%` }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-[11px] text-ppp-charcoal-500 italic">
+                No lead source data on these accounts yet.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {noHistoricalData && (
         <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50 text-ppp-charcoal-500 text-xs sm:text-sm px-4 py-3">
@@ -269,7 +419,12 @@ export default async function RepDetailPage({
               <tbody className="text-sm">
                 {recentDeals.map((d) => (
                   <tr key={d.id} className="border-t border-ppp-charcoal-100">
-                    <td className="px-6 py-3.5 font-medium text-ppp-charcoal">{d.customer}</td>
+                    <td className="px-6 py-3.5 font-medium text-ppp-charcoal">
+                      <span className="inline-flex items-center gap-1.5">
+                        {d.customer}
+                        <CustomerBadges acct={accountByName.get(d.customer)} />
+                      </span>
+                    </td>
                     <td className="px-6 py-3.5">
                       <span
                         className={[
@@ -296,7 +451,10 @@ export default async function RepDetailPage({
               <li key={d.id} className="px-5 py-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-medium text-ppp-charcoal truncate">{d.customer}</div>
+                    <div className="font-medium text-ppp-charcoal truncate">
+                      {d.customer}
+                      <CustomerBadges acct={accountByName.get(d.customer)} />
+                    </div>
                     <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                       {d.closedAt ? d.closedAt : `${d.daysInStage}d in stage`}
                     </div>
@@ -318,6 +476,72 @@ export default async function RepDetailPage({
           </ul>
         </div>
       </section>
+    </div>
+  );
+}
+
+function CustomerBadges({ acct }: { acct?: SnapshotAccount }) {
+  if (!acct) return null;
+  const badges: { label: string; cls: string; title?: string }[] = [];
+  if ((acct.type ?? "").toLowerCase().includes("repeat")) {
+    badges.push({
+      label: "Repeat",
+      cls: "text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100",
+      title: "Repeat Customer — has done business with PPP before",
+    });
+  }
+  if (acct.isKeyRelationship) {
+    badges.push({
+      label: "Key",
+      cls: "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100",
+      title: "Key Relationship — flagged as strategic account in Salesforce",
+    });
+  }
+  if (acct.isBMRetailer) {
+    badges.push({
+      label: "BM",
+      cls: "text-ppp-orange-700 bg-ppp-orange-50 border-ppp-orange-100",
+      title: "Benjamin Moore Retailer",
+    });
+  }
+  if (badges.length === 0) return null;
+  return (
+    <span className="inline-flex flex-wrap gap-1 ml-1.5 align-middle">
+      {badges.map((b) => (
+        <span
+          key={b.label}
+          title={b.title}
+          className={`inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold border ${b.cls}`}
+        >
+          {b.label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  accent?: "blue" | "green" | "orange" | "muted";
+}) {
+  const accentClass =
+    accent === "blue" ? "text-ppp-blue-700" :
+    accent === "green" ? "text-ppp-green-700" :
+    accent === "orange" ? "text-ppp-orange-700" :
+    accent === "muted" ? "text-ppp-charcoal-200" :
+    "text-ppp-navy";
+  return (
+    <div>
+      <div className="font-condensed text-[10px] uppercase tracking-wide text-ppp-charcoal-500">{label}</div>
+      <div className={`font-condensed text-xl sm:text-2xl font-bold ${accentClass} mt-0.5`}>{value}</div>
+      {sub && <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 truncate">{sub}</div>}
     </div>
   );
 }
