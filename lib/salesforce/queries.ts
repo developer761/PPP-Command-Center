@@ -326,23 +326,21 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       LIMIT 500
     `);
 
-    // At PPP scale (89k+ opps), pulling 25 custom currency fields per row blows
-    // up payload size + serverless memory. Narrow to just what we actually
-    // surface in UI: canonical revenue + financial fields (GP, lead fee,
-    // discount, payments) + geographic for the Map tab.
+    // At PPP scale (89k+ opps), pulling extra fields per row blows up payload
+    // size + serverless memory. Narrow to ONLY fields the UI actually reads:
+    //   - canonical revenue (NetValue / QuotedSubtotalWithChangeOrder)
+    //   - Gross_Profit (Financials)
+    //   - Lead_Fee / Discount_Given (Financials)
+    // Dropped (dead in code as of audit): Customer_Payments, Customer_Balance,
+    // Estimation_Address Lat/Long (empty in production anyway — Map uses WO geo).
     const NEEDED_OPP_FIELDS = new Set<string>([
       ...(revenueField ? [revenueField] : []),
       "NetValue__c",
       "QuotedSubtotalWithChangeOrder__c",
-      "TotalAmount__c",
       "Gross_Profit__c",
       "Lead_Fee__c",
       "Discount_Given__c",
-      "Customer_Payments__c",
-      "Customer_Balance__c",
-      "Estimation_Address__Latitude__s",
-      "Estimation_Address__Longitude__s",
-    ].filter((f) => allCurrencyFields.includes(f) || /Latitude|Longitude/.test(f)));
+    ].filter((f) => allCurrencyFields.includes(f)));
     const currencyFieldsSelect = NEEDED_OPP_FIELDS.size > 0
       ? `, ${[...NEEDED_OPP_FIELDS].join(", ")}`
       : "";
@@ -436,9 +434,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
 
     const quotesPromise: Promise<SnapshotQuote[]> = (async () => {
       try {
+        // Narrowed to fields actually used by the funnel derivation
+        // (count + grandTotal sum). Subtotal__c and OpportunityId were
+        // dead fields — dropped to shrink payload.
         const records: Array<Record<string, unknown>> = [];
         let result = await conn.query<Record<string, unknown>>(
-          `SELECT Id, OpportunityId, Subtotal__c, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
+          `SELECT Id, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
         );
         records.push(...result.records);
         while (!result.done && result.nextRecordsUrl) {
@@ -448,8 +449,8 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         console.log(`[SF] Pulled ${records.length} quotes (last ${RECENCY_WINDOW_DAYS}d) — PARALLEL`);
         return records.map((q) => ({
           id: q.Id as string,
-          opportunityId: (q.OpportunityId as string | null) ?? null,
-          subtotal: typeof q.Subtotal__c === "number" ? q.Subtotal__c : 0,
+          opportunityId: null,
+          subtotal: 0,
           grandTotal: typeof q.GrandTotal__c === "number" ? q.GrandTotal__c : 0,
           createdDate: q.CreatedDate as string,
         }));
@@ -510,10 +511,10 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         grossProfit: typeof o.Gross_Profit__c === "number" ? o.Gross_Profit__c : 0,
         leadFee: typeof o.Lead_Fee__c === "number" ? o.Lead_Fee__c : 0,
         discountGiven: typeof o.Discount_Given__c === "number" ? o.Discount_Given__c : 0,
-        customerPayments: typeof o.Customer_Payments__c === "number" ? o.Customer_Payments__c : 0,
-        customerBalance: typeof o.Customer_Balance__c === "number" ? o.Customer_Balance__c : 0,
-        latitude: typeof o.Estimation_Address__Latitude__s === "number" ? o.Estimation_Address__Latitude__s : null,
-        longitude: typeof o.Estimation_Address__Longitude__s === "number" ? o.Estimation_Address__Longitude__s : null,
+        customerPayments: 0,
+        customerBalance: 0,
+        latitude: null,
+        longitude: null,
       };
     });
 

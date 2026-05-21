@@ -37,17 +37,40 @@ const PAGES: SearchResult[] = [
 ];
 
 type Props = {
-  /** Snapshot subset for search indexing. Server passes a compact projection. */
-  snapshot: SearchableSnapshot | null;
+  /**
+   * Optional initial snapshot. If null, the search bar lazy-fetches from
+   * /api/search/index on first focus to keep the dashboard chrome fast.
+   */
+  snapshot?: SearchableSnapshot | null;
 };
 
-export default function GlobalSearch({ snapshot }: Props) {
+export default function GlobalSearch({ snapshot: initial = null }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
+  const [snapshot, setSnapshot] = useState<SearchableSnapshot | null>(initial);
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Lazy-fetch the search index on first focus. Caches in component state
+  // so subsequent opens don't re-fetch.
+  const loadIndex = async () => {
+    if (snapshot || loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/search/index");
+      if (res.ok) {
+        const data = await res.json();
+        setSnapshot(data);
+      }
+    } catch {
+      // graceful — pages still searchable, just not data
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Cmd+K / Ctrl+K to focus search
   useEffect(() => {
@@ -55,6 +78,7 @@ export default function GlobalSearch({ snapshot }: Props) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen(true);
+        void loadIndex();
         setTimeout(() => inputRef.current?.focus(), 0);
       }
       if (e.key === "Escape" && open) {
@@ -64,6 +88,7 @@ export default function GlobalSearch({ snapshot }: Props) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Click outside to close
@@ -186,6 +211,7 @@ export default function GlobalSearch({ snapshot }: Props) {
           type="button"
           onClick={() => {
             setOpen(true);
+            void loadIndex();
             setTimeout(() => inputRef.current?.focus(), 0);
           }}
           className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs text-ppp-charcoal-500 bg-ppp-charcoal-50/60 hover:bg-ppp-charcoal-50 border border-ppp-charcoal-100 rounded-lg transition-colors"
@@ -212,7 +238,11 @@ export default function GlobalSearch({ snapshot }: Props) {
           />
           {(results.length > 0 || query) && (
             <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg shadow-ppp-charcoal/10 max-h-[60vh] overflow-y-auto z-50">
-              {results.length === 0 ? (
+              {loading && !snapshot ? (
+                <div className="px-4 py-6 text-center text-xs text-ppp-charcoal-500">
+                  Loading search index…
+                </div>
+              ) : results.length === 0 ? (
                 <div className="px-4 py-6 text-center text-xs text-ppp-charcoal-500">
                   No matches for &ldquo;{query}&rdquo;
                 </div>
