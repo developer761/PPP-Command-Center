@@ -26,6 +26,10 @@ import {
   derivePipelineAtRisk,
   deriveRepsForPeriod,
   deriveTopPerformer,
+  deriveTodaySnapshot,
+  deriveMonthForecast,
+  deriveTopCustomers,
+  deriveQuoteToCashVelocity,
 } from "@/lib/salesforce/derive";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 
@@ -135,6 +139,13 @@ export default function DashboardView({ bundle }: Props) {
     return mockPipelineAtRisk;
   }, [snapshot]);
 
+  // ─── CEO-impressing live snapshots ───
+  // Today, month-end forecast, top customers, quote-to-cash velocity.
+  const todaySnap = useMemo(() => snapshot ? deriveTodaySnapshot(snapshot) : null, [snapshot]);
+  const forecast = useMemo(() => snapshot ? deriveMonthForecast(snapshot) : null, [snapshot]);
+  const topCustomers = useMemo(() => snapshot ? deriveTopCustomers(snapshot, 8) : [], [snapshot]);
+  const velocity = useMemo(() => snapshot ? deriveQuoteToCashVelocity(snapshot) : null, [snapshot]);
+
   // Pipeline funnel can show either the page-level period or its own override.
   const funnel = useMemo(() => {
     if (funnelPeriod === "page") return view.pipelineFunnel;
@@ -205,6 +216,142 @@ export default function DashboardView({ bundle }: Props) {
             </>
           )}
         </div>
+      )}
+
+      {/* ─── Today's snapshot strip + month forecast ─── */}
+      {todaySnap && forecast && (
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+          {/* Today */}
+          <div className="bg-gradient-to-br from-ppp-navy to-ppp-charcoal text-white rounded-xl p-5 sm:p-6 shadow-lg shadow-ppp-charcoal/10">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide font-semibold opacity-70">Today</div>
+                <div className="font-condensed text-3xl sm:text-4xl font-bold mt-1">
+                  {fmtMoneyK(todaySnap.todayRevenue)}
+                </div>
+                <div className="text-xs opacity-70 mt-1">
+                  {todaySnap.todayDealCount} deal{todaySnap.todayDealCount === 1 ? "" : "s"}
+                  {todaySnap.sameDayLastWeekRevenue > 0 && (
+                    <span className="ml-2">
+                      ·{" "}
+                      <span
+                        className={
+                          todaySnap.todayRevenue >= todaySnap.sameDayLastWeekRevenue
+                            ? "text-ppp-green"
+                            : "text-ppp-orange"
+                        }
+                      >
+                        {todaySnap.todayRevenue >= todaySnap.sameDayLastWeekRevenue ? "▲" : "▼"}
+                        {Math.abs(
+                          Math.round(
+                            ((todaySnap.todayRevenue - todaySnap.sameDayLastWeekRevenue) /
+                              todaySnap.sameDayLastWeekRevenue) *
+                              100
+                          )
+                        )}
+                        %
+                      </span>{" "}
+                      vs same day last week
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right text-[11px] opacity-70">
+                <div>Week:</div>
+                <div className="font-condensed font-bold text-lg text-white">
+                  {fmtMoneyK(todaySnap.weekRevenue)}
+                </div>
+              </div>
+            </div>
+            {todaySnap.biggestDealToday && (
+              <div className="mt-4 pt-3 border-t border-white/20 text-[11px]">
+                <span className="opacity-70">🏆 Biggest deal today:</span>{" "}
+                <span className="font-medium">
+                  {fmtMoneyK(todaySnap.biggestDealToday.amount)} ·{" "}
+                  {todaySnap.biggestDealToday.account}
+                  {todaySnap.biggestDealToday.rep && ` · ${todaySnap.biggestDealToday.rep}`}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Forecast card spanning 2 cols on lg */}
+          <div className="lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+            <div className="flex items-baseline justify-between gap-3 mb-4">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">
+                  Month Forecast
+                </div>
+                <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-navy mt-1">
+                  {fmtMoneyK(forecast.projectedMonthEnd)}
+                </div>
+                <div className="text-xs text-ppp-charcoal-500 mt-1">
+                  Projected month-end ·{" "}
+                  <span
+                    className={
+                      forecast.vsLastMonthPct > 0
+                        ? "text-ppp-green-700 font-semibold"
+                        : forecast.vsLastMonthPct < 0
+                        ? "text-ppp-orange-700 font-semibold"
+                        : "text-ppp-charcoal-500"
+                    }
+                  >
+                    {forecast.vsLastMonthPct > 0 ? "+" : ""}
+                    {forecast.vsLastMonthPct}%
+                  </span>{" "}
+                  vs last month ({fmtMoneyK(forecast.lastMonthActual)})
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">
+                  Day {forecast.daysElapsed} of {forecast.daysInMonth}
+                </div>
+                <div className="font-condensed text-lg font-bold text-ppp-charcoal mt-1">
+                  {fmtMoneyK(forecast.monthToDateRevenue)}
+                </div>
+                <div className="text-[11px] text-ppp-charcoal-500">so far</div>
+              </div>
+            </div>
+
+            {/* Progress bar — pace vs actual */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-[11px] text-ppp-charcoal-500">
+                <span>Pace {forecast.pacePct}%</span>
+                <span>{forecast.daysRemaining} days remaining</span>
+              </div>
+              <div className="relative h-3 bg-ppp-charcoal-50 rounded-full overflow-hidden">
+                <div
+                  className="absolute inset-y-0 left-0 bg-ppp-blue/30 rounded-full"
+                  style={{ width: `${forecast.pacePct}%` }}
+                  title="Expected pace"
+                />
+                <div
+                  className="absolute inset-y-0 left-0 bg-ppp-navy rounded-full transition-[width] duration-500"
+                  style={{
+                    width: `${forecast.lastMonthActual > 0
+                      ? Math.min(100, Math.round((forecast.monthToDateRevenue * 1000 / forecast.lastMonthActual) * 100))
+                      : forecast.pacePct}%`,
+                  }}
+                  title="Actual revenue captured"
+                />
+              </div>
+              <div className="flex items-center gap-3 text-[10px] text-ppp-charcoal-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-sm bg-ppp-navy" /> Actual
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-sm bg-ppp-blue/30" /> Expected pace
+                </span>
+                {velocity && velocity.sampleCount > 10 && (
+                  <span className="ml-auto">
+                    Avg quote-to-job:{" "}
+                    <strong className="text-ppp-charcoal">{velocity.avgDays}d</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* ─── KPI row ─── */}
@@ -288,6 +435,59 @@ export default function DashboardView({ bundle }: Props) {
           </div>
         </div>
       </section>
+
+      {/* ─── Top customers by lifetime revenue ─── */}
+      {topCustomers.length > 0 && (
+        <section>
+          <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+            <div className="flex items-baseline justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-base font-semibold text-ppp-charcoal">Top Customers</h3>
+                <p className="text-xs text-ppp-charcoal-500 mt-1">
+                  By lifetime revenue across all Work Orders
+                </p>
+              </div>
+              <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">
+                Top {topCustomers.length}
+              </div>
+            </div>
+            <ul className="divide-y divide-ppp-charcoal-100">
+              {topCustomers.map((c, i) => (
+                <li key={c.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <span className="font-condensed text-xs font-bold text-ppp-charcoal-500 w-5 shrink-0">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-ppp-charcoal truncate flex items-center gap-2">
+                      {c.name}
+                      {c.isRepeat && (
+                        <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold border text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100">
+                          Repeat
+                        </span>
+                      )}
+                      {c.isKey && (
+                        <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold border text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100">
+                          Key
+                        </span>
+                      )}
+                    </div>
+                    {(c.region || c.lastWorkOrderCompleted) && (
+                      <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                        {c.region}
+                        {c.region && c.lastWorkOrderCompleted && " · "}
+                        {c.lastWorkOrderCompleted && `Last job ${c.lastWorkOrderCompleted}`}
+                      </div>
+                    )}
+                  </div>
+                  <span className="font-condensed font-bold text-ppp-navy whitespace-nowrap">
+                    {fmtMoneyK(c.lifetimeRevenue / 1000)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* ─── Service line mix + Regional performance ─── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">

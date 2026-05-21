@@ -564,6 +564,204 @@ export function deriveRepMonthly(
   return series;
 }
 
+/* ─── Today snapshot + Month forecast ─── */
+
+/**
+ * "Today" snapshot — today's revenue + deal count + comparison to same day last
+ * week. Drives the strip at the top of /dashboard so Alex can glance and know:
+ * are we on pace?
+ */
+export function deriveTodaySnapshot(
+  snapshot: SalesforceSnapshot
+): {
+  todayRevenue: number;       // $K
+  todayDealCount: number;
+  yesterdayRevenue: number;   // $K
+  sameDayLastWeekRevenue: number; // $K
+  weekRevenue: number;        // $K (last 7 days)
+  weekPriorRevenue: number;   // $K (8-14 days ago, comparison)
+  biggestDealToday: { account: string; amount: number; rep: string | null } | null;
+} {
+  const now = new Date();
+  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const startOfYesterday = new Date(startOfToday.getTime() - 86_400_000);
+  const startOfSameDayLastWeek = new Date(startOfToday.getTime() - 7 * 86_400_000);
+  const startOfTomorrow = new Date(startOfToday.getTime() + 86_400_000);
+  const startOfDayAfterSDLW = new Date(startOfSameDayLastWeek.getTime() + 86_400_000);
+  const startOfYesterdayEnd = startOfToday;
+  const startOfWeek = new Date(startOfToday.getTime() - 6 * 86_400_000);
+  const startOfPriorWeek = new Date(startOfWeek.getTime() - 7 * 86_400_000);
+
+  let todayRev = 0;
+  let todayCnt = 0;
+  let yesterdayRev = 0;
+  let sdLwRev = 0;
+  let weekRev = 0;
+  let priorWeekRev = 0;
+  let biggest: { account: string; amount: number; rep: string | null } | null = null;
+
+  for (const row of revenueRows(snapshot)) {
+    if (row.amount <= 0 || !row.closeDate) continue;
+    const d = new Date(row.closeDate + "T00:00:00Z");
+    if (d >= startOfToday && d < startOfTomorrow) {
+      todayRev += row.amount;
+      todayCnt += 1;
+      if (!biggest || row.amount > biggest.amount) {
+        // Find rep name from WO if available
+        let repName: string | null = null;
+        let accountName = "(unknown account)";
+        if (snapshot.workOrders.length > 0) {
+          const wo = snapshot.workOrders.find((w) => w.closeDate === row.closeDate && w.amount === row.amount && w.ownerId === row.ownerId);
+          if (wo) {
+            repName = wo.ownerName;
+            accountName = wo.accountName ?? accountName;
+          }
+        }
+        biggest = { account: accountName, amount: row.amount, rep: repName };
+      }
+    }
+    if (d >= startOfYesterday && d < startOfYesterdayEnd) yesterdayRev += row.amount;
+    if (d >= startOfSameDayLastWeek && d < startOfDayAfterSDLW) sdLwRev += row.amount;
+    if (d >= startOfWeek && d < startOfTomorrow) weekRev += row.amount;
+    if (d >= startOfPriorWeek && d < startOfWeek) priorWeekRev += row.amount;
+  }
+
+  return {
+    todayRevenue: Math.round(todayRev / 1000),
+    todayDealCount: todayCnt,
+    yesterdayRevenue: Math.round(yesterdayRev / 1000),
+    sameDayLastWeekRevenue: Math.round(sdLwRev / 1000),
+    weekRevenue: Math.round(weekRev / 1000),
+    weekPriorRevenue: Math.round(priorWeekRev / 1000),
+    biggestDealToday: biggest
+      ? { account: biggest.account, amount: Math.round(biggest.amount / 1000), rep: biggest.rep }
+      : null,
+  };
+}
+
+/**
+ * Month-end forecast based on linear extrapolation of the current month's pace.
+ * Compares to last month's actual for an "on track vs behind/ahead" call.
+ */
+export function deriveMonthForecast(
+  snapshot: SalesforceSnapshot
+): {
+  monthToDateRevenue: number;       // $K
+  daysElapsed: number;
+  daysInMonth: number;
+  daysRemaining: number;
+  projectedMonthEnd: number;        // $K
+  lastMonthActual: number;          // $K
+  vsLastMonthPct: number;           // forecast vs last month, %
+  pacePct: number;                  // % of month elapsed (0-100)
+} {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const startOfMonth = new Date(Date.UTC(y, m, 1));
+  const startOfNextMonth = new Date(Date.UTC(y, m + 1, 1));
+  const daysInMonth = Math.round((startOfNextMonth.getTime() - startOfMonth.getTime()) / 86_400_000);
+  const daysElapsed = Math.max(
+    1,
+    Math.round((now.getTime() - startOfMonth.getTime()) / 86_400_000) + 1
+  );
+  const daysRemaining = Math.max(0, daysInMonth - daysElapsed);
+
+  // Last month bounds
+  const startOfLastMonth = new Date(Date.UTC(y, m - 1, 1));
+  const endOfLastMonth = startOfMonth;
+
+  let mtdRev = 0;
+  let lastMonthRev = 0;
+  for (const row of revenueRows(snapshot)) {
+    if (row.amount <= 0 || !row.closeDate) continue;
+    const d = new Date(row.closeDate + "T00:00:00Z");
+    if (d >= startOfMonth && d < startOfNextMonth) mtdRev += row.amount;
+    if (d >= startOfLastMonth && d < endOfLastMonth) lastMonthRev += row.amount;
+  }
+
+  const dailyRunRate = mtdRev / daysElapsed;
+  const projected = Math.round(dailyRunRate * daysInMonth / 1000);
+  const vsLastMonthPct = lastMonthRev === 0
+    ? 0
+    : Math.round(((projected * 1000 - lastMonthRev) / lastMonthRev) * 100);
+
+  return {
+    monthToDateRevenue: Math.round(mtdRev / 1000),
+    daysElapsed,
+    daysInMonth,
+    daysRemaining,
+    projectedMonthEnd: projected,
+    lastMonthActual: Math.round(lastMonthRev / 1000),
+    vsLastMonthPct,
+    pacePct: Math.round((daysElapsed / daysInMonth) * 100),
+  };
+}
+
+/**
+ * Top customers by lifetime revenue. Uses Account.Total_Lifetime_Revenue__c
+ * (PPP-populated formula field). Returns top N with their type + flags.
+ */
+export function deriveTopCustomers(
+  snapshot: SalesforceSnapshot,
+  limit: number = 10
+): Array<{
+  id: string;
+  name: string;
+  lifetimeRevenue: number;
+  type: string | null;
+  isRepeat: boolean;
+  isKey: boolean;
+  region: string | null;
+  lastWorkOrderCompleted: string | null;
+}> {
+  return [...snapshot.accounts]
+    .filter((a) => a.totalLifetimeRevenue > 0)
+    .sort((a, b) => b.totalLifetimeRevenue - a.totalLifetimeRevenue)
+    .slice(0, limit)
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      lifetimeRevenue: a.totalLifetimeRevenue,
+      type: a.type,
+      isRepeat: (a.type ?? "").toLowerCase().includes("repeat"),
+      isKey: a.isKeyRelationship,
+      region: a.region,
+      lastWorkOrderCompleted: a.lastWorkOrderCompleted,
+    }));
+}
+
+/**
+ * Quote-to-Cash velocity — average days from Opp create → WO create across
+ * the last 90 days of activity. Tells PPP how fast their lead-to-job pipeline
+ * is moving. Lower = healthier conversion engine.
+ */
+export function deriveQuoteToCashVelocity(
+  snapshot: SalesforceSnapshot
+): { avgDays: number; sampleCount: number } {
+  const oppCreated = new Map(snapshot.opportunities.map((o) => [o.id, o.createdDate]));
+  let totalDays = 0;
+  let count = 0;
+  const cutoff = Date.now() - 90 * 86_400_000;
+  for (const w of snapshot.workOrders) {
+    if (!w.opportunityId) continue;
+    const oppC = oppCreated.get(w.opportunityId);
+    if (!oppC) continue;
+    const oppMs = new Date(oppC).getTime();
+    const woMs = new Date(w.createdDate).getTime();
+    if (isNaN(oppMs) || isNaN(woMs)) continue;
+    if (woMs < cutoff) continue;
+    const days = (woMs - oppMs) / 86_400_000;
+    if (days < 0 || days > 365) continue; // sanity
+    totalDays += days;
+    count += 1;
+  }
+  return {
+    avgDays: count > 0 ? Math.round(totalDays / count) : 0,
+    sampleCount: count,
+  };
+}
+
 /* ─── Per-rep account stats ─── */
 
 /**
