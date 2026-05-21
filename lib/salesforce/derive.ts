@@ -762,6 +762,42 @@ export function deriveQuoteToCashVelocity(
   };
 }
 
+/**
+ * Week-over-week momentum per rep.
+ * Compares this week (last 7d) revenue vs prior week (8–14d ago).
+ * Positive = trending up, negative = cooling off.
+ */
+export function deriveRepMomentum(
+  snapshot: SalesforceSnapshot
+): Map<string, { thisWeek: number; priorWeek: number; deltaPct: number }> {
+  const now = Date.now();
+  const oneWeekAgo = now - 7 * 86_400_000;
+  const twoWeeksAgo = now - 14 * 86_400_000;
+  const byRep = new Map<string, { thisWeek: number; priorWeek: number; deltaPct: number }>();
+
+  for (const row of revenueRows(snapshot)) {
+    if (!row.ownerId || !row.closeDate || row.amount === 0) continue;
+    const closed = new Date(row.closeDate).getTime();
+    if (isNaN(closed)) continue;
+
+    const stats = byRep.get(row.ownerId) ?? { thisWeek: 0, priorWeek: 0, deltaPct: 0 };
+    if (closed >= oneWeekAgo && closed <= now) {
+      stats.thisWeek += row.amount;
+    } else if (closed >= twoWeeksAgo && closed < oneWeekAgo) {
+      stats.priorWeek += row.amount;
+    }
+    byRep.set(row.ownerId, stats);
+  }
+
+  for (const stats of byRep.values()) {
+    stats.deltaPct = stats.priorWeek === 0
+      ? (stats.thisWeek > 0 ? 100 : 0)
+      : Math.round(((stats.thisWeek - stats.priorWeek) / stats.priorWeek) * 100);
+  }
+
+  return byRep;
+}
+
 /* ─── Per-rep account stats ─── */
 
 /**

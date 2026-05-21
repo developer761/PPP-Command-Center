@@ -30,6 +30,7 @@ import {
   deriveMonthForecast,
   deriveTopCustomers,
   deriveQuoteToCashVelocity,
+  deriveRepMomentum,
 } from "@/lib/salesforce/derive";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 
@@ -145,6 +146,27 @@ export default function DashboardView({ bundle }: Props) {
   const forecast = useMemo(() => snapshot ? deriveMonthForecast(snapshot) : null, [snapshot]);
   const topCustomers = useMemo(() => snapshot ? deriveTopCustomers(snapshot, 8) : [], [snapshot]);
   const velocity = useMemo(() => snapshot ? deriveQuoteToCashVelocity(snapshot) : null, [snapshot]);
+
+  // Hot reps this week — top 3 with biggest week-over-week jump.
+  const hotReps = useMemo(() => {
+    if (!snapshot) return [];
+    const momentum = deriveRepMomentum(snapshot);
+    const ownerNameLookup = new Map<string, string>();
+    for (const r of snapshot.reps) ownerNameLookup.set(r.id, r.name);
+    for (const w of snapshot.workOrders) {
+      if (w.ownerId && w.ownerName) ownerNameLookup.set(w.ownerId, w.ownerName);
+    }
+    return Array.from(momentum.entries())
+      .filter(([, m]) => m.thisWeek > 0)
+      .map(([ownerId, m]) => ({
+        id: ownerId,
+        name: ownerNameLookup.get(ownerId) ?? "(unknown)",
+        thisWeekK: Math.round(m.thisWeek / 1000),
+        deltaPct: m.deltaPct,
+      }))
+      .sort((a, b) => b.deltaPct - a.deltaPct || b.thisWeekK - a.thisWeekK)
+      .slice(0, 5);
+  }, [snapshot]);
 
   // Pipeline funnel can show either the page-level period or its own override.
   const funnel = useMemo(() => {
@@ -313,43 +335,78 @@ export default function DashboardView({ bundle }: Props) {
               </div>
             </div>
 
-            {/* Progress bar — pace vs actual */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-[11px] text-ppp-charcoal-500">
-                <span>Pace {forecast.pacePct}%</span>
-                <span>{forecast.daysRemaining} days remaining</span>
-              </div>
-              <div className="relative h-3 bg-ppp-charcoal-50 rounded-full overflow-hidden">
-                <div
-                  className="absolute inset-y-0 left-0 bg-ppp-blue/30 rounded-full"
-                  style={{ width: `${forecast.pacePct}%` }}
-                  title="Expected pace"
-                />
-                <div
-                  className="absolute inset-y-0 left-0 bg-ppp-navy rounded-full transition-[width] duration-500"
-                  style={{
-                    width: `${forecast.lastMonthActual > 0
-                      ? Math.min(100, Math.round((forecast.monthToDateRevenue * 1000 / forecast.lastMonthActual) * 100))
-                      : forecast.pacePct}%`,
-                  }}
-                  title="Actual revenue captured"
-                />
-              </div>
-              <div className="flex items-center gap-3 text-[10px] text-ppp-charcoal-500">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-sm bg-ppp-navy" /> Actual
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-sm bg-ppp-blue/30" /> Expected pace
-                </span>
-                {velocity && velocity.sampleCount > 10 && (
-                  <span className="ml-auto">
-                    Avg quote-to-job:{" "}
-                    <strong className="text-ppp-charcoal">{velocity.avgDays}d</strong>
-                  </span>
-                )}
-              </div>
-            </div>
+            {/* Pace vs actual — stacked bars + delta callout */}
+            {(() => {
+              const actualPct = forecast.lastMonthActual > 0
+                ? Math.min(150, Math.round((forecast.monthToDateRevenue * 1000 / forecast.lastMonthActual) * 100))
+                : forecast.pacePct;
+              const expectedRevByNow = Math.round(forecast.lastMonthActual / 1000 * (forecast.pacePct / 100));
+              const ahead = forecast.monthToDateRevenue >= expectedRevByNow;
+              const gap = Math.abs(forecast.monthToDateRevenue - expectedRevByNow);
+              const maxPct = Math.max(100, actualPct, forecast.pacePct);
+
+              return (
+                <div className="space-y-3">
+                  {/* Delta callout */}
+                  <div className="flex items-baseline justify-between gap-2 text-[11px]">
+                    <span className="text-ppp-charcoal-500">
+                      {forecast.daysRemaining} days remaining
+                    </span>
+                    {forecast.lastMonthActual > 0 && (
+                      <span
+                        className={
+                          ahead
+                            ? "font-semibold text-ppp-green-700"
+                            : "font-semibold text-ppp-orange-700"
+                        }
+                      >
+                        {ahead ? "▲" : "▼"} {fmtMoneyK(gap)} {ahead ? "ahead of" : "behind"} pace
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Actual bar */}
+                  <div>
+                    <div className="flex justify-between text-[10px] text-ppp-charcoal-500 mb-1">
+                      <span className="font-medium text-ppp-navy">
+                        Actual {fmtMoneyK(forecast.monthToDateRevenue)}
+                      </span>
+                      <span>{actualPct}% of last month</span>
+                    </div>
+                    <div className="h-2 bg-ppp-charcoal-50 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-ppp-navy rounded-full transition-[width] duration-500"
+                        style={{ width: `${Math.min(100, (actualPct / maxPct) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Expected pace bar */}
+                  <div>
+                    <div className="flex justify-between text-[10px] text-ppp-charcoal-500 mb-1">
+                      <span>Expected by today {fmtMoneyK(expectedRevByNow)}</span>
+                      <span>{forecast.pacePct}% of month elapsed</span>
+                    </div>
+                    <div className="h-2 bg-ppp-charcoal-50 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-ppp-blue-200 rounded-full"
+                        style={{ width: `${Math.min(100, (forecast.pacePct / maxPct) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {velocity && velocity.sampleCount > 10 && (
+                    <div className="pt-1 text-[10px] text-ppp-charcoal-500">
+                      Avg quote-to-job:{" "}
+                      <strong className="text-ppp-charcoal">{velocity.avgDays} days</strong>
+                      <span className="ml-1">
+                        ({velocity.sampleCount.toLocaleString()} deals · last 90d)
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </section>
       )}
@@ -669,6 +726,48 @@ export default function DashboardView({ bundle }: Props) {
               Review stuck deals →
             </button>
           </div>
+
+          {/* Hot reps this week — momentum spotlight */}
+          {hotReps.length > 0 && (
+            <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-6 w-6 rounded-md bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-xs">
+                  🔥
+                </div>
+                <h3 className="text-sm font-semibold text-ppp-charcoal">Hot This Week</h3>
+              </div>
+              <ul className="space-y-1.5">
+                {hotReps.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-2 text-xs">
+                    <Link
+                      href={`/dashboard/rep/${r.id}`}
+                      className="font-medium text-ppp-charcoal hover:text-ppp-blue transition-colors truncate"
+                    >
+                      {r.name}
+                    </Link>
+                    <span className="whitespace-nowrap text-right">
+                      <span className="font-semibold text-ppp-navy">{fmtMoneyK(r.thisWeekK)}</span>
+                      {r.deltaPct !== 0 && (
+                        <span
+                          className={
+                            r.deltaPct > 0
+                              ? "ml-2 text-ppp-green-700 font-semibold"
+                              : "ml-2 text-ppp-orange-700 font-semibold"
+                          }
+                        >
+                          {r.deltaPct > 0 ? "▲" : "▼"}
+                          {Math.abs(r.deltaPct)}%
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 text-[10px] text-ppp-charcoal-500 italic">
+                Week-over-week revenue delta
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

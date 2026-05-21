@@ -13,6 +13,7 @@ import {
 import {
   deriveRepsForPeriod,
   deriveRepAccountStats,
+  deriveRepMomentum,
 } from "@/lib/salesforce/derive";
 import { fmtMoneyK } from "@/lib/format";
 import type { LiveDashboardBundle } from "@/lib/data-source";
@@ -70,6 +71,12 @@ export default function RepIndexView({ bundle }: Props) {
     }
     return map;
   }, [snapshot, reps]);
+
+  // Week-over-week momentum — drives "hot streak" indicator per card.
+  const momentumByRep = useMemo(
+    () => (snapshot ? deriveRepMomentum(snapshot) : new Map()),
+    [snapshot]
+  );
 
   // Region options derived from live rep data.
   const regionOptions = useMemo(() => {
@@ -284,10 +291,12 @@ export default function RepIndexView({ bundle }: Props) {
               ? Math.round((r.revenueSold / teamRevenue) * 100)
               : 0;
             const inactive = r.revenueSold === 0 && r.openPipeline === 0;
+            const momentum = momentumByRep.get(r.id);
             return <RepCard
               key={r.id}
               rep={r}
               stats={stats}
+              momentum={momentum}
               teamShare={teamShare}
               inactive={inactive}
             />;
@@ -301,14 +310,18 @@ export default function RepIndexView({ bundle }: Props) {
 function RepCard({
   rep: r,
   stats,
+  momentum,
   teamShare,
   inactive,
 }: {
   rep: Rep;
   stats?: ReturnType<typeof deriveRepAccountStats>;
+  momentum?: { thisWeek: number; priorWeek: number; deltaPct: number };
   teamShare: number;
   inactive: boolean;
 }) {
+  const hot = momentum && momentum.thisWeek > 0 && momentum.deltaPct >= 25;
+  const cooling = momentum && momentum.priorWeek > 0 && momentum.thisWeek < momentum.priorWeek * 0.5;
   return (
     <Link
       href={`/dashboard/rep/${r.id}`}
@@ -325,12 +338,33 @@ function RepCard({
           {r.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-ppp-charcoal group-hover:text-ppp-blue transition-colors truncate">
-            {r.name}
+          <div className="font-semibold text-ppp-charcoal group-hover:text-ppp-blue transition-colors truncate flex items-center gap-1.5">
+            <span className="truncate">{r.name}</span>
+            {hot && (
+              <span
+                className="inline-flex items-center text-[9px] font-bold uppercase tracking-wide text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded px-1.5 py-0 shrink-0"
+                title={`Up ${momentum!.deltaPct}% week-over-week (${fmtMoneyK(momentum!.thisWeek / 1000)} this week vs ${fmtMoneyK(momentum!.priorWeek / 1000)} prior)`}
+              >
+                🔥 Hot
+              </span>
+            )}
+            {cooling && !hot && (
+              <span
+                className="inline-flex items-center text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-500 bg-ppp-charcoal-50 border border-ppp-charcoal-100 rounded px-1.5 py-0 shrink-0"
+                title={`Down ${Math.abs(momentum!.deltaPct)}% week-over-week`}
+              >
+                ❄ Cooling
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-ppp-charcoal-500 truncate">
             {r.region}
             {inactive && <span className="ml-1 text-ppp-charcoal-200">· no activity</span>}
+            {momentum && momentum.thisWeek > 0 && !hot && !cooling && (
+              <span className="ml-1 text-ppp-charcoal-400">
+                · {fmtMoneyK(momentum.thisWeek / 1000)} this wk
+              </span>
+            )}
           </div>
         </div>
       </div>
