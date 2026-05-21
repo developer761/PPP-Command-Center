@@ -1,7 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import GlobalSearch from "@/components/global-search";
 import UserMenu from "@/components/user-menu";
+
+type SearchableSnapshot = {
+  reps?: Array<{ id: string; name: string; email?: string | null; region?: string | null }>;
+  accounts?: Array<{ id: string; name: string; type?: string | null; region?: string | null }>;
+  workOrders?: Array<{
+    id: string;
+    workOrderNumber: string | null;
+    accountName: string | null;
+    status: string | null;
+    ownerName: string | null;
+    opportunityId: string | null;
+  }>;
+};
 
 type Props = {
   onOpenMenu?: () => void;
@@ -11,6 +25,7 @@ type Props = {
     firstName: string | null;
     initial: string;
   };
+  searchIndex?: SearchableSnapshot | null;
 };
 
 function formatAgo(seconds: number): string {
@@ -22,7 +37,7 @@ function formatAgo(seconds: number): string {
   return `${hr}h ago`;
 }
 
-export default function Topbar({ onOpenMenu, user }: Props) {
+export default function Topbar({ onOpenMenu, user, searchIndex = null }: Props) {
   const [now, setNow] = useState<Date | null>(null);
   const [syncedAt] = useState<Date>(() => new Date());
   const [, setTick] = useState(0);
@@ -57,8 +72,8 @@ export default function Topbar({ onOpenMenu, user }: Props) {
   const greetingLine = user.firstName ? `${greeting}, ${user.firstName}` : greeting;
 
   return (
-    <header className="bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3 min-w-0">
+    <header className="bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0 shrink-0">
         {onOpenMenu && (
           <button
             type="button"
@@ -71,18 +86,23 @@ export default function Topbar({ onOpenMenu, user }: Props) {
             </svg>
           </button>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 max-w-[160px] sm:max-w-none">
           <h2 className="text-sm sm:text-base font-semibold text-ppp-charcoal truncate">
             {greetingLine}
           </h2>
-          <p className="text-[10px] sm:text-xs text-ppp-charcoal-500 mt-0.5">
+          <p className="text-[10px] sm:text-xs text-ppp-charcoal-500 mt-0.5 truncate">
             <span className="hidden sm:inline">{dateText}</span>
             <span className="sm:hidden">{dateTextShort}</span>
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+      {/* Global search — visible on md+ */}
+      <div className="hidden md:flex flex-1 justify-center">
+        <GlobalSearch snapshot={searchIndex} />
+      </div>
+
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
         <form action="/api/admin/sf-refresh-cache" method="POST" className="hidden sm:block">
           <button
             type="submit"

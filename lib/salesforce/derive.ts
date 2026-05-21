@@ -798,6 +798,276 @@ export function deriveRepMomentum(
   return byRep;
 }
 
+/* ─── Financials rollups ─── */
+
+/**
+ * Company-wide financial picture for the Financials tab.
+ * AR aging (from WO.balanceOwed + finalBalanceAging), GP, lead-fee ROI,
+ * discount leaks, commissions. All scoped by an optional period.
+ */
+export function deriveFinancials(
+  snapshot: SalesforceSnapshot,
+  period: Period = "this-month"
+): {
+  // AR aging buckets — total $ outstanding per bucket
+  arAging: { current: number; days30: number; days60: number; days90: number; days90Plus: number; total: number };
+  // GP totals + margin
+  grossProfit: number;
+  netRevenue: number;
+  gpMargin: number; // %
+  // Lead fee economics
+  totalLeadFee: number;
+  leadFeeRoi: number; // revenue per $1 lead fee
+  // Discounts
+  totalDiscount: number;
+  discountPctOfRevenue: number;
+  // Commissions
+  totalCommission: number;
+  commissionPctOfRevenue: number;
+  // Top discounters (rep)
+  topDiscounters: Array<{ ownerId: string; ownerName: string; discount: number }>;
+  // Top GP contributors (rep)
+  topGPContributors: Array<{ ownerId: string; ownerName: string; gp: number }>;
+} {
+  const now = new Date();
+  const { start: periodStart, end: periodEnd } = periodRange(period, now);
+
+  // AR aging is "right now" — not period-scoped. We sum balanceOwed across
+  // open WOs and bucket by finalBalanceAging days.
+  const arAging = { current: 0, days30: 0, days60: 0, days90: 0, days90Plus: 0, total: 0 };
+  for (const w of snapshot.workOrders) {
+    if (w.balanceOwed <= 0) continue;
+    arAging.total += w.balanceOwed;
+    const aging = w.finalBalanceAging ?? 0;
+    if (aging < 30) arAging.current += w.balanceOwed;
+    else if (aging < 60) arAging.days30 += w.balanceOwed;
+    else if (aging < 90) arAging.days60 += w.balanceOwed;
+    else if (aging < 120) arAging.days90 += w.balanceOwed;
+    else arAging.days90Plus += w.balanceOwed;
+  }
+
+  // Period-scoped revenue + GP + lead-fee + discount + commission.
+  let netRevenue = 0;
+  let grossProfit = 0;
+  let totalLeadFee = 0;
+  let totalDiscount = 0;
+  let totalCommission = 0;
+  const discountByRep = new Map<string, number>();
+  const gpByRep = new Map<string, number>();
+  const repNameLookup = new Map<string, string>();
+  for (const r of snapshot.reps) repNameLookup.set(r.id, r.name);
+  for (const w of snapshot.workOrders) {
+    if (w.ownerId && w.ownerName) repNameLookup.set(w.ownerId, w.ownerName);
+  }
+
+  for (const w of snapshot.workOrders) {
+    if (!isInRange(w.closeDate, periodStart, periodEnd)) continue;
+    netRevenue += w.amount;
+    grossProfit += w.grossProfit;
+    totalCommission += w.commissionAmount;
+    if (w.ownerId) {
+      gpByRep.set(w.ownerId, (gpByRep.get(w.ownerId) ?? 0) + w.grossProfit);
+    }
+  }
+  for (const o of snapshot.opportunities) {
+    if (!isInRange(o.closeDate, periodStart, periodEnd)) continue;
+    totalLeadFee += o.leadFee;
+    totalDiscount += o.discountGiven;
+    if (o.ownerId) {
+      discountByRep.set(o.ownerId, (discountByRep.get(o.ownerId) ?? 0) + o.discountGiven);
+    }
+  }
+
+  const topDiscounters = Array.from(discountByRep.entries())
+    .map(([ownerId, discount]) => ({ ownerId, ownerName: repNameLookup.get(ownerId) ?? "(unknown)", discount }))
+    .filter((x) => x.discount > 0)
+    .sort((a, b) => b.discount - a.discount)
+    .slice(0, 5);
+
+  const topGPContributors = Array.from(gpByRep.entries())
+    .map(([ownerId, gp]) => ({ ownerId, ownerName: repNameLookup.get(ownerId) ?? "(unknown)", gp }))
+    .filter((x) => x.gp > 0)
+    .sort((a, b) => b.gp - a.gp)
+    .slice(0, 5);
+
+  return {
+    arAging,
+    grossProfit,
+    netRevenue,
+    gpMargin: netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0,
+    totalLeadFee,
+    leadFeeRoi: totalLeadFee > 0 ? netRevenue / totalLeadFee : 0,
+    totalDiscount,
+    discountPctOfRevenue: netRevenue > 0 ? (totalDiscount / netRevenue) * 100 : 0,
+    totalCommission,
+    commissionPctOfRevenue: netRevenue > 0 ? (totalCommission / netRevenue) * 100 : 0,
+    topDiscounters,
+    topGPContributors,
+  };
+}
+
+/* ─── Operations rollups ─── */
+
+/**
+ * Operations picture — labor utilization, materials, payout ratios.
+ */
+export function deriveOperations(
+  snapshot: SalesforceSnapshot,
+  period: Period = "this-month"
+): {
+  // Labor capacity (right now)
+  totalLaborDaysRemaining: number;
+  totalLaborDaysActual: number;
+  totalLaborDaysProjected: number;
+  utilizationPct: number; // actual / projected
+  // Materials + payouts in period
+  totalMaterialsCost: number;
+  totalLaborPayout: number;
+  laborPayoutRatio: number; // labor payout / revenue
+  materialsRatio: number; // materials / revenue
+  // Most over-running WOs
+  overRuns: Array<{ id: string; workOrderNumber: string | null; account: string | null; projected: number; actual: number; overByDays: number }>;
+  // Top GP-margin WOs (profitability outliers)
+  topGPMargin: Array<{ id: string; workOrderNumber: string | null; account: string | null; revenue: number; gp: number; marginPct: number }>;
+} {
+  const now = new Date();
+  const { start: periodStart, end: periodEnd } = periodRange(period, now);
+
+  let totalLaborDaysRemaining = 0;
+  let totalLaborDaysActual = 0;
+  let totalLaborDaysProjected = 0;
+  let totalMaterialsCost = 0;
+  let totalLaborPayout = 0;
+  let periodRevenue = 0;
+  const overRuns: Array<{ id: string; workOrderNumber: string | null; account: string | null; projected: number; actual: number; overByDays: number }> = [];
+  const gpMargin: Array<{ id: string; workOrderNumber: string | null; account: string | null; revenue: number; gp: number; marginPct: number }> = [];
+
+  for (const w of snapshot.workOrders) {
+    // Capacity (right now, not period-scoped — represents current state)
+    totalLaborDaysRemaining += w.laborDaysRemaining ?? 0;
+
+    const inPeriod = isInRange(w.closeDate, periodStart, periodEnd);
+    if (inPeriod) {
+      totalLaborDaysActual += w.laborDaysActual ?? 0;
+      totalLaborDaysProjected += w.laborDaysProjected ?? 0;
+      totalMaterialsCost += w.costMaterials;
+      totalLaborPayout += w.totalPayoutsForLabor;
+      periodRevenue += w.amount;
+      // Overrun candidate
+      const proj = w.laborDaysProjected ?? 0;
+      const act = w.laborDaysActual ?? 0;
+      if (proj > 0 && act > proj) {
+        overRuns.push({
+          id: w.id,
+          workOrderNumber: w.workOrderNumber,
+          account: w.accountName,
+          projected: proj,
+          actual: act,
+          overByDays: Math.round(act - proj),
+        });
+      }
+      // Margin candidate
+      if (w.amount > 0 && w.grossProfit > 0) {
+        gpMargin.push({
+          id: w.id,
+          workOrderNumber: w.workOrderNumber,
+          account: w.accountName,
+          revenue: w.amount,
+          gp: w.grossProfit,
+          marginPct: (w.grossProfit / w.amount) * 100,
+        });
+      }
+    }
+  }
+
+  return {
+    totalLaborDaysRemaining: Math.round(totalLaborDaysRemaining),
+    totalLaborDaysActual: Math.round(totalLaborDaysActual),
+    totalLaborDaysProjected: Math.round(totalLaborDaysProjected),
+    utilizationPct: totalLaborDaysProjected > 0
+      ? (totalLaborDaysActual / totalLaborDaysProjected) * 100
+      : 0,
+    totalMaterialsCost,
+    totalLaborPayout,
+    laborPayoutRatio: periodRevenue > 0 ? (totalLaborPayout / periodRevenue) * 100 : 0,
+    materialsRatio: periodRevenue > 0 ? (totalMaterialsCost / periodRevenue) * 100 : 0,
+    overRuns: overRuns.sort((a, b) => b.overByDays - a.overByDays).slice(0, 10),
+    topGPMargin: gpMargin.sort((a, b) => b.marginPct - a.marginPct).slice(0, 10),
+  };
+}
+
+/* ─── Real Pipeline Funnel from Quote data ─── */
+
+/**
+ * Real funnel: Leads (Opps Created) → Quotes Sent → Opps Won → WOs Created → Paid in Full.
+ * Each step has count + total $ value where applicable.
+ */
+export function deriveRealFunnel(
+  snapshot: SalesforceSnapshot,
+  period: Period = "this-month"
+): Array<{ stage: string; count: number; value: number; dropOffPct: number | null }> {
+  const now = new Date();
+  const { start: periodStart, end: periodEnd } = periodRange(period, now);
+
+  let leads = 0;
+  let leadsValue = 0;
+  for (const o of snapshot.opportunities) {
+    if (isInRange(o.createdDate, periodStart, periodEnd)) {
+      leads += 1;
+      leadsValue += o.amount;
+    }
+  }
+
+  let quotesSent = 0;
+  let quotesValue = 0;
+  for (const q of snapshot.quotes) {
+    if (isInRange(q.createdDate, periodStart, periodEnd)) {
+      quotesSent += 1;
+      quotesValue += q.grandTotal;
+    }
+  }
+
+  let oppsWon = 0;
+  let oppsWonValue = 0;
+  for (const o of snapshot.opportunities) {
+    if (isInRange(o.closeDate, periodStart, periodEnd) && o.isWon) {
+      oppsWon += 1;
+      oppsWonValue += o.amount;
+    }
+  }
+
+  let wosCreated = 0;
+  let wosValue = 0;
+  let wosPaid = 0;
+  let wosPaidValue = 0;
+  for (const w of snapshot.workOrders) {
+    const closedInPeriod = isInRange(w.closeDate, periodStart, periodEnd);
+    if (!closedInPeriod) continue;
+    wosCreated += 1;
+    wosValue += w.amount;
+    if ((w.status ?? "").toLowerCase().includes("paid in full")) {
+      wosPaid += 1;
+      wosPaidValue += w.amount;
+    }
+  }
+
+  const stages = [
+    { stage: "Leads", count: leads, value: Math.round(leadsValue / 1000) },
+    { stage: "Quotes Sent", count: quotesSent, value: Math.round(quotesValue / 1000) },
+    { stage: "Opps Won", count: oppsWon, value: Math.round(oppsWonValue / 1000) },
+    { stage: "WOs Created", count: wosCreated, value: Math.round(wosValue / 1000) },
+    { stage: "Paid in Full", count: wosPaid, value: Math.round(wosPaidValue / 1000) },
+  ];
+
+  return stages.map((s, i) => {
+    const prev = stages[i - 1];
+    const dropOffPct = prev && prev.count > 0
+      ? Math.round(((prev.count - s.count) / prev.count) * 100)
+      : null;
+    return { ...s, dropOffPct };
+  });
+}
+
 /* ─── Per-rep account stats ─── */
 
 /**

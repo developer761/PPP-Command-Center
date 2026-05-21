@@ -31,6 +31,7 @@ import {
   deriveTopCustomers,
   deriveQuoteToCashVelocity,
   deriveRepMomentum,
+  deriveRealFunnel,
 } from "@/lib/salesforce/derive";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 
@@ -168,11 +169,18 @@ export default function DashboardView({ bundle }: Props) {
       .slice(0, 5);
   }, [snapshot]);
 
-  // Pipeline funnel can show either the page-level period or its own override.
+  // Pipeline funnel — prefer real funnel from Quote data when on live snapshot.
+  // Falls back to mock-style approximation when running on demo data.
   const funnel = useMemo(() => {
+    if (snapshot) {
+      const effPeriod = funnelPeriod === "page" ? period : funnelPeriod;
+      const real = deriveRealFunnel(snapshot, effPeriod);
+      // Conform to existing pipelineFunnel shape: { stage, count, value }[].
+      return real.map((s) => ({ stage: s.stage, count: s.count, value: s.value }));
+    }
     if (funnelPeriod === "page") return view.pipelineFunnel;
     return getFunnelForPeriod(funnelPeriod, region, reps);
-  }, [funnelPeriod, view.pipelineFunnel, region, reps]);
+  }, [snapshot, funnelPeriod, period, view.pipelineFunnel, region, reps]);
 
   const effectiveFunnelPeriod: Period = funnelPeriod === "page" ? period : funnelPeriod;
 

@@ -5,6 +5,19 @@ import { usePathname } from "next/navigation";
 import Sidebar from "@/components/sidebar";
 import Topbar from "@/components/topbar";
 
+type SearchableSnapshot = {
+  reps?: Array<{ id: string; name: string; email?: string | null; region?: string | null }>;
+  accounts?: Array<{ id: string; name: string; type?: string | null; region?: string | null }>;
+  workOrders?: Array<{
+    id: string;
+    workOrderNumber: string | null;
+    accountName: string | null;
+    status: string | null;
+    ownerName: string | null;
+    opportunityId: string | null;
+  }>;
+};
+
 type Props = {
   children: React.ReactNode;
   user: {
@@ -13,9 +26,10 @@ type Props = {
     firstName: string | null;
     initial: string;
   };
+  searchIndex?: SearchableSnapshot | null;
 };
 
-export default function DashboardChrome({ children, user }: Props) {
+export default function DashboardChrome({ children, user, searchIndex = null }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
@@ -67,7 +81,7 @@ export default function DashboardChrome({ children, user }: Props) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <Topbar onOpenMenu={() => setMobileOpen(true)} user={user} />
+        <Topbar onOpenMenu={() => setMobileOpen(true)} user={user} searchIndex={searchIndex} />
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
             {children}

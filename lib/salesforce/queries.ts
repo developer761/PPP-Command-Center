@@ -64,6 +64,15 @@ export type SnapshotOpp = {
   createdDate: string; // ISO
   closeDate: string | null; // ISO date (YYYY-MM-DD typically)
   lastActivityDate: string | null; // ISO date — used for "at risk" detection
+  // Financial fields — present on most opps in production
+  grossProfit: number;
+  leadFee: number;
+  discountGiven: number;
+  customerPayments: number;
+  customerBalance: number;
+  // Geographic fields — for Map tab
+  latitude: number | null;
+  longitude: number | null;
 };
 
 /**
@@ -127,6 +136,28 @@ export type SnapshotWorkOrder = {
   accountName: string | null;
   closeDate: string | null;
   createdDate: string;
+  // Operations + profitability fields
+  grossProfit: number;
+  commissionAmount: number;
+  costMaterials: number;
+  totalPayoutsForLabor: number;
+  laborDaysActual: number | null;
+  laborDaysProjected: number | null;
+  laborDaysRemaining: number | null;
+  balanceOwed: number;
+  finalBalanceAging: number | null; // days
+};
+
+/**
+ * Quote object — feeds the real Pipeline Funnel.
+ * PPP's flow: Lead → Quote → Opp → WO → Paid.
+ */
+export type SnapshotQuote = {
+  id: string;
+  opportunityId: string | null;
+  subtotal: number;
+  grandTotal: number;
+  createdDate: string;
 };
 
 export type SalesforceSnapshot = {
@@ -134,6 +165,7 @@ export type SalesforceSnapshot = {
   opportunities: SnapshotOpp[];
   workOrders: SnapshotWorkOrder[];
   accounts: SnapshotAccount[];
+  quotes: SnapshotQuote[];
   fetchedAt: string;
   /** Canonical Opp revenue field (dynamically detected). */
   revenueFieldUsed: string | null;
@@ -281,14 +313,22 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     `);
 
     // At PPP scale (89k+ opps), pulling 25 custom currency fields per row blows
-    // up payload size + serverless memory. Narrow to just the revenue fields
-    // we actually need — canonical + the explicit gross/net we surface in UI.
+    // up payload size + serverless memory. Narrow to just what we actually
+    // surface in UI: canonical revenue + financial fields (GP, lead fee,
+    // discount, payments) + geographic for the Map tab.
     const NEEDED_OPP_FIELDS = new Set<string>([
       ...(revenueField ? [revenueField] : []),
       "NetValue__c",
       "QuotedSubtotalWithChangeOrder__c",
       "TotalAmount__c",
-    ].filter((f) => allCurrencyFields.includes(f)));
+      "Gross_Profit__c",
+      "Lead_Fee__c",
+      "Discount_Given__c",
+      "Customer_Payments__c",
+      "Customer_Balance__c",
+      "Estimation_Address__Latitude__s",
+      "Estimation_Address__Longitude__s",
+    ].filter((f) => allCurrencyFields.includes(f) || /Latitude|Longitude/.test(f)));
     const currencyFieldsSelect = NEEDED_OPP_FIELDS.size > 0
       ? `, ${[...NEEDED_OPP_FIELDS].join(", ")}`
       : "";
@@ -372,6 +412,13 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         createdDate: o.CreatedDate,
         closeDate: o.CloseDate,
         lastActivityDate: o.LastActivityDate,
+        grossProfit: typeof o.Gross_Profit__c === "number" ? o.Gross_Profit__c : 0,
+        leadFee: typeof o.Lead_Fee__c === "number" ? o.Lead_Fee__c : 0,
+        discountGiven: typeof o.Discount_Given__c === "number" ? o.Discount_Given__c : 0,
+        customerPayments: typeof o.Customer_Payments__c === "number" ? o.Customer_Payments__c : 0,
+        customerBalance: typeof o.Customer_Balance__c === "number" ? o.Customer_Balance__c : 0,
+        latitude: typeof o.Estimation_Address__Latitude__s === "number" ? o.Estimation_Address__Latitude__s : null,
+        longitude: typeof o.Estimation_Address__Longitude__s === "number" ? o.Estimation_Address__Longitude__s : null,
       };
     });
 
@@ -460,12 +507,19 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         woOppRelName = oppRef.relationshipName ?? null;
       }
 
-      // At PPP scale (88k+ WOs), pulling 20 currency fields per row would blow
-      // up memory. Narrow to just the canonical + the gross/net we surface.
+      // At PPP scale (88k+ WOs), narrow the SELECT to canonical revenue
+      // + ops fields we actually surface (GP, commission, materials, labor,
+      // payouts, AR aging).
+      const opsFields = [
+        "GrossProfit__c", "CommissionAmount__c", "CostMaterials__c",
+        "TotalPayoutsForLabor__c", "LaborDaysActual__c", "LaborDaysProjected__c",
+        "LaborDaysRemaining__c", "BalanceOwed__c", "Final_Balance_Aging__c",
+      ].filter((f) => woCurrencyFields.includes(f) || woMeta.fields.some((mf) => mf.name === f));
       const NEEDED_WO_FIELDS = new Set<string>([
         ...(woRevenueField ? [woRevenueField] : []),
         ...(woQuotedField ? [woQuotedField] : []),
         ...(woNetField ? [woNetField] : []),
+        ...opsFields,
       ]);
       const woFieldList = [
         "Id",
@@ -516,6 +570,9 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       const ownerNested = opp?.Owner as Record<string, unknown> | undefined;
       const accountNested = opp?.Account as Record<string, unknown> | undefined;
 
+      const num = (k: string): number => typeof w[k] === "number" ? (w[k] as number) : 0;
+      const numOrNull = (k: string): number | null => typeof w[k] === "number" ? (w[k] as number) : null;
+
       return {
         id: w.Id as string,
         workOrderNumber: woNumberField ? (w[woNumberField] as string | null) ?? null : null,
@@ -529,6 +586,15 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         accountName: accountNested ? (accountNested.Name as string | null) ?? null : null,
         closeDate: opp ? (opp.CloseDate as string | null) ?? null : null,
         createdDate: w.CreatedDate as string,
+        grossProfit: num("GrossProfit__c"),
+        commissionAmount: num("CommissionAmount__c"),
+        costMaterials: num("CostMaterials__c"),
+        totalPayoutsForLabor: num("TotalPayoutsForLabor__c"),
+        laborDaysActual: numOrNull("LaborDaysActual__c"),
+        laborDaysProjected: numOrNull("LaborDaysProjected__c"),
+        laborDaysRemaining: numOrNull("LaborDaysRemaining__c"),
+        balanceOwed: num("BalanceOwed__c"),
+        finalBalanceAging: numOrNull("Final_Balance_Aging__c"),
       };
     });
 
@@ -586,6 +652,32 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       console.error("[SF] Account query failed (some fields may be absent):", err);
     }
 
+    /* ─────── Quotes ─────── */
+    // For the real Pipeline Funnel. PPP's flow: Lead → Quote → Opp → WO → Paid.
+    // Same 730-day window for performance.
+    let quotes: SnapshotQuote[] = [];
+    try {
+      const qRecords: Array<Record<string, unknown>> = [];
+      let qResult = await conn.query<Record<string, unknown>>(
+        `SELECT Id, OpportunityId, Subtotal__c, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
+      );
+      qRecords.push(...qResult.records);
+      while (!qResult.done && qResult.nextRecordsUrl) {
+        qResult = await conn.queryMore<Record<string, unknown>>(qResult.nextRecordsUrl);
+        qRecords.push(...qResult.records);
+      }
+      console.log(`[SF] Pulled ${qRecords.length} quotes (last ${RECENCY_WINDOW_DAYS}d)`);
+      quotes = qRecords.map((q) => ({
+        id: q.Id as string,
+        opportunityId: (q.OpportunityId as string | null) ?? null,
+        subtotal: typeof q.Subtotal__c === "number" ? q.Subtotal__c : 0,
+        grandTotal: typeof q.GrandTotal__c === "number" ? q.GrandTotal__c : 0,
+        createdDate: q.CreatedDate as string,
+      }));
+    } catch (err) {
+      console.error("[SF] Quote query failed:", err);
+    }
+
     // Sandbox detection — instance URL contains "sandbox" for any sandbox org.
     const instanceUrl = conn.instanceUrl ?? null;
     const isSandbox = instanceUrl ? /sandbox\.my\.salesforce\.com/i.test(instanceUrl) : false;
@@ -595,6 +687,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       opportunities,
       workOrders,
       accounts,
+      quotes,
       fetchedAt: new Date().toISOString(),
       revenueFieldUsed: revenueField,
       workOrderRevenueField: woRevenueField,
