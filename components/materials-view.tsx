@@ -52,6 +52,25 @@ export default function MaterialsView({ bundle }: Props) {
     };
   }, [openJobs]);
 
+  // Admin diagnostic: surface the underlying snapshot counts so we can debug
+  // "why is it showing zero?" without crawling Vercel logs.
+  const debug = useMemo(() => {
+    if (!snapshot) return null;
+    const woIds = new Set(snapshot.workOrders.map((w) => w.id));
+    const openWoCount = snapshot.workOrders.filter((w) => {
+      const s = (w.status ?? "").toLowerCase();
+      return !s.includes("paid in full") && !s.includes("complete") && !s.includes("cancel") && !s.includes("closed");
+    }).length;
+    const woliWithMatchingWo = snapshot.woLineItems.filter((l) => woIds.has(l.workOrderId)).length;
+    return {
+      woCount: snapshot.workOrders.length,
+      openWoCount,
+      woliCount: snapshot.woLineItems.length,
+      woliMatchedToWo: woliWithMatchingWo,
+      paintColorCount: snapshot.paintColors.length,
+    };
+  }, [snapshot]);
+
   if (!snapshot) {
     return (
       <div className="animate-fade-up space-y-6">
@@ -92,6 +111,31 @@ export default function MaterialsView({ bundle }: Props) {
         <StatCard label="Distinct colors" value={stats.distinctColors.toLocaleString()} accent="orange" />
         <StatCard label="Suppliers" value={stats.distinctSuppliers.toLocaleString()} accent="green" />
       </section>
+
+      {/* Admin-only diagnostic — surfaces the underlying snapshot counts so
+          "why does this show zero?" is a one-glance answer instead of a log dive. */}
+      {viewer?.isAdmin && debug && (
+        <details className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-lg px-4 py-2 text-[11px] text-ppp-charcoal-600">
+          <summary className="cursor-pointer font-condensed font-bold uppercase tracking-wider text-ppp-charcoal-500">
+            Snapshot diagnostic (admin only)
+          </summary>
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <DebugStat label="WOs in snapshot" value={debug.woCount} />
+            <DebugStat label="Open WOs (status filter)" value={debug.openWoCount} />
+            <DebugStat label="WOLI rows" value={debug.woliCount} />
+            <DebugStat label="WOLI matched to WO" value={debug.woliMatchedToWo} />
+            <DebugStat label="Paint colors" value={debug.paintColorCount} />
+          </div>
+          <div className="mt-2 text-ppp-charcoal-500 leading-relaxed">
+            If WOs &gt; 0 but WOLI rows == 0, the WorkOrderLineItem SOQL is failing on
+            the server (likely a permission or field-name issue — check Vercel
+            function logs for &quot;[SF] WorkOrderLineItem query failed&quot;).
+            If WOLI rows &gt; 0 but matched-to-WO == 0, the parent WOs were created
+            outside the 365-day window. If both &gt; 0 but Open WOs == 0, every WO
+            in the snapshot is already Paid in Full / Complete / Cancelled.
+          </div>
+        </details>
+      )}
 
       {/* Empty state */}
       {openJobs.length === 0 && (
@@ -524,6 +568,15 @@ function DraftOrderModal({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DebugStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <div className="text-ppp-charcoal-500 text-[10px]">{label}</div>
+      <div className="font-mono text-ppp-charcoal font-semibold">{value.toLocaleString()}</div>
     </div>
   );
 }
