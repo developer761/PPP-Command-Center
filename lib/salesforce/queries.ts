@@ -592,36 +592,47 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
         ];
-        // Probe call first — minimal possible subquery to isolate whether the
-        // failure is the relationship name vs the field list. If this probe
-        // succeeds, we know `WorkOrderLineItems` resolves on PPP's org; any
-        // failure afterward is a field-list issue. Log result either way so
-        // the next iteration can target the right thing.
+        // Auto-detect the child relationship name from WorkOrder → WorkOrderLineItem.
+        // Standard SF default is `WorkOrderLineItems` (plural), but PPP may have
+        // customized it. Describe WO once and find the relationship that points to
+        // a WOLI-shaped child object. Self-healing — no manual reconfig if PPP
+        // renames it later.
+        type ChildRel = { relationshipName: string | null; childSObject: string };
+        type Describe = { childRelationships?: ChildRel[] };
+        let woliRelationshipName: string | null = null;
         try {
-          const probe = await conn.query<Record<string, unknown>>(
-            `SELECT Id, (SELECT Id FROM WorkOrderLineItems) FROM WorkOrder LIMIT 5`
+          const woDescribe = await conn.sobject("WorkOrder").describe() as Describe;
+          const child = (woDescribe.childRelationships ?? []).find(
+            (c) => c.relationshipName && /lineitem/i.test(c.childSObject)
           );
-          const probeNestedCount = probe.records.reduce((sum, wo) => {
-            const nested = wo.WorkOrderLineItems as { records?: unknown[] } | null | undefined;
-            return sum + (Array.isArray(nested?.records) ? nested.records.length : 0);
-          }, 0);
-          console.log(`[SF] WOLI probe OK — ${probe.records.length} parents, ${probeNestedCount} nested children`);
-        } catch (probeErr) {
-          const m = probeErr instanceof Error ? probeErr.message : String(probeErr);
-          console.error(`[SF] WOLI probe FAILED — minimal (SELECT Id FROM WorkOrderLineItems) was rejected: ${m}`);
+          woliRelationshipName = child?.relationshipName ?? null;
+          if (woliRelationshipName) {
+            console.log(`[SF] WOLI auto-detected child relationship: WorkOrder → ${woliRelationshipName} (child object: ${child!.childSObject})`);
+          } else {
+            console.error(`[SF] WOLI describe found NO child relationship matching /lineitem/ on WorkOrder. Candidates:`,
+              (woDescribe.childRelationships ?? [])
+                .map((c) => `${c.relationshipName ?? "(no name)"} → ${c.childSObject}`)
+                .slice(0, 20).join(" · "));
+          }
+        } catch (descErr) {
+          const m = descErr instanceof Error ? descErr.message : String(descErr);
+          console.error(`[SF] WOLI describe failed: ${m}`);
         }
-        console.log(`[SF] WOLI query starting (parent-subquery via WorkOrderLineItems, limit=${WOLI_HARD_LIMIT})`);
+        // If describe didn't yield a relationship, fall back to the standard
+        // default — the query will fail loudly if it's wrong.
+        const relName = woliRelationshipName ?? "WorkOrderLineItems";
+        console.log(`[SF] WOLI query starting (parent-subquery via ${relName}, limit=${WOLI_HARD_LIMIT})`);
         const records: Array<{ workOrderId: string; raw: Record<string, unknown> }> = [];
         let pageNum = 0;
         // Same date window as the main WO query so we hit the same parent set.
         const soql =
-          `SELECT Id, (SELECT ${innerFields.join(", ")} FROM WorkOrderLineItems) ` +
+          `SELECT Id, (SELECT ${innerFields.join(", ")} FROM ${relName}) ` +
           `FROM WorkOrder WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`;
         let result = await conn.query<Record<string, unknown>>(soql);
         const flatten = (rows: Array<Record<string, unknown>>) => {
           for (const wo of rows) {
             const woId = wo.Id as string;
-            const nested = wo.WorkOrderLineItems as { records?: Array<Record<string, unknown>> } | null;
+            const nested = wo[relName] as { records?: Array<Record<string, unknown>> } | null;
             if (!nested?.records) continue;
             for (const r of nested.records) {
               records.push({ workOrderId: woId, raw: r });
