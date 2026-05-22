@@ -58,16 +58,24 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
 
   return (
     <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-      <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold text-ppp-charcoal">Rep Leaderboard</h3>
+      <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between sm:block gap-3">
+            <h3 className="text-base font-semibold text-ppp-charcoal">Rep Leaderboard</h3>
+            {/* Inline total on mobile — collapses the second row away when the
+                vertical stack would otherwise crowd the page header. */}
+            <div className="sm:hidden text-sm font-semibold text-ppp-charcoal whitespace-nowrap">
+              {fmtMoneyK(teamRevenueTotal)} <span className="text-[10px] font-normal text-ppp-charcoal-500">team</span>
+            </div>
+          </div>
           <p className="text-[11px] sm:text-xs text-ppp-charcoal-500 mt-0.5">
-            Click a column header to sort · click a row for the rep deep-dive
+            <span className="sm:hidden">Tap a row for the deep-dive</span>
+            <span className="hidden sm:inline">Click a column header to sort · click a row for the rep deep-dive</span>
           </p>
         </div>
-        <div className="text-right shrink-0">
+        <div className="hidden sm:block text-right shrink-0">
           <div className="text-sm font-semibold text-ppp-charcoal">{fmtMoneyK(teamRevenueTotal)}</div>
-          <div className="text-[10px] sm:text-[11px] text-ppp-charcoal-500">team total</div>
+          <div className="text-[11px] text-ppp-charcoal-500">team total</div>
         </div>
       </div>
 

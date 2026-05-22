@@ -16,6 +16,16 @@ import { clearSalesforceCache } from "@/lib/salesforce/queries";
 const REFRESH_COOLDOWN_MS = 30_000;
 const lastRefreshByUser = new Map<string, number>();
 
+// Prevent unbounded growth — sweep entries older than 10x the cooldown
+// window whenever the map exceeds 500 users.
+function pruneRefreshMap(now: number) {
+  if (lastRefreshByUser.size < 500) return;
+  const cutoff = now - REFRESH_COOLDOWN_MS * 10;
+  for (const [uid, ts] of lastRefreshByUser) {
+    if (ts < cutoff) lastRefreshByUser.delete(uid);
+  }
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
@@ -43,8 +53,9 @@ export async function POST(request: Request) {
   }
 
   // Per-user cooldown: drop the cache only if we haven't done so in the last 30s.
-  const last = lastRefreshByUser.get(data.user.id) ?? 0;
   const now = Date.now();
+  pruneRefreshMap(now);
+  const last = lastRefreshByUser.get(data.user.id) ?? 0;
   if (now - last >= REFRESH_COOLDOWN_MS) {
     lastRefreshByUser.set(data.user.id, now);
     clearSalesforceCache();

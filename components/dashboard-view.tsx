@@ -785,17 +785,26 @@ export default function DashboardView({ bundle }: Props) {
             <div className="text-xs text-ppp-charcoal-500 mt-0.5">
               {pipelineAtRisk.count} deals · {pipelineAtRisk.reps} reps · {">"}14 days in stage
             </div>
-            <button
-              type="button"
-              className="mt-3 text-xs font-medium text-ppp-blue hover:text-ppp-blue-700"
+            {/* "Review stuck deals" used to be a no-op button — point it at
+                the rep list instead so admins can drill in to the reps with
+                stale pipeline. (A full stuck-deals filter view is a Phase 2
+                follow-up.) */}
+            <Link
+              href="/dashboard/rep"
+              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-ppp-blue hover:text-ppp-blue-700 transition-colors"
             >
-              Review stuck deals →
-            </button>
+              Review reps with stuck deals
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M5 12h14 M12 5l7 7-7 7" />
+              </svg>
+            </Link>
           </div>
 
           {/* Hot reps this week — momentum spotlight. Hide when scoped to self
-              (a 1-row leaderboard comparing the viewer to themselves is noise). */}
-          {!repScopedToSelf && hotReps.length > 0 && (
+              (a 1-row leaderboard comparing the viewer to themselves is noise).
+              When all reps are below the $1K WoW threshold, show a quiet
+              empty-state instead of dropping the card silently. */}
+          {!repScopedToSelf && (
             <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-3">
                 <div className="h-6 w-6 rounded-md bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-xs">
@@ -803,36 +812,44 @@ export default function DashboardView({ bundle }: Props) {
                 </div>
                 <h3 className="text-sm font-semibold text-ppp-charcoal">Hot This Week</h3>
               </div>
-              <ul className="space-y-1.5">
-                {hotReps.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-2 text-xs">
-                    <Link
-                      href={`/dashboard/rep/${r.id}`}
-                      className="font-medium text-ppp-charcoal hover:text-ppp-blue transition-colors truncate"
-                    >
-                      {r.name}
-                    </Link>
-                    <span className="whitespace-nowrap text-right">
-                      <span className="font-semibold text-ppp-navy">{fmtMoneyK(r.thisWeekK)}</span>
-                      {r.deltaPct !== 0 && (
-                        <span
-                          className={
-                            r.deltaPct > 0
-                              ? "ml-2 text-ppp-green-700 font-semibold"
-                              : "ml-2 text-ppp-orange-700 font-semibold"
-                          }
+              {hotReps.length === 0 ? (
+                <p className="text-xs text-ppp-charcoal-500 italic">
+                  No reps with &gt;$1K week-over-week growth yet.
+                </p>
+              ) : (
+                <>
+                  <ul className="space-y-1.5">
+                    {hotReps.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2 text-xs">
+                        <Link
+                          href={`/dashboard/rep/${r.id}`}
+                          className="font-medium text-ppp-charcoal hover:text-ppp-blue transition-colors truncate"
                         >
-                          {r.deltaPct > 0 ? "▲" : "▼"}
-                          {Math.abs(r.deltaPct)}%
+                          {r.name}
+                        </Link>
+                        <span className="whitespace-nowrap text-right">
+                          <span className="font-semibold text-ppp-navy">{fmtMoneyK(r.thisWeekK)}</span>
+                          {r.deltaPct !== 0 && (
+                            <span
+                              className={
+                                r.deltaPct > 0
+                                  ? "ml-2 text-ppp-green-700 font-semibold"
+                                  : "ml-2 text-ppp-orange-700 font-semibold"
+                              }
+                            >
+                              {r.deltaPct > 0 ? "▲" : "▼"}
+                              {Math.abs(r.deltaPct)}%
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-3 text-[10px] text-ppp-charcoal-500 italic">
-                Week-over-week revenue delta
-              </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-3 text-[10px] text-ppp-charcoal-500 italic">
+                    Week-over-week revenue delta
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

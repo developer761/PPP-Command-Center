@@ -94,8 +94,8 @@ export default function Topbar({
             </svg>
           </button>
         )}
-        <div className="min-w-0 max-w-[160px] sm:max-w-none">
-          <h2 className="text-sm sm:text-base font-semibold text-ppp-charcoal truncate">
+        <div className="min-w-0 max-w-[110px] xs:max-w-[140px] sm:max-w-none">
+          <h2 className="text-sm sm:text-base font-semibold text-ppp-charcoal truncate" title={greetingLine}>
             {greetingLine}
           </h2>
           <p className="text-[10px] sm:text-xs text-ppp-charcoal-500 mt-0.5 truncate">
@@ -144,10 +144,12 @@ export default function Topbar({
         <form action="/api/admin/sf-refresh-cache" method="POST" className="sm:hidden">
           <button
             type="submit"
-            className="flex items-center justify-center h-9 w-9 rounded-lg bg-ppp-green-50 border border-ppp-green-100 hover:bg-ppp-green-100 transition-colors"
-            title={`Synced ${formatAgo(ago)} · tap to refresh`}
+            className="flex items-center justify-center gap-1 h-9 px-2.5 rounded-lg bg-ppp-green-50 border border-ppp-green-100 hover:bg-ppp-green-100 transition-colors"
+            title={`Synced ${formatAgo(ago)} · tap to refresh from Salesforce`}
+            aria-label={`Synced ${formatAgo(ago)}. Tap to refresh from Salesforce.`}
           >
-            <span className="h-2 w-2 rounded-full bg-ppp-green animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-ppp-green animate-pulse" aria-hidden />
+            <span className="text-[10px] font-medium text-ppp-green-700 whitespace-nowrap">Sync</span>
           </button>
         </form>
 

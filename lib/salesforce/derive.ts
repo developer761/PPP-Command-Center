@@ -1330,7 +1330,17 @@ export function deriveRepUpcomingWork(
       const inFuture = !w.closeDate || w.closeDate >= today;
       if (!inFuture) return false;
       const s = (w.status ?? "").toLowerCase();
-      if (s.includes("paid in full") || s.includes("complete") || s.includes("cancel")) return false;
+      // Match the same closed-status set as deriveRepRecentDeals — without
+      // "closed" / "balance owed" here, a "Closed Lost" WO with a future
+      // close date would slip into Upcoming Work (PPP's Closed Lost stage
+      // sometimes carries a future close date when the lead was logged ahead).
+      if (
+        s.includes("paid in full") ||
+        s.includes("complete") ||
+        s.includes("cancel") ||
+        s.includes("closed") ||
+        s.includes("balance owed")
+      ) return false;
       return true;
     })
     .sort((a, b) => {

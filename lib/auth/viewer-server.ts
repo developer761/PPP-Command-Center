@@ -88,6 +88,7 @@ export async function resolveViewer(
   if (viewAsUserId && isAdmin) {
     const seenKey = `${user.id}:${viewAsUserId}`;
     const now = Date.now();
+    pruneAuditDedupe(now);
     const last = auditDedupe.get(seenKey) ?? 0;
     if (now - last > AUDIT_DEDUPE_WINDOW_MS) {
       auditDedupe.set(seenKey, now);
@@ -126,5 +127,18 @@ function pickFirst(v: string | string[] | undefined): string | null {
 // In-memory audit log dedupe — admin × target → last-write timestamp.
 // One hour window matches our policy: every distinct impersonation window
 // produces at least one audit row, even if the admin stays on it longer.
+// TTL eviction prevents the Map from growing unbounded over the lifetime of
+// a Vercel function instance — without it, weeks of impersonation activity
+// would slowly leak memory.
 const auditDedupe = new Map<string, number>();
 const AUDIT_DEDUPE_WINDOW_MS = 60 * 60 * 1000;
+
+// Sweep entries older than 2x the window every time the map grows past 500.
+// Cheap O(n) walk over a tiny map; runs only when needed.
+function pruneAuditDedupe(now: number) {
+  if (auditDedupe.size < 500) return;
+  const cutoff = now - AUDIT_DEDUPE_WINDOW_MS * 2;
+  for (const [key, ts] of auditDedupe) {
+    if (ts < cutoff) auditDedupe.delete(key);
+  }
+}

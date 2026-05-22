@@ -138,6 +138,16 @@ h1, h2, h3, h4, .font-condensed {
   }
 }
 
+/* Apply hover-lift only on devices that actually support hover. Without this,
+   mobile taps trigger the -1px translate transform and produce a visible
+   paint flicker on iOS. */
+@media (hover: hover) {
+  .kpi-card-lift:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px -8px rgba(23, 43, 77, 0.08);
+  }
+}
+
 /* Mapbox popup — minimal override to match PPP brand */
 .mapboxgl-popup-content {
   border-radius: 10px !important;

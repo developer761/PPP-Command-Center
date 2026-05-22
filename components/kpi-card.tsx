@@ -30,7 +30,9 @@ export default function KPICard({ label, value, change, trend, accent = "blue" }
       className={[
         "relative overflow-hidden bg-white rounded-xl border border-ppp-charcoal-100",
         "p-4 sm:p-5",
-        "transition-all hover:shadow-md hover:shadow-ppp-charcoal/5 hover:-translate-y-px",
+        // Lift only on devices with real hover — phones triggered the
+        // transform on every tap and caused a visible paint flicker.
+        "transition-all kpi-card-lift",
         "before:absolute before:top-0 before:left-0 before:h-1 before:w-full",
         accentRing[accent],
       ].join(" ")}

@@ -559,7 +559,7 @@ export default async function RepDetailPage({
                         {d.stage}
                       </span>
                     </td>
-                    <td className="px-6 py-3.5 text-right font-semibold text-ppp-charcoal">{d.amount > 0 ? fmtMoneyK(d.amount) : <span className="text-ppp-charcoal-500 font-normal italic">TBD</span>}</td>
+                    <td className="px-6 py-3.5 text-right font-semibold text-ppp-charcoal">{fmtMoneyK(d.amount)}</td>
                     <td className="px-6 py-3.5 text-right text-ppp-charcoal-500">
                       {d.closedAt ? d.closedAt : `${d.daysInStage}d in stage`}
                     </td>
@@ -584,7 +584,7 @@ export default async function RepDetailPage({
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-semibold text-ppp-charcoal">{d.amount > 0 ? fmtMoneyK(d.amount) : <span className="text-ppp-charcoal-500 font-normal italic">TBD</span>}</div>
+                    <div className="font-semibold text-ppp-charcoal">{fmtMoneyK(d.amount)}</div>
                     <span
                       className={[
                         "inline-flex items-center px-1.5 py-0 mt-1 rounded text-[10px] font-medium border",
