@@ -574,26 +574,29 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // Phase 2 — WorkOrderLineItem (standard SF FSL object). 163k records on
     // prod 2026-05-22.
     //
-    // KNOWN ORG BEHAVIOR (2026-05-22): PPP's WorkOrderLineItem rejects
-    //   - WHERE CreatedDate = LAST_N_DAYS:N
-    //   - ORDER BY CreatedDate DESC
-    //   - parent-relationship subqueries via WorkOrderLineItems
-    // all with MALFORMED_QUERY. Same syntax works fine on WorkOrder / Opp /
-    // Quote on the same connection. Likely an org-level trigger or sharing
-    // rule that mangles trailing clauses on this object specifically.
+    // KNOWN ORG BEHAVIOR (verified via /api/admin/wo-debug 2026-05-22):
+    //   - Direct WHERE CreatedDate = LAST_N_DAYS:N → MALFORMED_QUERY
+    //   - Direct ORDER BY CreatedDate DESC → MALFORMED_QUERY
+    //   - Parent-relationship subqueries via WorkOrderLineItems → MALFORMED_QUERY
+    //   - BUT: `WHERE WorkOrderId IN ('id1','id2',...)` → WORKS
     //
-    // WORKAROUND: bare SELECT + LIMIT. We get an arbitrary 30k WOLI rows.
+    // STRATEGY: this fetcher waits for the WO query to finish, then queries
+    // WOLI explicitly by the WO Ids we already pulled — batched in chunks of
+    // 200 because SOQL's IN-clause character budget caps around 100kB.
+    // Guaranteed correctness: every WOLI we get back belongs to a WO in our
+    // snapshot. No more "30k arbitrary, 0 matched."
     //
-    // SEPARATE BUSINESS NOTE (Karan, 2026-05-22): PPP doesn't enter line
-    // items in SF until later in the job lifecycle, so the 569 open paint-
-    // job WOs have 0 WOLIs attached anyway — the join surfacing 0 matches
-    // is the accurate reflection of PPP's current data state, NOT a query
-    // bug. The Materials Ordering page correctly lists those 569 WOs with
-    // a "No rooms entered" pill so reps know which jobs need line-item
-    // entry next.
-    const WOLI_HARD_LIMIT = 30_000;
-    const woLineItemsPromise: Promise<SnapshotWoli[]> = (async () => {
+    // Note: this changes the dependency graph — woLineItemsPromise can't
+    // start until workOrders is materialized. We accept that tradeoff because
+    // (a) WOLI is small relative to the WO pull, and (b) correctness >>
+    // parallelism here.
+    const WOLI_BATCH_SIZE = 200;
+    const wrapWoliFetch = async (woIds: string[]): Promise<SnapshotWoli[]> => {
       const t0 = Date.now();
+      if (woIds.length === 0) {
+        console.log("[SF] WOLI fetch skipped — no WOs to scope to");
+        return [];
+      }
       try {
         const fields = [
           "Id", "WorkOrderId",
@@ -601,21 +604,23 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
         ];
-        console.log(`[SF] WOLI query starting (bare SELECT, limit=${WOLI_HARD_LIMIT})`);
         const records: Array<Record<string, unknown>> = [];
-        let pageNum = 0;
-        const soql =
-          `SELECT ${fields.join(", ")} FROM WorkOrderLineItem LIMIT ${WOLI_HARD_LIMIT}`;
-        let result = await conn.query<Record<string, unknown>>(soql);
-        records.push(...result.records);
-        pageNum++;
-        console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
-        while (!result.done && result.nextRecordsUrl && records.length < WOLI_HARD_LIMIT) {
-          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+        const batchCount = Math.ceil(woIds.length / WOLI_BATCH_SIZE);
+        console.log(`[SF] WOLI fetch starting — ${woIds.length} WO ids in ${batchCount} batch(es) of ${WOLI_BATCH_SIZE}`);
+        for (let i = 0; i < woIds.length; i += WOLI_BATCH_SIZE) {
+          const batch = woIds.slice(i, i + WOLI_BATCH_SIZE);
+          const inClause = batch.map((id) => `'${id}'`).join(",");
+          let result = await conn.query<Record<string, unknown>>(
+            `SELECT ${fields.join(", ")} FROM WorkOrderLineItem WHERE WorkOrderId IN (${inClause})`
+          );
           records.push(...result.records);
-          pageNum++;
-          if (pageNum % 5 === 0 || result.done) {
-            console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
+          while (!result.done && result.nextRecordsUrl) {
+            result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+            records.push(...result.records);
+          }
+          const batchNum = Math.floor(i / WOLI_BATCH_SIZE) + 1;
+          if (batchNum % 5 === 0 || batchNum === batchCount) {
+            console.log(`[SF] WOLI batch ${batchNum}/${batchCount}: total ${records.length} rows (${Date.now() - t0}ms)`);
           }
         }
         console.log(`[SF] WOLI DONE — ${records.length} rows in ${Date.now() - t0}ms`);
@@ -670,7 +675,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         }
         return [];
       }
-    })();
+    };
 
     // PaintColor__c — 5,762 total records, no time window (color directory).
     const paintColorsPromise: Promise<SnapshotPaintColor[]> = (async () => {
@@ -967,15 +972,47 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       };
     });
 
-    // Await the Account + Quote + WOLI + PaintColor promises that have been
-    // running in parallel with the WO query above. All already executed
-    // concurrently — this is just collecting their results.
-    const [accounts, quotes, woLineItems, paintColors] = await Promise.all([
+    // Await the Account + Quote + PaintColor promises that have been running
+    // in parallel with the WO query above.
+    const [accounts, quotes, paintColors] = await Promise.all([
       accountsPromise,
       quotesPromise,
-      woLineItemsPromise,
       paintColorsPromise,
     ]);
+
+    // WOLI fetch runs LAST because it explicitly batches by WorkOrderId IN
+    // (...) — needs the WO Ids first. We only scope to the active-WO subset
+    // we actually care about (workTypes that aren't Estimate/Appointment +
+    // statuses that aren't closed/completed), so the IN-clause stays small
+    // and the network round-trip stays predictable. Closed/completed WOs
+    // can still have their WOLIs surfaced via lifetime queries later — for
+    // now Materials Ordering only needs the active set.
+    const woliEligibleIds = workOrders
+      .filter((w) => {
+        const wt = (w.workTypeName ?? "").toLowerCase();
+        if (
+          wt.includes("estimate") ||
+          wt.includes("appointment") ||
+          wt.includes("inspection") ||
+          wt.includes("consultation")
+        ) {
+          return false;
+        }
+        const s = (w.status ?? "").toLowerCase();
+        if (
+          s.includes("paid in full") ||
+          s.includes("complete") ||
+          s.includes("cancel") ||
+          s.includes("closed") ||
+          s.includes("void") ||
+          s.includes("abandoned")
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .map((w) => w.id);
+    const woLineItems = await wrapWoliFetch(woliEligibleIds);
 
     // Sandbox detection — instance URL contains "sandbox" for any sandbox org.
     const instanceUrl = conn.instanceUrl ?? null;
