@@ -537,7 +537,6 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // window, 13 fields, hard ORDER BY + LIMIT ceiling for safety.
     // Per-batch logging so the next deploy's logs show whether the query
     // starts, how many pages it gets, and where it dies (if at all).
-    const WOLI_WINDOW_DAYS = 60;
     const WOLI_HARD_LIMIT = 30_000;
     const woLineItemsPromise: Promise<SnapshotWoli[]> = (async () => {
       const t0 = Date.now();
@@ -548,14 +547,21 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
         ];
-        console.log(`[SF] WOLI query starting (window=${WOLI_WINDOW_DAYS}d, limit=${WOLI_HARD_LIMIT})`);
+        console.log(`[SF] WOLI query starting (limit=${WOLI_HARD_LIMIT}, most-recent-first)`);
+        // NOTE: this used to have `WHERE CreatedDate = LAST_N_DAYS:60` to bound
+        // the result set by time. SF rejected that syntax on the standard
+        // WorkOrderLineItem object with MALFORMED_QUERY at column 211 — even
+        // though the IDENTICAL pattern works on WorkOrder. Cause is something
+        // org-specific (sharing rule? trigger validation?). Workaround: drop
+        // the WHERE clause and use ORDER BY DESC + LIMIT to get the 30k
+        // most-recent rows. That's the actually-actionable subset anyway —
+        // ancient line items aren't relevant to "materials ordering today."
         const records: Array<Record<string, unknown>> = [];
         let pageNum = 0;
-        let result = await conn.query<Record<string, unknown>>(
+        const soql =
           `SELECT ${fields.join(", ")} FROM WorkOrderLineItem ` +
-          `WHERE CreatedDate = LAST_N_DAYS:${WOLI_WINDOW_DAYS} ` +
-          `ORDER BY CreatedDate DESC LIMIT ${WOLI_HARD_LIMIT}`
-        );
+          `ORDER BY CreatedDate DESC LIMIT ${WOLI_HARD_LIMIT}`;
+        let result = await conn.query<Record<string, unknown>>(soql);
         records.push(...result.records);
         pageNum++;
         console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
@@ -567,7 +573,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
             console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
           }
         }
-        console.log(`[SF] WOLI DONE — ${records.length} rows in ${Date.now() - t0}ms (window=${WOLI_WINDOW_DAYS}d)`);
+        console.log(`[SF] WOLI DONE — ${records.length} rows in ${Date.now() - t0}ms`);
         const num = (r: Record<string, unknown>, k: string): number =>
           typeof r[k] === "number" ? (r[k] as number) : 0;
         const str = (r: Record<string, unknown>, k: string): string | null =>
