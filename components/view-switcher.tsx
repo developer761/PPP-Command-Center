@@ -35,10 +35,13 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
   const [fetched, setFetched] = useState<RepOption[] | null>(cachedReps);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Lazy-load the rep list on first open. We don't want the dashboard layout
-  // to await this just to render chrome.
+  // Pre-fetch the rep directory as soon as an admin signs in — NOT on first
+  // dropdown open. The endpoint hits the cached snapshot so it's normally
+  // ~50ms, but on a cold cache it was making admins wait 5-30s seeing
+  // "No reps match" before the list arrived. Now the dropdown opens
+  // instantly with the list already populated.
   useEffect(() => {
-    if (!open || cachedReps || !viewer?.isAdmin) return;
+    if (cachedReps || !viewer?.isAdmin) return;
     let cancelled = false;
     fetch("/api/admin/reps", { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
@@ -60,7 +63,7 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open, viewer?.isAdmin]);
+  }, [viewer?.isAdmin]);
 
   const reps: RepOption[] = fetched ?? (propReps.length ? propReps : []);
 
@@ -232,7 +235,22 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
               </li>
             )}
             {filtered.length === 0 && (
-              <li className="px-3 py-3 text-[12px] text-ppp-charcoal-500">No reps match.</li>
+              <li className="px-3 py-3 text-[12px] text-ppp-charcoal-500 flex items-center gap-2">
+                {/* Distinguish "still loading" from "no match" — the prefetch
+                    may be in flight when the admin opens the dropdown
+                    immediately after sign-in. */}
+                {fetched === null ? (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="animate-spin text-ppp-charcoal-400" aria-hidden>
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+                      <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                    <span>Loading reps…</span>
+                  </>
+                ) : (
+                  <span>No reps match.</span>
+                )}
+              </li>
             )}
             {filtered.map((r) => {
               const active = viewer.viewAsUserId === r.id;
