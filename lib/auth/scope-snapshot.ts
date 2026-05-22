@@ -30,6 +30,9 @@ export function scopeSnapshotToViewer(
       workOrders: [],
       accounts: [],
       quotes: [],
+      woLineItems: [],
+      // Paint colors are a global directory — leave intact so the materials
+      // page can resolve names even if no WOLI rows survive scoping.
     };
   }
 
@@ -56,6 +59,11 @@ export function scopeSnapshotToViewer(
     (q) => q.opportunityId && oppIds.has(q.opportunityId)
   );
 
+  // WOLI rows link to WorkOrder via workOrderId. Keep only line items whose
+  // parent WO survived the owner filter so reps see only their own jobs.
+  const woIds = new Set(workOrders.map((w) => w.id));
+  const woLineItems = snapshot.woLineItems.filter((l) => woIds.has(l.workOrderId));
+
   return {
     ...snapshot,
     reps,
@@ -63,5 +71,8 @@ export function scopeSnapshotToViewer(
     workOrders,
     accounts,
     quotes,
+    woLineItems,
+    // Paint colors stay full — they're a 5k-row directory used to resolve
+    // color references; not sensitive and not viewer-scoped data.
   };
 }

@@ -174,12 +174,79 @@ export type SnapshotQuote = {
   createdDate: string;
 };
 
+/**
+ * Work Order Line Item — the standard SF FSL object (WorkOrderLineItem), NOT
+ * the custom Work_Order_Line_Item__c the architecture PDF mentioned. Schema
+ * verified on production 2026-05-22 (163k records). Drives Phase 2 Materials
+ * Ordering — every WO breaks down into multiple WOLI rows, one per room/area,
+ * each with up to 5 paint color references (wall / ceiling / trim / floor / other).
+ */
+export type SnapshotWoli = {
+  id: string;
+  workOrderId: string;
+  areaLabel: string | null; // "Master Bedroom" / "Living Room" / etc.
+  surfaces: string | null; // multipicklist as ";"-joined string ("Walls;Ceiling;Trim")
+  sqFootage: number;
+  wallSurfaceArea: number;
+  perimeter: number;
+  numCoats: number;
+  primer: string | null;
+  prepLevel: string | null;
+  productFamily: string | null; // "Interior Painting" / "Exterior Painting"
+  interiorExterior: string | null;
+  numClosets: number;
+  numDoors: number;
+  numWindows: number;
+  productName: string | null;
+  totalPrice: number;
+  // Color slots — each holds a PaintColor__c Id (string) or null when no color
+  // is assigned to that surface on this line item.
+  colorWallId: string | null;
+  colorCeilingId: string | null;
+  colorTrimId: string | null;
+  colorOtherId: string | null;
+  colorFloorId: string | null;
+  finishWall: string | null;
+  finishCeiling: string | null;
+  finishTrim: string | null;
+  finishOther: string | null;
+  finishFloor: string | null;
+  colorNotes: string | null;
+  sortOrder: number;
+  changeOrderRelated: boolean;
+};
+
+/**
+ * Paint Color — `PaintColor__c` (one word + __c). Verified shape from prod
+ * 2026-05-22 (5,762 records). Critical Phase 2 input: `manufacturerId` is an
+ * Account reference (PPP models paint suppliers as Accounts, flagged via
+ * `Account.VendorBMRetailer__c`), so "group orders by supplier" is a join.
+ */
+export type SnapshotPaintColor = {
+  id: string;
+  /** Standard SF Name — usually equals FullName__c, e.g. "2108-40 Stardust". */
+  name: string;
+  /** Color name only, e.g. "Stardust". */
+  shortName: string | null;
+  /** Color code / SKU, e.g. "2108-40" (BM) or "SW6462" (SW). */
+  code: string | null;
+  /** Collection grouping, e.g. "Color Preview", "Historical Colors". */
+  collection: string | null;
+  /** Hex value (often empty in PPP's data but the field exists). */
+  hexValue: string | null;
+  /** Manufacturer is an Account.Id reference — the paint supplier. */
+  manufacturerId: string | null;
+};
+
 export type SalesforceSnapshot = {
   reps: SnapshotRep[];
   opportunities: SnapshotOpp[];
   workOrders: SnapshotWorkOrder[];
   accounts: SnapshotAccount[];
   quotes: SnapshotQuote[];
+  /** Phase 2: line items + paint color directory. */
+  woLineItems: SnapshotWoli[];
+  paintColors: SnapshotPaintColor[];
   fetchedAt: string;
   /** Canonical Opp revenue field (dynamically detected). */
   revenueFieldUsed: string | null;
@@ -460,6 +527,105 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
+    // Phase 2 — WorkOrderLineItem (the STANDARD SF FSL object, not the custom
+    // Work_Order_Line_Item__c the architecture PDF suggested). 163k records on
+    // prod 2026-05-22; same 730d window as WOs to stay under Vercel timeout.
+    const woLineItemsPromise: Promise<SnapshotWoli[]> = (async () => {
+      try {
+        const fields = [
+          "Id", "WorkOrderId",
+          "AreaLabel__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
+          "Perimeter__c", "of_Coats__c", "Primer__c", "Prep_Level__c",
+          "Product_Family__c", "Interior_Exterior__c",
+          "NumberClosets__c", "NumberDoors__c", "NumberWindows__c",
+          "ProductName__c", "TotalPrice__c",
+          "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
+          "FinishWall__c", "FinishCeiling__c", "FinishTrim__c", "FinishOther__c", "FinishFloor__c",
+          "ColorNotes__c", "SortOrder__c", "ChangeOrderRelated__c",
+        ];
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT ${fields.join(", ")} FROM WorkOrderLineItem ` +
+          `WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} work order line items — PARALLEL`);
+        const num = (r: Record<string, unknown>, k: string): number =>
+          typeof r[k] === "number" ? (r[k] as number) : 0;
+        const str = (r: Record<string, unknown>, k: string): string | null =>
+          typeof r[k] === "string" ? (r[k] as string) : null;
+        return records.map<SnapshotWoli>((r) => ({
+          id: r.Id as string,
+          workOrderId: r.WorkOrderId as string,
+          areaLabel: str(r, "AreaLabel__c"),
+          surfaces: str(r, "Surfaces__c"),
+          sqFootage: num(r, "Sq_Footage__c"),
+          wallSurfaceArea: num(r, "Wall_Surface_Area__c"),
+          perimeter: num(r, "Perimeter__c"),
+          numCoats: num(r, "of_Coats__c"),
+          primer: str(r, "Primer__c"),
+          prepLevel: str(r, "Prep_Level__c"),
+          productFamily: str(r, "Product_Family__c"),
+          interiorExterior: str(r, "Interior_Exterior__c"),
+          numClosets: num(r, "NumberClosets__c"),
+          numDoors: num(r, "NumberDoors__c"),
+          numWindows: num(r, "NumberWindows__c"),
+          productName: str(r, "ProductName__c"),
+          totalPrice: num(r, "TotalPrice__c"),
+          colorWallId: str(r, "ColorWall__c"),
+          colorCeilingId: str(r, "ColorCeiling__c"),
+          colorTrimId: str(r, "ColorTrim__c"),
+          colorOtherId: str(r, "ColorOther__c"),
+          colorFloorId: str(r, "ColorFloor__c"),
+          finishWall: str(r, "FinishWall__c"),
+          finishCeiling: str(r, "FinishCeiling__c"),
+          finishTrim: str(r, "FinishTrim__c"),
+          finishOther: str(r, "FinishOther__c"),
+          finishFloor: str(r, "FinishFloor__c"),
+          colorNotes: str(r, "ColorNotes__c"),
+          sortOrder: num(r, "SortOrder__c"),
+          changeOrderRelated: r.ChangeOrderRelated__c === true,
+        }));
+      } catch (err) {
+        console.error("[SF] WorkOrderLineItem query failed:", err);
+        return [];
+      }
+    })();
+
+    // PaintColor__c — 5,762 total records, no time window (color directory).
+    const paintColorsPromise: Promise<SnapshotPaintColor[]> = (async () => {
+      try {
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT Id, Name, Name__c, Code__c, Collection__c, HexValue__c, Manufacturer__c FROM PaintColor__c`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} paint colors — PARALLEL`);
+        const str = (r: Record<string, unknown>, k: string): string | null =>
+          typeof r[k] === "string" ? (r[k] as string) : null;
+        return records.map<SnapshotPaintColor>((r) => ({
+          id: r.Id as string,
+          name: (r.Name as string) ?? "",
+          shortName: str(r, "Name__c"),
+          code: str(r, "Code__c"),
+          collection: str(r, "Collection__c"),
+          hexValue: str(r, "HexValue__c"),
+          manufacturerId: str(r, "Manufacturer__c"),
+        }));
+      } catch (err) {
+        console.error("[SF] PaintColor__c query failed:", err);
+        return [];
+      }
+    })();
+
     const usersResult = await usersPromise;
 
     const reps: SnapshotRep[] = usersResult.records
@@ -715,10 +881,15 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       };
     });
 
-    // Await the Account + Quote promises that have been running in parallel
-    // with the WO query above. Both already executed concurrently — this is
-    // just collecting their results.
-    const [accounts, quotes] = await Promise.all([accountsPromise, quotesPromise]);
+    // Await the Account + Quote + WOLI + PaintColor promises that have been
+    // running in parallel with the WO query above. All already executed
+    // concurrently — this is just collecting their results.
+    const [accounts, quotes, woLineItems, paintColors] = await Promise.all([
+      accountsPromise,
+      quotesPromise,
+      woLineItemsPromise,
+      paintColorsPromise,
+    ]);
 
     // Sandbox detection — instance URL contains "sandbox" for any sandbox org.
     const instanceUrl = conn.instanceUrl ?? null;
@@ -730,6 +901,8 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       workOrders,
       accounts,
       quotes,
+      woLineItems,
+      paintColors,
       fetchedAt: new Date().toISOString(),
       revenueFieldUsed: revenueField,
       workOrderRevenueField: woRevenueField,
