@@ -531,37 +531,43 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // Work_Order_Line_Item__c the architecture PDF suggested). 163k records on
     // prod 2026-05-22.
     //
-    // PERF: this query was silently 0-rowing on prod because at 163k × 30 fields
-    // it was blowing Vercel's 60s function timeout (the catch swallowed the
-    // error). Narrowed in three ways:
-    //   - 180-day window (was 365) — Phase 2 only cares about active jobs
-    //   - 14 fields (was 30) — dropped sortOrder, changeOrder, # closets/doors/
-    //     windows, product name/code/price, color notes, primer, prep level,
-    //     interior/exterior, surface_start, dimensions. UI doesn't render them.
-    //     Re-add specific fields if a future view needs them.
-    //   - Real error logging instead of generic catch — surfaces the actual
-    //     SOQL error in Vercel logs if this ever fails again.
-    const WOLI_WINDOW_DAYS = 180;
+    // PERF: this query was silently 0-rowing on prod (cache stale + timeout
+    // suspect). Even 180d × 18 fields × ~80k rows blows Vercel's 60s budget
+    // when streamed via REST pagination. Going much more aggressive: 60d
+    // window, 13 fields, hard ORDER BY + LIMIT ceiling for safety.
+    // Per-batch logging so the next deploy's logs show whether the query
+    // starts, how many pages it gets, and where it dies (if at all).
+    const WOLI_WINDOW_DAYS = 60;
+    const WOLI_HARD_LIMIT = 30_000;
     const woLineItemsPromise: Promise<SnapshotWoli[]> = (async () => {
+      const t0 = Date.now();
       try {
         const fields = [
           "Id", "WorkOrderId",
           "AreaLabel__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
-          "FinishWall__c", "FinishCeiling__c", "FinishTrim__c", "FinishOther__c", "FinishFloor__c",
         ];
+        console.log(`[SF] WOLI query starting (window=${WOLI_WINDOW_DAYS}d, limit=${WOLI_HARD_LIMIT})`);
         const records: Array<Record<string, unknown>> = [];
+        let pageNum = 0;
         let result = await conn.query<Record<string, unknown>>(
           `SELECT ${fields.join(", ")} FROM WorkOrderLineItem ` +
-          `WHERE CreatedDate = LAST_N_DAYS:${WOLI_WINDOW_DAYS}`
+          `WHERE CreatedDate = LAST_N_DAYS:${WOLI_WINDOW_DAYS} ` +
+          `ORDER BY CreatedDate DESC LIMIT ${WOLI_HARD_LIMIT}`
         );
         records.push(...result.records);
-        while (!result.done && result.nextRecordsUrl) {
+        pageNum++;
+        console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
+        while (!result.done && result.nextRecordsUrl && records.length < WOLI_HARD_LIMIT) {
           result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
           records.push(...result.records);
+          pageNum++;
+          if (pageNum % 5 === 0 || result.done) {
+            console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
+          }
         }
-        console.log(`[SF] Pulled ${records.length} work order line items (last ${WOLI_WINDOW_DAYS}d) — PARALLEL`);
+        console.log(`[SF] WOLI DONE — ${records.length} rows in ${Date.now() - t0}ms (window=${WOLI_WINDOW_DAYS}d)`);
         const num = (r: Record<string, unknown>, k: string): number =>
           typeof r[k] === "number" ? (r[k] as number) : 0;
         const str = (r: Record<string, unknown>, k: string): string | null =>
@@ -589,11 +595,13 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           colorTrimId: str(r, "ColorTrim__c"),
           colorOtherId: str(r, "ColorOther__c"),
           colorFloorId: str(r, "ColorFloor__c"),
-          finishWall: str(r, "FinishWall__c"),
-          finishCeiling: str(r, "FinishCeiling__c"),
-          finishTrim: str(r, "FinishTrim__c"),
-          finishOther: str(r, "FinishOther__c"),
-          finishFloor: str(r, "FinishFloor__c"),
+          // Finish fields dropped from initial pull to fit Vercel timeout.
+          // Re-add to SELECT + map here once base query is reliably working.
+          finishWall: null,
+          finishCeiling: null,
+          finishTrim: null,
+          finishOther: null,
+          finishFloor: null,
           colorNotes: null,
           sortOrder: 0,
           changeOrderRelated: false,
@@ -602,11 +610,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         // Don't silently return [] — log the full error shape so we can see
         // exactly what SF rejected. Still returns [] so the rest of the page
         // renders, but the next deploy's logs will tell us why.
+        const ms = Date.now() - t0;
         const message = err instanceof Error ? err.message : String(err);
         const name = err instanceof Error ? err.name : "unknown";
-        console.error(`[SF] WorkOrderLineItem query FAILED — ${name}: ${message}`);
+        console.error(`[SF] WOLI FAILED after ${ms}ms — ${name}: ${message}`);
         if (err && typeof err === "object" && "errorCode" in err) {
-          console.error(`[SF] SOQL errorCode: ${(err as { errorCode?: string }).errorCode}`);
+          console.error(`[SF] WOLI SOQL errorCode: ${(err as { errorCode?: string }).errorCode}`);
         }
         return [];
       }
