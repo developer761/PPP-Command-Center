@@ -43,7 +43,11 @@ CREATE TABLE IF NOT EXISTS public.customer_form_tokens (
 CREATE INDEX IF NOT EXISTS customer_form_tokens_wo_idx ON public.customer_form_tokens (work_order_id);
 CREATE INDEX IF NOT EXISTS customer_form_tokens_expires_idx ON public.customer_form_tokens (expires_at) WHERE submitted_at IS NULL;
 CREATE INDEX IF NOT EXISTS customer_form_tokens_submitted_idx ON public.customer_form_tokens (submitted_at DESC NULLS LAST);
-CREATE INDEX IF NOT EXISTS customer_form_tokens_open_idx ON public.customer_form_tokens (sent_at) WHERE submitted_at IS NULL AND expires_at > NOW();
+-- NOTE: cannot include `expires_at > NOW()` here — Postgres requires index
+-- predicates to be IMMUTABLE, and NOW() is STABLE. The index still narrows
+-- to unsubmitted tokens; the expiry filter happens at query time and uses
+-- this index efficiently anyway.
+CREATE INDEX IF NOT EXISTS customer_form_tokens_open_idx ON public.customer_form_tokens (sent_at) WHERE submitted_at IS NULL;
 
 ALTER TABLE public.customer_form_tokens ENABLE ROW LEVEL SECURITY;
 
