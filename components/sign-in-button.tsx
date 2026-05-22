@@ -20,11 +20,10 @@ export default function SignInButton({ redirectTo = "/dashboard" }: Props) {
       options: {
         redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
         queryParams: {
-          // Restrict the Google account chooser to the PPP workspace.
-          // Internal consent screen also blocks non-PPP accounts at the OAuth level,
-          // but this hint pre-filters the picker so users see only relevant accounts.
-          hd: "precisionpaintingplus.net",
-          // Always show the account picker (not auto-select last used).
+          // No `hd` hint — PPP staff use both @precisionpaintingplus.net and
+          // @precisionpaintingplus.com workspaces, plus a small admin allow-list
+          // (e.g., Karan's personal gmail). Domain enforcement happens server-side
+          // in /auth/callback via isAllowedToSignIn().
           prompt: "select_account",
         },
       },

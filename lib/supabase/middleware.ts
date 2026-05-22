@@ -1,12 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-
-const PPP_DOMAIN = "@precisionpaintingplus.net";
+import { isAllowedToSignIn } from "@/lib/auth/admin";
 
 /**
  * Runs on every request. Refreshes the user's auth session (rotates expiring
- * tokens), gates protected routes, and enforces the @precisionpaintingplus.net
- * domain restriction (defense-in-depth on top of the OAuth Internal consent).
+ * tokens), gates protected routes, and enforces the PPP domain allow-list:
+ * .net + .com workspaces, plus any email in PPP_ADMIN_EMAILS (Karan's gmail).
  */
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -53,9 +52,9 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Domain guard — refuse any non-PPP email
+    // Domain guard — .net + .com workspaces + admin allow-list
     const email = user.email?.toLowerCase() ?? "";
-    if (!email.endsWith(PPP_DOMAIN)) {
+    if (!isAllowedToSignIn(email)) {
       await supabase.auth.signOut();
       const denyUrl = url.clone();
       denyUrl.pathname = "/";
@@ -67,7 +66,7 @@ export async function updateSession(request: NextRequest) {
   // If a signed-in user hits the login page, send them to the dashboard.
   if (path === "/" && user) {
     const email = user.email?.toLowerCase() ?? "";
-    if (email.endsWith(PPP_DOMAIN)) {
+    if (isAllowedToSignIn(email)) {
       const dashUrl = url.clone();
       dashUrl.pathname = "/dashboard";
       return NextResponse.redirect(dashUrl);

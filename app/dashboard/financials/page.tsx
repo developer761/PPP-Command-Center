@@ -4,7 +4,10 @@ import FinancialsView from "@/components/financials-view";
 
 export const dynamic = "force-dynamic";
 
-export default async function FinancialsPage() {
-  const bundle = await loadDashboardData();
+type SP = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function FinancialsPage({ searchParams }: { searchParams: SP }) {
+  const sp = await searchParams;
+  const bundle = await loadDashboardData(sp);
   return <FinancialsView bundle={bundle} />;
 }

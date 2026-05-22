@@ -60,13 +60,15 @@ const STAGE_STYLES: Record<string, string> = {
 
 export default async function RepDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
 
   // Pull the full snapshot bundle so we can derive everything from one fetch.
-  const bundle = await loadDashboardData();
+  const bundle = await loadDashboardData(sp);
   // Use lifetime for the rep deep-dive so totals/region inference cover the full snapshot.
   const reps: Rep[] = bundle.snapshot
     ? deriveRepsForPeriod(bundle.snapshot, "lifetime")

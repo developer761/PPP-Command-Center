@@ -6,11 +6,15 @@ type SearchParams = Promise<{ error?: string; redirectTo?: string }>;
 
 const ERROR_COPY: Record<string, string> = {
   domain_not_allowed:
-    "Your account isn't part of Precision Painting Plus. Sign in with a @precisionpaintingplus.net email.",
+    "Your account isn't part of Precision Painting Plus. Sign in with your @precisionpaintingplus.net or @precisionpaintingplus.com account.",
   oauth_failed:
     "Sign-in didn't complete. Please try again — if it keeps failing, contact an admin.",
   no_code:
     "Sign-in didn't complete. Please try again.",
+  no_sf_user:
+    "We couldn't find a matching Salesforce user for your email. Ask an admin to confirm your Salesforce account is active and your email matches.",
+  sf_user_inactive:
+    "Your Salesforce user is marked inactive. Contact an admin to reactivate it before signing in.",
 };
 
 export default async function LoginLanding({

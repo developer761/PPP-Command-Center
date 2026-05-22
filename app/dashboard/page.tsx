@@ -5,7 +5,14 @@ import { loadDashboardData } from "@/lib/data-source";
 // 5-min server-side snapshot cache inside lib/salesforce/queries.ts).
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  const bundle = await loadDashboardData();
+type SP = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: SP;
+}) {
+  const sp = await searchParams;
+  const bundle = await loadDashboardData(sp);
   return <DashboardView bundle={bundle} />;
 }

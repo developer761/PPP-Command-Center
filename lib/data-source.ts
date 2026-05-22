@@ -7,6 +7,9 @@ import {
   loadSalesforceSnapshot,
   type SalesforceSnapshot,
 } from "@/lib/salesforce/queries";
+import { resolveViewer } from "@/lib/auth/viewer-server";
+import { scopeSnapshotToViewer } from "@/lib/auth/scope-snapshot";
+import type { Viewer } from "@/lib/auth/viewer";
 import {
   deriveCompanyTrend,
   deriveRepMonthly,
@@ -62,11 +65,27 @@ export type LiveDashboardBundle = {
   reason?: string;
   /** Snapshot of raw SF data, when available. Pages re-derive everything from this. */
   snapshot: SalesforceSnapshot | null;
+  /** Viewer who loaded this bundle (null on mock-mode / unauthenticated). */
+  viewer: Viewer | null;
 };
 
 /* ─── Live-data accessor used by every page ─── */
 
-export async function loadDashboardData(): Promise<LiveDashboardBundle> {
+/**
+ * Load the dashboard bundle for the current viewer. Pages pass their
+ * `searchParams` (used to read `?view_as=` and `?scope=`) so the snapshot
+ * can be filtered server-side before any derive functions run.
+ *
+ * Pages that pre-date role-based access can still call this with no args
+ * — they'll get the unscoped snapshot, which is correct because they don't
+ * yet honor viewer state. (Strict scoping kicks in once a page opts in.)
+ */
+export async function loadDashboardData(
+  searchParams?: Record<string, string | string[] | undefined>
+): Promise<LiveDashboardBundle> {
+  // Resolve viewer in parallel with credential check — both are cheap.
+  const viewer = searchParams ? await resolveViewer(searchParams) : null;
+
   let creds: Awaited<ReturnType<typeof getStoredSalesforceCredentials>> = null;
   try {
     creds = await getStoredSalesforceCredentials();
@@ -75,22 +94,25 @@ export async function loadDashboardData(): Promise<LiveDashboardBundle> {
       source: "mock",
       reason: err instanceof Error ? err.message : "supabase_unavailable",
       snapshot: null,
+      viewer,
     };
   }
   if (!creds) {
-    return { source: "mock", reason: "sf_not_connected", snapshot: null };
+    return { source: "mock", reason: "sf_not_connected", snapshot: null, viewer };
   }
   try {
-    const snapshot = await loadSalesforceSnapshot();
-    if (snapshot.reps.length === 0) {
-      return { source: "mock", reason: "sf_returned_no_reps", snapshot: null };
+    const raw = await loadSalesforceSnapshot();
+    if (raw.reps.length === 0) {
+      return { source: "mock", reason: "sf_returned_no_reps", snapshot: null, viewer };
     }
-    return { source: "salesforce", snapshot };
+    const snapshot = viewer ? scopeSnapshotToViewer(raw, viewer) : raw;
+    return { source: "salesforce", snapshot, viewer };
   } catch (err) {
     return {
       source: "mock",
       reason: err instanceof Error ? err.message : "sf_query_failed",
       snapshot: null,
+      viewer,
     };
   }
 }

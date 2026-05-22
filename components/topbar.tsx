@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import GlobalSearch from "@/components/global-search";
 import UserMenu from "@/components/user-menu";
+import ViewSwitcher from "@/components/view-switcher";
 
 type SearchableSnapshot = {
   reps?: Array<{ id: string; name: string; email?: string | null; region?: string | null }>;
@@ -26,6 +27,8 @@ type Props = {
     initial: string;
   };
   searchIndex?: SearchableSnapshot | null;
+  /** Rep options shown in the admin View Switcher dropdown. */
+  switcherReps?: Array<{ id: string; name: string }>;
 };
 
 function formatAgo(seconds: number): string {
@@ -37,7 +40,12 @@ function formatAgo(seconds: number): string {
   return `${hr}h ago`;
 }
 
-export default function Topbar({ onOpenMenu, user, searchIndex = null }: Props) {
+export default function Topbar({
+  onOpenMenu,
+  user,
+  searchIndex = null,
+  switcherReps = [],
+}: Props) {
   const [now, setNow] = useState<Date | null>(null);
   const [syncedAt] = useState<Date>(() => new Date());
   const [, setTick] = useState(0);
@@ -103,6 +111,8 @@ export default function Topbar({ onOpenMenu, user, searchIndex = null }: Props) 
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
+        <ViewSwitcher reps={switcherReps} />
+
         <form action="/api/admin/sf-refresh-cache" method="POST" className="hidden sm:block">
           <button
             type="submit"

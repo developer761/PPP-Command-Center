@@ -10,15 +10,24 @@ import { loadDashboardData } from "@/lib/data-source";
  * Returns a slim projection — not the full snapshot. Caps WOs at 500 most
  * recent so the client bundle stays under ~200KB.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Honor ?view_as= / ?scope= so the global search index respects the
+  // viewer's current scope (a rep searching shouldn't surface other reps').
+  const sp: Record<string, string> = {};
+  const url = new URL(request.url);
+  const viewAs = url.searchParams.get("view_as");
+  const scope = url.searchParams.get("scope");
+  if (viewAs) sp.view_as = viewAs;
+  if (scope) sp.scope = scope;
+
   try {
-    const bundle = await loadDashboardData();
+    const bundle = await loadDashboardData(sp);
     if (!bundle.snapshot) {
       return NextResponse.json({ reps: [], accounts: [], workOrders: [] });
     }

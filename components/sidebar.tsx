@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { APP_META } from "@/lib/brand";
 
 type NavItem = {
@@ -53,11 +53,16 @@ type SidebarProps = {
 
 export default function Sidebar({ onNavigate }: SidebarProps = {}) {
   const pathname = usePathname();
+  const params = useSearchParams();
+  // Preserve admin view state (?view_as= / ?scope=) across sidebar navigation.
+  // Without this, clicking any nav link would drop the impersonation/scope.
+  const viewQs = buildViewQs(params);
+  const withView = (href: string) => (viewQs ? `${href}?${viewQs}` : href);
 
   return (
     <aside className="w-64 lg:w-64 h-full bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
       <div className="px-6 py-5 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
-        <Link href="/dashboard" className="block" onClick={onNavigate}>
+        <Link href={withView("/dashboard")} className="block" onClick={onNavigate}>
           <Image
             src="/brand/logo.svg"
             alt="Precision Painting Plus"
@@ -98,7 +103,7 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
                 return (
                   <li key={item.href}>
                     <Link
-                      href={item.href}
+                      href={withView(item.href)}
                       onClick={onNavigate}
                       className={[
                         "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
@@ -126,6 +131,20 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
       </div>
     </aside>
   );
+}
+
+/**
+ * Whitelist the only params worth preserving across nav: view_as + scope.
+ * Other params (period, region, etc.) are page-local and should reset.
+ */
+function buildViewQs(params: URLSearchParams | null): string {
+  if (!params) return "";
+  const out = new URLSearchParams();
+  const viewAs = params.get("view_as");
+  const scope = params.get("scope");
+  if (viewAs) out.set("view_as", viewAs);
+  if (scope === "my") out.set("scope", "my");
+  return out.toString();
 }
 
 /* Icons — clean stroke style, 18×18 */
