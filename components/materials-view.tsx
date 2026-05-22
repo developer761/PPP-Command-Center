@@ -112,14 +112,14 @@ export default function MaterialsView({ bundle }: Props) {
         <StatCard label="Suppliers" value={stats.distinctSuppliers.toLocaleString()} accent="green" />
       </section>
 
-      {/* Admin-only diagnostic — surfaces the underlying snapshot counts so
-          "why does this show zero?" is a one-glance answer instead of a log dive. */}
+      {/* Admin-only diagnostic — always visible (not collapsed) so the numbers
+          are right there. Hidden from non-admins entirely. */}
       {viewer?.isAdmin && debug && (
-        <details className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-lg px-4 py-2 text-[11px] text-ppp-charcoal-600">
-          <summary className="cursor-pointer font-condensed font-bold uppercase tracking-wider text-ppp-charcoal-500">
+        <div className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-lg px-4 py-3 text-[11px] text-ppp-charcoal-600">
+          <div className="font-condensed font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
             Snapshot diagnostic (admin only)
-          </summary>
-          <div className="mt-2 grid grid-cols-2 sm:grid-cols-5 gap-3">
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <DebugStat label="WOs in snapshot" value={debug.woCount} />
             <DebugStat label="Open WOs (status filter)" value={debug.openWoCount} />
             <DebugStat label="WOLI rows" value={debug.woliCount} />
@@ -127,14 +127,13 @@ export default function MaterialsView({ bundle }: Props) {
             <DebugStat label="Paint colors" value={debug.paintColorCount} />
           </div>
           <div className="mt-2 text-ppp-charcoal-500 leading-relaxed">
-            If WOs &gt; 0 but WOLI rows == 0, the WorkOrderLineItem SOQL is failing on
-            the server (likely a permission or field-name issue — check Vercel
-            function logs for &quot;[SF] WorkOrderLineItem query failed&quot;).
-            If WOLI rows &gt; 0 but matched-to-WO == 0, the parent WOs were created
-            outside the 365-day window. If both &gt; 0 but Open WOs == 0, every WO
-            in the snapshot is already Paid in Full / Complete / Cancelled.
+            If WOs &gt; 0 but WOLI rows == 0, the WorkOrderLineItem SOQL is failing
+            (check Vercel logs for &quot;[SF] WorkOrderLineItem query failed&quot;).
+            If WOLI rows &gt; 0 but matched-to-WO == 0, the parent WOs are outside
+            the 365-day window. If both &gt; 0 but Open WOs == 0, every WO is
+            already Paid in Full / Complete / Cancelled.
           </div>
-        </details>
+        </div>
       )}
 
       {/* Empty state */}
