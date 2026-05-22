@@ -574,82 +574,48 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // Phase 2 — WorkOrderLineItem (standard SF FSL object). 163k records on
     // prod 2026-05-22.
     //
-    // Direct queries on WorkOrderLineItem reject WHERE / ORDER BY with
-    // MALFORMED_QUERY (PPP-specific trigger or sharing rule, see
-    // project_woli_query_quirk memory). Workaround: query through the parent
-    // WorkOrder's `WorkOrderLineItems` child relationship — the outer SELECT
-    // is on WorkOrder (which accepts a date filter), the inner subquery just
-    // pulls the line-item fields. SF returns the WOLI records nested under
-    // each parent. Guaranteed join correctness: every WOLI we get back has a
-    // parent WO in our snapshot.
+    // KNOWN ORG BEHAVIOR (2026-05-22): PPP's WorkOrderLineItem rejects
+    //   - WHERE CreatedDate = LAST_N_DAYS:N
+    //   - ORDER BY CreatedDate DESC
+    //   - parent-relationship subqueries via WorkOrderLineItems
+    // all with MALFORMED_QUERY. Same syntax works fine on WorkOrder / Opp /
+    // Quote on the same connection. Likely an org-level trigger or sharing
+    // rule that mangles trailing clauses on this object specifically.
+    //
+    // WORKAROUND: bare SELECT + LIMIT. We get an arbitrary 30k WOLI rows.
+    //
+    // SEPARATE BUSINESS NOTE (Karan, 2026-05-22): PPP doesn't enter line
+    // items in SF until later in the job lifecycle, so the 569 open paint-
+    // job WOs have 0 WOLIs attached anyway — the join surfacing 0 matches
+    // is the accurate reflection of PPP's current data state, NOT a query
+    // bug. The Materials Ordering page correctly lists those 569 WOs with
+    // a "No rooms entered" pill so reps know which jobs need line-item
+    // entry next.
     const WOLI_HARD_LIMIT = 30_000;
     const woLineItemsPromise: Promise<SnapshotWoli[]> = (async () => {
       const t0 = Date.now();
       try {
-        const innerFields = [
-          "Id",
+        const fields = [
+          "Id", "WorkOrderId",
           "AreaLabel__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
         ];
-        // Auto-detect the child relationship name from WorkOrder → WorkOrderLineItem.
-        // Standard SF default is `WorkOrderLineItems` (plural), but PPP may have
-        // customized it. Describe WO once and find the relationship that points to
-        // a WOLI-shaped child object. Self-healing — no manual reconfig if PPP
-        // renames it later.
-        type ChildRel = { relationshipName: string | null; childSObject: string };
-        type Describe = { childRelationships?: ChildRel[] };
-        let woliRelationshipName: string | null = null;
-        try {
-          const woDescribe = await conn.sobject("WorkOrder").describe() as Describe;
-          const child = (woDescribe.childRelationships ?? []).find(
-            (c) => c.relationshipName && /lineitem/i.test(c.childSObject)
-          );
-          woliRelationshipName = child?.relationshipName ?? null;
-          if (woliRelationshipName) {
-            console.log(`[SF] WOLI auto-detected child relationship: WorkOrder → ${woliRelationshipName} (child object: ${child!.childSObject})`);
-          } else {
-            console.error(`[SF] WOLI describe found NO child relationship matching /lineitem/ on WorkOrder. Candidates:`,
-              (woDescribe.childRelationships ?? [])
-                .map((c) => `${c.relationshipName ?? "(no name)"} → ${c.childSObject}`)
-                .slice(0, 20).join(" · "));
-          }
-        } catch (descErr) {
-          const m = descErr instanceof Error ? descErr.message : String(descErr);
-          console.error(`[SF] WOLI describe failed: ${m}`);
-        }
-        // If describe didn't yield a relationship, fall back to the standard
-        // default — the query will fail loudly if it's wrong.
-        const relName = woliRelationshipName ?? "WorkOrderLineItems";
-        console.log(`[SF] WOLI query starting (parent-subquery via ${relName}, limit=${WOLI_HARD_LIMIT})`);
-        const records: Array<{ workOrderId: string; raw: Record<string, unknown> }> = [];
+        console.log(`[SF] WOLI query starting (bare SELECT, limit=${WOLI_HARD_LIMIT})`);
+        const records: Array<Record<string, unknown>> = [];
         let pageNum = 0;
-        // Same date window as the main WO query so we hit the same parent set.
         const soql =
-          `SELECT Id, (SELECT ${innerFields.join(", ")} FROM ${relName}) ` +
-          `FROM WorkOrder WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`;
+          `SELECT ${fields.join(", ")} FROM WorkOrderLineItem LIMIT ${WOLI_HARD_LIMIT}`;
         let result = await conn.query<Record<string, unknown>>(soql);
-        const flatten = (rows: Array<Record<string, unknown>>) => {
-          for (const wo of rows) {
-            const woId = wo.Id as string;
-            const nested = wo[relName] as { records?: Array<Record<string, unknown>> } | null;
-            if (!nested?.records) continue;
-            for (const r of nested.records) {
-              records.push({ workOrderId: woId, raw: r });
-              if (records.length >= WOLI_HARD_LIMIT) return true;
-            }
-          }
-          return false;
-        };
-        let hitLimit = flatten(result.records);
+        records.push(...result.records);
         pageNum++;
-        console.log(`[SF] WOLI page ${pageNum}: total ${records.length} line items so far (${Date.now() - t0}ms, done=${result.done})`);
-        while (!hitLimit && !result.done && result.nextRecordsUrl) {
+        console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
+        while (!result.done && result.nextRecordsUrl && records.length < WOLI_HARD_LIMIT) {
           result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
-          hitLimit = flatten(result.records);
+          records.push(...result.records);
           pageNum++;
-          if (pageNum % 5 === 0 || result.done || hitLimit) {
-            console.log(`[SF] WOLI page ${pageNum}: total ${records.length} line items (${Date.now() - t0}ms, done=${result.done})`);
+          if (pageNum % 5 === 0 || result.done) {
+            console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
           }
         }
         console.log(`[SF] WOLI DONE — ${records.length} rows in ${Date.now() - t0}ms`);
@@ -657,12 +623,9 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           typeof r[k] === "number" ? (r[k] as number) : 0;
         const str = (r: Record<string, unknown>, k: string): string | null =>
           typeof r[k] === "string" ? (r[k] as string) : null;
-        return records.map<SnapshotWoli>(({ workOrderId, raw: r }) => ({
+        return records.map<SnapshotWoli>((r) => ({
           id: r.Id as string,
-          // workOrderId comes from the parent WO record, not the nested WOLI
-          // (we don't select WorkOrderId inside the subquery — SF would be
-          // redundant). Captured at flatten time.
-          workOrderId,
+          workOrderId: r.WorkOrderId as string,
           areaLabel: str(r, "AreaLabel__c"),
           surfaces: str(r, "Surfaces__c"),
           sqFootage: num(r, "Sq_Footage__c"),

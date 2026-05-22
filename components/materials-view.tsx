@@ -171,38 +171,42 @@ export default function MaterialsView({ bundle }: Props) {
         </div>
       )}
 
-      {/* Empty state. Two distinct shapes:
-            (a) Snapshot is loaded normally but no open WOs surfaced for the
-                viewer — friendly "nothing scheduled" message.
-            (b) Admin sees WOLI=0 in the diagnostic above — known integration
-                issue, surface as "still wiring up" not "broken". */}
+      {/* Empty state — only when there are truly zero open paint-job WOs. */}
       {openJobs.length === 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-12 text-center">
-          {viewer?.isAdmin && debug && debug.woliCount > 0 && debug.woliMatchedToWo === 0 ? (
-            <>
-              <div className="mx-auto h-12 w-12 rounded-full bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-2xl mb-3">
-                ⏳
-              </div>
-              <h3 className="text-base font-semibold text-ppp-navy">Materials data still wiring up</h3>
-              <p className="text-sm text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
-                The WO ↔ WOLI join isn&apos;t resolving yet — the WOLI rows we
-                pulled all belong to WOs outside the current snapshot window.
-                See the diagnostic above. Fix queued for the next deploy.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="mx-auto h-12 w-12 rounded-full bg-ppp-blue-50 text-ppp-blue flex items-center justify-center text-2xl mb-3">
-                🎨
-              </div>
-              <h3 className="text-base font-semibold text-ppp-navy">No open work orders need materials</h3>
-              <p className="text-sm text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
-                {repScopedToSelf
-                  ? "You don't have any open WOs with line items in the current snapshot. Once you book new jobs, paint orders will appear here."
-                  : "No open WOs with line items in the current snapshot."}
-              </p>
-            </>
-          )}
+          <div className="mx-auto h-12 w-12 rounded-full bg-ppp-blue-50 text-ppp-blue flex items-center justify-center text-2xl mb-3">
+            🎨
+          </div>
+          <h3 className="text-base font-semibold text-ppp-navy">No open paint jobs in the snapshot</h3>
+          <p className="text-sm text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
+            {repScopedToSelf
+              ? "You don't have any open work orders right now. Once new jobs are scheduled, they'll appear here for materials ordering."
+              : "No open paint jobs in the snapshot. Pre-quote stages (Estimate, Appointment) are filtered out — only billable jobs surface here."}
+          </p>
+        </div>
+      )}
+
+      {/* Informational banner when WOs exist but none have line items yet —
+          PPP's process is to enter rooms/colors in SF later in the job
+          lifecycle, so the materials page needs a context cue, not an
+          empty state. */}
+      {openJobs.length > 0 && stats.distinctColors === 0 && (
+        <div className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 px-4 py-3 flex items-start gap-3 text-[13px]">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-orange-700 mt-0.5 shrink-0" aria-hidden>
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4 M12 8h.01" />
+          </svg>
+          <div className="flex-1 min-w-0 text-ppp-charcoal-700">
+            <div className="font-semibold text-ppp-charcoal">
+              {openJobs.length} paint job{openJobs.length === 1 ? "" : "s"} waiting on line items
+            </div>
+            <div className="mt-0.5 text-ppp-charcoal-500">
+              These work orders are scheduled but don&apos;t have rooms / colors
+              entered in Salesforce yet. Materials ordering will surface
+              automatically once line items are added. Click any WO below to
+              see its details.
+            </div>
+          </div>
         </div>
       )}
 
