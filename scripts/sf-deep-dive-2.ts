@@ -114,27 +114,33 @@ async function main() {
     }
   }
 
-  /* ─── 3. Paint_Color__c standalone object ─── */
+  /* ─── 3. PaintColor__c standalone object ───
+     CORRECTION 2026-05-22: the object is `PaintColor__c` (one word, not
+     Paint_Color__c). Discovered via WorkOrderLineItem relationship probe:
+       ColorWall__c → PaintColor__c. */
   console.log("\n" + "─".repeat(60));
-  console.log("PAINT_COLOR__c SCHEMA");
+  console.log("PAINTCOLOR__c SCHEMA");
   console.log("─".repeat(60));
-  try {
-    const meta = await conn.sobject("Paint_Color__c").describe();
-    const cnt = await conn.query<{ cnt: number }>(`SELECT COUNT(Id) cnt FROM Paint_Color__c`);
-    console.log(`Paint_Color__c (${cnt.records[0]?.cnt} records):`);
-    for (const f of meta.fields.filter((f) => f.custom).slice(0, 30)) {
-      console.log(`  ${f.name} [${f.type}] — "${f.label}"`);
+  for (const candidate of ["PaintColor__c", "Paint_Color__c"]) {
+    try {
+      const meta = await conn.sobject(candidate).describe();
+      const cnt = await conn.query<{ cnt: number }>(`SELECT COUNT(Id) cnt FROM ${candidate}`);
+      console.log(`\n${candidate} (${cnt.records[0]?.cnt} records):`);
+      for (const f of meta.fields.filter((f) => f.custom)) {
+        console.log(`  ${f.name} [${f.type}] — "${f.label}"`);
+      }
+      const customNames = meta.fields.filter((f) => f.custom).map((f) => f.name).join(", ");
+      if (customNames) {
+        const sample = await conn.query<Record<string, unknown>>(
+          `SELECT Id, Name, ${customNames} FROM ${candidate} LIMIT 5`
+        );
+        console.log("  Sample colors:");
+        console.log(JSON.stringify(sample.records, null, 2));
+      }
+      break;
+    } catch (e: any) {
+      console.log(`${candidate}: ${e.message?.slice(0, 100)}`);
     }
-    const customNames = meta.fields.filter((f) => f.custom).slice(0, 15).map((f) => f.name).join(", ");
-    if (customNames) {
-      const sample = await conn.query<Record<string, unknown>>(
-        `SELECT Id, Name, ${customNames} FROM Paint_Color__c LIMIT 5`
-      );
-      console.log("Sample colors:");
-      console.log(JSON.stringify(sample.records, null, 2));
-    }
-  } catch (e: any) {
-    console.log(`Paint_Color__c: ${e.message?.slice(0, 100)}`);
   }
 
   /* ─── 4. User table — UserRole + Profile distribution ─── */

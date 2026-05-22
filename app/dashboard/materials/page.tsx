@@ -15,11 +15,12 @@ export default function MaterialsOrderingPage() {
           <div className="h-14 w-14 rounded-full bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-2xl mb-4">
             🎨
           </div>
-          <h2 className="text-lg font-bold text-ppp-navy">Phase 2 — Coming Soon</h2>
+          <h2 className="text-lg font-bold text-ppp-navy">Phase 2 — In Build</h2>
           <p className="text-sm text-ppp-charcoal-500 mt-2">
-            This will be the day-to-day operational tool for the field team:
-            see what paint to order from Benjamin Moore (and other suppliers),
-            for what jobs, by when.
+            Schema verified 2026-05-22: WorkOrderLineItem (standard SF FSL object,
+            163k records on production), 5 paint-color slots per line item
+            (Wall / Ceiling / Trim / Floor / Other), all linking to PaintColor__c.
+            UI build kicking off next session.
           </p>
 
           <div className="mt-6 w-full grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
@@ -32,18 +33,18 @@ export default function MaterialsOrderingPage() {
               body="Benjamin Moore primary, with Sherwin Williams and other suppliers as separate tabs."
             />
             <Feature
-              title="Printable order forms"
-              body="One-click PDF order forms ready to email or hand to the supplier."
+              title="Side-by-side review"
+              body="Draft email + supplier context shown side by side. Always reviewed before send — zero auto-send."
             />
             <Feature
               title="Status workflow"
-              body="Pending → Ordered → Received → Installed. Auto-update when WO line items progress."
+              body="Draft → Reviewed → Sent → Received → Installed. Audit trail at every step."
             />
           </div>
 
           <div className="mt-6 text-[11px] text-ppp-charcoal-500 italic">
-            Blocked on confirming the Work_Order_Line_Item__c schema in production.
-            Locked-in plan: <code>~/Desktop/PPP_Cutover_And_Phase2_Plan.md</code> §3
+            Open questions for Katie: BM ordering mechanism (email/PDF/API?),
+            approval workflow, min-order threshold, PaintColor__c brand/supplier field.
           </div>
         </div>
       </div>
