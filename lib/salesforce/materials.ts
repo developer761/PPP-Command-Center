@@ -64,6 +64,32 @@ function isOpenForMaterials(status: string | null): boolean {
 }
 
 /**
+ * PPP WorkTypes that don't need materials ordering — these are pre-quote
+ * stages (estimator visiting the site, customer hasn't accepted yet). Only
+ * the WorkTypes that represent an actual paint job get surfaced.
+ *
+ * Substring + case-insensitive match so "Initial Appointment" / "Free Estimate"
+ * variants are caught. If PPP adds more pre-quote stages, add the token here.
+ */
+const SKIPPED_WORK_TYPE_TOKENS = [
+  "estimate",
+  "appointment",
+  "inspection",  // future-proof: an inspection visit shouldn't need materials
+  "consultation",
+] as const;
+
+function workTypeRequiresMaterials(workTypeName: string | null): boolean {
+  // Treat null/missing WorkType as "needs materials" — better to surface and
+  // let the user check than silently hide a job. PPP can correct in SF.
+  if (!workTypeName) return true;
+  const t = workTypeName.toLowerCase();
+  for (const token of SKIPPED_WORK_TYPE_TOKENS) {
+    if (t.includes(token)) return false;
+  }
+  return true;
+}
+
+/**
  * Build a paint-color lookup so the page can resolve color Ids → full objects
  * cheaply (5k records but called many times per render).
  */
@@ -110,6 +136,10 @@ export function deriveOpenMaterialsWorkOrders(
   const out: OpenWorkOrderForMaterials[] = [];
   for (const wo of snapshot.workOrders) {
     if (!isOpenForMaterials(wo.status)) continue;
+    // Filter out pre-quote WorkTypes (Estimate, Appointment, etc.) — these
+    // don't need materials ordered yet. Real paint jobs surface; the rest
+    // are upstream stages tracked elsewhere on the dashboard.
+    if (!workTypeRequiresMaterials(wo.workTypeName)) continue;
     const raws = itemsByWo.get(wo.id) ?? [];
     // INCLUDE WOs with 0 line items — the rep needs to know the WO exists
     // and someone still has to enter the rooms. Hiding them was confusing

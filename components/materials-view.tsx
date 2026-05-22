@@ -57,14 +57,37 @@ export default function MaterialsView({ bundle }: Props) {
   const debug = useMemo(() => {
     if (!snapshot) return null;
     const woIds = new Set(snapshot.workOrders.map((w) => w.id));
-    const openWoCount = snapshot.workOrders.filter((w) => {
+    let openWoCount = 0;
+    let materialsRelevantWoCount = 0;
+    const skippedWorkTypes = new Map<string, number>();
+    for (const w of snapshot.workOrders) {
       const s = (w.status ?? "").toLowerCase();
-      return !s.includes("paid in full") && !s.includes("complete") && !s.includes("cancel") && !s.includes("closed");
-    }).length;
+      const isOpen =
+        !s.includes("paid in full") &&
+        !s.includes("complete") &&
+        !s.includes("cancel") &&
+        !s.includes("closed");
+      if (!isOpen) continue;
+      openWoCount++;
+      const wt = (w.workTypeName ?? "").toLowerCase();
+      const isPreQuote =
+        wt.includes("estimate") ||
+        wt.includes("appointment") ||
+        wt.includes("inspection") ||
+        wt.includes("consultation");
+      if (isPreQuote) {
+        const key = w.workTypeName ?? "(no work type)";
+        skippedWorkTypes.set(key, (skippedWorkTypes.get(key) ?? 0) + 1);
+      } else {
+        materialsRelevantWoCount++;
+      }
+    }
     const woliWithMatchingWo = snapshot.woLineItems.filter((l) => woIds.has(l.workOrderId)).length;
     return {
       woCount: snapshot.workOrders.length,
       openWoCount,
+      materialsRelevantWoCount,
+      skippedWorkTypes,
       woliCount: snapshot.woLineItems.length,
       woliMatchedToWo: woliWithMatchingWo,
       paintColorCount: snapshot.paintColors.length,
@@ -119,19 +142,31 @@ export default function MaterialsView({ bundle }: Props) {
           <div className="font-condensed font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
             Snapshot diagnostic (admin only)
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             <DebugStat label="WOs in snapshot" value={debug.woCount} />
-            <DebugStat label="Open WOs (status filter)" value={debug.openWoCount} />
+            <DebugStat label="Open WOs (status)" value={debug.openWoCount} />
+            <DebugStat label="Open WOs (paint jobs)" value={debug.materialsRelevantWoCount} />
             <DebugStat label="WOLI rows" value={debug.woliCount} />
             <DebugStat label="WOLI matched to WO" value={debug.woliMatchedToWo} />
             <DebugStat label="Paint colors" value={debug.paintColorCount} />
           </div>
+          {debug.skippedWorkTypes.size > 0 && (
+            <div className="mt-2 text-ppp-charcoal-500">
+              Skipped pre-quote work types:{" "}
+              {Array.from(debug.skippedWorkTypes.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6)
+                .map(([name, count]) => `${name} (${count.toLocaleString()})`)
+                .join(" · ")}
+            </div>
+          )}
           <div className="mt-2 text-ppp-charcoal-500 leading-relaxed">
             If WOs &gt; 0 but WOLI rows == 0, the WorkOrderLineItem SOQL is failing
             (check Vercel logs for &quot;[SF] WorkOrderLineItem query failed&quot;).
             If WOLI rows &gt; 0 but matched-to-WO == 0, the parent WOs are outside
             the 365-day window. If both &gt; 0 but Open WOs == 0, every WO is
-            already Paid in Full / Complete / Cancelled.
+            already Paid in Full / Complete / Cancelled. &quot;Paint jobs&quot;
+            excludes pre-quote work types (Estimate, Appointment, etc.).
           </div>
         </div>
       )}

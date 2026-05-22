@@ -135,6 +135,9 @@ export type SnapshotWorkOrder = {
   id: string;
   workOrderNumber: string | null;
   status: string | null;
+  /** WorkType.Name from the standard FSL relationship — used to filter out
+   *  pre-quote stages (Estimate / Appointment) on the Materials Ordering page. */
+  workTypeName: string | null;
   /** Canonical revenue (auto-detected: Subtotal__c / QuotedSubtotal__c / NetValue__c). */
   amount: number;
   /** Gross quoted (with change orders). */
@@ -870,6 +873,10 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         // Standard SF geocoding fields — 20k+ WOs have these populated
         "Latitude",
         "Longitude",
+        // Standard FSL WorkType relationship — Materials Ordering uses this to
+        // filter out pre-quote stages (Estimate / Appointment) where there's
+        // nothing to order yet.
+        "WorkType.Name",
         ...NEEDED_WO_FIELDS,
         woOppLookup,
         woOppRelName ? `${woOppRelName}.OwnerId` : null,
@@ -924,6 +931,11 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       const opp = woOppRelName ? (w[woOppRelName] as Record<string, unknown> | undefined) : undefined;
       const ownerNested = opp?.Owner as Record<string, unknown> | undefined;
       const accountNested = opp?.Account as Record<string, unknown> | undefined;
+      // WorkType is a standard FSL relationship on WorkOrder. The relationship
+      // name is `WorkType` (singular). The nested Name carries values like
+      // "Estimate", "Appointment", "Paint Job" — Materials Ordering uses this
+      // to skip the pre-quote stages where no materials are needed yet.
+      const workTypeNested = w.WorkType as Record<string, unknown> | undefined;
 
       const num = (k: string): number => typeof w[k] === "number" ? (w[k] as number) : 0;
       const numOrNull = (k: string): number | null => typeof w[k] === "number" ? (w[k] as number) : null;
@@ -932,6 +944,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         id: w.Id as string,
         workOrderNumber: woNumberField ? (w[woNumberField] as string | null) ?? null : null,
         status: woStatusField ? (w[woStatusField] as string | null) ?? null : null,
+        workTypeName: workTypeNested ? (workTypeNested.Name as string | null) ?? null : null,
         amount: resolved,
         quotedSubtotal: quoted,
         netValue: net,
