@@ -33,7 +33,7 @@ function getAdminList(): string[] {
   return raw
     .split(",")
     .map((e) => normalizeEmail(e))
-    .filter(Boolean);
+    .filter((e) => e.length > 0); // filter() with Boolean keeps "   " — explicit length check is safer
 }
 
 /** True if the email is in the admin allow-list. */

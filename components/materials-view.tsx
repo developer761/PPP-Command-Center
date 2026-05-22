@@ -136,18 +136,38 @@ export default function MaterialsView({ bundle }: Props) {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state. Two distinct shapes:
+            (a) Snapshot is loaded normally but no open WOs surfaced for the
+                viewer — friendly "nothing scheduled" message.
+            (b) Admin sees WOLI=0 in the diagnostic above — known integration
+                issue, surface as "still wiring up" not "broken". */}
       {openJobs.length === 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-12 text-center">
-          <div className="mx-auto h-12 w-12 rounded-full bg-ppp-blue-50 text-ppp-blue flex items-center justify-center text-2xl mb-3">
-            🎨
-          </div>
-          <h3 className="text-base font-semibold text-ppp-navy">No open work orders need materials</h3>
-          <p className="text-sm text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
-            {repScopedToSelf
-              ? "You don't have any open WOs with line items in the current snapshot. Once you book new jobs, paint orders will appear here."
-              : "No open WOs with line items in the current snapshot."}
-          </p>
+          {viewer?.isAdmin && debug && debug.woliCount > 0 && debug.woliMatchedToWo === 0 ? (
+            <>
+              <div className="mx-auto h-12 w-12 rounded-full bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-2xl mb-3">
+                ⏳
+              </div>
+              <h3 className="text-base font-semibold text-ppp-navy">Materials data still wiring up</h3>
+              <p className="text-sm text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
+                The WO ↔ WOLI join isn&apos;t resolving yet — the WOLI rows we
+                pulled all belong to WOs outside the current snapshot window.
+                See the diagnostic above. Fix queued for the next deploy.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="mx-auto h-12 w-12 rounded-full bg-ppp-blue-50 text-ppp-blue flex items-center justify-center text-2xl mb-3">
+                🎨
+              </div>
+              <h3 className="text-base font-semibold text-ppp-navy">No open work orders need materials</h3>
+              <p className="text-sm text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
+                {repScopedToSelf
+                  ? "You don't have any open WOs with line items in the current snapshot. Once you book new jobs, paint orders will appear here."
+                  : "No open WOs with line items in the current snapshot."}
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -191,8 +211,16 @@ export default function MaterialsView({ bundle }: Props) {
                             )}
                           </div>
                           <div className="mt-1.5 flex items-center gap-2 text-[10px] text-ppp-charcoal-500">
-                            <Pill>{j.lineItems.length} rooms</Pill>
-                            <Pill>{j.distinctColorCount} colors</Pill>
+                            {j.lineItems.length === 0 ? (
+                              <Pill tone="orange">No rooms entered</Pill>
+                            ) : (
+                              <Pill>{j.lineItems.length} room{j.lineItems.length === 1 ? "" : "s"}</Pill>
+                            )}
+                            {j.distinctColorCount > 0 && (
+                              <Pill>
+                                {j.distinctColorCount} color{j.distinctColorCount === 1 ? "" : "s"}
+                              </Pill>
+                            )}
                             {j.totalSqFt > 0 && <Pill>{j.totalSqFt.toLocaleString()} sq ft</Pill>}
                           </div>
                         </div>
@@ -394,17 +422,21 @@ function ColorChip({
   color: SnapshotPaintColor | null;
   finish: string | null;
 }) {
+  // Strict hex validation — only #RGB, #RRGGBB, #RRGGBBAA shapes render.
+  // PPP's HexValue__c is mostly null on production data so most chips hit
+  // the neutral-gray + code-badge fallback path.
+  const validHex =
+    color?.hexValue && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color.hexValue);
   return (
     <div className="flex items-center gap-2 text-[11px] rounded-lg border border-ppp-charcoal-100 bg-[var(--color-surface-muted)] px-2.5 py-1.5">
       <div
         className="h-5 w-5 rounded border border-ppp-charcoal-100 shrink-0"
         style={{
-          backgroundColor:
-            color?.hexValue && /^#[0-9a-f]{3,8}$/i.test(color.hexValue)
-              ? color.hexValue
-              : color
-                ? "var(--color-ppp-charcoal-100, #e5e7eb)"
-                : "transparent",
+          backgroundColor: validHex
+            ? color!.hexValue!
+            : color
+              ? "var(--color-ppp-charcoal-100, #e5e7eb)"
+              : "transparent",
         }}
         aria-hidden
       />
@@ -415,7 +447,16 @@ function ColorChip({
         <div className="font-medium text-ppp-charcoal truncate">
           {color ? color.name : "—"}
         </div>
-        {finish && <div className="text-[10px] text-ppp-charcoal-500">{finish}</div>}
+        <div className="flex items-center gap-1.5 text-[10px] text-ppp-charcoal-500 mt-0.5">
+          {/* Fallback for missing hex: show the SKU code as a mono badge so
+              the rep has SOMETHING actionable to verify against the can. */}
+          {color?.code && !validHex && (
+            <span className="font-mono px-1 py-px rounded bg-ppp-charcoal-100/70 text-ppp-charcoal">
+              {color.code}
+            </span>
+          )}
+          {finish && <span className="truncate">{finish}</span>}
+        </div>
       </div>
     </div>
   );

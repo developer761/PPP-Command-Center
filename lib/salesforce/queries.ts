@@ -461,6 +461,15 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           Last_Appointment__c, LastWorkOrderCompleted__c
         `.replace(/\s+/g, " ").trim();
         const records: Array<Record<string, unknown>> = [];
+        // Two queries unioned:
+        //   1. Top 5,000 accounts by lifetime revenue (PPP's customers)
+        //   2. ALL vendor accounts (paint suppliers — Benjamin Moore, Sherwin
+        //      Williams, etc.). They sell TO PPP so have $0 lifetime revenue
+        //      and get dropped by the revenue ORDER BY. Without them in the
+        //      snapshot, PaintColor.Manufacturer__c can't resolve to a
+        //      supplier name and the Materials Ordering UI shows "Unknown
+        //      supplier" everywhere. Vendor count is ~1,355 (per prod
+        //      describe), totally fits in a single page.
         let result = await conn.query<Record<string, unknown>>(
           `SELECT ${ACCT_FIELDS} FROM Account ORDER BY Total_Lifetime_Revenue__c DESC NULLS LAST LIMIT 5000`
         );
@@ -470,6 +479,38 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           records.push(...result.records);
         }
         console.log(`[SF] Pulled ${records.length} accounts (top 5k by lifetime revenue) — PARALLEL`);
+
+        // Vendor pull — union into the same array, deduped by Id.
+        try {
+          const seenIds = new Set(records.map((r) => r.Id as string));
+          let vendorResult = await conn.query<Record<string, unknown>>(
+            `SELECT ${ACCT_FIELDS} FROM Account WHERE Type IN ('Retail Vendor','Service Vendor','Marketing Vendor') LIMIT 2000`
+          );
+          let added = 0;
+          for (const r of vendorResult.records) {
+            const id = r.Id as string;
+            if (!seenIds.has(id)) {
+              seenIds.add(id);
+              records.push(r);
+              added++;
+            }
+          }
+          while (!vendorResult.done && vendorResult.nextRecordsUrl) {
+            vendorResult = await conn.queryMore<Record<string, unknown>>(vendorResult.nextRecordsUrl);
+            for (const r of vendorResult.records) {
+              const id = r.Id as string;
+              if (!seenIds.has(id)) {
+                seenIds.add(id);
+                records.push(r);
+                added++;
+              }
+            }
+          }
+          console.log(`[SF] Pulled ${added} additional vendor accounts (paint suppliers) — PARALLEL`);
+        } catch (vendorErr) {
+          console.error("[SF] Vendor account pull failed (non-fatal):", vendorErr);
+        }
+
         return records.map((a) => ({
           id: a.Id as string,
           name: (a.Name as string) ?? "",

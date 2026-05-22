@@ -153,13 +153,18 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
 /**
  * Whitelist the only params worth preserving across nav: view_as + scope.
  * Other params (period, region, etc.) are page-local and should reset.
+ * `view_as` is validated against the SF User Id shape so a rep manually
+ * typing junk into the URL doesn't end up writing garbage rows into the
+ * view_as_audit table on every nav.
  */
+const SF_USER_ID_RE = /^005[A-Za-z0-9]{12,15}$/;
+
 function buildViewQs(params: URLSearchParams | null): string {
   if (!params) return "";
   const out = new URLSearchParams();
   const viewAs = params.get("view_as");
   const scope = params.get("scope");
-  if (viewAs) out.set("view_as", viewAs);
+  if (viewAs && SF_USER_ID_RE.test(viewAs)) out.set("view_as", viewAs);
   if (scope === "my") out.set("scope", "my");
   return out.toString();
 }

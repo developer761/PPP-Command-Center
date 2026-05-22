@@ -35,17 +35,31 @@ export type OpenWorkOrderForMaterials = {
 };
 
 /**
- * PPP statuses that indicate a WO is "still being worked on" and material
- * orders are relevant. Exclude completed / cancelled WOs since their materials
- * are already procured (or moot).
+ * PPP statuses that indicate a WO is "done" — no materials needed. Anything
+ * NOT in this set is treated as open / in-flight. Substring matching is
+ * deliberate so subtle variants ("Paid in Full (Disputed)", "Complete - Hold")
+ * still close. The previous implementation used the same approach but it's
+ * worth being explicit about why: PPP keeps adding status variants and we'd
+ * rather err on "show too much" than miss an active job.
+ *
+ * If PPP ever adds an open-status that includes the word "closed" (e.g.,
+ * "Re-Opened from Closed"), bump that into a positive allowlist check above.
  */
+const CLOSED_STATUS_TOKENS = [
+  "paid in full",
+  "complete",
+  "cancel",     // matches "Cancelled" / "Canceled"
+  "closed",
+  "void",       // future: PPP may add "Voided"
+  "abandoned",  // future
+] as const;
+
 function isOpenForMaterials(status: string | null): boolean {
   if (!status) return true; // null status — be conservative, include
   const s = status.toLowerCase();
-  if (s.includes("paid in full")) return false;
-  if (s.includes("complete")) return false;
-  if (s.includes("cancel")) return false;
-  if (s.includes("closed")) return false;
+  for (const token of CLOSED_STATUS_TOKENS) {
+    if (s.includes(token)) return false;
+  }
   return true;
 }
 
@@ -97,13 +111,23 @@ export function deriveOpenMaterialsWorkOrders(
   for (const wo of snapshot.workOrders) {
     if (!isOpenForMaterials(wo.status)) continue;
     const raws = itemsByWo.get(wo.id) ?? [];
-    if (raws.length === 0) continue; // No line items → nothing to order
+    // INCLUDE WOs with 0 line items — the rep needs to know the WO exists
+    // and someone still has to enter the rooms. Hiding them was confusing
+    // ("I see 18 open WOs in SF but Materials Ordering only shows 15").
     const lineItems = raws
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((r) => resolveWoli(r, colorIndex));
 
-    const totalSqFt = raws.reduce((s, r) => s + (r.sqFootage > 0 ? r.sqFootage : 0), 0);
+    // sqFootage is often 0 in PPP's data — fall back to wallSurfaceArea so the
+    // top stat strip doesn't lie when the line items have wall area populated
+    // but no Sq_Footage__c entry. Skip negative values (credit/refund WOLIs).
+    const totalSqFt = raws.reduce((s, r) => {
+      if (r.sqFootage > 0) return s + r.sqFootage;
+      if (r.wallSurfaceArea > 0) return s + r.wallSurfaceArea;
+      return s;
+    }, 0);
+
     const colorIds = new Set<string>();
     const bySupplier = new Map<string | "unknown", number>();
     for (const li of lineItems) {
