@@ -35,8 +35,20 @@ export function scopeSnapshotToViewer(
 
   const opportunities = snapshot.opportunities.filter((o) => o.ownerId === ownerId);
   const workOrders = snapshot.workOrders.filter((w) => w.ownerId === ownerId);
-  const accounts = snapshot.accounts.filter((a) => a.accountManagerId === ownerId);
   const reps = snapshot.reps.filter((r) => r.id === ownerId);
+
+  // Account scoping — a rep "owns" a customer in two ways:
+  //   1. They're listed as the Account Manager (Account.AccountManager__c)
+  //   2. They own at least one Opp or WO on that account
+  // The earlier `accountManagerId`-only filter was hiding customers from reps
+  // who handle the deal but aren't formally the AM. Now include both paths:
+  // collect account names from the rep's WOs + Opps, then match on Account.name.
+  const accountNamesTouched = new Set<string>();
+  for (const w of workOrders) if (w.accountName) accountNamesTouched.add(w.accountName);
+  for (const o of opportunities) if (o.accountName) accountNamesTouched.add(o.accountName);
+  const accounts = snapshot.accounts.filter(
+    (a) => a.accountManagerId === ownerId || accountNamesTouched.has(a.name)
+  );
 
   // Quotes link to opps via opportunityId — keep only quotes whose opp survived the filter.
   const oppIds = new Set(opportunities.map((o) => o.id));

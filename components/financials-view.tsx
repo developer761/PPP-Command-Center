@@ -17,7 +17,9 @@ type Props = { bundle: LiveDashboardBundle };
 
 export default function FinancialsView({ bundle }: Props) {
   const [period, setPeriod] = useState<Period>("this-month");
-  const { snapshot } = bundle;
+  const { snapshot, viewer } = bundle;
+  // Hide cross-rep leaderboards when scoped to one rep (collapses to self).
+  const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
 
   const fin = useMemo(
     () => (snapshot ? deriveFinancials(snapshot, period) : null),
@@ -120,10 +122,15 @@ export default function FinancialsView({ bundle }: Props) {
         />
       </section>
 
-      {/* Commission + top discounters + GP contributors */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+      {/* Commission + top discounters + GP contributors.
+          The two leaderboards are cross-rep by design — when scoped to one rep
+          they'd collapse to a 1-row "you vs you" view, so we drop them. The
+          rep still gets their own GP / discount totals in the strip above. */}
+      <section className={`grid grid-cols-1 gap-3 sm:gap-4 ${repScopedToSelf ? "lg:grid-cols-1" : "lg:grid-cols-3"}`}>
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-ppp-charcoal mb-3">Commissions Paid</h3>
+          <h3 className="text-sm font-semibold text-ppp-charcoal mb-3">
+            {repScopedToSelf ? "Your Commissions" : "Commissions Paid"}
+          </h3>
           <div className="font-condensed text-3xl font-bold text-ppp-navy">
             {fmtMoneyK(fin.totalCommission / 1000)}
           </div>
@@ -132,6 +139,7 @@ export default function FinancialsView({ bundle }: Props) {
           </div>
         </div>
 
+        {!repScopedToSelf && (<>
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
           <h3 className="text-sm font-semibold text-ppp-charcoal mb-3">Top GP Contributors</h3>
           {fin.topGPContributors.length === 0 ? (
@@ -180,6 +188,7 @@ export default function FinancialsView({ bundle }: Props) {
             </ul>
           )}
         </div>
+        </>)}
       </section>
     </div>
   );

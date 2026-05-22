@@ -611,12 +611,15 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         "TotalPayoutsForLabor__c", "LaborDaysActual__c", "LaborDaysProjected__c",
         "LaborDaysRemaining__c", "BalanceOwed__c", "Final_Balance_Aging__c",
       ].filter((f) => woCurrencyFields.includes(f) || woMeta.fields.some((mf) => mf.name === f));
-      // Only pull the canonical revenue field + ops fields. Previously also
-      // pulled woQuotedField + woNetField for display, but they're tacked
-      // onto the Deal type via cast and never actually rendered anywhere.
-      // Dropping saves a field per WO × 20k WOs.
+      // Pull canonical revenue + ops fields PLUS the quoted-subtotal field
+      // (Quoted_Subtotal_with_Change_Order__c). Reason: PPP only populates
+      // NetValue__c on billed/realized WOs. A WO in "Quoted" / "Coordination"
+      // status has NetValue=null but Quoted_Subtotal populated. Without the
+      // quoted field as a fallback, Recent Deals on the rep profile shows
+      // $0 for every open deal (fixed 2026-05-21).
       const NEEDED_WO_FIELDS = new Set<string>([
         ...(woRevenueField ? [woRevenueField] : []),
+        ...(woQuotedField ? [woQuotedField] : []),
         ...opsFields,
       ]);
       const woFieldList = [
@@ -650,11 +653,23 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     }
 
     const workOrders: SnapshotWorkOrder[] = workOrderRecords.map((w) => {
-      // Per-WO amount: canonical field → max across currency fields.
+      // Per-WO amount resolution:
+      //   1. Try canonical revenue field (NetValue__c) — populated when WO is billed
+      //   2. If 0/null, fall back to Quoted_Subtotal_with_Change_Order__c — the
+      //      figure on open/quoted deals before billing closes them out
+      //   3. Last resort: max across all currency fields (defensive)
+      // Without #2, every "Quoted" / "Coordination" WO shows $0 in Recent Deals.
       let resolved = 0;
       if (woRevenueField) {
         const v = w[woRevenueField];
         if (typeof v === "number" && v > 0) resolved = v;
+      }
+      const quoted =
+        woQuotedField && typeof w[woQuotedField] === "number"
+          ? (w[woQuotedField] as number)
+          : 0;
+      if (resolved === 0 && quoted > 0) {
+        resolved = quoted;
       }
       if (resolved === 0) {
         for (const fname of woCurrencyFields) {
@@ -662,12 +677,9 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           if (typeof v === "number" && v > resolved) resolved = v;
         }
       }
-      // quotedSubtotal + netValue are unsurfaced in the UI — set to 0 so the
-      // SnapshotWorkOrder shape stays stable. If a future view needs them
-      // (e.g., comparing quoted vs realized per deal), re-add the fields to
-      // the SOQL above and read them here.
-      const quoted = 0;
-      const net = 0;
+      const net = woRevenueField && typeof w[woRevenueField] === "number"
+        ? (w[woRevenueField] as number)
+        : 0;
 
       const opp = woOppRelName ? (w[woOppRelName] as Record<string, unknown> | undefined) : undefined;
       const ownerNested = opp?.Owner as Record<string, unknown> | undefined;

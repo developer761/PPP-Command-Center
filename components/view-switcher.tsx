@@ -90,7 +90,15 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
 
   const navigate = (next: URLSearchParams) => {
     const qs = next.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    const href = qs ? `${pathname}?${qs}` : pathname;
+    // Hard navigation so the snapshot re-scopes on the server and the page
+    // renders instantly with the new viewer. router.push() leaves the page
+    // in a stale state for 1-2s while React diffs the bundle delta.
+    if (typeof window !== "undefined") {
+      window.location.href = href;
+      return;
+    }
+    router.push(href);
   };
 
   const setScope = (scope: "all" | "my") => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useViewer } from "@/lib/auth/viewer-context";
 
@@ -23,6 +23,7 @@ export default function ImpersonationBanner({ reps = [] }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
   const [fetched, setFetched] = useState(cachedReps);
+  const [isPending, startTransition] = useTransition();
 
   const impersonating = !!viewer?.isAdmin && !!viewer.viewAsUserId;
 
@@ -56,7 +57,17 @@ export default function ImpersonationBanner({ reps = [] }: Props) {
     next.delete("view_as");
     next.delete("scope");
     const qs = next.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    // Hard navigation to /dashboard (admin's natural "home"). Avoids the
+    // ~1-2s React tree rebuild from router.push() when the snapshot
+    // re-scopes mid-page. With window.location, the browser cache + Next
+    // RSC stream make this feel instant on every screen.
+    if (typeof window !== "undefined") {
+      window.location.href = qs ? `${pathname}?${qs}` : pathname;
+      return;
+    }
+    startTransition(() => {
+      router.push(qs ? `${pathname}?${qs}` : pathname);
+    });
   };
 
   return (
@@ -71,9 +82,10 @@ export default function ImpersonationBanner({ reps = [] }: Props) {
       <button
         type="button"
         onClick={exit}
-        className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium transition-colors"
+        disabled={isPending}
+        className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium transition-colors disabled:opacity-60"
       >
-        Exit
+        {isPending ? "Exiting…" : "Exit"}
       </button>
     </div>
   );

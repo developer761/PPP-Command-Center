@@ -70,6 +70,12 @@ export default function DashboardView({ bundle }: Props) {
   const dataSource = bundle.source;
   const dataSourceReason = bundle.reason;
   const snapshot = bundle.snapshot;
+  const viewer = bundle.viewer;
+
+  // When the viewer is scoped to a single rep, any "top X across the team" or
+  // "vs team avg" card is comparing the rep to themselves — misleading. Hide
+  // those cards rather than render a 1-row leaderboard with the rep's name.
+  const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
 
   // Reps for the active period — recomputes from snapshot when SF is live.
   const reps = useMemo(() => {
@@ -734,7 +740,8 @@ export default function DashboardView({ bundle }: Props) {
         </div>
 
         <div className="space-y-3 sm:space-y-4">
-          {topPerformer ? (
+          {/* Top Performer collapses to the viewer themselves when scoped — hide. */}
+          {!repScopedToSelf && (topPerformer ? (
             <Link
               href={`/dashboard/rep/${topPerformer.id}`}
               className="block bg-white border border-ppp-charcoal-100 rounded-xl p-5 hover:border-ppp-green-200 hover:shadow-md hover:shadow-ppp-charcoal/5 transition-all"
@@ -765,7 +772,7 @@ export default function DashboardView({ bundle }: Props) {
                 No closed revenue in this period yet.
               </p>
             </div>
-          )}
+          ))}
 
           <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
@@ -786,8 +793,9 @@ export default function DashboardView({ bundle }: Props) {
             </button>
           </div>
 
-          {/* Hot reps this week — momentum spotlight */}
-          {hotReps.length > 0 && (
+          {/* Hot reps this week — momentum spotlight. Hide when scoped to self
+              (a 1-row leaderboard comparing the viewer to themselves is noise). */}
+          {!repScopedToSelf && hotReps.length > 0 && (
             <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-3">
                 <div className="h-6 w-6 rounded-md bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-xs">

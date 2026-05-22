@@ -147,10 +147,22 @@ export default async function RepDetailPage({
       : 0;
   const teamAvgPipeline = reps.reduce((s, r) => s + r.openPipeline, 0) / Math.max(1, reps.length);
 
-  const dRev = deltaVsTeam(rep.revenueSold, teamAvgRevenue);
-  const dClose = deltaVsTeam(rep.closeRate, teamAvgCloseRate);
-  const dTicket = deltaVsTeam(rep.avgTicket, teamAvgTicket);
-  const dPipe = deltaVsTeam(rep.openPipeline, teamAvgPipeline);
+  // When the snapshot is scoped to a single rep (rep signed in, or admin
+  // viewing-as), the "team" is just this one rep — every delta computes to
+  // 0%. Replace with a "—" / context label instead of a misleading "+0%".
+  const teamHasMultipleReps = reps.length > 1;
+  const dRev = teamHasMultipleReps
+    ? deltaVsTeam(rep.revenueSold, teamAvgRevenue)
+    : ({ pct: 0, trend: "flat", text: "Your data" } as const);
+  const dClose = teamHasMultipleReps
+    ? deltaVsTeam(rep.closeRate, teamAvgCloseRate)
+    : ({ pct: 0, trend: "flat", text: "Your data" } as const);
+  const dTicket = teamHasMultipleReps
+    ? deltaVsTeam(rep.avgTicket, teamAvgTicket)
+    : ({ pct: 0, trend: "flat", text: "Your data" } as const);
+  const dPipe = teamHasMultipleReps
+    ? deltaVsTeam(rep.openPipeline, teamAvgPipeline)
+    : ({ pct: 0, trend: "flat", text: "Your data" } as const);
 
   const last6 = monthly.slice(-6).reduce((s, m) => s + m.revenue, 0);
   const prior6 = monthly.slice(0, 6).reduce((s, m) => s + m.revenue, 0);

@@ -16,7 +16,8 @@ type Props = { bundle: LiveDashboardBundle };
 
 export default function OperationsView({ bundle }: Props) {
   const [period, setPeriod] = useState<Period>("this-month");
-  const { snapshot } = bundle;
+  const { snapshot, viewer } = bundle;
+  const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
 
   const ops = useMemo(
     () => (snapshot ? deriveOperations(snapshot, period) : null),
@@ -140,7 +141,9 @@ export default function OperationsView({ bundle }: Props) {
         </div>
 
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
-          <h3 className="text-base font-semibold text-ppp-charcoal">Top Margin Jobs</h3>
+          <h3 className="text-base font-semibold text-ppp-charcoal">
+            {repScopedToSelf ? "Your Top Margin Jobs" : "Top Margin Jobs"}
+          </h3>
           <p className="text-xs text-ppp-charcoal-500 mt-1 mb-4">
             Highest gross-profit % WOs · {PERIOD_LABELS[period].toLowerCase()}
           </p>
