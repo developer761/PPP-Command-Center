@@ -571,52 +571,56 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
-    // Phase 2 — WorkOrderLineItem (the STANDARD SF FSL object, not the custom
-    // Work_Order_Line_Item__c the architecture PDF suggested). 163k records on
+    // Phase 2 — WorkOrderLineItem (standard SF FSL object). 163k records on
     // prod 2026-05-22.
     //
-    // PERF: this query was silently 0-rowing on prod (cache stale + timeout
-    // suspect). Even 180d × 18 fields × ~80k rows blows Vercel's 60s budget
-    // when streamed via REST pagination. Going much more aggressive: 60d
-    // window, 13 fields, hard ORDER BY + LIMIT ceiling for safety.
-    // Per-batch logging so the next deploy's logs show whether the query
-    // starts, how many pages it gets, and where it dies (if at all).
+    // Direct queries on WorkOrderLineItem reject WHERE / ORDER BY with
+    // MALFORMED_QUERY (PPP-specific trigger or sharing rule, see
+    // project_woli_query_quirk memory). Workaround: query through the parent
+    // WorkOrder's `WorkOrderLineItems` child relationship — the outer SELECT
+    // is on WorkOrder (which accepts a date filter), the inner subquery just
+    // pulls the line-item fields. SF returns the WOLI records nested under
+    // each parent. Guaranteed join correctness: every WOLI we get back has a
+    // parent WO in our snapshot.
     const WOLI_HARD_LIMIT = 30_000;
     const woLineItemsPromise: Promise<SnapshotWoli[]> = (async () => {
       const t0 = Date.now();
       try {
-        const fields = [
-          "Id", "WorkOrderId",
+        const innerFields = [
+          "Id",
           "AreaLabel__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
         ];
-        console.log(`[SF] WOLI query starting (limit=${WOLI_HARD_LIMIT})`);
-        // NOTE: prior attempts had `WHERE CreatedDate = LAST_N_DAYS:60` and
-        // then `ORDER BY CreatedDate DESC` — both rejected with
-        // MALFORMED_QUERY on PPP's standard WorkOrderLineItem object even
-        // though the IDENTICAL syntax works on WorkOrder / Opportunity /
-        // Quote. Looks like an org-level setting or trigger that strips /
-        // mangles the trailing clauses on this specific object.
-        // Workaround: keep the query minimal — SELECT fields FROM object
-        // LIMIT n. We get an arbitrary 30k WOLIs, but since the snapshot
-        // joins by WorkOrderId in scope-snapshot anyway, "arbitrary 30k"
-        // is fine; we'll naturally surface WOLIs whose parent WO is in the
-        // snapshot's 365-day WO window.
-        const records: Array<Record<string, unknown>> = [];
+        console.log(`[SF] WOLI query starting (parent-subquery via WorkOrderLineItems, limit=${WOLI_HARD_LIMIT})`);
+        const records: Array<{ workOrderId: string; raw: Record<string, unknown> }> = [];
         let pageNum = 0;
+        // Same date window as the main WO query so we hit the same parent set.
         const soql =
-          `SELECT ${fields.join(", ")} FROM WorkOrderLineItem LIMIT ${WOLI_HARD_LIMIT}`;
+          `SELECT Id, (SELECT ${innerFields.join(", ")} FROM WorkOrderLineItems) ` +
+          `FROM WorkOrder WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`;
         let result = await conn.query<Record<string, unknown>>(soql);
-        records.push(...result.records);
+        const flatten = (rows: Array<Record<string, unknown>>) => {
+          for (const wo of rows) {
+            const woId = wo.Id as string;
+            const nested = wo.WorkOrderLineItems as { records?: Array<Record<string, unknown>> } | null;
+            if (!nested?.records) continue;
+            for (const r of nested.records) {
+              records.push({ workOrderId: woId, raw: r });
+              if (records.length >= WOLI_HARD_LIMIT) return true;
+            }
+          }
+          return false;
+        };
+        let hitLimit = flatten(result.records);
         pageNum++;
-        console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
-        while (!result.done && result.nextRecordsUrl && records.length < WOLI_HARD_LIMIT) {
+        console.log(`[SF] WOLI page ${pageNum}: total ${records.length} line items so far (${Date.now() - t0}ms, done=${result.done})`);
+        while (!hitLimit && !result.done && result.nextRecordsUrl) {
           result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
-          records.push(...result.records);
+          hitLimit = flatten(result.records);
           pageNum++;
-          if (pageNum % 5 === 0 || result.done) {
-            console.log(`[SF] WOLI page ${pageNum}: +${result.records.length} (${Date.now() - t0}ms, total ${records.length}, done=${result.done})`);
+          if (pageNum % 5 === 0 || result.done || hitLimit) {
+            console.log(`[SF] WOLI page ${pageNum}: total ${records.length} line items (${Date.now() - t0}ms, done=${result.done})`);
           }
         }
         console.log(`[SF] WOLI DONE — ${records.length} rows in ${Date.now() - t0}ms`);
@@ -624,9 +628,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           typeof r[k] === "number" ? (r[k] as number) : 0;
         const str = (r: Record<string, unknown>, k: string): string | null =>
           typeof r[k] === "string" ? (r[k] as string) : null;
-        return records.map<SnapshotWoli>((r) => ({
+        return records.map<SnapshotWoli>(({ workOrderId, raw: r }) => ({
           id: r.Id as string,
-          workOrderId: r.WorkOrderId as string,
+          // workOrderId comes from the parent WO record, not the nested WOLI
+          // (we don't select WorkOrderId inside the subquery — SF would be
+          // redundant). Captured at flatten time.
+          workOrderId,
           areaLabel: str(r, "AreaLabel__c"),
           surfaces: str(r, "Surfaces__c"),
           sqFootage: num(r, "Sq_Footage__c"),
