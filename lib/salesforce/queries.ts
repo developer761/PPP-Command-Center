@@ -547,20 +547,22 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
         ];
-        console.log(`[SF] WOLI query starting (limit=${WOLI_HARD_LIMIT}, most-recent-first)`);
-        // NOTE: this used to have `WHERE CreatedDate = LAST_N_DAYS:60` to bound
-        // the result set by time. SF rejected that syntax on the standard
-        // WorkOrderLineItem object with MALFORMED_QUERY at column 211 — even
-        // though the IDENTICAL pattern works on WorkOrder. Cause is something
-        // org-specific (sharing rule? trigger validation?). Workaround: drop
-        // the WHERE clause and use ORDER BY DESC + LIMIT to get the 30k
-        // most-recent rows. That's the actually-actionable subset anyway —
-        // ancient line items aren't relevant to "materials ordering today."
+        console.log(`[SF] WOLI query starting (limit=${WOLI_HARD_LIMIT})`);
+        // NOTE: prior attempts had `WHERE CreatedDate = LAST_N_DAYS:60` and
+        // then `ORDER BY CreatedDate DESC` — both rejected with
+        // MALFORMED_QUERY on PPP's standard WorkOrderLineItem object even
+        // though the IDENTICAL syntax works on WorkOrder / Opportunity /
+        // Quote. Looks like an org-level setting or trigger that strips /
+        // mangles the trailing clauses on this specific object.
+        // Workaround: keep the query minimal — SELECT fields FROM object
+        // LIMIT n. We get an arbitrary 30k WOLIs, but since the snapshot
+        // joins by WorkOrderId in scope-snapshot anyway, "arbitrary 30k"
+        // is fine; we'll naturally surface WOLIs whose parent WO is in the
+        // snapshot's 365-day WO window.
         const records: Array<Record<string, unknown>> = [];
         let pageNum = 0;
         const soql =
-          `SELECT ${fields.join(", ")} FROM WorkOrderLineItem ` +
-          `ORDER BY CreatedDate DESC LIMIT ${WOLI_HARD_LIMIT}`;
+          `SELECT ${fields.join(", ")} FROM WorkOrderLineItem LIMIT ${WOLI_HARD_LIMIT}`;
         let result = await conn.query<Record<string, unknown>>(soql);
         records.push(...result.records);
         pageNum++;
