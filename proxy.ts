@@ -18,7 +18,10 @@ export const config = {
      * - Public files in /brand
      * - /api/auth/* (auth flows handle their own cookie writes; running the proxy
      *   on them risks clobbering Set-Cookie headers from the callback responses)
+     * - /select/* (Phase 2 customer color form — public tokenized routes; never
+     *   requires authentication, no point running the Supabase session refresh)
+     * - /api/customer-form/* (form submission endpoints — also public, tokenized)
      */
-    "/((?!_next/static|_next/image|favicon.ico|brand/|api/auth/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|brand/|api/auth/|select/|api/customer-form/).*)",
   ],
 };

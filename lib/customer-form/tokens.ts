@@ -1,0 +1,199 @@
+import "server-only";
+
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { randomBytes } from "crypto";
+
+/**
+ * Customer-form token lifecycle:
+ *
+ *   createToken()    — admin clicks "Send Form" → token row inserted, expires in 30d
+ *   markSent()       — Resend confirmed delivery → sent_at + delivery_status set
+ *   markOpened()     — customer hit /select/[token] for the first time
+ *   validateToken()  — every form render + submit checks expiry / supersession
+ *   markSubmitted()  — customer hit submit → submitted_at + payload saved
+ *
+ * Tokens are 32 cryptographically random bytes encoded base64url (~43 chars,
+ * unguessable). Shareable URL = https://hub.precisionpaintingplus.net/select/<token>.
+ *
+ * Customer submits write directly to Salesforce via a separate writeback path
+ * (see lib/customer-form/sf-writeback.ts) — that flow logs every SF write to
+ * sf_writes_audit for replay + diagnostics.
+ */
+
+export type CustomerFormToken = {
+  token: string;
+  work_order_id: string;
+  work_order_number: string | null;
+  customer_email: string;
+  customer_name: string | null;
+  account_id: string | null;
+  created_at: string;
+  created_by_user_id: string | null;
+  expires_at: string;
+  sent_at: string | null;
+  delivery_status: string | null;
+  opened_at: string | null;
+  submitted_at: string | null;
+  submitted_payload: Record<string, unknown> | null;
+  draft_editing_by: string | null;
+  draft_editing_until: string | null;
+  vendor_email_sent_at: string | null;
+  woli_snapshot_at: string | null;
+  customer_ip: string | null;
+  customer_user_agent: string | null;
+};
+
+function adminClient() {
+  return createSupabaseAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
+
+/** Generate a fresh URL-safe random token. 32 bytes → 43 chars base64url. */
+export function generateToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+/**
+ * Create a new customer-form token row. Returns the token on success so the
+ * caller can build the share URL. The actual email send is a separate step
+ * (sendCustomerFormEmail in lib/email/resend.ts) — this just persists the
+ * token; status flips to "sent" once Resend confirms delivery.
+ */
+export async function createToken(input: {
+  work_order_id: string;
+  work_order_number?: string | null;
+  customer_email: string;
+  customer_name?: string | null;
+  account_id?: string | null;
+  created_by_user_id?: string | null;
+  expiresInDays?: number; // default 30
+}): Promise<{ token: string } | { error: string }> {
+  const token = generateToken();
+  const expiresInDays = input.expiresInDays ?? 30;
+  const expires_at = new Date(Date.now() + expiresInDays * 86_400_000).toISOString();
+
+  const sb = adminClient();
+  const { error } = await sb.from("customer_form_tokens").insert({
+    token,
+    work_order_id: input.work_order_id,
+    work_order_number: input.work_order_number ?? null,
+    customer_email: input.customer_email.toLowerCase().trim(),
+    customer_name: input.customer_name ?? null,
+    account_id: input.account_id ?? null,
+    created_by_user_id: input.created_by_user_id ?? null,
+    expires_at,
+  });
+  if (error) {
+    console.error("[customer-form] createToken failed:", error.message);
+    return { error: error.message };
+  }
+  return { token };
+}
+
+/** Look up a token by its string. Returns null when not found / expired. */
+export async function getToken(token: string): Promise<CustomerFormToken | null> {
+  if (!token || token.length < 30) return null;
+  const sb = adminClient();
+  const { data, error } = await sb
+    .from("customer_form_tokens")
+    .select("*")
+    .eq("token", token)
+    .maybeSingle();
+  if (error) {
+    console.error("[customer-form] getToken failed:", error.message);
+    return null;
+  }
+  return (data as CustomerFormToken) ?? null;
+}
+
+/**
+ * Validate a token for display. Returns one of:
+ *   { kind: "ok",         token: CustomerFormToken }
+ *   { kind: "expired" }
+ *   { kind: "submitted",  token: CustomerFormToken }  // can show "thanks" page
+ *   { kind: "not_found" }
+ *
+ * Caller decides what to render per kind.
+ */
+export type TokenStatus =
+  | { kind: "ok"; token: CustomerFormToken }
+  | { kind: "expired" }
+  | { kind: "submitted"; token: CustomerFormToken }
+  | { kind: "not_found" };
+
+export async function validateToken(token: string): Promise<TokenStatus> {
+  const row = await getToken(token);
+  if (!row) return { kind: "not_found" };
+  if (row.submitted_at) return { kind: "submitted", token: row };
+  if (new Date(row.expires_at) < new Date()) return { kind: "expired" };
+  return { kind: "ok", token: row };
+}
+
+/** Mark Resend delivery confirmed. Called from a webhook (Phase 2 deliverability). */
+export async function markSent(
+  token: string,
+  delivery_status: "delivered" | "bounced" | "soft_bounced" | "spam" = "delivered"
+): Promise<void> {
+  const sb = adminClient();
+  const patch: Record<string, unknown> = { delivery_status };
+  if (delivery_status === "delivered") patch.sent_at = new Date().toISOString();
+  await sb.from("customer_form_tokens").update(patch).eq("token", token);
+}
+
+/**
+ * Mark the token as opened by the customer. Idempotent — only updates if
+ * opened_at is still null, so we capture the FIRST open timestamp.
+ */
+export async function markOpened(
+  token: string,
+  meta?: { ip?: string | null; userAgent?: string | null }
+): Promise<void> {
+  const sb = adminClient();
+  await sb
+    .from("customer_form_tokens")
+    .update({
+      opened_at: new Date().toISOString(),
+      customer_ip: meta?.ip ?? null,
+      customer_user_agent: meta?.userAgent ?? null,
+    })
+    .eq("token", token)
+    .is("opened_at", null); // only set if not already opened
+}
+
+/** Mark the customer-form submission. payload is the full form state. */
+export async function markSubmitted(
+  token: string,
+  payload: Record<string, unknown>
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = adminClient();
+  const { error } = await sb
+    .from("customer_form_tokens")
+    .update({
+      submitted_at: new Date().toISOString(),
+      submitted_payload: payload,
+    })
+    .eq("token", token)
+    .is("submitted_at", null); // idempotent — only first submit wins
+  if (error) {
+    console.error("[customer-form] markSubmitted failed:", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+/**
+ * Capture the WOLI snapshot timestamp at form-render time so we can detect
+ * if Salesforce data changed between render and submit (rep adding/removing
+ * line items, etc.). Used for the "your rep just updated this" conflict
+ * warning on submit.
+ */
+export async function markWoliSnapshotTime(token: string): Promise<void> {
+  const sb = adminClient();
+  await sb
+    .from("customer_form_tokens")
+    .update({ woli_snapshot_at: new Date().toISOString() })
+    .eq("token", token);
+}
