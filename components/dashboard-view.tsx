@@ -321,6 +321,39 @@ export default function DashboardView({ bundle }: Props) {
                 </span>
               </div>
             )}
+            {/* Yesterday's quick reference — gives Alex a fast "what just
+                happened" reference point alongside today's snapshot. */}
+            {todaySnap.yesterdayRevenue > 0 && (
+              <div className="mt-3 text-[11px] flex items-center justify-between gap-3 opacity-90">
+                <span className="opacity-70">
+                  Yesterday <span className="font-semibold text-white opacity-100">
+                    {fmtMoneyK(todaySnap.yesterdayRevenue)}
+                  </span>
+                </span>
+                {todaySnap.weekPriorRevenue > 0 && (
+                  <span className="opacity-70 whitespace-nowrap">
+                    Week-over-week:{" "}
+                    <span
+                      className={
+                        todaySnap.weekRevenue >= todaySnap.weekPriorRevenue
+                          ? "font-semibold text-ppp-green opacity-100"
+                          : "font-semibold text-ppp-orange opacity-100"
+                      }
+                    >
+                      {todaySnap.weekRevenue >= todaySnap.weekPriorRevenue ? "▲" : "▼"}
+                      {Math.abs(
+                        Math.round(
+                          ((todaySnap.weekRevenue - todaySnap.weekPriorRevenue) /
+                            todaySnap.weekPriorRevenue) *
+                            100
+                        )
+                      )}
+                      %
+                    </span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Forecast card spanning 2 cols on lg */}
