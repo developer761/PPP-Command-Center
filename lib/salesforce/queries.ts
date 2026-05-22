@@ -529,31 +529,39 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
 
     // Phase 2 — WorkOrderLineItem (the STANDARD SF FSL object, not the custom
     // Work_Order_Line_Item__c the architecture PDF suggested). 163k records on
-    // prod 2026-05-22; same 730d window as WOs to stay under Vercel timeout.
+    // prod 2026-05-22.
+    //
+    // PERF: this query was silently 0-rowing on prod because at 163k × 30 fields
+    // it was blowing Vercel's 60s function timeout (the catch swallowed the
+    // error). Narrowed in three ways:
+    //   - 180-day window (was 365) — Phase 2 only cares about active jobs
+    //   - 14 fields (was 30) — dropped sortOrder, changeOrder, # closets/doors/
+    //     windows, product name/code/price, color notes, primer, prep level,
+    //     interior/exterior, surface_start, dimensions. UI doesn't render them.
+    //     Re-add specific fields if a future view needs them.
+    //   - Real error logging instead of generic catch — surfaces the actual
+    //     SOQL error in Vercel logs if this ever fails again.
+    const WOLI_WINDOW_DAYS = 180;
     const woLineItemsPromise: Promise<SnapshotWoli[]> = (async () => {
       try {
         const fields = [
           "Id", "WorkOrderId",
           "AreaLabel__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
-          "Perimeter__c", "of_Coats__c", "Primer__c", "Prep_Level__c",
-          "Product_Family__c", "Interior_Exterior__c",
-          "NumberClosets__c", "NumberDoors__c", "NumberWindows__c",
-          "ProductName__c", "TotalPrice__c",
+          "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
           "FinishWall__c", "FinishCeiling__c", "FinishTrim__c", "FinishOther__c", "FinishFloor__c",
-          "ColorNotes__c", "SortOrder__c", "ChangeOrderRelated__c",
         ];
         const records: Array<Record<string, unknown>> = [];
         let result = await conn.query<Record<string, unknown>>(
           `SELECT ${fields.join(", ")} FROM WorkOrderLineItem ` +
-          `WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
+          `WHERE CreatedDate = LAST_N_DAYS:${WOLI_WINDOW_DAYS}`
         );
         records.push(...result.records);
         while (!result.done && result.nextRecordsUrl) {
           result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
           records.push(...result.records);
         }
-        console.log(`[SF] Pulled ${records.length} work order line items — PARALLEL`);
+        console.log(`[SF] Pulled ${records.length} work order line items (last ${WOLI_WINDOW_DAYS}d) — PARALLEL`);
         const num = (r: Record<string, unknown>, k: string): number =>
           typeof r[k] === "number" ? (r[k] as number) : 0;
         const str = (r: Record<string, unknown>, k: string): string | null =>
@@ -565,17 +573,17 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           surfaces: str(r, "Surfaces__c"),
           sqFootage: num(r, "Sq_Footage__c"),
           wallSurfaceArea: num(r, "Wall_Surface_Area__c"),
-          perimeter: num(r, "Perimeter__c"),
+          perimeter: 0,
           numCoats: num(r, "of_Coats__c"),
-          primer: str(r, "Primer__c"),
-          prepLevel: str(r, "Prep_Level__c"),
+          primer: null,
+          prepLevel: null,
           productFamily: str(r, "Product_Family__c"),
-          interiorExterior: str(r, "Interior_Exterior__c"),
-          numClosets: num(r, "NumberClosets__c"),
-          numDoors: num(r, "NumberDoors__c"),
-          numWindows: num(r, "NumberWindows__c"),
-          productName: str(r, "ProductName__c"),
-          totalPrice: num(r, "TotalPrice__c"),
+          interiorExterior: null,
+          numClosets: 0,
+          numDoors: 0,
+          numWindows: 0,
+          productName: null,
+          totalPrice: 0,
           colorWallId: str(r, "ColorWall__c"),
           colorCeilingId: str(r, "ColorCeiling__c"),
           colorTrimId: str(r, "ColorTrim__c"),
@@ -586,12 +594,20 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           finishTrim: str(r, "FinishTrim__c"),
           finishOther: str(r, "FinishOther__c"),
           finishFloor: str(r, "FinishFloor__c"),
-          colorNotes: str(r, "ColorNotes__c"),
-          sortOrder: num(r, "SortOrder__c"),
-          changeOrderRelated: r.ChangeOrderRelated__c === true,
+          colorNotes: null,
+          sortOrder: 0,
+          changeOrderRelated: false,
         }));
       } catch (err) {
-        console.error("[SF] WorkOrderLineItem query failed:", err);
+        // Don't silently return [] — log the full error shape so we can see
+        // exactly what SF rejected. Still returns [] so the rest of the page
+        // renders, but the next deploy's logs will tell us why.
+        const message = err instanceof Error ? err.message : String(err);
+        const name = err instanceof Error ? err.name : "unknown";
+        console.error(`[SF] WorkOrderLineItem query FAILED — ${name}: ${message}`);
+        if (err && typeof err === "object" && "errorCode" in err) {
+          console.error(`[SF] SOQL errorCode: ${(err as { errorCode?: string }).errorCode}`);
+        }
         return [];
       }
     })();
