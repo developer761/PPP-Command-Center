@@ -289,11 +289,16 @@ export function deriveRepsForPeriod(
   for (const [ownerId, a] of byOwner.entries()) {
     if (canonicalIds.has(ownerId)) continue;
     if (a.wonRevenue === 0 && a.openPipeline === 0) continue;
+    // Skip rows where the WO has no owner at all — surfacing a card with
+    // name="null" or name="" was a real bug. These appear when an Opp is
+    // orphaned from any User (very rare in PPP's data).
+    if (!ownerId) continue;
     const closeRate = a.closed > 0 ? (a.won / a.closed) * 100 : 0;
     const avgTicket = a.ticketCount > 0 ? a.ticketSum / a.ticketCount : 0;
+    const displayName = ownerNameLookup.get(ownerId);
     cards.push({
       id: ownerId,
-      name: ownerNameLookup.get(ownerId) ?? ownerId,
+      name: displayName && displayName.trim() ? displayName : "(unassigned)",
       region: "Unassigned",
       serviceLine: "Residential",
       revenueSold: Math.round(a.wonRevenue / 1000),
@@ -1029,9 +1034,13 @@ export function deriveOperations(
         totalLaborDaysActual += act;
         totalLaborDaysProjected += proj;
       }
-      totalMaterialsCost += w.costMaterials;
-      totalLaborPayout += w.totalPayoutsForLabor;
-      periodRevenue += w.amount;
+      // Skip credits / refunds / WOs with $0 amount. A refund (amount=-5000,
+      // materials=100) would otherwise contribute a junk positive ratio.
+      if (w.amount > 0) {
+        totalMaterialsCost += w.costMaterials;
+        totalLaborPayout += w.totalPayoutsForLabor;
+        periodRevenue += w.amount;
+      }
       // Overrun candidate
       if (proj > 0 && act > proj) {
         overRuns.push({

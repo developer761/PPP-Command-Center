@@ -53,9 +53,18 @@ export async function lookupSfUserByEmail(
 
 async function queryByEmail(email: string): Promise<SfUserLookupResult | null> {
   try {
+    // Reject anything that isn't a structurally plausible email up-front.
+    // RFC 5321 forbids most special chars, but better to be explicit: only
+    // allow letters, digits, dot, underscore, plus, hyphen, and a single @.
+    // This eliminates the SOQL-injection surface entirely (no quotes, no
+    // backslashes, no semicolons can reach the query).
+    if (!/^[a-z0-9._+\-]+@[a-z0-9.\-]+$/i.test(email)) {
+      return null;
+    }
     const conn = await getSalesforceClient();
-    // Escape single quotes in email for SOQL safety
-    const safe = email.replace(/'/g, "\\'");
+    // Belt-and-suspenders: also escape backslash and single quote so jsforce
+    // can't surprise us if the regex is ever loosened.
+    const safe = email.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     const result = await conn.query<SfUserRow>(
       `SELECT Id, Name, Email, IsActive, CreatedDate FROM User WHERE Email = '${safe}' ORDER BY IsActive DESC, CreatedDate DESC LIMIT 5`
     );

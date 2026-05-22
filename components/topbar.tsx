@@ -48,14 +48,14 @@ export default function Topbar({
 }: Props) {
   const [now, setNow] = useState<Date | null>(null);
   const [syncedAt] = useState<Date>(() => new Date());
-  const [, setTick] = useState(0);
 
+  // Re-tick once per MINUTE, not per second. The greeting/date only ever
+  // change at boundaries (noon, midnight) and the "synced 3m ago" string
+  // doesn't need second-level resolution. This stops the whole topbar tree
+  // from re-rendering every second — noticeable jank on low-end phones.
   useEffect(() => {
     setNow(new Date());
-    const id = setInterval(() => {
-      setNow(new Date());
-      setTick((t) => t + 1);
-    }, 1000);
+    const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
 

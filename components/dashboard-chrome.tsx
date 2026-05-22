@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Sidebar from "@/components/sidebar";
 import Topbar from "@/components/topbar";
+import ImpersonationBanner from "@/components/impersonation-banner";
 import { ViewerProvider } from "@/lib/auth/viewer-context";
 import type { Viewer } from "@/lib/auth/viewer";
 
@@ -131,11 +132,14 @@ export default function DashboardChrome({
             mobileOpen ? "translate-x-0" : "-translate-x-full",
           ].join(" ")}
           aria-hidden={!mobileOpen}
+          aria-modal={mobileOpen}
+          role={mobileOpen ? "dialog" : undefined}
         >
           <Sidebar onNavigate={() => setMobileOpen(false)} />
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0">
+          <ImpersonationBanner reps={switcherReps} />
           <Topbar
             onOpenMenu={() => setMobileOpen(true)}
             user={user}

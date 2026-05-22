@@ -8,6 +8,7 @@ import KPICard from "@/components/kpi-card";
 import Leaderboard from "@/components/leaderboard";
 import PageHeader from "@/components/page-header";
 import TrendChart from "@/components/trend-chart";
+import EmptyScopeBanner from "@/components/empty-scope-banner";
 import {
   getFilteredView,
   getFunnelForPeriod,
@@ -188,8 +189,15 @@ export default function DashboardView({ bundle }: Props) {
 
   const effectiveFunnelPeriod: Period = funnelPeriod === "page" ? period : funnelPeriod;
 
+  const liveAndEmpty =
+    !!snapshot &&
+    (snapshot.reps?.length ?? 0) === 0 &&
+    (snapshot.workOrders?.length ?? 0) === 0 &&
+    (snapshot.opportunities?.length ?? 0) === 0;
+
   return (
     <div className="space-y-8 sm:space-y-10 animate-fade-up">
+      <EmptyScopeBanner empty={liveAndEmpty} />
       <PageHeader
         title="Company Overview"
         subtitle={`Whole-company analytics · ${

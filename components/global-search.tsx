@@ -186,13 +186,19 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      // No-op when there are no results — without this guard, activeIdx
+      // could end up at -1 and Enter would crash on results[-1].
+      if (results.length === 0) return;
       setActiveIdx((i) => Math.min(i + 1, results.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      if (results.length === 0) return;
       setActiveIdx((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const r = results[activeIdx];
+      if (results.length === 0) return;
+      const safeIdx = Math.min(Math.max(activeIdx, 0), results.length - 1);
+      const r = results[safeIdx];
       if (r) {
         router.push(r.href);
         setOpen(false);

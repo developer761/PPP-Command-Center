@@ -4,16 +4,20 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { APP_META } from "@/lib/brand";
+import { useViewer } from "@/lib/auth/viewer-context";
 
 type NavItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
+  /** When set, the item is only visible to admins. */
+  adminOnly?: boolean;
 };
 
 type NavSection = {
   heading: string;
   items: NavItem[];
+  adminOnly?: boolean;
 };
 
 const navSections: NavSection[] = [
@@ -40,8 +44,9 @@ const navSections: NavSection[] = [
   },
   {
     heading: "Admin",
+    adminOnly: true,
     items: [
-      { label: "Integrations", href: "/dashboard/integrations", icon: <IconPlug /> },
+      { label: "Integrations", href: "/dashboard/integrations", icon: <IconPlug />, adminOnly: true },
     ],
   },
 ];
@@ -54,10 +59,19 @@ type SidebarProps = {
 export default function Sidebar({ onNavigate }: SidebarProps = {}) {
   const pathname = usePathname();
   const params = useSearchParams();
+  const viewer = useViewer();
+  const isAdmin = viewer?.isAdmin ?? false;
   // Preserve admin view state (?view_as= / ?scope=) across sidebar navigation.
   // Without this, clicking any nav link would drop the impersonation/scope.
   const viewQs = buildViewQs(params);
   const withView = (href: string) => (viewQs ? `${href}?${viewQs}` : href);
+
+  // Hide admin-only sections / items from reps. Server-side route guards still
+  // enforce access, but stripping the link removes the confusing 404 path.
+  const visibleSections = navSections
+    .filter((s) => !s.adminOnly || isAdmin)
+    .map((s) => ({ ...s, items: s.items.filter((i) => !i.adminOnly || isAdmin) }))
+    .filter((s) => s.items.length > 0);
 
   return (
     <aside className="w-64 lg:w-64 h-full bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
@@ -89,7 +103,7 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        {navSections.map((section, sectionIdx) => (
+        {visibleSections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-6" : ""}>
             <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
               {section.heading}
@@ -127,7 +141,10 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
 
       <div className="px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
         <div className="font-semibold text-ppp-charcoal">Version {APP_META.version}</div>
-        <div className="mt-0.5">Mock data · not connected to Salesforce</div>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-ppp-green animate-pulse" aria-hidden />
+          Live · Salesforce
+        </div>
       </div>
     </aside>
   );

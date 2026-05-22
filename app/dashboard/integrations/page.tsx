@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import PageHeader from "@/components/page-header";
 import {
   getStoredSalesforceCredentials,
@@ -6,6 +7,9 @@ import {
   pingSalesforce,
 } from "@/lib/salesforce/client";
 import { describeKeySObjects } from "@/lib/salesforce/queries";
+import { createClient } from "@/lib/supabase/server";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { isAdminEmail } from "@/lib/auth/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +30,15 @@ export default async function IntegrationsPage({
 }: {
   searchParams: SearchParams;
 }) {
+  // Admin-only — this page exposes SF org IDs, sandbox/prod status, and the
+  // OAuth connect/disconnect flow. Reps land on a 404 if they navigate here.
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) notFound();
+  const profile = await getProfileByUserId(user.id);
+  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
+  if (!isAdmin) notFound();
+
   const sp = await searchParams;
   const justConnected = sp.sf_connected === "1";
   const cacheCleared = sp.sf_cache_cleared === "1";

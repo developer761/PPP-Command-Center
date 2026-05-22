@@ -434,12 +434,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
 
     const quotesPromise: Promise<SnapshotQuote[]> = (async () => {
       try {
-        // Narrowed to fields actually used by the funnel derivation
-        // (count + grandTotal sum). Subtotal__c and OpportunityId were
-        // dead fields — dropped to shrink payload.
+        // Funnel derivation needs count + grandTotal + opportunityId (the link
+        // back to the parent opp so scopeSnapshotToViewer can filter quotes
+        // when viewer.scope === "my"). Subtotal__c is dead — left off.
         const records: Array<Record<string, unknown>> = [];
         let result = await conn.query<Record<string, unknown>>(
-          `SELECT Id, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
+          `SELECT Id, OpportunityId, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
         );
         records.push(...result.records);
         while (!result.done && result.nextRecordsUrl) {
@@ -449,7 +449,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         console.log(`[SF] Pulled ${records.length} quotes (last ${RECENCY_WINDOW_DAYS}d) — PARALLEL`);
         return records.map((q) => ({
           id: q.Id as string,
-          opportunityId: null,
+          opportunityId: typeof q.OpportunityId === "string" ? q.OpportunityId : null,
           subtotal: 0,
           grandTotal: typeof q.GrandTotal__c === "number" ? q.GrandTotal__c : 0,
           createdDate: q.CreatedDate as string,

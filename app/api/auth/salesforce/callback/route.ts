@@ -4,6 +4,7 @@ import {
   exchangeCodeForTokens,
   storeSalesforceCredentials,
 } from "@/lib/salesforce/client";
+import { isAllowedToSignIn } from "@/lib/auth/admin";
 
 /**
  * Receive the OAuth callback from Salesforce, exchange the auth code for tokens,
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user || !user.email?.toLowerCase().endsWith("@precisionpaintingplus.net")) {
+  if (!user || !user.email || !isAllowedToSignIn(user.email)) {
     return NextResponse.redirect(`${origin}/?error=domain_not_allowed`);
   }
 
@@ -49,9 +50,12 @@ export async function GET(request: Request) {
       storedBy: user.email,
     });
   } catch (err) {
-    const reason = err instanceof Error ? err.message : "unknown_error";
+    // Log the real error server-side; surface only a generic reason code to
+    // the URL so we don't leak jsforce stack traces / internal endpoints to
+    // anyone watching the browser history.
+    console.error("[sf-callback] token exchange failed:", err);
     return NextResponse.redirect(
-      `${origin}/dashboard/integrations?sf_error=${encodeURIComponent(reason)}`
+      `${origin}/dashboard/integrations?sf_error=connection_failed`
     );
   }
 

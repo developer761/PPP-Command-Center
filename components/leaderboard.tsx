@@ -29,7 +29,11 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
     arr.sort((a, b) => {
       const va = a[sortKey];
       const vb = b[sortKey];
-      return sortDir === "desc" ? vb - va : va - vb;
+      const primary = sortDir === "desc" ? vb - va : va - vb;
+      // Deterministic tiebreak by name so two reps with identical revenue
+      // don't shuffle between renders.
+      if (primary !== 0) return primary;
+      return a.name.localeCompare(b.name);
     });
     return arr;
   }, [reps, sortKey, sortDir]);

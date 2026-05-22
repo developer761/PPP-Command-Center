@@ -58,6 +58,8 @@ export default function FilterDropdown<T extends string>({
   };
 
   const onMenuKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Guard against empty options — `% 0` throws RangeError in V8.
+    if (options.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setFocusedIndex((i) => (i + 1) % options.length);
@@ -72,7 +74,9 @@ export default function FilterDropdown<T extends string>({
       setFocusedIndex(options.length - 1);
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      onChange(options[focusedIndex].value);
+      const opt = options[focusedIndex];
+      if (!opt) return;
+      onChange(opt.value);
       setOpen(false);
       buttonRef.current?.focus();
     }
