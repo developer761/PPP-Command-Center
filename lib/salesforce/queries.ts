@@ -592,6 +592,24 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
         ];
+        // Probe call first — minimal possible subquery to isolate whether the
+        // failure is the relationship name vs the field list. If this probe
+        // succeeds, we know `WorkOrderLineItems` resolves on PPP's org; any
+        // failure afterward is a field-list issue. Log result either way so
+        // the next iteration can target the right thing.
+        try {
+          const probe = await conn.query<Record<string, unknown>>(
+            `SELECT Id, (SELECT Id FROM WorkOrderLineItems) FROM WorkOrder LIMIT 5`
+          );
+          const probeNestedCount = probe.records.reduce((sum, wo) => {
+            const nested = wo.WorkOrderLineItems as { records?: unknown[] } | null | undefined;
+            return sum + (Array.isArray(nested?.records) ? nested.records.length : 0);
+          }, 0);
+          console.log(`[SF] WOLI probe OK — ${probe.records.length} parents, ${probeNestedCount} nested children`);
+        } catch (probeErr) {
+          const m = probeErr instanceof Error ? probeErr.message : String(probeErr);
+          console.error(`[SF] WOLI probe FAILED — minimal (SELECT Id FROM WorkOrderLineItems) was rejected: ${m}`);
+        }
         console.log(`[SF] WOLI query starting (parent-subquery via WorkOrderLineItems, limit=${WOLI_HARD_LIMIT})`);
         const records: Array<{ workOrderId: string; raw: Record<string, unknown> }> = [];
         let pageNum = 0;
