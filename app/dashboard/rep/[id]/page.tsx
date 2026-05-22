@@ -12,6 +12,7 @@ import {
   loadDashboardData,
   getRepMonthlyFor,
   getRepRecentDealsFor,
+  getRepUpcomingWorkFor,
 } from "@/lib/data-source";
 import { deriveRepsForPeriod, deriveRepAccountStats } from "@/lib/salesforce/derive";
 import type { SnapshotAccount } from "@/lib/salesforce/queries";
@@ -81,7 +82,9 @@ export default async function RepDetailPage({
     getRepMonthlyFor(bundle, rep.id) ?? getMockRepMonthly(rep.id);
   const recentDeals =
     getRepRecentDealsFor(bundle, rep.id) ?? getMockRepRecentDeals(rep.id);
-  const hasActivity = monthly.some((m) => m.revenue > 0) || recentDeals.length > 0;
+  const upcomingWork = getRepUpcomingWorkFor(bundle, rep.id) ?? [];
+  const hasActivity =
+    monthly.some((m) => m.revenue > 0) || recentDeals.length > 0 || upcomingWork.length > 0;
   const noHistoricalData = !hasActivity;
 
   // Account stats — only when on live data. Repeat-customer counts,
@@ -418,14 +421,114 @@ export default async function RepDetailPage({
         </div>
       </section>
 
-      {/* ─── Recent deals ─── */}
+      {/* ─── Upcoming work (future-dated open WOs) ─── */}
+      {upcomingWork.length > 0 && (
+        <section>
+          <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+            <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-ppp-charcoal">Upcoming Work</h3>
+                <p className="text-xs text-ppp-charcoal-500 mt-0.5">
+                  Open WOs scheduled ahead — soonest first
+                </p>
+              </div>
+              <span className="text-[11px] font-medium text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 px-2 py-0.5 rounded-full">
+                {upcomingWork.length} job{upcomingWork.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full min-w-[560px]">
+                <thead className="bg-ppp-charcoal-50 text-[11px] font-semibold tracking-wide text-ppp-charcoal-500 uppercase">
+                  <tr>
+                    <th className="text-left px-6 py-3">Customer</th>
+                    <th className="text-left px-6 py-3">Stage</th>
+                    <th className="text-right px-6 py-3">Quoted</th>
+                    <th className="text-right px-6 py-3">Scheduled</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {upcomingWork.map((d) => (
+                    <tr key={d.id} className="border-t border-ppp-charcoal-100">
+                      <td className="px-6 py-3.5 font-medium text-ppp-charcoal">
+                        <span className="inline-flex items-center gap-1.5">
+                          {d.customer}
+                          <CustomerBadges acct={accountByName.get(d.customer)} />
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <span
+                          className={[
+                            "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border",
+                            STAGE_STYLES[d.stage] ?? STAGE_STYLES["Quoted"],
+                          ].join(" ")}
+                        >
+                          {d.stage}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5 text-right font-semibold text-ppp-charcoal">
+                        {d.amount > 0 ? fmtMoneyK(d.amount) : <span className="text-ppp-charcoal-500 font-normal italic">TBD</span>}
+                      </td>
+                      <td className="px-6 py-3.5 text-right text-ppp-charcoal-500">
+                        {d.closedAt ?? `${d.daysInStage}d open`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <ul className="sm:hidden divide-y divide-ppp-charcoal-100">
+              {upcomingWork.map((d) => (
+                <li key={d.id} className="px-5 py-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-ppp-charcoal truncate">
+                        {d.customer}
+                        <CustomerBadges acct={accountByName.get(d.customer)} />
+                      </div>
+                      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                        {d.closedAt ?? `${d.daysInStage}d open`}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-semibold text-ppp-charcoal">
+                        {d.amount > 0 ? fmtMoneyK(d.amount) : <span className="text-ppp-charcoal-500 font-normal italic">TBD</span>}
+                      </div>
+                      <span
+                        className={[
+                          "inline-flex items-center px-1.5 py-0 mt-1 rounded text-[10px] font-medium border",
+                          STAGE_STYLES[d.stage] ?? STAGE_STYLES["Quoted"],
+                        ].join(" ")}
+                      >
+                        {d.stage}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* ─── Recent CLOSED deals ─── */}
       <section>
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100">
-            <h3 className="text-base font-semibold text-ppp-charcoal">Recent Deals</h3>
-            <p className="text-xs text-ppp-charcoal-500 mt-0.5">Last 8 deals across all stages</p>
+            <h3 className="text-base font-semibold text-ppp-charcoal">Recent Closed Deals</h3>
+            <p className="text-xs text-ppp-charcoal-500 mt-0.5">
+              Last 8 jobs marked Paid in Full, Complete, or Cancelled
+            </p>
           </div>
 
+          {recentDeals.length === 0 && (
+            <div className="px-5 sm:px-6 py-10 text-center text-sm text-ppp-charcoal-500">
+              No closed deals yet for this rep.
+            </div>
+          )}
+
+          {recentDeals.length > 0 && (<>
           {/* Desktop / tablet: table */}
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full min-w-[560px]">
@@ -456,7 +559,7 @@ export default async function RepDetailPage({
                         {d.stage}
                       </span>
                     </td>
-                    <td className="px-6 py-3.5 text-right font-semibold text-ppp-charcoal">{fmtMoneyK(d.amount)}</td>
+                    <td className="px-6 py-3.5 text-right font-semibold text-ppp-charcoal">{d.amount > 0 ? fmtMoneyK(d.amount) : <span className="text-ppp-charcoal-500 font-normal italic">TBD</span>}</td>
                     <td className="px-6 py-3.5 text-right text-ppp-charcoal-500">
                       {d.closedAt ? d.closedAt : `${d.daysInStage}d in stage`}
                     </td>
@@ -481,7 +584,7 @@ export default async function RepDetailPage({
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-semibold text-ppp-charcoal">{fmtMoneyK(d.amount)}</div>
+                    <div className="font-semibold text-ppp-charcoal">{d.amount > 0 ? fmtMoneyK(d.amount) : <span className="text-ppp-charcoal-500 font-normal italic">TBD</span>}</div>
                     <span
                       className={[
                         "inline-flex items-center px-1.5 py-0 mt-1 rounded text-[10px] font-medium border",
@@ -495,6 +598,7 @@ export default async function RepDetailPage({
               </li>
             ))}
           </ul>
+          </>)}
         </div>
       </section>
     </div>

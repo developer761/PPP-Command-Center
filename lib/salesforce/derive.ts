@@ -1237,6 +1237,12 @@ export function deriveRepAccountStats(
 
 /* ─── Per-rep recent deals (8 most recent) ─── */
 
+/**
+ * Recent CLOSED deals for a rep — strictly past close date + a status that
+ * indicates closure (Paid in Full / Complete / Cancelled). This is the "what
+ * have you actually won" view. Future-dated unpriced appointments don't
+ * belong here — those go in `deriveRepUpcomingWork`.
+ */
 export function deriveRepRecentDeals(
   snapshot: SalesforceSnapshot,
   repId: string
@@ -1244,38 +1250,53 @@ export function deriveRepRecentDeals(
   // Prefer WO rows (PPP's report unit) so we get the WO number + status the
   // user expects. Fall back to opps when no WO data is present.
   if (snapshot.workOrders.length > 0) {
+    // Build an Opp lookup so we can fall back to Opp.amount on WOs where
+    // NetValue and QuotedSubtotal are both $0 (very old WOs with stale data).
+    const oppById = new Map(snapshot.opportunities.map((o) => [o.id, o]));
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
     const ownerWOs = snapshot.workOrders
       .filter((w) => w.ownerId === repId)
-      .sort((a, b) => {
-        const ad = a.closeDate ?? a.createdDate;
-        const bd = b.closeDate ?? b.createdDate;
-        return bd.localeCompare(ad);
+      // STRICT closed filter: close date is past AND status reads "closed".
+      .filter((w) => {
+        if (!w.closeDate || w.closeDate > today) return false;
+        const s = (w.status ?? "").toLowerCase();
+        return (
+          s.includes("paid in full") ||
+          s.includes("complete") ||
+          s.includes("closed") ||
+          s.includes("cancel") ||
+          s.includes("balance owed")
+        );
       })
+      .sort((a, b) => (b.closeDate ?? "").localeCompare(a.closeDate ?? ""))
       .slice(0, 8);
 
-    return ownerWOs.map((w) => ({
-      id: w.id,
-      customer: w.accountName ?? "(Account)",
-      amount: +(w.amount / 1000).toFixed(1),
-      stage: woStatusBucket(w.status),
-      closedAt: w.closeDate,
-      daysInStage: daysSince(w.closeDate ?? w.createdDate),
-      // Extra metadata the UI surfaces inline (WO number badge, etc.).
-      workOrderNumber: w.workOrderNumber,
-      status: w.status,
-    }) as Deal & {
-      workOrderNumber: string | null;
-      status: string | null;
+    return ownerWOs.map((w) => {
+      let resolved = w.amount;
+      if (resolved === 0 && w.opportunityId) {
+        const opp = oppById.get(w.opportunityId);
+        if (opp && opp.amount > 0) resolved = opp.amount;
+      }
+      return {
+        id: w.id,
+        customer: w.accountName ?? "(Account)",
+        amount: +(resolved / 1000).toFixed(1),
+        stage: woStatusBucket(w.status),
+        closedAt: w.closeDate,
+        daysInStage: daysSince(w.closeDate ?? w.createdDate),
+        workOrderNumber: w.workOrderNumber,
+        status: w.status,
+      } as Deal & {
+        workOrderNumber: string | null;
+        status: string | null;
+      };
     });
   }
 
   const ownerOpps = snapshot.opportunities
-    .filter((o) => o.ownerId === repId)
-    .sort((a, b) => {
-      const ad = (a.closeDate ?? a.createdDate);
-      const bd = (b.closeDate ?? b.createdDate);
-      return bd.localeCompare(ad);
-    })
+    .filter((o) => o.ownerId === repId && o.isClosed)
+    .sort((a, b) => (b.closeDate ?? "").localeCompare(a.closeDate ?? ""))
     .slice(0, 8);
 
   return ownerOpps.map((o) => ({
@@ -1283,9 +1304,64 @@ export function deriveRepRecentDeals(
     customer: o.accountName ?? "(Account)",
     amount: +(o.amount / 1000).toFixed(1),
     stage: stageBucket(o),
-    closedAt: o.isClosed ? o.closeDate : null,
-    daysInStage: o.isClosed ? 0 : daysSince(o.lastActivityDate ?? o.createdDate),
+    closedAt: o.closeDate,
+    daysInStage: 0,
   }));
+}
+
+/**
+ * Upcoming work for a rep — WOs with a future close date (or no close date yet)
+ * that aren't yet closed. The "what's on your calendar / what's coming up" view.
+ * Sorted soonest first. Falls back to parent Opp.amount when the WO is unpriced.
+ */
+export function deriveRepUpcomingWork(
+  snapshot: SalesforceSnapshot,
+  repId: string
+): Deal[] {
+  if (snapshot.workOrders.length === 0) return [];
+
+  const oppById = new Map(snapshot.opportunities.map((o) => [o.id, o]));
+  const today = new Date().toISOString().split("T")[0];
+
+  const upcoming = snapshot.workOrders
+    .filter((w) => w.ownerId === repId)
+    .filter((w) => {
+      // Future close date (or no close date), and not already closed.
+      const inFuture = !w.closeDate || w.closeDate >= today;
+      if (!inFuture) return false;
+      const s = (w.status ?? "").toLowerCase();
+      if (s.includes("paid in full") || s.includes("complete") || s.includes("cancel")) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      // Soonest first; null close dates go to the end.
+      if (!a.closeDate && !b.closeDate) return 0;
+      if (!a.closeDate) return 1;
+      if (!b.closeDate) return -1;
+      return a.closeDate.localeCompare(b.closeDate);
+    })
+    .slice(0, 8);
+
+  return upcoming.map((w) => {
+    let resolved = w.amount;
+    if (resolved === 0 && w.opportunityId) {
+      const opp = oppById.get(w.opportunityId);
+      if (opp && opp.amount > 0) resolved = opp.amount;
+    }
+    return {
+      id: w.id,
+      customer: w.accountName ?? "(Account)",
+      amount: +(resolved / 1000).toFixed(1),
+      stage: woStatusBucket(w.status),
+      closedAt: w.closeDate, // future date here — UI labels it differently
+      daysInStage: daysSince(w.createdDate),
+      workOrderNumber: w.workOrderNumber,
+      status: w.status,
+    } as Deal & {
+      workOrderNumber: string | null;
+      status: string | null;
+    };
+  });
 }
 
 /** Map PPP's custom WO statuses to our Deal["stage"] union. */
