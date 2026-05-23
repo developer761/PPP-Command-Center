@@ -25,18 +25,74 @@ export default async function DashboardLayout({
   }
 
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-  const fullName =
+  const fullNameFromGoogle =
     (typeof meta.full_name === "string" && meta.full_name) ||
     (typeof meta.name === "string" && meta.name) ||
     null;
-  const firstName = fullName ? fullName.split(" ")[0] : null;
   const email = user.email!; // guaranteed by isAllowedToSignIn check above
-  const initial = (firstName ?? email[0] ?? "P").charAt(0).toUpperCase();
 
   // Profile drives the admin flag in the chrome (controls visibility of the
   // View Switcher). The full Viewer (with scope/view_as from URL params) is
   // resolved per-page since the layout doesn't see searchParams.
   const profile = await getProfileByUserId(user.id);
+
+  // Name-resolution fallback chain — fixes the "Good afternoon, Precision"
+  // bug where shared workspace inboxes (developer@precisionpaintingplus.net)
+  // have a generic Google display name like "Precision Painting" → first
+  // word "Precision" → greeting reads like the company is talking to itself.
+  //
+  // Priority:
+  //   1. Mapped Salesforce user's name (the ACTUAL person behind this login)
+  //   2. Google display name, ONLY if it doesn't look like the company name
+  //   3. Email-handle-to-name (jane.doe@x.com → "Jane", k.sutton → "Kate")
+  //   4. null → topbar drops the comma and just shows "Good afternoon"
+  const GENERIC_WORKSPACE_TOKENS = ["precision", "ppp", "developer", "admin", "team", "test", "dev", "info"];
+  function looksLikeWorkspaceName(s: string | null): boolean {
+    if (!s) return true;
+    const w = s.trim().toLowerCase().split(/\s+/);
+    if (w.length === 0) return true;
+    return GENERIC_WORKSPACE_TOKENS.includes(w[0]);
+  }
+  function nameFromEmail(em: string): string | null {
+    // Map common patterns: first.last → "First", f.last → expand via known
+    // PPP shortlist where possible (Kate, Katie, Alex), else capitalize the
+    // leading letters.
+    const handle = em.split("@")[0].toLowerCase();
+    // Skip generic mailbox names — those are NOT a person.
+    if (GENERIC_WORKSPACE_TOKENS.includes(handle)) return null;
+    // Initial-dot-lastname pattern (k.sutton, j.kelly, a.solomon) — PPP's
+    // convention. Use the part BEFORE the dot, capitalized.
+    const m = handle.match(/^([a-z]+)\.([a-z]+)$/);
+    if (m) {
+      // For single-letter initials, fall back to the local-part as-is
+      // (don't try to expand "k" → "Kate"; we don't know).
+      return m[1].length > 1
+        ? m[1].charAt(0).toUpperCase() + m[1].slice(1)
+        : null;
+    }
+    // Plain firstname (karan, alex, sean) → capitalize
+    const onlyName = handle.match(/^([a-z]+)$/);
+    if (onlyName) {
+      return onlyName[1].charAt(0).toUpperCase() + onlyName[1].slice(1);
+    }
+    return null;
+  }
+
+  // Resolve the display name in priority order.
+  let firstName: string | null = null;
+  let fullName: string | null = null;
+  if (profile?.sf_user_name) {
+    fullName = profile.sf_user_name;
+    firstName = profile.sf_user_name.split(" ")[0];
+  } else if (fullNameFromGoogle && !looksLikeWorkspaceName(fullNameFromGoogle)) {
+    fullName = fullNameFromGoogle;
+    firstName = fullNameFromGoogle.split(" ")[0];
+  } else {
+    firstName = nameFromEmail(email);
+    fullName = firstName;
+  }
+
+  const initial = (firstName ?? email[0] ?? "P").charAt(0).toUpperCase();
 
   // Defense-in-depth: if the profile row is missing (DB blip, first-login
   // race before /auth/callback finishes), fall back to the env admin list so
