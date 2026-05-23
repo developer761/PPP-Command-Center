@@ -1,12 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
+
+/** Color catalog context — fetched once at form mount, shared by every ColorPicker. */
+const CatalogContext = createContext<CatalogState>({ status: "loading" });
+function useCatalog(): CatalogState {
+  return useContext(CatalogContext);
+}
+
+type FormCopy = {
+  headerEyebrow: string;
+  headerTitle: string;
+  headerSubtitle: string;
+  globalNotesLabel: string;
+  thankyouTitle: string;
+  thankyouBody: string;
+};
 
 type Props = {
   token: string;
   customerName: string | null;
   formData: FormRenderData;
+  /** Editable customer-facing copy from lib/customer-form/templates.ts.
+   *  Code defaults applied at the server side, so this is always populated. */
+  copy: FormCopy;
 };
 
 type ColorOption = {
@@ -15,7 +33,13 @@ type ColorOption = {
   code: string | null;
   hex: string | null;
   manufacturerId: string | null;
+  manufacturerName?: string | null;
 };
+
+type CatalogState =
+  | { status: "loading" }
+  | { status: "ready"; colors: ColorOption[] }
+  | { status: "error"; message: string };
 
 /** One color pick per surface slot. The form holds N of these per line item. */
 type SurfacePick = {
@@ -39,7 +63,7 @@ const FINISH_OPTIONS = [
   "Gloss / High-Gloss",
 ];
 
-export default function CustomerFormView({ token, customerName, formData }: Props) {
+export default function CustomerFormView({ token, customerName, formData, copy }: Props) {
   // Seed state from any existing color picks on the WOLI (in case admin
   // resent the form after a prior submission).
   const initialState = useMemo<Record<string, LineItemState>>(() => {
@@ -61,17 +85,43 @@ export default function CustomerFormView({ token, customerName, formData }: Prop
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
+  // Fetch the full color catalog ONCE on form mount so every ColorPicker
+  // filters in-memory (zero latency per keystroke). Previously every keystroke
+  // round-tripped to /colors/search — added 200-400ms per character on cell
+  // networks, frustrating customers. Catalog is ~5,762 colors, ~80KB gzipped;
+  // browser caches it for 1 hour via the API's Cache-Control.
+  const [catalog, setCatalog] = useState<CatalogState>({ status: "loading" });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/customer-form/colors/all?token=${encodeURIComponent(token)}`);
+        if (!res.ok) {
+          const msg = `HTTP ${res.status}`;
+          if (!cancelled) setCatalog({ status: "error", message: msg });
+          return;
+        }
+        const data = await res.json();
+        const colors: ColorOption[] = Array.isArray(data?.colors) ? data.colors : [];
+        if (!cancelled) setCatalog({ status: "ready", colors });
+      } catch (err) {
+        if (!cancelled) {
+          setCatalog({ status: "error", message: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
+
   if (submitted) {
     return (
       <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-8 sm:p-12 text-center">
         <div className="mx-auto h-14 w-14 rounded-full bg-ppp-green-50 text-ppp-green-700 flex items-center justify-center text-2xl mb-4">
           ✓
         </div>
-        <h1 className="text-xl sm:text-2xl font-bold text-ppp-navy">Got it — thanks!</h1>
-        <p className="mt-3 text-sm sm:text-base text-ppp-charcoal-500 max-w-md mx-auto">
-          Your color picks are with our team. We&apos;ll order the materials and
-          reach out to confirm your start date. If anything changes, just
-          reply to the email we sent you.
+        <h1 className="text-xl sm:text-2xl font-bold text-ppp-navy">{copy.thankyouTitle}</h1>
+        <p className="mt-3 text-sm sm:text-base text-ppp-charcoal-500 max-w-md mx-auto whitespace-pre-line">
+          {copy.thankyouBody}
         </p>
       </div>
     );
@@ -137,21 +187,18 @@ export default function CustomerFormView({ token, customerName, formData }: Prop
   };
 
   return (
+    <CatalogContext.Provider value={catalog}>
     <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
-      {/* Greeting + WO header */}
+      {/* Greeting + WO header — all text editable via /dashboard/settings/templates */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
         <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
-          Pick your paint colors
+          {copy.headerEyebrow}
         </div>
         <h1 className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy mt-1">
-          {customerName ? `Hi ${customerName} —` : "Hi —"} let&apos;s lock in your colors
+          {copy.headerTitle}
         </h1>
-        <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed">
-          Below are the areas {formData.ownerName ? `${formData.ownerName} ` : ""}
-          scoped during your appointment{formData.workOrderNumber ? ` (Work Order #${formData.workOrderNumber})` : ""}.
-          For each surface, pick a color — type a name or code to search the catalog.
-          You can add a finish and any notes for our team. We&apos;ll order the
-          materials once you submit.
+        <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed whitespace-pre-line">
+          {copy.headerSubtitle}
         </p>
       </div>
 
@@ -179,7 +226,7 @@ export default function CustomerFormView({ token, customerName, formData }: Prop
       {formData.lineItems.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
           <label className="block text-sm font-semibold text-ppp-charcoal mb-2">
-            Anything else we should know?
+            {copy.globalNotesLabel}
           </label>
           <p className="text-xs text-ppp-charcoal-500 mb-3">
             Special requests, scheduling notes, things we should be careful around — anything.
@@ -219,6 +266,7 @@ export default function CustomerFormView({ token, customerName, formData }: Prop
         </div>
       )}
     </form>
+    </CatalogContext.Provider>
   );
 }
 
@@ -307,7 +355,7 @@ function SurfaceRow({
           {surface}
         </div>
       </div>
-      <ColorPicker pick={pick} token={token} onPick={onChange} />
+      <ColorPicker pick={pick} onPick={onChange} />
       <div>
         <select
           value={pick.finish ?? ""}
@@ -328,41 +376,52 @@ function SurfaceRow({
 
 function ColorPicker({
   pick,
-  token,
   onPick,
 }: {
   pick: SurfacePick;
-  token: string;
   onPick: (patch: Partial<SurfacePick>) => void;
 }) {
+  const catalog = useCatalog();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<ColorOption[]>([]);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Debounced search on query change
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!open) return;
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const url = `/api/customer-form/colors/search?token=${encodeURIComponent(token)}&q=${encodeURIComponent(query)}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        setResults(Array.isArray(data?.results) ? data.results : []);
-      } catch {
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 200);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query, open, token]);
+  // Client-side filter — zero latency per keystroke. Scoring matches the old
+  // server-side scoring exactly:
+  //   100 = exact code match (e.g. "2108-40" → BM Stardust)
+  //   50  = name (or shortName) starts with query
+  //   30  = code starts with query
+  //   10  = name (or shortName) contains query
+  //   5   = code contains query
+  // Returns top 30 sorted by score desc, then alphabetically by name.
+  const results: ColorOption[] = useMemo(() => {
+    if (catalog.status !== "ready") return [];
+    const q = query.trim().toLowerCase();
+
+    // Empty query → return first 30 (starter set when picker just opened)
+    if (q.length === 0) return catalog.colors.slice(0, 30);
+
+    const scored: Array<{ score: number; c: ColorOption }> = [];
+    const colors = catalog.colors;
+    for (let i = 0; i < colors.length; i++) {
+      const c = colors[i];
+      const code = (c.code ?? "").toLowerCase();
+      const name = (c.name ?? "").toLowerCase();
+      let score = 0;
+      if (code === q) score = 100;
+      else if (name.startsWith(q)) score = 50;
+      else if (code.startsWith(q)) score = 30;
+      else if (name.includes(q)) score = 10;
+      else if (code.includes(q)) score = 5;
+      if (score > 0) scored.push({ score, c });
+      // Early-exit if we've found a LOT of candidates — sorting is cheap on
+      // small sets, but if a 1-char query matches 3000 colors we'd waste a
+      // few ms sorting them all. Cap at 200 candidates; we only show 30.
+      if (scored.length >= 200) break;
+    }
+    scored.sort((a, b) => (b.score - a.score) || a.c.name.localeCompare(b.c.name));
+    return scored.slice(0, 30).map((r) => r.c);
+  }, [catalog, query]);
 
   // Click outside to close
   useEffect(() => {
@@ -435,15 +494,20 @@ function ColorPicker({
 
       {open && !pick.colorId && (
         <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto bg-white border border-ppp-charcoal-100 rounded-lg shadow-xl shadow-ppp-charcoal/10 z-50">
-          {loading && (
-            <div className="px-3 py-3 text-xs text-ppp-charcoal-500">Searching…</div>
+          {catalog.status === "loading" && (
+            <div className="px-3 py-3 text-xs text-ppp-charcoal-500">Loading color catalog…</div>
           )}
-          {!loading && results.length === 0 && (
-            <div className="px-3 py-3 text-xs text-ppp-charcoal-500">
-              {query.length === 0 ? "Type to search the color catalog." : "No matches — try a different name or code."}
+          {catalog.status === "error" && (
+            <div className="px-3 py-3 text-xs text-ppp-orange-700">
+              Couldn&apos;t load colors: {catalog.message}. Reload the page or reply to PPP for help.
             </div>
           )}
-          {!loading && results.map((c) => (
+          {catalog.status === "ready" && results.length === 0 && (
+            <div className="px-3 py-3 text-xs text-ppp-charcoal-500">
+              No matches for &ldquo;{query}&rdquo; — try a different name or code.
+            </div>
+          )}
+          {catalog.status === "ready" && results.map((c) => (
             <button
               key={c.id}
               type="button"

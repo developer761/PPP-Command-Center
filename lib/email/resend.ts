@@ -114,32 +114,40 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
 /**
  * Convenience: send the customer color-form invitation email.
  *
- * The template is intentionally minimal here — plain text + a single link.
- * The actual brand-styled HTML version will land once we have the form working
- * end-to-end. Plain text is universally deliverable.
+ * Template copy now lives in lib/customer-form/templates.ts — admin can edit
+ * subject + intro + outro + signoff via /dashboard/settings/templates without
+ * a code deploy. Code defaults are the fallback if the templates table is
+ * empty/unavailable.
+ *
+ * The `subjectOverride` + `introOverride` params are still honored — they
+ * let the modal in materials-view.tsx provide per-send custom copy ahead of
+ * the global template (rarely used; mostly for one-off VIP customers).
  */
 export async function sendCustomerFormInvite(input: {
   to: string;
   customerName: string | null;
   workOrderNumber: string | null;
   formUrl: string;
-  /** Optional admin-customized intro paragraph. */
+  /** Optional per-send intro paragraph — overrides the global template. */
   introOverride?: string;
-  /** Optional admin-customized subject. */
+  /** Optional per-send subject — overrides the global template. */
   subjectOverride?: string;
 }): Promise<ResendSendResult> {
-  const greeting = input.customerName ? `Hi ${input.customerName},` : "Hi,";
-  const intro =
-    input.introOverride ??
-    `Thanks for choosing Precision Painting Plus! We're getting ready to start your paint job${
-      input.workOrderNumber ? ` (Work Order #${input.workOrderNumber})` : ""
-    } and need a few quick details from you — your color choices for each room.`;
+  // Lazy import so the rest of the module stays edge-runtime-friendly (the
+  // templates loader pulls supabase-js which is server-only).
+  const { loadTemplates, render, buildVars } = await import("@/lib/customer-form/templates");
+  const { templates } = await loadTemplates();
+  const vars = buildVars({
+    customerName: input.customerName,
+    workOrderNumber: input.workOrderNumber,
+    formUrl: input.formUrl,
+  });
 
-  const subject =
-    input.subjectOverride ??
-    `Action needed: Pick your paint colors${
-      input.workOrderNumber ? ` (WO #${input.workOrderNumber})` : ""
-    }`;
+  const greeting = vars.customer_name ? `Hi ${vars.customer_name},` : "Hi there,";
+  const subject = input.subjectOverride ?? render(templates.email_subject, vars);
+  const intro = input.introOverride ?? render(templates.email_intro, vars);
+  const outro = render(templates.email_outro, vars);
+  const signoff = render(templates.email_signoff, vars);
 
   const text = [
     greeting,
@@ -150,12 +158,9 @@ export async function sendCustomerFormInvite(input: {
     "",
     input.formUrl,
     "",
-    "Once you submit, we'll order materials and confirm your start date. The link is unique to your job — please don't share it.",
+    outro,
     "",
-    "If you have questions or want to add anything, just reply to this email.",
-    "",
-    "Thanks,",
-    "Precision Painting Plus",
+    signoff,
   ].join("\n");
 
   return sendEmail({

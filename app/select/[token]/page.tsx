@@ -2,6 +2,7 @@ import Image from "next/image";
 import { headers } from "next/headers";
 import { validateToken, markOpened, markWoliSnapshotTime } from "@/lib/customer-form/tokens";
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
+import { loadTemplates, render, buildVars } from "@/lib/customer-form/templates";
 import CustomerFormView from "@/components/customer-form-view";
 import { PPP_BRAND } from "@/lib/brand";
 
@@ -51,12 +52,30 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
   void markOpened(token, { ip, userAgent });
   void markWoliSnapshotTime(token);
 
+  // Render copy is editable via /dashboard/settings/templates — load + sub
+  // variables here so the form gets the customized strings (or the code
+  // defaults when admin hasn't overridden anything).
+  const { templates } = await loadTemplates();
+  const vars = buildVars({
+    customerName: status.token.customer_name,
+    workOrderNumber: status.token.work_order_number,
+  });
+  const copy = {
+    headerEyebrow: render(templates.form_header_eyebrow, vars),
+    headerTitle: render(templates.form_header_title, vars),
+    headerSubtitle: render(templates.form_header_subtitle, vars),
+    globalNotesLabel: render(templates.form_global_notes_label, vars),
+    thankyouTitle: render(templates.form_thankyou_title, vars),
+    thankyouBody: render(templates.form_thankyou_body, vars),
+  };
+
   return (
     <CustomerFormShell>
       <CustomerFormView
         token={token}
         customerName={status.token.customer_name ?? null}
         formData={formData}
+        copy={copy}
       />
     </CustomerFormShell>
   );

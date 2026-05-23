@@ -11,11 +11,38 @@ import {
 } from "@/lib/salesforce/materials";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 import type { SnapshotPaintColor } from "@/lib/salesforce/queries";
+import type { FormStatus } from "@/lib/customer-form/wo-status";
 
-type Props = { bundle: LiveDashboardBundle };
+type Props = {
+  bundle: LiveDashboardBundle;
+  /** Customer-form lifecycle state per WO (from getFormStatusByWO).
+   *  Used to render the per-WO status badge on the left rail + summary chip
+   *  on the page header. Passed as an array (Map doesn't serialize over the
+   *  server→client boundary in Next). */
+  formStatuses?: FormStatus[];
+};
 
-export default function MaterialsView({ bundle }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [] }: Props) {
   const { snapshot, viewer } = bundle;
+
+  // Index form statuses by WO id for constant-time lookup in the render loop.
+  const formStatusByWO = useMemo(() => {
+    const m = new Map<string, FormStatus>();
+    for (const s of formStatuses) m.set(s.woId, s);
+    return m;
+  }, [formStatuses]);
+
+  // Roll-up for the page header chip — at a glance, how many forms are out?
+  const formSummary = useMemo(() => {
+    const summary = { sent: 0, opened: 0, submitted: 0, expired: 0 };
+    for (const s of formStatuses) {
+      if (s.status === "sent") summary.sent += 1;
+      else if (s.status === "opened") summary.opened += 1;
+      else if (s.status === "submitted") summary.submitted += 1;
+      else if (s.status === "expired") summary.expired += 1;
+    }
+    return summary;
+  }, [formStatuses]);
   const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
 
   const openJobs = useMemo<OpenWorkOrderForMaterials[]>(
@@ -135,6 +162,46 @@ export default function MaterialsView({ bundle }: Props) {
         <StatCard label="Suppliers" value={stats.distinctSuppliers.toLocaleString()} accent="green" />
       </section>
 
+      {/* Customer-form pipeline summary — only when any form has been sent.
+          Otherwise the row is hidden (avoids a "0 / 0 / 0 / 0" strip that
+          adds clutter on day 0 of the rollout). */}
+      {(formSummary.sent + formSummary.opened + formSummary.submitted + formSummary.expired) > 0 && (
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="font-condensed text-[11px] uppercase tracking-wider font-bold text-ppp-charcoal-500">
+                Customer color forms
+              </span>
+              <span className="text-[11px] text-ppp-charcoal-500">
+                in flight across these jobs
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-[11px] font-semibold">
+              {formSummary.submitted > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded border bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100">
+                  ✓ {formSummary.submitted} submitted
+                </span>
+              )}
+              {formSummary.opened > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded border bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-100">
+                  👁 {formSummary.opened} opened
+                </span>
+              )}
+              {formSummary.sent > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded border bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100">
+                  📨 {formSummary.sent} sent
+                </span>
+              )}
+              {formSummary.expired > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded border bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100">
+                  ⏳ {formSummary.expired} expired
+                </span>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Admin-only diagnostic — always visible (not collapsed) so the numbers
           are right there. Hidden from non-admins entirely. */}
       {viewer?.isAdmin && debug && (
@@ -221,6 +288,7 @@ export default function MaterialsView({ bundle }: Props) {
             <ul className="max-h-[640px] overflow-y-auto">
               {openJobs.map((j) => {
                 const active = activeWoId === j.wo.id;
+                const formStatus = formStatusByWO.get(j.wo.id);
                 return (
                   <li key={j.wo.id}>
                     <button
@@ -235,8 +303,11 @@ export default function MaterialsView({ bundle }: Props) {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="font-semibold text-ppp-charcoal text-sm truncate">
-                            {j.wo.accountName ?? "(unknown account)"}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-semibold text-ppp-charcoal text-sm truncate">
+                              {j.wo.accountName ?? "(unknown account)"}
+                            </div>
+                            <FormStatusBadge status={formStatus} />
                           </div>
                           <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-2 truncate">
                             <span className="font-mono">{j.wo.workOrderNumber ?? j.wo.id.slice(-6)}</span>
@@ -680,6 +751,53 @@ function StatCard({
       <div className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
       <div className={`mt-1 font-condensed text-2xl sm:text-3xl font-bold ${tone}`}>{value}</div>
     </div>
+  );
+}
+
+/**
+ * Customer-form lifecycle badge rendered on every WO card in the left rail.
+ * Tiny, status-coded chip that lets the rep/admin scan the column at a
+ * glance: green = customer picked colors (ready to order materials), blue =
+ * customer opened the email, charcoal = email sent (waiting), orange = the
+ * token expired so admin should resend, no chip = no form sent yet.
+ *
+ * Renders nothing when status === "none" so cards without a form stay clean.
+ */
+function FormStatusBadge({ status }: { status: FormStatus | undefined }) {
+  if (!status || status.status === "none") return null;
+
+  const config: Record<Exclude<FormStatus["status"], "none">, { label: string; cls: string; title: string }> = {
+    submitted: {
+      label: "✓ Submitted",
+      cls: "bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100",
+      title: "Customer submitted colors — ready to order materials",
+    },
+    opened: {
+      label: "👁 Opened",
+      cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-100",
+      title: "Customer opened the form but hasn't submitted yet",
+    },
+    sent: {
+      label: "📨 Sent",
+      cls: "bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100",
+      title: "Email delivered — waiting on customer",
+    },
+    expired: {
+      label: "⏳ Expired",
+      cls: "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100",
+      title: "Token expired — resend the form to get fresh access",
+    },
+  };
+  const c = config[status.status];
+  // Tooltip-rich span (title attribute) — gives admins context on hover
+  // without crowding the rail layout. Inline so the row stays single-line.
+  return (
+    <span
+      title={c.title}
+      className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${c.cls}`}
+    >
+      {c.label}
+    </span>
   );
 }
 
