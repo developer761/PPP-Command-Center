@@ -7,12 +7,27 @@
  * the env var so admin changes don't require code redeploys.
  */
 
+// PPP uses both `.net` and `.com` inconsistently per user — we list both
+// variants for everyone so whichever someone signs in with works. Source of
+// truth is the `PPP_ADMIN_EMAILS` env var in Vercel; this is the fallback.
 const BOOTSTRAP_ADMIN_EMAILS = [
   "malhotrak038@gmail.com",                       // Karan (contractor)
-  "developer@precisionpaintingplus.net",          // PPP-owned dev identity
-  "alex@precisionpaintingplus.com",               // Alex Z (CEO)
-  "k.sutton@precisionpaintingplus.net",           // Kate Sutton (AI ops)
-  "katie@precisionpaintingplus.com",              // Katie (admin/IT, SF org owner)
+  // PPP-owned dev identity (Google Workspace)
+  "developer@precisionpaintingplus.net",
+  "developer@precisionpaintingplus.com",
+  // Alex Z (CEO)
+  "alex@precisionpaintingplus.com",
+  "alex@precisionpaintingplus.net",
+  // Kate Sutton (AI ops / Hatch audit)
+  "k.sutton@precisionpaintingplus.net",
+  "k.sutton@precisionpaintingplus.com",
+  // Katie Batilla (admin / IT / Salesforce org owner)
+  "katie@precisionpaintingplus.com",
+  "katie@precisionpaintingplus.net",
+  "katie.batilla@precisionpaintingplus.com",
+  "katie.batilla@precisionpaintingplus.net",
+  "kbatilla@precisionpaintingplus.com",
+  "kbatilla@precisionpaintingplus.net",
 ];
 
 /** Normalize an email for comparison: lowercase + trim. */
