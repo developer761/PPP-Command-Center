@@ -76,16 +76,34 @@ export async function GET() {
     }
   }
 
-  // Per-rep rollup. Same logic the rep page currently uses ("opps with linked
-  // WO" as the Conversion Rate proxy) computed alongside the IsWon-based one
-  // so we can see the gap rep-by-rep.
+  // Per-rep rollup. Computes THREE close-rate definitions side-by-side so
+  // Katie can compare:
+  //   - oppsWithWO         = OLD naive proxy (any linked WO; includes Estimate
+  //                          WOs so trends ~100%)
+  //   - oppsWithRealSaleWO = NEW filter (Estimate / Cancelled WOs excluded —
+  //                          this is what the leaderboard now uses)
+  //   - oppsWon            = IsWon flag (KPI 3 spec definition; PPP's data
+  //                          quirk makes this ~95%+ too)
+  // Mirrors lib/salesforce/derive.ts isRealSaleWO() — kept in sync via the
+  // same WorkType + Status filter.
   const oppsWithWOSet = new Set(snapshot.workOrders.map((w) => w.opportunityId).filter(Boolean));
+  const oppsWithRealSaleSet = new Set<string>();
+  for (const w of snapshot.workOrders) {
+    if (!w.opportunityId) continue;
+    const wt = (w.workTypeName ?? "").toLowerCase();
+    if (wt.includes("estimate") || wt.includes("appointment") || wt.includes("inspection") || wt.includes("consultation")) continue;
+    const s = (w.status ?? "").toLowerCase();
+    if (s.includes("cancel") || s.includes("void") || s.includes("abandon") || s.includes("dead") || s.includes("lost")) continue;
+    oppsWithRealSaleSet.add(w.opportunityId);
+  }
+
   const perRep = new Map<string, {
     name: string;
     oppsTotal: number;
     oppsWon: number;
     oppsClosed: number;
     oppsWithWO: number;
+    oppsWithRealSaleWO: number;
   }>();
   const repName = new Map(snapshot.reps.map((r) => [r.id, r.name]));
   for (const o of snapshot.opportunities) {
@@ -96,11 +114,13 @@ export async function GET() {
       oppsWon: 0,
       oppsClosed: 0,
       oppsWithWO: 0,
+      oppsWithRealSaleWO: 0,
     };
     row.oppsTotal += 1;
     if (o.isWon) row.oppsWon += 1;
     if (o.isClosed) row.oppsClosed += 1;
     if (oppsWithWOSet.has(o.id)) row.oppsWithWO += 1;
+    if (oppsWithRealSaleSet.has(o.id)) row.oppsWithRealSaleWO += 1;
     perRep.set(o.ownerId, row);
   }
 
@@ -138,11 +158,16 @@ export async function GET() {
       .map(([ownerId, row]) => ({
         ownerId,
         ...row,
-        // Old metric — Opp → WO conversion (what shows as 98.7%)
-        conversionRateProxy: row.oppsTotal > 0
+        // OLD inflated metric — any linked WO (the 98.7% you saw)
+        oldConversionRateProxy: row.oppsTotal > 0
           ? +(row.oppsWithWO / row.oppsTotal * 100).toFixed(1)
           : 0,
-        // PPP canonical KPI 3 — won / created
+        // NEW shipped metric — what the leaderboard now shows (Estimate +
+        // cancelled WOs excluded)
+        newRealSaleRate: row.oppsTotal > 0
+          ? +(row.oppsWithRealSaleWO / row.oppsTotal * 100).toFixed(1)
+          : 0,
+        // PPP canonical KPI 3 — won / created (in fiscal-quarter Scorecard)
         kpi3CloseRate: row.oppsTotal > 0
           ? +(row.oppsWon / row.oppsTotal * 100).toFixed(1)
           : 0,

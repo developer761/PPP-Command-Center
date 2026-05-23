@@ -328,41 +328,19 @@ export function deriveRepsForPeriod(
     };
   });
 
-  // Surface orphan owners — users who own revenue-bearing WOs but aren't in
-  // our canonical rep filter (e.g., admin profiles that still own deals). We
-  // resolve their name from the WO join data so they get a proper card.
-  const canonicalIds = new Set(snapshot.reps.map((r) => r.id));
-  const ownerNameLookup = new Map<string, string>();
-  for (const w of snapshot.workOrders) {
-    if (w.ownerId && w.ownerName) ownerNameLookup.set(w.ownerId, w.ownerName);
-  }
-  for (const [ownerId, a] of byOwner.entries()) {
-    if (canonicalIds.has(ownerId)) continue;
-    if (a.wonRevenue === 0 && a.openPipeline === 0) continue;
-    // Skip rows where the WO has no owner at all — surfacing a card with
-    // name="null" or name="" was a real bug. These appear when an Opp is
-    // orphaned from any User (very rare in PPP's data).
-    if (!ownerId) continue;
-    const closeRate = a.closed > 0 ? (a.won / a.closed) * 100 : 0;
-    const avgTicket = a.ticketCount > 0 ? a.ticketSum / a.ticketCount : 0;
-    const displayName = ownerNameLookup.get(ownerId);
-    cards.push({
-      id: ownerId,
-      name: displayName && displayName.trim() ? displayName : "(unassigned)",
-      region: "Unassigned",
-      serviceLine: "Residential",
-      revenueSold: Math.round(a.wonRevenue / 1000),
-      closeRate: +closeRate.toFixed(1),
-      avgTicket: +(avgTicket / 1000).toFixed(1),
-      openPipeline: Math.round(a.openPipeline / 1000),
-      daysAvgClose: a.daysToCloseCount > 0
-        ? Math.round(a.daysToCloseSum / a.daysToCloseCount)
-        : 0,
-      appointmentsHeld: a.total,
-      quotesSent: a.total,
-      startedAt: new Date().toISOString().split("T")[0],
-    });
-  }
+  // Orphan owners (users who own WOs but aren't in the canonical rep set —
+  // admins, office staff, suspended users) are NO LONGER surfaced on the
+  // leaderboard. Per Katie's integration guide §4.4, PPP's actual rep
+  // universe is Profile=*Standard.Field (~29 active). Including orphans
+  // pollutes team-average denominators AND can let an admin appear as
+  // "top performer" if they happen to own outsized WOs. The diagnostic
+  // /api/admin/wo-debug surfaces orphan ownership if needed for triage.
+  //
+  // Previously this block appended every owner who had ANY WO activity,
+  // including admin-profile users with a single legacy WO under their name.
+  // Now: canonical reps only. If a real rep is missing from the leaderboard,
+  // their Profile.Name doesn't match `*Standard.Field` — ask Katie to fix
+  // the User record, not patch around it here.
 
   return cards;
 }

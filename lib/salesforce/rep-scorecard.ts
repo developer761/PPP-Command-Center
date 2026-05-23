@@ -407,13 +407,20 @@ export function deriveRepScorecard(
       run += 1;
       if (o.estimateSent) {
         runWithEstimate += 1;
-        // Speed-to-estimate calc — only when we have both anchors.
-        // Negative gaps (estimate sent before appt) are dropped as data
-        // entry errors. Gaps > 90 days are also dropped (stale/orphan).
+        // Speed-to-estimate calc — only when we have both anchors AND the
+        // appointment has actually happened (appointmentDate <= today).
+        // Future-scheduled appointments aren't yet "run" turnaround data —
+        // including them would skew the metric optimistically.
+        //
+        // Filter rules:
+        //   - appointmentDate must be in the past (already happened)
+        //   - dateEstimateSent must be >= appointmentDate (real turnaround)
+        //   - gap <= 90 days (drops stale/orphan data-entry artifacts)
         if (o.appointmentDate && o.dateEstimateSent) {
           const aMs = new Date(o.appointmentDate).getTime();
           const eMs = new Date(o.dateEstimateSent).getTime();
-          if (!isNaN(aMs) && !isNaN(eMs)) {
+          const nowMs = Date.now();
+          if (!isNaN(aMs) && !isNaN(eMs) && aMs <= nowMs) {
             const days = (eMs - aMs) / 86_400_000;
             if (days >= 0 && days <= 90) {
               estimateDaysSum += days;
