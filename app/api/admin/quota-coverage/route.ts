@@ -35,10 +35,17 @@ export async function GET() {
   const snapshot = await loadSalesforceSnapshot();
   const fy = currentFY();
 
-  // Index quotas + sub-quotas by userId for fast lookup
-  const quotaByUser = new Map<string, number>(); // userId → quotaAssigned for current FY
+  // Index quotas + sub-quotas by userId for fast lookup. PPP has ~11 quota
+  // rows populated as $0 placeholders (workflow created the row but manager
+  // hasn't entered the dollar amount). Track real ($ > 0) and placeholder
+  // ($0) separately so Katie sees which reps need only the dollar amount
+  // filled in vs which need the whole quota row created.
+  const quotaByUser = new Map<string, number>(); // userId → quotaAssigned for current FY (any value, incl 0)
+  const placeholderQuotaUsers = new Set<string>(); // users with quota row but $0
   for (const q of snapshot.quotas) {
-    if (q.fy === fy) quotaByUser.set(q.userId, q.quotaAssigned);
+    if (q.fy !== fy) continue;
+    quotaByUser.set(q.userId, q.quotaAssigned);
+    if (q.quotaAssigned === 0) placeholderQuotaUsers.add(q.userId);
   }
   const subQuotaCountByUser = new Map<string, number>();
   for (const sq of snapshot.subQuotas) {
@@ -49,10 +56,16 @@ export async function GET() {
 
   const fieldReps = snapshot.reps.filter((r) => r.isFieldStandard);
   const rows = fieldReps.map((r) => {
-    const quota = quotaByUser.get(r.id) ?? null;
+    const quotaAmount = quotaByUser.get(r.id) ?? null;
+    const isPlaceholder = placeholderQuotaUsers.has(r.id);
+    const hasRealQuota = quotaAmount !== null && quotaAmount > 0;
     const subQuotaCount = subQuotaCountByUser.get(r.id) ?? 0;
+
     const missing: string[] = [];
-    if (quota === null) missing.push("TotalQuota__c");
+    // Effective check — treat $0 placeholder as "needs the dollar amount filled in"
+    if (!hasRealQuota) {
+      missing.push(isPlaceholder ? "TotalQuota__c $ amount (row exists, $0)" : "TotalQuota__c row");
+    }
     if (subQuotaCount === 0) missing.push("SubQuota__c (monthly)");
     if (r.gmGoalPercent === null) missing.push("Gross_Margin_Goal_Percent__c");
     if (r.quarterlyDraw === null) missing.push("Quarterly_Draw__c");
@@ -62,8 +75,10 @@ export async function GET() {
       name: r.name,
       email: r.email,
       profileName: r.profileName,
-      hasTotalQuotaCFY: quota !== null,
-      totalQuotaAmount: quota,
+      hasTotalQuotaRow: quotaAmount !== null,
+      hasRealQuota,                    // row exists AND > $0
+      isPlaceholderQuota: isPlaceholder, // row exists but $0
+      totalQuotaAmount: quotaAmount,
       subQuotaCountCFY: subQuotaCount,
       hasGmGoal: r.gmGoalPercent !== null,
       gmGoalPercent: r.gmGoalPercent,
@@ -74,12 +89,14 @@ export async function GET() {
     };
   });
 
-  // Summary rollup
+  // Summary rollup — distinguish "row exists" from "row has real $ amount"
   const total = rows.length;
   const summary = {
     fy,
     totalFieldReps: total,
-    withTotalQuotaCFY: rows.filter((r) => r.hasTotalQuotaCFY).length,
+    withTotalQuotaRow: rows.filter((r) => r.hasTotalQuotaRow).length,
+    withRealQuota: rows.filter((r) => r.hasRealQuota).length,
+    withPlaceholderZeroQuota: rows.filter((r) => r.isPlaceholderQuota).length,
     withSubQuotaCFY: rows.filter((r) => r.subQuotaCountCFY > 0).length,
     withGmGoal: rows.filter((r) => r.hasGmGoal).length,
     withQuarterlyDraw: rows.filter((r) => r.hasQuarterlyDraw).length,

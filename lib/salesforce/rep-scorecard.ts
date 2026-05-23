@@ -237,9 +237,12 @@ export function deriveRepScorecard(
     if (foundAny) goal = subQuotaSum;
   }
   if (goal === null && fy !== null) {
-    // FY annual goal from TotalQuota
+    // FY annual goal from TotalQuota. NOTE: PPP has ~11 rep quota rows
+    // populated as $0 placeholders (workflow created the row but the
+    // manager hasn't filled in the dollar amount yet). Treat $0 as
+    // "not set" — a 0% to Goal would be misleading.
     const tq = snapshot.quotas.find((q) => q.userId === repId && q.fy === fy);
-    if (tq) goal = tq.quotaAssigned;
+    if (tq && tq.quotaAssigned > 0) goal = tq.quotaAssigned;
   }
 
   // Rank vs field-standard reps (dense rank by totalSales).
