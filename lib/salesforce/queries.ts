@@ -1267,9 +1267,19 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
 
     const subQuotasPromise: Promise<SnapshotSubQuota[]> = (async () => {
       try {
-        // Joined to parent for rep attribution. SF returns nested object
-        // when the relationship is selected — typed loosely below.
-        const fields = "Id, TotalQuota__c, TotalQuota__r.User__c, TotalQuota__r.FY__c, Assigned__c, Attained__c, FiscalMonth__c";
+        // PPP actual schema (verified via /api/admin/sf-field-discovery 2026-05-23):
+        //   - Field is `Month__c` (picklist: "January".."December") — NOT `FiscalMonth__c`
+        //   - Period anchors are `StartDate__c` + `EndDate__c` (date)
+        //   - Parent linkage via `TotalQuota__r.User__c` (same as TotalQuota__c)
+        // PPP has 4,392 SubQuota rows historically but 0 created this FY — they
+        // stopped maintaining monthly sub-quotas. Scorecard falls back to
+        // annual ÷ 4 for the quarterly goal in that case. If PPP starts entering
+        // them again, this query picks them up automatically.
+        const MONTH_NAME_TO_CAL: Record<string, number> = {
+          January: 1, February: 2, March: 3, April: 4, May: 5, June: 6,
+          July: 7, August: 8, September: 9, October: 10, November: 11, December: 12,
+        };
+        const fields = "Id, TotalQuota__c, TotalQuota__r.User__c, TotalQuota__r.FY__c, Assigned__c, Attained__c, Month__c, StartDate__c";
         const records: Array<Record<string, unknown>> = [];
         let result = await conn.query<Record<string, unknown>>(
           `SELECT ${fields} FROM SubQuota__c WHERE TotalQuota__r.Allocation__c = 'Owner' AND TotalQuota__r.Status__c = 'Active' AND TotalQuota__r.QuotaType__c = 'Field_Member'`
@@ -1284,12 +1294,23 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           const parent = r["TotalQuota__r"] as Record<string, unknown> | undefined;
           const userId = (parent?.User__c as string) ?? "";
           const fy = typeof parent?.FY__c === "number" ? (parent.FY__c as number) : Number(parent?.FY__c) || 0;
+          // Month__c is a picklist of month NAMES — convert to calendar month #.
+          // Fall back to parsing StartDate__c when Month__c is null (the schema
+          // allows both fields nullable, sample showed nulls in real data).
+          let fiscalMonth = 0;
+          if (typeof r.Month__c === "string") {
+            fiscalMonth = MONTH_NAME_TO_CAL[r.Month__c] ?? 0;
+          }
+          if (fiscalMonth === 0 && typeof r.StartDate__c === "string") {
+            const d = new Date(r.StartDate__c);
+            if (!isNaN(d.getTime())) fiscalMonth = d.getUTCMonth() + 1;
+          }
           return {
             id: r.Id as string,
             totalQuotaId: (r.TotalQuota__c as string) ?? "",
             userId,
             fy,
-            fiscalMonth: typeof r.FiscalMonth__c === "number" ? (r.FiscalMonth__c as number) : 0,
+            fiscalMonth,
             assigned: typeof r.Assigned__c === "number" ? (r.Assigned__c as number) : 0,
             attained: typeof r.Attained__c === "number" ? (r.Attained__c as number) : 0,
           };

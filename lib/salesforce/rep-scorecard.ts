@@ -45,6 +45,7 @@ export type RepScorecard = {
   sales: {
     totalSales: number;                    // SUM(Opp.QuotedSubtotalWithChangeOrder__c) where won, CloseDate in period
     goal: number | null;                   // TotalQuota__c.QuotaAssigned__c (Owner/Active/CFY) — null when not set
+    goalIsDerived: boolean;                // true when goal = annual ÷ 4 (no SubQuota data); false when from SubQuota directly
     pctToGoal: number | null;              // sales / goal * 100; null when no goal
     rank: number | null;                   // dense rank vs field-standard reps; null when only 1 rep with sales
     rankOf: number | null;                 // denominator for rank ("3 of 24")
@@ -213,8 +214,10 @@ export function deriveRepScorecard(
   }
 
   // Goal lookup — prefer SubQuotas summed for the period (KPI 1 monthly), fall
-  // back to TotalQuota for the FY when SubQuotas aren't populated.
+  // back to TotalQuota for the FY when SubQuotas aren't populated. Track
+  // whether goal was DERIVED (annual ÷ 4) vs DIRECTLY READ so UI can show it.
   let goal: number | null = null;
+  let goalIsDerived = false;
   if (fy && q) {
     // Quarterly goal = sum of the 3 fiscal-quarter SubQuotas
     // Q1 (Feb-Apr) = calendar months 2,3,4; Q2 (May-Jul) = 5,6,7; etc.
@@ -237,12 +240,24 @@ export function deriveRepScorecard(
     if (foundAny) goal = subQuotaSum;
   }
   if (goal === null && fy !== null) {
-    // FY annual goal from TotalQuota. NOTE: PPP has ~11 rep quota rows
+    // FY annual goal from TotalQuota. NOTE: PPP has ~18 rep quota rows
     // populated as $0 placeholders (workflow created the row but the
     // manager hasn't filled in the dollar amount yet). Treat $0 as
     // "not set" — a 0% to Goal would be misleading.
-    const tq = snapshot.quotas.find((q) => q.userId === repId && q.fy === fy);
-    if (tq && tq.quotaAssigned > 0) goal = tq.quotaAssigned;
+    //
+    // PPP fallback: SubQuota__c monthly data is empty for FY26 (PPP stopped
+    // maintaining it). When asked for a quarterly period and we only have
+    // the annual quota, derive quarterly goal = annual ÷ 4. Mark via
+    // `goalIsDerived` so UI can show a "(annual ÷ 4)" caveat.
+    const tq = snapshot.quotas.find((q2) => q2.userId === repId && q2.fy === fy);
+    if (tq && tq.quotaAssigned > 0) {
+      if (q) {
+        goal = tq.quotaAssigned / 4;
+        goalIsDerived = true;
+      } else {
+        goal = tq.quotaAssigned;
+      }
+    }
   }
 
   // Rank vs field-standard reps (dense rank by totalSales).
@@ -507,6 +522,7 @@ export function deriveRepScorecard(
     sales: {
       totalSales,
       goal,
+      goalIsDerived,
       pctToGoal: goal !== null && goal > 0 ? (totalSales / goal) * 100 : null,
       rank,
       rankOf,

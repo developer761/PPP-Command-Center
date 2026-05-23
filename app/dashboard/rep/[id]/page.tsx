@@ -360,6 +360,14 @@ export default async function RepDetailPage({
                   <ProgressBar pct={scorecard.sales.pctToGoal ?? 0} />
                   <p className="text-[11px] text-ppp-charcoal-500">
                     {fmtMoneyK(scorecard.sales.totalSales / 1000)} of {fmtMoneyK(scorecard.sales.goal / 1000)} goal
+                    {scorecard.sales.goalIsDerived && (
+                      <span
+                        className="ml-1 italic"
+                        title="PPP doesn't maintain SubQuota__c monthly data this FY. Quarterly goal = annual TotalQuota__c ÷ 4."
+                      >
+                        (annual ÷ 4)
+                      </span>
+                    )}
                   </p>
                   {scorecard.sales.rank !== null && scorecard.sales.rankOf !== null && (
                     <p className="text-[11px] text-ppp-charcoal-500">
@@ -393,17 +401,17 @@ export default async function RepDetailPage({
                   ].join(" ")}>
                     {scorecard.margin.avgGmPct.toFixed(1)}%
                   </div>
+                  {/* "vs target" sub-stat intentionally rendered ONLY when target
+                      exists. PPP doesn't track per-rep GM targets in SF today
+                      (verified via /api/admin/sf-field-discovery 2026-05-23 —
+                      Gross_Margin_Goal_Percent__c isn't on the User object).
+                      If PPP IT adds the field later this lights up automatically. */}
                   {scorecard.margin.target !== null && scorecard.margin.vsTarget !== null && (
                     <p className="text-[11px] text-ppp-charcoal-500">
                       Target {scorecard.margin.target.toFixed(1)}% ·{" "}
                       <strong className={scorecard.margin.vsTarget >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700"}>
                         {scorecard.margin.vsTarget >= 0 ? "+" : ""}{scorecard.margin.vsTarget.toFixed(1)}pp
                       </strong>
-                    </p>
-                  )}
-                  {scorecard.margin.target === null && (
-                    <p className="text-[11px] text-ppp-charcoal-500 italic">
-                      No GM target set on this user
                     </p>
                   )}
                   <p className="text-[11px] text-ppp-charcoal-500">
@@ -699,19 +707,22 @@ export default async function RepDetailPage({
               </div>
             </ScorecardCard>
 
-            {/* KPI 9 — Commissions */}
+            {/* KPI 9 — Commissions ─ Draw / under-over comparison rendered
+                ONLY when User.Quarterly_Draw__c is populated. PPP doesn't
+                track quarterly draws in SF today (verified via field
+                discovery 2026-05-23), so reps see just "Earned" cleanly
+                instead of a "No draw set" forever-message. Lights up
+                automatically if PPP IT adds the field later. */}
             <ScorecardCard
-              title="Commissions"
+              title="Commissions Earned"
               kpiTag="KPI 9"
-              tooltip="Earned = Payment_Out transactions with Payee matching rep name. Draw = User.Quarterly_Draw__c, period-prorated."
+              tooltip="Earned = Payment_Out transactions with Payee matching rep name (incl. shadow -inactive/-portal variants). Quarterly Draw comparison appears when User.Quarterly_Draw__c is populated."
             >
-              {scorecard.commissions.drawReceived === null && scorecard.commissions.earned === 0 ? (
+              {scorecard.commissions.earned === 0 ? (
                 <div className="space-y-2">
                   <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
                   <p className="text-xs text-ppp-charcoal-500">
-                    {scorecard.commissions.drawReceived === null
-                      ? "No Quarterly_Draw__c set on this user."
-                      : "No commission transactions in this period."}
+                    No commission payouts (Payment_Out) for this rep in this period.
                   </p>
                 </div>
               ) : (
