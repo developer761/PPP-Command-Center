@@ -299,7 +299,7 @@ export default async function RepDetailPage({
           <KPICard label="Open Pipeline" value={fmtMoneyK(rep.openPipeline)} change={dPipe.text} trend={dPipe.trend} accent="blue" />
         </div>
         <p className="mt-2 text-[11px] text-ppp-charcoal-500 italic px-1">
-          <strong>Conversion Rate</strong> = opps that became Work Orders ÷ opps created. PPP creates an Estimate WO on most opps so this trends high — see <strong>Scorecard · Close Rate</strong> below for the cohort-based won/created metric (PPP&apos;s canonical KPI 3).
+          <strong>Conversion Rate</strong> = opps that became a real paid job ÷ opps created. Excludes Estimate / Appointment WOs and cancelled / dead deals. See <strong>Scorecard · Close Rate</strong> below for PPP&apos;s canonical KPI 3 metric (IsWon-based, fiscal-period).
         </p>
       </section>
 

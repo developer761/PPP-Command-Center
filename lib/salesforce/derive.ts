@@ -36,6 +36,45 @@ function revenueRows(snapshot: SalesforceSnapshot) {
         createdDate: o.createdDate,
       }));
 }
+
+/**
+ * "Real sale" WO predicate. PPP creates an Estimate WO on every Opportunity
+ * regardless of whether the deal ever sells — that's why the previous
+ * "opps with any WO" close-rate proxy ran near 100% for every rep. A WO
+ * counts as a real sale only when:
+ *   - WorkType is a job stage (NOT Estimate / Appointment / Inspection / Consultation)
+ *   - Status is not a dead-end terminal (cancelled / void / abandoned / dead)
+ *
+ * Mirrors the WorkType/Status filter already used on the Materials Ordering
+ * page (lib/salesforce/queries.ts:1431). Single source of truth for "did this
+ * opp turn into actual work."
+ *
+ * Used by: deriveRepsForPeriod (leaderboard + rep cards), deriveTopPerformer.
+ */
+function isRealSaleWO(w: { workTypeName: string | null; status: string | null }): boolean {
+  const wt = (w.workTypeName ?? "").toLowerCase();
+  // PRE-quote / discovery stages aren't sales — they exist on every opp.
+  if (
+    wt.includes("estimate") ||
+    wt.includes("appointment") ||
+    wt.includes("inspection") ||
+    wt.includes("consultation")
+  ) {
+    return false;
+  }
+  // Dead-end terminal statuses — WO created but no work happened.
+  const s = (w.status ?? "").toLowerCase();
+  if (
+    s.includes("cancel") ||
+    s.includes("void") ||
+    s.includes("abandon") ||
+    s.includes("dead") ||
+    s.includes("lost")
+  ) {
+    return false;
+  }
+  return true;
+}
 import type {
   Deal,
   Period,
@@ -212,22 +251,33 @@ export function deriveRepsForPeriod(
     byOwner.set(row.ownerId, a);
   }
 
-  // Close Rate = Opp → WO conversion rate.
+  // Close Rate = "real sale" rate = (opps that became actual jobs) / (opps created in period).
   //
-  // The traditional definition (IsWon / IsClosed) gives 100% in PPP's org
-  // because their SF Stage config doesn't include a "Closed Lost" type —
-  // every closed opp is also won (confirmed via the audit script). So we use
-  // a more meaningful metric: of all opps the rep created in the period,
-  // what % converted to an actual Work Order (= real job, real revenue)?
-  const oppsWithWOSet = new Set(
-    snapshot.workOrders.map((w) => w.opportunityId).filter(Boolean)
-  );
+  // FIX (2026-05-23): the previous version counted *any* linked WO as "won".
+  // PPP creates an Estimate WO on every Opp regardless of outcome, so every
+  // rep's close rate trended ~100% (Stephen Sandoval showed 100.0%, Andres
+  // Grajales 97.8% on the leaderboard). Now uses isRealSaleWO() to exclude:
+  //   - Estimate / Appointment / Inspection / Consultation workTypes
+  //   - Cancelled / void / abandoned / lost statuses
+  // Result: an Opp counts as "won" only if at least one of its WOs is a
+  // genuine paid job. Aligns with the WorkType filter Materials Ordering
+  // already uses, so the dashboard tells one consistent story.
+  //
+  // The IsWon flag is intentionally NOT used because PPP's stage config
+  // doesn't include a "Closed Lost" stage (per shared SF reference repo,
+  // BUSINESS_RULES.md §lead-source). The WorkType + Status combo is the
+  // actual signal for "did this convert."
+  const oppsWithRealSaleSet = new Set<string>();
+  for (const w of snapshot.workOrders) {
+    if (!w.opportunityId) continue;
+    if (isRealSaleWO(w)) oppsWithRealSaleSet.add(w.opportunityId);
+  }
   for (const o of snapshot.opportunities) {
     if (!o.ownerId) continue;
     if (!isInRange(o.createdDate, periodStart, periodEnd)) continue;
     const a = byOwner.get(o.ownerId) ?? initStats();
-    a.closed += 1; // = "opps worked" in the period
-    if (oppsWithWOSet.has(o.id)) a.won += 1; // = "opps that became jobs"
+    a.closed += 1; // denominator: "opps created in this period"
+    if (oppsWithRealSaleSet.has(o.id)) a.won += 1; // numerator: "opps that became real jobs"
     byOwner.set(o.ownerId, a);
   }
 
@@ -239,13 +289,13 @@ export function deriveRepsForPeriod(
     stats.total = stats.closed;
   }
 
-  // Open pipeline = currently-open opps without an attached WO.
-  const oppsWithWO = new Set(
-    snapshot.workOrders.map((w) => w.opportunityId).filter(Boolean)
-  );
+  // Open pipeline = currently-open opps without a real (non-estimate) WO yet.
+  // Uses the same isRealSaleWO filter as the close-rate calc — an Opp with
+  // only an Estimate WO attached is STILL "in pipeline" (no real job yet).
+  // Reuses oppsWithRealSaleSet from the close-rate computation above.
   for (const o of snapshot.opportunities) {
     if (o.isClosed) continue;
-    if (oppsWithWO.has(o.id)) continue;
+    if (oppsWithRealSaleSet.has(o.id)) continue;
     if (o.amount <= 0) continue;
     const a = byOwner.get(o.ownerId) ?? initStats();
     a.openPipeline += o.amount;
