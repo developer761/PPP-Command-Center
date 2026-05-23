@@ -62,6 +62,16 @@ export type SnapshotRep = {
   roleName: string | null;
   department: string | null;
   createdDate: string; // ISO
+  /** True when Profile.Name ends with "Standard.Field" — PPP's canonical
+   *  field-rep universe (per BUSINESS_RULES.md). Manager-level + admin users
+   *  are excluded. Used by deriveRepScorecard + team-average denominators. */
+  isFieldStandard: boolean;
+  /** Per-rep gross-margin target (e.g. 0.45 = 45%). PPP sets this on the User
+   *  record. null when not configured for this user. */
+  gmGoalPercent: number | null;
+  /** Quarterly draw — base commission cap per fiscal quarter. null when
+   *  not configured (most reps don't have this populated). */
+  quarterlyDraw: number | null;
 };
 
 export type SnapshotOpp = {
@@ -84,6 +94,23 @@ export type SnapshotOpp = {
   // Geographic fields — for Map tab
   latitude: number | null;
   longitude: number | null;
+  /** PPP's canonical SALES metric (KPI 1). Different field name vs the WO
+   *  equivalent — Opp uses no underscores, WO uses them. Populated on every
+   *  Opp; falls back to 0 only when SF returned null. */
+  quotedSubtotal: number;
+  /** Lead source bucketing (KPI 3): "Self-Generated" → self-gen, everything
+   *  else (incl. null) → marketing. NOTE: distinct from Account.LeadGroup__c;
+   *  PPP classifies on the Opp field for close-rate purposes. */
+  leadGroup: string | null;
+  /** Appointment scheduled on this Opp (KPI 5). ISO date or null. */
+  appointmentDate: string | null;
+  /** True when an appointment was scheduled but cancelled. */
+  cancelledAppointment: boolean;
+  /** True when an estimate has been sent on this Opp (KPI 5 / KPI 6). */
+  estimateSent: boolean;
+  /** Date the estimate was sent — drives stale-pipeline detection (KPI 6).
+   *  Stale = open + estimate_sent + dateEstimateSent < today − 30. */
+  dateEstimateSent: string | null;
 };
 
 /**
@@ -163,6 +190,16 @@ export type SnapshotWorkOrder = {
   // Geographic fields — populated on 20k+ WOs in production
   latitude: number | null;
   longitude: number | null;
+  /** PPP canonical GM% formula field — `Gross_Profit__c / Quoted_Subtotal_with_Change_Order__c`.
+   *  Decimal (e.g. 0.42 = 42%). DO NOT confuse with GrossProfitPercent__c
+   *  (which uses NetValue__c denominator and inflates margins). KPI 2. */
+  grossMarginPercent: number | null;
+  /** PPP's canonical Materials % numerator — distinct from `costMaterials`
+   *  (CostMaterials__c). Used for KPI 4 (Pricing Discipline). */
+  totalNonBillablePurchases: number;
+  /** Job completion anchor for KPI 7 (Jobs completed vs sold) + KPI 2 GM.
+   *  Often null on open/in-progress WOs. */
+  endDate: string | null;
 };
 
 /**
@@ -241,6 +278,94 @@ export type SnapshotPaintColor = {
   manufacturerId: string | null;
 };
 
+/**
+ * Annual rep quota row — `TotalQuota__c`. We pull current + prior fiscal year
+ * with the strict filter (`QuotaType__c='Field_Member'`, `Allocation__c='Owner'`,
+ * `Status__c='Active'`), excluding `CatchAll`. Most reps don't have a row yet,
+ * so KPIs render a graceful "no quota set" state instead of $0 / Infinity.
+ *
+ * ⚠️ Trap: `SubQuota__c.CurrentUserId__c` is the *viewer's* id, NOT the rep.
+ * Always join via `TotalQuota__r.User__c` (modeled here as `userId`).
+ */
+export type SnapshotQuota = {
+  id: string;
+  userId: string;
+  fy: number; // FY name (start year) e.g. 2026
+  quotaAssigned: number; // QuotaAssigned__c (dollars, 1:1 with points)
+  status: string | null;
+  allocation: string | null; // "Owner" / "CatchAll" — we filter to Owner
+  quotaType: string | null;  // "Field_Member" — we filter to that
+};
+
+/** Monthly quota row — sub-rows under TotalQuota__c. */
+export type SnapshotSubQuota = {
+  id: string;
+  totalQuotaId: string;
+  userId: string; // resolved via parent TotalQuota__r.User__c (NOT CurrentUserId__c)
+  fy: number;
+  fiscalMonth: number; // 1..12 calendar month
+  assigned: number;    // Assigned__c (goal $)
+  attained: number;    // Attained__c (rolling Closed-Won sum)
+};
+
+/**
+ * Money flow — `Transaction__c`. RECORD-TYPE-driven:
+ *   - Payment_In   → revenue collected
+ *   - Payment_Out  → payments out (PayeeType__c='Labor_Company' = labor paid)
+ *   - Purchase     → materials/other purchases
+ *
+ * Attribute by `WorkOrder__r.OwnerId` (resolved via workOrderOwnerId here).
+ * Commissions: where Payment_Out with WorkOrder__c set + Payee__r.Name matches
+ * a rep's name (watch for `<Name>-inactive`/`-portal` shadow Users).
+ *
+ * Label convention (per BUSINESS_RULES.md): in any UI, expand to
+ * "Payments / Payouts / Purchases" — never abbreviate "transaction" to "tx".
+ */
+export type SnapshotTransaction = {
+  id: string;
+  recordType: string | null;  // "Payment_In" / "Payment_Out" / "Purchase"
+  amount: number;
+  date: string;               // Date__c (ISO date)
+  payeeType: string | null;   // "Labor_Company" / "Reimbursement" / etc.
+  payeeName: string | null;   // resolved via Payee__r.Name
+  workOrderId: string | null;
+  workOrderOwnerId: string | null; // resolved via WorkOrder__r.OwnerId
+  opportunityId: string | null;
+};
+
+/**
+ * Review — `Review__c`. KPI 7 (Production Quality).
+ * Attribute via `Account__r.OwnerId` (NOT Opp/WO owner). Exclude `Removed__c`.
+ */
+export type SnapshotReview = {
+  id: string;
+  isGood: boolean;       // GoodReview__c (ratings 4-5)
+  isBad: boolean;        // BadReview__c (ratings 1-3)
+  isRemoved: boolean;    // Excluded from counts when true
+  accountId: string | null;
+  accountOwnerId: string | null;
+  createdDate: string;
+};
+
+/**
+ * Customer-complaint Case. KPI 7 (Complaints).
+ * Customer-facing types only:
+ *   "Estimator No Show", "Waiting for Estimate", "Dissatisfied Customer",
+ *   "Balance Owed", "Service Call", "Other".
+ *
+ * Attribute via `Case.Opportunity__r.OwnerId` (covers both no-show and
+ * service-call cases).
+ */
+export type SnapshotCase = {
+  id: string;
+  caseNumber: string | null;
+  type: string | null;
+  status: string | null;
+  createdDate: string;
+  opportunityId: string | null;
+  opportunityOwnerId: string | null; // resolved via Opportunity__r.OwnerId
+};
+
 export type SalesforceSnapshot = {
   reps: SnapshotRep[];
   opportunities: SnapshotOpp[];
@@ -250,6 +375,12 @@ export type SalesforceSnapshot = {
   /** Phase 2: line items + paint color directory. */
   woLineItems: SnapshotWoli[];
   paintColors: SnapshotPaintColor[];
+  /** Rep performance: annual + monthly quotas, money flow, reviews, cases. */
+  quotas: SnapshotQuota[];
+  subQuotas: SnapshotSubQuota[];
+  transactions: SnapshotTransaction[];
+  reviews: SnapshotReview[];
+  cases: SnapshotCase[];
   fetchedAt: string;
   /** Canonical Opp revenue field (dynamically detected). */
   revenueFieldUsed: string | null;
@@ -273,6 +404,10 @@ type SfUserRow = {
   Profile: { Name: string | null } | null;
   UserRole: { Name: string | null } | null;
   Department: string | null;
+  // Custom rep-performance fields — read-conditional. SF will silently omit
+  // these if FLS isn't granted to the OAuth user. Falls through to null.
+  Gross_Margin_Goal_Percent__c?: number | null;
+  Quarterly_Draw__c?: number | null;
 };
 
 type SfOppRow = {
@@ -318,7 +453,9 @@ function isLikelyRep(profileName: string | null, isActive: boolean): boolean {
  * ─────────────────────────────────────────────────────────────── */
 
 export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
-  return cached("snapshot-v3", async () => {
+  // Cache key bumped to v4 — adds rep-performance pulls (quotas, transactions,
+  // reviews, cases) + new opp/WO/User fields per Katie's REP_PROFILES guide.
+  return cached("snapshot-v4", async () => {
     const conn = await getSalesforceClient();
 
     // STEP 1: Discover Opportunity schema + pick the canonical revenue field.
@@ -335,11 +472,20 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     //
     // If neither named field exists (different org, schema drift), we fall
     // back to the highest-sum currency field for self-healing safety.
+    // ORDER MATTERS. Per PPP's KPI 1 spec (REP_PERFORMANCE_KPIS.md), the
+    // canonical SALES metric is QuotedSubtotalWithChangeOrder__c — that's what
+    // % to Goal, the FY Sales report, and quota attainment all anchor on.
+    // NetValue__c is "realized/collected" (a different metric, used for AR
+    // visibility). For the snapshot's headline `revenueField` we now prefer
+    // the quoted figure. The mapper below ALSO captures NetValue separately
+    // in `opp.quotedSubtotal` was already named confusingly — we now keep
+    // `amount` populated by the canonical (quoted) field, and read NetValue
+    // through a separate path for realized-revenue surfaces.
     const PREFERRED_OPP_REVENUE_FIELDS = [
-      "NetValue__c",                      // PPP's canonical "Net Value"
-      "QuotedSubtotalWithChangeOrder__c", // PPP's gross-quoted figure
-      "Net_Value__c",                     // schema-variant fallback
-      "Quoted_Subtotal_with_Change_Order__c",
+      "QuotedSubtotalWithChangeOrder__c", // PPP canonical sales metric
+      "NetValue__c",                      // realized/collected fallback
+      "Quoted_Subtotal_with_Change_Order__c", // schema-variant fallback
+      "Net_Value__c",
     ];
 
     let revenueField: string | null = null;
@@ -388,13 +534,34 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // STEP 2: Query users + all opps in parallel. Include every custom currency
     // field so the per-opp amount can fall back if the chosen field is null on
     // a given record.
-    const usersPromise = conn.query<SfUserRow>(`
-      SELECT Id, Name, FirstName, LastName, Email, IsActive, CreatedDate,
-             UserType, Profile.Name, UserRole.Name, Department
-      FROM User
-      WHERE IsActive = true
-      LIMIT 500
-    `);
+    // User query — additive pull of the two PPP rep-performance fields
+    // (Gross_Margin_Goal_Percent__c, Quarterly_Draw__c). These are
+    // FLS-restricted in PPP's prod; if the OAuth user can't read them, the
+    // query fails. We try the rich SELECT first, fall back to baseline on
+    // ANY error so a missing field doesn't break the whole snapshot.
+    const usersPromise: Promise<{ records: SfUserRow[] }> = (async () => {
+      const baseFields = "Id, Name, FirstName, LastName, Email, IsActive, CreatedDate, UserType, Profile.Name, UserRole.Name, Department";
+      const richFields = `${baseFields}, Gross_Margin_Goal_Percent__c, Quarterly_Draw__c`;
+      try {
+        return await conn.query<SfUserRow>(`
+          SELECT ${richFields}
+          FROM User
+          WHERE IsActive = true
+          LIMIT 500
+        `);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Common: INVALID_FIELD / INSUFFICIENT_ACCESS on the new fields. Both
+        // are non-fatal — we just don't get GM target / draw for KPI 2/9.
+        console.warn(`[SF] User rich-fields query failed (falling back to base): ${msg}`);
+        return await conn.query<SfUserRow>(`
+          SELECT ${baseFields}
+          FROM User
+          WHERE IsActive = true
+          LIMIT 500
+        `);
+      }
+    })();
 
     // At PPP scale (89k+ opps), pulling extra fields per row blows up payload
     // size + serverless memory. Narrow to ONLY fields the UI actually reads:
@@ -415,6 +582,27 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       ? `, ${[...NEEDED_OPP_FIELDS].join(", ")}`
       : "";
 
+    // Non-currency rep-performance fields (KPI 3/5/6). Read-conditional via
+    // describe() so we don't blow up the query when a field is missing/FLS-hidden.
+    let allOppFieldNames = new Set<string>();
+    try {
+      const oppMeta2 = await conn.sobject("Opportunity").describe();
+      allOppFieldNames = new Set(oppMeta2.fields.map((f) => f.name));
+    } catch {
+      // Already logged above in schema discovery — describe failures shouldn't
+      // block the pull. We'll get null for fields we can't confirm exist.
+    }
+    const REP_PERF_OPP_FIELDS = [
+      "LeadGroup__c",
+      "AppointmentDate__c",
+      "Cancelled_Appointment__c",
+      "Estimate_Sent__c",
+      "Date_Estimate_Sent__c",
+    ].filter((f) => allOppFieldNames.has(f));
+    const repPerfOppFieldsSelect = REP_PERF_OPP_FIELDS.length > 0
+      ? `, ${REP_PERF_OPP_FIELDS.join(", ")}`
+      : "";
+
     // SOQL returns at most 2000 records per batch. PPP has 89k+ opportunities
     // (10+ years of history), so we paginate via queryMore.
     //
@@ -426,7 +614,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // partial data with a clear hint.
     const RECENCY_WINDOW_DAYS = 365;
     async function queryAllOpps(withCustomFields: boolean): Promise<SfOppRow[]> {
-      const selectFields = `Id, OwnerId, Account.Name, Amount, IsClosed, IsWon, StageName, CreatedDate, CloseDate, LastActivityDate${withCustomFields ? currencyFieldsSelect : ""}`;
+      const selectFields = `Id, OwnerId, Account.Name, Amount, IsClosed, IsWon, StageName, CreatedDate, CloseDate, LastActivityDate${withCustomFields ? currencyFieldsSelect + repPerfOppFieldsSelect : ""}`;
       const all: SfOppRow[] = [];
       let result = await conn.query<SfOppRow>(
         `SELECT ${selectFields} FROM Opportunity WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
@@ -712,17 +900,33 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     const reps: SnapshotRep[] = usersResult.records
       .filter((u) => u.UserType === "Standard" || u.UserType === "PowerPartner" || u.UserType === null)
       .filter((u) => isLikelyRep(u.Profile?.Name ?? null, u.IsActive))
-      .map((u) => ({
-        id: u.Id,
-        name: u.Name,
-        firstName: u.FirstName,
-        lastName: u.LastName,
-        email: u.Email,
-        profileName: u.Profile?.Name ?? null,
-        roleName: u.UserRole?.Name ?? null,
-        department: u.Department,
-        createdDate: u.CreatedDate,
-      }));
+      .map((u) => {
+        // PPP's canonical rep universe = Profile.Name ending in "Standard.Field"
+        // (~26 active reps per the BUSINESS_RULES doc). Non-field-standard
+        // users (admins / managers / office) are still pulled so we can name
+        // them in WO/Opp owner lookups, but they're excluded from KPIs +
+        // team-average denominators via isFieldStandard.
+        const profile = u.Profile?.Name ?? "";
+        const isFieldStandard = /Standard\.Field\s*$/i.test(profile);
+        return {
+          id: u.Id,
+          name: u.Name,
+          firstName: u.FirstName,
+          lastName: u.LastName,
+          email: u.Email,
+          profileName: u.Profile?.Name ?? null,
+          roleName: u.UserRole?.Name ?? null,
+          department: u.Department,
+          createdDate: u.CreatedDate,
+          isFieldStandard,
+          gmGoalPercent: typeof u.Gross_Margin_Goal_Percent__c === "number"
+            ? (u.Gross_Margin_Goal_Percent__c as number)
+            : null,
+          quarterlyDraw: typeof u.Quarterly_Draw__c === "number"
+            ? (u.Quarterly_Draw__c as number)
+            : null,
+        };
+      });
 
     const opportunities: SnapshotOpp[] = oppRecords.map((o) => {
       // Resolve amount per-opp:
@@ -744,6 +948,14 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         resolved = o.Amount;
       }
 
+      // Canonical SALES metric (KPI 1). Distinct from `amount` (which may
+      // be NetValue/realized in legacy code paths). Falls back to amount when
+      // the canonical field is null/absent so downstream callers always get
+      // *something* for the sales attribution.
+      const canonicalQuoted = typeof o.QuotedSubtotalWithChangeOrder__c === "number"
+        ? (o.QuotedSubtotalWithChangeOrder__c as number)
+        : 0;
+
       return {
         id: o.Id,
         ownerId: o.OwnerId,
@@ -762,6 +974,14 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         customerBalance: 0,
         latitude: null,
         longitude: null,
+        // Rep performance fields (KPI 1/3/5/6) — silently null when SF
+        // didn't return them (FLS / field missing on this Opp record type).
+        quotedSubtotal: canonicalQuoted > 0 ? canonicalQuoted : resolved,
+        leadGroup: typeof o.LeadGroup__c === "string" ? (o.LeadGroup__c as string) : null,
+        appointmentDate: typeof o.AppointmentDate__c === "string" ? (o.AppointmentDate__c as string) : null,
+        cancelledAppointment: Boolean(o.Cancelled_Appointment__c),
+        estimateSent: Boolean(o.Estimate_Sent__c),
+        dateEstimateSent: typeof o.Date_Estimate_Sent__c === "string" ? (o.Date_Estimate_Sent__c as string) : null,
       };
     });
 
@@ -791,10 +1011,13 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       //   Quoted_Subtotal_with_Change_Order__c — gross quoted with change orders
       //   QuotedSubtotal__c — original quoted figure
       //   Subtotal__c — baseline subtotal
+      // ORDER MATTERS — see Opp PREFERRED_OPP_REVENUE_FIELDS for rationale.
+      // PPP canonical SALES anchor is Quoted_Subtotal_with_Change_Order__c (KPI 1).
+      // NetValue__c is realized/collected — kept as fallback for AR surfaces.
       const PREFERRED_WO_REVENUE_FIELDS = [
-        "NetValue__c",
         "Quoted_Subtotal_with_Change_Order__c",
         "QuotedSubtotalWithChangeOrder__c",
+        "NetValue__c",
         "QuotedSubtotal__c",
         "Subtotal__c",
       ];
@@ -852,12 +1075,21 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
 
       // At PPP scale (88k+ WOs), narrow the SELECT to canonical revenue
       // + ops fields we actually surface (GP, commission, materials, labor,
-      // payouts, AR aging).
+      // payouts, AR aging) + rep-performance KPI fields (canonical GM%,
+      // materials %, completion anchor).
       const opsFields = [
         "GrossProfit__c", "CommissionAmount__c", "CostMaterials__c",
         "TotalPayoutsForLabor__c", "LaborDaysActual__c", "LaborDaysProjected__c",
         "LaborDaysRemaining__c", "BalanceOwed__c", "Final_Balance_Aging__c",
+        // Rep performance fields — Gross_Margin_Percent__c is PPP's canonical
+        // GM%; TotalNonBillablePurchases__c feeds KPI 4 Materials %; EndDate
+        // is the period anchor for KPI 2 + KPI 7. EndDate is standard SF (not
+        // custom), included via the meta check below.
+        "Gross_Margin_Percent__c",
+        "TotalNonBillablePurchases__c",
       ].filter((f) => woCurrencyFields.includes(f) || woMeta.fields.some((mf) => mf.name === f));
+      // EndDate is standard date field — include if present.
+      const hasEndDate = woMeta.fields.some((f) => f.name === "EndDate");
       // Pull canonical revenue + ops fields PLUS the quoted-subtotal field
       // (Quoted_Subtotal_with_Change_Order__c). Reason: PPP only populates
       // NetValue__c on billed/realized WOs. A WO in "Quoted" / "Coordination"
@@ -874,6 +1106,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         woNumberField,
         woStatusField,
         "CreatedDate",
+        hasEndDate ? "EndDate" : null,
         // Standard SF geocoding fields — 20k+ WOs have these populated
         "Latitude",
         "Longitude",
@@ -969,15 +1202,221 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         finalBalanceAging: numOrNull("Final_Balance_Aging__c"),
         latitude: numOrNull("Latitude"),
         longitude: numOrNull("Longitude"),
+        // Rep performance fields. Gross_Margin_Percent__c is a percent-formula
+        // field; SF returns it as the percent value (e.g. 42.5 for 42.5%) not
+        // the decimal — keep that representation through the snapshot.
+        grossMarginPercent: numOrNull("Gross_Margin_Percent__c"),
+        totalNonBillablePurchases: num("TotalNonBillablePurchases__c"),
+        endDate: typeof w.EndDate === "string" ? (w.EndDate as string) : null,
       };
     });
 
+    // ─────────────────────────────────────────────────────────────────
+    // Rep-performance pulls (Katie's REP_PROFILES_INTEGRATION_GUIDE §6.8)
+    //
+    // Each is wrapped in try/catch returning [] on failure so a missing
+    // object / FLS gap on the OAuth user doesn't blow up the whole snapshot.
+    // All are windowed/filtered to current + prior FY where applicable.
+    //
+    // Per BUSINESS_RULES.md the canonical SubQuota rep linkage is
+    // TotalQuota__r.User__c (NOT SubQuota.CurrentUserId__c — that returns
+    // the *viewer's* user id, a formula trap).
+    // ─────────────────────────────────────────────────────────────────
+    const CFY_START_ISO = (() => {
+      // PPP fiscal year starts Feb 1. KPI 1 uses CFY anchor; we pull current
+      // + prior so the UI can show period selectors without re-querying.
+      const now = new Date();
+      const m = now.getUTCMonth();
+      const y = now.getUTCFullYear();
+      const fyStart = m === 0 ? y - 1 : y;
+      return new Date(Date.UTC(fyStart - 1, 1, 1)).toISOString(); // prior FY start
+    })();
+    // Transaction__c / Case can be high volume — keep them to the past 24
+    // months. Even at PPP scale that's a few thousand rows max.
+    const TWO_YEARS_AGO_ISO = new Date(Date.now() - 730 * 86_400_000).toISOString();
+
+    const quotasPromise: Promise<SnapshotQuota[]> = (async () => {
+      try {
+        const fields = "Id, User__c, FY__c, QuotaAssigned__c, Status__c, Allocation__c, QuotaType__c";
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT ${fields} FROM TotalQuota__c WHERE Allocation__c = 'Owner' AND Status__c = 'Active' AND QuotaType__c = 'Field_Member'`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} TotalQuota__c rows (Owner+Active+Field_Member) — PARALLEL`);
+        return records.map<SnapshotQuota>((r) => ({
+          id: r.Id as string,
+          userId: (r.User__c as string) ?? "",
+          // FY__c is sometimes stored as number, sometimes string. Normalize.
+          fy: typeof r.FY__c === "number" ? r.FY__c : Number(r.FY__c) || 0,
+          quotaAssigned: typeof r.QuotaAssigned__c === "number" ? (r.QuotaAssigned__c as number) : 0,
+          status: (r.Status__c as string | null) ?? null,
+          allocation: (r.Allocation__c as string | null) ?? null,
+          quotaType: (r.QuotaType__c as string | null) ?? null,
+        }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[SF] TotalQuota__c pull failed (KPI 1 % to Goal will be empty): ${msg}`);
+        return [];
+      }
+    })();
+
+    const subQuotasPromise: Promise<SnapshotSubQuota[]> = (async () => {
+      try {
+        // Joined to parent for rep attribution. SF returns nested object
+        // when the relationship is selected — typed loosely below.
+        const fields = "Id, TotalQuota__c, TotalQuota__r.User__c, TotalQuota__r.FY__c, Assigned__c, Attained__c, FiscalMonth__c";
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT ${fields} FROM SubQuota__c WHERE TotalQuota__r.Allocation__c = 'Owner' AND TotalQuota__r.Status__c = 'Active' AND TotalQuota__r.QuotaType__c = 'Field_Member'`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} SubQuota__c rows — PARALLEL`);
+        return records.map<SnapshotSubQuota>((r) => {
+          const parent = r["TotalQuota__r"] as Record<string, unknown> | undefined;
+          const userId = (parent?.User__c as string) ?? "";
+          const fy = typeof parent?.FY__c === "number" ? (parent.FY__c as number) : Number(parent?.FY__c) || 0;
+          return {
+            id: r.Id as string,
+            totalQuotaId: (r.TotalQuota__c as string) ?? "",
+            userId,
+            fy,
+            fiscalMonth: typeof r.FiscalMonth__c === "number" ? (r.FiscalMonth__c as number) : 0,
+            assigned: typeof r.Assigned__c === "number" ? (r.Assigned__c as number) : 0,
+            attained: typeof r.Attained__c === "number" ? (r.Attained__c as number) : 0,
+          };
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[SF] SubQuota__c pull failed (KPI 1 monthly progress will be empty): ${msg}`);
+        return [];
+      }
+    })();
+
+    const transactionsPromise: Promise<SnapshotTransaction[]> = (async () => {
+      try {
+        // RecordType.DeveloperName for the 3 buckets. Plus WO + Opp linkage
+        // for rep attribution. Payee__r.Name for commissions attribution.
+        const fields = "Id, RecordType.DeveloperName, Amount__c, Date__c, PayeeType__c, Payee__r.Name, WorkOrder__c, WorkOrder__r.OwnerId, Opportunity__c";
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT ${fields} FROM Transaction__c WHERE Date__c >= ${TWO_YEARS_AGO_ISO.split("T")[0]}`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} Transaction__c rows (last 730d) — PARALLEL`);
+        return records.map<SnapshotTransaction>((r) => {
+          const rt = r["RecordType"] as Record<string, unknown> | undefined;
+          const wo = r["WorkOrder__r"] as Record<string, unknown> | undefined;
+          const payee = r["Payee__r"] as Record<string, unknown> | undefined;
+          return {
+            id: r.Id as string,
+            recordType: (rt?.DeveloperName as string | null) ?? null,
+            amount: typeof r.Amount__c === "number" ? (r.Amount__c as number) : 0,
+            date: (r.Date__c as string) ?? "",
+            payeeType: (r.PayeeType__c as string | null) ?? null,
+            payeeName: (payee?.Name as string | null) ?? null,
+            workOrderId: (r.WorkOrder__c as string | null) ?? null,
+            workOrderOwnerId: (wo?.OwnerId as string | null) ?? null,
+            opportunityId: (r.Opportunity__c as string | null) ?? null,
+          };
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[SF] Transaction__c pull failed (KPI 8/9 money flow + commissions empty): ${msg}`);
+        return [];
+      }
+    })();
+
+    const reviewsPromise: Promise<SnapshotReview[]> = (async () => {
+      try {
+        const fields = "Id, GoodReview__c, BadReview__c, Removed__c, Account__c, Account__r.OwnerId, CreatedDate";
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT ${fields} FROM Review__c WHERE CreatedDate >= ${CFY_START_ISO}`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} Review__c rows (since prior FY start) — PARALLEL`);
+        return records.map<SnapshotReview>((r) => {
+          const acct = r["Account__r"] as Record<string, unknown> | undefined;
+          return {
+            id: r.Id as string,
+            isGood: Boolean(r.GoodReview__c),
+            isBad: Boolean(r.BadReview__c),
+            isRemoved: Boolean(r.Removed__c),
+            accountId: (r.Account__c as string | null) ?? null,
+            accountOwnerId: (acct?.OwnerId as string | null) ?? null,
+            createdDate: (r.CreatedDate as string) ?? "",
+          };
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[SF] Review__c pull failed (KPI 7 reviews will be empty): ${msg}`);
+        return [];
+      }
+    })();
+
+    const casesPromise: Promise<SnapshotCase[]> = (async () => {
+      try {
+        // Customer-facing case types only (per BUSINESS_RULES.md).
+        // Opportunity__c is a custom lookup on Case in PPP's org.
+        const fields = "Id, CaseNumber, Type, Status, CreatedDate, Opportunity__c, Opportunity__r.OwnerId";
+        const customerTypes = "'Estimator No Show','Waiting for Estimate','Dissatisfied Customer','Balance Owed','Service Call','Other'";
+        const records: Array<Record<string, unknown>> = [];
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT ${fields} FROM Case WHERE Type IN (${customerTypes}) AND CreatedDate >= ${CFY_START_ISO}`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} Case rows (customer-facing types since prior FY) — PARALLEL`);
+        return records.map<SnapshotCase>((r) => {
+          const opp = r["Opportunity__r"] as Record<string, unknown> | undefined;
+          return {
+            id: r.Id as string,
+            caseNumber: (r.CaseNumber as string | null) ?? null,
+            type: (r.Type as string | null) ?? null,
+            status: (r.Status as string | null) ?? null,
+            createdDate: (r.CreatedDate as string) ?? "",
+            opportunityId: (r.Opportunity__c as string | null) ?? null,
+            opportunityOwnerId: (opp?.OwnerId as string | null) ?? null,
+          };
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[SF] Case pull failed (KPI 7 complaints will be empty): ${msg}`);
+        return [];
+      }
+    })();
+
     // Await the Account + Quote + PaintColor promises that have been running
-    // in parallel with the WO query above.
-    const [accounts, quotes, paintColors] = await Promise.all([
+    // in parallel with the WO query above + the new rep-performance pulls.
+    const [accounts, quotes, paintColors, quotas, subQuotas, transactions, reviews, cases] = await Promise.all([
       accountsPromise,
       quotesPromise,
       paintColorsPromise,
+      quotasPromise,
+      subQuotasPromise,
+      transactionsPromise,
+      reviewsPromise,
+      casesPromise,
     ]);
 
     // WOLI fetch runs LAST because it explicitly batches by WorkOrderId IN
@@ -1026,6 +1465,11 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       quotes,
       woLineItems,
       paintColors,
+      quotas,
+      subQuotas,
+      transactions,
+      reviews,
+      cases,
       fetchedAt: new Date().toISOString(),
       revenueFieldUsed: revenueField,
       workOrderRevenueField: woRevenueField,

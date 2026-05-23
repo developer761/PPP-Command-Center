@@ -15,6 +15,8 @@ import {
   getRepUpcomingWorkFor,
 } from "@/lib/data-source";
 import { deriveRepsForPeriod, deriveRepAccountStats } from "@/lib/salesforce/derive";
+import { deriveRepScorecard, type RepScorecard } from "@/lib/salesforce/rep-scorecard";
+import { currentFY, currentFiscalQuarter, fyLabel } from "@/lib/fiscal-year";
 import type { SnapshotAccount } from "@/lib/salesforce/queries";
 import { fmtMoneyK } from "@/lib/format";
 
@@ -91,6 +93,15 @@ export default async function RepDetailPage({
   // lifetime revenue across their accounts, BM-retailer flags, top account.
   const accountStats = bundle.snapshot
     ? deriveRepAccountStats(bundle.snapshot, rep.id)
+    : null;
+
+  // KPI scorecard anchored on the current fiscal quarter — PPP's reports
+  // are fiscal-period, so this matches what staff already read in FPRC_*.
+  // Skipped on mock data (no quotas/transactions/reviews to derive from).
+  const fyNow = currentFY();
+  const fqNow = currentFiscalQuarter();
+  const scorecard: RepScorecard | null = bundle.snapshot
+    ? deriveRepScorecard(bundle.snapshot, rep.id, { fy: fyNow, q: fqNow })
     : null;
 
   // Indexed account lookup so the recent-deals table can flag Repeat Customer
@@ -232,8 +243,11 @@ export default async function RepDetailPage({
           </div>
 
           <div className="sm:text-right pt-3 sm:pt-0 border-t sm:border-t-0 border-ppp-charcoal-100 sm:border-none">
-            <div className="font-condensed text-[10px] sm:text-[11px] uppercase tracking-wide text-ppp-charcoal-500">
-              Trailing 12-month revenue
+            <div
+              className="font-condensed text-[10px] sm:text-[11px] uppercase tracking-wide text-ppp-charcoal-500"
+              title="Revenue closed in the last 12 months from deals created in the same window. Short-cycle only — see the Scorecard below for PPP fiscal-period KPIs."
+            >
+              Revenue · Last 12 months
             </div>
             <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy mt-1">
               {fmtMoneyK(ttmRevenue)}
@@ -259,6 +273,424 @@ export default async function RepDetailPage({
           <KPICard label="Open Pipeline" value={fmtMoneyK(rep.openPipeline)} change={dPipe.text} trend={dPipe.trend} accent="blue" />
         </div>
       </section>
+
+      {/* ─── PPP Scorecard · Current Fiscal Quarter ───
+          KPIs 1-9 from PPP's REP_PERFORMANCE_KPIS spec. Anchored on the
+          current fiscal quarter (PPP FY = Feb 1 → Jan 31) so numbers match
+          the FPRC reports PPP staff already read. Each card null-safe — a
+          rep without a quota row, attendance data, or transaction history
+          renders an explicit "no data" rather than misleading $0/0%. */}
+      {scorecard && (
+        <section>
+          <div className="flex items-end justify-between gap-3 mb-4 sm:mb-5">
+            <div>
+              <h3 className="text-lg sm:text-xl font-bold text-ppp-charcoal tracking-tight">
+                {rep.name.split(" ")[0]}&apos;s Scorecard
+              </h3>
+              <p className="text-xs text-ppp-charcoal-500 mt-1">
+                PPP fiscal-period KPIs · matches the FPRC reports
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="font-condensed text-xs uppercase tracking-wide text-ppp-charcoal-500">
+                Fiscal period
+              </div>
+              <div className="font-condensed text-sm sm:text-base font-bold text-ppp-navy mt-0.5">
+                {fyLabel(scorecard.period.fy ?? currentFY(), scorecard.period.q ?? currentFiscalQuarter())}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {/* KPI 1 — % to Goal */}
+            <ScorecardCard
+              title="% to Goal"
+              kpiTag="KPI 1"
+              tooltip="Closed-Won sales (QuotedSubtotalWithChangeOrder__c, CloseDate in period) ÷ TotalQuota__c.QuotaAssigned__c (Owner / Active / FY26)."
+            >
+              {scorecard.sales.goal === null ? (
+                <div className="space-y-2">
+                  <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
+                  <p className="text-xs text-ppp-charcoal-500">
+                    No quota set for {rep.name.split(" ")[0]} in this period.
+                  </p>
+                  <p className="text-[11px] text-ppp-charcoal-500">
+                    Closed sales · {fmtMoneyK(scorecard.sales.totalSales / 1000)}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className={[
+                    "font-condensed text-3xl font-bold",
+                    (scorecard.sales.pctToGoal ?? 0) >= 100 ? "text-ppp-green-700" :
+                    (scorecard.sales.pctToGoal ?? 0) >= 75 ? "text-ppp-navy" :
+                    "text-ppp-orange-700",
+                  ].join(" ")}>
+                    {scorecard.sales.pctToGoal !== null ? `${scorecard.sales.pctToGoal.toFixed(0)}%` : "—"}
+                  </div>
+                  <ProgressBar pct={scorecard.sales.pctToGoal ?? 0} />
+                  <p className="text-[11px] text-ppp-charcoal-500">
+                    {fmtMoneyK(scorecard.sales.totalSales / 1000)} of {fmtMoneyK(scorecard.sales.goal / 1000)} goal
+                  </p>
+                  {scorecard.sales.rank !== null && scorecard.sales.rankOf !== null && (
+                    <p className="text-[11px] text-ppp-charcoal-500">
+                      Rank <strong className="text-ppp-charcoal">#{scorecard.sales.rank}</strong> of {scorecard.sales.rankOf} field reps
+                    </p>
+                  )}
+                </div>
+              )}
+            </ScorecardCard>
+
+            {/* KPI 2 — Gross Margin vs Target */}
+            <ScorecardCard
+              title="Gross Margin"
+              kpiTag="KPI 2"
+              tooltip="Avg WorkOrder.Gross_Margin_Percent__c on completed WOs (EndDate in period). Target = User.Gross_Margin_Goal_Percent__c."
+            >
+              {scorecard.margin.avgGmPct === null ? (
+                <div className="space-y-2">
+                  <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
+                  <p className="text-xs text-ppp-charcoal-500">
+                    No completed WOs with margin data in this period.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className={[
+                    "font-condensed text-3xl font-bold",
+                    scorecard.margin.vsTarget !== null && scorecard.margin.vsTarget >= 0 ? "text-ppp-green-700" :
+                    scorecard.margin.vsTarget !== null && scorecard.margin.vsTarget < -5 ? "text-ppp-orange-700" :
+                    "text-ppp-navy",
+                  ].join(" ")}>
+                    {scorecard.margin.avgGmPct.toFixed(1)}%
+                  </div>
+                  {scorecard.margin.target !== null && scorecard.margin.vsTarget !== null && (
+                    <p className="text-[11px] text-ppp-charcoal-500">
+                      Target {scorecard.margin.target.toFixed(1)}% ·{" "}
+                      <strong className={scorecard.margin.vsTarget >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700"}>
+                        {scorecard.margin.vsTarget >= 0 ? "+" : ""}{scorecard.margin.vsTarget.toFixed(1)}pp
+                      </strong>
+                    </p>
+                  )}
+                  {scorecard.margin.target === null && (
+                    <p className="text-[11px] text-ppp-charcoal-500 italic">
+                      No GM target set on this user
+                    </p>
+                  )}
+                  <p className="text-[11px] text-ppp-charcoal-500">
+                    Total GP: <strong className="text-ppp-charcoal">{fmtMoneyK(scorecard.margin.totalGpDollars / 1000)}</strong>
+                    {" · "}
+                    {scorecard.margin.completedCount} completed WO{scorecard.margin.completedCount === 1 ? "" : "s"}
+                  </p>
+                </div>
+              )}
+            </ScorecardCard>
+
+            {/* KPI 3 — Close Rate (3 buckets) */}
+            <ScorecardCard
+              title="Close Rate"
+              kpiTag="KPI 3"
+              tooltip="Won ÷ Opportunities CREATED in period. Self-gen = LeadGroup__c='Self-Generated'; everything else = marketing."
+            >
+              <div className="space-y-2.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Overall</span>
+                  <span className="font-condensed text-2xl font-bold text-ppp-navy">
+                    {fmtPctOrDash(scorecard.closeRate.overall.pct, 0)}
+                  </span>
+                </div>
+                <div className="text-[11px] text-ppp-charcoal-500 -mt-1">
+                  {scorecard.closeRate.overall.won} of {scorecard.closeRate.overall.total} opps
+                </div>
+                <div className="border-t border-ppp-charcoal-100 pt-2 space-y-1.5">
+                  <CloseRateRow label="Self-Gen" stats={scorecard.closeRate.selfGen} accent="green" />
+                  <CloseRateRow label="Marketing" stats={scorecard.closeRate.marketing} accent="blue" />
+                </div>
+              </div>
+            </ScorecardCard>
+
+            {/* KPI 3b — Sales Mix */}
+            <ScorecardCard
+              title="Sales Mix · $ Share"
+              kpiTag="KPI 3b"
+              tooltip="Of closed-won sales (CloseDate in period), the $-based self-generated share. Self-gen = LeadGroup__c='Self-Generated'."
+            >
+              {scorecard.salesMix.selfGenSharePct === null ? (
+                <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="font-condensed text-3xl font-bold text-ppp-green-700">
+                    {scorecard.salesMix.selfGenSharePct.toFixed(0)}%
+                  </div>
+                  <ProgressBar pct={scorecard.salesMix.selfGenSharePct} colorClass="bg-ppp-green" />
+                  <p className="text-[11px] text-ppp-charcoal-500">
+                    Self-gen <strong className="text-ppp-charcoal">{fmtMoneyK(scorecard.salesMix.selfGenDollars / 1000)}</strong>
+                    {" · "}
+                    Marketing {fmtMoneyK(scorecard.salesMix.marketingDollars / 1000)}
+                  </p>
+                </div>
+              )}
+            </ScorecardCard>
+
+            {/* KPI 4 — Pricing Discipline */}
+            <ScorecardCard
+              title="Pricing · Rev / Labor Day"
+              kpiTag="KPI 4"
+              tooltip="Restricted to attendance-logged subset only (LaborDaysActual > 0). Materials % = SUM(TotalNonBillablePurchases__c) ÷ SUM(quoted)."
+            >
+              {scorecard.pricing.revPerLaborDayActual === null && scorecard.pricing.revPerLaborDayProjected === null ? (
+                <div className="space-y-2">
+                  <div className="font-condensed text-2xl font-bold text-ppp-charcoal-200">—</div>
+                  <p className="text-xs text-ppp-charcoal-500">
+                    No completed WOs with attendance logged in this period.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Projected</div>
+                      <div className="font-condensed text-xl font-bold text-ppp-navy">
+                        {scorecard.pricing.revPerLaborDayProjected !== null
+                          ? `$${Math.round(scorecard.pricing.revPerLaborDayProjected).toLocaleString()}`
+                          : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Actual</div>
+                      <div className={[
+                        "font-condensed text-xl font-bold",
+                        scorecard.pricing.revPerLaborDayActual !== null && scorecard.pricing.revPerLaborDayProjected !== null
+                          && scorecard.pricing.revPerLaborDayActual >= scorecard.pricing.revPerLaborDayProjected
+                          ? "text-ppp-green-700" : "text-ppp-orange-700",
+                      ].join(" ")}>
+                        {scorecard.pricing.revPerLaborDayActual !== null
+                          ? `$${Math.round(scorecard.pricing.revPerLaborDayActual).toLocaleString()}`
+                          : "—"}
+                      </div>
+                    </div>
+                  </div>
+                  {scorecard.pricing.materialsPct !== null && (
+                    <p className="text-[11px] text-ppp-charcoal-500 border-t border-ppp-charcoal-100 pt-2">
+                      Materials % of revenue:{" "}
+                      <strong className={
+                        scorecard.pricing.materialsPct <= 15 ? "text-ppp-green-700" :
+                        scorecard.pricing.materialsPct <= 25 ? "text-ppp-charcoal" :
+                        "text-ppp-orange-700"
+                      }>
+                        {scorecard.pricing.materialsPct.toFixed(1)}%
+                      </strong>
+                    </p>
+                  )}
+                  {scorecard.pricing.excludedNoAttendance > 0 && (
+                    <p className="text-[10px] text-ppp-charcoal-500 italic">
+                      {scorecard.pricing.excludedNoAttendance} WO{scorecard.pricing.excludedNoAttendance === 1 ? "" : "s"} excluded — no attendance logged
+                    </p>
+                  )}
+                </div>
+              )}
+            </ScorecardCard>
+
+            {/* KPI 5 — Appointments Activity */}
+            <ScorecardCard
+              title="Appointments"
+              kpiTag="KPI 5"
+              tooltip="Opportunity.AppointmentDate__c in period. Run = scheduled AND NOT Cancelled_Appointment__c."
+            >
+              {scorecard.appointments.scheduled === 0 ? (
+                <div className="space-y-2">
+                  <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">0</div>
+                  <p className="text-xs text-ppp-charcoal-500">
+                    No appointments scheduled in this period.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-condensed text-3xl font-bold text-ppp-navy">
+                      {scorecard.appointments.run}
+                    </span>
+                    <span className="text-xs text-ppp-charcoal-500">
+                      run / {scorecard.appointments.scheduled} scheduled
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-ppp-charcoal-500">Estimates sent</span>{" "}
+                      <strong className="text-ppp-green-700">{fmtPctOrDash(scorecard.appointments.estimatesSentPct, 0)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-ppp-charcoal-500">Cancelled</span>{" "}
+                      <strong className={
+                        (scorecard.appointments.cancelledPct ?? 0) > 20 ? "text-ppp-orange-700" : "text-ppp-charcoal"
+                      }>
+                        {fmtPctOrDash(scorecard.appointments.cancelledPct, 0)}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </ScorecardCard>
+
+            {/* KPI 6 — Pipeline Health */}
+            <ScorecardCard
+              title="Pipeline · Stale Estimates"
+              kpiTag="KPI 6"
+              tooltip="Snapshot, not period-scoped. Open Opps with Estimate_Sent__c AND Date_Estimate_Sent__c < TODAY−30. PPP cycle is 3-4 weeks."
+            >
+              {scorecard.pipeline.openOpps === 0 ? (
+                <div className="space-y-2">
+                  <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
+                  <p className="text-xs text-ppp-charcoal-500">
+                    No open opportunities right now.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className={[
+                    "font-condensed text-3xl font-bold",
+                    (scorecard.pipeline.stalePct ?? 0) <= 10 ? "text-ppp-green-700" :
+                    (scorecard.pipeline.stalePct ?? 0) <= 25 ? "text-ppp-charcoal" :
+                    "text-ppp-orange-700",
+                  ].join(" ")}>
+                    {fmtPctOrDash(scorecard.pipeline.stalePct, 0)}
+                  </div>
+                  <p className="text-[11px] text-ppp-charcoal-500">
+                    <strong className="text-ppp-charcoal">{scorecard.pipeline.staleEstimates}</strong> stale of {scorecard.pipeline.openOpps} open opps
+                  </p>
+                  <p className="text-[10px] text-ppp-charcoal-500 italic">
+                    Stale = estimate sent &gt; 30 days ago
+                  </p>
+                </div>
+              )}
+            </ScorecardCard>
+
+            {/* KPI 7 — Production Quality */}
+            <ScorecardCard
+              title="Production Quality"
+              kpiTag="KPI 7"
+              tooltip="Jobs completed vs sold + reviews + complaints. Reviews by Account.OwnerId; complaints by Opportunity.OwnerId."
+            >
+              <div className="space-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-condensed text-2xl font-bold text-ppp-navy">
+                    {scorecard.production.jobsCompleted}
+                  </span>
+                  <span className="text-xs text-ppp-charcoal-500">
+                    completed / {scorecard.production.oppsWon} sold
+                  </span>
+                </div>
+                {scorecard.production.completionRatio !== null && (
+                  <ProgressBar pct={scorecard.production.completionRatio} />
+                )}
+                <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-ppp-charcoal-100">
+                  <div>
+                    <div className="font-condensed text-base font-bold text-ppp-green-700">
+                      {scorecard.production.goodReviews}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">Good rev.</div>
+                  </div>
+                  <div>
+                    <div className={[
+                      "font-condensed text-base font-bold",
+                      scorecard.production.badReviews > 0 ? "text-ppp-orange-700" : "text-ppp-charcoal-200",
+                    ].join(" ")}>
+                      {scorecard.production.badReviews}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">Bad rev.</div>
+                  </div>
+                  <div>
+                    <div className={[
+                      "font-condensed text-base font-bold",
+                      scorecard.production.complaints > 0 ? "text-ppp-orange-700" : "text-ppp-charcoal-200",
+                    ].join(" ")}>
+                      {scorecard.production.complaints}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">Cases</div>
+                  </div>
+                </div>
+              </div>
+            </ScorecardCard>
+
+            {/* KPI 8 — Money Flow */}
+            <ScorecardCard
+              title="Money Flow"
+              kpiTag="KPI 8"
+              tooltip="Transaction__c by WorkOrder.OwnerId, Date__c in period. Payments In / Labor Payouts / Total Purchases."
+            >
+              <div className="space-y-2">
+                <FlowRow label="Payments In" amount={scorecard.moneyFlow.moneyCollected} accent="green" />
+                <FlowRow label="Labor Payouts" amount={scorecard.moneyFlow.laborPaidOut} accent="navy" />
+                <FlowRow label="Purchases" amount={scorecard.moneyFlow.purchases} accent="charcoal" />
+                {scorecard.moneyFlow.moneyCollected === 0 &&
+                  scorecard.moneyFlow.laborPaidOut === 0 &&
+                  scorecard.moneyFlow.purchases === 0 && (
+                    <p className="text-[10px] text-ppp-charcoal-500 italic">
+                      No Transaction__c records for this rep in this period.
+                    </p>
+                )}
+              </div>
+            </ScorecardCard>
+
+            {/* KPI 9 — Commissions */}
+            <ScorecardCard
+              title="Commissions"
+              kpiTag="KPI 9"
+              tooltip="Earned = Payment_Out transactions with Payee matching rep name. Draw = User.Quarterly_Draw__c, period-prorated."
+            >
+              {scorecard.commissions.drawReceived === null && scorecard.commissions.earned === 0 ? (
+                <div className="space-y-2">
+                  <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
+                  <p className="text-xs text-ppp-charcoal-500">
+                    {scorecard.commissions.drawReceived === null
+                      ? "No Quarterly_Draw__c set on this user."
+                      : "No commission transactions in this period."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-condensed text-2xl font-bold text-ppp-navy">
+                      {fmtMoneyK(scorecard.commissions.earned / 1000)}
+                    </span>
+                    <span className="text-xs text-ppp-charcoal-500">earned</span>
+                  </div>
+                  {scorecard.commissions.drawReceived !== null && (
+                    <p className="text-[11px] text-ppp-charcoal-500">
+                      Draw (prorated): {fmtMoneyK(scorecard.commissions.drawReceived / 1000)}
+                    </p>
+                  )}
+                  {scorecard.commissions.difference !== null && (
+                    <p className="text-xs">
+                      <span className="text-ppp-charcoal-500">Net: </span>
+                      <strong className={scorecard.commissions.difference >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700"}>
+                        {scorecard.commissions.difference >= 0 ? "+" : ""}{fmtMoneyK(scorecard.commissions.difference / 1000)}
+                      </strong>
+                      <span className="text-[11px] text-ppp-charcoal-500 ml-1">
+                        ({scorecard.commissions.difference >= 0 ? "underpaid" : "overpaid"})
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
+            </ScorecardCard>
+          </div>
+
+          {/* Attendance completeness — data-quality note below the grid */}
+          {scorecard.attendance.completed > 0 && (
+            <div className="mt-3 text-[11px] text-ppp-charcoal-500 italic px-1">
+              Data quality · Crew attendance logged on{" "}
+              <strong className="text-ppp-charcoal">
+                {scorecard.attendance.logged}
+              </strong>{" "}
+              of {scorecard.attendance.completed} completed WOs
+              {scorecard.attendance.completenessPct !== null && (
+                <> ({scorecard.attendance.completenessPct.toFixed(0)}%)</>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ─── Account stats card + Lead Group breakdown ─── */}
       {accountStats && accountStats.totalCustomers > 0 && (
@@ -403,21 +835,63 @@ export default async function RepDetailPage({
         </div>
       </section>
 
-      {/* ─── Activity stats ─── */}
+      {/* ─── Activity stats ───
+          Real Salesforce activity. The previous version used opp-count
+          proxies (rep.appointmentsHeld = rep.quotesSent = a.total) which
+          rendered as if they were real appointment / quote counts — they
+          weren't. Now reads from KPI 5 (AppointmentDate__c + Estimate_Sent__c)
+          when scorecard is available, falls back to the old proxy with a
+          clearly-labeled caveat for mock data. */}
       <section>
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
-          <h3 className="text-base font-semibold text-ppp-charcoal mb-1">Activity · Last 30 Days</h3>
-          <p className="text-xs text-ppp-charcoal-500 mb-5">Volume and velocity behind the headline numbers</p>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <ActivityStat label="Appointments held" value={rep.appointmentsHeld} />
-            <ActivityStat label="Quotes sent" value={rep.quotesSent} />
-            <ActivityStat label="Avg days to close" value={rep.daysAvgClose} suffix=" days" />
-            <ActivityStat
-              label="Quote → Close"
-              value={Math.round((rep.closeRate / 100) * rep.quotesSent)}
-              hint={`of ${rep.quotesSent} quotes`}
-            />
-          </div>
+          <h3 className="text-base font-semibold text-ppp-charcoal mb-1">
+            Activity · {scorecard ? scorecard.period.label : "Last 30 Days"}
+          </h3>
+          <p className="text-xs text-ppp-charcoal-500 mb-5">
+            {scorecard
+              ? "Real appointment + estimate activity from Salesforce, fiscal-period scoped"
+              : "Volume and velocity behind the headline numbers"}
+          </p>
+          {scorecard ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <ActivityStat
+                label="Appointments scheduled"
+                value={scorecard.appointments.scheduled}
+              />
+              <ActivityStat
+                label="Appointments run"
+                value={scorecard.appointments.run}
+                hint={scorecard.appointments.scheduled > 0
+                  ? `${scorecard.appointments.scheduled - scorecard.appointments.run} cancelled`
+                  : undefined}
+              />
+              <ActivityStat
+                label="Estimates sent"
+                value={Math.round(((scorecard.appointments.estimatesSentPct ?? 0) / 100) * scorecard.appointments.run)}
+                hint={scorecard.appointments.estimatesSentPct !== null
+                  ? `${scorecard.appointments.estimatesSentPct.toFixed(0)}% of run`
+                  : undefined}
+              />
+              <ActivityStat
+                label="Opps closed-won"
+                value={scorecard.production.oppsWon}
+                hint={scorecard.production.jobsCompleted > 0
+                  ? `${scorecard.production.jobsCompleted} jobs completed`
+                  : undefined}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <ActivityStat label="Opportunities" value={rep.appointmentsHeld} hint="opp count proxy" />
+              <ActivityStat label="Opportunities" value={rep.quotesSent} hint="opp count proxy" />
+              <ActivityStat label="Avg days to close" value={rep.daysAvgClose} suffix=" days" />
+              <ActivityStat
+                label="Quote → Close"
+                value={Math.round((rep.closeRate / 100) * rep.quotesSent)}
+                hint={`of ${rep.quotesSent} quotes`}
+              />
+            </div>
+          )}
         </div>
       </section>
 
@@ -692,6 +1166,111 @@ function ActivityStat({
         {suffix}
       </div>
       {hint && <div className="text-[10px] sm:text-[11px] text-ppp-charcoal-500 mt-0.5">{hint}</div>}
+    </div>
+  );
+}
+
+/* ─── PPP Scorecard helpers (Katie's REP_PROFILES_INTEGRATION §6 cards) ─── */
+
+/** Format a (possibly null) percent number as "XX.X%" or "—". */
+function fmtPctOrDash(pct: number | null, decimals: number = 1): string {
+  if (pct === null || isNaN(pct)) return "—";
+  return `${pct.toFixed(decimals)}%`;
+}
+
+/**
+ * Uniform card shell for the scorecard grid. Keeps title / kpiTag / tooltip
+ * layout consistent so the eye can scan across the 9 KPIs without re-anchoring.
+ * The `tooltip` value is also surfaced as a visible info dot for non-hover
+ * surfaces (mobile) — accessibility first.
+ */
+function ScorecardCard({
+  title,
+  kpiTag,
+  tooltip,
+  children,
+}: {
+  title: string;
+  kpiTag: string;
+  tooltip: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 flex flex-col">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <h4 className="text-sm font-semibold text-ppp-charcoal leading-tight">{title}</h4>
+        <span
+          className="text-[9px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-50 px-1.5 py-0.5 rounded shrink-0"
+          title={tooltip}
+        >
+          {kpiTag}
+        </span>
+      </div>
+      <div className="flex-1">{children}</div>
+    </div>
+  );
+}
+
+/** Horizontal progress bar — capped at 100% visually but the headline number
+ *  shows the true value above so "120% to goal" renders cleanly. */
+function ProgressBar({ pct, colorClass = "bg-ppp-blue" }: { pct: number; colorClass?: string }) {
+  const capped = Math.max(0, Math.min(100, pct));
+  return (
+    <div className="h-1.5 w-full bg-ppp-charcoal-50 rounded">
+      <div
+        className={`h-full ${colorClass} rounded transition-[width] duration-500`}
+        style={{ width: `${Math.max(2, capped)}%` }}
+      />
+    </div>
+  );
+}
+
+/** Inline row for the Close Rate card's self-gen / marketing sub-buckets. */
+function CloseRateRow({
+  label,
+  stats,
+  accent,
+}: {
+  label: string;
+  stats: { won: number; total: number; pct: number | null };
+  accent: "green" | "blue";
+}) {
+  const dotClass = accent === "green" ? "bg-ppp-green" : "bg-ppp-blue";
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-[11px] text-ppp-charcoal flex items-center gap-1.5">
+        <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass}`} aria-hidden />
+        {label}
+      </span>
+      <span className="text-[11px] text-ppp-charcoal-500">
+        <strong className="text-ppp-charcoal">{fmtPctOrDash(stats.pct, 0)}</strong>
+        {" · "}
+        {stats.won}/{stats.total}
+      </span>
+    </div>
+  );
+}
+
+/** Inline row for the Money Flow card. */
+function FlowRow({
+  label,
+  amount,
+  accent,
+}: {
+  label: string;
+  amount: number;
+  accent: "green" | "navy" | "charcoal";
+}) {
+  const valueClass =
+    accent === "green" ? "text-ppp-green-700" :
+    accent === "navy" ? "text-ppp-navy" :
+    "text-ppp-charcoal";
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-[11px] uppercase tracking-wide text-ppp-charcoal-500">{label}</span>
+      <span className={`font-condensed text-lg font-bold ${valueClass}`}>
+        {amount === 0 ? "—" : fmtMoneyK(amount / 1000)}
+      </span>
     </div>
   );
 }

@@ -55,13 +55,20 @@ This file is the pointer that keeps the connection working — don't remove this
 
 ### Known correctness backlog from the integration guide
 
-See `command-center/REP_PROFILES_INTEGRATION_GUIDE.md` §4 for the full breakdown. Summary of bugs in the current Rep Profiles code:
+See `command-center/REP_PROFILES_INTEGRATION_GUIDE.md` §4 for the full breakdown. Status of the 6 correctness bugs called out for the current Rep Profiles code:
 
-1. Revenue field — we use `NetValue__c`; PPP canonical is `QuotedSubtotalWithChangeOrder__c`
-2. Snapshot window — filters `CreatedDate` but buckets revenue by `CloseDate`; long-cycle deals lost
-3. "lifetime" label — actually last-12-months by created date; relabel or widen
-4. Rep universe too broad — should constrain to Profile `*Standard.Field`
-5. Close rate definition — Opp→WO conversion ≠ PPP's `won ÷ created` cohort-based metric
-6. `appointmentsHeld` + `quotesSent` are fake proxies — use real SF appointment/estimate fields
+1. ✅ **Revenue field** — `Opportunity.QuotedSubtotalWithChangeOrder__c` (and WO `Quoted_Subtotal_with_Change_Order__c`) is now the canonical sales metric. `NetValue__c` is kept as the realized/collected fallback. `SnapshotOpp.quotedSubtotal` carries the canonical value; `deriveRepScorecard` attributes sales from it.
+2. ⚠️ **Snapshot window** — still filters `CreatedDate = LAST_N_DAYS:365` (the deliberate scale-budget for 89k+ Opps). Documented as a known short-cycle bias. The new fiscal-period scorecard is computed over the same snapshot, so it shares the bias; mitigated by the warm cache + manual refresh button. Re-evaluate if reps complain about missing long-cycle deals.
+3. ✅ **"lifetime" label honest now** — rep header reads "Revenue · Last 12 months" with a tooltip explaining the short-cycle scope. The fiscal-period Scorecard now sits below for the real FY view.
+4. ✅ **Rep universe constrained** — `SnapshotRep.isFieldStandard` flags Profile `*Standard.Field` reps (~26 active). `deriveRepScorecard` uses this set for `rank` and team denominators. Non-field-standard users remain in the snapshot for owner lookups but don't pollute KPIs.
+5. ✅ **Real close rate** — KPI 3 in the scorecard uses `won ÷ created` over Opps `CreatedDate` in the period, split self-gen vs marketing via `Opportunity.LeadGroup__c`. The Opp→WO conversion metric stays on the existing top KPI row for continuity but is clearly labeled "Conversion Rate" (not "Close Rate").
+6. ✅ **Real appointments/estimates** — the "Activity" block now reads from KPI 5 (`AppointmentDate__c` + `Estimate_Sent__c` + `Cancelled_Appointment__c`) instead of the opp-count proxy. Falls back to the proxy with an explicit caveat label when only mock data is available.
 
-Plus 11 new KPIs to add after correctness fixes (% to Goal, GM vs target, Rev/Labor Day, Materials %, real appointments, stale pipeline, reviews, complaints, money flow, commissions). Implementation order in §6.
+All 11 new KPIs shipped in `lib/salesforce/rep-scorecard.ts` (% to Goal · GM vs target · Close Rate · Sales Mix · Pricing Discipline · Appointments · Pipeline Health · Production Quality · Money Flow · Commissions · Attendance Completeness data-quality gauge). Rendered on `app/dashboard/rep/[id]/page.tsx`. Validate any rep's numbers against PPP's FPRC reports via:
+
+```
+GET /api/admin/rep-validation?repId=<sf-user-id>
+GET /api/admin/rep-validation?email=<rep@precisionpaintingplus.com>
+```
+
+Returns the full scorecard + the per-KPI input counts + field-coverage flags so you can triage "0 vs missing data."
