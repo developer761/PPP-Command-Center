@@ -94,6 +94,12 @@ export type RepScorecard = {
     run: number;                            // scheduled AND not cancelled
     estimatesSentPct: number | null;        // of run, % with Estimate_Sent__c
     cancelledPct: number | null;            // of scheduled, % cancelled
+    /** Avg days from appointmentDate → dateEstimateSent for appts that got
+     *  an estimate. Lower is better — slow estimates kill conversion. */
+    avgDaysToEstimate: number | null;
+    /** % of with-estimate appts where the gap > 7 days. PPP cycle is 3-4
+     *  weeks total, so a 7-day estimate-turnaround target is reasonable. */
+    slowEstimatePct: number | null;
   };
 
   // KPI 6 — Pipeline Health (SNAPSHOT, not period-scoped)
@@ -361,11 +367,18 @@ export function deriveRepScorecard(
     if (w.laborDaysActual !== null && w.laborDaysActual > 0) attendanceLogged += 1;
   }
 
-  /* ─ KPI 5 ─ Appointments Activity ─ */
+  /* ─ KPI 5 ─ Appointments Activity (+ Speed-to-Estimate signal) ─
+     Speed-to-estimate is a more actionable signal than close rate for PPP
+     because their close rate trends high (data quirk per §4.5). Reps with
+     7+ day estimate turnaround see noticeably worse close + cancellation
+     rates downstream. */
   let scheduled = 0;
   let run = 0;
   let runWithEstimate = 0;
   let cancelled = 0;
+  let estimateDaysSum = 0;
+  let estimateDaysCount = 0;
+  let slowEstimateCount = 0;
   for (const o of snapshot.opportunities) {
     if (o.ownerId !== repId) continue;
     if (!inRange(o.appointmentDate, start, end)) continue;
@@ -374,9 +387,32 @@ export function deriveRepScorecard(
       cancelled += 1;
     } else {
       run += 1;
-      if (o.estimateSent) runWithEstimate += 1;
+      if (o.estimateSent) {
+        runWithEstimate += 1;
+        // Speed-to-estimate calc — only when we have both anchors.
+        // Negative gaps (estimate sent before appt) are dropped as data
+        // entry errors. Gaps > 90 days are also dropped (stale/orphan).
+        if (o.appointmentDate && o.dateEstimateSent) {
+          const aMs = new Date(o.appointmentDate).getTime();
+          const eMs = new Date(o.dateEstimateSent).getTime();
+          if (!isNaN(aMs) && !isNaN(eMs)) {
+            const days = (eMs - aMs) / 86_400_000;
+            if (days >= 0 && days <= 90) {
+              estimateDaysSum += days;
+              estimateDaysCount += 1;
+              if (days > 7) slowEstimateCount += 1;
+            }
+          }
+        }
+      }
     }
   }
+  const avgDaysToEstimate = estimateDaysCount > 0
+    ? estimateDaysSum / estimateDaysCount
+    : null;
+  const slowEstimatePct = estimateDaysCount > 0
+    ? (slowEstimateCount / estimateDaysCount) * 100
+    : null;
 
   /* ─ KPI 6 ─ Pipeline Health (SNAPSHOT) ─ */
   // Stale = open + estimate_sent + dateEstimateSent < today-30
@@ -511,6 +547,8 @@ export function deriveRepScorecard(
       run,
       estimatesSentPct: safePct(runWithEstimate, run),
       cancelledPct: safePct(cancelled, scheduled),
+      avgDaysToEstimate,
+      slowEstimatePct,
     },
 
     pipeline: {

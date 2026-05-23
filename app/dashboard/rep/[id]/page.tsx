@@ -264,14 +264,43 @@ export default async function RepDetailPage({
         </div>
       </div>
 
-      {/* ─── KPI row ─── */}
+      {/* ─── KPI row ─── Headline summary, last 12 months by Opp create
+          date. Period is intentionally different from the Scorecard below
+          (which is fiscal-quarter scoped per PPP's FPRC reports). The
+          label above + tooltips on each card make this explicit so the
+          rep doesn't wonder why "Revenue Sold" and "% to Goal" disagree. */}
       <section>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="flex items-baseline justify-between gap-3 mb-3 sm:mb-4">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-ppp-charcoal tracking-tight">
+              Headline KPIs
+            </h3>
+            <p className="text-xs text-ppp-charcoal-500 mt-0.5">
+              Last 12 months · trailing window
+            </p>
+          </div>
+          <span className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-50 px-2 py-0.5 rounded">
+            12-month
+          </span>
+        </div>
+        <div
+          className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
+          title="Headline 12-month view. For the canonical PPP fiscal-period KPIs, see the Scorecard section below."
+        >
           <KPICard label="Revenue Sold" value={fmtMoneyK(rep.revenueSold)} change={dRev.text} trend={dRev.trend} accent="blue" />
-          <KPICard label="Conversion Rate" value={`${rep.closeRate.toFixed(1)}%`} change={dClose.text} trend={dClose.trend} accent="green" />
+          <KPICard
+            label="Conversion Rate"
+            value={`${rep.closeRate.toFixed(1)}%`}
+            change={dClose.text}
+            trend={dClose.trend}
+            accent="green"
+          />
           <KPICard label="Avg Ticket" value={fmtMoneyK(rep.avgTicket)} change={dTicket.text} trend={dTicket.trend} accent="orange" />
           <KPICard label="Open Pipeline" value={fmtMoneyK(rep.openPipeline)} change={dPipe.text} trend={dPipe.trend} accent="blue" />
         </div>
+        <p className="mt-2 text-[11px] text-ppp-charcoal-500 italic px-1">
+          <strong>Conversion Rate</strong> = opps that became Work Orders ÷ opps created. PPP creates an Estimate WO on most opps so this trends high — see <strong>Scorecard · Close Rate</strong> below for the cohort-based won/created metric (PPP&apos;s canonical KPI 3).
+        </p>
       </section>
 
       {/* ─── PPP Scorecard · Current Fiscal Quarter ───
@@ -386,11 +415,17 @@ export default async function RepDetailPage({
               )}
             </ScorecardCard>
 
-            {/* KPI 3 — Close Rate (3 buckets) */}
+            {/* KPI 3 — Close Rate (3 buckets) ─
+                PPP DATA QUIRK: SF stages here don't include a "Closed Lost"
+                type per the integration guide §4.5, so IsWon ≈ IsClosed and
+                this metric trends very high (often 95%+). It's still the
+                canonical PPP KPI 3 — the LeadGroup split is where the signal
+                actually shows up (different reps perform very differently on
+                marketing vs self-gen). */}
             <ScorecardCard
               title="Close Rate"
               kpiTag="KPI 3"
-              tooltip="Won ÷ Opportunities CREATED in period. Self-gen = LeadGroup__c='Self-Generated'; everything else = marketing."
+              tooltip="Won ÷ Opportunities CREATED in period. Self-gen = LeadGroup__c='Self-Generated'; everything else = marketing. NOTE: PPP's data trends high because of how their SF stage config handles 'lost' opps — the LeadGroup split is the actionable signal."
             >
               <div className="space-y-2.5">
                 <div className="flex items-baseline justify-between gap-2">
@@ -406,6 +441,11 @@ export default async function RepDetailPage({
                   <CloseRateRow label="Self-Gen" stats={scorecard.closeRate.selfGen} accent="green" />
                   <CloseRateRow label="Marketing" stats={scorecard.closeRate.marketing} accent="blue" />
                 </div>
+                {scorecard.closeRate.overall.total === 0 && (
+                  <p className="text-[10px] text-ppp-charcoal-500 italic pt-1">
+                    No opportunities created in this period yet.
+                  </p>
+                )}
               </div>
             </ScorecardCard>
 
@@ -491,11 +531,11 @@ export default async function RepDetailPage({
               )}
             </ScorecardCard>
 
-            {/* KPI 5 — Appointments Activity */}
+            {/* KPI 5 — Appointments Activity (+ Speed-to-Estimate signal) */}
             <ScorecardCard
               title="Appointments"
               kpiTag="KPI 5"
-              tooltip="Opportunity.AppointmentDate__c in period. Run = scheduled AND NOT Cancelled_Appointment__c."
+              tooltip="Opportunity.AppointmentDate__c in period. Run = scheduled AND NOT Cancelled_Appointment__c. Speed-to-estimate = days from appointment to estimate sent."
             >
               {scorecard.appointments.scheduled === 0 ? (
                 <div className="space-y-2">
@@ -528,6 +568,33 @@ export default async function RepDetailPage({
                       </strong>
                     </div>
                   </div>
+                  {scorecard.appointments.avgDaysToEstimate !== null && (
+                    <div className="border-t border-ppp-charcoal-100 pt-2 mt-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">
+                          Speed to estimate
+                        </span>
+                        <span className={[
+                          "font-condensed text-lg font-bold",
+                          scorecard.appointments.avgDaysToEstimate <= 3 ? "text-ppp-green-700" :
+                          scorecard.appointments.avgDaysToEstimate <= 7 ? "text-ppp-navy" :
+                          "text-ppp-orange-700",
+                        ].join(" ")}>
+                          {scorecard.appointments.avgDaysToEstimate.toFixed(1)}d
+                        </span>
+                      </div>
+                      {scorecard.appointments.slowEstimatePct !== null && scorecard.appointments.slowEstimatePct > 0 && (
+                        <p className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                          <strong className={
+                            scorecard.appointments.slowEstimatePct > 30 ? "text-ppp-orange-700" : "text-ppp-charcoal"
+                          }>
+                            {scorecard.appointments.slowEstimatePct.toFixed(0)}%
+                          </strong>{" "}
+                          took 7+ days
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </ScorecardCard>
