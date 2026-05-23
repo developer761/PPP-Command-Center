@@ -355,19 +355,17 @@ function JobDetail({
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
+          <SendColorFormButton workOrderId={job.wo.id} accountName={job.wo.accountName ?? null} />
           <button
             type="button"
             onClick={() => setShowDraft(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M4 4h16v16H4z M4 4l8 8 8-8" />
             </svg>
-            Draft order
+            Draft order (preview)
           </button>
-          <div className="text-[11px] text-ppp-charcoal-500 self-center italic">
-            Review step before send — never auto-sends
-          </div>
         </div>
       </div>
 
@@ -694,5 +692,169 @@ function Pill({ children, tone = "neutral" }: { children: React.ReactNode; tone?
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}`}>
       {children}
     </span>
+  );
+}
+
+/* ─── Send Color Form button (Phase 2 — Customer Color Form trigger) ─── */
+
+function SendColorFormButton({
+  workOrderId,
+  accountName,
+}: {
+  workOrderId: string;
+  accountName: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerName, setCustomerName] = useState(accountName ?? "");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<
+    | null
+    | { ok: true; formUrl: string; resendId: string }
+    | { ok: false; error: string }
+  >(null);
+
+  const reset = () => {
+    setResult(null);
+    setSending(false);
+    setOpen(false);
+  };
+
+  const send = async () => {
+    if (!customerEmail.trim()) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/customer-form/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workOrderId,
+          customerEmail: customerEmail.trim(),
+          customerName: customerName.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        setResult({ ok: false, error: data.message ?? data.error ?? `HTTP ${res.status}` });
+      } else {
+        setResult({ ok: true, formUrl: data.formUrl, resendId: data.resendMessageId });
+      }
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      setResult({ ok: false, error: m });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
+        </svg>
+        Send Color Form
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm animate-fade-in"
+            onClick={() => !sending && reset()}
+            aria-hidden
+          />
+          <div className="relative z-10 w-full sm:max-w-md bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden animate-fade-up">
+            <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100">
+              <h3 className="text-base font-bold text-ppp-navy">Send Color Form</h3>
+              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                Email a link to the customer so they can pick their paint colors.
+              </p>
+            </div>
+
+            {!result && (
+              <div className="p-5 sm:p-6 space-y-4">
+                <div>
+                  <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                    Customer email
+                  </label>
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="customer@example.com"
+                    className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                    Customer name (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder={accountName ?? "Customer or company name"}
+                    className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                  />
+                </div>
+                <div className="text-[11px] text-ppp-charcoal-500 italic">
+                  Link expires in 30 days. Customer can&apos;t see it&apos;s from PPP staff.
+                </div>
+              </div>
+            )}
+
+            {result?.ok === true && (
+              <div className="p-5 sm:p-6 space-y-3 text-sm">
+                <div className="flex items-center gap-2 text-ppp-green-700 font-semibold">
+                  <span>✓</span> Email sent to {customerEmail}
+                </div>
+                <div className="text-xs text-ppp-charcoal-500">
+                  Resend message id: <span className="font-mono">{result.resendId}</span>
+                </div>
+                <div className="text-xs text-ppp-charcoal-500 break-all">
+                  Form link: <a href={result.formUrl} target="_blank" rel="noopener noreferrer" className="text-ppp-blue hover:underline">{result.formUrl}</a>
+                </div>
+                <div className="text-[11px] text-ppp-charcoal-500 italic">
+                  You can also share this link manually if the customer didn&apos;t get the email.
+                </div>
+              </div>
+            )}
+
+            {result?.ok === false && (
+              <div className="p-5 sm:p-6 space-y-3 text-sm">
+                <div className="text-ppp-orange-700 font-semibold">Couldn&apos;t send.</div>
+                <div className="text-xs text-ppp-charcoal-500">{result.error}</div>
+              </div>
+            )}
+
+            <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={reset}
+                disabled={sending}
+                className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
+              >
+                {result ? "Close" : "Cancel"}
+              </button>
+              {!result && (
+                <button
+                  type="button"
+                  onClick={send}
+                  disabled={sending || !customerEmail.trim()}
+                  className="px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {sending ? "Sending…" : "Send Form"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
