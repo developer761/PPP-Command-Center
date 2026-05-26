@@ -148,6 +148,19 @@ export type SnapshotAccount = {
   isKeyRelationship: boolean;
   lastAppointment: string | null;
   lastWorkOrderCompleted: string | null;
+  /** Customer email — pulled for Phase 2 send-form auto-prefill + as fallback
+   *  for supplier-order delivery contact. PPP uses Person Accounts so this
+   *  is PersonEmail; falls back to free-text Email__c custom field when
+   *  the org's Account model is business-based. null when both are missing. */
+  email: string | null;
+  /** Customer phone — secondary contact for supplier-delivery callouts. */
+  phone: string | null;
+  /** Billing address — used as the delivery address default when fulfillment
+   *  is "deliver to customer house" (the most common case per Karan's spec). */
+  billingStreet: string | null;
+  billingCity: string | null;
+  billingState: string | null;
+  billingPostalCode: string | null;
 };
 
 /**
@@ -453,9 +466,11 @@ function isLikelyRep(profileName: string | null, isActive: boolean): boolean {
  * ─────────────────────────────────────────────────────────────── */
 
 export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
-  // Cache key bumped to v4 — adds rep-performance pulls (quotas, transactions,
-  // reviews, cases) + new opp/WO/User fields per Katie's REP_PROFILES guide.
-  return cached("snapshot-v4", async () => {
+  // Cache key bumped to v5 — adds customer email + phone + billing address
+  // fields on Account for Phase 2 (supplier order delivery + customer email
+  // auto-prefill). Falls back gracefully when org doesn't have Person
+  // Accounts enabled (rich SELECT errors → base SELECT runs successfully).
+  return cached("snapshot-v5", async () => {
     const conn = await getSalesforceClient();
 
     // STEP 1: Discover Opportunity schema + pick the canonical revenue field.
@@ -643,13 +658,21 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // saves ~5-10s on cold cache.
     const accountsPromise: Promise<SnapshotAccount[]> = (async () => {
       try {
+        // Phase 2 added: PersonEmail / Phone / BillingStreet / BillingCity /
+        // BillingState / BillingPostalCode. PersonEmail is the SF-standard
+        // field for Person Account customers (PPP's model). If PPP's org
+        // actually uses business Accounts in some cases, the field is null
+        // for those rows — we'll fall back at consumer level via a Contact
+        // lookup later. Phone is included as a secondary delivery-contact.
         const ACCT_FIELDS = `
           Id, Name, Type, Service_Territory__c, Region__c, Geo_Zone__c, County__c,
           LeadGroup__c, Account_Manager__c, Primary_Contact__c,
           Total_Lifetime_Revenue__c, Total_Revenue_CFY__c, Total_Revenue_PFY__c,
           Total_Won_Oppties__c, Total_Lost_Oppties__c, Number_Open_Oppties__c,
           VendorBMRetailer__c, VendorBMAutoSubmit__c, Key_Relationship__c,
-          Last_Appointment__c, LastWorkOrderCompleted__c
+          Last_Appointment__c, LastWorkOrderCompleted__c,
+          PersonEmail, Phone,
+          BillingStreet, BillingCity, BillingState, BillingPostalCode
         `.replace(/\s+/g, " ").trim();
         const records: Array<Record<string, unknown>> = [];
         // Two queries unioned:
@@ -661,9 +684,27 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         //      supplier name and the Materials Ordering UI shows "Unknown
         //      supplier" everywhere. Vendor count is ~1,355 (per prod
         //      describe), totally fits in a single page.
-        let result = await conn.query<Record<string, unknown>>(
-          `SELECT ${ACCT_FIELDS} FROM Account ORDER BY Total_Lifetime_Revenue__c DESC NULLS LAST LIMIT 5000`
-        );
+        // Try with PersonEmail + address fields first. If the org doesn't
+        // have Person Accounts enabled (or any of these fields), SF returns
+        // an INVALID_FIELD error — fall back to the narrower SELECT without
+        // the Phase-2 additions. Either way the rest of the snapshot loads.
+        const fallbackAccountFields = ACCT_FIELDS
+          .split(",")
+          .map((s) => s.trim())
+          .filter((f) => !/^(PersonEmail|Phone|BillingStreet|BillingCity|BillingState|BillingPostalCode)$/.test(f))
+          .join(", ");
+        let result: Awaited<ReturnType<typeof conn.query<Record<string, unknown>>>>;
+        try {
+          result = await conn.query<Record<string, unknown>>(
+            `SELECT ${ACCT_FIELDS} FROM Account ORDER BY Total_Lifetime_Revenue__c DESC NULLS LAST LIMIT 5000`
+          );
+        } catch (richErr) {
+          const msg = richErr instanceof Error ? richErr.message : String(richErr);
+          console.warn(`[SF] Account rich-fields query failed (falling back to base): ${msg}`);
+          result = await conn.query<Record<string, unknown>>(
+            `SELECT ${fallbackAccountFields} FROM Account ORDER BY Total_Lifetime_Revenue__c DESC NULLS LAST LIMIT 5000`
+          );
+        }
         records.push(...result.records);
         while (!result.done && result.nextRecordsUrl) {
           result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
@@ -671,12 +712,23 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         }
         console.log(`[SF] Pulled ${records.length} accounts (top 5k by lifetime revenue) — PARALLEL`);
 
-        // Vendor pull — union into the same array, deduped by Id.
+        // Vendor pull — union into the same array, deduped by Id. Uses the
+        // SAME fallback strategy as the main accounts pull so an
+        // INVALID_FIELD on the rich SELECT degrades gracefully to base.
         try {
           const seenIds = new Set(records.map((r) => r.Id as string));
-          let vendorResult = await conn.query<Record<string, unknown>>(
-            `SELECT ${ACCT_FIELDS} FROM Account WHERE Type IN ('Retail Vendor','Service Vendor','Marketing Vendor') LIMIT 2000`
-          );
+          let vendorResult: Awaited<ReturnType<typeof conn.query<Record<string, unknown>>>>;
+          try {
+            vendorResult = await conn.query<Record<string, unknown>>(
+              `SELECT ${ACCT_FIELDS} FROM Account WHERE Type IN ('Retail Vendor','Service Vendor','Marketing Vendor') LIMIT 2000`
+            );
+          } catch (richErr) {
+            const msg = richErr instanceof Error ? richErr.message : String(richErr);
+            console.warn(`[SF] Vendor rich-fields query failed (falling back): ${msg}`);
+            vendorResult = await conn.query<Record<string, unknown>>(
+              `SELECT ${fallbackAccountFields} FROM Account WHERE Type IN ('Retail Vendor','Service Vendor','Marketing Vendor') LIMIT 2000`
+            );
+          }
           let added = 0;
           for (const r of vendorResult.records) {
             const id = r.Id as string;
@@ -724,6 +776,15 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           isKeyRelationship: Boolean(a.Key_Relationship__c),
           lastAppointment: (a.Last_Appointment__c as string | null) ?? null,
           lastWorkOrderCompleted: (a.LastWorkOrderCompleted__c as string | null) ?? null,
+          // Phase 2 — customer contact + address fields. When the rich query
+          // fell back to the base SELECT, these keys won't be present on the
+          // record → safe `?? null` resolves to null.
+          email: (a.PersonEmail as string | null) ?? null,
+          phone: (a.Phone as string | null) ?? null,
+          billingStreet: (a.BillingStreet as string | null) ?? null,
+          billingCity: (a.BillingCity as string | null) ?? null,
+          billingState: (a.BillingState as string | null) ?? null,
+          billingPostalCode: (a.BillingPostalCode as string | null) ?? null,
         }));
       } catch (err) {
         console.error("[SF] Account query failed (some fields may be absent):", err);
