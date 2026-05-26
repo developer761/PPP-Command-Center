@@ -10,8 +10,10 @@ import {
   type ResolvedWoli,
 } from "@/lib/salesforce/materials";
 import type { LiveDashboardBundle } from "@/lib/data-source";
-import type { SnapshotPaintColor } from "@/lib/salesforce/queries";
+import type { SnapshotAccount, SnapshotPaintColor } from "@/lib/salesforce/queries";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
+import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
+import SupplierOrderModal from "@/components/supplier-order-modal";
 
 type Props = {
   bundle: LiveDashboardBundle;
@@ -20,9 +22,11 @@ type Props = {
    *  on the page header. Passed as an array (Map doesn't serialize over the
    *  server→client boundary in Next). */
   formStatuses?: FormStatus[];
+  /** 8-stage progress timeline per WO. Same array-not-Map reason. */
+  woProgress?: WoProgress[];
 };
 
-export default function MaterialsView({ bundle, formStatuses = [] }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [] }: Props) {
   const { snapshot, viewer } = bundle;
 
   // Index form statuses by WO id for constant-time lookup in the render loop.
@@ -31,6 +35,33 @@ export default function MaterialsView({ bundle, formStatuses = [] }: Props) {
     for (const s of formStatuses) m.set(s.woId, s);
     return m;
   }, [formStatuses]);
+
+  // Same indexing for the progress timeline.
+  const progressByWO = useMemo(() => {
+    const m = new Map<string, WoProgress>();
+    for (const p of woProgress) m.set(p.workOrderId, p);
+    return m;
+  }, [woProgress]);
+
+  // Account lookup by NAME (WO carries accountName, not accountId). Used to
+  // pre-fill customer email + delivery address in the Send Form modal +
+  // Supplier Order modal. Built once per render of the parent.
+  const accountByName = useMemo(() => {
+    const m = new Map<string, SnapshotAccount>();
+    if (snapshot?.accounts) {
+      for (const a of snapshot.accounts) m.set(a.name, a);
+    }
+    return m;
+  }, [snapshot]);
+
+  // Modal open state — only one supplier order modal at a time.
+  const [orderModal, setOrderModal] = useState<{
+    workOrderId: string;
+    workOrderNumber: string | null;
+    supplierAccountId: string;
+    supplierName: string;
+    customerName: string | null;
+  } | null>(null);
 
   // Roll-up for the page header chip — at a glance, how many forms are out?
   const formSummary = useMemo(() => {
@@ -345,7 +376,26 @@ export default function MaterialsView({ bundle, formStatuses = [] }: Props) {
           {/* Side panel */}
           <div className="lg:col-span-3">
             {activeJob ? (
-              <JobDetail snapshot={snapshot} job={activeJob} />
+              <div className="space-y-4">
+                {/* Progress bar — sticky at the top so it's visible while
+                    scrolling the long line-item list below. */}
+                {progressByWO.get(activeJob.wo.id) && (
+                  <WorkOrderProgressBar progress={progressByWO.get(activeJob.wo.id)!} />
+                )}
+                <JobDetail
+                  snapshot={snapshot}
+                  job={activeJob}
+                  onOpenOrderModal={(supplierAccountId, supplierName) =>
+                    setOrderModal({
+                      workOrderId: activeJob.wo.id,
+                      workOrderNumber: activeJob.wo.workOrderNumber,
+                      supplierAccountId,
+                      supplierName,
+                      customerName: activeJob.wo.accountName ?? null,
+                    })
+                  }
+                />
+              </div>
             ) : (
               <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center text-sm text-ppp-charcoal-500">
                 Pick a work order to see paint colors per room and the supplier breakdown.
@@ -354,6 +404,18 @@ export default function MaterialsView({ bundle, formStatuses = [] }: Props) {
           </div>
         </section>
       )}
+
+      {/* Top-level Supplier Order Modal — only one open at a time */}
+      {orderModal && (
+        <SupplierOrderModal
+          workOrderId={orderModal.workOrderId}
+          workOrderNumber={orderModal.workOrderNumber}
+          supplierAccountId={orderModal.supplierAccountId}
+          supplierName={orderModal.supplierName}
+          customerName={orderModal.customerName}
+          onClose={() => setOrderModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -361,11 +423,24 @@ export default function MaterialsView({ bundle, formStatuses = [] }: Props) {
 function JobDetail({
   snapshot,
   job,
+  onOpenOrderModal,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   job: OpenWorkOrderForMaterials;
+  /** Called when the worker clicks "Order from {supplier}" — triggers
+   *  the top-level Supplier Order Modal with that supplier pre-selected. */
+  onOpenOrderModal: (supplierAccountId: string, supplierName: string) => void;
 }) {
   const [showDraft, setShowDraft] = useState(false);
+
+  // Pre-fill data for the Send Color Form modal — pull the customer Account
+  // from the snapshot via accountName. Empty when not in snapshot (vendor
+  // WO or stale account) — admin types manually.
+  const customerAccount = useMemo(() => {
+    if (!job.wo.accountName) return null;
+    return snapshot.accounts.find((a) => a.name === job.wo.accountName) ?? null;
+  }, [job, snapshot]);
+
   const supplierRows = useMemo(() => {
     return Array.from(job.bySupplier.entries())
       .map(([mfgId, count]) => ({
@@ -426,7 +501,11 @@ function JobDetail({
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          <SendColorFormButton workOrderId={job.wo.id} accountName={job.wo.accountName ?? null} />
+          <SendColorFormButton
+            workOrderId={job.wo.id}
+            accountName={job.wo.accountName ?? null}
+            defaultEmail={customerAccount?.email ?? null}
+          />
           <button
             type="button"
             onClick={() => setShowDraft(true)}
@@ -457,7 +536,15 @@ function JobDetail({
 
       {/* Draft preview modal */}
       {showDraft && (
-        <DraftOrderModal job={job} snapshot={snapshot} onClose={() => setShowDraft(false)} />
+        <DraftOrderModal
+          job={job}
+          snapshot={snapshot}
+          onClose={() => setShowDraft(false)}
+          onOpenOrderModal={(supplierAccountId, supplierName) => {
+            setShowDraft(false);
+            onOpenOrderModal(supplierAccountId, supplierName);
+          }}
+        />
       )}
     </div>
   );
@@ -574,16 +661,18 @@ function DraftOrderModal({
   job,
   snapshot,
   onClose,
+  onOpenOrderModal,
 }: {
   job: OpenWorkOrderForMaterials;
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   onClose: () => void;
+  onOpenOrderModal: (supplierAccountId: string, supplierName: string) => void;
 }) {
   // Aggregate by supplier × color × surface for the draft order body
   const groups = useMemo(() => {
     const byMfg = new Map<
       string,
-      { name: string; colors: Map<string, { color: SnapshotPaintColor; rooms: string[] }> }
+      { name: string; supplierAccountId: string | null; colors: Map<string, { color: SnapshotPaintColor; rooms: string[] }> }
     >();
     for (const li of job.lineItems) {
       for (const slot of [li.wall, li.ceiling, li.trim, li.other, li.floor]) {
@@ -593,6 +682,7 @@ function DraftOrderModal({
         if (!bucket) {
           bucket = {
             name: getSupplierName(snapshot, mfgId === "unknown" ? null : mfgId),
+            supplierAccountId: mfgId === "unknown" ? null : mfgId,
             colors: new Map(),
           };
           byMfg.set(mfgId, bucket);
@@ -668,8 +758,17 @@ function DraftOrderModal({
             </div>
             {groups.map((g) => (
               <div key={g.name} className="border border-ppp-charcoal-100 rounded-lg overflow-hidden">
-                <div className="px-3 py-2 bg-ppp-blue-50 border-b border-ppp-blue-100">
-                  <span className="text-xs font-semibold text-ppp-blue-700">{g.name}</span>
+                <div className="px-3 py-2 bg-ppp-blue-50 border-b border-ppp-blue-100 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.name}</span>
+                  {g.supplierAccountId && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenOrderModal(g.supplierAccountId!, g.name)}
+                      className="shrink-0 px-2.5 py-1 rounded text-[11px] font-semibold bg-ppp-blue text-white hover:bg-ppp-blue-600 transition-colors"
+                    >
+                      Order from {g.name.split(" ")[0]} →
+                    </button>
+                  )}
                 </div>
                 <ul className="divide-y divide-ppp-charcoal-100 text-xs">
                   {Array.from(g.colors.values()).map(({ color, rooms }) => (
@@ -694,8 +793,8 @@ function DraftOrderModal({
 
         <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] text-ppp-charcoal-500 italic">
-            Send mechanism pending PPP confirmation (email / PDF / API). Once Katie
-            confirms, this becomes a real &quot;Review &amp; Send&quot; action with audit log.
+            Click <strong>Order from {"{supplier}"}</strong> on a group above to build a
+            review-and-send draft with quantity estimates + the 20-item extras dropdown.
           </div>
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
@@ -704,14 +803,6 @@ function DraftOrderModal({
               className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
             >
               Close
-            </button>
-            <button
-              type="button"
-              disabled
-              title="Send mechanism pending PPP confirmation"
-              className="px-3.5 py-2 rounded-lg bg-ppp-blue/60 text-white text-sm font-medium cursor-not-allowed"
-            >
-              Review &amp; Send (pending)
             </button>
           </div>
         </div>
@@ -818,12 +909,17 @@ function Pill({ children, tone = "neutral" }: { children: React.ReactNode; tone?
 function SendColorFormButton({
   workOrderId,
   accountName,
+  defaultEmail,
 }: {
   workOrderId: string;
   accountName: string | null;
+  /** Customer email from Account.PersonEmail (pre-fills the input).
+   *  Null when SF returned no email — admin must type, and we'll write
+   *  the typed value back to SF in a future enhancement. */
+  defaultEmail?: string | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerEmail, setCustomerEmail] = useState(defaultEmail ?? "");
   const [customerName, setCustomerName] = useState(accountName ?? "");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<
