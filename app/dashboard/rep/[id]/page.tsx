@@ -72,6 +72,29 @@ export default async function RepDetailPage({
 
   // Pull the full snapshot bundle so we can derive everything from one fetch.
   const bundle = await loadDashboardData(sp);
+
+  // Worker-scope guard (DEFENSE-IN-DEPTH).
+  //
+  // Without this guard a worker navigating directly to /dashboard/rep/{other-id}
+  // would hit the page; the snapshot scoping would then filter them down to
+  // 0 matching reps and the find() below would return undefined → 404. THAT
+  // path technically works, but relies on snapshot scoping being intact —
+  // any future regression in scope-snapshot.ts could leak another rep's
+  // entire profile (revenue, deals, customer mix, account stats).
+  //
+  // Explicit check here: if viewer is scoped="my" and the URL id doesn't
+  // match their effective user, render 404 IMMEDIATELY before any data
+  // derivation happens. Admins (scope="all") fall through to the normal
+  // path and can view any rep.
+  if (
+    bundle.viewer &&
+    bundle.viewer.scope === "my" &&
+    bundle.viewer.effectiveUserId &&
+    bundle.viewer.effectiveUserId !== id
+  ) {
+    notFound();
+  }
+
   // Use lifetime for the rep deep-dive so totals/region inference cover the full snapshot.
   const reps: Rep[] = bundle.snapshot
     ? deriveRepsForPeriod(bundle.snapshot, "lifetime")

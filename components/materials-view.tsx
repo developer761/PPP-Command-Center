@@ -88,6 +88,29 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     [snapshot]
   );
 
+  // Karan ask: search for work orders by customer name / WO# / status so
+  // admins (who see hundreds of WOs) can find a specific one fast.
+  // Workers usually have <20 WOs so search is less critical for them but
+  // the field stays visible for both — same UX everyone.
+  const [searchQuery, setSearchQuery] = useState("");
+  const visibleJobs = useMemo<OpenWorkOrderForMaterials[]>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return openJobs;
+    return openJobs.filter((j) => {
+      // Match against the fields a worker/admin would actually type:
+      // customer name, WO number, status string, line-item area labels
+      // (so "kitchen" finds WOs with a kitchen room).
+      const woNumber = (j.wo.workOrderNumber ?? "").toLowerCase();
+      const accountName = (j.wo.accountName ?? "").toLowerCase();
+      const status = (j.wo.status ?? "").toLowerCase();
+      if (woNumber.includes(q) || accountName.includes(q) || status.includes(q)) return true;
+      for (const li of j.lineItems) {
+        if ((li.raw.areaLabel ?? "").toLowerCase().includes(q)) return true;
+      }
+      return false;
+    });
+  }, [openJobs, searchQuery]);
+
   const [activeWoId, setActiveWoId] = useState<string | null>(null);
   const activeJob = useMemo(
     () => openJobs.find((j) => j.wo.id === activeWoId) ?? null,
@@ -319,12 +342,61 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
       {openJobs.length > 0 && (
         <section className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-5">
           <div className="lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden">
-            <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
-              <h3 className="text-sm font-semibold text-ppp-charcoal">Open work orders</h3>
-              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">Soonest jobs first</p>
+            <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] space-y-2.5">
+              <div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-ppp-charcoal">Open work orders</h3>
+                  <span className="text-[10px] text-ppp-charcoal-500 font-mono">
+                    {visibleJobs.length}{searchQuery ? `/${openJobs.length}` : ""}
+                  </span>
+                </div>
+                <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">Soonest jobs first</p>
+              </div>
+              {/* Search — instant client-side filter. Admins see hundreds
+                  of WOs so this is critical for "find Mrs. Smith fast".
+                  Matches customer name, WO #, status, or room labels. */}
+              <div className="relative">
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search customer, WO#, room…"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                />
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 hover:text-ppp-charcoal text-xs"
+                    aria-label="Clear search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
             <ul className="max-h-[640px] overflow-y-auto">
-              {openJobs.map((j) => {
+              {visibleJobs.length === 0 && searchQuery && (
+                <li className="px-5 py-6 text-center text-xs text-ppp-charcoal-500 italic">
+                  No matches for &ldquo;{searchQuery}&rdquo;.
+                </li>
+              )}
+              {visibleJobs.map((j) => {
                 const active = activeWoId === j.wo.id;
                 const formStatus = formStatusByWO.get(j.wo.id);
                 return (
