@@ -40,6 +40,7 @@ const navSections: NavSection[] = [
     heading: "Operations Tools",
     items: [
       { label: "Materials Ordering", href: "/dashboard/materials", icon: <IconPaint /> },
+      { label: "Inbox", href: "/dashboard/inbox", icon: <IconInbox />, adminOnly: true },
     ],
   },
   {
@@ -205,6 +206,13 @@ function IconTruck() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M1 3h15v13H1z M16 8h4l3 3v5h-7V8z M5.5 18.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z M20.5 18.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z" />
+    </svg>
+  );
+}
+function IconInbox() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
     </svg>
   );
 }
