@@ -238,6 +238,14 @@ function resolveLineItems(input: BuildSupplierOrderInput): SupplierOrderLineItem
       if (!colorId) continue;
       const color = input.paintColorsById.get(colorId);
       if (!color) continue;
+      // Paint colors with null manufacturerId can't be attributed to any
+      // supplier — log a warning + skip. SF data corruption case; should
+      // not happen in normal operation. Without this warning the color
+      // would silently disappear from EVERY supplier's order.
+      if (!color.manufacturerId) {
+        console.warn(`[supplier-order/builder] PaintColor ${color.id} (${color.name}) has no manufacturerId — skipping from supplier order ${input.supplierAccountId}`);
+        continue;
+      }
       // Only include if this color is from the target supplier
       if (color.manufacturerId !== input.supplierAccountId) continue;
 

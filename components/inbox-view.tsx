@@ -143,8 +143,15 @@ export default function InboxView() {
         </div>
       )}
       {error && (
-        <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-xl px-4 py-3 text-sm text-ppp-orange-700">
-          Couldn&apos;t load inbox: {error}
+        <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-xl px-4 py-3 text-sm text-ppp-orange-700 flex items-start justify-between gap-3 flex-wrap">
+          <span>Couldn&apos;t load inbox: {error}</span>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="shrink-0 px-3 py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors"
+          >
+            Retry
+          </button>
         </div>
       )}
       {!loading && !error && messages.length === 0 && (

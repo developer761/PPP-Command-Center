@@ -43,6 +43,10 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [transitioning, setTransitioning] = useState<string | null>(null); // order id mid-transition
+  /** Inline error per row — surfaces transition failures non-modally so the
+   *  user can see what went wrong without a blocking alert(). Auto-clears
+   *  after 6s; or admin clicks dismiss. */
+  const [rowError, setRowError] = useState<{ orderId: string; message: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,6 +70,7 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
     nextStatus: "acknowledged" | "delivered" | "cancelled"
   ) => {
     setTransitioning(orderId);
+    setRowError(null);
     // Optimistic update — parent sees the change immediately.
     setOrders((prev) =>
       prev.map((o) =>
@@ -87,14 +92,19 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
         body: JSON.stringify({ supplierOrderId: orderId, status: nextStatus }),
       });
       if (!res.ok) {
-        // Roll back optimistic update on failure
-        void load();
+        // Roll back optimistic update by re-fetching from server
+        await load();
         const data = await res.json().catch(() => ({}));
-        alert(`Status update failed: ${data.message ?? data.error ?? `HTTP ${res.status}`}`);
+        const msg = data.message ?? data.error ?? `HTTP ${res.status}`;
+        setRowError({ orderId, message: msg });
+        // Auto-clear after 6s so the strip doesn't stay stuck on an error
+        setTimeout(() => setRowError((prev) => prev?.orderId === orderId ? null : prev), 6000);
       }
     } catch (err) {
-      void load();
-      alert(`Status update failed: ${err instanceof Error ? err.message : String(err)}`);
+      await load();
+      const msg = err instanceof Error ? err.message : String(err);
+      setRowError({ orderId, message: msg });
+      setTimeout(() => setRowError((prev) => prev?.orderId === orderId ? null : prev), 6000);
     } finally {
       setTransitioning(null);
     }
@@ -118,10 +128,22 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
           const isOpen = transitioning === o.id;
           return (
             <li key={o.id} className="px-5 py-3">
+              {rowError?.orderId === o.id && (
+                <div className="mb-2 bg-ppp-orange-50 border border-ppp-orange-100 rounded px-3 py-2 text-[11px] text-ppp-orange-700 flex items-start justify-between gap-2">
+                  <span>⚠ Couldn&apos;t update status: {rowError.message}</span>
+                  <button
+                    type="button"
+                    onClick={() => setRowError(null)}
+                    className="shrink-0 underline hover:text-ppp-orange-900"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-ppp-charcoal truncate">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <span className="text-sm font-semibold text-ppp-charcoal truncate max-w-[16rem]" title={o.supplier_name}>
                       {o.supplier_name}
                     </span>
                     <StatusPill status={o.status} />

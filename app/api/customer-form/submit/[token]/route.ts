@@ -177,8 +177,12 @@ export async function POST(
     }, { status: 500 });
   }
 
-  // 5. Fire the SF writes. Each gets its own audit row + cache invalidation.
-  if (attempts.length > 0) {
+  // 5. Fire the SF writes — ONLY when this caller is the fresh submitter.
+  // markSubmitted returns fresh=false if the token was already marked by
+  // a concurrent submit (double-click / network retry). Without this gate
+  // the race-loser would re-write the same WOLI fields, double-logging
+  // in sf_writes_audit and burning SF API quota. (Audit-flagged 2026-05-26.)
+  if (submitMark.fresh && attempts.length > 0) {
     const writeResults = await writeSfBatch(attempts, {
       source: "customer_form_submit",
       triggeredByToken: tokenFromUrl,
@@ -190,6 +194,8 @@ export async function POST(
       // error since their form succeeded from their perspective.
       console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl}:`, failed);
     }
+  } else if (!submitMark.fresh) {
+    console.log(`[customer-form] race-lost submit for token ${tokenFromUrl.slice(0, 8)}… — skipping SF writes (winner already fired them)`);
   }
 
   return NextResponse.json({

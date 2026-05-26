@@ -163,25 +163,52 @@ export async function markOpened(
     .is("opened_at", null); // only set if not already opened
 }
 
-/** Mark the customer-form submission. payload is the full form state. */
+/**
+ * Mark the customer-form submission. payload is the full form state.
+ *
+ * Returns:
+ *   { ok: true,  fresh: true  } — this caller IS the first submitter; SF
+ *                                 writes should proceed.
+ *   { ok: true,  fresh: false } — token was already submitted (concurrent
+ *                                 retry or double-click); skip SF writes
+ *                                 to avoid duplicate writes that would
+ *                                 land twice in the audit log.
+ *   { ok: false, error }       — DB write actually failed.
+ *
+ * The `.is("submitted_at", null)` filter ensures only the FIRST update
+ * actually writes (subsequent calls match 0 rows). We use the returned
+ * row count via .select() to detect this — previously we returned ok:true
+ * for both winner AND loser, which let race losers fire SF writes too
+ * (audit-flagged 2026-05-26).
+ */
 export async function markSubmitted(
   token: string,
   payload: Record<string, unknown>
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; fresh: boolean } | { ok: false; error: string }> {
   const sb = adminClient();
-  const { error } = await sb
+  const { data, error } = await sb
     .from("customer_form_tokens")
     .update({
       submitted_at: new Date().toISOString(),
       submitted_payload: payload,
     })
     .eq("token", token)
-    .is("submitted_at", null); // idempotent — only first submit wins
+    .is("submitted_at", null) // idempotent — only first submit wins
+    .select("token");
   if (error) {
     console.error("[customer-form] markSubmitted failed:", error.message);
     return { ok: false, error: error.message };
   }
-  return { ok: true };
+  const updatedRows = data?.length ?? 0;
+  if (updatedRows === 0) {
+    // Token was already submitted — concurrent caller lost the race.
+    // Return ok=true so the customer sees a success page (their data
+    // was captured on the first attempt), but flag fresh=false so the
+    // caller skips SF writes.
+    console.warn(`[customer-form] markSubmitted lost-race for token ${token.slice(0, 8)}… (already submitted)`);
+    return { ok: true, fresh: false };
+  }
+  return { ok: true, fresh: true };
 }
 
 /**

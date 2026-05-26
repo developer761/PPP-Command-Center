@@ -213,11 +213,23 @@ export async function POST(request: Request) {
   }
 
   // Step 3: Stamp the Resend message id on the row so inbound webhook can
-  // thread replies back to this order.
-  await sbAdmin
+  // thread replies back to this order. If THIS update fails, the supplier's
+  // future reply will land in the unmatched bucket — we don't fail the
+  // overall send (admin needs to know the email DID go out) but we surface
+  // the issue in the response so the dashboard can show a soft warning.
+  let messageIdUpdateOk = true;
+  let messageIdUpdateError: string | null = null;
+  const { error: msgIdErr } = await sbAdmin
     .from("supplier_orders")
     .update({ resend_message_id: send.id })
     .eq("id", supplierOrderId);
+  if (msgIdErr) {
+    messageIdUpdateOk = false;
+    messageIdUpdateError = msgIdErr.message;
+    console.error(
+      `[supplier-order/send] failed to stamp resend_message_id ${send.id} on order ${supplierOrderId}: ${msgIdErr.message}. Replies from this supplier will land in the unmatched inbox bucket.`
+    );
+  }
 
   return NextResponse.json({
     ok: true,
@@ -225,5 +237,10 @@ export async function POST(request: Request) {
     poNumber: body.poNumber,
     sentToEmail: body.sentToEmail!.trim().toLowerCase(),
     resendMessageId: send.id,
+    // Soft warning surface — when this is false, future replies from the
+    // supplier may not thread back to this order in the inbox. Email send
+    // itself succeeded.
+    replyThreadingOk: messageIdUpdateOk,
+    replyThreadingError: messageIdUpdateError,
   });
 }
