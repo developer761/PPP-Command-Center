@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { APP_META } from "@/lib/brand";
 import { useViewer } from "@/lib/auth/viewer-context";
 
@@ -64,6 +65,31 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
   const params = useSearchParams();
   const viewer = useViewer();
   const isAdmin = viewer?.isAdmin ?? false;
+
+  // Inbox unread badge — refreshes every 60s while sidebar is mounted, plus
+  // immediately on first paint. Admin-only (worker doesn't see the Inbox
+  // entry, so no need to fetch). Failures fall through silently — badge
+  // just stays at its last value (or 0 on first paint).
+  const [unreadInbox, setUnreadInbox] = useState(0);
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    const fetchCount = async () => {
+      try {
+        const res = await fetch("/api/admin/inbox?kind=all&limit=1");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && typeof data?.summary?.unread === "number") {
+          setUnreadInbox(data.summary.unread);
+        }
+      } catch {
+        // Silent — keep last-known count
+      }
+    };
+    void fetchCount();
+    const id = setInterval(fetchCount, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isAdmin]);
   // Preserve admin view state (?view_as= / ?scope=) across sidebar navigation.
   // Without this, clicking any nav link would drop the impersonation/scope.
   const viewQs = buildViewQs(params);
@@ -117,6 +143,10 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
                   item.href === "/dashboard"
                     ? pathname === "/dashboard"
                     : pathname.startsWith(item.href);
+                // Per-item badge — only the Inbox entry has a live count
+                // today, but the pattern is extensible (add more keys as
+                // future surfaces want unread/alert counts).
+                const badgeCount = item.href === "/dashboard/inbox" ? unreadInbox : 0;
                 return (
                   <li key={item.href}>
                     <Link
@@ -132,7 +162,15 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
                       <span className={active ? "text-ppp-blue" : "text-ppp-charcoal-500"}>
                         {item.icon}
                       </span>
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {badgeCount > 0 && (
+                        <span
+                          className="shrink-0 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-ppp-orange text-white"
+                          aria-label={`${badgeCount} unread`}
+                        >
+                          {badgeCount > 99 ? "99+" : badgeCount}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );
