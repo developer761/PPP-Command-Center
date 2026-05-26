@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
+import { resolveSwatchHex } from "@/lib/customer-form/color-swatch";
 
 /** Color catalog context — fetched once at form mount, shared by every ColorPicker. */
 const CatalogContext = createContext<CatalogState>({ status: "loading" });
@@ -41,13 +42,16 @@ type CatalogState =
   | { status: "ready"; colors: ColorOption[] }
   | { status: "error"; message: string };
 
-/** One color pick per surface slot. The form holds N of these per line item. */
+/** One color pick per surface slot. The form holds N of these per line item.
+ *  When `skipped` is true the customer explicitly opted out of painting this
+ *  surface — the supplier order builder + SF write-back both skip it. */
 type SurfacePick = {
   colorId: string | null;
   colorName: string | null;     // denormalized so we can render label without re-fetching
   colorCode: string | null;
   colorHex: string | null;
   finish: string | null;
+  skipped: boolean;
 };
 
 type LineItemState = {
@@ -171,6 +175,12 @@ export default function CustomerFormView({ token, customerName, formData, copy }
             colorName: state[li.id]?.picks[s]?.colorName ?? null,
             colorCode: state[li.id]?.picks[s]?.colorCode ?? null,
             finish: state[li.id]?.picks[s]?.finish ?? null,
+            // Explicit "customer opted out" — distinct from "left blank /
+            // didn't get to". Submit handler skips writing colors for
+            // both, but the audit trail preserves the intent so admin can
+            // see "customer specifically said don't paint the ceiling"
+            // vs. "customer forgot to pick a color for the ceiling."
+            skipped: state[li.id]?.picks[s]?.skipped ?? false,
           })),
           notes: state[li.id]?.notes ?? "",
         })),
@@ -463,26 +473,80 @@ function SurfaceRow({
   token: string;
   onChange: (patch: Partial<SurfacePick>) => void;
 }) {
+  const toggleSkip = () => {
+    if (pick.skipped) {
+      // Un-skip — clear the skipped flag, leave color/finish empty so
+      // customer picks fresh.
+      onChange({ skipped: false });
+    } else {
+      // Skip — clear any picked color + flag explicitly skipped.
+      onChange({
+        skipped: true,
+        colorId: null,
+        colorName: null,
+        colorCode: null,
+        colorHex: null,
+        finish: null,
+      });
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[110px_1fr_180px] gap-3 sm:items-start">
-      <div className="flex items-center gap-2 sm:pt-2.5">
+      <div className="flex items-center gap-2 sm:pt-2.5 justify-between sm:justify-start">
         <div className="font-condensed text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
           {surface}
         </div>
-      </div>
-      <ColorPicker pick={pick} onPick={onChange} />
-      <div>
-        <select
-          value={pick.finish ?? ""}
-          onChange={(e) => onChange({ finish: e.target.value || null })}
-          className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+        {/* Skip toggle — small text button. When skipped, label changes to
+            "Add color" so customer can revert. Available always so the
+            customer can opt out of any surface they don't want painted. */}
+        <button
+          type="button"
+          onClick={toggleSkip}
+          className="text-[10px] text-ppp-charcoal-500 hover:text-ppp-blue underline-offset-2 hover:underline transition-colors sm:hidden"
         >
-          <option value="">Finish (optional)</option>
-          {FINISH_OPTIONS.map((f) => (
-            <option key={f} value={f}>{f}</option>
-          ))}
-        </select>
+          {pick.skipped ? "Add color" : "Skip this"}
+        </button>
       </div>
+      {pick.skipped ? (
+        <div className="sm:col-span-2 flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-[var(--color-surface-muted)]/40 border border-dashed border-ppp-charcoal-100">
+          <span className="text-sm text-ppp-charcoal-500 italic">
+            Not painting this surface — skipped
+          </span>
+          <button
+            type="button"
+            onClick={toggleSkip}
+            className="text-xs text-ppp-blue hover:text-ppp-blue-700 font-medium shrink-0"
+          >
+            Add color instead
+          </button>
+        </div>
+      ) : (
+        <>
+          <ColorPicker pick={pick} onPick={onChange} />
+          <div className="flex flex-col gap-1">
+            <select
+              value={pick.finish ?? ""}
+              onChange={(e) => onChange({ finish: e.target.value || null })}
+              className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+            >
+              <option value="">Finish (optional)</option>
+              {FINISH_OPTIONS.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+            {/* Desktop-only skip link — under finish dropdown to match
+                visual rhythm. Mobile gets the inline link in the label row. */}
+            <button
+              type="button"
+              onClick={toggleSkip}
+              className="hidden sm:inline-block text-[10px] text-ppp-charcoal-500 hover:text-ppp-blue underline text-right"
+            >
+              Don&apos;t paint this surface
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -563,20 +627,42 @@ function ColorPicker({
     onPick({ colorId: null, colorName: null, colorCode: null, colorHex: null });
   };
 
+  // Resolve a usable swatch for the picked color. Real hex takes priority;
+  // name-keyword match is the visual fallback so customers see "something
+  // like that color" rather than a confusing gray box when SF has no hex.
+  const swatch = pick.colorId
+    ? resolveSwatchHex(pick.colorHex, pick.colorName, pick.colorCode)
+    : null;
+
   return (
     <div ref={wrapRef} className="relative">
       {pick.colorId ? (
         <div className="flex items-center gap-2 border border-ppp-charcoal-100 rounded-lg px-3 py-2 bg-[var(--color-surface-muted)]/40">
-          <div
-            className="h-7 w-7 rounded border border-ppp-charcoal-100 shrink-0"
-            style={{
-              backgroundColor:
-                pick.colorHex && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(pick.colorHex)
-                  ? pick.colorHex
-                  : "var(--color-ppp-charcoal-100, #e5e7eb)",
-            }}
-            aria-hidden
-          />
+          {swatch ? (
+            <div
+              className="h-7 w-7 rounded border border-ppp-charcoal-100 shrink-0 relative"
+              style={{ backgroundColor: swatch.hex }}
+              aria-hidden
+              title={swatch.isApproximate ? "Approximate — actual paint may vary" : undefined}
+            >
+              {swatch.isApproximate && (
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-ppp-charcoal text-white text-[7px] flex items-center justify-center font-bold leading-none">
+                  ~
+                </span>
+              )}
+            </div>
+          ) : (
+            // No swatch resolvable — render a striped pattern so it's
+            // visibly NOT a real color. Code/name still appear next to it.
+            <div
+              className="h-7 w-7 rounded border border-ppp-charcoal-100 shrink-0"
+              style={{
+                background: "repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 4px, #e5e7eb 4px, #e5e7eb 8px)",
+              }}
+              aria-hidden
+              title="No color preview available — see code"
+            />
+          )}
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-ppp-charcoal truncate">
               {pick.colorName}
@@ -622,31 +708,45 @@ function ColorPicker({
               No matches for &ldquo;{query}&rdquo; — try a different name or code.
             </div>
           )}
-          {catalog.status === "ready" && results.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => pickColor(c)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ppp-blue-50/60 transition-colors border-t border-ppp-charcoal-100 first:border-t-0"
-            >
-              <div
-                className="h-5 w-5 rounded border border-ppp-charcoal-100 shrink-0"
-                style={{
-                  backgroundColor:
-                    c.hex && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c.hex)
-                      ? c.hex
-                      : "var(--color-ppp-charcoal-100, #e5e7eb)",
-                }}
-                aria-hidden
-              />
-              <div className="min-w-0 flex-1">
-                <div className="text-ppp-charcoal truncate">{c.name}</div>
-              </div>
-              {c.code && (
-                <span className="font-mono text-[10px] text-ppp-charcoal-500 shrink-0">{c.code}</span>
-              )}
-            </button>
-          ))}
+          {catalog.status === "ready" && results.map((c) => {
+            const rowSwatch = resolveSwatchHex(c.hex, c.name, c.code);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => pickColor(c)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ppp-blue-50/60 transition-colors border-t border-ppp-charcoal-100 first:border-t-0"
+              >
+                {rowSwatch ? (
+                  <div
+                    className="h-5 w-5 rounded border border-ppp-charcoal-100 shrink-0 relative"
+                    style={{ backgroundColor: rowSwatch.hex }}
+                    aria-hidden
+                  >
+                    {rowSwatch.isApproximate && (
+                      <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-ppp-charcoal text-white text-[6px] flex items-center justify-center font-bold leading-none">
+                        ~
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className="h-5 w-5 rounded border border-ppp-charcoal-100 shrink-0"
+                    style={{
+                      background: "repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 3px, #e5e7eb 3px, #e5e7eb 6px)",
+                    }}
+                    aria-hidden
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-ppp-charcoal truncate">{c.name}</div>
+                </div>
+                {c.code && (
+                  <span className="font-mono text-[10px] text-ppp-charcoal-500 shrink-0">{c.code}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -660,5 +760,6 @@ function emptyPick(): SurfacePick {
     colorCode: null,
     colorHex: null,
     finish: null,
+    skipped: false,
   };
 }

@@ -30,6 +30,11 @@ type SubmittedSurface = {
   colorName: string | null;
   colorCode: string | null;
   finish: string | null;
+  /** Customer explicitly opted out of painting this surface. Distinct
+   *  from colorId === null (which could just mean "didn't pick"). The
+   *  submit handler treats both the same way (skips the SF write) but
+   *  preserves the flag in submitted_payload for audit visibility. */
+  skipped?: boolean;
 };
 
 type SubmittedLineItem = {
