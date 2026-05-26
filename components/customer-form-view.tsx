@@ -85,6 +85,15 @@ export default function CustomerFormView({ token, customerName, formData, copy }
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
+  // Delivery address confirmation — seeded from SF Account.BillingAddress.
+  // Customer can edit before submit. Saved into customer_form_tokens.
+  // submitted_payload.deliveryAddress so the supplier-order builder uses
+  // the customer-verified address (preferred) over the stale SF account row.
+  const [deliveryStreet, setDeliveryStreet] = useState(formData.billingAddress.street ?? "");
+  const [deliveryCity, setDeliveryCity] = useState(formData.billingAddress.city ?? "");
+  const [deliveryState, setDeliveryState] = useState(formData.billingAddress.state ?? "");
+  const [deliveryPostalCode, setDeliveryPostalCode] = useState(formData.billingAddress.postalCode ?? "");
+
   // Fetch the full color catalog ONCE on form mount so every ColorPicker
   // filters in-memory (zero latency per keystroke). Previously every keystroke
   // round-tripped to /colors/search — added 200-400ms per character on cell
@@ -167,6 +176,18 @@ export default function CustomerFormView({ token, customerName, formData, copy }
         })),
         globalNotes,
         renderFetchedAt: formData.fetchedAt,
+        // Customer-confirmed delivery address. Persisted to
+        // customer_form_tokens.submitted_payload.deliveryAddress; the
+        // supplier-order builder reads it in preference to the stale SF
+        // Account.BillingAddress. Empty street = customer didn't fill it
+        // in, builder will fall back to the SF account address.
+        deliveryAddress: {
+          name: customerName ?? null,
+          street: deliveryStreet.trim(),
+          city: deliveryCity.trim(),
+          state: deliveryState.trim(),
+          postalCode: deliveryPostalCode.trim(),
+        },
       };
       const res = await fetch(`/api/customer-form/submit/${encodeURIComponent(token)}`, {
         method: "POST",
@@ -220,6 +241,84 @@ export default function CustomerFormView({ token, customerName, formData, copy }
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
           />
         ))
+      )}
+
+      {/* Confirm delivery address — last review before submit. Materials get
+          shipped here unless customer specifies pickup with PPP. Pre-filled
+          from SF Account.BillingAddress so most customers just confirm
+          rather than type. */}
+      {formData.lineItems.length > 0 && (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
+          <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
+            Delivery address
+          </div>
+          <h2 className="font-condensed text-lg sm:text-xl font-bold text-ppp-navy mt-1">
+            Where should we deliver the materials?
+          </h2>
+          <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed">
+            Our team will deliver paint + supplies straight to this address before
+            your job starts. Please correct anything that&apos;s out of date —
+            this is the address our supplier uses.
+          </p>
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                Street address
+              </label>
+              <input
+                type="text"
+                value={deliveryStreet}
+                onChange={(e) => setDeliveryStreet(e.target.value)}
+                placeholder="123 Main St"
+                className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                autoComplete="street-address"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_160px_140px] gap-3">
+              <div>
+                <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                  City
+                </label>
+                <input
+                  type="text"
+                  value={deliveryCity}
+                  onChange={(e) => setDeliveryCity(e.target.value)}
+                  placeholder="Smithtown"
+                  className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                  autoComplete="address-level2"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                  State
+                </label>
+                <input
+                  type="text"
+                  value={deliveryState}
+                  onChange={(e) => setDeliveryState(e.target.value)}
+                  placeholder="NY"
+                  maxLength={2}
+                  className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue uppercase"
+                  autoComplete="address-level1"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+                  ZIP
+                </label>
+                <input
+                  type="text"
+                  value={deliveryPostalCode}
+                  onChange={(e) => setDeliveryPostalCode(e.target.value)}
+                  placeholder="11787"
+                  inputMode="numeric"
+                  className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
+                  autoComplete="postal-code"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Global extra notes */}

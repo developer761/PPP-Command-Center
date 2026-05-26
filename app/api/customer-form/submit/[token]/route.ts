@@ -43,6 +43,17 @@ type SubmitPayload = {
   lineItems: SubmittedLineItem[];
   globalNotes: string;
   renderFetchedAt: string;
+  /** Customer-confirmed delivery address from the form's last step. The
+   *  supplier-order builder reads this in preference to the stale SF
+   *  Account.BillingAddress so the supplier email goes to where the
+   *  customer says materials should go. */
+  deliveryAddress?: {
+    name?: string | null;
+    street: string;
+    city: string;
+    state: string;
+    postalCode: string;
+  };
 };
 
 /** Map a surface name (from Surfaces__c) to the WOLI color field it controls. */
@@ -151,6 +162,7 @@ export async function POST(
   const submitMark = await markSubmitted(tokenFromUrl, {
     lineItems: body.lineItems,
     globalNotes: body.globalNotes,
+    deliveryAddress: body.deliveryAddress ?? null,
     submittedAt: new Date().toISOString(),
   });
   if (!submitMark.ok) {

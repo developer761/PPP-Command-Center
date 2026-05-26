@@ -47,6 +47,16 @@ export type FormRenderData = {
   /** Fresh-fetch timestamp — written to customer_form_tokens.woli_snapshot_at
    *  for drift detection if the rep edits SF mid-form. */
   fetchedAt: string;
+  /** Pre-fill for the "Confirm delivery address" step on the form. Customer
+   *  can edit before submit. Pulled live from the Opp's Account so it
+   *  reflects what SF has TODAY (vs. the snapshot which may be 5min stale).
+   *  Null fields render as empty inputs. */
+  billingAddress: {
+    street: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode: string | null;
+  };
 };
 
 const WOLI_FIELDS = [
@@ -63,13 +73,18 @@ export async function loadFormRenderData(
   try {
     const conn = await getSalesforceClient();
 
-    // Pull the WO header (account + owner via Opportunity relationship, work type)
+    // Pull the WO header (account + owner via Opportunity relationship, work
+    // type, billing address for the delivery-confirm step on the form).
     const woEsc = workOrderId.replace(/'/g, "\\'");
     const woQuery = `
       SELECT Id, WorkOrderNumber, Status, CreatedDate,
              WorkType.Name,
              Opportunity__c, Opportunity__r.Owner.Name,
-             Opportunity__r.Account.Name, Opportunity__r.CloseDate
+             Opportunity__r.Account.Name, Opportunity__r.CloseDate,
+             Opportunity__r.Account.BillingStreet,
+             Opportunity__r.Account.BillingCity,
+             Opportunity__r.Account.BillingState,
+             Opportunity__r.Account.BillingPostalCode
       FROM WorkOrder WHERE Id = '${woEsc}' LIMIT 1
     `.replace(/\s+/g, " ").trim();
     const woResult = await conn.query<Record<string, unknown>>(woQuery);
@@ -117,7 +132,16 @@ export async function loadFormRenderData(
     });
 
     const opp = w.Opportunity__r as Record<string, unknown> | undefined;
-    const accountName = (opp?.Account as { Name?: string } | undefined)?.Name ?? null;
+    const oppAccount = opp?.Account as
+      | {
+          Name?: string;
+          BillingStreet?: string | null;
+          BillingCity?: string | null;
+          BillingState?: string | null;
+          BillingPostalCode?: string | null;
+        }
+      | undefined;
+    const accountName = oppAccount?.Name ?? null;
     const ownerName = (opp?.Owner as { Name?: string } | undefined)?.Name ?? null;
     const closeDate = (opp?.CloseDate as string | undefined) ?? null;
     const workTypeName = (w.WorkType as { Name?: string } | null | undefined)?.Name ?? null;
@@ -132,6 +156,12 @@ export async function loadFormRenderData(
       closeDate,
       lineItems,
       fetchedAt: new Date().toISOString(),
+      billingAddress: {
+        street: oppAccount?.BillingStreet ?? null,
+        city: oppAccount?.BillingCity ?? null,
+        state: oppAccount?.BillingState ?? null,
+        postalCode: oppAccount?.BillingPostalCode ?? null,
+      },
     };
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);
