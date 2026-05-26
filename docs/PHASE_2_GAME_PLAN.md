@@ -1,168 +1,455 @@
-# Phase 2 — Game Plan
+# Phase 2 — Game Plan (v2, updated 2026-05-26)
 
-**Status as of 2026-05-26 (start of week 2):** Customer Color Form pipeline is **complete + production-safe**. Supplier-email pipeline is **next**, with most of it buildable now using sensible defaults — only 4 narrow questions actually require Katie's input, and those plug into a clean integration point at the end.
+**Status of week 2:** Customer Color Form pipeline shipped end-to-end last week. This week ships the supplier-side: Customer submits colors → progress bar advances → supplier email auto-generates with everything pre-filled → worker reviews + adds extras from a dropdown + picks delivery vs pickup → sends → reply lands in Command Center inbox → status advances.
+
+Architecture decisions in this doc fold in **all** of Karan's requirements (progress bar timeline, customer email migration, 20-item dropdown, pickup-vs-delivery, replies in Command Center) and the **26 edge cases** identified in the pre-execution audit.
 
 ---
 
 ## What's already shipped (customer side, complete)
 
-| Surface | Where it lives | Status |
+| Piece | Where | Status |
 |---|---|---|
-| Token system (32-byte, 30-day lifecycle) | `lib/customer-form/tokens.ts` + migration 003 | ✅ |
-| Resend email integration on `orders.precisionpaintingplus.net` (DKIM/SPF verified) | `lib/email/resend.ts` | ✅ |
-| Admin "Send Color Form" modal | `components/materials-view.tsx` `SendColorFormButton` | ✅ |
+| Token system (32-byte, 30-day lifecycle, sent / opened / submitted / expired) | `lib/customer-form/tokens.ts` + migration 003 | ✅ |
+| Resend on `orders.precisionpaintingplus.net` (DKIM + SPF verified) | `lib/email/resend.ts` | ✅ |
+| Admin "Send Color Form" modal on `/dashboard/materials` | `components/materials-view.tsx` | ✅ |
 | Public branded form `/select/[token]` | `app/select/[token]/page.tsx` | ✅ |
-| **Form scoped to ONLY the WOLI rows the estimator tagged** | `lib/customer-form/render-data.ts` | ✅ Customer sees only what needs painting |
-| Instant color search (all 5,762 colors, client-side filter) | `app/api/customer-form/colors/all` + form Context | ✅ |
+| **Form scoped to ONLY the WOLI rows the estimator tagged for this WO** | `lib/customer-form/render-data.ts` | ✅ |
+| Instant color search (5,762 colors, client-side filter, 1h browser cache) | `app/api/customer-form/colors/all` | ✅ |
 | Submit → SF write-back (drift-detected, retried, audited) | `app/api/customer-form/submit/[token]` + `lib/salesforce/writeback.ts` | ✅ |
-| Form-status badges on `/dashboard/materials` (Sent / Opened / Submitted / Expired) | `lib/customer-form/wo-status.ts` | ✅ |
-| Editable email + form templates (no code deploy) | `lib/customer-form/templates.ts` + migration 004 + `/dashboard/settings/templates` | ✅ |
-
-**Result:** Mrs. Smith gets an email → opens form → picks colors per room → submits → her picks land in Salesforce → her WO shows "✓ Submitted" on `/dashboard/materials`. Zero retyping by PPP staff.
+| Form-status badges (Sent / Opened / Submitted / Expired) on materials page | `lib/customer-form/wo-status.ts` | ✅ |
+| Editable email + form templates (no deploy needed) | `lib/customer-form/templates.ts` + migration 004 | ✅ |
 
 ---
 
-## What's next (supplier side)
+## Phase 2A — Customer email + form auto-populate (Wed)
 
-The **customer submitting their colors automatically produces the data for the supplier email** — that's the magic Karan asked for. The work below is mostly wiring that auto-generation to the dashboard so a PPP worker reviews + sends with one click.
+### A.1 Pull customer email + address into the SF snapshot
+Account snapshot currently misses two critical fields. Adding:
+- `Account.PersonEmail` (customer email — Person Account model) OR `Account.Email` (custom field if PPP uses business Accounts)
+- `Account.BillingStreet`, `BillingCity`, `BillingState`, `BillingPostalCode` (delivery address default)
 
-### Phase 2A — Auto-generated supplier email draft (ships THIS WEEK, no blockers)
+Adds ~15 chars of payload per Account. Negligible impact.
 
-**Goal:** Replace the disabled "Review & Send" button on `/dashboard/materials` with a real draft modal. Admin clicks → sees the fully-populated supplier email body → reviews → sends.
+### A.2 Pre-fill the "Send Color Form" modal
+- Email field pre-populated from `Account.PersonEmail`
+- Yellow chip "no email on file" when SF returns null → admin types manually + the value is written BACK to SF Account.PersonEmail so next time it's there
+- Customer name pre-populated from `Account.Name`
+- Validation: email shape + domain check (block sending to `@precisionpaintingplus.*` to avoid accidentally sending to PPP staff)
 
-#### What gets built
-
-1. **`lib/supplier-order/builder.ts`** — generates the supplier email draft from snapshot data + customer-submitted picks:
-   - **Header:** PPP account # (env var: `PPP_BM_ACCOUNT_NUMBER`, `PPP_SW_ACCOUNT_NUMBER`, etc.), auto-generated PO (`PPP-WO00012345-001`), required-by date (default: WO close date − 3 days)
-   - **Customer + job context:**
-     - Customer name (from `customer_form_tokens.customer_name`)
-     - **Delivery address** (priority order):
-       1. From the customer form if we added a "confirm delivery address" field (see §A.3 below)
-       2. Fallback to `Account.BillingAddress` from Salesforce
-       3. Last-resort: PPP warehouse address (env var: `PPP_WAREHOUSE_ADDRESS`)
-     - WO number + scheduled start
-   - **Per-color line items** grouped by manufacturer (BM block, SW block, etc.):
-     - Color name + code (e.g. "Stardust 2108-40")
-     - Product line (`Regal Select` / `Advance` — defaultable per surface type)
-     - Finish (from the customer form pick)
-     - Estimated quantity = `sqft × coats / 350` (350 sqft/gallon default; admin can override per line)
-     - Surface this color is for (Walls / Trim / Ceiling)
-   - **Special instructions** — freeform textarea on the draft modal, persisted to the order row
-   - **Reply-to:** `orders@orders.precisionpaintingplus.net` (already configured; per Karan's instruction this lands in the Command Center inbox — see §B reply-handling)
-
-2. **`supplier_orders` table** (migration 005):
-   ```
-   id, work_order_id, supplier_account_id (BM / SW / etc.),
-   po_number, draft_body, special_instructions,
-   delivery_address (json), required_by_date,
-   sent_at, sent_to_email, resend_message_id,
-   status (draft / sent / acknowledged / delivered / received / failed),
-   created_by_user_id, created_at, updated_at
-   ```
-
-3. **`/api/admin/supplier-order/draft` (GET)** — returns the auto-generated draft for a given WO. Idempotent — running twice returns the same PO number.
-
-4. **`/api/admin/supplier-order/send` (POST)** — accepts admin edits + sends via Resend, writes the row, returns the order id.
-
-5. **Supplier Order Draft Modal** — replaces the disabled "Review & Send" button:
-   - Left: read-only summary (customer, WO, colors picked, qty estimates)
-   - Right: editable email body (full text) + delivery-address picker + special instructions
-   - Bottom: "Copy to Clipboard" (works without Katie's input — admin can paste into Gmail today) + "Send" button (queued until §A.6 done)
-
-6. **Per-supplier templates** — same single-row pattern as customer templates, but keyed by `Account.Id`. Migration 006: `supplier_email_templates`. Defaults shipped in `lib/supplier-order/templates.ts`. BM vs SW vs others can have different greeting / signoff / order-line format. Editable via `/dashboard/settings/templates` (extend the existing page with a per-supplier section).
-
-7. **Order status badge on each WO card** (`/dashboard/materials`) — next to the form-status badge. Shows: "📤 Ordered 5/27 · BM" → "✓ Delivered 5/30". Stage transitions are admin-driven for now (admin clicks "Mark delivered" after the supplier confirms).
-
-8. **Customer-side: optional "confirm delivery address" step** on `/select/[token]` — last step before submit. Pre-filled from `Account.BillingAddress`; customer can edit. Saved into `customer_form_tokens.submitted_payload.deliveryAddress`. Pulled by the supplier-order builder.
-
-#### What this enables today
-- Worker on `/dashboard/materials` sees Mrs. Smith's WO with the green "✓ Submitted" badge
-- Clicks "Order Materials" → draft modal pops with the full BM email pre-filled (her name, address, WO #, every color + finish + quantity)
-- Worker reviews the qty estimates, tweaks if needed, hits Send
-- Order goes out to `orders@benjaminmoore.com` (or whatever Katie says)
-- BM replies → reply lands in the Command Center inbox (see §B)
-- Worker marks "delivered" when materials arrive
+### A.3 Customer email migration (back-fill what's already in SF)
+- One-shot script `/api/admin/customer-email-backfill` (admin-only) — scans all Accounts, reports how many have email vs missing
+- Surface counts on a new `/dashboard/settings/customer-data` admin page: "X of Y customers have email on file. Click below to filter the WO list to ones missing email so you can add it."
+- Per-WO: the materials page's WO card shows a small "add email" icon when email is missing → opens a 1-field modal → writes back to SF
 
 ---
 
-### Phase 2B — Reply inbox in the Command Center (parallel work)
+## Phase 2B — Progress Bar Timeline (Wed)
 
-Per Karan's instruction: **all supplier replies + customer form submissions surface in the Command Center, not Gmail.**
+Per Karan's explicit ask, every WO needs a visible **stage timeline** so PPP staff see exactly where this customer is in the pipeline.
 
-**Architecture:**
-1. **Resend inbound webhook** — Resend forwards every email sent to `orders@orders.precisionpaintingplus.net` to `/api/webhooks/resend-inbound`
-2. **`/api/webhooks/resend-inbound`** — validates HMAC, parses sender + subject + body + In-Reply-To header, threads to the original send by:
-   - **Customer-form replies** → match by `customer_form_tokens.token` referenced in the original message-ID
-   - **Supplier-order replies** → match by `supplier_orders.resend_message_id` or PO number in subject
-3. **`inbox_messages` table** (migration 007):
-   ```
-   id, kind (customer_reply / supplier_reply / unmatched),
-   linked_token, linked_order_id,
-   from_email, subject, body_text, body_html,
-   resend_message_id, in_reply_to,
-   received_at, read_by_user_id, read_at, archived_at
-   ```
-4. **`/dashboard/inbox` page** — list view + thread view, filter by kind (customer vs supplier), unread badge in the sidebar
-5. **Sidebar nav** — new entry "Inbox" with unread count chip
+### B.1 Stage model
 
-Effort: ~3-4h to ship the core. The first slice can land WITHOUT the inbox UI (just persist messages to Supabase; worker reads in Gmail until the UI lands).
+```
+[Form Sent] → [Customer Opened] → [Customer Submitted] → [Supplier Order Drafted] → [Supplier Order Sent] → [Supplier Confirmed] → [Materials Delivered] → [Job Complete]
+   ✓ 5/26      ✓ 5/26                ✓ 5/27                    ✓ 5/27                  ✓ 5/27               (waiting on BM)         —                         —
+   2:14pm      2:51pm                 9:22am                     10:01am                 10:03am
+```
+
+### B.2 Component: `<WorkOrderProgressBar woId={...} />`
+- Horizontal stepper, mobile-responsive (becomes vertical on `<sm`)
+- Each step: dot + label + timestamp when reached (or "—" if not)
+- Color coding: green = complete, blue = current, charcoal = not yet, orange = stuck (e.g., form sent but customer hasn't opened in 3+ days)
+- Renders in two places:
+  1. **Sticky strip at the top of the right detail pane** in `/dashboard/materials` (above line items)
+  2. **Rep profile** `/dashboard/rep/[id]/page.tsx` — at the top of each Upcoming Work row (collapsed; expand for full timeline)
+
+### B.3 Data source
+- Stages 1-3 (form sent / opened / submitted) — from `customer_form_tokens` (already exists)
+- Stages 4-6 (supplier drafted / sent / confirmed) — from `supplier_orders` (new — see §C)
+- Stages 7-8 (delivered / complete) — admin marks via the timeline component (clicks "Mark delivered" → updates `supplier_orders.delivered_at` + WO status indirectly)
+
+### B.4 Edge cases handled
+- Form never sent (no token yet) → entire bar shows as "not started" with a "Start: Send Color Form →" CTA
+- Customer never opens form (stuck at "sent" for 3+ days) → step turns orange + "Send reminder" CTA appears
+- Customer opens but doesn't submit (stuck at "opened" for 5+ days) → step turns orange + "Resend with new link" CTA
+- Multiple suppliers per WO → stages 4-6 each get a sub-row per supplier ("BM drafted ✓ · SW drafted ✓ · BM sent ✓ · SW sent —")
 
 ---
 
-### Phase 2C — The 4 questions Katie needs to answer
+## Phase 2C — Supplier email auto-generation + extras dropdown (Wed-Thu)
 
-These DON'T block Phase 2A from shipping. They determine the **last 5% — which email address the orders go to + small format tweaks per supplier**:
+### C.1 `supplier_orders` table (migration 005)
 
-| Q | Why it matters | Default until Katie answers |
+```sql
+CREATE TABLE supplier_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  work_order_id TEXT NOT NULL,
+  work_order_number TEXT,
+  supplier_account_id TEXT NOT NULL,        -- SF Account.Id of the supplier
+  supplier_name TEXT NOT NULL,              -- denormalized for display
+  po_number TEXT NOT NULL UNIQUE,           -- e.g. PPP-WO00012345-BM-001
+  draft_body TEXT,                          -- admin-edited final email body
+  special_instructions TEXT,                -- freeform admin notes
+  -- Delivery
+  fulfillment_method TEXT NOT NULL,         -- 'delivery' (default) | 'pickup'
+  delivery_address JSONB,                   -- full address; null when pickup
+  pickup_location TEXT,                     -- supplier store ref; null when delivery
+  required_by_date DATE,
+  -- Line items
+  line_items JSONB NOT NULL,                -- normalized array (see C.2)
+  extras JSONB DEFAULT '[]'::jsonb,         -- worker-added extras from dropdown
+  -- Lifecycle
+  status TEXT NOT NULL DEFAULT 'draft',     -- draft / sent / acknowledged / delivered / cancelled / failed
+  sent_at TIMESTAMPTZ,
+  sent_to_email TEXT,
+  resend_message_id TEXT,
+  acknowledged_at TIMESTAMPTZ,
+  delivered_at TIMESTAMPTZ,
+  cancelled_at TIMESTAMPTZ,
+  failure_reason TEXT,
+  -- Audit
+  created_by_user_id UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Dedupe guard — prevents accidental double-send on rapid click
+  CONSTRAINT supplier_orders_no_dup_send UNIQUE (work_order_id, supplier_account_id, status)
+    DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX supplier_orders_wo_idx ON supplier_orders (work_order_id);
+CREATE INDEX supplier_orders_status_idx ON supplier_orders (status, updated_at DESC);
+```
+
+### C.2 `lib/supplier-order/builder.ts`
+Auto-generates a draft from snapshot data + the customer's submitted picks + worker's extras + delivery mode:
+
+```typescript
+buildSupplierOrderDraft({
+  workOrder,                  // SnapshotWorkOrder
+  customerToken,              // CustomerFormToken (submitted)
+  supplierAccountId,          // BM / SW / etc.
+  fulfillmentMethod,          // 'delivery' | 'pickup'
+  extras,                     // Array<ExtraItem> from worker dropdown
+  specialInstructions,        // freeform
+}): SupplierOrderDraft
+```
+
+Returns:
+- `poNumber` — auto-generated, format `PPP-{woNumber}-{supplierCode}-{nnn}`. NEXT_VAL via DB sequence to prevent race collisions.
+- `emailBody` — formatted plain-text:
+  ```
+  To: orders@benjaminmoore.com    ← Phase 2C.5
+  From: orders@orders.precisionpaintingplus.net
+  Reply-To: orders@orders.precisionpaintingplus.net   ← lands in Command Center inbox
+  Subject: PPP Order #PPP-WO00012345-BM-001 — Jane Smith (WO 00012345)
+
+  Hi Benjamin Moore team,
+
+  Please prepare the following order:
+
+  PPP Account: [PPP_BM_ACCOUNT_NUMBER env var]
+  PO Number: PPP-WO00012345-BM-001
+  Required by: Wed May 29
+
+  CUSTOMER + JOB
+  Customer: Jane Smith
+  Work Order: #00012345
+  Job scheduled: Fri May 31
+  Fulfillment: DELIVERY to customer address
+  Deliver to:
+    Jane Smith
+    123 Main St
+    Smithtown, NY 11787
+
+  COLORS
+
+  Interior — Master Bedroom
+  - Walls — Stardust (2108-40), Regal Select Eggshell × 2 gal
+  - Trim  — White Heron (OC-57), Advance Semi-Gloss × 1 gal
+
+  Interior — Living Room
+  - Walls — Smoky Taupe (983), Regal Select Eggshell × 3 gal
+
+  EXTRAS (added by PPP worker)
+  - 9" microfiber roller covers × 6
+  - 2" angled sash brush × 2
+  - 12oz painter's tape × 4
+  - 9×12 canvas drop cloth × 2
+
+  SPECIAL INSTRUCTIONS
+  Customer prefers AM delivery. Garage code is in scheduling notes.
+
+  Reply to this email to confirm + provide delivery date / tracking.
+
+  Thanks,
+  Precision Painting Plus
+  ```
+
+- `quantityEstimates` — per-color: `Math.ceil(sqft × coats / coveragePerGallon)` with `coveragePerGallon` defaulting to 350 (admin can override per line)
+
+### C.3 The 20-item Extras Dropdown
+
+Catalog stored in `supplier_extras` table (migration 005b) so PPP can edit without a deploy:
+
+```sql
+CREATE TABLE supplier_extras (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,                 -- "9 inch microfiber roller cover"
+  unit TEXT NOT NULL DEFAULT 'each',  -- each / box / case / gallon
+  default_qty INTEGER DEFAULT 1,
+  -- Optional preferred supplier — if set, only shown for that supplier
+  preferred_supplier_id TEXT,
+  -- Active flag for soft-removal
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Seed Karan's 20 items via INSERT statements (admin can edit/add via UI later)
+INSERT INTO supplier_extras (name, unit, default_qty, sort_order) VALUES
+  ('9" microfiber roller cover', 'each', 6, 10),
+  -- ...19 more, awaiting Karan's list
+  ;
+```
+
+**Admin UI**: new section on `/dashboard/settings/templates` ("Extras catalog") lets admin add / edit / disable items in the same editor pattern.
+
+**Worker UI** (supplier order modal):
+- Multi-select chips for the extras
+- Per-extra qty stepper (default from `supplier_extras.default_qty`)
+- Selected items append to the EXTRAS section of the draft email body
+- Searchable when the catalog grows beyond 20 items
+
+### C.4 Pickup vs Delivery toggle
+
+Radio buttons in the draft modal:
+- **Delivery to customer** (DEFAULT for most jobs) → uses customer address from form submission OR Account.BillingAddress fallback. The address chip shows "From customer form" or "From SF Account" so admin knows the source. Admin can override.
+- **Pickup at supplier** (rare edge case) → admin picks supplier branch from a small dropdown (or types). Email body changes from "Please deliver to:" → "We will pick up at your [Smithtown] store on [date]"
+
+Stored as `fulfillment_method` + `delivery_address` JSON or `pickup_location` text in `supplier_orders`.
+
+### C.5 Email destination per supplier
+
+Where each supplier's order goes is per-supplier config — needs to be set by Katie BUT we don't wait on her. Default behavior: stored in a `supplier_settings` table (single row per supplier), pre-seeded with placeholder addresses, editable via the templates settings page:
+
+```sql
+CREATE TABLE supplier_settings (
+  supplier_account_id TEXT PRIMARY KEY,
+  supplier_name TEXT NOT NULL,
+  order_email TEXT,             -- where outbound orders go
+  ppp_account_number TEXT,      -- our acct # with them
+  pickup_locations JSONB,       -- [{name, address}] for the pickup dropdown
+  preferred_template_id TEXT,   -- key into supplier_email_templates
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Until Katie fills it in, the "Send" button shows a soft warning: "No order email set for Benjamin Moore yet — set it in Settings → Suppliers, or use Copy-to-Clipboard." The **Copy-to-Clipboard button works immediately** so PPP staff get value on day 1 without any waiting.
+
+### C.6 Per-supplier email templates
+
+Same pattern as customer templates — code defaults + DB overrides. Migration 006 adds `supplier_email_templates` (keyed by `supplier_account_id`). Default template ships in `lib/supplier-order/templates.ts`. The templates editor page gets a new section: "Per-supplier email templates" with a dropdown to pick BM / SW / etc.
+
+---
+
+## Phase 2D — Supplier Order Draft Modal (Thu)
+
+Replaces the disabled "Review & Send" button on `/dashboard/materials` right detail pane.
+
+**Layout (mobile-first):**
+
+```
+┌─────────────────────────────────────────────┐
+│  Order Materials — WO #00012345 — Jane Smith │
+│  ────────────────────────────────────────── │
+│  [Stepper: ✓ Form Submitted → Order]         │
+├─────────────────────────────────────────────┤
+│  SUPPLIER                                    │
+│  ◉ Benjamin Moore (5 colors)                 │
+│  ○ Sherwin Williams (1 color)                │
+├─────────────────────────────────────────────┤
+│  FULFILLMENT                                 │
+│  ◉ Deliver to customer                       │
+│    Jane Smith, 123 Main St, Smithtown NY     │
+│    [Edit address]                            │
+│  ○ Pickup — Smithtown store (12 mi)          │
+├─────────────────────────────────────────────┤
+│  EXTRAS                                      │
+│  ☑ 9" microfiber roller × 6                  │
+│  ☑ 2" angled brush × 2                       │
+│  ☐ 12oz painter's tape                       │
+│  ... 17 more  [Search]                       │
+├─────────────────────────────────────────────┤
+│  SPECIAL INSTRUCTIONS                        │
+│  [textarea, admin freeform]                  │
+├─────────────────────────────────────────────┤
+│  EMAIL PREVIEW (editable)                    │
+│  [Big textarea showing full draft body —     │
+│   admin can edit ANY line before sending]    │
+├─────────────────────────────────────────────┤
+│  [Copy to Clipboard]  [Send to BM] →         │
+└─────────────────────────────────────────────┘
+```
+
+**Send button states:**
+- Disabled while loading
+- Disabled if `supplier_settings.order_email` not set → "Set BM's order email in Settings → Suppliers first"
+- Enabled when ready → triggers `/api/admin/supplier-order/send`
+
+**Idempotency**: once status=`sent`, the modal re-opens in read-only "Order #PPP-WO… sent at 10:01am" mode with options to **Mark Acknowledged** / **Mark Delivered** / **Cancel + Re-draft**.
+
+---
+
+## Phase 2E — Resend inbound webhook + `/dashboard/inbox` (Fri)
+
+Per Karan: **ALL supplier replies + customer follow-ups land in the Command Center, not Gmail.**
+
+### E.1 Resend inbound config
+- Configure `orders@orders.precisionpaintingplus.net` as a Resend inbound address (dashboard setting; Katie does once)
+- Resend POSTs incoming emails to `/api/webhooks/resend-inbound`
+- HMAC signature verified using `RESEND_WEBHOOK_SECRET` env var
+
+### E.2 `/api/webhooks/resend-inbound` route
+- Parses sender + subject + body (text + html) + `In-Reply-To` header
+- Matches to existing thread:
+  1. By `Resend message_id` in `In-Reply-To` (most reliable)
+  2. By PO number string in subject (`PPP-WO00012345-BM-001`)
+  3. By customer email matching an active `customer_form_tokens` row
+  4. If none match → goes to "Unmatched" triage bucket
+
+### E.3 `inbox_messages` table (migration 007)
+
+```sql
+CREATE TABLE inbox_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind TEXT NOT NULL,                  -- customer_reply / supplier_reply / unmatched
+  linked_token TEXT,                   -- customer_form_tokens.token
+  linked_order_id UUID,                -- supplier_orders.id
+  linked_work_order_id TEXT,           -- denormalized for filtering
+  from_email TEXT NOT NULL,
+  from_name TEXT,
+  subject TEXT,
+  body_text TEXT,
+  body_html TEXT,
+  resend_message_id TEXT UNIQUE,
+  in_reply_to TEXT,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  read_by_user_id UUID,
+  read_at TIMESTAMPTZ,
+  archived_at TIMESTAMPTZ
+);
+
+CREATE INDEX inbox_messages_kind_unread_idx ON inbox_messages (kind, read_at)
+  WHERE archived_at IS NULL;
+CREATE INDEX inbox_messages_wo_idx ON inbox_messages (linked_work_order_id);
+```
+
+### E.4 `/dashboard/inbox` page
+- **List view**: unread badges, filter tabs (All / Customer / Supplier / Unmatched), search
+- **Thread view**: original outbound + every reply, threaded by message-id
+- **Sidebar nav**: new entry "Inbox" with unread count chip (red dot when >0)
+- **Per-WO drill-in**: from materials page, "View messages for this WO" link → filtered inbox
+
+---
+
+## Phase 2F — The 4 things still needing Katie's input
+
+These DO NOT block Phase 2 from shipping with sensible defaults. They're the 5% polish:
+
+| Q | Default until answered | Where it lives |
 |---|---|---|
-| 1. What's the BM order format? Plain email / PDF / portal? | Plain-text email is what we ship by default. If they need PDF or portal upload, we add an export button. | Plain email |
-| 2. PPP's account number with BM, SW, Romeo's, etc.? | Goes in every order email header. | Env var per supplier; ship without values, supplier draft shows `[ACCOUNT #]` placeholder until set |
-| 3. Default delivery address — warehouse or job site? | Customer-form delivery-address step picks this default. | Job site (from Account.BillingAddress); worker can override per order |
-| 4. Where supplier replies should go? | Determines Resend inbound config. | Command Center inbox (already decided per Karan's directive) |
-
-The integration point: when Katie answers, we update env vars (Q2) + tweak one config object in `lib/supplier-order/builder.ts` (Q1) + change a default constant (Q3). 30 min of work, max.
+| BM / SW order email + format | Placeholder address + "Set in Settings → Suppliers" hint on Send button. Copy-to-Clipboard works today. | `supplier_settings.order_email` |
+| PPP's account # per supplier | Email shows `[ACCOUNT #]` placeholder until set | `supplier_settings.ppp_account_number` |
+| Default delivery — customer house or warehouse? | **Customer house** (per Karan's directive) | Hardcoded default, per-order override |
+| Reply destination | **Command Center inbox** (locked) | Resend inbound webhook |
 
 ---
 
-## Sequencing (ship plan for this week)
+## Sequencing — daily ship plan (this week)
 
 | Day | What ships | Hours |
 |---|---|---|
-| Tue (today) | Audit + UX polish (DONE in commit d6de960) + this game plan doc | 1h |
-| Wed | Migration 005 + `lib/supplier-order/builder.ts` + draft generator (copy-to-clipboard works without Katie's input) | 2-3h |
-| Wed | Supplier Order Draft Modal in materials-view, replaces disabled "Review & Send" button | 1h |
-| Thu | `/api/admin/supplier-order/send` (Resend send + DB write + status badge) | 1-2h |
-| Thu | Per-supplier templates (`supplier_email_templates` migration + extend templates editor) | 1h |
-| Fri | Resend inbound webhook + `inbox_messages` table + minimal `/dashboard/inbox` page | 3-4h |
-| Fri | Customer form "confirm delivery address" step | 30m |
-| When Katie answers | Update env vars (account #s) + delivery default + format tweaks | 30m |
-| **Total** | **Phase 2 fully shipped** | **~10-13h** |
+| **Tue (today, done)** | Audit + scorecard UX polish (`d6de960`) + this updated plan (`674ef8b` v1, this v2 ships before exec) | 2.25h ✅ |
+| **Wed** | Migration 005 + customer email/address in snapshot + `supplier_orders` table + `lib/supplier-order/builder.ts` + extras catalog + progress-bar component | 4-5h |
+| **Wed** | Customer email pre-fill modal + back-fill admin page + "Mark email" UI on materials page | 1h |
+| **Thu** | Supplier Order Draft Modal (full UI) + `/api/admin/supplier-order/send` + status badges on WO cards | 3-4h |
+| **Thu** | Per-supplier templates + supplier settings page + the 20-item dropdown + pickup/delivery toggle | 2h |
+| **Fri** | Resend inbound webhook + `inbox_messages` table + `/dashboard/inbox` page | 3-4h |
+| **Fri** | Customer-form "confirm delivery address" step + drift detection if customer changes address | 1h |
+| **When Katie answers** | Update supplier_settings rows (account #, order emails) + tweak format if needed | 30m |
+| **Total** | **Phase 2 fully shipped** | **~14-17h this week** |
 
 ---
 
-## What "perfect" looks like (definition of done for Phase 2)
+## Edge cases handled (the 26)
 
-End-to-end test PPP staff can run on launch:
+Catalog of every edge case I identified during the pre-build audit, with where each is addressed:
 
-1. Pick any open paint-job WO on `/dashboard/materials`
-2. Click "Send Color Form" → customer email goes out under the editable template
-3. Customer opens link → form scoped to ONLY their WO's lines → instant color search → picks colors per room → confirms delivery address → submits
-4. WO card flips to "✓ Submitted" + the colors land in Salesforce on the WOLI rows
-5. Worker clicks "Order Materials" → draft modal pre-fills the supplier email with EVERYTHING (PPP account #, PO, customer + address, per-color line items + finishes + qty estimates, required-by date)
-6. Worker reviews qty estimates, adds special instructions, hits Send
-7. Order email goes to BM. Reply lands in `/dashboard/inbox` (NOT Gmail).
-8. Worker reads the reply (BM's confirmation + delivery date), marks order "acknowledged" → "delivered" as it progresses
-9. Every step is editable via `/dashboard/settings/templates` — Katie can tweak the customer email, the form thank-you message, the BM email greeting, etc. without a deploy
-
-**No retyping. No copy-pasting. No "did Mrs. Smith pick her colors?" question. Replies all in one place.**
+| # | Edge case | Handled in |
+|---|---|---|
+| 1 | Customer has no email in SF | A.2 — pre-fill empty + manual entry + writeback |
+| 2 | Resend hard bounce | Token status `bounced` → badge "Bounced" + Resend webhook |
+| 3 | Cross-device form session | Token in URL; no state |
+| 4 | Customer wants to redo after submit | "Resend form" button invalidates old token, creates new |
+| 5 | Admin sends form twice | Latest-token-wins in `getFormStatusByWO` |
+| 6 | Customer submits partial picks | Submit endpoint skips empty colorIds |
+| 7 | WO has no line items | "No rooms detailed" message |
+| 8 | Order attempted before customer submits | "Wait for customer" or "Estimate from defaults" mode |
+| 9 | Multiple suppliers per WO | One `supplier_orders` row per supplier; modal lets admin pick which to draft first |
+| 10 | Rep changes WOLI between form submit + supplier order | Drift detection at order draft time + warning |
+| 11 | PO number collision (race) | DB sequence + UNIQUE constraint |
+| 12 | Resend send fails post-DB-write | status=`failed` + retry button |
+| 13 | Customer email = PPP staff domain | Validation blocks `@precisionpaintingplus.*` |
+| 14 | Pickup vs delivery option | C.4 — radio toggle |
+| 15 | 20-item dropdown | C.3 — `supplier_extras` table |
+| 16 | Multi-supplier extras | Extras attach to a specific supplier order at modal time |
+| 17 | Customer is a business (Contact email, not Account) | Fallback chain: PersonEmail → Account.Email → top Contact.Email |
+| 18 | Form expires mid-flow | Submit endpoint catches expiry → 410 + clean UI |
+| 19 | Special chars / emoji in notes | SF text fields accept; truncate at 32k chars |
+| 20 | Supplier requires PDF | Future (Phase 2.1) — Resend supports attachments |
+| 21 | Required-by date in the past | Default = max(WO close date, today + 3 days) |
+| 22 | PPP warehouse address not configured | env var fallback + admin warning |
+| 23 | Worker double-clicks Send | Button disabled after click + DB UNIQUE constraint |
+| 24 | Customer's SF address is wrong | Form "confirm delivery address" step — saved into token + flagged to admin if changed |
+| 25 | Supplier reply with weird subject | Match by message-id first, PO# second, customer email third, else "unmatched" bucket |
+| 26 | Stale form-status on materials page | `getFormStatusByWO` reads Supabase live (not the SF snapshot) |
 
 ---
 
-## What I need from you (only 4 things)
+## Definition of done
 
-These are all NICE-TO-HAVE — Phase 2A ships without them; they enable the final 5%:
+End-to-end test PPP staff can run:
 
-1. Get Katie to confirm the 4 questions in §2C (BM order format, account #s, delivery default, reply destination)
-2. Configure env vars in Vercel: `PPP_WAREHOUSE_ADDRESS`, `PPP_BM_ACCOUNT_NUMBER`, `PPP_SW_ACCOUNT_NUMBER`, supplier email addresses
-3. Run migrations 005 + 006 + 007 in Supabase SQL Editor (I'll provide each as it ships)
-4. Configure Resend inbound webhook on `orders.precisionpaintingplus.net` (DNS already verified; just needs the webhook endpoint URL added in Resend dashboard) — instructions in §2B comments
+1. Worker opens any open paint-job WO on `/dashboard/materials`
+2. Progress bar shows: ⚪ Form Sent · ⚪ Opened · ⚪ Submitted · ⚪ Order Drafted · ⚪ Sent · ⚪ Acknowledged · ⚪ Delivered · ⚪ Complete
+3. Worker clicks "Send Color Form" — email pre-fills Mrs. Smith's name + email from SF, applies the editable template, scopes the form to only her WO's WOLI rows
+4. Bar advances: ✓ Form Sent (timestamp)
+5. Mrs. Smith opens link → form scoped to her WO → instant color search → picks colors → confirms address → submits
+6. Bar advances: ✓ Opened · ✓ Submitted (with timestamps). Colors land in SF.
+7. Worker clicks "Order Materials" → draft modal opens with EVERYTHING pre-filled: customer + delivery address (from form), per-color line items + finishes + qty estimates, PPP account # with BM, PO number, required-by date.
+8. Worker selects 4 items from the 20-item Extras dropdown (rollers, brushes, tape, drop cloth) — appended to email automatically
+9. Worker toggles delivery mode (defaults to "to customer house"; toggles to "pickup" for rare edge cases)
+10. Worker reviews the full email preview, tweaks special instructions, hits Send
+11. Bar advances: ✓ Order Drafted · ✓ Sent (timestamps). Email goes to BM.
+12. BM replies → reply lands in `/dashboard/inbox` (NOT Gmail). Inbox sidebar shows unread count chip.
+13. Worker reads BM's confirmation in the in-app inbox, clicks "Mark Acknowledged" on the timeline
+14. Bar advances: ✓ Acknowledged
+15. Materials arrive at Mrs. Smith's house. Worker clicks "Mark Delivered" on the timeline
+16. Bar advances: ✓ Delivered
+17. Every customer-facing string (form copy, customer email, supplier email greeting/signoff) is editable from `/dashboard/settings/templates` — no deploys
+
+**Zero retyping. No copy-pasting from Salesforce to email. Replies all in Command Center. Progress visible at a glance per WO. Done.**
+
+---
+
+## What I need from you to start executing
+
+Just two things:
+
+1. **Confirm this plan covers everything** you wanted — especially the progress bar timeline, customer email migration / pre-fill / writeback, the 20-item dropdown, the pickup/delivery toggle, and the Command Center inbox. If anything's off I'll adjust before building.
+
+2. **The 20 items list** — you said you'd send 20 items workers might order. Once I have those I'll seed the migration with them. Until you send, I'll seed with reasonable defaults (rollers, brushes, tape, drop cloths, sandpaper, primer, putty, paint thinner, etc.) — you can edit via the Settings → Extras catalog page after.
+
+That's it. After your green light I start with Phase 2A migration + builder. Cumulative phase 2 ship estimate: ~14-17h spread Wed-Fri.
