@@ -330,7 +330,7 @@ export default async function RepDetailPage({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
             {/* KPI 1 — % to Goal */}
             <ScorecardCard
               title="% to Goal"
@@ -470,12 +470,34 @@ export default async function RepDetailPage({
                   <div className="font-condensed text-3xl font-bold text-ppp-green-700">
                     {scorecard.salesMix.selfGenSharePct.toFixed(0)}%
                   </div>
-                  <ProgressBar pct={scorecard.salesMix.selfGenSharePct} colorClass="bg-ppp-green" />
-                  <p className="text-[11px] text-ppp-charcoal-500">
-                    Self-gen <strong className="text-ppp-charcoal">{fmtMoneyK(scorecard.salesMix.selfGenDollars / 1000)}</strong>
-                    {" · "}
-                    Marketing {fmtMoneyK(scorecard.salesMix.marketingDollars / 1000)}
-                  </p>
+                  {/* Two-segment stacked bar — left green (self-gen) / right
+                      blue (marketing). Replaces the misleading single-color
+                      bar that filled only N% and made the remaining (100-N)%
+                      look like missing data instead of marketing share. */}
+                  <div className="h-2 w-full bg-ppp-charcoal-50 rounded overflow-hidden flex">
+                    <div
+                      className="h-full bg-ppp-green transition-[width] duration-500"
+                      style={{ width: `${scorecard.salesMix.selfGenSharePct}%` }}
+                      aria-hidden
+                    />
+                    <div
+                      className="h-full bg-ppp-blue transition-[width] duration-500"
+                      style={{ width: `${100 - scorecard.salesMix.selfGenSharePct}%` }}
+                      aria-hidden
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block h-2 w-2 rounded-sm bg-ppp-green" aria-hidden />
+                      <span className="text-ppp-charcoal-500">Self-gen</span>{" "}
+                      <strong className="text-ppp-charcoal">{fmtMoneyK(scorecard.salesMix.selfGenDollars / 1000)}</strong>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block h-2 w-2 rounded-sm bg-ppp-blue" aria-hidden />
+                      <span className="text-ppp-charcoal-500">Marketing</span>{" "}
+                      <strong className="text-ppp-charcoal">{fmtMoneyK(scorecard.salesMix.marketingDollars / 1000)}</strong>
+                    </span>
+                  </div>
                 </div>
               )}
             </ScorecardCard>
@@ -578,17 +600,17 @@ export default async function RepDetailPage({
                   </div>
                   {scorecard.appointments.avgDaysToEstimate !== null && (
                     <div className="border-t border-ppp-charcoal-100 pt-2 mt-1">
-                      <div className="flex items-baseline justify-between gap-2">
+                      <div className="flex items-baseline justify-between gap-2 flex-wrap">
                         <span className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">
                           Speed to estimate
                         </span>
                         <span className={[
-                          "font-condensed text-lg font-bold",
+                          "font-condensed text-base sm:text-lg font-bold whitespace-nowrap",
                           scorecard.appointments.avgDaysToEstimate <= 3 ? "text-ppp-green-700" :
                           scorecard.appointments.avgDaysToEstimate <= 7 ? "text-ppp-navy" :
                           "text-ppp-orange-700",
                         ].join(" ")}>
-                          {scorecard.appointments.avgDaysToEstimate.toFixed(1)}d
+                          {scorecard.appointments.avgDaysToEstimate.toFixed(1)} days
                         </span>
                       </div>
                       {scorecard.appointments.slowEstimatePct !== null && scorecard.appointments.slowEstimatePct > 0 && (
@@ -598,7 +620,7 @@ export default async function RepDetailPage({
                           }>
                             {scorecard.appointments.slowEstimatePct.toFixed(0)}%
                           </strong>{" "}
-                          took 7+ days
+                          took 7+ days to send estimate
                         </p>
                       )}
                     </div>
@@ -727,22 +749,22 @@ export default async function RepDetailPage({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="font-condensed text-2xl font-bold text-ppp-navy">
-                      {fmtMoneyK(scorecard.commissions.earned / 1000)}
+                      {fmtCommissionDollars(scorecard.commissions.earned)}
                     </span>
                     <span className="text-xs text-ppp-charcoal-500">earned</span>
                   </div>
                   {scorecard.commissions.drawReceived !== null && (
                     <p className="text-[11px] text-ppp-charcoal-500">
-                      Draw (prorated): {fmtMoneyK(scorecard.commissions.drawReceived / 1000)}
+                      Draw (prorated): {fmtCommissionDollars(scorecard.commissions.drawReceived)}
                     </p>
                   )}
                   {scorecard.commissions.difference !== null && (
                     <p className="text-xs">
                       <span className="text-ppp-charcoal-500">Net: </span>
                       <strong className={scorecard.commissions.difference >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700"}>
-                        {scorecard.commissions.difference >= 0 ? "+" : ""}{fmtMoneyK(scorecard.commissions.difference / 1000)}
+                        {scorecard.commissions.difference >= 0 ? "+" : ""}{fmtCommissionDollars(scorecard.commissions.difference)}
                       </strong>
                       <span className="text-[11px] text-ppp-charcoal-500 ml-1">
                         ({scorecard.commissions.difference >= 0 ? "underpaid" : "overpaid"})
@@ -754,18 +776,42 @@ export default async function RepDetailPage({
             </ScorecardCard>
           </div>
 
-          {/* Attendance completeness — data-quality note below the grid */}
+          {/* Attendance completeness — data-quality signal. When < 80%
+              logged, this is a real warning: KPI 4 (Pricing / Rev per
+              Labor Day) numbers above are based on the logged subset only,
+              so a small subset = unreliable signal. Promoted from italic
+              footnote to a visible amber banner so CEO/manager don't miss
+              it on mobile scan. */}
           {scorecard.attendance.completed > 0 && (
-            <div className="mt-3 text-[11px] text-ppp-charcoal-500 italic px-1">
-              Data quality · Crew attendance logged on{" "}
-              <strong className="text-ppp-charcoal">
-                {scorecard.attendance.logged}
-              </strong>{" "}
-              of {scorecard.attendance.completed} completed WOs
-              {scorecard.attendance.completenessPct !== null && (
-                <> ({scorecard.attendance.completenessPct.toFixed(0)}%)</>
+            <>
+              {(scorecard.attendance.completenessPct ?? 100) < 80 ? (
+                <div className="mt-3 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-2.5 flex items-start gap-2 text-[11px] text-ppp-orange-700">
+                  <span aria-hidden className="text-sm leading-none">⚠</span>
+                  <div>
+                    <strong>Data quality warning · </strong>
+                    Crew attendance logged on only{" "}
+                    <strong>{scorecard.attendance.logged}</strong> of{" "}
+                    {scorecard.attendance.completed} completed WOs
+                    {scorecard.attendance.completenessPct !== null && (
+                      <> ({scorecard.attendance.completenessPct.toFixed(0)}%)</>
+                    )}
+                    . The Pricing / Rev-per-Labor-Day numbers above are
+                    based on the logged subset only — interpret with caution.
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 text-[11px] text-ppp-charcoal-500 italic px-1">
+                  Data quality · Crew attendance logged on{" "}
+                  <strong className="text-ppp-charcoal">
+                    {scorecard.attendance.logged}
+                  </strong>{" "}
+                  of {scorecard.attendance.completed} completed WOs
+                  {scorecard.attendance.completenessPct !== null && (
+                    <> ({scorecard.attendance.completenessPct.toFixed(0)}%)</>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </section>
       )}
@@ -1257,10 +1303,35 @@ function fmtPctOrDash(pct: number | null, decimals: number = 1): string {
 }
 
 /**
+ * Currency formatter tuned for the Commissions card. fmtMoneyK rounds to
+ * nearest $1K which destroys precision on smaller commission amounts —
+ * $1,500 rendered as "$2K" was misleading reps about their actual earned
+ * payouts. This helper uses full dollars (no abbreviation) under $10K
+ * and abbreviates only at scale where the precision doesn't matter.
+ */
+function fmtCommissionDollars(n: number): string {
+  const abs = Math.abs(n);
+  if (abs < 10_000) {
+    // Full precision — e.g. $1,500 / -$248 / $9,999
+    return `${n < 0 ? "-" : ""}$${Math.round(abs).toLocaleString()}`;
+  }
+  // Abbreviate above $10K — e.g. $42.1K / $128K
+  const k = abs / 1000;
+  const formatted = k >= 100 ? Math.round(k).toString() : k.toFixed(1);
+  return `${n < 0 ? "-" : ""}$${formatted}K`;
+}
+
+/**
  * Uniform card shell for the scorecard grid. Keeps title / kpiTag / tooltip
  * layout consistent so the eye can scan across the 9 KPIs without re-anchoring.
  * The `tooltip` value is also surfaced as a visible info dot for non-hover
  * surfaces (mobile) — accessibility first.
+ */
+/**
+ * Uniform card shell. The "ⓘ Info" affordance (line below the title) lets
+ * tap users on mobile see the KPI definition — the native `title` tooltip
+ * doesn't render reliably on touch. Click toggles an inline panel; safer
+ * than a hover-only tooltip for CEO-on-phone use.
  */
 function ScorecardCard({
   title,
@@ -1274,17 +1345,28 @@ function ScorecardCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 flex flex-col">
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <h4 className="text-sm font-semibold text-ppp-charcoal leading-tight">{title}</h4>
+    <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 sm:p-5 flex flex-col">
+      <div className="flex items-start justify-between gap-2 mb-2 sm:mb-3">
+        <h4 className="text-[13px] sm:text-sm font-semibold text-ppp-charcoal leading-tight">{title}</h4>
         <span
-          className="text-[9px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-50 px-1.5 py-0.5 rounded shrink-0"
+          className="text-[9px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-50 px-1.5 py-0.5 rounded shrink-0 cursor-help"
           title={tooltip}
         >
           {kpiTag}
         </span>
       </div>
       <div className="flex-1">{children}</div>
+      {/* Inline help — collapsible details element. Tap "What this measures"
+          on phones to see the KPI definition (replaces the desktop-only
+          hover tooltip on the KPI tag). */}
+      <details className="mt-2 sm:mt-3">
+        <summary className="text-[10px] text-ppp-charcoal-500 cursor-pointer hover:text-ppp-blue list-none flex items-center gap-1">
+          <span aria-hidden>ⓘ</span> What this measures
+        </summary>
+        <p className="text-[10px] text-ppp-charcoal-500 mt-1.5 leading-relaxed">
+          {tooltip}
+        </p>
+      </details>
     </div>
   );
 }
