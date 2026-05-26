@@ -387,7 +387,19 @@ function LineItemSection({
   onNotesChange: (notes: string) => void;
 }) {
   if (!state) return null;
-  const title = lineItem.areaLabel?.trim() || `Area ${index}`;
+  // Title fallback chain so the section is never just generic "Area N":
+  //   1. areaLabel (estimator named the room — best)
+  //   2. productFamily (PPP scope category like "Carpentry", "Interior
+  //      Painting", "Other" — at least tells customer WHAT this section is)
+  //   3. "Section N" final fallback (very rare)
+  // PPP often skips areaLabel but always sets productFamily, so this
+  // surfaces the existing data the customer needs instead of "Area 1".
+  const rawArea = lineItem.areaLabel?.trim() || "";
+  const rawFamily = lineItem.productFamily?.trim() || "";
+  const title = rawArea || rawFamily || `Section ${index}`;
+  // Only show the productFamily caption when it's NOT the title (i.e., when
+  // areaLabel WAS set). Avoids the duplicate "Carpentry / Carpentry" look.
+  const showFamilyCaption = rawArea && rawFamily && rawArea !== rawFamily;
   const surfaces = lineItem.surfaces.length > 0 ? lineItem.surfaces : ["Walls"];
 
   return (
@@ -398,13 +410,17 @@ function LineItemSection({
             {title}
           </h2>
           <span className="text-[10px] sm:text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500">
-            Room {index}
+            Section {index}
           </span>
         </div>
         <div className="text-[11px] text-ppp-charcoal-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
-          {lineItem.productFamily && <span>{lineItem.productFamily}</span>}
-          {lineItem.numCoats && <span>· {lineItem.numCoats} coats</span>}
-          <span>· Surfaces: {surfaces.join(", ")}</span>
+          {showFamilyCaption && <span>{rawFamily}</span>}
+          {lineItem.numCoats && (
+            <span>
+              {showFamilyCaption ? "· " : ""}{lineItem.numCoats} coats
+            </span>
+          )}
+          <span>{showFamilyCaption || lineItem.numCoats ? "· " : ""}Surfaces: {surfaces.join(", ")}</span>
         </div>
       </div>
       <div className="p-5 sm:p-7 space-y-5">
