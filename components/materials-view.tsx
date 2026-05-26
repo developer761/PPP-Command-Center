@@ -14,6 +14,7 @@ import type { SnapshotAccount, SnapshotPaintColor } from "@/lib/salesforce/queri
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
 import SupplierOrderModal from "@/components/supplier-order-modal";
+import WoPastOrders from "@/components/wo-past-orders";
 
 type Props = {
   bundle: LiveDashboardBundle;
@@ -62,6 +63,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     supplierName: string;
     customerName: string | null;
   } | null>(null);
+
+  // Counter bumped when the modal closes after a successful send — children
+  // (past-orders strip) re-fetch when this changes so the new row shows up
+  // without a manual page refresh.
+  const [pastOrdersRefreshKey, setPastOrdersRefreshKey] = useState(0);
 
   // Roll-up for the page header chip — at a glance, how many forms are out?
   const formSummary = useMemo(() => {
@@ -382,6 +388,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                 {progressByWO.get(activeJob.wo.id) && (
                   <WorkOrderProgressBar progress={progressByWO.get(activeJob.wo.id)!} />
                 )}
+                {/* Past supplier orders for this WO — renders nothing when
+                    none. Self-refreshes when pastOrdersRefreshKey bumps
+                    (after a fresh send via the modal). Includes inline
+                    Mark Acknowledged / Mark Delivered / Cancel buttons. */}
+                <WoPastOrders workOrderId={activeJob.wo.id} refreshKey={pastOrdersRefreshKey} />
                 <JobDetail
                   snapshot={snapshot}
                   job={activeJob}
@@ -405,7 +416,9 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         </section>
       )}
 
-      {/* Top-level Supplier Order Modal — only one open at a time */}
+      {/* Top-level Supplier Order Modal — only one open at a time. Closing
+          triggers a past-orders refresh so a freshly-sent order shows in
+          the strip without requiring a manual reload. */}
       {orderModal && (
         <SupplierOrderModal
           workOrderId={orderModal.workOrderId}
@@ -413,7 +426,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           supplierAccountId={orderModal.supplierAccountId}
           supplierName={orderModal.supplierName}
           customerName={orderModal.customerName}
-          onClose={() => setOrderModal(null)}
+          onClose={() => {
+            setOrderModal(null);
+            setPastOrdersRefreshKey((k) => k + 1);
+          }}
         />
       )}
     </div>
