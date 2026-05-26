@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import PageHeader from "@/components/page-header";
+import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { fmtMoneyK } from "@/lib/format";
 import {
   deriveOpenMaterialsWorkOrders,
@@ -522,15 +523,49 @@ function JobDetail({
             accountName={job.wo.accountName ?? null}
             defaultEmail={customerAccount?.email ?? null}
           />
+          {/* Smart short-circuit: when this WO has only ONE supplier, the
+              Draft Order modal is just a confirmation step before the real
+              Supplier Order Modal — we can skip it. Single-supplier WOs are
+              ~80% of PPP's volume (single-brand paint jobs), so this cuts
+              the path to "send order" from 3 clicks to 2.
+              Multi-supplier WOs still see the "Draft order (preview)" button
+              which lets admin pick which supplier to order from first. */}
+          {supplierRows.length === 1 ? (
+            <button
+              type="button"
+              onClick={() => onOpenOrderModal(supplierRows[0].manufacturerId, supplierRows[0].name)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 3h18v18H3z M3 9h18 M9 21V9" />
+              </svg>
+              Order from {supplierRows[0].name.split(" ")[0]}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDraft(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 3h18v18H3z M3 9h18 M9 21V9" />
+              </svg>
+              Order materials · {supplierRows.length} suppliers
+            </button>
+          )}
+          {/* Preview button — kept for both paths so admin can review colors
+              before ordering (useful even on single-supplier WOs). Demoted
+              to secondary outline style since "Order materials" is now the
+              primary CTA. */}
           <button
             type="button"
             onClick={() => setShowDraft(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M4 4h16v16H4z M4 4l8 8 8-8" />
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
             </svg>
-            Draft order (preview)
+            Preview colors
           </button>
         </div>
       </div>
@@ -684,6 +719,9 @@ function DraftOrderModal({
   onClose: () => void;
   onOpenOrderModal: (supplierAccountId: string, supplierName: string) => void;
 }) {
+  // Esc key closes the modal — keyboard a11y for the rest of Phase 2.
+  useEscClose(onClose);
+
   // Aggregate by supplier × color × surface for the draft order body
   const groups = useMemo(() => {
     const byMfg = new Map<
@@ -943,6 +981,13 @@ function SendColorFormButton({
     | { ok: true; formUrl: string; resendId: string }
     | { ok: false; error: string }
   >(null);
+
+  // Esc closes the send-form modal. Not while a send is in flight — admin
+  // shouldn't accidentally dismiss right as the email is going out.
+  useEscClose(() => { if (open) setOpen(false); }, {
+    enabled: open,
+    allowDuring: !sending,
+  });
 
   const reset = () => {
     setResult(null);

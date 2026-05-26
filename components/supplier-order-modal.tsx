@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useEscClose } from "@/lib/hooks/use-esc-close";
 
 /**
  * Supplier Order Modal — the full draft → review → send experience for one
@@ -110,6 +111,10 @@ export default function SupplierOrderModal({
     | { ok: false; error: string }
   >(null);
   const [copied, setCopied] = useState(false);
+
+  // Esc to close — but NOT while a send is in flight (admin shouldn't be
+  // able to accidentally cancel an order mid-Resend-roundtrip).
+  useEscClose(onClose, { allowDuring: !sending });
 
   // Fetch extras catalog ONCE on mount — small (~20 rows) so no pagination.
   useEffect(() => {
