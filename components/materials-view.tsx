@@ -550,7 +550,22 @@ function JobDetail({
             <div className="text-[11px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
               Work Order
             </div>
-            <h3 className="text-lg font-bold text-ppp-navy">{job.wo.accountName ?? "(unknown account)"}</h3>
+            {/* Clickable customer name → per-customer history page. Only
+                renders as a link when we have the SF Account.Id (post-Tier-1
+                refactor); falls back to plain text for legacy WOs without
+                accountId. Hover affordance signals it's interactive. */}
+            {job.wo.accountId ? (
+              <Link
+                href={`/dashboard/customer/${encodeURIComponent(job.wo.accountId)}`}
+                className="block text-lg font-bold text-ppp-navy hover:text-ppp-blue transition-colors group"
+                title="View full customer history"
+              >
+                {job.wo.accountName ?? "(unknown account)"}
+                <span className="ml-1.5 text-xs text-ppp-charcoal-500 group-hover:text-ppp-blue opacity-60 group-hover:opacity-100 transition-opacity">→</span>
+              </Link>
+            ) : (
+              <h3 className="text-lg font-bold text-ppp-navy">{job.wo.accountName ?? "(unknown account)"}</h3>
+            )}
             <div className="text-xs text-ppp-charcoal-500 mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <span className="font-mono">{job.wo.workOrderNumber ?? job.wo.id.slice(-6)}</span>
               <span>·</span>
