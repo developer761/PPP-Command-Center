@@ -111,11 +111,14 @@ export async function POST(request: Request) {
   if (!supplierAccount) {
     return NextResponse.json({ error: "supplier_not_in_snapshot" }, { status: 404 });
   }
-  // Find customer account by name (WO doesn't carry accountId today — derive
-  // via name lookup matching the rest of the dashboard).
-  const customerAccount = workOrder.accountName
-    ? snapshot.accounts.find((a) => a.name === workOrder.accountName) ?? null
-    : null;
+  // Find the customer's Account. ID-first lookup so two customers with the
+  // same name don't collide (we pulled Account.Id on the WO query in the
+  // Tier-1 Account.Id refactor; legacy WOs that pre-date that still match
+  // by name as a fallback). Same pattern as scope-snapshot + derive.ts.
+  const customerAccount =
+    (workOrder.accountId ? snapshot.accounts.find((a) => a.id === workOrder.accountId) : null) ??
+    (workOrder.accountName ? snapshot.accounts.find((a) => a.name === workOrder.accountName) : null) ??
+    null;
 
   // WOLI rows for this WO
   const woliRows = snapshot.woLineItems.filter((w) => w.workOrderId === workOrder.id);
