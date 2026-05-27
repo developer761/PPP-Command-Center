@@ -81,6 +81,19 @@ function verifySignature(
     return true;
   }
   if (!svixId || !svixTimestamp || !svixSignatureHeader) return false;
+  // Reject replays: even with a valid signature, refuse webhooks whose
+  // svix-timestamp is more than ±5 minutes from now. Without this an
+  // attacker who captures a single signed POST (e.g. from logs) could
+  // replay it months later and inject the same message body — the UNIQUE
+  // constraint on resend_message_id catches duplicates but not crafted
+  // collisions, and unmatched-bucket pollution is still annoying.
+  const tsSeconds = Number(svixTimestamp);
+  if (!Number.isFinite(tsSeconds)) return false;
+  const skewSeconds = Math.abs(Math.floor(Date.now() / 1000) - tsSeconds);
+  if (skewSeconds > 300) {
+    console.warn(`[resend-inbound] rejecting webhook with timestamp skew ${skewSeconds}s (max 300s)`);
+    return false;
+  }
   const signedPayload = `${svixId}.${svixTimestamp}.${rawBody}`;
   // Svix secret is base64 with a "whsec_" prefix
   const secretClean = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;

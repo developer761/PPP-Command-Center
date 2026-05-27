@@ -80,6 +80,11 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
   };
 
   try {
+    // 10s timeout — Resend's API usually responds in <1s. Anything longer is
+    // a hung connection, and without a timeout the function would block until
+    // Vercel kills it at 60s, leaving a supplier_orders row in an ambiguous
+    // state. Returning a normal failure lets the caller mark status='failed'
+    // + surface a retry button.
     const res = await fetch(RESEND_API_URL, {
       method: "POST",
       headers: {
@@ -87,6 +92,7 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
     const text = await res.text();
     if (!res.ok) {

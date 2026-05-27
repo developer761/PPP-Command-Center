@@ -59,7 +59,10 @@ export async function POST(request: Request) {
   if (!workOrderId || !/^0WO/.test(workOrderId)) {
     return NextResponse.json({ error: "invalid_work_order_id" }, { status: 400 });
   }
-  if (!customerEmail || !/^[a-z0-9._+\-]+@[a-z0-9.\-]+$/i.test(customerEmail)) {
+  // Email regex aligned with the supplier-side check — requires a TLD so we
+  // don't accept "user@domain" (Resend would silently reject and admin would
+  // think the customer was emailed when the form invite never sent).
+  if (!customerEmail || !/^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(customerEmail)) {
     return NextResponse.json({ error: "invalid_customer_email" }, { status: 400 });
   }
 

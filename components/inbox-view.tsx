@@ -37,11 +37,16 @@ export default function InboxView() {
   const [summary, setSummary] = useState<{ unread: number; returned: number }>({ unread: 0, returned: 0 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Server fetch only depends on the archived flag — kind filtering happens
+  // client-side via the tabCounts/visibleMessages memos. Tab switches feel
+  // instant instead of triggering a full round-trip. Server fetch returns
+  // the full archived/active set (capped at 200) which is fine for typical
+  // inbox sizes; if we ever blow past that we'll add server pagination.
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const url = `/api/admin/inbox?kind=${tab}&archived=${showArchived}`;
+      const url = `/api/admin/inbox?kind=all&archived=${showArchived}&limit=200`;
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -55,9 +60,15 @@ export default function InboxView() {
     } finally {
       setLoading(false);
     }
-  }, [tab, showArchived]);
+  }, [showArchived]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Client-side tab filter — tab changes don't re-hit the server.
+  const visibleMessages = useMemo(() => {
+    if (tab === "all") return messages;
+    return messages.filter((m) => m.kind === tab);
+  }, [messages, tab]);
 
   const markRead = async (id: string) => {
     setMessages((prev) =>
@@ -154,12 +165,12 @@ export default function InboxView() {
           </button>
         </div>
       )}
-      {!loading && !error && messages.length === 0 && (
+      {!loading && !error && visibleMessages.length === 0 && (
         <EmptyState archived={showArchived} />
       )}
-      {!loading && !error && messages.length > 0 && (
+      {!loading && !error && visibleMessages.length > 0 && (
         <ul className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden divide-y divide-ppp-charcoal-100">
-          {messages.map((m) => (
+          {visibleMessages.map((m) => (
             <MessageRow
               key={m.id}
               message={m}

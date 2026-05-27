@@ -45,10 +45,16 @@ export async function GET(request: Request) {
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
 
   const sb = adminClient();
+  // linked_token is intentionally OMITTED — it's the customer's form
+  // credential (anyone with the token can submit colors on their behalf).
+  // The UI doesn't need it on the list view; the per-message thread page
+  // can resolve linked_work_order_id → token through a scoped helper if
+  // we ever surface a "open in customer form" affordance. Until then, no
+  // client-side code path needs the token.
   let query = sb
     .from("inbox_messages")
     .select(
-      "id, kind, linked_token, linked_order_id, linked_work_order_id, from_email, from_name, to_email, subject, body_text, resend_message_id, received_at, read_at, archived_at"
+      "id, kind, linked_order_id, linked_work_order_id, from_email, from_name, to_email, subject, body_text, resend_message_id, received_at, read_at, archived_at"
     )
     .order("received_at", { ascending: false })
     .limit(limit);
@@ -71,19 +77,22 @@ export async function GET(request: Request) {
     query = query.eq("linked_work_order_id", workOrderId);
   }
 
-  const { data: messages, error } = await query;
+  // Parallelize the messages list fetch + unread count — they're independent
+  // queries with no ordering dependency. Saves ~200-400ms on typical inbox
+  // sizes (each Supabase query carries network + auth overhead).
+  const [messagesRes, unreadRes] = await Promise.all([
+    query,
+    sb
+      .from("inbox_messages")
+      .select("id", { count: "exact", head: true })
+      .is("read_at", null)
+      .is("archived_at", null),
+  ]);
+  const { data: messages, error } = messagesRes;
+  const unreadCount = unreadRes.count;
   if (error) {
     return NextResponse.json({ error: "query_failed", message: error.message }, { status: 500 });
   }
-
-  // Summary count — unread, excluding archived. Same filter the user sees
-  // in the default view, so the badge accurately reflects what they'd
-  // find if they cleared all the current-tab filters.
-  const { count: unreadCount } = await sb
-    .from("inbox_messages")
-    .select("id", { count: "exact", head: true })
-    .is("read_at", null)
-    .is("archived_at", null);
 
   return NextResponse.json({
     ok: true,

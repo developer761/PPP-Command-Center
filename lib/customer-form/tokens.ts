@@ -93,9 +93,15 @@ export async function createToken(input: {
   return { token };
 }
 
+// Tokens are crypto.randomBytes(32) base64url-encoded → exactly 43 chars
+// from a fixed alphabet [A-Za-z0-9_-]. Strict validation here means we never
+// hit Supabase for obviously-malformed tokens (typos, scraper bots), reducing
+// load AND giving an attacker zero feedback about which formats might be valid.
+const VALID_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
 /** Look up a token by its string. Returns null when not found / expired. */
 export async function getToken(token: string): Promise<CustomerFormToken | null> {
-  if (!token || token.length < 30) return null;
+  if (!token || !VALID_TOKEN_PATTERN.test(token)) return null;
   const sb = adminClient();
   const { data, error } = await sb
     .from("customer_form_tokens")

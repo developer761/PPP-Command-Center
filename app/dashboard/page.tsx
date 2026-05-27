@@ -17,10 +17,11 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const bundle = await loadDashboardData(sp);
 
-  // Customer-form pipeline summary for the new "Color Forms" home-dashboard
-  // card. Pulls counts of sent / opened / submitted / expired across all
-  // open paint-job WOs the viewer has access to. Single Supabase call via
-  // the shared helper (already in use by /dashboard/materials).
+  // Customer-form pipeline summary for the home-dashboard "Color Forms"
+  // card. Depends on the SF snapshot for the WO id list so it sequences
+  // AFTER bundle load — but Supabase part is fast (~300ms) once the IDs
+  // are in hand. Wrapped in try/catch so a Supabase outage doesn't take
+  // down the whole dashboard.
   const openJobs = bundle.snapshot ? deriveOpenMaterialsWorkOrders(bundle.snapshot) : [];
   const woIds = openJobs.map((j) => j.wo.id);
   const formSummary = { sent: 0, opened: 0, submitted: 0, expired: 0, total: 0 };

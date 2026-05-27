@@ -284,7 +284,12 @@ function resolveLineItems(
       if (color.manufacturerId !== input.supplierAccountId) continue;
 
       const surfaceCoverage = coats * sqft;
-      const gallons = surfaceCoverage > 0 ? Math.ceil(surfaceCoverage / 350) : 1;
+      // 0 coats × N sqft (or N coats × 0 sqft) = 0 paint needed. Previously
+      // fell back to 1 gallon "to be safe" — but if WOLI has 0 sqft it's a
+      // data issue, not a quantity to guess. Emit 0 so the supplier order
+      // surface line item is visible (admin can spot the bad data) but no
+      // paint is over-ordered for a phantom surface.
+      const gallons = surfaceCoverage > 0 ? Math.ceil(surfaceCoverage / 350) : 0;
       out.push({
         surface: slot.surfaceLabel,
         colorId,
