@@ -31,6 +31,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
  * Admin-only.
  */
 export async function POST(request: Request) {
+  try {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
@@ -64,7 +65,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "missing_supplier_account_id" }, { status: 400 });
   }
 
-  const snapshot = await loadSalesforceSnapshot();
+  // Snapshot fetch can throw on cold cache + SF outage. Catch + return JSON
+  // so the modal can show "Couldn't reach Salesforce — try again" instead
+  // of the generic "Couldn't build draft" that masks the root cause.
+  let snapshot: Awaited<ReturnType<typeof loadSalesforceSnapshot>>;
+  try {
+    snapshot = await loadSalesforceSnapshot();
+  } catch (err) {
+    console.warn("[supplier-order/draft] snapshot load failed:", err);
+    return NextResponse.json({
+      ok: false,
+      error: "salesforce_unreachable",
+      message: `Couldn't reach Salesforce: ${err instanceof Error ? err.message : String(err)}. Try again in a moment.`,
+    }, { status: 503 });
+  }
   const workOrder = snapshot.workOrders.find((w) => w.id === body.workOrderId);
   if (!workOrder) {
     return NextResponse.json({ error: "wo_not_in_snapshot" }, { status: 404 });
@@ -127,4 +141,15 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ ok: true, draft });
+  } catch (err) {
+    console.error("[supplier-order/draft POST] unhandled:", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "internal_error",
+        message: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }

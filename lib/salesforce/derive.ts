@@ -445,9 +445,16 @@ export function deriveStuckDeals(
   const stuck: StuckDeal[] = [];
   for (const o of snapshot.opportunities) {
     if (o.isClosed) continue;
-    const lastTouch = o.lastActivityDate
-      ? new Date(o.lastActivityDate).getTime()
-      : new Date(o.createdDate).getTime();
+    // Require a real LastActivityDate. The previous behavior fell back to
+    // createdDate when LastActivityDate was null, which conflated "no
+    // activity ever logged" (could be a brand-new opp or one that simply
+    // never gets its activities synced) with "rep stopped following up
+    // 6 months ago." That inflated the stuck-deals list with old discovery
+    // opps that aren't actually stalled — they just live outside SF's
+    // activity tracking. Stuck = "we KNOW the last touch was N+ days ago",
+    // not "we don't know when the last touch was."
+    if (!o.lastActivityDate) continue;
+    const lastTouch = new Date(o.lastActivityDate).getTime();
     if (isNaN(lastTouch)) continue;
     const ageMs = now - lastTouch;
     if (ageMs < staleMs) continue;

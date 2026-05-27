@@ -173,11 +173,14 @@ export async function POST(request: Request) {
     }
   }
 
-  // 2. PO number in subject? Format PPP-WO{n}-{supplier}-{seq}.
-  // Bounded character class instead of \S+ — \S would greedily capture
-  // trailing punctuation like commas/periods, making the lookup fail.
+  // 2. PO number in subject? Format PPP-WO{wo_number}-{supplier_code}-{seq}.
+  // Structured regex with three bounded segments (alphanumeric WO, ALPHA-ONLY
+  // supplier code, DIGIT-ONLY seq) so the match can't span across two POs
+  // when both appear in the same subject. The previous form
+  // `/PPP-WO[A-Z0-9_\-]+/` greedily consumed hyphens, letting "PPP-WO123-BM-1
+  // and PPP-WO456-SW-2" match as a single bogus PO that threaded to no row.
   if (kind === "unmatched" && subject) {
-    const poMatch = subject.match(/PPP-WO[A-Z0-9_\-]+/);
+    const poMatch = subject.match(/PPP-WO[A-Z0-9]+-[A-Z]+-[0-9]+/i);
     if (poMatch) {
       const poNumber = poMatch[0];
       const { data: orderRow } = await sb

@@ -88,6 +88,13 @@ export type CustomerSubmittedPayload = {
       colorName: string | null;
       colorCode: string | null;
       finish: string | null;
+      /** Customer explicitly opted out of painting this surface (e.g.
+       *  "leave the ceiling as-is"). Distinct from "forgot to pick" —
+       *  surfaces with null colorId AND skipped=false aren't shown to
+       *  the supplier, but skipped=true surfaces ARE surfaced as a
+       *  separate "customer is not painting" block so supplier knows
+       *  the intent. */
+      skipped?: boolean;
     }>;
     notes: string;
   }>;
@@ -107,6 +114,11 @@ export type SupplierOrderDraft = {
   subject: string;
   body: string;
   lineItems: SupplierOrderLineItem[];
+  /** Surfaces the customer explicitly opted out of painting. Surfaced in
+   *  the email body so the supplier knows "customer is not painting the
+   *  ceiling" vs "customer forgot to pick a ceiling color" — these used
+   *  to be silently dropped from the order, leaving suppliers guessing. */
+  skippedSurfaces: Array<{ roomLabel: string; surface: string }>;
   /** When the WO has 0 customer-picked colors yet (no form submission),
    *  this is true and the worker should be warned. */
   noColorsPicked: boolean;
@@ -198,9 +210,17 @@ const SURFACE_FIELD_TO_LABEL: Record<string, string> = {
 
 /** Resolve the supplier-grouped line items from the WOLI rows + customer picks.
  *  Returns only line items whose color belongs to the target supplier.
- *  Prefers customer-submitted picks; falls back to existing WOLI fields. */
-function resolveLineItems(input: BuildSupplierOrderInput): SupplierOrderLineItem[] {
+ *  Prefers customer-submitted picks; falls back to existing WOLI fields.
+ *
+ *  Also returns the surfaces the customer explicitly OPTED OUT of (skipped),
+ *  so the email body can tell the supplier "customer is not painting the
+ *  ceiling" instead of silently dropping the surface — the supplier would
+ *  otherwise have to guess whether the customer forgot or chose not to. */
+function resolveLineItems(
+  input: BuildSupplierOrderInput
+): { lineItems: SupplierOrderLineItem[]; skippedSurfaces: Array<{ roomLabel: string; surface: string }> } {
   const out: SupplierOrderLineItem[] = [];
+  const skipped: Array<{ roomLabel: string; surface: string }> = [];
   const customerByLineId = new Map<string, CustomerSubmittedPayload["lineItems"][number]>();
   if (input.customerSubmittedPayload) {
     for (const li of input.customerSubmittedPayload.lineItems) {
@@ -234,6 +254,15 @@ function resolveLineItems(input: BuildSupplierOrderInput): SupplierOrderLineItem
 
     for (const slot of slots) {
       const customerPick = customerSurfaces.get(slot.surfaceLabel.toLowerCase());
+      // Customer explicitly opted out of this surface — record it for the
+      // supplier email so they know the intent. We only surface the skip
+      // when the WOLI ACTUALLY HAS this slot configured (existingColorId
+      // present OR customer specified) to avoid noise from slots that
+      // aren't relevant to this WO at all.
+      if (customerPick?.skipped) {
+        skipped.push({ roomLabel, surface: slot.surfaceLabel });
+        continue;
+      }
       const colorId = customerPick?.colorId ?? slot.existingColorId;
       if (!colorId) continue;
       const color = input.paintColorsById.get(colorId);
@@ -267,7 +296,7 @@ function resolveLineItems(input: BuildSupplierOrderInput): SupplierOrderLineItem
     }
   }
 
-  return out;
+  return { lineItems: out, skippedSurfaces: skipped };
 }
 
 /** Resolve the delivery address with the fallback chain:
@@ -408,7 +437,7 @@ export async function buildSupplierOrderDraft(
   const settings = await loadSupplierSettings(input.supplierAccountId);
 
   // Resolve everything that goes into the email
-  const lineItems = resolveLineItems(input);
+  const { lineItems, skippedSurfaces } = resolveLineItems(input);
   const deliveryAddress = resolveDeliveryAddress(input);
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);
   const poNumber = await nextPoNumber(input.workOrder.workOrderNumber ?? input.workOrder.id.slice(-6), input.supplierAccount.name);
@@ -457,6 +486,17 @@ export async function buildSupplierOrderDraft(
     "COLORS",
     formatLineItemsBlock(lineItems),
   ];
+  // Customer-opted-out surfaces — surface explicitly so the supplier knows
+  // the intent. Without this block the supplier would just see paint for
+  // walls + trim and wonder if the ceiling color was forgotten. Only render
+  // when at least one surface was actually opted out.
+  if (skippedSurfaces.length > 0) {
+    sections.push("");
+    sections.push("CUSTOMER IS NOT PAINTING");
+    for (const s of skippedSurfaces) {
+      sections.push(`  - ${s.roomLabel} · ${s.surface}`);
+    }
+  }
   const extrasBlock = formatExtrasBlock(input.extras);
   if (extrasBlock) {
     sections.push("");
@@ -477,6 +517,7 @@ export async function buildSupplierOrderDraft(
     subject,
     body: sections.join("\n"),
     lineItems,
+    skippedSurfaces,
     noColorsPicked: lineItems.length === 0,
     unresolvedAddress: input.fulfillmentMethod === "delivery" && !deliveryAddress,
     deliveryAddress,

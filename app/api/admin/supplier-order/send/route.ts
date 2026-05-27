@@ -98,11 +98,15 @@ export async function POST(request: Request) {
   );
 
   // Step 1: Try to UPDATE an existing draft row (admin's draft transitions
-  // to sent). If no draft exists yet, INSERT a new row directly as 'sent'.
-  // Either way the row ends in status='sent' so the UI sees consistent state.
-  // We do this BEFORE the email send so that a Resend failure leaves a row
-  // we can mark status='failed' and surface for retry — vs a successful
-  // send with no DB row that the dashboard would never know about.
+  // to sent). If no draft exists yet, INSERT a new row.
+  //
+  // CRITICAL: we DON'T stamp sent_at here yet — that happens in Step 3 only
+  // after Resend confirms delivery. Previous behavior stamped sent_at before
+  // calling Resend, so a failed send left a row marked status='failed' with
+  // a misleading sent_at timestamp (suggesting "we tried to send at exactly
+  // 3:42:17" when the email never actually went out). The row is created
+  // with status='sent' for the optimistic path; if Step 2 fails we flip to
+  // 'failed' AND clear sent_at, leaving a clean audit trail.
   const draftLookup = await sbAdmin
     .from("supplier_orders")
     .select("id, status")
@@ -130,7 +134,6 @@ export async function POST(request: Request) {
         extras: body.extras ?? [],
         sent_to_email: body.sentToEmail!.trim().toLowerCase(),
         status: "sent",
-        sent_at: new Date().toISOString(),
         created_by_user_id: data.user.id,
       })
       .eq("id", draftLookup.data.id)
@@ -159,7 +162,6 @@ export async function POST(request: Request) {
         extras: body.extras ?? [],
         sent_to_email: body.sentToEmail!.trim().toLowerCase(),
         status: "sent",
-        sent_at: new Date().toISOString(),
         created_by_user_id: data.user.id,
       })
       .select("id")
@@ -196,12 +198,15 @@ export async function POST(request: Request) {
 
   if (!send.ok) {
     // Mark the row failed so admin can retry from the UI; don't roll back —
-    // the audit trail is more useful than a clean slate.
+    // the audit trail is more useful than a clean slate. Leave sent_at NULL
+    // so the row is unambiguously "never delivered" rather than carrying a
+    // misleading "tried to send at exactly 3:42:17" timestamp.
     await sbAdmin
       .from("supplier_orders")
       .update({
         status: "failed",
         failure_reason: send.error.slice(0, 1000),
+        sent_at: null,
       })
       .eq("id", supplierOrderId);
     return NextResponse.json({
@@ -212,16 +217,19 @@ export async function POST(request: Request) {
     }, { status: 502 });
   }
 
-  // Step 3: Stamp the Resend message id on the row so inbound webhook can
-  // thread replies back to this order. If THIS update fails, the supplier's
-  // future reply will land in the unmatched bucket — we don't fail the
-  // overall send (admin needs to know the email DID go out) but we surface
-  // the issue in the response so the dashboard can show a soft warning.
+  // Step 3: Stamp sent_at + resend_message_id ONLY after Resend confirmed
+  // delivery. The id lets the inbound webhook thread the supplier's future
+  // reply back to this order. If this update fails the email itself went
+  // out (admin needs to know) but threading may break — we surface that as
+  // a soft warning, not a hard failure.
   let messageIdUpdateOk = true;
   let messageIdUpdateError: string | null = null;
   const { error: msgIdErr } = await sbAdmin
     .from("supplier_orders")
-    .update({ resend_message_id: send.id })
+    .update({
+      sent_at: new Date().toISOString(),
+      resend_message_id: send.id,
+    })
     .eq("id", supplierOrderId);
   if (msgIdErr) {
     messageIdUpdateOk = false;
