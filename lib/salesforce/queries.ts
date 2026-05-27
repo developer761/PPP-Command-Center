@@ -77,6 +77,9 @@ export type SnapshotRep = {
 export type SnapshotOpp = {
   id: string;
   ownerId: string;
+  /** Canonical account FK. Always prefer this over accountName for joins —
+   *  two SF Accounts can share a name, and renames break name-based lookups. */
+  accountId: string | null;
   accountName: string | null;
   amount: number;
   isClosed: boolean;
@@ -187,6 +190,8 @@ export type SnapshotWorkOrder = {
   opportunityId: string | null;
   ownerId: string | null;
   ownerName: string | null;
+  /** Canonical account FK — same caveat as Opp.accountId. Use for joins. */
+  accountId: string | null;
   accountName: string | null;
   closeDate: string | null;
   createdDate: string;
@@ -426,6 +431,7 @@ type SfUserRow = {
 type SfOppRow = {
   Id: string;
   OwnerId: string;
+  AccountId: string | null;
   Account: { Name: string | null } | null;
   Amount: number | null;
   IsClosed: boolean;
@@ -629,7 +635,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // partial data with a clear hint.
     const RECENCY_WINDOW_DAYS = 365;
     async function queryAllOpps(withCustomFields: boolean): Promise<SfOppRow[]> {
-      const selectFields = `Id, OwnerId, Account.Name, Amount, IsClosed, IsWon, StageName, CreatedDate, CloseDate, LastActivityDate${withCustomFields ? currencyFieldsSelect + repPerfOppFieldsSelect : ""}`;
+      const selectFields = `Id, OwnerId, AccountId, Account.Name, Amount, IsClosed, IsWon, StageName, CreatedDate, CloseDate, LastActivityDate${withCustomFields ? currencyFieldsSelect + repPerfOppFieldsSelect : ""}`;
       const all: SfOppRow[] = [];
       let result = await conn.query<SfOppRow>(
         `SELECT ${selectFields} FROM Opportunity WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
@@ -1020,6 +1026,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       return {
         id: o.Id,
         ownerId: o.OwnerId,
+        accountId: (o.AccountId as string | null) ?? null,
         accountName: o.Account?.Name ?? null,
         amount: resolved,
         isClosed: o.IsClosed,
@@ -1179,6 +1186,9 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         woOppLookup,
         woOppRelName ? `${woOppRelName}.OwnerId` : null,
         woOppRelName ? `${woOppRelName}.Owner.Name` : null,
+        // AccountId is the canonical join key — name can collide / be renamed.
+        // Pull both: ID for joins, Name for display (avoids a second lookup).
+        woOppRelName ? `${woOppRelName}.AccountId` : null,
         woOppRelName ? `${woOppRelName}.Account.Name` : null,
         woOppRelName ? `${woOppRelName}.CloseDate` : null,
       ].filter((x): x is string => Boolean(x));
@@ -1249,6 +1259,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         opportunityId: woOppLookup ? (w[woOppLookup] as string | null) ?? null : null,
         ownerId: opp ? (opp.OwnerId as string | null) ?? null : null,
         ownerName: ownerNested ? (ownerNested.Name as string | null) ?? null : null,
+        accountId: opp ? (opp.AccountId as string | null) ?? null : null,
         accountName: accountNested ? (accountNested.Name as string | null) ?? null : null,
         closeDate: opp ? (opp.CloseDate as string | null) ?? null : null,
         createdDate: w.CreatedDate as string,

@@ -18,6 +18,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
  * Admin-only.
  */
 export async function POST(request: Request) {
+  try {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
@@ -86,4 +87,11 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, order: row });
+  } catch (err) {
+    console.error("[supplier-order/status POST] unhandled:", err);
+    return NextResponse.json(
+      { ok: false, error: "internal_error", message: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }

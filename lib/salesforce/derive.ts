@@ -173,11 +173,17 @@ export function deriveRegion(
   snapshot?: SalesforceSnapshot
 ): Rep["region"] {
   if (snapshot) {
+    // ID-first lookup with name fallback for legacy WOs that pre-date the
+    // accountId column. Two Accounts with the same name would have collided
+    // on the older name-only path; ID-based matching is collision-proof.
+    const accountById = new Map(snapshot.accounts.map((a) => [a.id, a]));
     const accountByName = new Map(snapshot.accounts.map((a) => [a.name, a]));
     const regionCounts = new Map<string, number>();
     for (const w of snapshot.workOrders) {
       if (w.ownerId !== rep.id) continue;
-      const acct = w.accountName ? accountByName.get(w.accountName) : null;
+      const acct =
+        (w.accountId ? accountById.get(w.accountId) : null) ??
+        (w.accountName ? accountByName.get(w.accountName) : null);
       const region = acct?.region;
       if (!region) continue;
       regionCounts.set(region, (regionCounts.get(region) ?? 0) + 1);
@@ -1294,52 +1300,73 @@ export function deriveRepAccountStats(
   topAccountName: string | null;
   topAccountRevenue: number;
 } {
-  const acctIndex = new Map(snapshot.accounts.map((a) => [a.name, a]));
-  const seenAccountNames = new Set<string>();
+  // ID-first index + name fallback. Two Accounts can share a Name (e.g.
+  // two unrelated "John Smith" customers); aggregating by name would merge
+  // their revenue and over-count repeats. Match by Account.Id when the WO
+  // carries one; fall back to name for legacy data.
+  const acctById = new Map(snapshot.accounts.map((a) => [a.id, a]));
+  const acctByName = new Map(snapshot.accounts.map((a) => [a.name, a]));
+  const seenAccountIds = new Set<string>();
+
+  // Resolve a WO/Opp to its canonical Account.Id (preferred) or a synthetic
+  // "name::<n>" key as a last-resort so name-only rows still aggregate per
+  // distinct account name without colliding into the ID-based bucket.
+  const resolveKey = (
+    row: { accountId: string | null; accountName: string | null }
+  ): string | null => {
+    if (row.accountId) return row.accountId;
+    if (row.accountName) {
+      const byName = acctByName.get(row.accountName);
+      return byName?.id ?? `name::${row.accountName}`;
+    }
+    return null;
+  };
 
   // Accumulate revenue per account (across this rep's WOs).
   const accountRevenue = new Map<string, number>();
   for (const w of snapshot.workOrders) {
     if (w.ownerId !== repId) continue;
-    if (!w.accountName) continue;
-    seenAccountNames.add(w.accountName);
-    accountRevenue.set(
-      w.accountName,
-      (accountRevenue.get(w.accountName) ?? 0) + w.amount
-    );
+    const key = resolveKey(w);
+    if (!key) continue;
+    seenAccountIds.add(key);
+    accountRevenue.set(key, (accountRevenue.get(key) ?? 0) + w.amount);
   }
   // Also walk opps in case some don't have WOs yet.
   for (const o of snapshot.opportunities) {
     if (o.ownerId !== repId) continue;
-    if (!o.accountName) continue;
-    seenAccountNames.add(o.accountName);
+    const key = resolveKey(o);
+    if (!key) continue;
+    seenAccountIds.add(key);
   }
 
   let repeat = 0;
   let bmRetailer = 0;
   let lifetimeRev = 0;
-  for (const name of seenAccountNames) {
-    const a = acctIndex.get(name);
+  for (const key of seenAccountIds) {
+    const a = acctById.get(key);
     if (!a) continue;
     if ((a.type ?? "").toLowerCase().includes("repeat")) repeat += 1;
     if (a.isBMRetailer) bmRetailer += 1;
     lifetimeRev += a.totalLifetimeRevenue;
   }
 
-  // Top account by this rep's revenue contribution.
+  // Top account by this rep's revenue contribution. Keys are Account.Ids
+  // (or "name::<n>" synthetic keys for legacy rows). Resolve to a display
+  // name for the UI.
   let topAccountName: string | null = null;
   let topAccountRevenue = 0;
-  for (const [name, rev] of accountRevenue.entries()) {
+  for (const [key, rev] of accountRevenue.entries()) {
     if (rev > topAccountRevenue) {
       topAccountRevenue = rev;
-      topAccountName = name;
+      const acct = acctById.get(key);
+      topAccountName = acct?.name ?? (key.startsWith("name::") ? key.slice(6) : key);
     }
   }
 
   return {
-    totalCustomers: seenAccountNames.size,
+    totalCustomers: seenAccountIds.size,
     repeatCustomers: repeat,
-    newCustomers: seenAccountNames.size - repeat,
+    newCustomers: seenAccountIds.size - repeat,
     totalLifetimeRevenue: lifetimeRev,
     bmRetailerCount: bmRetailer,
     topAccountName,

@@ -40,17 +40,30 @@ export function scopeSnapshotToViewer(
   const workOrders = snapshot.workOrders.filter((w) => w.ownerId === ownerId);
   const reps = snapshot.reps.filter((r) => r.id === ownerId);
 
-  // Account scoping — a rep "owns" a customer in two ways:
+  // Account scoping — a rep "owns" a customer in three ways:
   //   1. They're listed as the Account Manager (Account.AccountManager__c)
-  //   2. They own at least one Opp or WO on that account
-  // The earlier `accountManagerId`-only filter was hiding customers from reps
-  // who handle the deal but aren't formally the AM. Now include both paths:
-  // collect account names from the rep's WOs + Opps, then match on Account.name.
+  //   2. They own at least one Opp or WO on that account (by Account.Id)
+  //   3. Legacy fallback: their WO/Opp's accountName matches an Account.name
+  //      (covers the small set of pre-2026 records that don't carry accountId)
+  // ID-based matching is the canonical path — name-based was the only path
+  // before this commit, which silently collided when two Accounts shared a
+  // name. We keep the name path as a fallback so existing data still works.
+  const accountIdsTouched = new Set<string>();
   const accountNamesTouched = new Set<string>();
-  for (const w of workOrders) if (w.accountName) accountNamesTouched.add(w.accountName);
-  for (const o of opportunities) if (o.accountName) accountNamesTouched.add(o.accountName);
+  for (const w of workOrders) {
+    if (w.accountId) accountIdsTouched.add(w.accountId);
+    else if (w.accountName) accountNamesTouched.add(w.accountName);
+  }
+  for (const o of opportunities) {
+    if (o.accountId) accountIdsTouched.add(o.accountId);
+    else if (o.accountName) accountNamesTouched.add(o.accountName);
+  }
   const accounts = snapshot.accounts.filter(
-    (a) => a.accountManagerId === ownerId || accountNamesTouched.has(a.name)
+    (a) =>
+      a.accountManagerId === ownerId ||
+      accountIdsTouched.has(a.id) ||
+      (!accountIdsTouched.size && accountNamesTouched.has(a.name)) ||
+      accountNamesTouched.has(a.name)
   );
 
   // Quotes link to opps via opportunityId — keep only quotes whose opp survived the filter.

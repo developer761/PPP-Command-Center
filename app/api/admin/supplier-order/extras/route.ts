@@ -17,6 +17,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
  * Admin-only.
  */
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
@@ -61,4 +62,11 @@ export async function GET(request: Request) {
     ok: true,
     extras: rows ?? [],
   });
+  } catch (err) {
+    console.error("[supplier-order/extras GET] unhandled:", err);
+    return NextResponse.json(
+      { ok: false, error: "internal_error", message: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }

@@ -36,6 +36,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
  * Admin-only.
  */
 export async function POST(request: Request) {
+  try {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
@@ -153,6 +154,7 @@ export async function POST(request: Request) {
         extras: body.extras ?? [],
         sent_to_email: body.sentToEmail!.trim().toLowerCase(),
         status: "sent",
+        delivery_status: "sent",
         created_by_user_id: data.user.id,
       })
       .eq("id", draftLookup.data.id)
@@ -181,6 +183,11 @@ export async function POST(request: Request) {
         extras: body.extras ?? [],
         sent_to_email: body.sentToEmail!.trim().toLowerCase(),
         status: "sent",
+        // Initial delivery_status — webhook will update to delivered/bounced/etc.
+        // when events fire. Without this default, rows sit at NULL forever if
+        // events webhook isn't configured, making them indistinguishable from
+        // "waiting for first event."
+        delivery_status: "sent",
         created_by_user_id: data.user.id,
       })
       .select("id")
@@ -270,4 +277,11 @@ export async function POST(request: Request) {
     replyThreadingOk: messageIdUpdateOk,
     replyThreadingError: messageIdUpdateError,
   });
+  } catch (err) {
+    console.error("[supplier-order/send POST] unhandled:", err);
+    return NextResponse.json(
+      { ok: false, error: "internal_error", message: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
 }
