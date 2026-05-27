@@ -1,0 +1,95 @@
+import { NextResponse } from "next/server";
+import { resolveViewer } from "@/lib/auth/viewer-server";
+import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+
+/**
+ * Lightweight read-only endpoint that returns the admin-configured active
+ * supplier list. Used by:
+ *   - Materials page "Add supplier manually" picker (when SF colors don't
+ *     have a manufacturer attached, worker still needs to pick somewhere
+ *     to send the order).
+ *   - Multi-supplier batch compose modal.
+ *
+ * Accessible to any signed-in user (workers + admin). No scope filter —
+ * admin-configured suppliers are global to the org, not per-rep.
+ *
+ * Returns only suppliers where supplier_settings.is_active=true AND
+ * order_email is set (otherwise Send would be disabled anyway).
+ */
+
+function adminClient() {
+  return createSupabaseAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
+
+export type ActiveSupplier = {
+  accountId: string;
+  name: string;
+  orderEmail: string;
+  pppAccountNumber: string | null;
+  isBMRetailer: boolean;
+  /** Did admin configure pickup locations? Used by the modal to hint
+   *  delivery vs pickup as the default. */
+  hasPickupLocations: boolean;
+};
+
+export async function GET() {
+  try {
+    const viewer = await resolveViewer({});
+    if (!viewer) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+
+    const sb = adminClient();
+    const { data: rows, error } = await sb
+      .from("supplier_settings")
+      .select("supplier_account_id, supplier_name, order_email, ppp_account_number, pickup_locations")
+      .eq("is_active", true)
+      .not("order_email", "is", null);
+    if (error) {
+      return NextResponse.json({ ok: false, error: "query_failed", message: error.message }, { status: 500 });
+    }
+
+    // Enrich with snapshot data for the supplier's BM-retailer flag + canonical
+    // SF name (in case supplier_settings has a stale label). Snapshot is cached
+    // so this is a fast lookup.
+    let snapshot: Awaited<ReturnType<typeof loadSalesforceSnapshot>> | null = null;
+    try {
+      snapshot = await loadSalesforceSnapshot();
+    } catch {
+      // Soft fail — fall through with no enrichment; the row still has enough
+      // to render in the picker (id + name + email).
+    }
+    const acctById = snapshot
+      ? new Map(snapshot.accounts.map((a) => [a.id, a]))
+      : new Map();
+
+    const suppliers: ActiveSupplier[] = (rows ?? [])
+      .filter((r) => r.order_email && r.supplier_account_id)
+      .map((r) => {
+        const acct = acctById.get(r.supplier_account_id);
+        const pickup = Array.isArray(r.pickup_locations) ? r.pickup_locations : [];
+        return {
+          accountId: r.supplier_account_id as string,
+          name: (acct?.name ?? r.supplier_name ?? r.supplier_account_id) as string,
+          orderEmail: r.order_email as string,
+          pppAccountNumber: (r.ppp_account_number as string | null) ?? null,
+          isBMRetailer: acct?.isBMRetailer ?? false,
+          hasPickupLocations: pickup.length > 0,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return NextResponse.json({ ok: true, suppliers });
+  } catch (err) {
+    console.error("[suppliers/active GET] unhandled:", err);
+    return NextResponse.json(
+      { ok: false, error: "internal_error", message: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
+}

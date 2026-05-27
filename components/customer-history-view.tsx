@@ -127,9 +127,30 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
   useEffect(() => { void load(); }, [load]);
 
   if (loading && !account) {
+    // Skeleton shell mirroring the real layout so the page doesn't
+    // visually jump when data arrives. Feels significantly faster than
+    // a single "Loading…" line.
     return (
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center text-sm text-ppp-charcoal-500">
-        Loading customer history…
+      <div className="space-y-5">
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6 animate-pulse">
+          <div className="h-3 w-16 bg-ppp-charcoal-100 rounded mb-2" />
+          <div className="h-7 w-2/3 bg-ppp-charcoal-100 rounded mb-3" />
+          <div className="flex gap-2 mb-4">
+            <div className="h-4 w-20 bg-ppp-charcoal-100 rounded" />
+            <div className="h-4 w-16 bg-ppp-charcoal-100 rounded" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4">
+            <div className="h-3 w-48 bg-ppp-charcoal-100 rounded" />
+            <div className="h-3 w-36 bg-ppp-charcoal-100 rounded" />
+            <div className="h-3 w-64 bg-ppp-charcoal-100 rounded col-span-1 sm:col-span-2" />
+          </div>
+        </div>
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 animate-pulse">
+          <div className="h-4 w-32 bg-ppp-charcoal-100 rounded mb-3" />
+          <div className="space-y-2">
+            {[0,1,2].map((i) => <div key={i} className="h-8 bg-ppp-charcoal-50 rounded" />)}
+          </div>
+        </div>
       </div>
     );
   }

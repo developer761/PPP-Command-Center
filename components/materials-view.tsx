@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import PageHeader from "@/components/page-header";
+import SupplierPickerModal from "@/components/supplier-picker-modal";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { fmtMoneyK } from "@/lib/format";
 import {
@@ -65,6 +66,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     supplierName: string;
     customerName: string | null;
   } | null>(null);
+
+  // Batch compose queue — when admin "Compose all (N)" in DraftOrderModal,
+  // we sequentially open one SupplierOrderModal per supplier. Worker reviews
+  // + sends each; closing one auto-advances to the next. Empty queue =
+  // single-shot modal flow (the default).
+  const [batchQueue, setBatchQueue] = useState<Array<{ accountId: string; name: string }>>([]);
+  const [batchPosition, setBatchPosition] = useState(0);
 
   // Counter bumped when the modal closes after a successful send — children
   // (past-orders strip) re-fetch when this changes so the new row shows up
@@ -479,6 +487,19 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       customerName: activeJob.wo.accountName ?? null,
                     })
                   }
+                  onOpenBatchStart={(suppliers) => {
+                    if (suppliers.length === 0) return;
+                    setBatchQueue(suppliers);
+                    setBatchPosition(0);
+                    const first = suppliers[0];
+                    setOrderModal({
+                      workOrderId: activeJob.wo.id,
+                      workOrderNumber: activeJob.wo.workOrderNumber,
+                      supplierAccountId: first.accountId,
+                      supplierName: first.name,
+                      customerName: activeJob.wo.accountName ?? null,
+                    });
+                  }}
                 />
               </div>
             ) : (
@@ -503,6 +524,29 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           onClose={() => {
             setOrderModal(null);
             setPastOrdersRefreshKey((k) => k + 1);
+            // Batch advance — if a queue is active and there's a next supplier,
+            // open it. End of queue clears the batch state. This drives the
+            // "Compose all (N)" flow: worker hits Send/Close on supplier 1 and
+            // immediately lands on supplier 2 without going back to materials.
+            if (batchQueue.length > 0) {
+              const nextIdx = batchPosition + 1;
+              if (nextIdx < batchQueue.length && activeJob) {
+                const next = batchQueue[nextIdx];
+                setBatchPosition(nextIdx);
+                setTimeout(() => {
+                  setOrderModal({
+                    workOrderId: activeJob.wo.id,
+                    workOrderNumber: activeJob.wo.workOrderNumber,
+                    supplierAccountId: next.accountId,
+                    supplierName: next.name,
+                    customerName: activeJob.wo.accountName ?? null,
+                  });
+                }, 80); // tiny delay so close animation finishes
+              } else {
+                setBatchQueue([]);
+                setBatchPosition(0);
+              }
+            }
           }}
         />
       )}
@@ -514,14 +558,19 @@ function JobDetail({
   snapshot,
   job,
   onOpenOrderModal,
+  onOpenBatchStart,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   job: OpenWorkOrderForMaterials;
   /** Called when the worker clicks "Order from {supplier}" — triggers
    *  the top-level Supplier Order Modal with that supplier pre-selected. */
   onOpenOrderModal: (supplierAccountId: string, supplierName: string) => void;
+  /** Called when worker selects multiple suppliers + hits "Compose all (N)" —
+   *  parent starts a queue and sequentially opens each. */
+  onOpenBatchStart: (suppliers: Array<{ accountId: string; name: string }>) => void;
 }) {
   const [showDraft, setShowDraft] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
 
   // Pre-fill data for the Send Color Form modal — pull the customer Account
   // from the snapshot via accountName. Empty when not in snapshot (vendor
@@ -668,6 +717,20 @@ function JobDetail({
             </svg>
             Mail history
           </Link>
+          {/* Pick supplier manually — edge case: workers sometimes don't set
+              supplier (manufacturer) on Salesforce, so the WO has paint colors
+              but no auto-detected supplier. This button lets the worker pick
+              from admin-configured suppliers regardless of what SF says. */}
+          <button
+            type="button"
+            onClick={() => setShowPicker(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            Pick supplier
+          </button>
           {/* General Supplies — extras-only order (rollers, brushes, tape,
               drop cloths) sent to PPP's warehouse/Home Depot email, NOT a
               paint vendor. Same modal flow as paint orders so the worker
@@ -685,6 +748,16 @@ function JobDetail({
           </button>
         </div>
       </div>
+
+      {showPicker && (
+        <SupplierPickerModal
+          onClose={() => setShowPicker(false)}
+          onPick={(s) => onOpenOrderModal(s.accountId, s.name)}
+          excludeIds={supplierRows
+            .map((r) => r.manufacturerId)
+            .filter((id) => id && id !== "unknown") as string[]}
+        />
+      )}
 
       {/* Line items per room */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -710,6 +783,13 @@ function JobDetail({
           onOpenOrderModal={(supplierAccountId, supplierName) => {
             setShowDraft(false);
             onOpenOrderModal(supplierAccountId, supplierName);
+          }}
+          onOpenBatch={(suppliers) => {
+            setShowDraft(false);
+            if (suppliers.length === 0) return;
+            // Start the queue + open the first supplier. Parent's onClose
+            // handler will auto-advance through the rest.
+            onOpenBatchStart(suppliers);
           }}
         />
       )}
@@ -829,14 +909,30 @@ function DraftOrderModal({
   snapshot,
   onClose,
   onOpenOrderModal,
+  onOpenBatch,
 }: {
   job: OpenWorkOrderForMaterials;
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   onClose: () => void;
   onOpenOrderModal: (supplierAccountId: string, supplierName: string) => void;
+  /** Open a batch queue — modal sequentially opens each supplier order modal
+   *  so worker can review + send to all selected suppliers in one flow. */
+  onOpenBatch: (suppliers: Array<{ accountId: string; name: string }>) => void;
 }) {
   // Esc key closes the modal — keyboard a11y for the rest of Phase 2.
   useEscClose(onClose);
+
+  // Multi-select state. By default everything checked when ≥2 suppliers
+  // (the common case — worker clicked "Order materials · N" to see them
+  // all). Single-supplier WOs don't need the multi-select UI at all.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   // Aggregate by supplier × color × surface for the draft order body
   const groups = useMemo(() => {
@@ -929,7 +1025,18 @@ function DraftOrderModal({
             {groups.map((g) => (
               <div key={g.name} className="border border-ppp-charcoal-100 rounded-lg overflow-hidden">
                 <div className="px-3 py-2 bg-ppp-blue-50 border-b border-ppp-blue-100 flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.name}</span>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {g.supplierAccountId && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(g.supplierAccountId)}
+                        onChange={() => toggleSelected(g.supplierAccountId!)}
+                        className="shrink-0 h-4 w-4 accent-ppp-blue cursor-pointer"
+                        aria-label={`Select ${g.name} for batch order`}
+                      />
+                    )}
+                    <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.name}</span>
+                  </div>
                   {g.supplierAccountId && (
                     <button
                       type="button"
@@ -963,8 +1070,17 @@ function DraftOrderModal({
 
         <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] text-ppp-charcoal-500 italic">
-            Click <strong>Order from {"{supplier}"}</strong> on a group above to build a
-            review-and-send draft with quantity estimates + the 20-item extras dropdown.
+            {selectedIds.size > 0 ? (
+              <>
+                <strong className="text-ppp-charcoal">{selectedIds.size} supplier{selectedIds.size === 1 ? "" : "s"} selected.</strong>{" "}
+                Click <strong>Compose all</strong> to review + send each in sequence.
+              </>
+            ) : (
+              <>
+                Tick the checkboxes to compose <strong>multiple supplier orders at once</strong>, or
+                click <strong>Order from {"{supplier}"}</strong> on a single group.
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
@@ -974,6 +1090,20 @@ function DraftOrderModal({
             >
               Close
             </button>
+            {selectedIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const picked = groups
+                    .filter((g) => g.supplierAccountId && selectedIds.has(g.supplierAccountId))
+                    .map((g) => ({ accountId: g.supplierAccountId!, name: g.name }));
+                  if (picked.length > 0) onOpenBatch(picked);
+                }}
+                className="px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+              >
+                Compose all ({selectedIds.size}) →
+              </button>
+            )}
           </div>
         </div>
       </div>

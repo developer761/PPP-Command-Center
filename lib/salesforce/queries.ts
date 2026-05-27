@@ -16,10 +16,14 @@ import { getSalesforceClient } from "@/lib/salesforce/client";
  *   3. Period changes are instant client-side recomputes
  */
 
-// 5 minutes — balanced against PPP's data freshness (manual refresh button
-// in the topbar is always available for instant pulls). At PPP scale (20k+
-// WOs in the 365d window) cold-cache loads are 8-15s; warm-cache is instant.
-const CACHE_TTL_MS = 5 * 60 * 1000;
+// 15 minutes — bumped from 5 min after Karan flagged "everything takes way
+// too long." At PPP scale cold-cache loads are 8-15s; warm cache is instant.
+// 15 min means 3x fewer cold loads per function instance over the day with
+// minimal data-staleness cost (the manual refresh button in the topbar
+// still triggers an instant pull when freshness matters, and force-dynamic
+// page rendering means the request still RUNS — it just returns the cached
+// snapshot near-instantly).
+const CACHE_TTL_MS = 15 * 60 * 1000;
 
 // IMPORTANT: cache the PROMISE, not just the resolved value. On a cold cache,
 // when DashboardLayout + the page component both trigger loadDashboardData()
