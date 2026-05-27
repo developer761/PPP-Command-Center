@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { getProfileByUserId } from "@/lib/auth/profile";
-import { isAdminEmail } from "@/lib/auth/admin";
+import { resolveViewer } from "@/lib/auth/viewer-server";
+import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 
 /**
@@ -62,32 +61,50 @@ export type SentMessage = {
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    if (!data?.user) {
+    const url = new URL(request.url);
+    const sp = Object.fromEntries(url.searchParams.entries());
+    const viewer = await resolveViewer(sp);
+    if (!viewer) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
-    const profile = await getProfileByUserId(data.user.id);
-    const isAdmin = profile?.is_admin ?? isAdminEmail(data.user.email);
-    if (!isAdmin) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
 
-    const url = new URL(request.url);
     const kind = url.searchParams.get("kind") ?? "all";
     const workOrderId = url.searchParams.get("workOrderId");
     const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
 
+    // SCOPE: workers see only sent mail for WOs they own.
+    let scopedWoIds: string[] | null = null;
+    if (viewer.scope !== "all") {
+      if (!viewer.effectiveUserId) {
+        return NextResponse.json({
+          ok: true,
+          messages: [],
+          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0 },
+        });
+      }
+      const snapshot = await loadSalesforceSnapshot();
+      const owned = snapshot.workOrders
+        .filter((w) => w.ownerId === viewer.effectiveUserId)
+        .map((w) => w.id);
+      if (workOrderId && !owned.includes(workOrderId)) {
+        return NextResponse.json({
+          ok: true,
+          messages: [],
+          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0 },
+        });
+      }
+      if (owned.length === 0) {
+        return NextResponse.json({
+          ok: true,
+          messages: [],
+          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0 },
+        });
+      }
+      scopedWoIds = owned;
+    }
+
     const sb = adminClient();
 
-    // Build the two source queries. Both filter to sent_at NOT NULL so we
-    // never surface failed / never-sent rows. workOrderId filter applied to
-    // both. Parallel fetch for ~300-500ms savings on cold cache.
-    // resend_message_id is in a fall-through list because migration 010 adds
-    // it for delivery-event threading. Older deploys without the migration
-    // still work — we just won't surface delivery_status until the column
-    // exists. Defensive SELECT with try/catch fallback so the route never
-    // 500s for a missing column.
     let tokenQuery = sb
       .from("customer_form_tokens")
       .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, resend_message_id_invite")
@@ -95,15 +112,17 @@ export async function GET(request: Request) {
       .order("sent_at", { ascending: false })
       .limit(limit);
     if (workOrderId) tokenQuery = tokenQuery.eq("work_order_id", workOrderId);
+    if (scopedWoIds) tokenQuery = tokenQuery.in("work_order_id", scopedWoIds);
 
     let orderQuery = sb
       .from("supplier_orders")
-      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at")
+      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at, delivery_status")
       .eq("status", "sent")
       .not("sent_at", "is", null)
       .order("sent_at", { ascending: false })
       .limit(limit);
     if (workOrderId) orderQuery = orderQuery.eq("work_order_id", workOrderId);
+    if (scopedWoIds) orderQuery = orderQuery.in("work_order_id", scopedWoIds);
 
     // Run both fetches in parallel. If either fails we surface the error but
     // try to return the other half so the UI isn't blank.
@@ -159,14 +178,33 @@ export async function GET(request: Request) {
       }
     }
 
+    // Same migration-010 fallback for supplier_orders: retry without
+    // delivery_status if the column doesn't exist yet so the route still works
+    // on a fresh deploy that hasn't run the migration.
+    let orderRows: unknown[] = [];
     if (ordersRes.error) {
-      errors.push(`supplier orders: ${ordersRes.error.message}`);
+      const retry = await sb
+        .from("supplier_orders")
+        .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at")
+        .eq("status", "sent")
+        .not("sent_at", "is", null)
+        .order("sent_at", { ascending: false })
+        .limit(limit);
+      if (retry.error) {
+        errors.push(`supplier orders: ${retry.error.message}`);
+      } else {
+        orderRows = retry.data ?? [];
+      }
     } else if (ordersRes.data) {
-      for (const o of ordersRes.data as Array<{
+      orderRows = ordersRes.data;
+    }
+    {
+      for (const o of orderRows as Array<{
         id: string; work_order_id: string; work_order_number: string | null;
         supplier_name: string; po_number: string; sent_to_email: string;
         sent_at: string; resend_message_id: string | null; status: string;
         acknowledged_at: string | null; delivered_at: string | null;
+        delivery_status?: string | null;
       }>) {
         messages.push({
           id: `order:${o.id}`,
@@ -178,7 +216,7 @@ export async function GET(request: Request) {
           workOrderId: o.work_order_id,
           workOrderNumber: o.work_order_number,
           resendMessageId: o.resend_message_id,
-          deliveryStatus: null,
+          deliveryStatus: o.delivery_status ?? null,
           poNumber: o.po_number,
           supplierName: o.supplier_name,
           acknowledged: !!o.acknowledged_at,

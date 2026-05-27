@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getProfileByUserId } from "@/lib/auth/profile";
-import { isAdminEmail } from "@/lib/auth/admin";
+import { resolveViewer } from "@/lib/auth/viewer-server";
+import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 
 /**
@@ -27,30 +27,50 @@ function adminClient() {
 }
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData?.user) {
+  const url = new URL(request.url);
+  const sp = Object.fromEntries(url.searchParams.entries());
+  const viewer = await resolveViewer(sp);
+  if (!viewer) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const profile = await getProfileByUserId(authData.user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(authData.user.email);
-  if (!isAdmin) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
 
-  const url = new URL(request.url);
   const kind = url.searchParams.get("kind") ?? "all";
   const archived = url.searchParams.get("archived") === "true";
   const workOrderId = url.searchParams.get("workOrderId");
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
 
+  // SCOPE: workers see only emails linked to WOs they own. Admin (scope='all')
+  // sees everything including the 'unmatched' triage bucket. Workers without
+  // an SF user id mapping get an empty result rather than leaking admin data.
+  let scopedWoIds: Set<string> | null = null;
+  if (viewer.scope !== "all") {
+    if (!viewer.effectiveUserId) {
+      // Worker has no SF mapping yet — return empty rather than leak data
+      return NextResponse.json({
+        ok: true,
+        messages: [],
+        summary: { unread: 0, returned: 0, scopeNote: "no_sf_user_mapping" },
+      });
+    }
+    const snapshot = await loadSalesforceSnapshot();
+    scopedWoIds = new Set(
+      snapshot.workOrders
+        .filter((w) => w.ownerId === viewer.effectiveUserId)
+        .map((w) => w.id)
+    );
+    // If the worker's WO id we got asked for isn't in their owned set,
+    // reject — they shouldn't be able to peek via a guessed workOrderId.
+    if (workOrderId && !scopedWoIds.has(workOrderId)) {
+      return NextResponse.json({
+        ok: true,
+        messages: [],
+        summary: { unread: 0, returned: 0, scopeNote: "wo_not_owned" },
+      });
+    }
+  }
+
   const sb = adminClient();
-  // linked_token is intentionally OMITTED — it's the customer's form
-  // credential (anyone with the token can submit colors on their behalf).
-  // The UI doesn't need it on the list view; the per-message thread page
-  // can resolve linked_work_order_id → token through a scoped helper if
-  // we ever surface a "open in customer form" affordance. Until then, no
-  // client-side code path needs the token.
+  // linked_token is intentionally OMITTED — customer credential not for UI.
   let query = sb
     .from("inbox_messages")
     .select(
@@ -76,18 +96,36 @@ export async function GET(request: Request) {
   if (workOrderId) {
     query = query.eq("linked_work_order_id", workOrderId);
   }
+  // Worker scope: restrict to owned WOs. Use Supabase 'in' filter with the
+  // explicit id list (max 1000 — way beyond what one rep owns). Unmatched
+  // bucket (no linked_work_order_id) is INVISIBLE to workers since the
+  // triage of unidentified mail is admin's job.
+  if (scopedWoIds) {
+    const owned = Array.from(scopedWoIds);
+    if (owned.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        messages: [],
+        summary: { unread: 0, returned: 0, scopeNote: "no_owned_wos" },
+      });
+    }
+    query = query.in("linked_work_order_id", owned);
+  }
 
   // Parallelize the messages list fetch + unread count — they're independent
   // queries with no ordering dependency. Saves ~200-400ms on typical inbox
-  // sizes (each Supabase query carries network + auth overhead).
-  const [messagesRes, unreadRes] = await Promise.all([
-    query,
-    sb
-      .from("inbox_messages")
-      .select("id", { count: "exact", head: true })
-      .is("read_at", null)
-      .is("archived_at", null),
-  ]);
+  // sizes (each Supabase query carries network + auth overhead). The unread
+  // count is scope-aware so the worker's sidebar badge shows "their unread"
+  // not the company-wide unread count.
+  let unreadQuery = sb
+    .from("inbox_messages")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null)
+    .is("archived_at", null);
+  if (scopedWoIds) {
+    unreadQuery = unreadQuery.in("linked_work_order_id", Array.from(scopedWoIds));
+  }
+  const [messagesRes, unreadRes] = await Promise.all([query, unreadQuery]);
   const { data: messages, error } = messagesRes;
   const unreadCount = unreadRes.count;
   if (error) {
@@ -111,15 +149,9 @@ export async function GET(request: Request) {
  *   body: { messageId: string, action: 'mark_read' | 'mark_unread' | 'archive' | 'unarchive' }
  */
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData?.user) {
+  const viewer = await resolveViewer({});
+  if (!viewer) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const profile = await getProfileByUserId(authData.user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(authData.user.email);
-  if (!isAdmin) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
   let body: { messageId?: string; action?: string };
@@ -137,12 +169,43 @@ export async function POST(request: Request) {
   }
 
   const sb = adminClient();
+
+  // Scope check — worker can only mark-read/archive messages tied to their
+  // owned WOs. Admin (scope='all') skips the check. Without this guard a
+  // worker could enumerate inbox_messages.id values and archive other reps'
+  // mail. The id space is UUID so guessing is impractical, but defense-in-depth.
+  if (viewer.scope !== "all") {
+    if (!viewer.effectiveUserId) {
+      return NextResponse.json({ error: "forbidden_no_sf_mapping" }, { status: 403 });
+    }
+    const lookup = await sb
+      .from("inbox_messages")
+      .select("linked_work_order_id")
+      .eq("id", body.messageId)
+      .maybeSingle();
+    if (lookup.error || !lookup.data) {
+      return NextResponse.json({ error: "message_not_found" }, { status: 404 });
+    }
+    const linkedWo = lookup.data.linked_work_order_id;
+    if (!linkedWo) {
+      // Unmatched mail — admin-only
+      return NextResponse.json({ error: "forbidden_unmatched_admin_only" }, { status: 403 });
+    }
+    const snapshot = await loadSalesforceSnapshot();
+    const ownsWo = snapshot.workOrders.some(
+      (w) => w.id === linkedWo && w.ownerId === viewer.effectiveUserId
+    );
+    if (!ownsWo) {
+      return NextResponse.json({ error: "forbidden_not_owner" }, { status: 403 });
+    }
+  }
+
   const now = new Date().toISOString();
   const patch: Record<string, unknown> = {};
   switch (body.action) {
     case "mark_read":
       patch.read_at = now;
-      patch.read_by_user_id = authData.user.id;
+      patch.read_by_user_id = viewer.supabaseUserId;
       break;
     case "mark_unread":
       patch.read_at = null;

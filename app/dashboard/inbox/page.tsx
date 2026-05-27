@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getProfileByUserId } from "@/lib/auth/profile";
-import { isAdminEmail } from "@/lib/auth/admin";
 import PageHeader from "@/components/page-header";
 import InboxView from "@/components/inbox-view";
 
@@ -23,9 +21,10 @@ export default async function InboxPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  const profile = await getProfileByUserId(user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
-  if (!isAdmin) redirect("/dashboard");
+  // Mail Hub is now accessible to workers — they see only mail tied to WOs
+  // they own (admin sees everything). Scope enforcement happens inside the
+  // /api/admin/inbox + /api/admin/sent endpoints by resolving the viewer
+  // and filtering by viewer.scope + viewer.effectiveUserId.
 
   return (
     <div className="animate-fade-up">
