@@ -193,22 +193,44 @@ export default function InboxView() {
     return list;
   }, [messages, tab, search]);
 
-  // Reset search when switching modes — different surface, different intent
-  useEffect(() => { setSearch(""); }, [mode]);
+  // Reset search when switching modes — different surface, different intent.
+  // Also clear the per-WO URL filter so the user gets the unified Sent view
+  // (or unified Inbox) — keeping the filter across modes was confusing.
+  useEffect(() => {
+    setSearch("");
+    if (woFilter) clearWoFilter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const markRead = async (id: string) => {
+    // Optimistically flip the row to read (instant visual feedback). DO NOT
+    // decrement the summary.unread counter yet — that's the value we revert
+    // if the server fails. Decrementing optimistically caused a visible
+    // count "flash" if the POST took >500ms and then errored, since the
+    // user saw the badge drop then bounce back. Wait for ACK.
     setMessages((prev) =>
       prev.map((m) => (m.id === id ? { ...m, read_at: new Date().toISOString() } : m))
     );
-    setSummary((prev) => ({ ...prev, unread: Math.max(0, prev.unread - 1) }));
     try {
-      await fetch("/api/admin/inbox", {
+      const res = await fetch("/api/admin/inbox", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId: id, action: "mark_read" }),
       });
+      if (res.ok) {
+        // Server confirmed — now decrement the badge count
+        setSummary((prev) => ({ ...prev, unread: Math.max(0, prev.unread - 1) }));
+      } else {
+        // Server rejected — revert the row flip
+        setMessages((prev) =>
+          prev.map((m) => (m.id === id ? { ...m, read_at: null } : m))
+        );
+      }
     } catch {
-      // Optimistic update — refresh on error
+      // Network error — revert the row flip + full reload as last resort
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, read_at: null } : m))
+      );
       void load();
     }
   };

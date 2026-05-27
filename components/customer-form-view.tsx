@@ -86,6 +86,10 @@ export default function CustomerFormView({ token, customerName, formData, copy }
   const [state, setState] = useState(initialState);
   const [globalNotes, setGlobalNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Ref-based guard — React batches setState so two rapid clicks could
+  // both pass `if (submitting) return` before either commits the new value.
+  // The ref updates synchronously so a double-click is caught immediately.
+  const submitInFlight = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
@@ -162,6 +166,11 @@ export default function CustomerFormView({ token, customerName, formData, copy }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Double-submit guard — Enter key + button click can fire twice in
+    // <100ms; React batches setSubmitting so two events can both pass the
+    // submitting=false check. The ref updates synchronously.
+    if (submitInFlight.current || submitting) return;
+    submitInFlight.current = true;
     setSubmitError(null);
     setSubmitting(true);
     try {
@@ -214,6 +223,7 @@ export default function CustomerFormView({ token, customerName, formData, copy }
       setSubmitError(m);
     } finally {
       setSubmitting(false);
+      submitInFlight.current = false;
     }
   };
 

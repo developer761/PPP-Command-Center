@@ -71,20 +71,11 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
   ) => {
     setTransitioning(orderId);
     setRowError(null);
-    // Optimistic update — parent sees the change immediately.
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              status: nextStatus,
-              acknowledged_at: nextStatus === "acknowledged" ? new Date().toISOString() : o.acknowledged_at,
-              delivered_at: nextStatus === "delivered" ? new Date().toISOString() : o.delivered_at,
-              cancelled_at: nextStatus === "cancelled" ? new Date().toISOString() : o.cancelled_at,
-            }
-          : o
-      )
-    );
+    // No more optimistic update — previously we flipped the row's status
+    // immediately, then rolled back on server error via reload, which
+    // produced a visible "Mark Delivered" → ⟲ → "Sent" flash on slow
+    // networks. Spinner-only state during the round-trip is calmer; the
+    // status flips ONCE when the server confirms.
     try {
       const res = await fetch("/api/admin/supplier-order/status", {
         method: "POST",
@@ -92,16 +83,31 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
         body: JSON.stringify({ supplierOrderId: orderId, status: nextStatus }),
       });
       if (!res.ok) {
-        // Roll back optimistic update by re-fetching from server
-        await load();
         const data = await res.json().catch(() => ({}));
         const msg = data.message ?? data.error ?? `HTTP ${res.status}`;
         setRowError({ orderId, message: msg });
         // Auto-clear after 6s so the strip doesn't stay stuck on an error
         setTimeout(() => setRowError((prev) => prev?.orderId === orderId ? null : prev), 6000);
+      } else {
+        // Server confirmed — apply the local update ONCE. Previously we did
+        // an optimistic update before the request, which caused a visible
+        // "Mark Delivered" → ⟲ → "Sent" flash on error rollback. Spinner-only
+        // during the round-trip + single flip on success is calmer.
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  status: nextStatus,
+                  acknowledged_at: nextStatus === "acknowledged" ? new Date().toISOString() : o.acknowledged_at,
+                  delivered_at: nextStatus === "delivered" ? new Date().toISOString() : o.delivered_at,
+                  cancelled_at: nextStatus === "cancelled" ? new Date().toISOString() : o.cancelled_at,
+                }
+              : o
+          )
+        );
       }
     } catch (err) {
-      await load();
       const msg = err instanceof Error ? err.message : String(err);
       setRowError({ orderId, message: msg });
       setTimeout(() => setRowError((prev) => prev?.orderId === orderId ? null : prev), 6000);

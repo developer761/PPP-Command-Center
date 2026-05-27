@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       // Re-fire a customer-form invite.
       const { data: row, error } = await sb
         .from("customer_form_tokens")
-        .select("token, work_order_id, work_order_number, customer_email, customer_name, expires_at")
+        .select("token, work_order_id, work_order_number, customer_email, customer_name, expires_at, sent_at, resend_message_id_invite")
         .eq("token", ref)
         .maybeSingle();
       if (error || !row) {
@@ -85,6 +85,24 @@ export async function POST(request: Request) {
         if (!ownsWo) {
           return NextResponse.json({ error: "token_not_found" }, { status: 404 });
         }
+      }
+
+      // Idempotency: if we sent this same form invite within the last 5
+      // minutes AND already have a Resend message id, treat the click as a
+      // duplicate (browser retry, double-click race, etc.) — return the
+      // existing message id instead of firing another email. Customer
+      // doesn't get spammed; admin sees the same UX response.
+      if (
+        row.sent_at &&
+        row.resend_message_id_invite &&
+        Date.now() - new Date(row.sent_at).getTime() < 5 * 60_000
+      ) {
+        return NextResponse.json({
+          ok: true,
+          kind: "form_invite",
+          deduped: true,
+          resendMessageId: row.resend_message_id_invite,
+        });
       }
 
       if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
@@ -128,7 +146,7 @@ export async function POST(request: Request) {
     // kindTag === "order"
     const { data: order, error } = await sb
       .from("supplier_orders")
-      .select("id, work_order_id, supplier_name, po_number, sent_to_email, draft_body, work_order_number")
+      .select("id, work_order_id, supplier_name, po_number, sent_to_email, draft_body, work_order_number, sent_at, resend_message_id")
       .eq("id", ref)
       .maybeSingle();
     if (error || !order) {
@@ -146,6 +164,25 @@ export async function POST(request: Request) {
       if (!ownsWo) {
         return NextResponse.json({ error: "order_not_found" }, { status: 404 });
       }
+    }
+
+    // Idempotency: if we sent this same supplier order within the last 5
+    // minutes AND have a Resend message id, treat the click as a duplicate
+    // and return the existing id instead of firing another email. Suppliers
+    // don't get double-orders; admin sees the same response.
+    const orderRow = order as typeof order & { sent_at?: string | null; resend_message_id?: string | null };
+    if (
+      orderRow.sent_at &&
+      orderRow.resend_message_id &&
+      Date.now() - new Date(orderRow.sent_at).getTime() < 5 * 60_000
+    ) {
+      return NextResponse.json({
+        ok: true,
+        kind: "supplier_order",
+        deduped: true,
+        resendMessageId: orderRow.resend_message_id,
+        poNumber: order.po_number,
+      });
     }
 
     // Synthesize subject — supplier_orders doesn't store it separately; the

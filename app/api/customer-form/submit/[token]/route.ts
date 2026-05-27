@@ -192,7 +192,7 @@ export async function POST(
       // Log loudly — Supabase row is marked submitted with the payload, so an
       // admin can replay via the audit log. We don't show the customer the
       // error since their form succeeded from their perspective.
-      console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl}:`, failed);
+      console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl.slice(0, 8)}…:`, failed);
     }
   } else if (!submitMark.fresh) {
     console.log(`[customer-form] race-lost submit for token ${tokenFromUrl.slice(0, 8)}… — skipping SF writes (winner already fired them)`);
