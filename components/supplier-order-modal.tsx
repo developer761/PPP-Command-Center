@@ -64,6 +64,8 @@ type Draft = {
   requiredByDate: string;
   sentToEmail: string | null;
   pppAccountNumber: string | null;
+  pickupLocations: Array<{ name: string; address: string }>;
+  skippedSurfaces?: Array<{ roomLabel: string; surface: string }>;
 };
 
 type SelectedExtra = {
@@ -399,12 +401,10 @@ export default function SupplierOrderModal({
                       />
                     </div>
                     {fulfillment === "pickup" && (
-                      <input
-                        type="text"
+                      <PickupLocationPicker
+                        locations={draft?.pickupLocations ?? []}
                         value={pickupLocation}
-                        onChange={(e) => setPickupLocation(e.target.value)}
-                        placeholder="e.g. BM Smithtown · 123 Main St"
-                        className="mt-3 w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                        onChange={setPickupLocation}
                       />
                     )}
                   </Section>
@@ -613,5 +613,87 @@ function FulfillmentChoice({
         {description}
       </div>
     </button>
+  );
+}
+
+/* ─── Pickup location picker ─── */
+
+/**
+ * Pickup-location input that becomes a SELECT dropdown when the supplier
+ * has pickup_locations configured in /dashboard/settings/suppliers. Falls
+ * back to a free-text input when nothing is curated yet. Per the one-click
+ * + autofill rule — workers should pick from a known list, not retype
+ * "BM Smithtown · 123 Main St" every time.
+ *
+ * - 0 configured: text input (admin hasn't set anything up; legacy path)
+ * - 1 configured: pre-selected, single radio (no decision needed)
+ * - 2+ configured: dropdown with each location + an "Other" option that
+ *   reveals a text input for one-off pickup addresses
+ */
+function PickupLocationPicker({
+  locations,
+  value,
+  onChange,
+}: {
+  locations: Array<{ name: string; address: string }>;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const OTHER = "__other__";
+  const formatted = (loc: { name: string; address: string }) =>
+    loc.address ? `${loc.name} · ${loc.address}` : loc.name;
+
+  useEffect(() => {
+    if (locations.length === 1 && !value) {
+      onChange(formatted(locations[0]));
+    }
+  }, [locations, value, onChange]);
+
+  if (locations.length === 0) {
+    return (
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="e.g. BM Smithtown · 123 Main St"
+        className="mt-3 w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+      />
+    );
+  }
+
+  const knownMatch = locations.find((loc) => formatted(loc) === value);
+  const isOther = !!value && !knownMatch;
+  const selectValue = knownMatch ? formatted(knownMatch) : isOther ? OTHER : "";
+
+  return (
+    <div className="mt-3 space-y-2">
+      <select
+        value={selectValue}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === OTHER) onChange(value && !knownMatch ? value : " ");
+          else onChange(v);
+        }}
+        className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+      >
+        {locations.length > 1 && <option value="">Pick a location…</option>}
+        {locations.map((loc) => (
+          <option key={`${loc.name}__${loc.address}`} value={formatted(loc)}>
+            {formatted(loc)}
+          </option>
+        ))}
+        <option value={OTHER}>Other (type below)…</option>
+      </select>
+      {isOther && (
+        <input
+          type="text"
+          autoFocus
+          value={value.trim()}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g. BM Smithtown · 123 Main St"
+          className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+        />
+      )}
+    </div>
   );
 }

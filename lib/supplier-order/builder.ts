@@ -131,6 +131,11 @@ export type SupplierOrderDraft = {
    *  in Settings → Suppliers. Copy-to-Clipboard still works. */
   sentToEmail: string | null;
   pppAccountNumber: string | null;
+  /** Configured pickup locations for this supplier — admin sets these once
+   *  in /dashboard/settings/suppliers, then workers pick from a dropdown
+   *  instead of typing the address every time. Empty array = no curated
+   *  locations, modal falls back to a text input. */
+  pickupLocations: PickupLocation[];
 };
 
 /* ─── Helpers ─── */
@@ -399,10 +404,13 @@ function readableDate(iso: string): string {
   });
 }
 
+export type PickupLocation = { name: string; address: string };
+
 /** Read supplier_settings row for the target supplier (best-effort). */
 async function loadSupplierSettings(supplierAccountId: string): Promise<{
   orderEmail: string | null;
   pppAccountNumber: string | null;
+  pickupLocations: PickupLocation[];
 }> {
   try {
     const sb = createClient(
@@ -412,16 +420,27 @@ async function loadSupplierSettings(supplierAccountId: string): Promise<{
     );
     const { data } = await sb
       .from("supplier_settings")
-      .select("order_email, ppp_account_number")
+      .select("order_email, ppp_account_number, pickup_locations")
       .eq("supplier_account_id", supplierAccountId)
       .maybeSingle();
+    const raw = data?.pickup_locations;
+    const pickupLocations: PickupLocation[] = Array.isArray(raw)
+      ? (raw as unknown[])
+          .filter((p): p is { name: string; address: string } =>
+            typeof p === "object" && p !== null &&
+            typeof (p as { name?: unknown }).name === "string" &&
+            typeof (p as { address?: unknown }).address === "string"
+          )
+          .filter((p) => p.name.trim().length > 0)
+      : [];
     return {
       orderEmail: (data?.order_email as string | null) ?? null,
       pppAccountNumber: (data?.ppp_account_number as string | null) ?? null,
+      pickupLocations,
     };
   } catch (err) {
     console.warn(`[supplier-order/builder] loadSupplierSettings failed:`, err);
-    return { orderEmail: null, pppAccountNumber: null };
+    return { orderEmail: null, pppAccountNumber: null, pickupLocations: [] };
   }
 }
 
@@ -524,5 +543,6 @@ export async function buildSupplierOrderDraft(
     requiredByDate,
     sentToEmail: settings.orderEmail,
     pppAccountNumber: settings.pppAccountNumber,
+    pickupLocations: settings.pickupLocations,
   };
 }
