@@ -30,8 +30,8 @@ export default async function InboxPage() {
   return (
     <div className="animate-fade-up">
       <PageHeader
-        title="Inbox"
-        subtitle="Supplier replies and customer follow-ups, threaded to their work orders. Configure Resend inbound on orders@orders.precisionpaintingplus.net to start receiving messages here."
+        title="Mail"
+        subtitle="Every email the Command Center has sent or received — flip between Inbox (supplier replies + customer follow-ups) and Sent (color forms + supplier orders) for a complete record."
       />
       <InboxView />
     </div>
