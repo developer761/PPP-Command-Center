@@ -90,6 +90,7 @@ export async function GET(
     // majority of real customers. Synthesize a minimal Account from WO
     // data so the page still works.
     let account = snapshot.accounts.find((a) => a.id === accountId);
+    let accountIsSynth = false;
 
     // Find every WO + Opp on this account FIRST (we need them either way
     // for the timeline + scope check, AND to synthesize the account when
@@ -117,7 +118,10 @@ export async function GET(
       }
       // Build minimal stub. totalLifetimeRevenue from WO sum is an
       // approximation; for top-5k accounts SF provides the canonical figure
-      // (which includes historical WOs beyond our 365d window).
+      // (which includes historical WOs beyond our 365d window). Flag the
+      // synth state so the UI hides metrics it can't trust (CFY revenue,
+      // BM-retailer flag, address — all null on synth).
+      accountIsSynth = true;
       const synthRevenue = allWos.reduce((s, w) => s + (w.amount ?? 0), 0);
       account = {
         id: accountId,
@@ -190,6 +194,15 @@ export async function GET(
           .is("archived_at", null)
           .order("received_at", { ascending: false }),
       ]);
+
+      // Capture promise rejections (network drops, unhandled throws). The
+      // per-source value.error case (postgrest returned data:null+error) is
+      // captured in the per-source branches below — this catches the harder
+      // case where the promise itself rejected and the existing branches
+      // would silently skip the source.
+      if (formsRes.status === "rejected") errors.push(`form invites: ${String(formsRes.reason).slice(0, 200)}`);
+      if (ordersRes.status === "rejected") errors.push(`supplier orders: ${String(ordersRes.reason).slice(0, 200)}`);
+      if (inboxRes.status === "rejected") errors.push(`replies: ${String(inboxRes.reason).slice(0, 200)}`);
 
       if (formsRes.status === "fulfilled" && !formsRes.value.error) {
         for (const t of (formsRes.value.data ?? []) as Array<{
@@ -311,11 +324,18 @@ export async function GET(
         accountManagerId: account.accountManagerId,
         primaryContact: account.primaryContact,
         totalLifetimeRevenue: account.totalLifetimeRevenue,
-        totalRevenueCFY: account.totalRevenueCFY,
+        // CFY revenue is only canonical for top-5k accounts (synth stubs
+        // always return 0 since we have no SF aggregate for them — the UI
+        // would show a misleading "$0 this fiscal year" otherwise).
+        totalRevenueCFY: accountIsSynth ? null : account.totalRevenueCFY,
         isBMRetailer: account.isBMRetailer,
         isKeyRelationship: account.isKeyRelationship,
         lastAppointment: account.lastAppointment,
         lastWorkOrderCompleted: account.lastWorkOrderCompleted,
+        /** True when we couldn't find this account in the snapshot's top-5k
+         *  and had to construct it from WO data. Lifetime revenue + CFY are
+         *  approximations of the last 365 days; older data isn't visible. */
+        isSynthesizedFromWOs: accountIsSynth,
       },
       workOrders: visibleWos.map((w) => ({
         id: w.id,

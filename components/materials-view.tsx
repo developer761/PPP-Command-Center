@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import PageHeader from "@/components/page-header";
 import SupplierPickerModal from "@/components/supplier-picker-modal";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
@@ -73,6 +73,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // single-shot modal flow (the default).
   const [batchQueue, setBatchQueue] = useState<Array<{ accountId: string; name: string }>>([]);
   const [batchPosition, setBatchPosition] = useState(0);
+  // Re-entrancy guard — onClose can fire twice in <100ms (Esc + backdrop
+  // race, or Send-success + manual Close race). The ref updates synchronously
+  // so the second invocation sees the in-flight flag and bails.
+  const advancingRef = useRef(false);
 
   // Counter bumped when the modal closes after a successful send — children
   // (past-orders strip) re-fetch when this changes so the new row shows up
@@ -522,6 +526,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           supplierName={orderModal.supplierName}
           customerName={orderModal.customerName}
           onClose={() => {
+            // Re-entrancy guard: onClose can fire twice in <100ms (Esc +
+            // backdrop click, or send-success + manual close). Second call
+            // bails so we don't skip a supplier or advance past the end.
+            if (advancingRef.current) return;
+            advancingRef.current = true;
             setOrderModal(null);
             setPastOrdersRefreshKey((k) => k + 1);
             // Batch advance — if a queue is active and there's a next supplier,
@@ -541,11 +550,15 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     supplierName: next.name,
                     customerName: activeJob.wo.accountName ?? null,
                   });
+                  advancingRef.current = false;
                 }, 80); // tiny delay so close animation finishes
               } else {
                 setBatchQueue([]);
                 setBatchPosition(0);
+                advancingRef.current = false;
               }
+            } else {
+              advancingRef.current = false;
             }
           }}
         />

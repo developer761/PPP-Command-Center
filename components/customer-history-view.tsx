@@ -26,11 +26,12 @@ type Account = {
   accountManagerId: string | null;
   primaryContact: string | null;
   totalLifetimeRevenue: number;
-  totalRevenueCFY: number;
+  totalRevenueCFY: number | null;
   isBMRetailer: boolean;
   isKeyRelationship: boolean;
   lastAppointment: string | null;
   lastWorkOrderCompleted: string | null;
+  isSynthesizedFromWOs?: boolean;
 };
 
 type WorkOrder = {
@@ -217,14 +218,22 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
             <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-navy">
               {fmtMoneyK(Math.round(account.totalLifetimeRevenue / 1000))}
             </div>
-            <div className="text-[11px] text-ppp-charcoal-500">Lifetime with PPP</div>
-            {account.totalRevenueCFY > 0 && (
+            <div className="text-[11px] text-ppp-charcoal-500">
+              {account.isSynthesizedFromWOs ? "Last 365 days" : "Lifetime with PPP"}
+            </div>
+            {account.totalRevenueCFY != null && account.totalRevenueCFY > 0 && (
               <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                 {fmtMoneyK(Math.round(account.totalRevenueCFY / 1000))} this fiscal year
               </div>
             )}
           </div>
         </div>
+
+        {account.isSynthesizedFromWOs && (
+          <div className="mt-3 bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-lg px-3 py-2 text-[11px] text-ppp-charcoal-500">
+            This customer isn&apos;t in our top-5k cache, so we&apos;re showing data from the last 365 days only. Older work may exist in Salesforce.
+          </div>
+        )}
 
         {/* Contact + scope notes */}
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-xs">

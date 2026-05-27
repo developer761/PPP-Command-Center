@@ -210,11 +210,23 @@ export async function POST(request: Request) {
   // Step 2: Fire the Resend send. ReplyTo = orders@orders.precisionpaintingplus.net
   // so the supplier's response goes to PPP's branded inbox (configured to be
   // ingested by the upcoming /dashboard/inbox via Resend inbound webhook).
+  // RESEND_FROM_ADDRESS is the reply-to that routes supplier responses back
+  // into our inbox. Without it, supplier replies go to the orders@ Gmail
+  // and never appear in /dashboard/inbox — admin assumes "no reply yet"
+  // when the supplier already responded. Log loudly so this gets noticed
+  // in production logs even though we can't refuse to send (the order is
+  // already drafted; admin clicked Send).
+  const replyTo = process.env.RESEND_FROM_ADDRESS;
+  if (!replyTo) {
+    console.error(
+      `[supplier-order/send] RESEND_FROM_ADDRESS env var not set — supplier replies for PO ${body.poNumber} will NOT thread back to the inbox. Set it in Vercel.`
+    );
+  }
   const send = await sendEmail({
     to: body.sentToEmail!.trim().toLowerCase(),
     subject: body.subject!,
     text: body.body!,
-    replyTo: process.env.RESEND_FROM_ADDRESS || undefined,
+    replyTo: replyTo || undefined,
     tags: [
       { name: "kind", value: "supplier_order" },
       { name: "po", value: body.poNumber! },
