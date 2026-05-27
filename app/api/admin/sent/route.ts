@@ -83,9 +83,14 @@ export async function GET(request: Request) {
     // Build the two source queries. Both filter to sent_at NOT NULL so we
     // never surface failed / never-sent rows. workOrderId filter applied to
     // both. Parallel fetch for ~300-500ms savings on cold cache.
+    // resend_message_id is in a fall-through list because migration 010 adds
+    // it for delivery-event threading. Older deploys without the migration
+    // still work — we just won't surface delivery_status until the column
+    // exists. Defensive SELECT with try/catch fallback so the route never
+    // 500s for a missing column.
     let tokenQuery = sb
       .from("customer_form_tokens")
-      .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, resend_message_id, delivery_status, opened_at, submitted_at")
+      .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, resend_message_id_invite")
       .not("sent_at", "is", null)
       .order("sent_at", { ascending: false })
       .limit(limit);
@@ -93,7 +98,7 @@ export async function GET(request: Request) {
 
     let orderQuery = sb
       .from("supplier_orders")
-      .select("id, work_order_id, work_order_number, supplier_name, po_number, subject:supplier_name, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at")
+      .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at")
       .eq("status", "sent")
       .not("sent_at", "is", null)
       .order("sent_at", { ascending: false })
@@ -110,14 +115,30 @@ export async function GET(request: Request) {
     const messages: SentMessage[] = [];
     const errors: string[] = [];
 
+    // If migration 010 hasn't run yet the wider SELECT errors on the
+    // missing column — retry with a narrower one so the UI still works.
+    let tokenRows: unknown[] = [];
     if (tokensRes.error) {
-      errors.push(`form invites: ${tokensRes.error.message}`);
+      const retry = await sb
+        .from("customer_form_tokens")
+        .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at")
+        .not("sent_at", "is", null)
+        .order("sent_at", { ascending: false })
+        .limit(limit);
+      if (retry.error) {
+        errors.push(`form invites: ${retry.error.message}`);
+      } else {
+        tokenRows = retry.data ?? [];
+      }
     } else if (tokensRes.data) {
+      tokenRows = tokensRes.data;
+    }
+    {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-      for (const t of tokensRes.data as Array<{
+      for (const t of tokenRows as Array<{
         token: string; work_order_id: string; work_order_number: string | null;
         customer_email: string; customer_name: string | null; sent_at: string;
-        resend_message_id: string | null; delivery_status: string | null;
+        resend_message_id_invite?: string | null; delivery_status: string | null;
         opened_at: string | null; submitted_at: string | null;
       }>) {
         messages.push({
@@ -129,7 +150,7 @@ export async function GET(request: Request) {
           subject: `Color form — WO #${t.work_order_number ?? t.work_order_id.slice(-6)}`,
           workOrderId: t.work_order_id,
           workOrderNumber: t.work_order_number,
-          resendMessageId: t.resend_message_id,
+          resendMessageId: t.resend_message_id_invite ?? null,
           deliveryStatus: t.delivery_status,
           formUrl: baseUrl ? `${baseUrl}/select/${t.token}` : null,
           opened: !!t.opened_at,

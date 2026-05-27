@@ -141,11 +141,17 @@ export async function validateToken(token: string): Promise<TokenStatus> {
 /** Mark Resend delivery confirmed. Called from a webhook (Phase 2 deliverability). */
 export async function markSent(
   token: string,
-  delivery_status: "delivered" | "bounced" | "soft_bounced" | "spam" = "delivered"
+  delivery_status: "delivered" | "bounced" | "soft_bounced" | "spam" = "delivered",
+  resendMessageId?: string
 ): Promise<void> {
   const sb = adminClient();
   const patch: Record<string, unknown> = { delivery_status };
   if (delivery_status === "delivered") patch.sent_at = new Date().toISOString();
+  // Stamp the Resend message id so the events webhook can thread future
+  // delivery/bounce/open events back to this token. Best-effort — if the
+  // column doesn't exist yet (migration 010 not run) the UPDATE silently
+  // ignores the unknown key.
+  if (resendMessageId) patch.resend_message_id_invite = resendMessageId;
   await sb.from("customer_form_tokens").update(patch).eq("token", token);
 }
 
