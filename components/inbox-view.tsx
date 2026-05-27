@@ -101,19 +101,76 @@ export default function InboxView() {
 
   // Sent-mode client-side kind filter — mirrors the inbox tab pattern so
   // users can flip between "all sent / form invites only / supplier orders
-  // only" without a server round-trip.
-  type SentKind = "all" | "form_invite" | "supplier_order";
+  // only" without a server round-trip. "needs_followup" is a derived filter
+  // that surfaces rows admin should chase: supplier orders sent >24h with
+  // no ack, form invites sent >3 days with no submission, anything bounced.
+  type SentKind = "all" | "form_invite" | "supplier_order" | "needs_followup";
   const [sentKind, setSentKind] = useState<SentKind>("all");
-  const visibleSent = useMemo(() => {
-    if (sentKind === "all") return sentMessages;
-    return sentMessages.filter((m) => m.kind === sentKind);
-  }, [sentMessages, sentKind]);
+  const [search, setSearch] = useState("");
 
-  // Client-side tab filter — tab changes don't re-hit the server.
+  const needsFollowupSet = useMemo(() => {
+    const now = Date.now();
+    const ms24h = 24 * 60 * 60 * 1000;
+    const ms3d = 3 * 24 * 60 * 60 * 1000;
+    const out = new Set<string>();
+    for (const m of sentMessages) {
+      const ageMs = now - new Date(m.sentAt).getTime();
+      if (m.deliveryStatus === "bounced") {
+        out.add(m.id); continue;
+      }
+      if (m.kind === "supplier_order") {
+        // Stale supplier order — sent over 24h ago, not acknowledged, not delivered
+        if (ageMs > ms24h && !m.acknowledged && !m.delivered) out.add(m.id);
+      } else if (m.kind === "form_invite") {
+        // Stale form invite — sent over 3 days ago, not submitted
+        if (ageMs > ms3d && !m.submitted) out.add(m.id);
+      }
+    }
+    return out;
+  }, [sentMessages]);
+
+  const visibleSent = useMemo(() => {
+    let list = sentMessages;
+    if (sentKind === "needs_followup") list = list.filter((m) => needsFollowupSet.has(m.id));
+    else if (sentKind !== "all") list = list.filter((m) => m.kind === sentKind);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((m) => {
+        const hay = [
+          m.subject,
+          m.recipientEmail,
+          m.recipientName ?? "",
+          m.workOrderNumber ?? "",
+          m.poNumber ?? "",
+          m.supplierName ?? "",
+        ].join(" ").toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    return list;
+  }, [sentMessages, sentKind, search, needsFollowupSet]);
+
+  // Client-side tab filter for INBOX mode + same search box. Inbox search
+  // matches sender + subject + body so admin can scan a long thread list.
   const visibleMessages = useMemo(() => {
-    if (tab === "all") return messages;
-    return messages.filter((m) => m.kind === tab);
-  }, [messages, tab]);
+    let list = tab === "all" ? messages : messages.filter((m) => m.kind === tab);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((m) => {
+        const hay = [
+          m.subject ?? "",
+          m.from_email,
+          m.from_name ?? "",
+          m.body_text ?? "",
+        ].join(" ").toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    return list;
+  }, [messages, tab, search]);
+
+  // Reset search when switching modes — different surface, different intent
+  useEffect(() => { setSearch(""); }, [mode]);
 
   const markRead = async (id: string) => {
     setMessages((prev) =>
@@ -211,12 +268,15 @@ export default function InboxView() {
             </label>
           </div>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-1 flex-wrap">
-            <TabButton active={tab === "all"} onClick={() => setTab("all")} label="All" count={tabCounts.all} />
-            <TabButton active={tab === "supplier_reply"} onClick={() => setTab("supplier_reply")} label="Suppliers" count={tabCounts.supplier_reply} />
-            <TabButton active={tab === "customer_reply"} onClick={() => setTab("customer_reply")} label="Customers" count={tabCounts.customer_reply} />
-            <TabButton active={tab === "unmatched"} onClick={() => setTab("unmatched")} label="Unmatched" count={tabCounts.unmatched} tone="orange" />
+          {/* Tabs + search */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1 flex-wrap">
+              <TabButton active={tab === "all"} onClick={() => setTab("all")} label="All" count={tabCounts.all} />
+              <TabButton active={tab === "supplier_reply"} onClick={() => setTab("supplier_reply")} label="Suppliers" count={tabCounts.supplier_reply} />
+              <TabButton active={tab === "customer_reply"} onClick={() => setTab("customer_reply")} label="Customers" count={tabCounts.customer_reply} />
+              <TabButton active={tab === "unmatched"} onClick={() => setTab("unmatched")} label="Unmatched" count={tabCounts.unmatched} tone="orange" />
+            </div>
+            <SearchBox value={search} onChange={setSearch} placeholder="Search sender / subject / body…" />
           </div>
 
           {/* List */}
@@ -268,11 +328,21 @@ export default function InboxView() {
             </div>
           </div>
 
-          {/* Sent-mode kind tabs */}
-          <div className="flex items-center gap-1 flex-wrap">
-            <TabButton active={sentKind === "all"} onClick={() => setSentKind("all")} label="All" count={sentMessages.length} />
-            <TabButton active={sentKind === "form_invite"} onClick={() => setSentKind("form_invite")} label="Color Forms" count={sentMessages.filter((m) => m.kind === "form_invite").length} />
-            <TabButton active={sentKind === "supplier_order"} onClick={() => setSentKind("supplier_order")} label="Supplier Orders" count={sentMessages.filter((m) => m.kind === "supplier_order").length} />
+          {/* Sent-mode kind tabs + search */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1 flex-wrap">
+              <TabButton active={sentKind === "all"} onClick={() => setSentKind("all")} label="All" count={sentMessages.length} />
+              <TabButton active={sentKind === "form_invite"} onClick={() => setSentKind("form_invite")} label="Color Forms" count={sentMessages.filter((m) => m.kind === "form_invite").length} />
+              <TabButton active={sentKind === "supplier_order"} onClick={() => setSentKind("supplier_order")} label="Supplier Orders" count={sentMessages.filter((m) => m.kind === "supplier_order").length} />
+              <TabButton
+                active={sentKind === "needs_followup"}
+                onClick={() => setSentKind("needs_followup")}
+                label="Needs Follow-up"
+                count={needsFollowupSet.size}
+                tone={needsFollowupSet.size > 0 ? "orange" : undefined}
+              />
+            </div>
+            <SearchBox value={search} onChange={setSearch} placeholder="Search recipient / PO# / WO#…" />
           </div>
 
           {/* List */}
@@ -305,7 +375,7 @@ export default function InboxView() {
           {!loading && !error && visibleSent.length > 0 && (
             <ul className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden divide-y divide-ppp-charcoal-100">
               {visibleSent.map((m) => (
-                <SentRow key={m.id} message={m} />
+                <SentRow key={m.id} message={m} onResent={load} />
               ))}
             </ul>
           )}
@@ -328,7 +398,7 @@ function TabButton({
   onClick: () => void;
   label: string;
   count: number;
-  tone?: "neutral" | "orange";
+  tone?: "neutral" | "orange" | undefined;
 }) {
   const base = "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors";
   const activeCls = active
@@ -473,7 +543,35 @@ function formatRelative(date: Date): string {
 
 /* ─── Sent-mode row ─── */
 
-function SentRow({ message }: { message: SentMessage }) {
+function SentRow({ message, onResent }: { message: SentMessage; onResent?: () => void }) {
+  const [resending, setResending] = useState(false);
+  const [resendResult, setResendResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleResend = async () => {
+    if (resending) return;
+    setResending(true);
+    setResendResult(null);
+    try {
+      const res = await fetch("/api/admin/sent/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: message.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setResendResult({ ok: false, msg: data.message ?? data.error ?? `HTTP ${res.status}` });
+      } else {
+        setResendResult({ ok: true, msg: "Re-sent ✓" });
+        // Bubble up so the parent reloads the list with fresh delivery status
+        setTimeout(() => { onResent?.(); }, 1200);
+      }
+    } catch (err) {
+      setResendResult({ ok: false, msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setResending(false);
+    }
+  };
+
   const isForm = message.kind === "form_invite";
   const kindLabel = isForm ? "Color Form" : "Supplier Order";
   const kindTone = isForm ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-100"
@@ -540,19 +638,64 @@ function SentRow({ message }: { message: SentMessage }) {
           </div>
         </div>
 
-        {/* For form invites — quick "open form" affordance so admin can
-            preview what the customer sees without digging through Resend. */}
-        {isForm && message.formUrl && (
-          <a
-            href={message.formUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 self-center px-3 py-1 rounded-lg border border-ppp-charcoal-100 bg-white text-[11px] font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
-          >
-            Open form ↗
-          </a>
-        )}
+        {/* Right rail — actions. Resend button when bounced; "Open form ↗"
+            for un-bounced form invites; nothing for happy supplier orders. */}
+        <div className="shrink-0 self-center flex items-center gap-2">
+          {message.deliveryStatus === "bounced" && (
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resending}
+              className="px-3 py-1 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-[11px] font-semibold text-ppp-orange-700 hover:bg-ppp-orange-100 disabled:opacity-60 transition-colors"
+            >
+              {resending ? "Re-sending…" : resendResult?.ok ? "Re-sent ✓" : "Re-send"}
+            </button>
+          )}
+          {resendResult && !resendResult.ok && (
+            <span className="text-[10px] text-ppp-orange-700">{resendResult.msg}</span>
+          )}
+          {isForm && message.formUrl && message.deliveryStatus !== "bounced" && (
+            <a
+              href={message.formUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1 rounded-lg border border-ppp-charcoal-100 bg-white text-[11px] font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+            >
+              Open form ↗
+            </a>
+          )}
+        </div>
       </div>
     </li>
+  );
+}
+
+/* ─── Search input ─── */
+function SearchBox({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative flex-1 min-w-[200px] max-w-md">
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full pl-7 pr-3 py-1.5 text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+      />
+      <svg
+        className="absolute left-2 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
+        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+      >
+        <circle cx="11" cy="11" r="7" />
+        <path d="m21 21-4.3-4.3" />
+      </svg>
+    </div>
   );
 }
