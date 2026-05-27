@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import PageHeader from "@/components/page-header";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
@@ -639,6 +640,19 @@ function JobDetail({
             </svg>
             Preview colors
           </button>
+          {/* Mail history for this WO — deep-link into the Mail Hub
+              pre-filtered to messages tied to this work order. Faster than
+              hunting through the full inbox/sent feeds when admin wants
+              "what's been sent to this customer + replies". */}
+          <Link
+            href={`/dashboard/inbox?wo=${encodeURIComponent(job.wo.id)}`}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
+            </svg>
+            Mail history
+          </Link>
         </div>
       </div>
 

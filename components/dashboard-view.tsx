@@ -9,6 +9,7 @@ import Leaderboard from "@/components/leaderboard";
 import PageHeader from "@/components/page-header";
 import TrendChart from "@/components/trend-chart";
 import EmptyScopeBanner from "@/components/empty-scope-banner";
+import RecentActivityFeed from "@/components/recent-activity-feed";
 import {
   getFilteredView,
   getFunnelForPeriod,
@@ -840,6 +841,12 @@ export default function DashboardView({ bundle, formSummary }: Props) {
               See which deals are stalling →
             </Link>
           </div>
+
+          {/* Recent Activity — last 24h rollup of every event across the
+              customer-form / supplier-order / inbox pipelines. Polls every
+              60s so it stays fresh while admin watches. Hidden when nothing
+              recent so the day-0 dashboard stays clean. */}
+          <RecentActivityFeed />
 
           {/* Customer Color Forms summary — Alex's #2 audit ask. Was buried
               on /dashboard/materials; surfacing here so "did Mrs. Smith pick

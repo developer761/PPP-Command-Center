@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 /**
@@ -50,6 +52,13 @@ type SentMessage = {
 };
 
 export default function InboxView() {
+  // Per-WO filter — supports deep-linking from the Materials page so admin
+  // can click "Mail for this WO" and land in a pre-filtered Mail Hub.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const woFilter = searchParams.get("wo") || null;
+
   const [mode, setMode] = useState<Mode>("inbox");
   const [tab, setTab] = useState<Tab>("all");
   const [showArchived, setShowArchived] = useState(false);
@@ -61,6 +70,12 @@ export default function InboxView() {
   const [sentSummary, setSentSummary] = useState<{ formInvites: number; supplierOrders: number; returned: number }>({ formInvites: 0, supplierOrders: 0, returned: 0 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const clearWoFilter = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("wo");
+    router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`);
+  };
+
   // Server fetch only depends on the archived flag — kind filtering happens
   // client-side via the tabCounts/visibleMessages memos. Tab switches feel
   // instant instead of triggering a full round-trip. Server fetch returns
@@ -71,7 +86,9 @@ export default function InboxView() {
     setError(null);
     try {
       if (mode === "inbox") {
-        const url = `/api/admin/inbox?kind=all&archived=${showArchived}&limit=200`;
+        const qp = new URLSearchParams({ kind: "all", archived: String(showArchived), limit: "200" });
+        if (woFilter) qp.set("workOrderId", woFilter);
+        const url = `/api/admin/inbox?${qp.toString()}`;
         const res = await fetch(url);
         const data = await res.json();
         if (!res.ok || !data.ok) {
@@ -81,7 +98,9 @@ export default function InboxView() {
         setMessages(data.messages ?? []);
         setSummary(data.summary ?? { unread: 0, returned: 0 });
       } else {
-        const res = await fetch(`/api/admin/sent?limit=200`);
+        const qp = new URLSearchParams({ limit: "200" });
+        if (woFilter) qp.set("workOrderId", woFilter);
+        const res = await fetch(`/api/admin/sent?${qp.toString()}`);
         const data = await res.json();
         if (!res.ok || !data.ok) {
           setError(data.message ?? data.error ?? `HTTP ${res.status}`);
@@ -95,7 +114,7 @@ export default function InboxView() {
     } finally {
       setLoading(false);
     }
-  }, [mode, showArchived]);
+  }, [mode, showArchived, woFilter]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -218,6 +237,23 @@ export default function InboxView() {
 
   return (
     <div className="space-y-4">
+      {/* WO-scoped filter banner — when admin deep-links from a WO on the
+          materials page, surfaces the active scope + a one-click escape. */}
+      {woFilter && (
+        <div className="bg-ppp-blue-50/60 border border-ppp-blue-100 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap text-xs">
+          <span className="text-ppp-blue-700">
+            Showing mail for this work order only · <span className="font-mono">{woFilter.slice(-6)}</span>
+          </span>
+          <button
+            type="button"
+            onClick={clearWoFilter}
+            className="shrink-0 px-2.5 py-0.5 rounded-lg border border-ppp-blue-100 bg-white text-[11px] font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 transition-colors"
+          >
+            Show all mail
+          </button>
+        </div>
+      )}
+
       {/* Mode toggle — Inbox (replies coming in) vs Sent (every email we've
           sent out). Top-level so the summary strip + tabs below adapt. */}
       <div className="inline-flex bg-ppp-charcoal-50 rounded-lg p-0.5 text-xs font-semibold">
