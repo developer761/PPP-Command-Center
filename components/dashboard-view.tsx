@@ -57,9 +57,20 @@ function sign(n: number) {
 
 type Props = {
   bundle: LiveDashboardBundle;
+  /** Customer-form pipeline summary across all visible WOs — sent / opened /
+   *  submitted / expired counts. Drives the new "Color Forms" home card so
+   *  Alex sees "did Mrs. Smith pick her colors?" without navigating to
+   *  Materials Ordering. Server-loaded in app/dashboard/page.tsx. */
+  formSummary?: {
+    sent: number;
+    opened: number;
+    submitted: number;
+    expired: number;
+    total: number;
+  };
 };
 
-export default function DashboardView({ bundle }: Props) {
+export default function DashboardView({ bundle, formSummary }: Props) {
   // Default to "This Month" — PPP's day-to-day mental model is month-by-month
   // ("show me May", "what did we do this month"). Their SF reports default
   // to a similar window. Other periods are opt-in via the dropdown.
@@ -829,6 +840,58 @@ export default function DashboardView({ bundle }: Props) {
               See which deals are stalling →
             </Link>
           </div>
+
+          {/* Customer Color Forms summary — Alex's #2 audit ask. Was buried
+              on /dashboard/materials; surfacing here so "did Mrs. Smith pick
+              her colors yet?" is answerable from the home dashboard. Hidden
+              when zero forms in flight (cleans up day-0 view). */}
+          {formSummary && formSummary.total > 0 && (
+            <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="h-6 w-6 rounded-md bg-ppp-blue-50 text-ppp-blue-700 flex items-center justify-center text-xs font-bold">
+                  ✉
+                </div>
+                <h3 className="text-sm font-semibold text-ppp-charcoal">Color Forms</h3>
+              </div>
+              <div className="font-condensed text-2xl font-bold text-ppp-navy">
+                {formSummary.submitted}
+                <span className="text-base font-normal text-ppp-charcoal-500"> / {formSummary.total}</span>
+              </div>
+              <div className="text-xs text-ppp-charcoal-500 mt-0.5">
+                {formSummary.submitted === formSummary.total
+                  ? "All submitted ✓"
+                  : "submitted by customers"}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold">
+                {formSummary.submitted > 0 && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded border bg-ppp-green-50 text-ppp-green-700 border-ppp-green-100">
+                    ✓ {formSummary.submitted}
+                  </span>
+                )}
+                {formSummary.opened > 0 && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded border bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-100">
+                    👁 {formSummary.opened}
+                  </span>
+                )}
+                {formSummary.sent > 0 && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded border bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100">
+                    📨 {formSummary.sent}
+                  </span>
+                )}
+                {formSummary.expired > 0 && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded border bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100">
+                    ⏳ {formSummary.expired}
+                  </span>
+                )}
+              </div>
+              <Link
+                href="/dashboard/materials"
+                className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-ppp-blue hover:text-ppp-blue-700 transition-colors"
+              >
+                Manage materials orders →
+              </Link>
+            </div>
+          )}
 
           {/* Hot reps this week — momentum spotlight. Hide when scoped to self
               (a 1-row leaderboard comparing the viewer to themselves is noise).
