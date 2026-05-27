@@ -36,7 +36,10 @@ export async function GET(request: Request) {
 
   const kind = url.searchParams.get("kind") ?? "all";
   const archived = url.searchParams.get("archived") === "true";
-  const workOrderId = url.searchParams.get("workOrderId");
+  // Coerce empty-string workOrderId to null — otherwise `if (workOrderId)`
+  // checks below fall through and the scope filter is silently skipped.
+  const workOrderIdRaw = url.searchParams.get("workOrderId");
+  const workOrderId = workOrderIdRaw && workOrderIdRaw.trim() ? workOrderIdRaw.trim() : null;
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
 
   // SCOPE: workers see only emails linked to WOs they own. Admin (scope='all')
@@ -183,20 +186,24 @@ export async function POST(request: Request) {
       .select("linked_work_order_id")
       .eq("id", body.messageId)
       .maybeSingle();
+    // Return 404 for all "you can't see this" cases — nonexistent message,
+    // unmatched (admin-only), or owned-by-another-rep. Distinguishing them
+    // with different status codes leaks message-existence information to a
+    // worker enumerating UUIDs. From the worker's perspective these are all
+    // "the message doesn't exist in your world."
     if (lookup.error || !lookup.data) {
       return NextResponse.json({ error: "message_not_found" }, { status: 404 });
     }
     const linkedWo = lookup.data.linked_work_order_id;
     if (!linkedWo) {
-      // Unmatched mail — admin-only
-      return NextResponse.json({ error: "forbidden_unmatched_admin_only" }, { status: 403 });
+      return NextResponse.json({ error: "message_not_found" }, { status: 404 });
     }
     const snapshot = await loadSalesforceSnapshot();
     const ownsWo = snapshot.workOrders.some(
       (w) => w.id === linkedWo && w.ownerId === viewer.effectiveUserId
     );
     if (!ownsWo) {
-      return NextResponse.json({ error: "forbidden_not_owner" }, { status: 403 });
+      return NextResponse.json({ error: "message_not_found" }, { status: 404 });
     }
   }
 

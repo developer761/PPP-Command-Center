@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Inbox list + thread viewer. Filters by kind (All / Customer / Supplier /
@@ -65,9 +65,10 @@ export default function InboxView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<InboxMessage[]>([]);
-  const [summary, setSummary] = useState<{ unread: number; returned: number }>({ unread: 0, returned: 0 });
+  const [summary, setSummary] = useState<{ unread: number; returned: number; scopeNote?: string | null }>({ unread: 0, returned: 0 });
   const [sentMessages, setSentMessages] = useState<SentMessage[]>([]);
-  const [sentSummary, setSentSummary] = useState<{ formInvites: number; supplierOrders: number; returned: number }>({ formInvites: 0, supplierOrders: 0, returned: 0 });
+  const [sentSummary, setSentSummary] = useState<{ formInvites: number; supplierOrders: number; returned: number; scopeNote?: string | null }>({ formInvites: 0, supplierOrders: 0, returned: 0 });
+  const [warning, setWarning] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const clearWoFilter = () => {
@@ -85,6 +86,7 @@ export default function InboxView() {
     setLoading(true);
     setError(null);
     try {
+      setWarning(null);
       if (mode === "inbox") {
         const qp = new URLSearchParams({ kind: "all", archived: String(showArchived), limit: "200" });
         if (woFilter) qp.set("workOrderId", woFilter);
@@ -108,6 +110,9 @@ export default function InboxView() {
         }
         setSentMessages(data.messages ?? []);
         setSentSummary(data.summary ?? { formInvites: 0, supplierOrders: 0, returned: 0 });
+        // Surface partial-data warning so admin knows some rows may be missing
+        // (e.g. customer_form_tokens query failed but supplier_orders succeeded)
+        if (data.warning) setWarning(data.warning);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -334,7 +339,13 @@ export default function InboxView() {
             </div>
           )}
           {!loading && !error && visibleMessages.length === 0 && (
-            <EmptyState archived={showArchived} />
+            <EmptyState
+              archived={showArchived}
+              woFiltered={!!woFilter}
+              scopeNote={summary.scopeNote ?? null}
+              searchActive={!!search.trim()}
+              filterActive={tab !== "all"}
+            />
           )}
           {!loading && !error && visibleMessages.length > 0 && (
             <ul className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden divide-y divide-ppp-charcoal-100">
@@ -399,14 +410,18 @@ export default function InboxView() {
               </button>
             </div>
           )}
-          {!loading && !error && visibleSent.length === 0 && (
-            <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
-              <div className="mx-auto h-12 w-12 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-500 flex items-center justify-center text-2xl mb-3">📤</div>
-              <h3 className="text-base font-bold text-ppp-charcoal">No sent mail yet.</h3>
-              <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
-                When you send a color form or a supplier order, it'll show up here so you have a complete log of every email the Command Center has produced.
-              </p>
+          {warning && (
+            <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-xl px-4 py-2.5 text-xs text-ppp-orange-700">
+              ⚠ Some sent-mail data couldn&apos;t load — list may be incomplete. ({warning})
             </div>
+          )}
+          {!loading && !error && visibleSent.length === 0 && (
+            <SentEmptyState
+              woFiltered={!!woFilter}
+              scopeNote={sentSummary.scopeNote ?? null}
+              searchActive={!!search.trim()}
+              filterActive={sentKind !== "all"}
+            />
           )}
           {!loading && !error && visibleSent.length > 0 && (
             <ul className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden divide-y divide-ppp-charcoal-100">
@@ -533,7 +548,60 @@ function MessageRow({
   );
 }
 
-function EmptyState({ archived }: { archived: boolean }) {
+function EmptyState({
+  archived,
+  woFiltered,
+  scopeNote,
+  searchActive,
+  filterActive,
+}: {
+  archived: boolean;
+  woFiltered?: boolean;
+  scopeNote?: string | null;
+  searchActive?: boolean;
+  filterActive?: boolean;
+}) {
+  // No-SF-mapping is the most actionable state — explain why instead of
+  // saying "inbox is empty" (which would suggest waiting for mail).
+  if (scopeNote === "no_sf_user_mapping") {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 sm:p-10 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-2xl mb-3">⚠</div>
+        <h3 className="text-base font-bold text-ppp-charcoal">Salesforce mapping not set up</h3>
+        <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto leading-relaxed">
+          Mail in this hub is scoped to the work orders you own in Salesforce. Your sign-in
+          isn&apos;t mapped to a Salesforce user yet — ask Katie to add your email to the
+          profiles table.
+        </p>
+      </div>
+    );
+  }
+  if (scopeNote === "no_owned_wos") {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-500 flex items-center justify-center text-2xl mb-3">👋</div>
+        <h3 className="text-base font-bold text-ppp-charcoal">No work orders yet</h3>
+        <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto leading-relaxed">
+          You don&apos;t own any work orders in Salesforce yet, so there&apos;s no mail to show.
+          Once a deal closes and a WO lands with you, mail tied to that WO will appear here.
+        </p>
+      </div>
+    );
+  }
+  if (woFiltered) {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center text-sm text-ppp-charcoal-500">
+        No mail for this work order yet.
+      </div>
+    );
+  }
+  if (searchActive || filterActive) {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center text-sm text-ppp-charcoal-500">
+        No matches for the current filters.
+      </div>
+    );
+  }
   if (archived) {
     return (
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center text-sm text-ppp-charcoal-500">
@@ -582,9 +650,14 @@ function formatRelative(date: Date): string {
 function SentRow({ message, onResent }: { message: SentMessage; onResent?: () => void }) {
   const [resending, setResending] = useState(false);
   const [resendResult, setResendResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  // useRef in addition to useState — React batches the setState so two rapid
+  // clicks can both pass `if (resending) return` before either commits. The
+  // ref updates synchronously so the second call sees the new value.
+  const inFlight = useRef(false);
 
   const handleResend = async () => {
-    if (resending) return;
+    if (resending || inFlight.current) return;
+    inFlight.current = true;
     setResending(true);
     setResendResult(null);
     try {
@@ -605,6 +678,7 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
       setResendResult({ ok: false, msg: err instanceof Error ? err.message : String(err) });
     } finally {
       setResending(false);
+      inFlight.current = false;
     }
   };
 
@@ -690,16 +764,35 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
           {resendResult && !resendResult.ok && (
             <span className="text-[10px] text-ppp-orange-700">{resendResult.msg}</span>
           )}
-          {isForm && message.formUrl && message.deliveryStatus !== "bounced" && (
-            <a
-              href={message.formUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1 rounded-lg border border-ppp-charcoal-100 bg-white text-[11px] font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
-            >
-              Open form ↗
-            </a>
-          )}
+          {(() => {
+            if (!isForm || !message.formUrl || message.deliveryStatus === "bounced") return null;
+            // Tokens expire 30 days after send. If we're past that, the
+            // link would 404 on click — hide it with a subtle "expired"
+            // pill so admin doesn't waste a click. The actual expiry is
+            // checked server-side by the form route too.
+            const ageDays = (Date.now() - new Date(message.sentAt).getTime()) / 86_400_000;
+            const expired = ageDays > 30;
+            if (expired) {
+              return (
+                <span
+                  title="Token expired (30-day limit). Send a fresh form from materials."
+                  className="px-2 py-1 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/40 text-[11px] font-semibold text-ppp-charcoal-500"
+                >
+                  Form expired
+                </span>
+              );
+            }
+            return (
+              <a
+                href={message.formUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1 rounded-lg border border-ppp-charcoal-100 bg-white text-[11px] font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+              >
+                Open form ↗
+              </a>
+            );
+          })()}
         </div>
       </div>
     </li>
@@ -732,6 +825,66 @@ function SearchBox({
         <circle cx="11" cy="11" r="7" />
         <path d="m21 21-4.3-4.3" />
       </svg>
+    </div>
+  );
+}
+
+/* ─── Sent-mode empty state — parameterized like InboxEmptyState ─── */
+function SentEmptyState({
+  woFiltered,
+  scopeNote,
+  searchActive,
+  filterActive,
+}: {
+  woFiltered: boolean;
+  scopeNote: string | null;
+  searchActive: boolean;
+  filterActive: boolean;
+}) {
+  if (scopeNote === "no_sf_user_mapping") {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 sm:p-10 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center text-2xl mb-3">⚠</div>
+        <h3 className="text-base font-bold text-ppp-charcoal">Salesforce mapping not set up</h3>
+        <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto leading-relaxed">
+          Sent mail is scoped to the work orders you own. Your sign-in isn&apos;t mapped
+          to a Salesforce user yet — ask Katie to add your email to the profiles table.
+        </p>
+      </div>
+    );
+  }
+  if (scopeNote === "no_owned_wos") {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-500 flex items-center justify-center text-2xl mb-3">👋</div>
+        <h3 className="text-base font-bold text-ppp-charcoal">No work orders yet</h3>
+        <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto leading-relaxed">
+          You don&apos;t own any work orders in Salesforce yet, so there&apos;s no sent mail to show.
+        </p>
+      </div>
+    );
+  }
+  if (woFiltered) {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center text-sm text-ppp-charcoal-500">
+        Nothing sent on this work order yet.
+      </div>
+    );
+  }
+  if (searchActive || filterActive) {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center text-sm text-ppp-charcoal-500">
+        No sent mail matches the current filters.
+      </div>
+    );
+  }
+  return (
+    <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+      <div className="mx-auto h-12 w-12 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-500 flex items-center justify-center text-2xl mb-3">📤</div>
+      <h3 className="text-base font-bold text-ppp-charcoal">No sent mail yet.</h3>
+      <p className="text-xs text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
+        When you send a color form or a supplier order, it&apos;ll show up here.
+      </p>
     </div>
   );
 }

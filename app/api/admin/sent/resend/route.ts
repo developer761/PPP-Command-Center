@@ -68,25 +68,30 @@ export async function POST(request: Request) {
       if (error || !row) {
         return NextResponse.json({ error: "token_not_found" }, { status: 404 });
       }
-      if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
-        return NextResponse.json({
-          error: "token_expired",
-          message: "Token has expired. Send a fresh color form from the materials page.",
-        }, { status: 409 });
-      }
 
-      // Scope check
+      // SCOPE CHECK FIRST — before any state-revealing branch (expired vs
+      // not). Without this order, a worker who guesses a token can probe
+      // expiry status (409 expired vs other code = exists, not yours) before
+      // hitting the ownership gate. Now: every non-owned token returns the
+      // same 404, regardless of its real state.
       if (viewer.scope !== "all") {
         if (!viewer.effectiveUserId) {
-          return NextResponse.json({ error: "forbidden_no_sf_mapping" }, { status: 403 });
+          return NextResponse.json({ error: "token_not_found" }, { status: 404 });
         }
         const snapshot = await loadSalesforceSnapshot();
         const ownsWo = snapshot.workOrders.some(
           (w) => w.id === row.work_order_id && w.ownerId === viewer.effectiveUserId
         );
         if (!ownsWo) {
-          return NextResponse.json({ error: "forbidden_not_owner" }, { status: 403 });
+          return NextResponse.json({ error: "token_not_found" }, { status: 404 });
         }
+      }
+
+      if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+        return NextResponse.json({
+          error: "token_expired",
+          message: "Token has expired. Send a fresh color form from the materials page.",
+        }, { status: 409 });
       }
 
       const baseUrl =
@@ -132,14 +137,14 @@ export async function POST(request: Request) {
 
     if (viewer.scope !== "all") {
       if (!viewer.effectiveUserId) {
-        return NextResponse.json({ error: "forbidden_no_sf_mapping" }, { status: 403 });
+        return NextResponse.json({ error: "order_not_found" }, { status: 404 });
       }
       const snapshot = await loadSalesforceSnapshot();
       const ownsWo = snapshot.workOrders.some(
         (w) => w.id === order.work_order_id && w.ownerId === viewer.effectiveUserId
       );
       if (!ownsWo) {
-        return NextResponse.json({ error: "forbidden_not_owner" }, { status: 403 });
+        return NextResponse.json({ error: "order_not_found" }, { status: 404 });
       }
     }
 

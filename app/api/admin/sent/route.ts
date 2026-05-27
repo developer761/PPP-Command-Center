@@ -69,7 +69,11 @@ export async function GET(request: Request) {
     }
 
     const kind = url.searchParams.get("kind") ?? "all";
-    const workOrderId = url.searchParams.get("workOrderId");
+    // Coerce empty workOrderId to null — guards against scope-filter bypass
+    // via `?workOrderId=` (empty string is falsy but truthy enough to confuse
+    // some downstream checks).
+    const workOrderIdRaw = url.searchParams.get("workOrderId");
+    const workOrderId = workOrderIdRaw && workOrderIdRaw.trim() ? workOrderIdRaw.trim() : null;
     const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
 
     // SCOPE: workers see only sent mail for WOs they own.
