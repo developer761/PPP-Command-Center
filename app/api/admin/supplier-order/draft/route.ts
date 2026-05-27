@@ -3,7 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
-import { buildSupplierOrderDraft, type FulfillmentMethod, type SupplierOrderExtra } from "@/lib/supplier-order/builder";
+import {
+  buildSupplierOrderDraft,
+  GENERAL_SUPPLIES_ID,
+  generalSuppliesLabel,
+  type FulfillmentMethod,
+  type SupplierOrderExtra,
+} from "@/lib/supplier-order/builder";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 
 /**
@@ -83,7 +89,25 @@ export async function POST(request: Request) {
   if (!workOrder) {
     return NextResponse.json({ error: "wo_not_in_snapshot" }, { status: 404 });
   }
-  const supplierAccount = snapshot.accounts.find((a) => a.id === body.supplierAccountId);
+  // General Supplies = synthetic supplier id (no SF Account lookup).
+  // For real suppliers we still require a snapshot match so a typo'd id
+  // doesn't silently produce a bogus draft.
+  const isGeneral = body.supplierAccountId === GENERAL_SUPPLIES_ID;
+  const supplierAccount = isGeneral
+    ? {
+        id: GENERAL_SUPPLIES_ID,
+        name: generalSuppliesLabel(),
+        type: "General",
+        isBMRetailer: false,
+        accountManagerId: null,
+        billingStreet: null,
+        billingCity: null,
+        billingState: null,
+        billingPostalCode: null,
+        email: null,
+        phone: null,
+      } as unknown as typeof snapshot.accounts[number]
+    : snapshot.accounts.find((a) => a.id === body.supplierAccountId);
   if (!supplierAccount) {
     return NextResponse.json({ error: "supplier_not_in_snapshot" }, { status: 404 });
   }

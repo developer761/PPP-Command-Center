@@ -72,6 +72,12 @@ export async function POST(request: Request) {
 
   // Required-field validation. We're strict here because once an email goes
   // out to a supplier it can't be unsent.
+  //
+  // General Supplies relaxes ONE constraint: lineItems can be empty (the
+  // whole point is "order extras with no paint colors"). Everything else
+  // is required — sentToEmail / subject / body / extras still all need
+  // to be set since the email is real and goes to a real recipient.
+  const isGeneral = body.supplierAccountId === "__general__";
   const missing: string[] = [];
   if (!body.workOrderId) missing.push("workOrderId");
   if (!body.supplierAccountId) missing.push("supplierAccountId");
@@ -84,6 +90,19 @@ export async function POST(request: Request) {
   if (!Array.isArray(body.lineItems)) missing.push("lineItems");
   if (missing.length > 0) {
     return NextResponse.json({ error: "missing_fields", missing }, { status: 400 });
+  }
+  // General Supplies must have at least one extra OR special instructions —
+  // otherwise the email body is just "Hi, here's an order: (nothing). Thanks."
+  // which makes no sense. Real supplier orders can be paint-only.
+  if (isGeneral) {
+    const hasExtras = Array.isArray(body.extras) && body.extras.length > 0;
+    const hasInstructions = !!body.specialInstructions?.trim();
+    if (!hasExtras && !hasInstructions) {
+      return NextResponse.json({
+        error: "general_supplies_empty",
+        message: "Pick at least one item or add special instructions before sending a General Supplies order.",
+      }, { status: 400 });
+    }
   }
 
   // Email-shape validation — paranoid because we're about to send to it.

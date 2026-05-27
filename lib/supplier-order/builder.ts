@@ -27,6 +27,33 @@ import type {
 
 export type FulfillmentMethod = "delivery" | "pickup";
 
+/**
+ * Synthetic supplier id for the "General Supplies" flow — extras-only
+ * orders that don't belong to a paint vendor (rollers, brushes, tape,
+ * drop cloths, primer, etc.). Sent to env-configured GENERAL_SUPPLIES_EMAIL
+ * (typically the warehouse or a Home Depot pro account). Stored in
+ * supplier_orders with this id so it surfaces in the Sent view + WO
+ * progress alongside paint orders.
+ */
+export const GENERAL_SUPPLIES_ID = "__general__";
+
+/** Label shown to workers + included in the email. Override via env if PPP
+ *  wants to brand it differently (e.g., "Home Depot Pro Account"). */
+export function generalSuppliesLabel(): string {
+  return process.env.GENERAL_SUPPLIES_LABEL ?? "General Supplies";
+}
+
+/** Recipient email for general-supplies orders. Falls back to the regular
+ *  RESEND_FROM_ADDRESS so admin gets the email if no warehouse address is
+ *  configured. Returns null only if neither is set (Send button disabled). */
+export function generalSuppliesEmail(): string | null {
+  return (
+    process.env.GENERAL_SUPPLIES_EMAIL ||
+    process.env.RESEND_FROM_ADDRESS ||
+    null
+  );
+}
+
 export type DeliveryAddress = {
   name: string;
   street: string;
@@ -454,23 +481,40 @@ async function loadSupplierSettings(supplierAccountId: string): Promise<{
 export async function buildSupplierOrderDraft(
   input: BuildSupplierOrderInput
 ): Promise<SupplierOrderDraft> {
-  // Per-supplier email template (DB override or code default)
+  const isGeneral = input.supplierAccountId === GENERAL_SUPPLIES_ID;
+
+  // Per-supplier email template (DB override or code default). General
+  // Supplies uses the same default template — overrides loaded by id which
+  // works fine for a synthetic id (will return defaults).
   const { template } = await loadSupplierTemplate(input.supplierAccountId);
 
-  // Per-supplier config (order email + PPP account #)
-  const settings = await loadSupplierSettings(input.supplierAccountId);
+  // Per-supplier config — general supplies pulls from env vars instead
+  // of supplier_settings (which has no row for the synthetic id).
+  const settings = isGeneral
+    ? {
+        orderEmail: generalSuppliesEmail(),
+        pppAccountNumber: null,
+        pickupLocations: [] as Array<{ name: string; address: string }>,
+      }
+    : await loadSupplierSettings(input.supplierAccountId);
 
-  // Resolve everything that goes into the email
+  // Resolve everything that goes into the email. General Supplies skips
+  // paint colors entirely — none of the WO's PaintColors match the synthetic
+  // manufacturer id so resolveLineItems returns empty, which is the right
+  // shape (extras-only order).
   const { lineItems, skippedSurfaces } = resolveLineItems(input);
   const deliveryAddress = resolveDeliveryAddress(input);
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);
-  const poNumber = await nextPoNumber(input.workOrder.workOrderNumber ?? input.workOrder.id.slice(-6), input.supplierAccount.name);
+  const poNumber = await nextPoNumber(
+    input.workOrder.workOrderNumber ?? input.workOrder.id.slice(-6),
+    isGeneral ? generalSuppliesLabel() : input.supplierAccount.name
+  );
 
   const customerName = input.customerAccount?.name ?? "(unknown customer)";
   const customerFirst = customerName.split(/\s+/)[0] || "there";
 
   const vars: Record<string, string> = {
-    supplier_name: input.supplierAccount.name,
+    supplier_name: isGeneral ? generalSuppliesLabel() : input.supplierAccount.name,
     // Optional — when null, the {{#ppp_account_number}}…{{/ppp_account_number}}
     // section in the template renders nothing so the "PPP Account:" line is
     // omitted entirely. Workers should never see placeholders.
