@@ -392,6 +392,83 @@ export function derivePipelineAtRisk(
   };
 }
 
+/**
+ * Deal-level stuck-pipeline rows — feeds the /dashboard/stuck page.
+ * Returns each individual open Opportunity that hasn't moved in N days,
+ * sorted by amount-at-risk desc so the biggest stalled deals surface first.
+ *
+ * Per Alex-UX audit (2026-05-26): the existing derivePipelineAtRisk
+ * returns an aggregate ("$14K across 5 deals") — that's the dashboard
+ * KPI card. But Alex wants to know "WHICH 5 deals and who owns them?"
+ * in 5 seconds. This function returns the deal-level detail so the
+ * /dashboard/stuck page can list them.
+ *
+ * Parameters:
+ *   - staleDays — how many days without activity counts as stuck.
+ *     Default 14 matches derivePipelineAtRisk for consistency.
+ *
+ * Scope: respects the snapshot the caller passes — so a scoped (rep-only)
+ * snapshot returns only that rep's stuck deals. Admins viewing the full
+ * snapshot see every stuck deal company-wide.
+ */
+export type StuckDeal = {
+  id: string;
+  accountName: string | null;
+  amount: number;            // raw $ (not $K) for sort precision
+  ownerId: string;
+  ownerName: string;         // resolved via WO ownerName lookup OR rep lookup
+  stageName: string;
+  createdDate: string;
+  lastActivityDate: string | null;
+  daysSinceActivity: number;
+};
+
+export function deriveStuckDeals(
+  snapshot: SalesforceSnapshot,
+  staleDays: number = 14
+): StuckDeal[] {
+  const now = Date.now();
+  const staleMs = staleDays * 86_400_000;
+  // Build a User-id → name lookup. Snapshot.reps + WO ownerName both
+  // contribute; first hit wins (snapshot.reps is canonical for active
+  // field-standard users).
+  const ownerNameLookup = new Map<string, string>();
+  for (const r of snapshot.reps) {
+    if (r.name) ownerNameLookup.set(r.id, r.name);
+  }
+  for (const w of snapshot.workOrders) {
+    if (w.ownerId && w.ownerName && !ownerNameLookup.has(w.ownerId)) {
+      ownerNameLookup.set(w.ownerId, w.ownerName);
+    }
+  }
+
+  const stuck: StuckDeal[] = [];
+  for (const o of snapshot.opportunities) {
+    if (o.isClosed) continue;
+    const lastTouch = o.lastActivityDate
+      ? new Date(o.lastActivityDate).getTime()
+      : new Date(o.createdDate).getTime();
+    if (isNaN(lastTouch)) continue;
+    const ageMs = now - lastTouch;
+    if (ageMs < staleMs) continue;
+    stuck.push({
+      id: o.id,
+      accountName: o.accountName,
+      amount: o.amount,
+      ownerId: o.ownerId,
+      ownerName: ownerNameLookup.get(o.ownerId) ?? "(unassigned)",
+      stageName: o.stageName,
+      createdDate: o.createdDate,
+      lastActivityDate: o.lastActivityDate,
+      daysSinceActivity: Math.floor(ageMs / 86_400_000),
+    });
+  }
+  // Sort by amount-at-risk desc — biggest stalled deals first matches what
+  // Alex would scan top-down on a phone.
+  stuck.sort((a, b) => b.amount - a.amount);
+  return stuck;
+}
+
 /* ─── Company trendline ─── */
 
 function bucketStartDaily(iso: string): string {

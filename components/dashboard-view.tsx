@@ -818,18 +818,15 @@ export default function DashboardView({ bundle }: Props) {
             <div className="text-xs text-ppp-charcoal-500 mt-0.5">
               {pipelineAtRisk.count} deals · {pipelineAtRisk.reps} reps · {">"}14 days in stage
             </div>
-            {/* "Review stuck deals" used to be a no-op button — point it at
-                the rep list instead so admins can drill in to the reps with
-                stale pipeline. (A full stuck-deals filter view is a Phase 2
-                follow-up.) */}
+            {/* Drill-in points at /dashboard/stuck — focused deal-level
+                list (customer + owner + amount + days-idle) sorted by
+                dollar exposure desc. Replaces the previous /dashboard/rep
+                redirect which was the rep leaderboard, not actionable. */}
             <Link
-              href="/dashboard/rep"
+              href="/dashboard/stuck"
               className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-ppp-blue hover:text-ppp-blue-700 transition-colors"
             >
-              Review reps with stuck deals
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M5 12h14 M12 5l7 7-7 7" />
-              </svg>
+              See which deals are stalling →
             </Link>
           </div>
 
