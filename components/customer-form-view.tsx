@@ -170,6 +170,18 @@ export default function CustomerFormView({ token, customerName, formData, copy }
     // <100ms; React batches setSubmitting so two events can both pass the
     // submitting=false check. The ref updates synchronously.
     if (submitInFlight.current || submitting) return;
+    // Block submit if the color catalog didn't load — without it the
+    // customer's picks reference colors we can't look up, and the submit
+    // would persist orphaned colorIds. Better to refuse early with a
+    // clear message than corrupt the data quietly.
+    if (catalog.status !== "ready") {
+      setSubmitError(
+        catalog.status === "error"
+          ? `Couldn't load the color catalog: ${catalog.message}. Refresh the page and try again.`
+          : "Color catalog still loading — wait a moment and try again."
+      );
+      return;
+    }
     submitInFlight.current = true;
     setSubmitError(null);
     setSubmitting(true);

@@ -402,6 +402,20 @@ export default function SupplierOrderModal({
                       Settings → Suppliers, or use Copy-to-Clipboard below and paste into Gmail.
                     </div>
                   )}
+                  {/* Zero-gallon warning — when SF data is missing sqft for a
+                      WOLI, the gallons calc returns 0. We surface this so
+                      admin spots the data issue BEFORE sending (otherwise
+                      the supplier gets "Walls — Cloud White × 0 gal" which
+                      looks like a typo). */}
+                  {(() => {
+                    const zeroes = draft.lineItems.filter((li) => li.gallons === 0);
+                    if (zeroes.length === 0) return null;
+                    return (
+                      <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
+                        <strong>⚠ {zeroes.length} line item{zeroes.length === 1 ? "" : "s"} show 0 gallons</strong> — the WOLI is missing sqft data in Salesforce. Edit the email body below to set quantities manually, or fix the WOLI in SF first.
+                      </div>
+                    );
+                  })()}
 
                   {/* Fulfillment */}
                   <Section title="Fulfillment">
@@ -469,12 +483,14 @@ export default function SupplierOrderModal({
                             {selected ? (
                               <input
                                 type="number"
+                                inputMode="numeric"
                                 min={1}
                                 value={selected.qty}
                                 onChange={(e) => updateExtraQty(c.id, Number(e.target.value))}
                                 onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => e.stopPropagation()}
-                                className="w-14 shrink-0 px-2 py-0.5 text-xs text-right border border-ppp-blue-100 rounded font-mono"
+                                // text-base on mobile to avoid iOS zoom-on-focus.
+                                className="w-16 shrink-0 px-2 py-1 sm:py-0.5 text-base sm:text-xs text-right border border-ppp-blue-100 rounded font-mono"
                               />
                             ) : (
                               <span className="text-[10px] text-ppp-charcoal-500 shrink-0">
@@ -593,21 +609,45 @@ export default function SupplierOrderModal({
                   {copied ? "✓ Copied" : "Copy to Clipboard"}
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!draft || sending || !draft.sentToEmail || (fulfillment === "delivery" && draft.unresolvedAddress)}
-                title={
-                  !draft?.sentToEmail
-                    ? `Set ${supplierName}'s order email in Settings → Suppliers first`
-                    : fulfillment === "delivery" && draft?.unresolvedAddress
-                      ? "Add a delivery address before sending (or switch to Pickup)"
-                      : ""
-                }
-                className="px-4 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {sending ? "Sending…" : draft?.sentToEmail ? `Send to ${draft.sentToEmail}` : "Send (email not set)"}
-              </button>
+              {(() => {
+                // Send is blocked when there's literally nothing to order:
+                // zero paint colors AND zero extras (and not a special-
+                // instructions-only general supplies note). Catches the
+                // "customer hasn't submitted form + worker forgot to tick
+                // an extra" footgun that would email the supplier an empty
+                // shopping list.
+                const isGeneral = supplierAccountId === "__general__";
+                const hasAnything =
+                  (draft && draft.lineItems.length > 0) ||
+                  extras.size > 0 ||
+                  (isGeneral && specialInstructions.trim().length > 0);
+                const emptyOrder = !!draft && !hasAnything;
+                const blockedForAddress = fulfillment === "delivery" && !!draft?.unresolvedAddress;
+                const blockedForEmail = !draft?.sentToEmail;
+                const disabled = !draft || sending || blockedForEmail || blockedForAddress || emptyOrder;
+                const title = blockedForEmail
+                  ? `Set ${supplierName}'s order email in Settings → Suppliers first`
+                  : blockedForAddress
+                    ? "Add a delivery address before sending (or switch to Pickup)"
+                    : emptyOrder
+                      ? "Nothing to order — pick at least one paint color (via customer form) or tick an extra"
+                      : "";
+                return (
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={disabled}
+                    title={title}
+                    className="px-4 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {sending ? "Sending…"
+                      : blockedForEmail ? "Send (email not set)"
+                      : emptyOrder ? "Nothing to order yet"
+                      : draft?.sentToEmail ? `Send to ${draft.sentToEmail}`
+                      : "Send"}
+                  </button>
+                );
+              })()}
             </>
           )}
         </div>
