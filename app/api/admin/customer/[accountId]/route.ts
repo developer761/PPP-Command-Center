@@ -79,25 +79,76 @@ export async function GET(
       }, { status: 503 });
     }
 
-    // Resolve the canonical Account row. ID-first; fall back to name-match
-    // ONLY if the ID isn't present in the snapshot (shouldn't happen for
-    // real-customer URLs but defends against stale links).
-    const account = snapshot.accounts.find((a) => a.id === accountId);
-    if (!account) {
-      return NextResponse.json({ error: "account_not_found" }, { status: 404 });
-    }
+    // Resolve the canonical Account row. ID-first; fall back to synthesizing
+    // from WO/Opp data when the full Account record isn't in the snapshot.
+    //
+    // WHY THE FALLBACK: the accounts query is capped at top-5k by lifetime
+    // revenue. Customers in the long tail (which is most customers — PPP
+    // has tens of thousands of one-off accounts) are excluded from
+    // snapshot.accounts even though their WOs/Opps ARE pulled in the
+    // 365-day windows. Without this fallback the page 404s for the vast
+    // majority of real customers. Synthesize a minimal Account from WO
+    // data so the page still works.
+    let account = snapshot.accounts.find((a) => a.id === accountId);
 
-    // Find every WO on this account. Prefer accountId match (canonical);
-    // fall back to accountName match for legacy WOs that pre-date the
-    // ID-on-WO refactor and don't carry accountId yet.
+    // Find every WO + Opp on this account FIRST (we need them either way
+    // for the timeline + scope check, AND to synthesize the account when
+    // not in snapshot).
     const allWos = snapshot.workOrders.filter(
-      (w) => w.accountId === account.id ||
-        (!w.accountId && w.accountName && w.accountName === account.name)
+      (w) => w.accountId === accountId ||
+        (account && !w.accountId && w.accountName && w.accountName === account.name)
     );
     const allOpps = snapshot.opportunities.filter(
-      (o) => o.accountId === account.id ||
-        (!o.accountId && o.accountName && o.accountName === account.name)
+      (o) => o.accountId === accountId ||
+        (account && !o.accountId && o.accountName && o.accountName === account.name)
     );
+
+    if (!account) {
+      // No full Account record — try to synthesize from a WO or Opp on this
+      // account. Both carry accountId + accountName from the SOQL join.
+      const sourceName =
+        allWos.find((w) => w.accountName)?.accountName ??
+        allOpps.find((o) => o.accountName)?.accountName ??
+        null;
+      if (!sourceName) {
+        // No WOs or Opps either → this is genuinely an unknown / nonexistent
+        // account, or one that's outside our 365-day data window.
+        return NextResponse.json({ error: "account_not_found" }, { status: 404 });
+      }
+      // Build minimal stub. totalLifetimeRevenue from WO sum is an
+      // approximation; for top-5k accounts SF provides the canonical figure
+      // (which includes historical WOs beyond our 365d window).
+      const synthRevenue = allWos.reduce((s, w) => s + (w.amount ?? 0), 0);
+      account = {
+        id: accountId,
+        name: sourceName,
+        type: null,
+        serviceTerritoryId: null,
+        region: null,
+        geoZone: null,
+        county: null,
+        leadGroup: null,
+        accountManagerId: null,
+        primaryContact: null,
+        totalLifetimeRevenue: synthRevenue,
+        totalRevenueCFY: 0,
+        totalRevenuePFY: 0,
+        totalWonOppties: 0,
+        totalLostOppties: 0,
+        numberOpenOppties: 0,
+        isBMRetailer: false,
+        isBMAutoSubmit: false,
+        isKeyRelationship: false,
+        lastAppointment: null,
+        lastWorkOrderCompleted: null,
+        email: null,
+        phone: null,
+        billingStreet: null,
+        billingCity: null,
+        billingState: null,
+        billingPostalCode: null,
+      };
+    }
 
     // SCOPE: worker sees only WOs they own
     let visibleWos = allWos;

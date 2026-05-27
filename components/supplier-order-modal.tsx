@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 
 /**
@@ -118,6 +118,16 @@ export default function SupplierOrderModal({
   // able to accidentally cancel an order mid-Resend-roundtrip).
   useEscClose(onClose, { allowDuring: !sending });
 
+  // Scroll the email body into view as soon as the first draft loads, so
+  // admin lands on the most-edited section instead of having to scroll past
+  // warnings + fulfillment + extras + special-instructions. Once the body
+  // is visible, the user scrolls UP to change settings if needed.
+  const emailBodyRef = useRef<HTMLDivElement | null>(null);
+  const didInitialScrollRef = useRef(false);
+
+  // Triggered when `draft` becomes available — that's when the email body
+  // ref is finally attached to the DOM.
+
   // Fetch extras catalog ONCE on mount — small (~20 rows) so no pagination.
   useEffect(() => {
     let cancelled = false;
@@ -177,6 +187,17 @@ export default function SupplierOrderModal({
     }, 250);
     return () => { cancelled = true; clearTimeout(timeout); };
   }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, extras, specialInstructions]);
+
+  // Scroll the email body into view on first draft load. Re-builds from
+  // extras/fulfillment toggles don't re-scroll (ref guard).
+  useEffect(() => {
+    if (draft && !didInitialScrollRef.current && emailBodyRef.current) {
+      didInitialScrollRef.current = true;
+      requestAnimationFrame(() => {
+        emailBodyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [draft]);
 
   const filteredCatalog = useMemo(() => {
     const q = extrasSearch.trim().toLowerCase();
@@ -475,7 +496,9 @@ export default function SupplierOrderModal({
                     />
                   </Section>
 
-                  {/* Email preview / editor */}
+                  {/* Email preview / editor — scrolled into view on first
+                      draft load via the parent ref + useEffect below. */}
+                  <div ref={emailBodyRef}>
                   <Section title="Email body" subtitle={draft.subject ? `Subject: ${draft.subject}` : undefined}>
                     <textarea
                       value={editedBody ?? draft.body}
@@ -496,6 +519,7 @@ export default function SupplierOrderModal({
                       )}
                     </div>
                   </Section>
+                  </div>
                 </>
               )}
             </div>

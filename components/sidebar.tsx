@@ -41,6 +41,7 @@ const navSections: NavSection[] = [
     heading: "Operations Tools",
     items: [
       { label: "Materials Ordering", href: "/dashboard/materials", icon: <IconPaint /> },
+      { label: "Customers", href: "/dashboard/customers", icon: <IconUser /> },
       { label: "Mail", href: "/dashboard/inbox", icon: <IconInbox /> },
     ],
   },
