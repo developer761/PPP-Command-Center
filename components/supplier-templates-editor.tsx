@@ -79,20 +79,38 @@ export default function SupplierTemplatesEditor() {
   const [defaults, setDefaults] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setWarning(null);
     try {
       const res = await fetch("/api/admin/supplier-templates");
-      const data = await res.json();
+      // Defensive: a Next 500 returns HTML, which res.json() throws on. Capture
+      // the raw text so the error surface is informative instead of "Load failed".
+      let data: {
+        ok?: boolean;
+        suppliers?: SupplierRow[];
+        defaults?: Template;
+        warning?: string;
+        error?: string;
+        message?: string;
+      };
+      try {
+        data = await res.json();
+      } catch {
+        setError(`Server returned non-JSON (HTTP ${res.status}). Try again or check the server logs.`);
+        return;
+      }
       if (!res.ok || !data.ok) {
         setError(data.message ?? data.error ?? `HTTP ${res.status}`);
         return;
       }
       setSuppliers(data.suppliers ?? []);
       setDefaults(data.defaults ?? null);
+      if (data.warning) setWarning(data.warning);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -137,6 +155,19 @@ export default function SupplierTemplatesEditor() {
           the next supplier-order send.
         </p>
       </div>
+
+      {warning && (
+        <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-xl px-4 py-3 text-xs text-ppp-orange-700 flex items-start justify-between gap-3 flex-wrap">
+          <span>{warning}</span>
+          <button
+            type="button"
+            onClick={() => void loadList()}
+            className="shrink-0 px-2.5 py-0.5 rounded-lg border border-ppp-orange-100 bg-white text-[11px] font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="space-y-3">
         {suppliers.map((s) => (

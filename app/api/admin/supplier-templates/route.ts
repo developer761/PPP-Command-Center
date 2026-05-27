@@ -29,6 +29,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
  * Admin-only.
  */
 export async function GET(request: Request) {
+  try {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
@@ -57,8 +58,26 @@ export async function GET(request: Request) {
 
   // List mode — every supplier the system knows about. Mirrors the
   // logic in /api/admin/supplier-settings/route.ts so both surfaces
-  // show the same supplier list.
-  const snapshot = await loadSalesforceSnapshot();
+  // show the same supplier list. Snapshot is allowed to fail — if SF is
+  // unreachable we still return a usable response (empty supplier list +
+  // an explicit warning) so the editor never shows the generic browser
+  // "Load failed" message.
+  let snapshot: Awaited<ReturnType<typeof loadSalesforceSnapshot>> | null = null;
+  let snapshotError: string | null = null;
+  try {
+    snapshot = await loadSalesforceSnapshot();
+  } catch (err) {
+    snapshotError = err instanceof Error ? err.message : String(err);
+    console.warn("[supplier-templates] snapshot load failed:", err);
+  }
+  if (!snapshot) {
+    return NextResponse.json({
+      ok: true,
+      suppliers: [],
+      defaults: DEFAULT_SUPPLIER_TEMPLATE,
+      warning: `Couldn't reach Salesforce: ${snapshotError ?? "unknown"}. Try again in a moment.`,
+    });
+  }
   const supplierIds = new Set<string>();
   for (const a of snapshot.accounts) {
     if (a.type && /Vendor|Supplier|Retailer/i.test(a.type)) supplierIds.add(a.id);
@@ -121,6 +140,17 @@ export async function GET(request: Request) {
     suppliers,
     defaults: DEFAULT_SUPPLIER_TEMPLATE,
   });
+  } catch (err) {
+    console.error("[supplier-templates GET] unhandled:", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "internal_error",
+        message: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PUT(request: Request) {
