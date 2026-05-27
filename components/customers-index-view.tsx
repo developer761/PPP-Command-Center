@@ -60,17 +60,22 @@ export default function CustomersIndexView({
           <strong className="text-ppp-charcoal">{visible.length}</strong>
           {search ? ` of ${customers.length}` : ""} customer{customers.length === 1 ? "" : "s"}
         </div>
-        <div className="relative flex-1 min-w-[220px] max-w-md">
+        <div className="relative flex-1 min-w-[180px] max-w-md w-full">
           <input
             type="search"
+            inputMode="search"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or rep…"
-            className="w-full pl-7 pr-3 py-1.5 text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+            // text-base on mobile to prevent iOS auto-zoom; tighter on desktop.
+            className="w-full pl-8 pr-3 py-2 sm:py-1.5 text-base sm:text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
           />
           <svg
-            className="absolute left-2 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
-            width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
+            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
           >
             <circle cx="11" cy="11" r="7" />
             <path d="m21 21-4.3-4.3" />

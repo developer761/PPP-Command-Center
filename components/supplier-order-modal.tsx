@@ -172,9 +172,16 @@ export default function SupplierOrderModal({
           setDraftError(data.message ?? data.error ?? `HTTP ${res.status}`);
           setDraft(null);
         } else {
+          // setDraft alone is enough — the textarea's `editedBody ?? draft.body`
+          // fallback means an un-edited textarea (editedBody=null) automatically
+          // shows the fresh body with new extras. Previously we ALSO called
+          // setEditedBody(null) which destroyed any in-progress manual edits
+          // when the user toggled extras — that's what made it feel like
+          // "the email doesn't update with my extras." Now manual edits are
+          // preserved, and the "Editing manually — extras won't update this
+          // body" hint + Reset button lets the user pull in fresh extras
+          // when they're ready.
           setDraft(data.draft as Draft);
-          // Reset edits to the new body so the textarea reflects the auto-generated content
-          setEditedBody(null);
         }
       } catch (err) {
         if (!cancelled) {
@@ -184,7 +191,7 @@ export default function SupplierOrderModal({
       } finally {
         if (!cancelled) setLoadingDraft(false);
       }
-    }, 250);
+    }, 120); // Was 250ms — reduced to 120ms so extras-toggle feels snappy.
     return () => { cancelled = true; clearTimeout(timeout); };
   }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, extras, specialInstructions]);
 
@@ -497,17 +504,44 @@ export default function SupplierOrderModal({
                   </Section>
 
                   {/* Email preview / editor — scrolled into view on first
-                      draft load via the parent ref + useEffect below. */}
+                      draft load via the parent ref + useEffect below.
+                      A subtle "updating…" pulse on the section header when
+                      a re-fetch is in flight gives instant feedback after
+                      extras / fulfillment toggles, so the worker knows the
+                      email IS regenerating with their changes (without it
+                      the ~300ms latency reads as "the email didn't update"). */}
                   <div ref={emailBodyRef}>
-                  <Section title="Email body" subtitle={draft.subject ? `Subject: ${draft.subject}` : undefined}>
-                    <textarea
-                      value={editedBody ?? draft.body}
-                      onChange={(e) => setEditedBody(e.target.value)}
-                      rows={16}
-                      className="w-full px-3 py-2 text-xs font-mono border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue leading-relaxed"
-                    />
+                  <Section
+                    title="Email body"
+                    subtitle={
+                      loadingDraft
+                        ? "Updating with your changes…"
+                        : draft.subject ? `Subject: ${draft.subject}` : undefined
+                    }
+                  >
+                    <div className="relative">
+                      <textarea
+                        value={editedBody ?? draft.body}
+                        onChange={(e) => setEditedBody(e.target.value)}
+                        rows={16}
+                        className={[
+                          "w-full px-3 py-2 text-xs font-mono border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue leading-relaxed transition-opacity",
+                          loadingDraft && editedBody === null ? "border-ppp-blue-100 opacity-70" : "border-ppp-charcoal-100",
+                        ].join(" ")}
+                      />
+                      {loadingDraft && editedBody === null && (
+                        <div className="absolute top-2 right-2 inline-flex items-center gap-1.5 text-[10px] text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 px-2 py-0.5 rounded-full">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-ppp-blue animate-pulse" />
+                          Updating
+                        </div>
+                      )}
+                    </div>
                     <div className="mt-1 flex items-center justify-between text-[10px] text-ppp-charcoal-500">
-                      <span>Edit any line before sending.</span>
+                      <span>
+                        {editedBody !== null
+                          ? "Editing manually — extras changes won't update this body."
+                          : "Edit any line before sending. Toggling extras updates this automatically."}
+                      </span>
                       {editedBody !== null && (
                         <button
                           type="button"

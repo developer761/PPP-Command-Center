@@ -99,10 +99,15 @@ export default function SupplierPickerModal({
         <div className="px-5 py-3 border-b border-ppp-charcoal-100 shrink-0">
           <input
             type="search"
+            inputMode="search"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search suppliers…"
-            className="w-full px-3 py-1.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+            // text-base on mobile prevents iOS zoom-on-focus.
+            className="w-full px-3 py-2 sm:py-1.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
           />
         </div>
 

@@ -371,10 +371,16 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
               <div className="relative">
                 <input
                   type="search"
+                  inputMode="search"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search customer, WO#, room…"
-                  className="w-full pl-8 pr-3 py-1.5 text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                  // text-base on mobile prevents iOS Safari auto-zoom-on-focus
+                  // (anything <16px triggers zoom + layout shift on touch).
+                  className="w-full pl-8 pr-3 py-2 sm:py-1.5 text-base sm:text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                 />
                 <svg
                   width="14"
@@ -395,7 +401,9 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 hover:text-ppp-charcoal text-xs"
+                    // 32px hit target on mobile so finger taps actually land —
+                    // the bare ✕ glyph was too small to hit on phones.
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm"
                     aria-label="Clear search"
                   >
                     ✕

@@ -69,16 +69,20 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
+    // pointerdown covers BOTH mouse + touch in a single event. On iOS,
+    // mousedown alone doesn't fire reliably for outside-tap detection,
+    // so the dropdown couldn't be dismissed by tapping outside it — that
+    // was Karan's "dropdown doesn't work properly" complaint on phone.
+    const onDown = (e: Event) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -214,11 +218,15 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
         <div className="absolute right-0 top-full mt-2 w-72 max-w-[90vw] bg-white border border-ppp-charcoal-100 rounded-xl shadow-xl shadow-ppp-charcoal/10 z-50 overflow-hidden animate-fade-in">
           <div className="p-2 border-b border-ppp-charcoal-100">
             <input
-              type="text"
+              type="search"
+              inputMode="search"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search reps…"
-              className="w-full px-3 py-1.5 text-[12px] border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              className="w-full px-3 py-2 sm:py-1.5 text-base sm:text-[12px] border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
               autoFocus
             />
           </div>
@@ -228,7 +236,7 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
                 <button
                   type="button"
                   onClick={clearViewAs}
-                  className="w-full text-left px-3 py-2 text-[12px] text-ppp-orange-700 font-medium hover:bg-ppp-orange-50"
+                  className="w-full text-left px-3 py-3 sm:py-2 text-sm sm:text-[12px] text-ppp-orange-700 font-medium hover:bg-ppp-orange-50"
                 >
                   ← Stop viewing as {activeLabel}
                 </button>
@@ -260,7 +268,7 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
                     type="button"
                     onClick={() => pickRep(r.id, r.name)}
                     className={[
-                      "w-full text-left px-3 py-2 text-[12px] transition-colors",
+                      "w-full text-left px-3 py-3 sm:py-2 text-sm sm:text-[12px] transition-colors",
                       active
                         ? "bg-ppp-blue-50 text-ppp-blue-700 font-medium"
                         : "text-ppp-charcoal hover:bg-ppp-blue-50/60",

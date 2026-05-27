@@ -290,11 +290,14 @@ export default function CustomerFormView({ token, customerName, formData, copy }
                 value={deliveryStreet}
                 onChange={(e) => setDeliveryStreet(e.target.value)}
                 placeholder="123 Main St"
-                className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                 autoComplete="street-address"
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_160px_140px] gap-3">
+            {/* Mobile: City full-width on its own row; State + ZIP share the
+                next row (50/50 split, both readable on iPhone SE 375px).
+                Desktop keeps the existing 1fr / 160 / 140 layout. */}
+            <div className="grid grid-cols-[1fr_1fr] sm:grid-cols-[1fr_160px_140px] gap-3 [&>:first-child]:col-span-2 sm:[&>:first-child]:col-span-1">
               <div>
                 <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
                   City
@@ -304,7 +307,7 @@ export default function CustomerFormView({ token, customerName, formData, copy }
                   value={deliveryCity}
                   onChange={(e) => setDeliveryCity(e.target.value)}
                   placeholder="Smithtown"
-                  className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                  className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                   autoComplete="address-level2"
                 />
               </div>
@@ -318,7 +321,7 @@ export default function CustomerFormView({ token, customerName, formData, copy }
                   onChange={(e) => setDeliveryState(e.target.value)}
                   placeholder="NY"
                   maxLength={2}
-                  className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue uppercase"
+                  className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue uppercase"
                   autoComplete="address-level1"
                 />
               </div>
@@ -332,7 +335,7 @@ export default function CustomerFormView({ token, customerName, formData, copy }
                   onChange={(e) => setDeliveryPostalCode(e.target.value)}
                   placeholder="11787"
                   inputMode="numeric"
-                  className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
+                  className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
                   autoComplete="postal-code"
                 />
               </div>
@@ -354,7 +357,7 @@ export default function CustomerFormView({ token, customerName, formData, copy }
             value={globalNotes}
             onChange={(e) => setGlobalNotes(e.target.value)}
             rows={4}
-            className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
+            className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
             placeholder="e.g. We have a Friday move-in date, please plan around that. Don't paint the inside of the closets."
           />
         </div>
@@ -462,7 +465,7 @@ function LineItemSection({
             onChange={(e) => onNotesChange(e.target.value)}
             rows={2}
             placeholder="Optional — e.g. 'keep accent wall the same' or 'use leftover paint if possible'"
-            className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
+            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
           />
         </div>
       </div>
@@ -538,7 +541,10 @@ function SurfaceRow({
             <select
               value={pick.finish ?? ""}
               onChange={(e) => onChange({ finish: e.target.value || null })}
-              className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              // text-base on mobile to keep ≥16px and avoid iOS zoom-on-focus;
+              // py-3 on mobile to hit 44px target. Native <select> renders the
+              // iOS wheel picker which is touch-perfect — keep using native here.
+              className="w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
             >
               <option value="">Finish (optional)</option>
               {FINISH_OPTIONS.map((f) => (
@@ -612,14 +618,17 @@ function ColorPicker({
     return scored.slice(0, 30).map((r) => r.c);
   }, [catalog, query]);
 
-  // Click outside to close
+  // Click/tap outside to close. pointerdown handles BOTH mouse + touch in
+  // one event — iOS Safari doesn't fire mousedown reliably on touch, which
+  // meant the color picker stayed open on phones until reload. Critical for
+  // this view because customers fill the form on their phones.
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
+    const onDown = (e: Event) => {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
 
   const pickColor = (c: ColorOption) => {
@@ -699,7 +708,7 @@ function ColorPicker({
             setOpen(true);
           }}
           placeholder="Type a color name or code (e.g. Stardust, 2108-40)"
-          className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+          className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
         />
       )}
 

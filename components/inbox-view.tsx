@@ -832,17 +832,23 @@ function SearchBox({
   placeholder: string;
 }) {
   return (
-    <div className="relative flex-1 min-w-[200px] max-w-md">
+    <div className="relative flex-1 min-w-[180px] max-w-md w-full">
       <input
         type="search"
+        inputMode="search"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full pl-7 pr-3 py-1.5 text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+        // text-base (16px) on mobile prevents iOS Safari auto-zoom-on-focus
+        // which throws the whole layout. sm:text-xs keeps the desktop UI tight.
+        className="w-full pl-8 pr-3 py-2 sm:py-1.5 text-base sm:text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
       />
       <svg
-        className="absolute left-2 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
-        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
+        width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
       >
         <circle cx="11" cy="11" r="7" />
         <path d="m21 21-4.3-4.3" />
