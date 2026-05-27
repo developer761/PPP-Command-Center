@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 /**
@@ -81,13 +82,17 @@ export default function SupplierTemplatesEditor() {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"active" | "all">("active");
+  const [totalCandidates, setTotalCandidates] = useState<number>(0);
+  const [activeCount, setActiveCount] = useState<number>(0);
+  const [showingFallback, setShowingFallback] = useState<boolean>(false);
 
   const loadList = useCallback(async () => {
     setLoading(true);
     setError(null);
     setWarning(null);
     try {
-      const res = await fetch("/api/admin/supplier-templates");
+      const res = await fetch(`/api/admin/supplier-templates?filter=${filter}`);
       // Defensive: a Next 500 returns HTML, which res.json() throws on. Capture
       // the raw text so the error surface is informative instead of "Load failed".
       let data: {
@@ -97,6 +102,9 @@ export default function SupplierTemplatesEditor() {
         warning?: string;
         error?: string;
         message?: string;
+        totalCandidates?: number;
+        activeCount?: number;
+        showingFallback?: boolean;
       };
       try {
         data = await res.json();
@@ -110,13 +118,16 @@ export default function SupplierTemplatesEditor() {
       }
       setSuppliers(data.suppliers ?? []);
       setDefaults(data.defaults ?? null);
+      setTotalCandidates(data.totalCandidates ?? 0);
+      setActiveCount(data.activeCount ?? 0);
+      setShowingFallback(data.showingFallback ?? false);
       if (data.warning) setWarning(data.warning);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter]);
 
   useEffect(() => { void loadList(); }, [loadList]);
 
@@ -168,6 +179,48 @@ export default function SupplierTemplatesEditor() {
           </button>
         </div>
       )}
+
+      {/* Curated view toggle. Default shows only the 4-5 active suppliers PPP
+          actually uses; "Show all" exposes every Vendor-typed SF Account for
+          the rare case admin needs to enable a new one. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[11px] text-ppp-charcoal-500">
+          {filter === "active" ? (
+            showingFallback ? (
+              <>
+                Showing top {suppliers.length} suppliers by paint catalog size. No active list curated yet —
+                set <Link href="/dashboard/settings/suppliers">Active</Link> on the suppliers you actually use.
+              </>
+            ) : (
+              <>Showing <span className="font-bold text-ppp-charcoal">{suppliers.length}</span> active suppliers · {totalCandidates} total in Salesforce</>
+            )
+          ) : (
+            <>Showing all <span className="font-bold text-ppp-charcoal">{suppliers.length}</span> Vendor-typed accounts from Salesforce</>
+          )}
+        </div>
+        <div className="inline-flex bg-ppp-charcoal-50 rounded-lg p-0.5 text-[11px] font-semibold">
+          <button
+            type="button"
+            onClick={() => setFilter("active")}
+            className={[
+              "px-2.5 py-1 rounded-md transition-colors",
+              filter === "active" ? "bg-white text-ppp-charcoal shadow-sm" : "text-ppp-charcoal-500 hover:text-ppp-charcoal",
+            ].join(" ")}
+          >
+            Active ({activeCount || (showingFallback ? `top ${suppliers.length}` : "0")})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className={[
+              "px-2.5 py-1 rounded-md transition-colors",
+              filter === "all" ? "bg-white text-ppp-charcoal shadow-sm" : "text-ppp-charcoal-500 hover:text-ppp-charcoal",
+            ].join(" ")}
+          >
+            All ({totalCandidates})
+          </button>
+        </div>
+      </div>
 
       <div className="space-y-3">
         {suppliers.map((s) => (

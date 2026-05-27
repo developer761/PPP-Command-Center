@@ -22,14 +22,21 @@ export type SupplierEmailTemplate = {
 };
 
 /** Code-shipped defaults. These render a valid order email for ANY supplier
- *  even before admin has customized per-supplier copy. */
+ *  even before admin has customized per-supplier copy.
+ *
+ *  Conditional blocks use the Mustache-style `{{#var}}…{{/var}}` syntax —
+ *  the block renders only when the variable resolves to a non-empty string.
+ *  PPP Account number is optional (admin sets it once per supplier in
+ *  settings, or never if the supplier doesn't need it). When unset, the
+ *  entire line is OMITTED from the email rather than rendered as a blank
+ *  "PPP Account: " — workers should never see placeholders. */
 export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
   subject:
     "PPP Order {{po_number}} — {{customer_name}} (WO {{wo_number}})",
   greeting: "Hi {{supplier_name}} team,",
   intro:
     "Please prepare the following order for {{ppp_brand}}.\n\n" +
-    "PPP Account: {{ppp_account_number}}\n" +
+    "{{#ppp_account_number}}PPP Account: {{ppp_account_number}}\n{{/ppp_account_number}}" +
     "PO Number: {{po_number}}\n" +
     "Required by: {{required_by_date}}\n" +
     "Fulfillment: {{fulfillment_block}}\n\n" +
@@ -127,9 +134,30 @@ export async function saveSupplierTemplate(
   }
 }
 
-/** Same Mustache-lite substitution used in customer-form templates. */
+/** Mustache-lite substitution with conditional section support.
+ *
+ *  Variables: `{{key}}` substitutes vars[key]. Unknown keys stay literal
+ *  for QA visibility. Null/empty resolves to empty string.
+ *
+ *  Conditional sections: `{{#key}}…{{/key}}` renders the block ONLY when
+ *  vars[key] is a non-empty string. Used to omit lines like "PPP Account:"
+ *  when the field isn't configured, instead of rendering a blank label.
+ *  Variables inside the block are substituted as normal.
+ *
+ *  Sections are processed FIRST so the block's content is removed before
+ *  the unknown-variable check fires inside it. The regex is non-greedy
+ *  (`[\s\S]*?`) so two adjacent blocks don't collapse into one.
+ */
 export function render(template: string, vars: Record<string, string | null | undefined>): string {
-  return template.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (full, key) => {
+  const withSectionsResolved = template.replace(
+    /\{\{#\s*([a-z_][a-z0-9_]*)\s*\}\}([\s\S]*?)\{\{\/\s*\1\s*\}\}/gi,
+    (_full, key, inner) => {
+      const v = vars[key];
+      if (typeof v === "string" && v.trim().length > 0) return inner;
+      return "";
+    }
+  );
+  return withSectionsResolved.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (full, key) => {
     const v = vars[key];
     if (v === undefined) return full; // keep literal {{key}} for QA visibility
     return v === null ? "" : v;

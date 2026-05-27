@@ -114,11 +114,13 @@ export async function GET() {
     if (!settings) {
       gaps.push("no_settings_row");
     } else {
+      // Only flag the truly REQUIRED-to-send fields. Per the autofill/one-click
+      // rule the PPP account number is optional — many suppliers don't need it
+      // on every PO. When admin leaves it blank the email omits the line entirely
+      // via the conditional `{{#ppp_account_number}}` block, so it's not a gap.
+      // Pickup locations are also optional (only matters if worker picks pickup
+      // fulfillment, and the modal handles that case independently).
       if (!settings.order_email?.trim()) gaps.push("missing_order_email");
-      if (!settings.ppp_account_number?.trim()) gaps.push("missing_ppp_account_number");
-      if (!Array.isArray(settings.pickup_locations) || settings.pickup_locations.length === 0) {
-        gaps.push("no_pickup_locations");
-      }
     }
     candidates.push({
       supplierAccountId: id,
@@ -131,10 +133,16 @@ export async function GET() {
     });
   }
 
-  // Sort by color count desc (most-used supplier first), then by name
-  candidates.sort((a, b) =>
-    b.colorsInCatalog - a.colorsInCatalog || a.supplierName.localeCompare(b.supplierName)
-  );
+  // Sort: active+configured suppliers first (the curated 4-5), then by
+  // color-catalog size desc, then by name. Active suppliers are what workers
+  // actually use day-to-day — admin should see them up top, not scroll past
+  // 40 unconfigured SF Vendor accounts to find BM.
+  candidates.sort((a, b) => {
+    const aActive = (a.settings?.is_active && a.settings?.order_email) ? 1 : 0;
+    const bActive = (b.settings?.is_active && b.settings?.order_email) ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return b.colorsInCatalog - a.colorsInCatalog || a.supplierName.localeCompare(b.supplierName);
+  });
 
   return NextResponse.json({
     ok: true,

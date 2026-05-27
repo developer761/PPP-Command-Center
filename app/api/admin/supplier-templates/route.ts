@@ -87,29 +87,40 @@ export async function GET(request: Request) {
   }
   const accountById = new Map(snapshot.accounts.map((a) => [a.id, a]));
 
-  // Pull which suppliers currently have CUSTOMIZED templates so the UI can
-  // show "Custom" vs "Default" pills without an N+1 round-trip per supplier.
+  // Pull customized templates AND the active-supplier whitelist in one
+  // batch. supplier_settings.is_active=true is the canonical "this is a
+  // supplier PPP actually orders from" signal — defaults the list to the
+  // 4-5 real suppliers instead of every Vendor-typed SF Account.
   let customizedIds = new Set<string>();
+  let activeIds = new Set<string>();
   try {
     const sb = createSupabaseAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SECRET_KEY!,
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
-    const { data: rows } = await sb
-      .from("supplier_email_templates")
-      .select("supplier_account_id, subject, greeting, intro, outro, signoff");
-    if (rows) {
-      for (const r of rows) {
+    const [templatesRes, settingsRes] = await Promise.allSettled([
+      sb.from("supplier_email_templates")
+        .select("supplier_account_id, subject, greeting, intro, outro, signoff"),
+      sb.from("supplier_settings")
+        .select("supplier_account_id, is_active")
+        .eq("is_active", true),
+    ]);
+    if (templatesRes.status === "fulfilled" && templatesRes.value.data) {
+      for (const r of templatesRes.value.data) {
         const hasAny = [r.subject, r.greeting, r.intro, r.outro, r.signoff].some(
           (v) => typeof v === "string" && v.trim().length > 0
         );
         if (hasAny) customizedIds.add(r.supplier_account_id);
       }
     }
+    if (settingsRes.status === "fulfilled" && settingsRes.value.data) {
+      for (const r of settingsRes.value.data) {
+        if (r.supplier_account_id) activeIds.add(r.supplier_account_id);
+      }
+    }
   } catch (err) {
-    console.warn("[supplier-templates] customized lookup failed (non-fatal):", err);
-    customizedIds = new Set();
+    console.warn("[supplier-templates] lookup failed (non-fatal):", err);
   }
 
   // Count colors per supplier for sort priority
@@ -119,7 +130,15 @@ export async function GET(request: Request) {
     colorCountBySupplier.set(c.manufacturerId, (colorCountBySupplier.get(c.manufacturerId) ?? 0) + 1);
   }
 
-  const suppliers = Array.from(supplierIds)
+  // ?filter=all overrides the curation; default is "active". When admin has
+  // curated an active list, show ONLY those — that's the 4-5 PPP actually
+  // uses. When the active list is empty (fresh install / pre-curation), fall
+  // back to the top suppliers by color count so the page isn't empty.
+  const filter = url.searchParams.get("filter") === "all" ? "all" : "active";
+  const totalCandidates = supplierIds.size;
+  const noActiveCurated = activeIds.size === 0;
+
+  const allSuppliers = Array.from(supplierIds)
     .map((id) => {
       const acct = accountById.get(id);
       if (!acct) return null;
@@ -130,15 +149,31 @@ export async function GET(request: Request) {
         isBMRetailer: acct.isBMRetailer,
         colorsInCatalog: colorCountBySupplier.get(id) ?? 0,
         isCustomized: customizedIds.has(id),
+        isActive: activeIds.has(id),
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
     .sort((a, b) => b.colorsInCatalog - a.colorsInCatalog || a.supplierName.localeCompare(b.supplierName));
 
+  let suppliers = allSuppliers;
+  if (filter === "active") {
+    if (!noActiveCurated) {
+      suppliers = allSuppliers.filter((s) => s.isActive);
+    } else {
+      // No curation yet — show top-5-by-color-count so BM/SW/PPG surface.
+      // Admin enables more via /dashboard/settings/suppliers.
+      suppliers = allSuppliers.slice(0, 5);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     suppliers,
     defaults: DEFAULT_SUPPLIER_TEMPLATE,
+    filter,
+    totalCandidates,
+    activeCount: activeIds.size,
+    showingFallback: filter === "active" && noActiveCurated,
   });
   } catch (err) {
     console.error("[supplier-templates GET] unhandled:", err);

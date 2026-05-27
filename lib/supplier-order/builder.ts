@@ -418,7 +418,10 @@ export async function buildSupplierOrderDraft(
 
   const vars: Record<string, string> = {
     supplier_name: input.supplierAccount.name,
-    ppp_account_number: settings.pppAccountNumber || "[set in Settings → Suppliers]",
+    // Optional — when null, the {{#ppp_account_number}}…{{/ppp_account_number}}
+    // section in the template renders nothing so the "PPP Account:" line is
+    // omitted entirely. Workers should never see placeholders.
+    ppp_account_number: settings.pppAccountNumber ?? "",
     po_number: poNumber,
     customer_name: customerName,
     customer_first: customerFirst,
