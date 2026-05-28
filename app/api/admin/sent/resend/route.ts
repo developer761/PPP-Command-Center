@@ -131,9 +131,11 @@ export async function POST(request: Request) {
         }, { status: 502 });
       }
 
-      // Stamp the new resend_message_id so the next bounce/delivery event
-      // updates THIS row, not the old (bounced) message.
-      await markSent(row.token, "delivered", send.id);
+      // Stamp the new resend_message_id (when present) as "sent" — Resend's
+      // 200 means accepted, not delivered; the events webhook promotes it. This
+      // also resets the row off its old "bounced" status so the next delivery
+      // event updates THIS message, not the stale one.
+      await markSent(row.token, "sent", send.id ?? undefined);
 
       return NextResponse.json({
         ok: true,

@@ -67,7 +67,9 @@ function verifySignature(
   svixTimestamp: string | null,
   svixSignatureHeader: string | null
 ): boolean {
-  const secret = process.env.RESEND_INBOUND_SECRET;
+  // trim so a stray-whitespace env value (" ") is treated as unset rather
+  // than a truthy garbage secret that 401s every real webhook (silent outage).
+  const secret = process.env.RESEND_INBOUND_SECRET?.trim();
   if (!secret) {
     // In production this is a hard fail — accepting unsigned posts to a
     // public webhook lets anyone inject fake messages into the inbox. We
@@ -154,7 +156,20 @@ export async function POST(request: Request) {
   const subject = data.subject ?? null;
   const bodyText = data.text ?? null;
   const bodyHtml = data.html ?? null;
-  const messageId = data.message_id ?? null;
+  // Dedup key for inbox_messages.resend_message_id (UNIQUE). A NULL never
+  // collides in a Postgres UNIQUE index, so relying on data.message_id alone
+  // means any inbound email lacking a message_id inserts a fresh DUPLICATE row
+  // on every webhook retry. Fall back to the Svix delivery id (stable across
+  // retries of the same delivery), then to a content hash so two genuinely
+  // different emails still differ. Only used for dedup — threading uses
+  // in_reply_to / PO / from-email, not this column.
+  const svixId = headers.get("svix-id");
+  const messageId =
+    data.message_id ??
+    (svixId ? `svix:${svixId}` :
+      `hash:${createHmac("sha256", "inbound-dedup")
+        .update(`${fromEmail}|${subject ?? ""}|${data.created_at ?? ""}|${(bodyText ?? "").slice(0, 500)}`)
+        .digest("hex").slice(0, 40)}`);
   const inReplyTo = data.in_reply_to ?? data.headers?.["in-reply-to"] ?? null;
 
   const sb = adminClient();

@@ -5,14 +5,12 @@ import "server-only";
  *   1. Customer form invitation emails (templated link to /select/[token])
  *   2. Vendor materials-order emails (admin-reviewed, may have CC/BCC)
  *
- * Sender domain pending Karan's decision — options:
- *   - gobkflow.com (already DKIM-verified for BKFlow)
- *   - precisionpaintingplus.net (would need PPP IT to add DKIM records)
+ * Sender domain options:
+ *   - precisionpaintingplus.net (needs PPP IT to add DKIM records)
  *   - orders.precisionpaintingplus.net (fresh subdomain, cleanest brand)
  *
- * Until that's set, RESEND_FROM_ADDRESS is read at runtime so deploy can
- * happen before the final decision; the address gets configured via Vercel
- * env var.
+ * RESEND_FROM_ADDRESS is read at runtime so deploy can happen before the
+ * final decision; the address gets configured via Vercel env var.
  */
 
 type ResendSendInput = {
@@ -33,7 +31,10 @@ type ResendSendInput = {
 };
 
 type ResendSendResult =
-  | { ok: true; id: string }
+  // id is null when Resend accepted the send (200) but returned no message id.
+  // Callers MUST NOT persist a sentinel like "unknown" as resend_message_id —
+  // two such rows would collide on threading. Persist only a non-null id.
+  | { ok: true; id: string | null }
   | { ok: false; error: string; statusCode?: number };
 
 const RESEND_API_URL = "https://api.resend.com/emails";
@@ -107,7 +108,7 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
     }
     if (!parsed.id) {
       console.warn(`[resend] response missing id: ${text}`);
-      return { ok: true, id: "unknown" };
+      return { ok: true, id: null };
     }
     return { ok: true, id: parsed.id };
   } catch (err) {

@@ -54,7 +54,9 @@ function verifySignature(
   svixTimestamp: string | null,
   svixSignatureHeader: string | null
 ): boolean {
-  const secret = process.env.RESEND_EVENTS_SECRET;
+  // trim so a stray-whitespace env value isn't treated as a (garbage) secret
+  // that 401s every real webhook.
+  const secret = process.env.RESEND_EVENTS_SECRET?.trim();
   if (!secret) {
     if (process.env.NODE_ENV === "production") {
       console.error("[resend-events] RESEND_EVENTS_SECRET not set in production — refusing to accept unsigned webhooks");
