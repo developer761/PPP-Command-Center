@@ -202,6 +202,35 @@ async function main() {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // KPI 8 defensive — within the snapshot's 730-day window, confirm
+  // Labor_Company is still the ONLY labor-flavored PayeeType on
+  // Payment_Out rows. Historical variants ("LC Payroll", "Voucher Labor")
+  // stopped being used in 2019 — they're out of snapshot range — but
+  // if PPP ever re-introduces a labor variant, this catches it.
+  // ─────────────────────────────────────────────────────────────
+  console.log("\n─── KPI 8 defensive · Payment_Out PayeeTypes in snapshot window ───");
+  try {
+    const r = await conn.query<{ PayeeType__c: string; cnt: number; total: number }>(
+      "SELECT PayeeType__c, COUNT(Id) cnt, SUM(Amount__c) total FROM Transaction__c WHERE RecordType.DeveloperName = 'Payment_Out' AND PayeeType__c != null AND Date__c = LAST_N_DAYS:730 GROUP BY PayeeType__c ORDER BY COUNT(Id) DESC"
+    );
+    const rows = r.records as Array<{ PayeeType__c: string; cnt: number; total: number }>;
+    for (const row of rows) {
+      const looksLabor = /labor|lc\b|payroll/i.test(row.PayeeType__c);
+      const isCanonical = row.PayeeType__c === "Labor_Company";
+      const mark = isCanonical ? "  [canonical · KPI 8]"
+        : looksLabor ? "  [⚠️ looks like labor — investigate]"
+        : "";
+      console.log(`     "${row.PayeeType__c}"  ${row.cnt} rows  $${row.total?.toFixed(2)}${mark}`);
+      if (looksLabor && !isCanonical) {
+        fail(`PayeeType "${row.PayeeType__c}" looks like labor but isn't in KPI 8's Labor_Company filter — KPI 8 Labor Paid Out will undercount`);
+      }
+    }
+    if (rows.find((x) => x.PayeeType__c === "Labor_Company")) pass(`Labor_Company is present and the only labor variant in the snapshot window`);
+  } catch (e) {
+    fail(`KPI 8 PayeeType audit failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // FIX 6 — WO status picklist values exist
   // ─────────────────────────────────────────────────────────────
   console.log("\n─── Fix 6 · WorkOrder.Status values (strict GM/Pricing set) ───");
