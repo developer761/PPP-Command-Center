@@ -45,8 +45,13 @@ function tenure(startedAt: string | null) {
 }
 
 function deltaVsTeam(repValue: number, teamValue: number) {
+  // No team baseline (every field rep is $0/0% on this metric) — a "+0%" here
+  // would read as "exactly average" when it really means "nothing to compare."
+  if (teamValue === 0) {
+    return { pct: 0, trend: "flat", text: "no team baseline" } as const;
+  }
   const diff = repValue - teamValue;
-  const pct = teamValue === 0 ? 0 : Math.round((diff / teamValue) * 100);
+  const pct = Math.round((diff / teamValue) * 100);
   return {
     pct,
     trend: pct > 1 ? "up" : pct < -1 ? "down" : "flat",
