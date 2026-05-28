@@ -73,6 +73,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // single-shot modal flow (the default).
   const [batchQueue, setBatchQueue] = useState<Array<{ accountId: string; name: string }>>([]);
   const [batchPosition, setBatchPosition] = useState(0);
+  // WO context captured at batch start. The batch is always for ONE work order;
+  // pin its identity here so advancing through suppliers doesn't depend on the
+  // live `activeJob` (which can change/clear mid-batch, silently skipping the
+  // remaining suppliers OR building an order for the WRONG WO).
+  const [batchWo, setBatchWo] = useState<{ id: string; workOrderNumber: string | null; customerName: string | null } | null>(null);
   // Re-entrancy guard — onClose can fire twice in <100ms (Esc + backdrop
   // race, or Send-success + manual Close race). The ref updates synchronously
   // so the second invocation sees the in-flight flag and bails.
@@ -503,6 +508,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     if (suppliers.length === 0) return;
                     setBatchQueue(suppliers);
                     setBatchPosition(0);
+                    // Pin the WO for the whole batch so advancement never
+                    // depends on the live activeJob.
+                    setBatchWo({
+                      id: activeJob.wo.id,
+                      workOrderNumber: activeJob.wo.workOrderNumber,
+                      customerName: activeJob.wo.accountName ?? null,
+                    });
                     const first = suppliers[0];
                     setOrderModal({
                       workOrderId: activeJob.wo.id,
@@ -545,24 +557,29 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
             // open it. End of queue clears the batch state. This drives the
             // "Compose all (N)" flow: worker hits Send/Close on supplier 1 and
             // immediately lands on supplier 2 without going back to materials.
-            if (batchQueue.length > 0) {
+            if (batchQueue.length > 0 && batchWo) {
               const nextIdx = batchPosition + 1;
-              if (nextIdx < batchQueue.length && activeJob) {
+              if (nextIdx < batchQueue.length) {
                 const next = batchQueue[nextIdx];
                 setBatchPosition(nextIdx);
                 setTimeout(() => {
+                  // Use the pinned batchWo, NOT activeJob — the WO must stay
+                  // constant across the whole batch even if the active
+                  // selection changed.
                   setOrderModal({
-                    workOrderId: activeJob.wo.id,
-                    workOrderNumber: activeJob.wo.workOrderNumber,
+                    workOrderId: batchWo.id,
+                    workOrderNumber: batchWo.workOrderNumber,
                     supplierAccountId: next.accountId,
                     supplierName: next.name,
-                    customerName: activeJob.wo.accountName ?? null,
+                    customerName: batchWo.customerName,
                   });
                   advancingRef.current = false;
                 }, 80); // tiny delay so close animation finishes
               } else {
+                // End of queue — clear batch state.
                 setBatchQueue([]);
                 setBatchPosition(0);
+                setBatchWo(null);
                 advancingRef.current = false;
               }
             } else {
