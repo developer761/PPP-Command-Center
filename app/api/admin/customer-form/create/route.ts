@@ -117,9 +117,10 @@ export async function POST(request: Request) {
     }, { status: 502 });
   }
 
-  // 6. Mark sent + capture Resend message id so the events webhook can
-  // later update delivery_status to bounced/opened/etc. on this same row.
-  await markSent(token, "delivered", send.id);
+  // 6. Mark SENT (not "delivered" — Resend's 200 means accepted, not
+  // delivered) + capture the Resend message id so the events webhook can
+  // promote delivery_status to delivered/opened/bounced on this same row.
+  await markSent(token, "sent", send.id);
 
   return NextResponse.json({
     ok: true,

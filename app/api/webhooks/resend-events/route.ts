@@ -103,6 +103,20 @@ function statusForEvent(type: string): string | null {
   }
 }
 
+// Status precedence. Resend does NOT guarantee event ordering — an "opened" or
+// "delivered" can arrive AFTER a "bounced"/"complained". A blind overwrite would
+// mask a dead address (admin re-trusts it, never re-sends). Higher rank wins;
+// terminal-negative statuses sit far above the positives so they stick. Equal-or-
+// higher also blocks going backwards within positives (delivered after clicked).
+const STATUS_PRIORITY: Record<string, number> = {
+  sent: 1, delayed: 2, delivered: 3, opened: 4, clicked: 5,
+  bounced: 100, complained: 101, failed: 102,
+};
+function shouldApplyStatus(current: string | null, next: string): boolean {
+  if (!current) return true;
+  return (STATUS_PRIORITY[next] ?? 0) >= (STATUS_PRIORITY[current] ?? 0);
+}
+
 function adminClient() {
   return createSupabaseAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -150,38 +164,58 @@ export async function POST(request: Request) {
   const sb = adminClient();
   const updatedAt = new Date().toISOString();
 
-  // Try supplier_orders first (more constrained set, likely cheaper)
-  // — bounces should usually fire here. Then customer_form_tokens.
-  // Both updates are bounded UPDATE …WHERE resend_message_id=… so they're
-  // cheap; running both unconditionally is simpler than a two-step lookup.
-  const [orderUpd, tokenUpd] = await Promise.all([
-    sb
-      .from("supplier_orders")
-      .update({ delivery_status: status, delivery_status_updated_at: updatedAt })
-      .eq("resend_message_id", emailId)
-      .select("id"),
-    sb
-      .from("customer_form_tokens")
-      .update({ delivery_status: status, delivery_status_updated_at: updatedAt })
-      .eq("resend_message_id_invite", emailId)
-      .select("token"),
+  // Look up the matching row in each table by message id, then apply the new
+  // status ONLY when it should take precedence (see shouldApplyStatus). A row
+  // can live in supplier_orders OR customer_form_tokens; we check both.
+  // Read-then-write (not a blind UPDATE) so out-of-order events can't mask a
+  // terminal-negative status. Email-event volume here is tiny, so the extra
+  // round-trip is irrelevant.
+  const [existingOrder, existingToken] = await Promise.all([
+    sb.from("supplier_orders").select("id, delivery_status").eq("resend_message_id", emailId).maybeSingle(),
+    sb.from("customer_form_tokens").select("token, delivery_status").eq("resend_message_id_invite", emailId).maybeSingle(),
   ]);
 
-  const matchedOrder = (orderUpd.data?.length ?? 0) > 0;
-  const matchedToken = (tokenUpd.data?.length ?? 0) > 0;
+  const matchedOrder = !!existingOrder.data;
+  const matchedToken = !!existingToken.data;
+  let appliedOrder = false;
+  let appliedToken = false;
 
+  if (existingOrder.data) {
+    if (shouldApplyStatus(existingOrder.data.delivery_status as string | null, status)) {
+      const upd = await sb
+        .from("supplier_orders")
+        .update({ delivery_status: status, delivery_status_updated_at: updatedAt })
+        .eq("id", existingOrder.data.id);
+      if (upd.error) console.error(`[resend-events] supplier_orders update failed:`, upd.error.message);
+      else appliedOrder = true;
+    } else {
+      console.log(`[resend-events] skip ${status} on order ${existingOrder.data.id} — current "${existingOrder.data.delivery_status}" outranks it`);
+    }
+  }
+  if (existingToken.data) {
+    if (shouldApplyStatus(existingToken.data.delivery_status as string | null, status)) {
+      const upd = await sb
+        .from("customer_form_tokens")
+        .update({ delivery_status: status, delivery_status_updated_at: updatedAt })
+        .eq("token", existingToken.data.token);
+      if (upd.error) console.error(`[resend-events] customer_form_tokens update failed:`, upd.error.message);
+      else appliedToken = true;
+    } else {
+      console.log(`[resend-events] skip ${status} on token — current "${existingToken.data.delivery_status}" outranks it`);
+    }
+  }
+  if (existingOrder.error) {
+    console.error(`[resend-events] supplier_orders lookup failed:`, existingOrder.error.message);
+  }
+  if (existingToken.error) {
+    console.error(`[resend-events] customer_form_tokens lookup failed:`, existingToken.error.message);
+  }
   if (!matchedOrder && !matchedToken) {
     // Could be a test email (no DB row) or a row created before migration
     // 010 — log + ack. We don't want Resend to retry forever for these.
     console.warn(
       `[resend-events] no match for ${eventType} email_id=${emailId} — likely a test email or pre-migration send`
     );
-  }
-  if (orderUpd.error) {
-    console.error(`[resend-events] supplier_orders update failed:`, orderUpd.error.message);
-  }
-  if (tokenUpd.error) {
-    console.error(`[resend-events] customer_form_tokens update failed:`, tokenUpd.error.message);
   }
 
   return NextResponse.json({
@@ -191,5 +225,7 @@ export async function POST(request: Request) {
     status,
     matchedSupplierOrder: matchedOrder,
     matchedCustomerForm: matchedToken,
+    appliedSupplierOrder: appliedOrder,
+    appliedCustomerForm: appliedToken,
   });
 }

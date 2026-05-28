@@ -138,15 +138,23 @@ export async function validateToken(token: string): Promise<TokenStatus> {
   return { kind: "ok", token: row };
 }
 
-/** Mark Resend delivery confirmed. Called from a webhook (Phase 2 deliverability). */
+/**
+ * Stamp the token's delivery state.
+ * - "sent" is set at dispatch time (Resend accepted the request — NOT yet
+ *   delivered). The events webhook later promotes it to delivered/opened/etc.
+ * - "delivered"/"bounced"/… come from the events webhook.
+ * sent_at is stamped on first dispatch ("sent" or legacy "delivered").
+ */
 export async function markSent(
   token: string,
-  delivery_status: "delivered" | "bounced" | "soft_bounced" | "spam" = "delivered",
+  delivery_status: "sent" | "delivered" | "bounced" | "soft_bounced" | "spam" = "sent",
   resendMessageId?: string
 ): Promise<void> {
   const sb = adminClient();
   const patch: Record<string, unknown> = { delivery_status };
-  if (delivery_status === "delivered") patch.sent_at = new Date().toISOString();
+  if (delivery_status === "sent" || delivery_status === "delivered") {
+    patch.sent_at = new Date().toISOString();
+  }
   // Stamp the Resend message id so the events webhook can thread future
   // delivery/bounce/open events back to this token. Best-effort — if the
   // column doesn't exist yet (migration 010 not run) the UPDATE silently

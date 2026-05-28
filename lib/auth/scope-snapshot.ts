@@ -62,8 +62,13 @@ export function scopeSnapshotToViewer(
     (a) =>
       a.accountManagerId === ownerId ||
       accountIdsTouched.has(a.id) ||
-      (!accountIdsTouched.size && accountNamesTouched.has(a.name)) ||
-      accountNamesTouched.has(a.name)
+      // Name fallback ONLY when this rep has no ID-bearing records at all
+      // (pure-legacy data). With any modern accountId present we must NOT
+      // name-match — two customers sharing a name would cross-leak, since
+      // accountNamesTouched can't distinguish them. Under-including one of
+      // a rep's own legacy accounts is acceptable; leaking another rep's
+      // customer is not.
+      (!accountIdsTouched.size && accountNamesTouched.has(a.name))
   );
 
   // Quotes link to opps via opportunityId — keep only quotes whose opp survived the filter.
