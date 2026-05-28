@@ -16,7 +16,7 @@ import {
 } from "@/lib/data-source";
 import { deriveRepsForPeriod, deriveRepAccountStats } from "@/lib/salesforce/derive";
 import { deriveRepScorecard, type RepScorecard } from "@/lib/salesforce/rep-scorecard";
-import { currentFY, currentFiscalQuarter, fyLabel } from "@/lib/fiscal-year";
+import { currentFY, currentFiscalQuarter, priorFiscalQuarter, fyLabel } from "@/lib/fiscal-year";
 import type { SnapshotAccount } from "@/lib/salesforce/queries";
 import { fmtMoneyK } from "@/lib/format";
 
@@ -118,13 +118,14 @@ export default async function RepDetailPage({
     ? deriveRepAccountStats(bundle.snapshot, rep.id)
     : null;
 
-  // KPI scorecard anchored on the current fiscal quarter — PPP's reports
-  // are fiscal-period, so this matches what staff already read in FPRC_*.
+  // KPI scorecard anchored on the PRIOR (just-completed) fiscal quarter — the
+  // FPRC report cards report PFQ, not the in-progress quarter, so a mid-quarter
+  // partial would NOT reconcile against FPRC_*. (A period picker defaulting to
+  // PFQ would be the natural enhancement.)
   // Skipped on mock data (no quotas/transactions/reviews to derive from).
-  const fyNow = currentFY();
-  const fqNow = currentFiscalQuarter();
+  const { fy: scFy, q: scQ } = priorFiscalQuarter(currentFY(), currentFiscalQuarter());
   const scorecard: RepScorecard | null = bundle.snapshot
-    ? deriveRepScorecard(bundle.snapshot, rep.id, { fy: fyNow, q: fqNow })
+    ? deriveRepScorecard(bundle.snapshot, rep.id, { fy: scFy, q: scQ })
     : null;
 
   // Indexed account lookup so the recent-deals table can flag Repeat Customer
@@ -345,10 +346,13 @@ export default async function RepDetailPage({
             </div>
             <div className="text-right">
               <div className="font-condensed text-xs uppercase tracking-wide text-ppp-charcoal-500">
-                Fiscal period
+                Prior fiscal quarter
               </div>
               <div className="font-condensed text-sm sm:text-base font-bold text-ppp-navy mt-0.5">
-                {fyLabel(scorecard.period.fy ?? currentFY(), scorecard.period.q ?? currentFiscalQuarter())}
+                {fyLabel(scorecard.period.fy ?? scFy, scorecard.period.q ?? scQ)}
+              </div>
+              <div className="text-[10px] text-ppp-charcoal-400 mt-0.5">
+                Matches FPRC card (last completed quarter)
               </div>
             </div>
           </div>
@@ -729,6 +733,16 @@ export default async function RepDetailPage({
                     <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">Cases</div>
                   </div>
                 </div>
+                {scorecard.production.changeOrders > 0 && (
+                  <div className="flex items-baseline justify-between pt-2 border-t border-ppp-charcoal-100">
+                    <span className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">
+                      Change Orders
+                    </span>
+                    <span className="font-condensed text-sm font-bold text-ppp-navy">
+                      {fmtMoneyK(scorecard.production.changeOrders)}
+                    </span>
+                  </div>
+                )}
               </div>
             </ScorecardCard>
 
@@ -761,13 +775,13 @@ export default async function RepDetailPage({
             <ScorecardCard
               title="Commissions Earned"
               kpiTag="KPI 9"
-              tooltip="Earned = Payment_Out transactions with Payee matching rep name (incl. shadow -inactive/-portal variants). Quarterly Draw comparison appears when User.Quarterly_Draw__c is populated."
+              tooltip="CFY-to-date. Earned = Payment_Out with PayeeType=Sales + Description contains 'Draw', Payee matches rep name (incl. shadow '<name>-inactive'/'-portal' and 'LC <name>' labor-company alias). Draw Received = Quarterly Draw × fiscal-quarter index (Q1→×1 … Q4→×4)."
             >
               {scorecard.commissions.earned === 0 ? (
                 <div className="space-y-2">
                   <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
                   <p className="text-xs text-ppp-charcoal-500">
-                    No commission payouts (Payment_Out) for this rep in this period.
+                    No commission Draw payouts (PayeeType=Sales) for this rep in this fiscal year.
                   </p>
                 </div>
               ) : (
@@ -776,11 +790,11 @@ export default async function RepDetailPage({
                     <span className="font-condensed text-2xl font-bold text-ppp-navy">
                       {fmtCommissionDollars(scorecard.commissions.earned)}
                     </span>
-                    <span className="text-xs text-ppp-charcoal-500">earned</span>
+                    <span className="text-xs text-ppp-charcoal-500">earned · CFY to date</span>
                   </div>
                   {scorecard.commissions.drawReceived !== null && (
                     <p className="text-[11px] text-ppp-charcoal-500">
-                      Draw (prorated): {fmtCommissionDollars(scorecard.commissions.drawReceived)}
+                      Draw received: {fmtCommissionDollars(scorecard.commissions.drawReceived)}
                     </p>
                   )}
                   {scorecard.commissions.difference !== null && (

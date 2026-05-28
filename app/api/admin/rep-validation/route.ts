@@ -150,6 +150,22 @@ export async function GET(request: Request) {
       kpi7_complaintsByRepOpp: snapshot.cases.filter(
         (c) => c.opportunityOwnerId === repId && inRangeIso(c.createdDate)
       ).length,
+      // FPRC-aligned count — narrows to the 2 true complaint Case types
+      // (Dissatisfied Customer + Service Call). This is what the scorecard
+      // reports; the broader count above is the raw snapshot total for triage.
+      kpi7_complaintsByRepOpp_fprcTypes: snapshot.cases.filter(
+        (c) =>
+          c.opportunityOwnerId === repId &&
+          inRangeIso(c.createdDate) &&
+          (c.type === "Dissatisfied Customer" || c.type === "Service Call")
+      ).length,
+      // FPRC-aligned strict completed set (Closed + Complete Paid in Full only).
+      // KPI 2 GM + KPI 5 Pricing use this; the broader completedInPeriod above
+      // (also includes Complete Balance Owed) feeds KPI 4b attendance gauge.
+      kpi2_completedWosStrict: completedInPeriod.filter((w) => {
+        const s = (w.status ?? "").toLowerCase();
+        return s === "closed" || s === "complete paid in full";
+      }).length,
       kpi8_transactionsInPeriod: repTxns.filter((t) => inRangeIso(t.date)).length,
     },
     fieldCoverage: woFieldCoverage,

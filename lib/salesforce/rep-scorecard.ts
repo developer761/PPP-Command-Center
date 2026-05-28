@@ -118,6 +118,7 @@ export type RepScorecard = {
     goodReviews: number;
     badReviews: number;
     complaints: number;                     // Case count
+    changeOrders: number;                   // SUM(WO.TotalChangeOrder__c) over completed WOs in period
   };
 
   // KPI 8 — Money Flow (Transaction__c, Date__c in period)
@@ -172,8 +173,22 @@ function isCompletedWo(w: SnapshotWorkOrder): boolean {
   return COMPLETED_STATUSES.has((w.status ?? "").toLowerCase());
 }
 
+// FPRC KPI 2 (GM) + KPI 5 (Pricing) use only the strict pair — Balance-Owed
+// jobs report separately on PPP's cards. Attendance gauge (KPI 4b) keeps the
+// broader COMPLETED_STATUSES so completeness isn't artificially deflated.
+const GM_PRICING_STATUSES = new Set(["closed", "complete paid in full"]);
+function isGmPricingCompletedWo(w: SnapshotWorkOrder): boolean {
+  return GM_PRICING_STATUSES.has((w.status ?? "").toLowerCase());
+}
+
+// FPRC self-gen bucket (report-mirror overhaul 2026-05-21): four LeadGroup
+// values count as self-generated; everything else (incl. null / Partnership)
+// is marketing, so self-gen + marketing always reconciles to the total.
+const SELF_GEN_LEAD_GROUPS = new Set([
+  "Self-Generated", "Trade Show", "Repeat", "Referral",
+]);
 function isSelfGen(o: SnapshotOpp): boolean {
-  return o.leadGroup === "Self-Generated";
+  return SELF_GEN_LEAD_GROUPS.has(o.leadGroup ?? "");
 }
 
 /**
@@ -182,13 +197,6 @@ function isSelfGen(o: SnapshotOpp): boolean {
  */
 function woPeriodAnchor(w: SnapshotWorkOrder): string | null {
   return w.endDate ?? w.closeDate;
-}
-
-/** Convert a quarterly draw → period-prorated dollar amount. */
-function scaleDraw(quarterlyDraw: number, periodStart: Date, periodEnd: Date): number {
-  const days = (periodEnd.getTime() - periodStart.getTime()) / 86_400_000;
-  // PPP fiscal quarter = ~91 days. Scale linearly.
-  return (quarterlyDraw / 91) * days;
 }
 
 /* ─── Public entry point ─── */
@@ -294,13 +302,13 @@ export function deriveRepScorecard(
     rankOf = fieldReps.length;
   }
 
-  /* ─ KPI 2 ─ Gross Margin (completed WOs) ─ */
+  /* ─ KPI 2 ─ Gross Margin (completed WOs, strict status set) ─ */
   let gmPctSum = 0;
   let gmPctCount = 0;
   let totalGp = 0;
   for (const w of snapshot.workOrders) {
     if (w.ownerId !== repId) continue;
-    if (!isCompletedWo(w)) continue;
+    if (!isGmPricingCompletedWo(w)) continue;
     if (!inRange(woPeriodAnchor(w), start, end)) continue;
     if (w.grossMarginPercent !== null) {
       gmPctSum += w.grossMarginPercent;
@@ -342,7 +350,7 @@ export function deriveRepScorecard(
   }
   const totalMixDollars = selfDollars + mktDollars;
 
-  /* ─ KPI 4 ─ Pricing Discipline + Materials % (completed WOs, attendance-logged subset) ─ */
+  /* ─ KPI 4 ─ Pricing Discipline + Materials % (completed WOs, strict status set, attendance-logged subset) ─ */
   let pricingRevenueLogged = 0;
   let projectedDaysSum = 0;
   let actualDaysSum = 0;
@@ -351,7 +359,7 @@ export function deriveRepScorecard(
   let excludedNoAttendance = 0;
   for (const w of snapshot.workOrders) {
     if (w.ownerId !== repId) continue;
-    if (!isCompletedWo(w)) continue;
+    if (!isGmPricingCompletedWo(w)) continue;
     if (!inRange(woPeriodAnchor(w), start, end)) continue;
     // Materials % includes all completed WOs (not just attendance-logged).
     if (w.quotedSubtotal > 0) {
@@ -455,6 +463,7 @@ export function deriveRepScorecard(
 
   /* ─ KPI 7 ─ Production Quality ─ */
   let jobsCompleted = 0;
+  let changeOrders = 0;
   for (const w of snapshot.workOrders) {
     if (w.ownerId !== repId) continue;
     // PPP excludes "Complete Balance Owed" from this specific KPI ratio —
@@ -463,6 +472,7 @@ export function deriveRepScorecard(
     if (s !== "closed" && s !== "complete paid in full") continue;
     if (!inRange(woPeriodAnchor(w), start, end)) continue;
     jobsCompleted += 1;
+    changeOrders += w.totalChangeOrder ?? 0;
   }
   let oppsWonInPeriod = 0;
   for (const o of snapshot.opportunities) {
@@ -481,10 +491,14 @@ export function deriveRepScorecard(
     if (r.isGood) goodReviews += 1;
     if (r.isBad) badReviews += 1;
   }
-  // Complaints — by Opportunity__r.OwnerId (KPI 7 spec).
+  // Complaints — by Opportunity__r.OwnerId (KPI 7 spec). FPRC counts only the
+  // two true "complaint" Case types; the snapshot pulls all 6 customer-facing
+  // types, so narrow here.
+  const COMPLAINT_TYPES = new Set(["Dissatisfied Customer", "Service Call"]);
   let complaints = 0;
   for (const c of snapshot.cases) {
     if (c.opportunityOwnerId !== repId) continue;
+    if (!COMPLAINT_TYPES.has(c.type ?? "")) continue;
     if (!inRange(c.createdDate, start, end)) continue;
     complaints += 1;
   }
@@ -501,25 +515,37 @@ export function deriveRepScorecard(
     else if (t.recordType === "Purchase") purchases += t.amount;
   }
 
-  /* ─ KPI 9 ─ Commissions ─ */
-  // Earned = Transaction Payment_Out where WO is set AND Payee.Name matches
-  // rep name. Spec note (REP_PERFORMANCE_KPIS.md): NOT scoped to rep's own
-  // WOs — attribution is by Payee name match. Watch for `<Name>-inactive` /
-  // `<Name>-portal` shadow Users; do a prefix match on the canonical name.
+  /* ─ KPI 9 ─ Commissions ─ (CFY-to-date, NOT the single quarter) ─ */
+  // Earned = Payment_Out paid to the rep against their draw: PayeeType='Sales'
+  // AND Description contains "Draw", Date in the current FY, attributed by Payee
+  // name = "<rep>" or "LC <rep>" (labor-company alias). NOT scoped to the rep's
+  // own WOs. Watch for "<name>-inactive" / "-portal" shadow Users.
+  const cfy = fy !== null ? fiscalRangeFor(fy) : { start, end };
   let earned = 0;
   const repNameLower = rep.name.toLowerCase();
   for (const t of snapshot.transactions) {
     if (t.recordType !== "Payment_Out") continue;
     if (!t.workOrderId) continue;
+    if (t.payeeType !== "Sales") continue;
+    if (!(t.description ?? "").toLowerCase().includes("draw")) continue;
     if (!t.payeeName) continue;
-    if (!inRange(t.date, start, end)) continue;
+    if (!inRange(t.date, cfy.start, cfy.end)) continue;
     const payee = t.payeeName.toLowerCase();
-    // Match exact or shadow-variant ("Karan Malhotra" / "Karan Malhotra-inactive").
-    if (payee === repNameLower || payee.startsWith(`${repNameLower}-`)) {
+    if (
+      payee === repNameLower ||
+      payee.startsWith(`${repNameLower}-`) ||   // shadow Users
+      payee === `lc ${repNameLower}`            // labor-company payee alias
+    ) {
       earned += t.amount;
     }
   }
-  const drawReceived = rep.quarterlyDraw !== null ? scaleDraw(rep.quarterlyDraw, start, end) : null;
+  // Draw Received = quarterly draw × fiscal-quarter index, CFY-to-date (Q1→×1 … Q4→×4).
+  // Falls back to prorated when caller passed a raw range (no fiscal anchor).
+  const drawReceived = rep.quarterlyDraw !== null
+    ? (q !== null
+        ? rep.quarterlyDraw * q
+        : (rep.quarterlyDraw / 91) * ((end.getTime() - start.getTime()) / 86_400_000))
+    : null;
   const difference = drawReceived !== null ? earned - drawReceived : null;
 
   return {
@@ -590,6 +616,7 @@ export function deriveRepScorecard(
       goodReviews,
       badReviews,
       complaints,
+      changeOrders,
     },
 
     moneyFlow: {

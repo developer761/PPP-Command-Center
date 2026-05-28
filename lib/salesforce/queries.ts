@@ -219,6 +219,9 @@ export type SnapshotWorkOrder = {
   /** PPP's canonical Materials % numerator — distinct from `costMaterials`
    *  (CostMaterials__c). Used for KPI 4 (Pricing Discipline). */
   totalNonBillablePurchases: number;
+  /** PPP rollup of approved Change Orders on this WO (Approved + Approved-Auto
+   *  only — already net-filtered by the SF formula). KPI 7 Change Orders $. */
+  totalChangeOrder: number;
   /** Job completion anchor for KPI 7 (Jobs completed vs sold) + KPI 2 GM.
    *  Often null on open/in-progress WOs. */
   endDate: string | null;
@@ -349,6 +352,7 @@ export type SnapshotTransaction = {
   amount: number;
   date: string;               // Date__c (ISO date)
   payeeType: string | null;   // "Labor_Company" / "Reimbursement" / etc.
+  description: string | null; // Description__c — used to match draw payouts
   payeeName: string | null;   // resolved via Payee__r.Name
   workOrderId: string | null;
   workOrderOwnerId: string | null; // resolved via WorkOrder__r.OwnerId
@@ -1159,6 +1163,8 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         // custom), included via the meta check below.
         "Gross_Margin_Percent__c",
         "TotalNonBillablePurchases__c",
+        // KPI 7 Change Orders $ — already nets to Approved/Approved-Auto.
+        "TotalChangeOrder__c",
       ].filter((f) => woCurrencyFields.includes(f) || woMeta.fields.some((mf) => mf.name === f));
       // EndDate is standard date field — include if present.
       const hasEndDate = woMeta.fields.some((f) => f.name === "EndDate");
@@ -1283,6 +1289,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         // the decimal — keep that representation through the snapshot.
         grossMarginPercent: numOrNull("Gross_Margin_Percent__c"),
         totalNonBillablePurchases: num("TotalNonBillablePurchases__c"),
+        totalChangeOrder: num("TotalChangeOrder__c"),
         endDate: typeof w.EndDate === "string" ? (w.EndDate as string) : null,
       };
     });
@@ -1402,7 +1409,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       try {
         // RecordType.DeveloperName for the 3 buckets. Plus WO + Opp linkage
         // for rep attribution. Payee__r.Name for commissions attribution.
-        const fields = "Id, RecordType.DeveloperName, Amount__c, Date__c, PayeeType__c, Payee__r.Name, WorkOrder__c, WorkOrder__r.OwnerId, Opportunity__c";
+        const fields = "Id, RecordType.DeveloperName, Amount__c, Date__c, PayeeType__c, Description__c, Payee__r.Name, WorkOrder__c, WorkOrder__r.OwnerId, Opportunity__c";
         const records: Array<Record<string, unknown>> = [];
         let result = await conn.query<Record<string, unknown>>(
           `SELECT ${fields} FROM Transaction__c WHERE Date__c >= ${TWO_YEARS_AGO_ISO.split("T")[0]}`
@@ -1423,6 +1430,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
             amount: typeof r.Amount__c === "number" ? (r.Amount__c as number) : 0,
             date: (r.Date__c as string) ?? "",
             payeeType: (r.PayeeType__c as string | null) ?? null,
+            description: (r.Description__c as string | null) ?? null,
             payeeName: (payee?.Name as string | null) ?? null,
             workOrderId: (r.WorkOrder__c as string | null) ?? null,
             workOrderOwnerId: (wo?.OwnerId as string | null) ?? null,
