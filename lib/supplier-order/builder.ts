@@ -346,31 +346,41 @@ function resolveDeliveryAddress(input: BuildSupplierOrderInput): DeliveryAddress
 
   const customerName = input.customerAccount?.name ?? "(unknown customer)";
 
+  // An address is only usable by a supplier if it has street + city + (state or
+  // zip). A street-only / city-less address would ship a half address that
+  // looks complete (unresolvedAddress=false) but the driver can't route — so a
+  // partial candidate is skipped and we fall through, ending at null which
+  // flags unresolvedAddress=true and makes the admin complete it.
+  const deliverable = (a: DeliveryAddress): boolean =>
+    !!(a.street && a.city && (a.state || a.postalCode));
+
+  const candidates: DeliveryAddress[] = [];
+
   const submitted = input.customerSubmittedPayload?.deliveryAddress;
   if (submitted && submitted.street?.trim()) {
-    return {
+    candidates.push({
       name: submitted.name?.trim() || customerName,
       street: submitted.street.trim(),
       city: submitted.city?.trim() || "",
       state: submitted.state?.trim() || "",
       postalCode: submitted.postalCode?.trim() || "",
       source: "customer_form",
-    };
+    });
   }
 
   const acct = input.customerAccount;
   if (acct?.billingStreet?.trim()) {
-    return {
+    candidates.push({
       name: customerName,
       street: acct.billingStreet.trim(),
       city: acct.billingCity?.trim() || "",
       state: acct.billingState?.trim() || "",
       postalCode: acct.billingPostalCode?.trim() || "",
       source: "sf_account",
-    };
+    });
   }
 
-  return null;
+  return candidates.find(deliverable) ?? null;
 }
 
 /** Format a delivery address block for the email body. */

@@ -30,7 +30,13 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const supplierAccountId = url.searchParams.get("supplierAccountId");
+  const rawSupplierId = url.searchParams.get("supplierAccountId");
+  // Validate before it goes into the PostgREST `.or()` filter STRING below — a
+  // value with a comma/paren/dot could break out of the expression and alter
+  // the query. SF Account ids + the synthetic "__general__" are [A-Za-z0-9_]
+  // only; anything else is treated as "no supplier" (universal items only).
+  const supplierAccountId =
+    rawSupplierId && /^[A-Za-z0-9_]+$/.test(rawSupplierId) ? rawSupplierId : null;
 
   const sb = createSupabaseAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
