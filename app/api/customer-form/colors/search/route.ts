@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { validateToken } from "@/lib/customer-form/tokens";
-import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
+import { loadPaintCatalogOnly } from "@/lib/salesforce/queries";
 
 /**
  * Autocomplete endpoint for the customer color picker.
@@ -38,8 +38,8 @@ export async function GET(request: Request) {
   if (q.length < 1) {
     // Empty query — return a small starter set (first 30 BM colors so the
     // picker isn't blank). Manufacturer filter still applied.
-    const snapshot = await loadSalesforceSnapshot();
-    const starter = snapshot.paintColors
+    const catalog = await loadPaintCatalogOnly();
+    const starter = catalog.colors
       .filter((c) => (manufacturer ? c.manufacturerId === manufacturer : true))
       .slice(0, 30)
       .map((c) => ({
@@ -52,10 +52,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, query: q, results: starter });
   }
 
-  const snapshot = await loadSalesforceSnapshot();
+  const catalog = await loadPaintCatalogOnly();
   const pool = manufacturer
-    ? snapshot.paintColors.filter((c) => c.manufacturerId === manufacturer)
-    : snapshot.paintColors;
+    ? catalog.colors.filter((c) => c.manufacturerId === manufacturer)
+    : catalog.colors;
 
   // Score each color: 3 = exact code match, 2 = name starts-with, 1 = name contains
   const scored: Array<{ score: number; idx: number; c: typeof pool[number] }> = [];

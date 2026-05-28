@@ -34,12 +34,12 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 type CacheEntry<T> = { promise: Promise<T>; expiresAt: number };
 const cache = new Map<string, CacheEntry<unknown>>();
 
-async function cached<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+async function cached<T>(key: string, fetcher: () => Promise<T>, ttlMs: number = CACHE_TTL_MS): Promise<T> {
   const now = Date.now();
   const hit = cache.get(key);
   if (hit && hit.expiresAt > now) return hit.promise as Promise<T>;
   const promise = fetcher();
-  cache.set(key, { promise, expiresAt: now + CACHE_TTL_MS });
+  cache.set(key, { promise, expiresAt: now + ttlMs });
   // If the fetch rejects, invalidate the cache so the next request retries
   // instead of returning the same rejection for 5 minutes.
   promise.catch(() => {
@@ -50,6 +50,82 @@ async function cached<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
 
 export function clearSalesforceCache() {
   cache.clear();
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Paint catalog — standalone lightweight loader for the CUSTOMER FORM.
+ *
+ * The customer color form only needs the paint catalog, NOT the full
+ * snapshot (89k Opps + 88k WOs + 5k Accounts). Loading the whole snapshot
+ * to filter down to colors was the form's 8-15s cold-load wait. This loader
+ * pulls ONLY PaintColor__c (5.7k rows) + the manufacturer name inline via
+ * the Manufacturer__r relationship (so no Account query at all), cached 24h
+ * since the catalog is essentially static (BM/SW don't add SKUs daily).
+ * ───────────────────────────────────────────────────────────────── */
+
+const PAINT_CATALOG_TTL_MS = 24 * 60 * 60 * 1000; // 24h — catalog is static
+
+export type PaintCatalogColor = {
+  id: string;
+  name: string;
+  shortName: string | null;
+  code: string | null;
+  hexValue: string | null;
+  manufacturerId: string | null;
+  manufacturerName: string | null;
+};
+
+export async function loadPaintCatalogOnly(): Promise<{
+  colors: PaintCatalogColor[];
+  suppliers: Array<{ id: string; name: string }>;
+  fetchedAt: string;
+}> {
+  return cached(
+    "paint-catalog-v1",
+    async () => {
+      const conn = await getSalesforceClient();
+      const records: Array<Record<string, unknown>> = [];
+      try {
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT Id, Name, Name__c, Code__c, HexValue__c, Manufacturer__c, Manufacturer__r.Name FROM PaintColor__c`
+        );
+        records.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          records.push(...result.records);
+        }
+        console.log(`[SF] Pulled ${records.length} paint colors (catalog-only fast path)`);
+      } catch (err) {
+        console.error("[SF] loadPaintCatalogOnly query failed:", err);
+        throw err;
+      }
+      const str = (r: Record<string, unknown>, k: string): string | null =>
+        typeof r[k] === "string" ? (r[k] as string) : null;
+      const colors = records.map<PaintCatalogColor>((r) => {
+        const mfr = r["Manufacturer__r"] as Record<string, unknown> | undefined;
+        return {
+          id: r.Id as string,
+          name: (r.Name as string) ?? "",
+          shortName: str(r, "Name__c"),
+          code: str(r, "Code__c"),
+          hexValue: str(r, "HexValue__c"),
+          manufacturerId: str(r, "Manufacturer__c"),
+          manufacturerName: (mfr?.Name as string | null) ?? null,
+        };
+      });
+      const supplierMap = new Map<string, string>();
+      for (const c of colors) {
+        if (c.manufacturerId && c.manufacturerName) {
+          supplierMap.set(c.manufacturerId, c.manufacturerName);
+        }
+      }
+      const suppliers = Array.from(supplierMap.entries())
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { colors, suppliers, fetchedAt: new Date().toISOString() };
+    },
+    PAINT_CATALOG_TTL_MS
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────────

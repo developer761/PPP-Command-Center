@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { validateToken } from "@/lib/customer-form/tokens";
-import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
+import { loadPaintCatalogOnly } from "@/lib/salesforce/queries";
 
 /**
  * Full color palette dump for the customer form. Returns ALL ~5,762
@@ -38,40 +38,27 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: status.kind }, { status: 403 });
   }
 
-  const snapshot = await loadSalesforceSnapshot();
+  // Fast path: load ONLY the paint catalog (5.7k rows, 24h-cached) instead of
+  // the full SF snapshot (89k Opps + 88k WOs + accounts). This is what made the
+  // customer form's cold load take 8-15s; now it's ~1-2s cold, instant warm.
+  const catalog = await loadPaintCatalogOnly();
 
-  // Strip the snapshot down to just the fields the form actually uses
-  // (cuts payload by ~40%). Map manufacturerId → manufacturer name in one pass
-  // so the client doesn't need to do account lookup.
-  const accountNameById = new Map(snapshot.accounts.map((a) => [a.id, a.name]));
-  const colors = snapshot.paintColors.map((c) => ({
+  const colors = catalog.colors.map((c) => ({
     id: c.id,
     name: c.name,
     code: c.code,
     hex: c.hexValue,
     manufacturerId: c.manufacturerId,
-    manufacturerName: c.manufacturerId ? accountNameById.get(c.manufacturerId) ?? null : null,
+    manufacturerName: c.manufacturerName,
   }));
-
-  // Distinct list of suppliers actually present in the color catalog (most
-  // are Benjamin Moore + Sherwin Williams; filter chips render these so the
-  // customer can narrow scope).
-  const supplierMap = new Map<string, string>();
-  for (const c of colors) {
-    if (c.manufacturerId && c.manufacturerName) {
-      supplierMap.set(c.manufacturerId, c.manufacturerName);
-    }
-  }
-  const suppliers = Array.from(supplierMap.entries())
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const suppliers = catalog.suppliers;
 
   return NextResponse.json(
     {
       ok: true,
       colors,
       suppliers,
-      generatedAt: snapshot.fetchedAt,
+      generatedAt: catalog.fetchedAt,
     },
     {
       headers: {
