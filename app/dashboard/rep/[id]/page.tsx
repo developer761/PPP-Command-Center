@@ -170,25 +170,30 @@ export default async function RepDetailPage({
     ? Math.floor((Date.now() - maxRecentDate.getTime()) / 86_400_000)
     : null;
 
-  // Team averages computed from the actual loaded reps (not module-level mock).
-  const teamRevenue = reps.reduce((s, r) => s + r.revenueSold, 0);
-  const totalQuotes = reps.reduce((s, r) => s + r.quotesSent, 0);
-  const totalAppts = reps.reduce((s, r) => s + r.appointmentsHeld, 0);
-  const teamAvgRevenue = teamRevenue / Math.max(1, reps.length);
+  // Team averages — restrict to PPP's canonical rep universe (Profile ending
+  // "Standard.Field") so admins/office staff don't dilute the peer group. This
+  // matches the set the scorecard's rank gates on (FPRC §B). Mock reps have
+  // isFieldStandard=undefined → treated as field. Ratios are weighted
+  // (Σnumerator ÷ Σdenominator), never mean-of-means.
+  const fieldReps = reps.filter((r) => r.isFieldStandard !== false);
+  const teamRevenue = fieldReps.reduce((s, r) => s + r.revenueSold, 0);
+  const totalQuotes = fieldReps.reduce((s, r) => s + r.quotesSent, 0);
+  const totalAppts = fieldReps.reduce((s, r) => s + r.appointmentsHeld, 0);
+  const teamAvgRevenue = teamRevenue / Math.max(1, fieldReps.length);
   const teamAvgCloseRate =
     totalQuotes > 0
-      ? reps.reduce((s, r) => s + r.closeRate * r.quotesSent, 0) / totalQuotes
+      ? fieldReps.reduce((s, r) => s + r.closeRate * r.quotesSent, 0) / totalQuotes
       : 0;
   const teamAvgTicket =
     totalAppts > 0
-      ? reps.reduce((s, r) => s + r.avgTicket * r.appointmentsHeld, 0) / totalAppts
+      ? fieldReps.reduce((s, r) => s + r.avgTicket * r.appointmentsHeld, 0) / totalAppts
       : 0;
-  const teamAvgPipeline = reps.reduce((s, r) => s + r.openPipeline, 0) / Math.max(1, reps.length);
+  const teamAvgPipeline = fieldReps.reduce((s, r) => s + r.openPipeline, 0) / Math.max(1, fieldReps.length);
 
   // When the snapshot is scoped to a single rep (rep signed in, or admin
   // viewing-as), the "team" is just this one rep — every delta computes to
   // 0%. Replace with a "—" / context label instead of a misleading "+0%".
-  const teamHasMultipleReps = reps.length > 1;
+  const teamHasMultipleReps = fieldReps.length > 1;
   const dRev = teamHasMultipleReps
     ? deltaVsTeam(rep.revenueSold, teamAvgRevenue)
     : ({ pct: 0, trend: "flat", text: "Your data" } as const);
@@ -661,13 +666,13 @@ export default async function RepDetailPage({
             <ScorecardCard
               title="Pipeline · Stale Estimates"
               kpiTag="KPI 6"
-              tooltip="Snapshot, not period-scoped. Open Opps with Estimate_Sent__c AND Date_Estimate_Sent__c < TODAY−30. PPP cycle is 3-4 weeks."
+              tooltip="Open Opps created in the last 12 months (the snapshot window) with Estimate_Sent__c AND Date_Estimate_Sent__c < TODAY−30. Opps created >12 months ago aren't in scope — on PPP's 3-4 week cycle a year-old 'open' opp is almost always a dead deal nobody closed, so this focuses on actionable recent pipeline."
             >
               {scorecard.pipeline.openOpps === 0 ? (
                 <div className="space-y-2">
                   <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
                   <p className="text-xs text-ppp-charcoal-500">
-                    No open opportunities right now.
+                    No open opportunities in the last 12 months.
                   </p>
                 </div>
               ) : (
@@ -681,7 +686,7 @@ export default async function RepDetailPage({
                     {fmtPctOrDash(scorecard.pipeline.stalePct, 0)}
                   </div>
                   <p className="text-[11px] text-ppp-charcoal-500">
-                    <strong className="text-ppp-charcoal">{scorecard.pipeline.staleEstimates}</strong> stale of {scorecard.pipeline.openOpps} open opps
+                    <strong className="text-ppp-charcoal">{scorecard.pipeline.staleEstimates}</strong> stale of {scorecard.pipeline.openOpps} open opps <span className="text-ppp-charcoal-400">(last 12 mo)</span>
                   </p>
                   <p className="text-[10px] text-ppp-charcoal-500 italic">
                     Stale = estimate sent &gt; 30 days ago

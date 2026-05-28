@@ -331,6 +331,7 @@ export function deriveRepsForPeriod(
       appointmentsHeld: a.total, // approximation: opp-count proxy for activity
       quotesSent: a.total,
       startedAt: u.createdDate.split("T")[0],
+      isFieldStandard: u.isFieldStandard,
     };
   });
 

@@ -159,7 +159,7 @@ async function main() {
 
     // Sample 5 to confirm the shape
     if (cnt > 0) {
-      const sample = await conn.query<{ Id: string; Amount__c: number; PayeeType__c: string; Description__c: string; Date__c: string }>(
+      const sample = await conn.query<{ Id: string; Amount__c: number; PayeeType__c: string; Description__c: string; Date__c: string; Payee__r: { Name: string } | null }>(
         `SELECT Id, Amount__c, PayeeType__c, Description__c, Date__c, Payee__r.Name FROM Transaction__c WHERE RecordType.DeveloperName = 'Payment_Out' AND PayeeType__c = 'Sales' AND Description__c LIKE '%Draw%' AND Date__c = LAST_N_DAYS:365 ORDER BY Date__c DESC LIMIT 5`
       );
       console.log(`     Sample Draw payouts:`);

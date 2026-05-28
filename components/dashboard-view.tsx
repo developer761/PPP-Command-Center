@@ -123,23 +123,24 @@ export default function DashboardView({ bundle, formSummary }: Props) {
   // live SF data. Otherwise fall back to the mock view's KPIs.
   const liveKpis = useMemo(() => {
     if (!snapshot) return null;
-    const totalRevenue = reps.reduce((s, r) => s + r.revenueSold, 0); // $K
-    const totalDealsWon = reps.reduce((s, r) => s + Math.round(r.appointmentsHeld * (r.closeRate / 100)), 0);
-    // Recompute close/avg-ticket directly from rep numbers to keep everything
-    // self-consistent.
-    const totalClosed = reps.reduce((s, r) => s + r.appointmentsHeld, 0);
-    const totalWon = reps.reduce((s, r) => s + r.quotesSent, 0); // proxies
-    void totalDealsWon;
-    void totalWon;
-    const closeRate = totalClosed > 0
-      ? reps.filter((r) => r.closeRate > 0).reduce((s, r) => s + r.closeRate, 0) /
-        Math.max(1, reps.filter((r) => r.closeRate > 0).length)
+    // Canonical rep universe only (FPRC §B) — admins/office staff would
+    // otherwise dilute the company averages. Mock reps (isFieldStandard
+    // undefined) are treated as field.
+    const fieldReps = reps.filter((r) => r.isFieldStandard !== false);
+    const totalRevenue = fieldReps.reduce((s, r) => s + r.revenueSold, 0); // $K
+    const openPipelineK = fieldReps.reduce((s, r) => s + r.openPipeline, 0);
+    // Ratios are WEIGHTED (Σnumerator ÷ Σdenominator), never mean-of-means
+    // (FPRC §C). closeRate weighted by quotesSent, avgTicket by
+    // appointmentsHeld — matching the rep-page team-average pattern so the
+    // two surfaces tell one consistent story.
+    const totalQuotes = fieldReps.reduce((s, r) => s + r.quotesSent, 0);
+    const totalAppts = fieldReps.reduce((s, r) => s + r.appointmentsHeld, 0);
+    const closeRate = totalQuotes > 0
+      ? fieldReps.reduce((s, r) => s + r.closeRate * r.quotesSent, 0) / totalQuotes
       : 0;
-    const ticketReps = reps.filter((r) => r.avgTicket > 0);
-    const avgTicket = ticketReps.length > 0
-      ? ticketReps.reduce((s, r) => s + r.avgTicket, 0) / ticketReps.length
+    const avgTicket = totalAppts > 0
+      ? fieldReps.reduce((s, r) => s + r.avgTicket * r.appointmentsHeld, 0) / totalAppts
       : 0;
-    const openPipelineK = reps.reduce((s, r) => s + r.openPipeline, 0);
     return {
       totalRevenue,
       closeRate: +closeRate.toFixed(1),

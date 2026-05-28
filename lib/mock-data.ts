@@ -14,6 +14,11 @@ export type Rep = {
   appointmentsHeld: number;
   quotesSent: number;
   startedAt: string; // ISO date — for tenure display
+  /** True when the user's Profile ends in "Standard.Field" — PPP's canonical
+   *  rep universe. Team-average denominators + leaderboards must filter on
+   *  this so admins/office staff don't dilute the peer group (FPRC §B).
+   *  Optional: undefined (mock data) is treated as "include". */
+  isFieldStandard?: boolean;
 };
 
 export const reps: Rep[] = [

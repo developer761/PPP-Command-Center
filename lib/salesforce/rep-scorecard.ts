@@ -103,7 +103,10 @@ export type RepScorecard = {
     slowEstimatePct: number | null;
   };
 
-  // KPI 6 — Pipeline Health (SNAPSHOT, not period-scoped)
+  // KPI 6 — Pipeline Health (SNAPSHOT, not period-scoped). NOTE: scoped to the
+  // snapshot's 365-day CreatedDate window — opps created >12 months ago are not
+  // present (~2/3 of all-time "open" opps on PPP, but those are overwhelmingly
+  // dead deals nobody closed). UI labels this "last 12 months". See §A.
   pipeline: {
     openOpps: number;
     staleEstimates: number;                 // open + estimate_sent + dateEstimateSent < today-30
@@ -447,7 +450,11 @@ export function deriveRepScorecard(
     ? (slowEstimateCount / estimateDaysCount) * 100
     : null;
 
-  /* ─ KPI 6 ─ Pipeline Health (SNAPSHOT) ─ */
+  /* ─ KPI 6 ─ Pipeline Health (SNAPSHOT, last-12-mo scope) ─ */
+  // Only opps created in the snapshot's 365-day window are present. On PPP's
+  // 3-4 week cycle an opp open for >12 months is almost certainly a dead deal
+  // nobody marked closed, so this intentionally focuses on actionable recent
+  // pipeline rather than the full all-time open count (§A). UI says "last 12 mo".
   // Stale = open + estimate_sent + dateEstimateSent < today-30
   let openOpps = 0;
   let staleEstimates = 0;
