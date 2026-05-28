@@ -327,12 +327,13 @@ export default async function RepDetailPage({
         </p>
       </section>
 
-      {/* ─── PPP Scorecard · Current Fiscal Quarter ───
-          KPIs 1-9 from PPP's REP_PERFORMANCE_KPIS spec. Anchored on the
-          current fiscal quarter (PPP FY = Feb 1 → Jan 31) so numbers match
-          the FPRC reports PPP staff already read. Each card null-safe — a
-          rep without a quota row, attendance data, or transaction history
-          renders an explicit "no data" rather than misleading $0/0%. */}
+      {/* ─── PPP Scorecard · Prior Fiscal Quarter ───
+          KPIs 1-9 from PPP's REP_PERFORMANCE_KPIS spec, mirroring the FPRC
+          report cards. Anchored on the PRIOR (just-completed) fiscal quarter
+          since FPRC reports PFQ — a mid-quarter partial wouldn't reconcile.
+          PPP FY = Feb 1 → Jan 31. Each card null-safe — a rep without a
+          quota row, attendance data, or transaction history renders an
+          explicit "no data" rather than misleading $0/0%. */}
       {scorecard && (
         <section>
           <div className="flex items-end justify-between gap-3 mb-4 sm:mb-5">
@@ -693,7 +694,7 @@ export default async function RepDetailPage({
             <ScorecardCard
               title="Production Quality"
               kpiTag="KPI 7"
-              tooltip="Jobs completed vs sold + reviews + complaints. Reviews by Account.OwnerId; complaints by Opportunity.OwnerId."
+              tooltip="Jobs completed vs sold + reviews + complaints + change orders. Reviews by Account.OwnerId; complaints by Opportunity.OwnerId narrowed to FPRC's 2 true types (Dissatisfied Customer, Service Call). Change Orders $ = SUM(WorkOrder.TotalChangeOrder__c) over completed WOs (already nets to Approved/Approved-Auto via SF rollup)."
             >
               <div className="space-y-2">
                 <div className="flex items-baseline gap-2">
