@@ -59,6 +59,8 @@ export async function POST(request: Request) {
     requiredByDate?: string;
     /** Worker manually picked this supplier (vs auto-derived from colors). */
     manualSupplier?: boolean;
+    /** Worker-typed delivery address (when SF has none). */
+    manualDeliveryAddress?: { street: string; city: string; state: string; postalCode: string };
   };
   try {
     body = await request.json();
@@ -201,6 +203,7 @@ export async function POST(request: Request) {
     specialInstructions: body.specialInstructions,
     requiredByDate: body.requiredByDate,
     includeAllColors: body.manualSupplier ?? false,
+    manualDeliveryAddress: body.manualDeliveryAddress,
   });
 
   return NextResponse.json({ ok: true, draft });

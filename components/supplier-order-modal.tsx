@@ -103,6 +103,10 @@ export default function SupplierOrderModal({
   // Worker inputs
   const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
   const [pickupLocation, setPickupLocation] = useState("");
+  // Manually-typed delivery address — used when SF has no address on file. Flows
+  // into the draft (top-priority candidate) → the email's delivery block, the
+  // same way extras + special instructions do.
+  const [deliveryAddr, setDeliveryAddr] = useState({ street: "", city: "", state: "", postalCode: "" });
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [extras, setExtras] = useState<Map<string, SelectedExtra>>(new Map());
   const [editedBody, setEditedBody] = useState<string | null>(null); // null = use draft.body unchanged
@@ -175,6 +179,10 @@ export default function SupplierOrderModal({
             supplierAccountId,
             fulfillmentMethod: fulfillment,
             pickupLocation: fulfillment === "pickup" ? pickupLocation : undefined,
+            manualDeliveryAddress:
+              fulfillment === "delivery" && deliveryAddr.street.trim()
+                ? deliveryAddr
+                : undefined,
             extras: Array.from(extras.values()),
             specialInstructions: specialInstructions.trim() || undefined,
             manualSupplier,
@@ -207,7 +215,7 @@ export default function SupplierOrderModal({
       }
     }, 120); // Was 250ms — reduced to 120ms so extras-toggle feels snappy.
     return () => { cancelled = true; clearTimeout(timeout); };
-  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, extras, specialInstructions, manualSupplier]);
+  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier]);
 
   // Scroll the email body into view on first draft load. Re-builds from
   // extras/fulfillment toggles don't re-scroll (ref guard).
@@ -520,6 +528,51 @@ export default function SupplierOrderModal({
                         value={pickupLocation}
                         onChange={setPickupLocation}
                       />
+                    )}
+                    {/* No address on file → type it here; it flows straight into
+                        the email's DELIVERY block (same as extras / special
+                        instructions). Stays open while you fill it. */}
+                    {fulfillment === "delivery" && (draft.unresolvedAddress || deliveryAddr.street.trim() !== "") && (
+                      <div className="mt-3 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/60 p-3">
+                        <div className="text-[11px] font-semibold text-ppp-orange-700 mb-2">
+                          No delivery address on file — enter it and it&apos;ll drop into the email.
+                        </div>
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={deliveryAddr.street}
+                            onChange={(e) => setDeliveryAddr((a) => ({ ...a, street: e.target.value }))}
+                            placeholder="Street address"
+                            className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                          />
+                          <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto] gap-2">
+                            <input
+                              type="text"
+                              value={deliveryAddr.city}
+                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, city: e.target.value }))}
+                              placeholder="City"
+                              className="px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                            />
+                            <input
+                              type="text"
+                              value={deliveryAddr.state}
+                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, state: e.target.value }))}
+                              placeholder="State"
+                              maxLength={4}
+                              className="w-20 px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                            />
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={deliveryAddr.postalCode}
+                              onChange={(e) => setDeliveryAddr((a) => ({ ...a, postalCode: e.target.value }))}
+                              placeholder="ZIP"
+                              maxLength={10}
+                              className="w-24 px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </Section>
 

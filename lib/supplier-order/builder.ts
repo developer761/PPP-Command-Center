@@ -108,6 +108,9 @@ export type BuildSupplierOrderInput = {
   specialInstructions?: string;
   /** Override required-by date (default: WO close date OR today+3, whichever later). */
   requiredByDate?: string;  // ISO date
+  /** Worker-typed delivery address (when SF has none). Top-priority candidate —
+   *  flows into the email's delivery block, source="manual". */
+  manualDeliveryAddress?: { street: string; city: string; state: string; postalCode: string };
   /** True when the worker MANUALLY picked this supplier (a store), vs the
    *  supplier being auto-derived from a color's manufacturer. PPP buys paint of
    *  any brand from stores (Aboffs sells BM, SW, etc.), so a hand-picked store
@@ -453,6 +456,19 @@ function resolveDeliveryAddress(input: BuildSupplierOrderInput): DeliveryAddress
     !!(a.street && a.city && (a.state || a.postalCode));
 
   const candidates: DeliveryAddress[] = [];
+
+  // Worker typed it in the modal (SF had none) — highest priority.
+  const manual = input.manualDeliveryAddress;
+  if (manual && manual.street?.trim()) {
+    candidates.push({
+      name: customerName,
+      street: manual.street.trim(),
+      city: manual.city?.trim() || "",
+      state: manual.state?.trim() || "",
+      postalCode: manual.postalCode?.trim() || "",
+      source: "manual",
+    });
+  }
 
   const submitted = input.customerSubmittedPayload?.deliveryAddress;
   if (submitted && submitted.street?.trim()) {
