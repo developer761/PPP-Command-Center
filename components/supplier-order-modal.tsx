@@ -124,6 +124,13 @@ export default function SupplierOrderModal({
   // is visible, the user scrolls UP to change settings if needed.
   const emailBodyRef = useRef<HTMLDivElement | null>(null);
   const didInitialScrollRef = useRef(false);
+  // Synchronous double-send guard. The `sending` state check alone races:
+  // React batches setSending, so two rapid clicks (or Enter+click) can both
+  // pass `if (sending) return` before the first commits — firing TWO
+  // /supplier-order/send POSTs = a duplicate PO emailed to the vendor. The ref
+  // flips synchronously, catching the second call immediately. (Same pattern as
+  // the customer-form sends.)
+  const sendInFlightRef = useRef(false);
 
   // Triggered when `draft` becomes available — that's when the email body
   // ref is finally attached to the DOM.
@@ -255,8 +262,9 @@ export default function SupplierOrderModal({
   };
 
   const handleSend = async () => {
-    if (!draft || sending) return;
+    if (!draft || sending || sendInFlightRef.current) return;
     if (!draft.sentToEmail) return; // Send button should be disabled
+    sendInFlightRef.current = true;
     setSending(true);
     setSendResult(null);
     try {
@@ -296,6 +304,7 @@ export default function SupplierOrderModal({
       setSendResult({ ok: false, error: err instanceof Error ? err.message : String(err) });
     } finally {
       setSending(false);
+      sendInFlightRef.current = false;
     }
   };
 
