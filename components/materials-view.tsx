@@ -19,6 +19,8 @@ import {
   summarizeOrder,
   formatBucketsCans,
   classifySurface,
+  COVERAGE_CONFIG,
+  type CoverageConfig,
   type RoomTakeoff,
   type RoomSurface,
 } from "@/lib/supplier-order/estimate-gallons";
@@ -39,9 +41,12 @@ type Props = {
   /** Deep-link target — when set, this WO is pre-selected on load (links from
    *  Customer History, the mail timeline, the activity feed, search). */
   initialWoId?: string | null;
+  /** Tuned coverage config (Settings → Coverage) so the WO-card paint estimate
+   *  matches the order modal/email. Defaults to the code constants. */
+  coverageConfig?: CoverageConfig;
 };
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, coverageConfig = COVERAGE_CONFIG }: Props) {
   const { snapshot, viewer } = bundle;
 
   // Index form statuses by WO id for constant-time lookup in the render loop.
@@ -79,22 +84,6 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     /** Worker chose this supplier via the manual picker (not auto-detected). */
     manual?: boolean;
   } | null>(null);
-
-  // Batch compose queue — when admin "Compose all (N)" in DraftOrderModal,
-  // we sequentially open one SupplierOrderModal per supplier. Worker reviews
-  // + sends each; closing one auto-advances to the next. Empty queue =
-  // single-shot modal flow (the default).
-  const [batchQueue, setBatchQueue] = useState<Array<{ accountId: string; name: string }>>([]);
-  const [batchPosition, setBatchPosition] = useState(0);
-  // WO context captured at batch start. The batch is always for ONE work order;
-  // pin its identity here so advancing through suppliers doesn't depend on the
-  // live `activeJob` (which can change/clear mid-batch, silently skipping the
-  // remaining suppliers OR building an order for the WRONG WO).
-  const [batchWo, setBatchWo] = useState<{ id: string; workOrderNumber: string | null; customerName: string | null } | null>(null);
-  // Re-entrancy guard — onClose can fire twice in <100ms (Esc + backdrop
-  // race, or Send-success + manual Close race). The ref updates synchronously
-  // so the second invocation sees the in-flight flag and bails.
-  const advancingRef = useRef(false);
 
   // Counter bumped when the modal closes after a successful send — children
   // (past-orders strip) re-fetch when this changes so the new row shows up
@@ -573,6 +562,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                 <JobDetail
                   snapshot={snapshot}
                   job={activeJob}
+                  coverageConfig={coverageConfig}
                   onOpenOrderModal={(supplierAccountId, supplierName, manual) =>
                     setOrderModal({
                       workOrderId: activeJob.wo.id,
@@ -583,26 +573,6 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       manual: manual ?? false,
                     })
                   }
-                  onOpenBatchStart={(suppliers) => {
-                    if (suppliers.length === 0) return;
-                    setBatchQueue(suppliers);
-                    setBatchPosition(0);
-                    // Pin the WO for the whole batch so advancement never
-                    // depends on the live activeJob.
-                    setBatchWo({
-                      id: activeJob.wo.id,
-                      workOrderNumber: activeJob.wo.workOrderNumber,
-                      customerName: activeJob.wo.accountName ?? null,
-                    });
-                    const first = suppliers[0];
-                    setOrderModal({
-                      workOrderId: activeJob.wo.id,
-                      workOrderNumber: activeJob.wo.workOrderNumber,
-                      supplierAccountId: first.accountId,
-                      supplierName: first.name,
-                      customerName: activeJob.wo.accountName ?? null,
-                    });
-                  }}
                 />
               </div>
             ) : (
@@ -626,45 +596,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           customerName={orderModal.customerName}
           manualSupplier={orderModal.manual ?? false}
           onClose={() => {
-            // Re-entrancy guard: onClose can fire twice in <100ms (Esc +
-            // backdrop click, or send-success + manual close). Second call
-            // bails so we don't skip a supplier or advance past the end.
-            if (advancingRef.current) return;
-            advancingRef.current = true;
+            // Close + refresh the past-orders strip so a freshly-sent order
+            // shows without a manual reload. Idempotent, so a double-fire
+            // (Esc + backdrop) is harmless.
             setOrderModal(null);
             setPastOrdersRefreshKey((k) => k + 1);
-            // Batch advance — if a queue is active and there's a next supplier,
-            // open it. End of queue clears the batch state. This drives the
-            // "Compose all (N)" flow: worker hits Send/Close on supplier 1 and
-            // immediately lands on supplier 2 without going back to materials.
-            if (batchQueue.length > 0 && batchWo) {
-              const nextIdx = batchPosition + 1;
-              if (nextIdx < batchQueue.length) {
-                const next = batchQueue[nextIdx];
-                setBatchPosition(nextIdx);
-                setTimeout(() => {
-                  // Use the pinned batchWo, NOT activeJob — the WO must stay
-                  // constant across the whole batch even if the active
-                  // selection changed.
-                  setOrderModal({
-                    workOrderId: batchWo.id,
-                    workOrderNumber: batchWo.workOrderNumber,
-                    supplierAccountId: next.accountId,
-                    supplierName: next.name,
-                    customerName: batchWo.customerName,
-                  });
-                  advancingRef.current = false;
-                }, 80); // tiny delay so close animation finishes
-              } else {
-                // End of queue — clear batch state.
-                setBatchQueue([]);
-                setBatchPosition(0);
-                setBatchWo(null);
-                advancingRef.current = false;
-              }
-            } else {
-              advancingRef.current = false;
-            }
           }}
         />
       )}
@@ -675,19 +611,16 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
 function JobDetail({
   snapshot,
   job,
+  coverageConfig,
   onOpenOrderModal,
-  onOpenBatchStart,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   job: OpenWorkOrderForMaterials;
-  /** Called when the worker clicks "Order from {supplier}" — triggers
-   *  the top-level Supplier Order Modal with that supplier pre-selected.
-   *  `manual` is true when chosen via the manual picker (vs auto-detected),
-   *  so the builder attributes unattributed colors to the chosen supplier. */
+  coverageConfig: CoverageConfig;
+  /** Opens the Supplier Order Modal with a supplier pre-selected. `manual` is
+   *  true when chosen via the store picker (vs auto-detected), so the builder
+   *  includes all the WO's colors on that store's order. */
   onOpenOrderModal: (supplierAccountId: string, supplierName: string, manual?: boolean) => void;
-  /** Called when worker selects multiple suppliers + hits "Compose all (N)" —
-   *  parent starts a queue and sequentially opens each. */
-  onOpenBatchStart: (suppliers: Array<{ accountId: string; name: string }>) => void;
 }) {
   const [showDraft, setShowDraft] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -753,8 +686,8 @@ function JobDetail({
         });
       }
     }
-    return summarizeOrder(estimateOrderGallons(rooms));
-  }, [job]);
+    return summarizeOrder(estimateOrderGallons(rooms, coverageConfig));
+  }, [job, coverageConfig]);
 
   return (
     <div className="space-y-4">

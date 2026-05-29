@@ -2,6 +2,7 @@ import { loadDashboardData } from "@/lib/data-source";
 import MaterialsView from "@/components/materials-view";
 import { deriveOpenMaterialsWorkOrders } from "@/lib/salesforce/materials";
 import { getMaterialsPageAuxData } from "@/lib/materials-page-data";
+import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,10 @@ export default async function MaterialsOrderingPage({
     return { formStatusByWO: new Map(), progressByWO: new Map() };
   });
 
+  // Tuned coverage config so the WO-card paint estimate matches what the order
+  // modal/email produce (both use the same numbers). Fail-safe to defaults.
+  const coverageConfig = await loadCoverageConfig();
+
   // Serialize Maps → arrays for client-component props (Maps don't
   // serialize cleanly across the server/client boundary in Next).
   const formStatuses = Array.from(aux.formStatusByWO.values());
@@ -46,6 +51,7 @@ export default async function MaterialsOrderingPage({
       formStatuses={formStatuses}
       woProgress={woProgress}
       initialWoId={initialWoId ?? null}
+      coverageConfig={coverageConfig}
     />
   );
 }
