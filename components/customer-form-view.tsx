@@ -422,19 +422,18 @@ function LineItemSection({
   onNotesChange: (notes: string) => void;
 }) {
   if (!state) return null;
-  // Title fallback chain so the section is never just generic "Area N":
-  //   1. areaLabel (estimator named the room — best)
-  //   2. productFamily (PPP scope category like "Carpentry", "Interior
-  //      Painting", "Other" — at least tells customer WHAT this section is)
-  //   3. "Section N" final fallback (very rare)
-  // PPP often skips areaLabel but always sets productFamily, so this
-  // surfaces the existing data the customer needs instead of "Area 1".
+  // Room title (Katie 2026-05-29): Product Name + Area Label, in that order.
+  //   "Interior Painting · Master Bedroom"
+  // Fallback chain when one/both are missing so the section is never blank
+  // or a bare " · ":
+  //   productName + areaLabel  →  whichever exists  →  productFamily  →  "Section N"
   const rawArea = lineItem.areaLabel?.trim() || "";
+  const rawProduct = lineItem.productName?.trim() || "";
   const rawFamily = lineItem.productFamily?.trim() || "";
-  const title = rawArea || rawFamily || `Section ${index}`;
-  // Only show the productFamily caption when it's NOT the title (i.e., when
-  // areaLabel WAS set). Avoids the duplicate "Carpentry / Carpentry" look.
-  const showFamilyCaption = rawArea && rawFamily && rawArea !== rawFamily;
+  const titleParts = [rawProduct, rawArea].filter(Boolean);
+  const title = titleParts.length > 0 ? titleParts.join(" · ") : rawFamily || `Section ${index}`;
+  // Show the scope family as a caption only when it isn't already in the title.
+  const showFamilyCaption = !!rawFamily && !title.toLowerCase().includes(rawFamily.toLowerCase());
   const surfaces = lineItem.surfaces.length > 0 ? lineItem.surfaces : ["Walls"];
 
   return (

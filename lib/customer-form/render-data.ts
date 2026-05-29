@@ -18,18 +18,29 @@ import { getSalesforceClient } from "@/lib/salesforce/client";
 export type FormLineItem = {
   id: string;
   areaLabel: string | null;          // e.g. "Master Bedroom", "elevator foyer"
+  productName: string | null;        // ProductName__c — paired with areaLabel for the room title
   surfaces: string[];                // ["Walls", "Ceiling", "Trim"]
   numCoats: number | null;
   productFamily: string | null;      // "Interior Painting", etc.
   sortOrder: number;
   // Existing color picks (null on fresh line items, populated if a customer
-  // already submitted earlier — admin can resend a form to collect changes)
+  // already submitted earlier — admin can resend a form to collect changes,
+  // OR the customer is re-editing their own submission)
   currentColors: {
     wallId: string | null;
     ceilingId: string | null;
     trimId: string | null;
     floorId: string | null;
     otherId: string | null;
+  };
+  // Existing finishes per surface (SF FinishX__c). Lets a re-editing customer
+  // see what they previously chose, and seeds the finish when a color exists.
+  currentFinishes: {
+    wall: string | null;
+    ceiling: string | null;
+    trim: string | null;
+    floor: string | null;
+    other: string | null;
   };
   existingNotes: string | null;
   lastModifiedDate: string;          // ISO — used for drift detection on submit
@@ -61,9 +72,10 @@ export type FormRenderData = {
 
 const WOLI_FIELDS = [
   "Id", "WorkOrderId",
-  "AreaLabel__c", "Surfaces__c",
+  "AreaLabel__c", "ProductName__c", "Surfaces__c",
   "of_Coats__c", "Product_Family__c",
   "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
+  "FinishWall__c", "FinishCeiling__c", "FinishTrim__c", "FinishOther__c", "FinishFloor__c",
   "ColorNotes__c", "SortOrder__c", "LastModifiedDate",
 ];
 
@@ -109,6 +121,7 @@ export async function loadFormRenderData(
       return {
         id: r.Id as string,
         areaLabel: str("AreaLabel__c"),
+        productName: str("ProductName__c"),
         surfaces,
         numCoats: num("of_Coats__c"),
         productFamily: str("Product_Family__c"),
@@ -119,6 +132,13 @@ export async function loadFormRenderData(
           trimId: str("ColorTrim__c"),
           floorId: str("ColorFloor__c"),
           otherId: str("ColorOther__c"),
+        },
+        currentFinishes: {
+          wall: str("FinishWall__c"),
+          ceiling: str("FinishCeiling__c"),
+          trim: str("FinishTrim__c"),
+          floor: str("FinishFloor__c"),
+          other: str("FinishOther__c"),
         },
         existingNotes: str("ColorNotes__c"),
         lastModifiedDate: r.LastModifiedDate as string,
