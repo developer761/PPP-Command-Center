@@ -483,6 +483,10 @@ export type SalesforceSnapshot = {
   transactions: SnapshotTransaction[];
   reviews: SnapshotReview[];
   cases: SnapshotCase[];
+  /** Company-wide lead conversion over the trailing 365d (Conversion Rate =
+   *  Leads → Opps, Katie 2026-05-29). Aggregate counts only — we do NOT pull
+   *  the 30k+ Lead rows into the snapshot (keeps the load fast). */
+  leadStats: { total: number; converted: number };
   fetchedAt: string;
   /** Canonical Opp revenue field (dynamically detected). */
   revenueFieldUsed: string | null;
@@ -1606,9 +1610,29 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
+    // Company lead conversion (Conversion Rate = Leads → Opps). AGGREGATE only
+    // — COUNT over the trailing 365d, not the 30k+ rows — so it's one tiny
+    // query running parallel with the rest (≈ zero wall-time + memory cost).
+    const leadStatsPromise: Promise<{ total: number; converted: number }> = (async () => {
+      try {
+        const r = await conn.query<Record<string, unknown>>(
+          `SELECT COUNT(Id) total, COUNT(ConvertedOpportunityId) converted FROM Lead WHERE CreatedDate = LAST_N_DAYS:365`
+        );
+        const row = (r.records[0] ?? {}) as Record<string, unknown>;
+        return {
+          total: typeof row.total === "number" ? row.total : 0,
+          converted: typeof row.converted === "number" ? row.converted : 0,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[SF] Lead aggregate failed (Conversion Rate will be hidden): ${msg}`);
+        return { total: 0, converted: 0 };
+      }
+    })();
+
     // Await the Account + Quote + PaintColor promises that have been running
     // in parallel with the WO query above + the new rep-performance pulls.
-    const [accounts, quotes, paintColors, quotas, subQuotas, transactions, reviews, cases] = await Promise.all([
+    const [accounts, quotes, paintColors, quotas, subQuotas, transactions, reviews, cases, leadStats] = await Promise.all([
       accountsPromise,
       quotesPromise,
       paintColorsPromise,
@@ -1617,6 +1641,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       transactionsPromise,
       reviewsPromise,
       casesPromise,
+      leadStatsPromise,
     ]);
 
     // WOLI fetch runs LAST because it explicitly batches by WorkOrderId IN
@@ -1670,6 +1695,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       transactions,
       reviews,
       cases,
+      leadStats,
       fetchedAt: new Date().toISOString(),
       revenueFieldUsed: revenueField,
       workOrderRevenueField: woRevenueField,

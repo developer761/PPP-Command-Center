@@ -149,6 +149,14 @@ export default function DashboardView({ bundle, formSummary }: Props) {
     };
   }, [snapshot, reps]);
 
+  // Company Conversion Rate = Leads → Opps over the trailing 365d (Katie
+  // 2026-05-29). Aggregate counts ride along in the snapshot; null hides the
+  // card when there's no lead data.
+  const conversionRate =
+    snapshot && snapshot.leadStats && snapshot.leadStats.total > 0
+      ? (snapshot.leadStats.converted / snapshot.leadStats.total) * 100
+      : null;
+
   // Top performer — fall back to mock ONLY when no snapshot at all.
   // When on live data with zero activity, return null so the UI can render
   // an honest empty state (no fake names).
@@ -505,7 +513,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
 
       {/* ─── KPI row ─── */}
       <section>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className={`grid grid-cols-2 ${conversionRate !== null ? "lg:grid-cols-5" : "lg:grid-cols-4"} gap-3 sm:gap-4`}>
           <KPICard
             label="Revenue Sold"
             value={fmtMoneyK(revenueKpi.value)}
@@ -546,6 +554,15 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             trend={liveKpis ? "flat" : view.kpis.openQuotes.trend}
             accent="blue"
           />
+          {conversionRate !== null && (
+            <KPICard
+              label="Conversion Rate"
+              value={`${conversionRate.toFixed(1)}%`}
+              change="Leads → Opps · 12mo"
+              trend="flat"
+              accent="green"
+            />
+          )}
         </div>
       </section>
 
