@@ -286,6 +286,32 @@ export function estimateOrderGallons(
   return out;
 }
 
+/** Job-level roll-up of an order — total buckets/cans + how many colors are
+ *  sized vs. need a manual quantity. Drives the at-a-glance "order total". */
+export function summarizeOrder(estimates: GallonEstimate[]): {
+  buckets: number; cans: number; sizedColors: number; reviewColors: number;
+} {
+  let buckets = 0, cans = 0, sizedColors = 0, reviewColors = 0;
+  for (const e of estimates) {
+    if (e.buckets > 0 || e.cans > 0) {
+      buckets += e.buckets;
+      cans += e.cans;
+      sizedColors += 1;
+    } else {
+      reviewColors += 1;
+    }
+  }
+  return { buckets, cans, sizedColors, reviewColors };
+}
+
+/** "2 buckets (×5 gal) + 3 gal" / "5 gal" / "—" from a buckets+cans pair. */
+export function formatBucketsCans(buckets: number, cans: number): string {
+  const parts: string[] = [];
+  if (buckets > 0) parts.push(`${buckets} bucket${buckets === 1 ? "" : "s"} (×5 gal)`);
+  if (cans > 0) parts.push(`${cans} gal`);
+  return parts.length ? parts.join(" + ") : "—";
+}
+
 /** Human-readable order, e.g. "1 bucket + 2 gal", "3 gal", "needs measurement". */
 export function formatOrderQuantity(e: GallonEstimate): string {
   if (e.unsized) return "needs review";

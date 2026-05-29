@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, classifySurface, formatOrderQuantity, type RoomTakeoff, type RoomSurface, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatBucketsCans, summarizeOrder, type RoomTakeoff, type RoomSurface, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 import type {
   SnapshotAccount,
   SnapshotPaintColor,
@@ -517,6 +517,12 @@ function formatOrderSummaryBlock(estimates: GallonEstimate[]): string {
     } else {
       lines.push(`  ___ — ${e.colorName}${code}${finish}${where} (PPP to confirm quantity)`);
     }
+  }
+  // Job total line — a quick cross-check for purchasing ("grab this many total").
+  const t = summarizeOrder(estimates);
+  if (t.buckets > 0 || t.cans > 0) {
+    lines.push(`  ─────`);
+    lines.push(`  TOTAL: ${formatBucketsCans(t.buckets, t.cans)}${t.reviewColors > 0 ? ` (+ ${t.reviewColors} to confirm)` : ""}`);
   }
   return lines.join("\n");
 }

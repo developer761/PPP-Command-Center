@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
-import { formatOrderQuantity, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
+import { formatOrderQuantity, formatBucketsCans, summarizeOrder, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 
 /**
  * Supplier Order Modal — the full draft → review → send experience for one
@@ -436,8 +436,18 @@ export default function SupplierOrderModal({
                       worker eyeballs quantities without scanning the body. */}
                   {draft.gallonEstimates.length > 0 && (
                     <div className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden">
-                      <div className="px-4 py-2 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
+                      <div className="px-4 py-2 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-xs font-semibold text-ppp-charcoal">Order — what to buy</span>
+                        {(() => {
+                          const t = summarizeOrder(draft.gallonEstimates);
+                          if (t.buckets === 0 && t.cans === 0) return null;
+                          return (
+                            <span className="text-[11px] text-ppp-charcoal-500">
+                              Total: <strong className="text-ppp-charcoal">{formatBucketsCans(t.buckets, t.cans)}</strong>
+                              {t.reviewColors > 0 && <span className="text-ppp-orange-700"> · {t.reviewColors} to confirm</span>}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <ul className="divide-y divide-ppp-charcoal-100">
                         {draft.gallonEstimates.map((e, i) => (

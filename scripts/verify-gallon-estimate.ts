@@ -12,6 +12,8 @@ import {
   packageGallons,
   classifySurface,
   formatOrderQuantity,
+  formatBucketsCans,
+  summarizeOrder,
   COVERAGE_CONFIG,
   type RoomTakeoff,
   type RoomSurface,
@@ -165,6 +167,19 @@ console.log("\nformatOrderQuantity packaging strings:");
   check('1 bucket + 2 gal', formatOrderQuantity(mk(1, 2)) === "1 bucket (×5 gal) + 2 gal", formatOrderQuantity(mk(1, 2)));
   check('3 gal', formatOrderQuantity(mk(0, 3)) === "3 gal", formatOrderQuantity(mk(0, 3)));
   check('2 buckets', formatOrderQuantity(mk(2, 0)) === "2 buckets (×5 gal)", formatOrderQuantity(mk(2, 0)));
+}
+
+console.log("\nsummarizeOrder + formatBucketsCans (job total):");
+{
+  const ests = [
+    { buckets: 2, cans: 1 }, { buckets: 0, cans: 3 }, { buckets: 0, cans: 0 },
+  ] as never[];
+  const t = summarizeOrder(ests);
+  check("total 2 buckets + 4 cans", t.buckets === 2 && t.cans === 4, JSON.stringify(t));
+  check("2 sized, 1 review", t.sizedColors === 2 && t.reviewColors === 1, JSON.stringify(t));
+  check("formatBucketsCans(2,4)", formatBucketsCans(2, 4) === "2 buckets (×5 gal) + 4 gal", formatBucketsCans(2, 4));
+  check("formatBucketsCans(0,5)", formatBucketsCans(0, 5) === "5 gal", formatBucketsCans(0, 5));
+  check("formatBucketsCans(0,0) = —", formatBucketsCans(0, 0) === "—");
 }
 
 console.log(`\nCONFIG: ${JSON.stringify(COVERAGE_CONFIG)}`);
