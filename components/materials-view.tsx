@@ -176,6 +176,31 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     };
   }, [openJobs]);
 
+  // Actionable "what needs doing" rollup across open WOs (Alex/ops view).
+  const needsAttention = useMemo(() => {
+    const now = Date.now();
+    const sevenDays = 7 * 86_400_000;
+    let needsForm = 0, awaitingCustomer = 0, readyToOrder = 0, orderedThisWeek = 0, jobSoonNotOrdered = 0;
+    for (const j of openJobs) {
+      const prog = progressByWO.get(j.wo.id);
+      const sentForm = !!prog?.formSentAt;
+      const submitted = !!prog?.formSubmittedAt;
+      const ordered = !!prog?.supplierSentAt;
+      if (!sentForm) needsForm += 1;
+      else if (!submitted) awaitingCustomer += 1;
+      if (submitted && !ordered) readyToOrder += 1;
+      if (ordered && prog?.supplierSentAt) {
+        const t = new Date(prog.supplierSentAt).getTime();
+        if (!Number.isNaN(t) && now - t <= sevenDays) orderedThisWeek += 1;
+      }
+      if (!ordered && j.wo.closeDate) {
+        const t = new Date(j.wo.closeDate + "T00:00:00Z").getTime();
+        if (!Number.isNaN(t) && t <= now + sevenDays) jobSoonNotOrdered += 1;
+      }
+    }
+    return { needsForm, awaitingCustomer, readyToOrder, orderedThisWeek, jobSoonNotOrdered };
+  }, [openJobs, progressByWO]);
+
   // Admin diagnostic: surface the underlying snapshot counts so we can debug
   // "why is it showing zero?" without crawling Vercel logs.
   const debug = useMemo(() => {
@@ -258,6 +283,41 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         <StatCard label="Distinct colors" value={stats.distinctColors.toLocaleString()} accent="orange" />
         <StatCard label="Suppliers" value={stats.distinctSuppliers.toLocaleString()} accent="green" />
       </section>
+
+      {/* Needs-attention rollup — at-a-glance "what to do next" across all open
+          WOs. Only renders chips with a count; urgent (job soon, not ordered)
+          is highlighted. Hidden entirely when everything's handled. */}
+      {(() => {
+        const n = needsAttention;
+        const anything = n.needsForm || n.awaitingCustomer || n.readyToOrder || n.jobSoonNotOrdered || n.orderedThisWeek;
+        if (!anything) return null;
+        const chip = (cond: boolean, label: string, value: number, tone: "blue" | "orange" | "green" | "charcoal") => {
+          if (!cond) return null;
+          const cls = {
+            blue: "bg-ppp-blue-50 border-ppp-blue-100 text-ppp-blue-700",
+            orange: "bg-ppp-orange-50 border-ppp-orange-100 text-ppp-orange-700",
+            green: "bg-ppp-green-50 border-ppp-green-100 text-ppp-green-700",
+            charcoal: "bg-ppp-charcoal-50 border-ppp-charcoal-100 text-ppp-charcoal-500",
+          }[tone];
+          return (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${cls}`}>
+              <strong className="font-bold">{value}</strong> {label}
+            </span>
+          );
+        };
+        return (
+          <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mr-1">Needs attention</span>
+              {chip(n.jobSoonNotOrdered > 0, "job(s) start soon — not ordered", n.jobSoonNotOrdered, "orange")}
+              {chip(n.needsForm > 0, "need a color form", n.needsForm, "blue")}
+              {chip(n.awaitingCustomer > 0, "awaiting customer", n.awaitingCustomer, "charcoal")}
+              {chip(n.readyToOrder > 0, "ready to order", n.readyToOrder, "green")}
+              {chip(n.orderedThisWeek > 0, "ordered this week", n.orderedThisWeek, "charcoal")}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Customer-form pipeline summary — only when any form has been sent.
           Otherwise the row is hidden (avoids a "0 / 0 / 0 / 0" strip that
