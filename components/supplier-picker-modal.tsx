@@ -37,11 +37,16 @@ export default function SupplierPickerModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  /** Bumped by the Try-again button so the load effect re-runs cleanly with a
+   *  fresh cancellation flag — simpler than tracking a separate fetch promise. */
+  const [retryNonce, setRetryNonce] = useState(0);
 
   useEscClose(onClose);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
     (async () => {
       try {
         const res = await fetch("/api/suppliers/active");
@@ -59,7 +64,7 @@ export default function SupplierPickerModal({
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [retryNonce]);
 
   const filtered = suppliers
     .filter((s) => !excludeIds.includes(s.accountId))
@@ -120,6 +125,16 @@ export default function SupplierPickerModal({
               <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
                 Couldn&apos;t load suppliers: {error}
               </div>
+              <button
+                type="button"
+                onClick={() => setRetryNonce((n) => n + 1)}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-orange-200 bg-white text-xs font-medium text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M21 12a9 9 0 1 1-3.51-7.13" /><path d="M21 3v6h-6" />
+                </svg>
+                Try again
+              </button>
             </div>
           )}
           {!loading && !error && filtered.length === 0 && (

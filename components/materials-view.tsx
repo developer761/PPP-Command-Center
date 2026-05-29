@@ -168,8 +168,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // Actionable "what needs doing" rollup across open WOs (Alex/ops view).
   const needsAttention = useMemo(() => {
     const now = Date.now();
+    const twoDays = 2 * 86_400_000;
     const sevenDays = 7 * 86_400_000;
-    let needsForm = 0, awaitingCustomer = 0, readyToOrder = 0, orderedThisWeek = 0, jobSoonNotOrdered = 0;
+    let needsForm = 0, awaitingCustomer = 0, readyToOrder = 0, orderedThisWeek = 0;
+    // Split into two urgency tiers: critical (≤2 days) gets its own chip so it
+    // can't be lost in the wider "starts soon" bucket — those are the jobs
+    // where the order needs to go OUT today/tomorrow.
+    let jobCriticalNotOrdered = 0, jobSoonNotOrdered = 0;
     for (const j of openJobs) {
       const prog = progressByWO.get(j.wo.id);
       const sentForm = !!prog?.formSentAt;
@@ -184,10 +189,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
       }
       if (!ordered && j.wo.closeDate) {
         const t = new Date(j.wo.closeDate + "T00:00:00Z").getTime();
-        if (!Number.isNaN(t) && t <= now + sevenDays) jobSoonNotOrdered += 1;
+        if (!Number.isNaN(t) && t <= now + sevenDays) {
+          if (t <= now + twoDays) jobCriticalNotOrdered += 1;
+          else jobSoonNotOrdered += 1;
+        }
       }
     }
-    return { needsForm, awaitingCustomer, readyToOrder, orderedThisWeek, jobSoonNotOrdered };
+    return { needsForm, awaitingCustomer, readyToOrder, orderedThisWeek, jobCriticalNotOrdered, jobSoonNotOrdered };
   }, [openJobs, progressByWO]);
 
   // Admin diagnostic: surface the underlying snapshot counts so we can debug
@@ -278,18 +286,27 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           is highlighted. Hidden entirely when everything's handled. */}
       {(() => {
         const n = needsAttention;
-        const anything = n.needsForm || n.awaitingCustomer || n.readyToOrder || n.jobSoonNotOrdered || n.orderedThisWeek;
+        const anything = n.needsForm || n.awaitingCustomer || n.readyToOrder || n.jobCriticalNotOrdered || n.jobSoonNotOrdered || n.orderedThisWeek;
         if (!anything) return null;
-        const chip = (cond: boolean, label: string, value: number, tone: "blue" | "orange" | "green" | "charcoal") => {
+        const chip = (cond: boolean, label: string, value: number, tone: "blue" | "orange" | "green" | "charcoal" | "critical") => {
           if (!cond) return null;
           const cls = {
             blue: "bg-ppp-blue-50 border-ppp-blue-100 text-ppp-blue-700",
             orange: "bg-ppp-orange-50 border-ppp-orange-100 text-ppp-orange-700",
             green: "bg-ppp-green-50 border-ppp-green-100 text-ppp-green-700",
             charcoal: "bg-ppp-charcoal-50 border-ppp-charcoal-100 text-ppp-charcoal-500",
+            // Critical = "go out today / tomorrow." Heavier weight + a pulsing
+            // dot so it can't get lost in a row of softer chips.
+            critical: "bg-ppp-orange-100 border-ppp-orange-200 text-ppp-orange-700 font-semibold",
           }[tone];
           return (
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${cls}`}>
+              {tone === "critical" && (
+                <span className="relative inline-flex h-1.5 w-1.5" aria-hidden>
+                  <span className="absolute inset-0 rounded-full bg-ppp-orange-500 opacity-75 animate-ping" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-ppp-orange-600" />
+                </span>
+              )}
               <strong className="font-bold">{value}</strong> {label}
             </span>
           );
@@ -298,7 +315,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mr-1">Needs attention</span>
-              {chip(n.jobSoonNotOrdered > 0, "job(s) start soon — not ordered", n.jobSoonNotOrdered, "orange")}
+              {chip(n.jobCriticalNotOrdered > 0, "start in ≤2 days — not ordered", n.jobCriticalNotOrdered, "critical")}
+              {chip(n.jobSoonNotOrdered > 0, "start this week — not ordered", n.jobSoonNotOrdered, "orange")}
               {chip(n.needsForm > 0, "need a color form", n.needsForm, "blue")}
               {chip(n.awaitingCustomer > 0, "awaiting customer", n.awaitingCustomer, "charcoal")}
               {chip(n.readyToOrder > 0, "ready to order", n.readyToOrder, "green")}
