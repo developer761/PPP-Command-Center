@@ -127,17 +127,22 @@ export async function getToken(token: string): Promise<CustomerFormToken | null>
  * Caller decides what to render per kind.
  */
 export type TokenStatus =
-  | { kind: "ok"; token: CustomerFormToken }
-  | { kind: "expired" }
-  | { kind: "submitted"; token: CustomerFormToken }
+  | { kind: "ok"; token: CustomerFormToken }            // never submitted, still open → fresh form
+  | { kind: "editable"; token: CustomerFormToken }      // submitted but before cutoff → re-editable (Katie 2026-05-29)
+  | { kind: "expired" }                                 // never submitted, past cutoff
+  | { kind: "submitted"; token: CustomerFormToken }     // submitted AND past cutoff → locked thank-you
   | { kind: "not_found" };
 
 export async function validateToken(token: string): Promise<TokenStatus> {
   const row = await getToken(token);
   if (!row) return { kind: "not_found" };
-  if (row.submitted_at) return { kind: "submitted", token: row };
-  if (new Date(row.expires_at) < new Date()) return { kind: "expired" };
-  return { kind: "ok", token: row };
+  const expired = new Date(row.expires_at) < new Date();
+  if (row.submitted_at) {
+    // Customers can revise their picks until the cutoff (24h before the job
+    // start, same as link expiry); after that the submission locks.
+    return expired ? { kind: "submitted", token: row } : { kind: "editable", token: row };
+  }
+  return expired ? { kind: "expired" } : { kind: "ok", token: row };
 }
 
 /**
@@ -231,6 +236,29 @@ export async function markSubmitted(
     return { ok: true, fresh: false };
   }
   return { ok: true, fresh: true };
+}
+
+/**
+ * Re-submission for an already-submitted, still-editable token (Katie
+ * 2026-05-29). Unlike markSubmitted, this has NO first-write idempotency guard
+ * — re-edits are deliberate repeat writes. Overwrites the payload and bumps
+ * submitted_at to the latest edit (so "edited after the order was placed" is
+ * detectable by comparing submitted_at vs vendor_email_sent_at).
+ */
+export async function markResubmitted(
+  token: string,
+  payload: Record<string, unknown>
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = adminClient();
+  const { error } = await sb
+    .from("customer_form_tokens")
+    .update({ submitted_payload: payload, submitted_at: new Date().toISOString() })
+    .eq("token", token);
+  if (error) {
+    console.error("[customer-form] markResubmitted failed:", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
 }
 
 /**

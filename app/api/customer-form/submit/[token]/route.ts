@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { validateToken, markSubmitted } from "@/lib/customer-form/tokens";
+import { validateToken, markSubmitted, markResubmitted } from "@/lib/customer-form/tokens";
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
 import { writeSfBatch, type SfWriteAttempt } from "@/lib/salesforce/writeback";
 
@@ -88,7 +88,9 @@ export async function POST(
     return NextResponse.json({ error: "token_mismatch" }, { status: 400 });
   }
 
-  // 1. Validate
+  // 1. Validate. "ok" = first submission; "editable" = customer revising a
+  // prior submission before the cutoff (Katie 2026-05-29). "submitted" now
+  // means submitted AND past the cutoff → locked.
   const status = await validateToken(tokenFromUrl);
   if (status.kind === "not_found") {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -97,8 +99,9 @@ export async function POST(
     return NextResponse.json({ error: "expired" }, { status: 410 });
   }
   if (status.kind === "submitted") {
-    return NextResponse.json({ error: "already_submitted" }, { status: 409 });
+    return NextResponse.json({ error: "locked", message: "The window to change your colors has closed. Please reply to PPP if you still need a change." }, { status: 409 });
   }
+  const isReedit = status.kind === "editable";
 
   // 2. Fresh re-fetch + drift detection
   const fresh = await loadFormRenderData(status.token.work_order_id);
@@ -161,45 +164,56 @@ export async function POST(
     });
   }
 
-  // 4. Mark submitted FIRST so a write failure doesn't leave the token in a
-  // weird half-submitted state. The submitted_payload captures the full
-  // customer intent regardless of whether SF accepts the writes.
-  const submitMark = await markSubmitted(tokenFromUrl, {
+  // 4. Persist the submission payload FIRST so a write failure doesn't leave
+  // the token half-submitted. First submit uses markSubmitted (idempotent,
+  // first-write-only); a re-edit uses markResubmitted (deliberate overwrite).
+  const payloadRecord = {
     lineItems: body.lineItems,
     globalNotes: body.globalNotes,
     deliveryAddress: body.deliveryAddress ?? null,
     submittedAt: new Date().toISOString(),
-  });
-  if (!submitMark.ok) {
-    return NextResponse.json({
-      error: "submit_marker_failed",
-      message: submitMark.error,
-    }, { status: 500 });
+  };
+  let runWrites: boolean;
+  if (isReedit) {
+    const re = await markResubmitted(tokenFromUrl, payloadRecord);
+    if (!re.ok) {
+      return NextResponse.json({ error: "submit_marker_failed", message: re.error }, { status: 500 });
+    }
+    runWrites = true; // a re-edit always re-writes the (possibly changed) colors
+  } else {
+    const submitMark = await markSubmitted(tokenFromUrl, payloadRecord);
+    if (!submitMark.ok) {
+      return NextResponse.json({ error: "submit_marker_failed", message: submitMark.error }, { status: 500 });
+    }
+    // First-submit: only the race WINNER writes (double-click/retry losers skip
+    // to avoid duplicate WOLI writes + audit noise — audit-flagged 2026-05-26).
+    runWrites = submitMark.fresh;
+    if (!submitMark.fresh) {
+      console.log(`[customer-form] race-lost submit for token ${tokenFromUrl.slice(0, 8)}… — skipping SF writes (winner already fired them)`);
+    }
   }
 
-  // 5. Fire the SF writes — ONLY when this caller is the fresh submitter.
-  // markSubmitted returns fresh=false if the token was already marked by
-  // a concurrent submit (double-click / network retry). Without this gate
-  // the race-loser would re-write the same WOLI fields, double-logging
-  // in sf_writes_audit and burning SF API quota. (Audit-flagged 2026-05-26.)
-  if (submitMark.fresh && attempts.length > 0) {
+  // 5. Fire the SF writes.
+  if (runWrites && attempts.length > 0) {
     const writeResults = await writeSfBatch(attempts, {
       source: "customer_form_submit",
       triggeredByToken: tokenFromUrl,
     });
     const failed = writeResults.filter((r) => !r.ok);
     if (failed.length > 0) {
-      // Log loudly — Supabase row is marked submitted with the payload, so an
-      // admin can replay via the audit log. We don't show the customer the
-      // error since their form succeeded from their perspective.
       console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl.slice(0, 8)}…:`, failed);
     }
-  } else if (!submitMark.fresh) {
-    console.log(`[customer-form] race-lost submit for token ${tokenFromUrl.slice(0, 8)}… — skipping SF writes (winner already fired them)`);
   }
+
+  // If the supplier order already went out, a re-edit changes colors AFTER the
+  // materials were ordered — flag it so the UI can tell the customer to contact
+  // the team, and so the admin can spot it (submitted_at now > vendor_email_sent_at).
+  const orderAlreadyPlaced = isReedit && !!status.token.vendor_email_sent_at;
 
   return NextResponse.json({
     ok: true,
+    reedited: isReedit,
+    orderAlreadyPlaced,
     writes: attempts.length,
     workOrderNumber: fresh.workOrderNumber,
   });

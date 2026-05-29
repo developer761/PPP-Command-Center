@@ -31,15 +31,38 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
     return <ErrorState heading="This link has expired" body="For your security, color forms expire after 30 days. Reply to the PPP email you got and we'll send a fresh link." />;
   }
   if (status.kind === "submitted") {
+    // Submitted AND past the cutoff (24h before the job start) → locked.
     return (
       <SuccessState
         heading="Thanks — we've got your color picks!"
-        body="Your color selections have already been received and our team is preparing your materials order. If you'd like to make a change, reply to the email PPP sent you or give us a call."
+        body="Your color selections are locked in and our team is preparing your materials order. The window to change them online has closed — if you still need a change, reply to the PPP email or give us a call right away."
       />
     );
   }
 
-  // ok — render the form
+  // "ok" (first time) or "editable" (revising before the cutoff) — render the
+  // form. For an edit, seed it from the prior submission so the customer sees
+  // and tweaks what they already picked.
+  const isEditing = status.kind === "editable";
+  const priorSubmission =
+    isEditing && status.token.submitted_payload
+      ? (status.token.submitted_payload as unknown as {
+          lineItems?: Array<{
+            id: string;
+            surfaces?: Array<{
+              surface: string;
+              colorId: string | null;
+              colorName: string | null;
+              colorCode: string | null;
+              finish: string | null;
+              skipped?: boolean;
+            }>;
+            notes?: string;
+          }>;
+          globalNotes?: string;
+        })
+      : null;
+
   const formData = await loadFormRenderData(status.token.work_order_id);
   if (!formData) {
     return <ErrorState heading="We hit a snag" body="We couldn't load the details for your work order right now. Please try again in a few minutes — if it keeps happening, let PPP know." />;
@@ -76,6 +99,8 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
         customerName={status.token.customer_name ?? null}
         formData={formData}
         copy={copy}
+        isEditing={isEditing}
+        priorSubmission={priorSubmission}
       />
     </CustomerFormShell>
   );

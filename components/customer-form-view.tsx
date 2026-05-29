@@ -19,6 +19,19 @@ type FormCopy = {
   thankyouBody: string;
 };
 
+/** Prior submission shape (subset of submitted_payload) used to pre-fill the
+ *  form when a customer is re-editing before the cutoff (Katie 2026-05-29). */
+type PriorSurface = {
+  surface: string;
+  colorId: string | null;
+  colorName: string | null;
+  colorCode: string | null;
+  finish: string | null;
+  skipped?: boolean;
+};
+type PriorLineItem = { id: string; surfaces?: PriorSurface[]; notes?: string };
+type PriorSubmission = { lineItems?: PriorLineItem[]; globalNotes?: string } | null;
+
 type Props = {
   token: string;
   customerName: string | null;
@@ -26,6 +39,10 @@ type Props = {
   /** Editable customer-facing copy from lib/customer-form/templates.ts.
    *  Code defaults applied at the server side, so this is always populated. */
   copy: FormCopy;
+  /** True when the customer is revising a prior submission (before the cutoff). */
+  isEditing?: boolean;
+  /** Prior picks to seed the form with when re-editing. */
+  priorSubmission?: PriorSubmission;
 };
 
 type ColorOption = {
@@ -90,24 +107,47 @@ function roomTitle(li: FormLineItem, oneBasedIndex: number): string {
   return parts.length > 0 ? parts.join(" · ") : li.productFamily?.trim() || `Section ${oneBasedIndex}`;
 }
 
-export default function CustomerFormView({ token, customerName, formData, copy }: Props) {
-  // Seed state from any existing color picks on the WOLI (in case admin
-  // resent the form after a prior submission).
+export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null }: Props) {
+  // Seed state. When re-editing, pre-fill each surface from the customer's
+  // prior submission (colors + finishes + skipped + notes) so they tweak what
+  // they already chose rather than starting over. Otherwise start blank.
   const initialState = useMemo<Record<string, LineItemState>>(() => {
+    // Index the prior submission by line-item id → surface name for O(1) lookup.
+    const priorByLine = new Map<string, Map<string, PriorSurface>>();
+    const priorNotesByLine = new Map<string, string>();
+    for (const pl of priorSubmission?.lineItems ?? []) {
+      const surfMap = new Map<string, PriorSurface>();
+      for (const s of pl.surfaces ?? []) surfMap.set(s.surface, s);
+      priorByLine.set(pl.id, surfMap);
+      if (pl.notes) priorNotesByLine.set(pl.id, pl.notes);
+    }
+
     const state: Record<string, LineItemState> = {};
     for (const li of formData.lineItems) {
+      const priorSurfaces = priorByLine.get(li.id);
       state[li.id] = {
         picks: Object.fromEntries(
-          li.surfaces.map((s) => [s, emptyPick()])
+          li.surfaces.map((s) => {
+            const p = priorSurfaces?.get(s);
+            if (!p) return [s, emptyPick()];
+            return [s, {
+              colorId: p.colorId,
+              colorName: p.colorName,
+              colorCode: p.colorCode,
+              colorHex: null, // re-resolved from the catalog by the swatch helper
+              finish: p.finish,
+              skipped: p.skipped ?? false,
+            }];
+          })
         ),
-        notes: li.existingNotes ?? "",
+        notes: priorNotesByLine.get(li.id) ?? li.existingNotes ?? "",
       };
     }
     return state;
-  }, [formData]);
+  }, [formData, priorSubmission]);
 
   const [state, setState] = useState(initialState);
-  const [globalNotes, setGlobalNotes] = useState("");
+  const [globalNotes, setGlobalNotes] = useState(priorSubmission?.globalNotes ?? "");
   const [submitting, setSubmitting] = useState(false);
   // Ref-based guard — React batches setState so two rapid clicks could
   // both pass `if (submitting) return` before either commits the new value.
@@ -115,6 +155,9 @@ export default function CustomerFormView({ token, customerName, formData, copy }
   const submitInFlight = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  // Extra note shown on the thank-you screen — e.g. when a re-edit lands after
+  // the materials order already went out.
+  const [postSubmitNote, setPostSubmitNote] = useState<string | null>(null);
   // Transient confirmation for "apply color to all areas".
   const [applyToast, setApplyToast] = useState<string | null>(null);
   useEffect(() => {
@@ -167,10 +210,17 @@ export default function CustomerFormView({ token, customerName, formData, copy }
         <div className="mx-auto h-14 w-14 rounded-full bg-ppp-green-50 text-ppp-green-700 flex items-center justify-center text-2xl mb-4">
           ✓
         </div>
-        <h1 className="text-xl sm:text-2xl font-bold text-ppp-navy">{copy.thankyouTitle}</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-ppp-navy">
+          {isEditing ? "Your changes are saved!" : copy.thankyouTitle}
+        </h1>
         <p className="mt-3 text-sm sm:text-base text-ppp-charcoal-500 max-w-md mx-auto whitespace-pre-line">
-          {copy.thankyouBody}
+          {isEditing ? "We've updated your color selections. You can come back and adjust them again any time before your job starts." : copy.thankyouBody}
         </p>
+        {postSubmitNote && (
+          <p className="mt-4 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 max-w-md mx-auto">
+            {postSubmitNote}
+          </p>
+        )}
       </div>
     );
   }
@@ -316,9 +366,14 @@ export default function CustomerFormView({ token, customerName, formData, copy }
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({} as { error?: string }));
-        throw new Error(data?.error || `Submit failed (${res.status})`);
+        throw new Error((data as { error?: string })?.error || `Submit failed (${res.status})`);
+      }
+      if ((data as { orderAlreadyPlaced?: boolean }).orderAlreadyPlaced) {
+        setPostSubmitNote(
+          "Heads up — your materials order was already placed, so please contact our team to make sure this change makes it onto the order."
+        );
       }
       setSubmitted(true);
     } catch (err) {
@@ -344,6 +399,12 @@ export default function CustomerFormView({ token, customerName, formData, copy }
         <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed whitespace-pre-line">
           {copy.headerSubtitle}
         </p>
+        {isEditing && (
+          <div className="mt-4 text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
+            You&apos;ve already submitted these colors — feel free to update anything below
+            and save again. You can keep making changes up until your job starts.
+          </div>
+        )}
       </div>
 
       {/* Per-line-item sections */}
@@ -423,15 +484,16 @@ export default function CustomerFormView({ token, customerName, formData, copy }
       {formData.lineItems.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] sm:text-xs text-ppp-charcoal-500">
-            Once you submit, we&apos;ll order the materials. To make a change after,
-            just reply to the email we sent you.
+            {isEditing
+              ? "Save your changes — you can keep updating your colors any time before your job starts."
+              : "Once you submit, we'll order the materials. You can still come back and update your colors before your job starts."}
           </div>
           <button
             type="submit"
             disabled={submitting}
             className="shrink-0 inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg bg-ppp-blue text-white text-sm sm:text-base font-semibold hover:bg-ppp-blue-600 transition-colors shadow-md shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {submitting ? "Sending…" : "Submit my colors"}
+            {submitting ? "Saving…" : isEditing ? "Save changes" : "Submit my colors"}
           </button>
         </div>
       )}
