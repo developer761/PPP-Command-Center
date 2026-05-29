@@ -514,11 +514,11 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             accent="blue"
           />
           <KPICard
-            label="Conversion Rate"
+            label="Close Rate"
             value={`${(liveKpis?.closeRate ?? view.kpis.closeRate.value).toFixed(1)}%`}
             change={
               liveKpis
-                ? "Opps → Work Orders"
+                ? "Sold ÷ Opps"
                 : `${sign(view.kpis.closeRate.change)} pts`
             }
             trend={liveKpis ? "flat" : view.kpis.closeRate.trend}
@@ -802,7 +802,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
               <div className="text-xs text-ppp-charcoal-500 mt-0.5">{topPerformer.region}</div>
               <div className="mt-3 flex items-baseline gap-3">
                 <div className="font-condensed text-2xl font-bold text-ppp-green-700">{fmtMoneyK(topPerformer.revenue)}</div>
-                <div className="text-xs text-ppp-charcoal-500">{topPerformer.closeRate.toFixed(1)}% conv</div>
+                <div className="text-xs text-ppp-charcoal-500">{topPerformer.closeRate.toFixed(1)}% close</div>
               </div>
               <div className="mt-3 text-[11px] font-medium text-ppp-blue">View deep-dive →</div>
             </Link>

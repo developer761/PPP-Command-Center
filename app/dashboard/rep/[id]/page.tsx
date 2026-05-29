@@ -323,7 +323,7 @@ export default async function RepDetailPage({
         >
           <KPICard label="Revenue Sold" value={fmtMoneyK(rep.revenueSold)} change={dRev.text} trend={dRev.trend} accent="blue" />
           <KPICard
-            label="Conversion Rate"
+            label="Close Rate"
             value={`${rep.closeRate.toFixed(1)}%`}
             change={dClose.text}
             trend={dClose.trend}
@@ -333,7 +333,7 @@ export default async function RepDetailPage({
           <KPICard label="Open Pipeline" value={fmtMoneyK(rep.openPipeline)} change={dPipe.text} trend={dPipe.trend} accent="blue" />
         </div>
         <p className="mt-2 text-[11px] text-ppp-charcoal-500 italic px-1">
-          <strong>Conversion Rate</strong> = opps that became a real paid job ÷ opps created. Excludes Estimate / Appointment WOs and cancelled / dead deals. See <strong>Scorecard · Close Rate</strong> below for PPP&apos;s canonical KPI 3 metric (IsWon-based, fiscal-period).
+          <strong>Close Rate</strong> = sold ÷ opps (opps that became a real paid job ÷ opps created). Excludes Estimate / Appointment WOs and cancelled / dead deals. See <strong>Scorecard · Close Rate</strong> below for PPP&apos;s canonical KPI 3 metric (IsWon-based, fiscal-period). <em>Conversion Rate (leads → opps) is coming once lead data is wired.</em>
         </p>
       </section>
 
