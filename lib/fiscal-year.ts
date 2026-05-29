@@ -119,6 +119,48 @@ export function fyName(fy: FiscalYear): string {
   return fyLabel(fy);
 }
 
+/* ─── Scorecard period selector (Katie 2026-05-29) ─── */
+
+export type ScorecardPeriodKey = "pfq" | "cfq" | "pfy" | "cfy";
+
+/** Picker options, in display order. Shared with the client period picker. */
+export const SCORECARD_PERIOD_OPTIONS: Array<{ key: ScorecardPeriodKey; label: string }> = [
+  { key: "pfq", label: "Prior Quarter" },
+  { key: "cfq", label: "Current Quarter" },
+  { key: "pfy", label: "Prior Fiscal Year" },
+  { key: "cfy", label: "Current Fiscal Year" },
+];
+
+/**
+ * Resolve a ?scPeriod= key into a scorecard period + labels. Defaults to PFQ
+ * (the just-completed quarter the FPRC cards report). Current-quarter / current-
+ * FY are in-progress partials — labeled as such so they aren't mistaken for
+ * FPRC-reconcilable figures.
+ */
+export function resolveScorecardPeriod(key: string | undefined): {
+  key: ScorecardPeriodKey;
+  period: { fy: FiscalYear; q?: FiscalQuarter };
+  label: string;
+  rangeLabel: string;
+  inProgress: boolean;
+} {
+  const fy = currentFY();
+  const q = currentFiscalQuarter();
+  switch (key) {
+    case "cfq":
+      return { key: "cfq", period: { fy, q }, label: "Current Quarter", rangeLabel: fyLabel(fy, q), inProgress: true };
+    case "pfy":
+      return { key: "pfy", period: { fy: fy - 1 }, label: "Prior Fiscal Year", rangeLabel: fyLabel(fy - 1), inProgress: false };
+    case "cfy":
+      return { key: "cfy", period: { fy }, label: "Current Fiscal Year", rangeLabel: fyLabel(fy), inProgress: true };
+    case "pfq":
+    default: {
+      const p = priorFiscalQuarter(fy, q);
+      return { key: "pfq", period: { fy: p.fy, q: p.q }, label: "Prior Quarter", rangeLabel: fyLabel(p.fy, p.q), inProgress: false };
+    }
+  }
+}
+
 /**
  * Returns true if the given date falls in the specified fiscal year (and
  * optionally quarter). Uses UTC.

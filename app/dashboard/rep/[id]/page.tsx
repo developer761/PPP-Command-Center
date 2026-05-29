@@ -17,7 +17,8 @@ import {
 } from "@/lib/data-source";
 import { deriveRepsForPeriod, deriveRepAccountStats } from "@/lib/salesforce/derive";
 import { deriveRepScorecard, type RepScorecard } from "@/lib/salesforce/rep-scorecard";
-import { currentFY, currentFiscalQuarter, priorFiscalQuarter, fyLabel } from "@/lib/fiscal-year";
+import { fyLabel, resolveScorecardPeriod } from "@/lib/fiscal-year";
+import ScorecardPeriodPicker from "@/components/scorecard-period-picker";
 import type { SnapshotAccount } from "@/lib/salesforce/queries";
 import { fmtMoneyK } from "@/lib/format";
 
@@ -125,14 +126,14 @@ export default async function RepDetailPage({
     ? deriveRepAccountStats(bundle.snapshot, rep.id)
     : null;
 
-  // KPI scorecard anchored on the PRIOR (just-completed) fiscal quarter — the
-  // FPRC report cards report PFQ, not the in-progress quarter, so a mid-quarter
-  // partial would NOT reconcile against FPRC_*. (A period picker defaulting to
-  // PFQ would be the natural enhancement.)
+  // KPI scorecard — period selectable via ?scPeriod= (Katie 2026-05-29).
+  // Defaults to the PRIOR (just-completed) fiscal quarter, which is what the
+  // FPRC report cards report (the in-progress quarter is a partial that won't
+  // reconcile). Options: pfq (default) / cfq / pfy / cfy.
   // Skipped on mock data (no quotas/transactions/reviews to derive from).
-  const { fy: scFy, q: scQ } = priorFiscalQuarter(currentFY(), currentFiscalQuarter());
+  const scSel = resolveScorecardPeriod(typeof sp.scPeriod === "string" ? sp.scPeriod : undefined);
   const scorecard: RepScorecard | null = bundle.snapshot
-    ? deriveRepScorecard(bundle.snapshot, rep.id, { fy: scFy, q: scQ })
+    ? deriveRepScorecard(bundle.snapshot, rep.id, scSel.period)
     : null;
 
   // Indexed account lookup so the recent-deals table can flag Repeat Customer
@@ -358,14 +359,12 @@ export default async function RepDetailPage({
               </p>
             </div>
             <div className="text-right">
-              <div className="font-condensed text-xs uppercase tracking-wide text-ppp-charcoal-500">
-                Prior fiscal quarter
-              </div>
-              <div className="font-condensed text-sm sm:text-base font-bold text-ppp-navy mt-0.5">
-                {fyLabel(scorecard.period.fy ?? scFy, scorecard.period.q ?? scQ)}
+              <ScorecardPeriodPicker value={scSel.key} />
+              <div className="font-condensed text-sm sm:text-base font-bold text-ppp-navy mt-1">
+                {fyLabel(scorecard.period.fy ?? scSel.period.fy, scorecard.period.q ?? scSel.period.q)}
               </div>
               <div className="text-[10px] text-ppp-charcoal-400 mt-0.5">
-                Matches FPRC card (last completed quarter)
+                {scSel.inProgress ? "In-progress period (partial)" : "Completed period · matches FPRC card"}
               </div>
             </div>
           </div>
