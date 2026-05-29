@@ -4,7 +4,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { COVERAGE_CONFIG } from "@/lib/supplier-order/estimate-gallons";
-import { mergeCoverageConfig, isValidCoverageValue, STRICT_POSITIVE_KEYS } from "@/lib/supplier-order/coverage-config";
+import { mergeCoverageConfig, isValidCoverageValue, STRICT_POSITIVE_KEYS, MAX_COVERAGE_VALUES } from "@/lib/supplier-order/coverage-config";
 
 /**
  * Paint-coverage config admin endpoint (Settings → Coverage).
@@ -80,10 +80,12 @@ export async function PUT(request: Request) {
     const v = body.config[key as string];
     if (typeof v !== "number" || !Number.isFinite(v)) continue;
     if (!isValidCoverageValue(key as string, v)) {
-      return NextResponse.json(
-        { error: "invalid_value", message: `${key} must be ${STRICT_POSITIVE_KEYS.has(key as string) ? "greater than 0" : "0 or more"}` },
-        { status: 400 }
-      );
+      const max = MAX_COVERAGE_VALUES[key as string];
+      const minRule = STRICT_POSITIVE_KEYS.has(key as string) ? "greater than 0" : "0 or more";
+      const message = max !== undefined
+        ? `${key} must be ${minRule} and no more than ${max}`
+        : `${key} must be ${minRule}`;
+      return NextResponse.json({ error: "invalid_value", message }, { status: 400 });
     }
     clean[key as string] = v;
   }

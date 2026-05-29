@@ -18,6 +18,7 @@ import {
   type RoomTakeoff,
   type RoomSurface,
 } from "../lib/supplier-order/estimate-gallons";
+import { isValidCoverageValue, MAX_COVERAGE_VALUES } from "../lib/supplier-order/coverage-validation";
 
 let passed = 0;
 let failed = 0;
@@ -180,6 +181,52 @@ console.log("\nsummarizeOrder + formatBucketsCans (job total):");
   check("formatBucketsCans(2,4)", formatBucketsCans(2, 4) === "2 buckets (×5 gal) + 4 gal", formatBucketsCans(2, 4));
   check("formatBucketsCans(0,5)", formatBucketsCans(0, 5) === "5 gal", formatBucketsCans(0, 5));
   check("formatBucketsCans(0,0) = —", formatBucketsCans(0, 0) === "—");
+}
+
+console.log("\nKatie's door-face rule (paintDoorFaces toggles room-facing door area):");
+{
+  // Same room with door=2: paintDoorFaces=true adds 2×20×coats=80 sqft to trim
+  // vs paintDoorFaces=false (just casings). 80 sqft = 0.23 gal → can shift the
+  // can count by 1, depending on rounding. The rule must be a real signal.
+  const rWith = room({
+    woliId: "wf", floorAreaSqft: 144, perimeterLf: 48, heightFt: 8,
+    doors: 2, windows: 1, closets: 0, coats: 2, paintDoorFaces: true,
+    surfaces: [surf("trim", "TR", "Trim")],
+  });
+  const rWithout = room({
+    woliId: "wf", floorAreaSqft: 144, perimeterLf: 48, heightFt: 8,
+    doors: 2, windows: 1, closets: 0, coats: 2, paintDoorFaces: false,
+    surfaces: [surf("trim", "TR", "Trim")],
+  });
+  const withFaces = estimateOrderGallons([rWith])[0];
+  const noFaces = estimateOrderGallons([rWithout])[0];
+  check("paintDoorFaces=true adds 80 sqft (2 doors × 20 sqft × 2 coats)", withFaces.totalSqft - noFaces.totalSqft === 80, `${withFaces.totalSqft} vs ${noFaces.totalSqft}`);
+  check("paintDoorFaces=true produces ≥ gallons of paintDoorFaces=false", withFaces.gallons >= noFaces.gallons);
+}
+
+console.log("\nConfig sanity caps (isValidCoverageValue upper bounds):");
+{
+  // Lower bound: STRICT_POSITIVE keys reject 0 and negatives.
+  check("coverageSqftPerGallon rejects 0", isValidCoverageValue("coverageSqftPerGallon", 0) === false);
+  check("coverageSqftPerGallon rejects -10", isValidCoverageValue("coverageSqftPerGallon", -10) === false);
+  check("coverageSqftPerGallon accepts 375", isValidCoverageValue("coverageSqftPerGallon", 375) === true);
+  // Other keys may be 0 (e.g., bufferPct=0 means "no buffer").
+  check("bufferPct accepts 0", isValidCoverageValue("bufferPct", 0) === true);
+  check("bufferPct accepts 0.10", isValidCoverageValue("bufferPct", 0.10) === true);
+  check("bufferPct accepts 0.50", isValidCoverageValue("bufferPct", 0.50) === true);
+  // Upper bound: typo of 1000 (meant 10) is rejected.
+  check("bufferPct rejects 10.0 (1000% buffer typo)", isValidCoverageValue("bufferPct", 10) === false);
+  check("bufferPct rejects 2.0 (above 100% cap)", isValidCoverageValue("bufferPct", 2.0) === false);
+  check("bufferPct accepts 1.0 (exactly at cap)", isValidCoverageValue("bufferPct", 1.0) === true);
+  check("defaultCoats rejects 50 (typo above cap)", isValidCoverageValue("defaultCoats", 50) === false);
+  check("defaultCoats accepts 3", isValidCoverageValue("defaultCoats", 3) === true);
+  check("NaN always rejected", isValidCoverageValue("bufferPct", NaN) === false);
+  check("Infinity always rejected", isValidCoverageValue("bufferPct", Infinity) === false);
+  // Spot-check every MAX is realistic (defaults must comfortably fit under).
+  for (const k of Object.keys(MAX_COVERAGE_VALUES)) {
+    const def = (COVERAGE_CONFIG as Record<string, number>)[k];
+    check(`${k} default (${def}) fits under cap (${MAX_COVERAGE_VALUES[k]})`, def <= MAX_COVERAGE_VALUES[k]);
+  }
 }
 
 console.log(`\nCONFIG: ${JSON.stringify(COVERAGE_CONFIG)}`);

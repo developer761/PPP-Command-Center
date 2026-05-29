@@ -681,7 +681,10 @@ function JobDetail({
           windows: li.raw.numWindows,
           closets: li.raw.numClosets,
           coats: li.raw.numCoats,
-          paintDoorFaces: false,
+          // Katie's rule: an explicit door count on the WOLI means those
+          // room-facing door faces are in scope. Mirrors builder.ts:435 so
+          // the WO-card chip can't disagree with the email.
+          paintDoorFaces: li.raw.numDoors > 0,
           surfaces,
         });
       }
