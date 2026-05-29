@@ -450,8 +450,16 @@ export default function SupplierOrderModal({
                                 <span className="text-[10px] text-ppp-charcoal-400 ml-1">({e.surfaces.join(", ")})</span>
                               )}
                             </div>
-                            <span className={`shrink-0 font-semibold whitespace-nowrap ${(e.buckets > 0 || e.cans > 0) ? "text-ppp-charcoal" : "text-ppp-orange-700"}`}>
-                              {formatOrderQuantity(e)}
+                            <span className="shrink-0 text-right whitespace-nowrap">
+                              <span className={`font-semibold ${(e.buckets > 0 || e.cans > 0) ? "text-ppp-charcoal" : "text-ppp-orange-700"}`}>
+                                {formatOrderQuantity(e)}
+                              </span>
+                              {/* Partially measured: has a quantity but a room
+                                  had no sqft, so this is an UNDER-count. Flag it
+                                  so the worker tops it up before sending. */}
+                              {e.needsMeasurement && (e.buckets > 0 || e.cans > 0) && (
+                                <span className="block text-[10px] font-normal text-ppp-orange-700">⚠ a room is unmeasured — may be low</span>
+                              )}
                             </span>
                           </li>
                         ))}
