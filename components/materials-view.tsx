@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import PageHeader from "@/components/page-header";
 import SupplierPickerModal from "@/components/supplier-picker-modal";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
@@ -628,8 +628,10 @@ function JobDetail({
   // from the snapshot via accountName. Empty when not in snapshot (vendor
   // WO or stale account) — admin types manually.
   const customerAccount = useMemo(() => {
-    if (!job.wo.accountName) return null;
-    return snapshot.accounts.find((a) => a.name === job.wo.accountName) ?? null;
+    // Account.Id match first (reliable), then name as a fallback for legacy WOs.
+    return (job.wo.accountId ? snapshot.accounts.find((a) => a.id === job.wo.accountId) : null)
+      ?? (job.wo.accountName ? snapshot.accounts.find((a) => a.name === job.wo.accountName) : null)
+      ?? null;
   }, [job, snapshot]);
 
   const supplierRows = useMemo(() => {
@@ -1187,6 +1189,32 @@ function SendColorFormButton({
   const [customerEmail, setCustomerEmail] = useState(defaultEmail ?? "");
   const [customerName, setCustomerName] = useState(accountName ?? "");
   const [sending, setSending] = useState(false);
+  // When the snapshot didn't carry the email (customer not in the top-5k, or a
+  // name mismatch), look it up DIRECTLY from Salesforce by the WO on open so
+  // the worker never has to type it. Only fetches once, and only if still blank.
+  const [lookingUpEmail, setLookingUpEmail] = useState(false);
+  const emailLookedUp = useRef(false);
+  useEffect(() => {
+    if (!open || emailLookedUp.current || customerEmail.trim()) return;
+    emailLookedUp.current = true;
+    let cancelled = false;
+    setLookingUpEmail(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/customer-form/wo-email?workOrderId=${encodeURIComponent(workOrderId)}`);
+        const data = await res.json();
+        if (!cancelled && res.ok && data.ok) {
+          if (data.email) setCustomerEmail((cur) => cur.trim() || data.email);
+          if (data.customerName) setCustomerName((cur) => cur.trim() || data.customerName);
+        }
+      } catch {
+        // soft — worker can still type
+      } finally {
+        if (!cancelled) setLookingUpEmail(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, customerEmail, workOrderId]);
   // Synchronous double-fire guard. The create endpoint has no idempotency —
   // each call mints a NEW token + sends a NEW email — so two rapid clicks
   // (React batches setSending) would create two live links for one WO. The ref
@@ -1280,9 +1308,12 @@ function SendColorFormButton({
                     type="email"
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
-                    placeholder="customer@example.com"
+                    placeholder={lookingUpEmail ? "Looking up from Salesforce…" : "customer@example.com"}
                     className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                   />
+                  {lookingUpEmail && (
+                    <p className="text-[11px] text-ppp-charcoal-500 mt-1">Looking up the customer&apos;s email from Salesforce…</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
