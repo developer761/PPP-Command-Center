@@ -30,7 +30,7 @@ VALUES
     '[{"name":"Williston Park","address":"263 Hillside Avenue, Williston Park, NY 11596"}]'::jsonb, true),
   ('vendor-janovic', 'Janovic', 'accountsreceivable@janovic.com',
     '[{"name":"Manhattan (3rd Ave)","address":"196 3rd Ave, New York, NY 10003"}]'::jsonb, true),
-  ('vendor-medallion-paint-world', 'Medallion''s Paint World', 'orders@medallionpaintpw.com',
+  ('vendor-medallion-paint-world', 'Medallions Paint World', 'orders@medallionpaintpw.com',
     '[{"name":"Fort Lauderdale","address":"5020 South State Road #7, Fort Lauderdale, FL 33314"}]'::jsonb, true),
   ('vendor-sunbelt-rentals', 'Sunbelt Rentals (equipment)', 'carol.flammia@sunbeltrentals.com',
     '[{"name":"Expressway Dr N","address":"3665 Expressway Dr North"}]'::jsonb, true),
