@@ -272,7 +272,12 @@ export function estimateOrderGallons(
       buckets: bucketsCount,
       cans,
       gallons: bucketsCount * cfg.bucketSizeGallons + cans,
-      needsMeasurement: sizable ? b.anyMissingFloor : true,
+      // Mixed sized + unsized (e.g. same color on walls AND cabinets in a
+      // room): the gallons cover only the sized surfaces, so the figure is an
+      // UNDER-count. Flag needsMeasurement so the UI surfaces "may be low" —
+      // otherwise the worker would see a clean gallon number and miss the
+      // cabinets contribution.
+      needsMeasurement: sizable ? (b.anyMissingFloor || b.unsized) : true,
       unsized: !sizable && b.unsized,
     });
   }

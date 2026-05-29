@@ -162,6 +162,26 @@ console.log("\nreal height used when present (10ft taller → more wall):");
   check("height 10 → walls totalSqft 890", out[0]?.totalSqft === 890, `${out[0]?.totalSqft}`);
 }
 
+console.log("\nmixed sized + unsized same color (walls + cabinets) — flag as may-be-low:");
+{
+  // Same color on Walls (sized) AND Cabinets (unsized) in one room. Gallons
+  // cover only walls — so the figure is an UNDER-count and the bucket must
+  // surface needsMeasurement so the UI shows "may be low" instead of looking
+  // like a clean quantity.
+  const r = room({
+    woliId: "w1", floorAreaSqft: 144, perimeterLf: 48, heightFt: 8, coats: 2,
+    surfaces: [
+      surf("walls", "MIX", "Walls", "Eggshell"),
+      surf("unsized", "MIX", "Cabinets", "Eggshell"),
+    ],
+  });
+  const out = estimateOrderGallons([r]);
+  check("mixed bucket has gallons (sized contribution counted)", (out[0]?.buckets ?? 0) + (out[0]?.cans ?? 0) > 0);
+  check("mixed bucket needsMeasurement=true (under-count warning)", out[0]?.needsMeasurement === true);
+  check("mixed bucket unsized=false (still has sized gallons)", out[0]?.unsized === false);
+  check("mixed bucket surfaces include both Walls AND Cabinets", out[0]?.surfaces.includes("Walls") === true && out[0]?.surfaces.includes("Cabinets") === true);
+}
+
 console.log("\nformatOrderQuantity packaging strings:");
 {
   const mk = (buckets: number, cans: number) => ({ buckets, cans, unsized: false, needsMeasurement: false } as never);
