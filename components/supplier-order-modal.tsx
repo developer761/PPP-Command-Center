@@ -426,25 +426,23 @@ export default function SupplierOrderModal({
                       Settings → Suppliers, or use Copy-to-Clipboard below and paste into Gmail.
                     </div>
                   )}
-                  {/* Paint quantities are SYSTEM ESTIMATES (derived from the
-                      floor-area measurement in Salesforce). App-only banner —
-                      the vendor email shows clean numbers with no "estimate"
-                      wording. The worker reviews the buy-list before sending. */}
-                  {draft.gallonEstimates.length > 0 && (
-                    <div className="bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-4 py-3 text-xs text-ppp-blue-700">
-                      <strong>Paint quantities are estimates.</strong> Gallons are calculated from the
-                      square footage in Salesforce — review the buy-list below and adjust the email if a
-                      job needs more (heavy texture, dark-over-light, etc.) before sending.
-                    </div>
-                  )}
-
                   {/* The clean "what to buy" shopping list — per color, whole
                       gallons. Mirrors the ORDER section of the email so the
-                      worker eyeballs quantities without scanning the body. */}
+                      worker eyeballs quantities without scanning the body.
+                      "Estimate" framing lives in the header (app-only) — the
+                      vendor email shows clean numbers with no estimate wording. */}
                   {draft.gallonEstimates.length > 0 && (
                     <div className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden">
-                      <div className="px-4 py-2 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-ppp-charcoal">Order — what to buy</span>
+                      <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-semibold text-ppp-charcoal">Order — what to buy</span>
+                          <span
+                            className="text-[10px] uppercase tracking-wider text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 px-1.5 py-0.5 rounded-full font-medium"
+                            title="Gallons are calculated from the square footage in Salesforce. Review the list and adjust the email if a job needs more (heavy texture, dark-over-light, etc.)."
+                          >
+                            estimated
+                          </span>
+                        </div>
                         {(() => {
                           const t = summarizeOrder(draft.gallonEstimates);
                           if (t.buckets === 0 && t.cans === 0) return null;
