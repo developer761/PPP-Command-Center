@@ -73,7 +73,7 @@ export default function SupplierSettingsEditor() {
   if (state.status === "loading") {
     return (
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-        Loading suppliers from the Salesforce snapshot…
+        Loading your vendors…
       </div>
     );
   }
@@ -110,7 +110,7 @@ export default function SupplierSettingsEditor() {
         <p className="text-[11px] text-ppp-charcoal-500 mt-2.5 leading-relaxed">
           Each supplier needs an <strong>order email</strong> set before the Supplier Order Modal can send orders to them.
           PPP&apos;s account number is recommended (gets substituted into the email body) but not strictly required.
-          Sorted by color count in PPP&apos;s catalog — top suppliers first.
+          These are the vendors PPP orders from — active and configured first.
         </p>
       </div>
 
