@@ -18,6 +18,7 @@ type SearchableSnapshot = {
   workOrders?: Array<{
     id: string;
     workOrderNumber: string | null;
+    accountId?: string | null;
     accountName: string | null;
     status: string | null;
     ownerName: string | null;
@@ -152,7 +153,9 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
           id: a.id,
           label: a.name,
           sublabel: [a.type, a.region].filter(Boolean).join(" · ") || "Account",
-          href: `/dashboard/rep`, // account pages don't exist yet — fall to rep index
+          // Customer History page (built since this search shipped). Opens the
+          // actual customer record instead of dumping on the rep index.
+          href: `/dashboard/customer/${a.id}`,
         });
       }
     }
@@ -171,7 +174,9 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
           id: w.id,
           label: `WO ${w.workOrderNumber ?? w.id.slice(-6)}`,
           sublabel: [w.accountName, w.status, w.ownerName].filter(Boolean).join(" · "),
-          href: w.opportunityId ? `/dashboard/rep` : "/dashboard",
+          // Open the WO's customer record when we know the account; otherwise
+          // fall to Materials (where WOs are actioned), never a dead generic page.
+          href: w.accountId ? `/dashboard/customer/${w.accountId}` : "/dashboard/materials",
         });
       }
     }

@@ -51,6 +51,7 @@ export async function GET(request: Request) {
         .map((w) => ({
           id: w.id,
           workOrderNumber: w.workOrderNumber,
+          accountId: w.accountId,
           accountName: w.accountName,
           status: w.status,
           ownerName: w.ownerName,
