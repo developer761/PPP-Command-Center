@@ -115,6 +115,13 @@ export default function CustomerFormView({ token, customerName, formData, copy }
   const submitInFlight = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  // Transient confirmation for "apply color to all areas".
+  const [applyToast, setApplyToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!applyToast) return;
+    const t = setTimeout(() => setApplyToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [applyToast]);
 
   // Delivery address is DISPLAY-ONLY (Katie 2026-05-29). It's the address on
   // file in Salesforce; the customer can't edit it here — if it's wrong they
@@ -179,6 +186,48 @@ export default function CustomerFormView({ token, customerName, formData, copy }
         },
       },
     }));
+  };
+
+  // "Apply this color to all areas" (Katie 2026-05-29). Fills ONLY rooms that
+  // (a) have this surface in scope and (b) don't already have a color for it —
+  // never overwrites a deliberate pick. Carries the finish along so each filled
+  // surface lands complete. Targets are read from the current committed state
+  // (closure) so the count + toast are exact, then applied in one setState.
+  const applyColorToAll = (sourceLineId: string, surface: string, pick: SurfacePick) => {
+    if (!pick.colorId) return;
+    const targets = formData.lineItems.filter((li) => {
+      if (li.id === sourceLineId) return false;
+      if (!li.surfaces.includes(surface)) return false;
+      const cur = state[li.id]?.picks[surface];
+      return !!cur && !cur.skipped && !cur.colorId;
+    });
+    if (targets.length === 0) {
+      setApplyToast(`Every other room's ${surface.toLowerCase()} is already set or skipped — nothing to fill.`);
+      return;
+    }
+    const finish = pick.finish ?? defaultFinishForSurface(surface);
+    const targetIds = new Set(targets.map((li) => li.id));
+    setState((prev) => {
+      const next = { ...prev };
+      for (const id of targetIds) {
+        next[id] = {
+          ...next[id],
+          picks: {
+            ...next[id].picks,
+            [surface]: {
+              ...next[id].picks[surface],
+              colorId: pick.colorId,
+              colorName: pick.colorName,
+              colorCode: pick.colorCode,
+              colorHex: pick.colorHex,
+              finish,
+            },
+          },
+        };
+      }
+      return next;
+    });
+    setApplyToast(`Applied ${pick.colorName ?? "color"} to ${targets.length} more ${targets.length === 1 ? "room" : "rooms"}.`);
   };
 
   const updateLineNotes = (lineId: string, notes: string) => {
@@ -311,7 +360,9 @@ export default function CustomerFormView({ token, customerName, formData, copy }
             lineItem={li}
             state={state[li.id]}
             token={token}
+            canApplyToAll={formData.lineItems.length > 1}
             onSurfaceChange={(surface, patch) => updateSurfacePick(li.id, surface, patch)}
+            onApplyToAll={(surface, pick) => applyColorToAll(li.id, surface, pick)}
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
           />
         ))
@@ -393,6 +444,14 @@ export default function CustomerFormView({ token, customerName, formData, copy }
         </div>
       )}
     </form>
+    {applyToast && (
+      <div
+        role="status"
+        className="fixed inset-x-0 bottom-4 z-50 mx-auto w-fit max-w-[90vw] px-4 py-2.5 rounded-full bg-ppp-navy text-white text-sm font-medium shadow-lg shadow-ppp-navy/30 animate-fade-up"
+      >
+        {applyToast}
+      </div>
+    )}
     </CatalogContext.Provider>
   );
 }
@@ -404,14 +463,18 @@ function LineItemSection({
   lineItem,
   state,
   token,
+  canApplyToAll,
   onSurfaceChange,
+  onApplyToAll,
   onNotesChange,
 }: {
   index: number;
   lineItem: FormLineItem;
   state: LineItemState | undefined;
   token: string;
+  canApplyToAll: boolean;
   onSurfaceChange: (surface: string, patch: Partial<SurfacePick>) => void;
+  onApplyToAll: (surface: string, pick: SurfacePick) => void;
   onNotesChange: (notes: string) => void;
 }) {
   if (!state) return null;
@@ -457,7 +520,9 @@ function LineItemSection({
             surface={surface}
             pick={state.picks[surface] ?? emptyPick()}
             token={token}
+            canApplyToAll={canApplyToAll}
             onChange={(patch) => onSurfaceChange(surface, patch)}
+            onApplyToAll={() => onApplyToAll(surface, state.picks[surface] ?? emptyPick())}
           />
         ))}
         <div>
@@ -483,12 +548,16 @@ function SurfaceRow({
   surface,
   pick,
   token,
+  canApplyToAll,
   onChange,
+  onApplyToAll,
 }: {
   surface: string;
   pick: SurfacePick;
   token: string;
+  canApplyToAll: boolean;
   onChange: (patch: Partial<SurfacePick>) => void;
+  onApplyToAll: () => void;
 }) {
   const toggleSkip = () => {
     if (pick.skipped) {
@@ -585,6 +654,18 @@ function SurfaceRow({
               <span className="text-[10px] text-ppp-orange-700 font-medium">
                 Pick a finish for this color
               </span>
+            )}
+            {/* Apply this color to the same surface in every other room that
+                doesn't have one yet (Katie 2026-05-29) — fill-empty-only,
+                never overwrites. Only offered with a color picked + >1 room. */}
+            {pick.colorId && canApplyToAll && (
+              <button
+                type="button"
+                onClick={onApplyToAll}
+                className="inline-flex items-center justify-end gap-1 text-[11px] text-ppp-blue hover:text-ppp-blue-700 font-medium text-right"
+              >
+                <span aria-hidden>⮌</span> Apply to all areas
+              </button>
             )}
             {/* Desktop-only skip link — under finish dropdown to match
                 visual rhythm. Mobile gets the inline link in the label row. */}
