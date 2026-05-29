@@ -31,6 +31,12 @@ export function scopeSnapshotToViewer(
       accounts: [],
       quotes: [],
       woLineItems: [],
+      // leadStats is a COMPANY-WIDE aggregate (no per-rep breakdown available).
+      // Zero it in scoped views or a worker's Conversion Rate card would show
+      // whole-company Leads→Opps numbers on their own scoped dashboard — both a
+      // cross-scope data exposure and a semantically wrong figure. Zeroed →
+      // dashboard hides the card (it only renders when leadStats.total > 0).
+      leadStats: { total: 0, converted: 0 },
       // Paint colors are a global directory — leave intact so the materials
       // page can resolve names even if no WOLI rows survive scoping.
     };
@@ -90,6 +96,11 @@ export function scopeSnapshotToViewer(
     accounts,
     quotes,
     woLineItems,
+    // leadStats is a COMPANY-WIDE aggregate (Lead.ConvertedOpportunityId carries
+    // no owner we can filter on). Leaving it intact would render whole-company
+    // Leads→Opps on a worker's scoped Conversion Rate card — a cross-scope leak
+    // AND a wrong number for that rep. Zero it so the card hides in scoped views.
+    leadStats: { total: 0, converted: 0 },
     // Paint colors stay full — they're a 5k-row directory used to resolve
     // color references; not sensitive and not viewer-scoped data.
   };
