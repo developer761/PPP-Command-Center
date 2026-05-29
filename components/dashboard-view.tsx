@@ -125,8 +125,11 @@ export default function DashboardView({ bundle, formSummary }: Props) {
     if (!snapshot) return null;
     // Canonical rep universe only (FPRC §B) — admins/office staff would
     // otherwise dilute the company averages. Mock reps (isFieldStandard
-    // undefined) are treated as field.
-    const fieldReps = reps.filter((r) => r.isFieldStandard !== false);
+    // undefined) are treated as field. ALSO honor the Region filter so the
+    // headline cards re-scope with it (previously they stayed company-wide
+    // while only the lower cards narrowed — a confusing split-brain filter).
+    const regionScoped = region === "all" ? reps : reps.filter((r) => r.region === region);
+    const fieldReps = regionScoped.filter((r) => r.isFieldStandard !== false);
     const totalRevenue = fieldReps.reduce((s, r) => s + r.revenueSold, 0); // $K
     const openPipelineK = fieldReps.reduce((s, r) => s + r.openPipeline, 0);
     // Ratios are WEIGHTED (Σnumerator ÷ Σdenominator), never mean-of-means
@@ -147,7 +150,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
       avgTicket: +avgTicket.toFixed(1),
       openPipelineK,
     };
-  }, [snapshot, reps]);
+  }, [snapshot, reps, region]);
 
   // Company Conversion Rate = Leads → Opps over the trailing 365d (Katie
   // 2026-05-29). Aggregate counts ride along in the snapshot; null hides the
@@ -516,9 +519,16 @@ export default function DashboardView({ bundle, formSummary }: Props) {
         <div className={`grid grid-cols-2 ${conversionRate !== null ? "lg:grid-cols-5" : "lg:grid-cols-4"} gap-3 sm:gap-4`}>
           <KPICard
             label="Revenue Sold"
-            value={fmtMoneyK(revenueKpi.value)}
-            change={period === "lifetime" ? "All time" : `${sign(revenueKpi.change)}% vs prior`}
-            trend={period === "lifetime" ? "flat" : revenueKpi.trend}
+            // Region-scoped revenue (from the filtered reps) when a region is
+            // selected, so this card agrees with the other three; company-wide
+            // period-delta otherwise.
+            value={fmtMoneyK(snapshot && region !== "all" && liveKpis ? liveKpis.totalRevenue : revenueKpi.value)}
+            change={
+              snapshot && region !== "all"
+                ? `${region} · this period`
+                : period === "lifetime" ? "All time" : `${sign(revenueKpi.change)}% vs prior`
+            }
+            trend={snapshot && region !== "all" ? "flat" : period === "lifetime" ? "flat" : revenueKpi.trend}
             accent="blue"
           />
           <KPICard

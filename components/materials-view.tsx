@@ -28,9 +28,12 @@ type Props = {
   formStatuses?: FormStatus[];
   /** 8-stage progress timeline per WO. Same array-not-Map reason. */
   woProgress?: WoProgress[];
+  /** Deep-link target — when set, this WO is pre-selected on load (links from
+   *  Customer History, the mail timeline, the activity feed, search). */
+  initialWoId?: string | null;
 };
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [] }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null }: Props) {
   const { snapshot, viewer } = bundle;
 
   // Index form statuses by WO id for constant-time lookup in the render loop.
@@ -129,7 +132,12 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     });
   }, [openJobs, searchQuery]);
 
-  const [activeWoId, setActiveWoId] = useState<string | null>(null);
+  // Seed from the ?wo= deep-link when that WO is actually an open materials
+  // job; otherwise start unselected (the WO may be closed / out of scope, in
+  // which case showing the list is the right fallback rather than a dead select).
+  const [activeWoId, setActiveWoId] = useState<string | null>(
+    () => (initialWoId && openJobs.some((j) => j.wo.id === initialWoId) ? initialWoId : null)
+  );
   const activeJob = useMemo(
     () => openJobs.find((j) => j.wo.id === activeWoId) ?? null,
     [openJobs, activeWoId]
@@ -960,9 +968,11 @@ function DraftOrderModal({
   // Esc key closes the modal — keyboard a11y for the rest of Phase 2.
   useEscClose(onClose);
 
-  // Multi-select state. By default everything checked when ≥2 suppliers
-  // (the common case — worker clicked "Order materials · N" to see them
-  // all). Single-supplier WOs don't need the multi-select UI at all.
+  // Multi-select state for the "compose all" batch. Starts EMPTY on purpose —
+  // these checkboxes gate outbound supplier emails, so the worker explicitly
+  // ticks who to order from rather than us pre-selecting (and risking an
+  // accidental send to a supplier they didn't intend). "Compose all (N)"
+  // appears once they've ticked 2+.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -1260,6 +1270,11 @@ function SendColorFormButton({
   const [customerEmail, setCustomerEmail] = useState(defaultEmail ?? "");
   const [customerName, setCustomerName] = useState(accountName ?? "");
   const [sending, setSending] = useState(false);
+  // Synchronous double-fire guard. The create endpoint has no idempotency —
+  // each call mints a NEW token + sends a NEW email — so two rapid clicks
+  // (React batches setSending) would create two live links for one WO. The ref
+  // updates synchronously, catching the second click before state commits.
+  const sendInFlight = useRef(false);
   const [result, setResult] = useState<
     | null
     | { ok: true; formUrl: string; resendId: string }
@@ -1281,6 +1296,8 @@ function SendColorFormButton({
 
   const send = async () => {
     if (!customerEmail.trim()) return;
+    if (sendInFlight.current || sending) return;
+    sendInFlight.current = true;
     setSending(true);
     setResult(null);
     try {
@@ -1304,6 +1321,7 @@ function SendColorFormButton({
       setResult({ ok: false, error: m });
     } finally {
       setSending(false);
+      sendInFlight.current = false;
     }
   };
 
@@ -1362,7 +1380,7 @@ function SendColorFormButton({
                   />
                 </div>
                 <div className="text-[11px] text-ppp-charcoal-500 italic">
-                  Link expires in 30 days. Customer can&apos;t see it&apos;s from PPP staff.
+                  Link expires 24 hours before the job&apos;s scheduled start (up to 30 days out). Customer can&apos;t see it&apos;s from PPP staff.
                 </div>
               </div>
             )}

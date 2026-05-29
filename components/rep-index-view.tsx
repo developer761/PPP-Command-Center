@@ -247,7 +247,13 @@ export default function RepIndexView({ bundle }: Props) {
           <FilterDropdown<SortKey>
             value={sortKey}
             options={SORT_OPTIONS}
-            onChange={setSortKey}
+            onChange={(k) => {
+              setSortKey(k);
+              // Default direction to match the option's intent: Name → A→Z
+              // (asc), numeric metrics → highest-first (desc). User can still
+              // flip with the direction toggle.
+              setSortDir(k === "name" ? "asc" : "desc");
+            }}
             srLabel="Sort by"
             icon={<IconSort />}
           />

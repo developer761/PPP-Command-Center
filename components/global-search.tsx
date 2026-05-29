@@ -30,6 +30,8 @@ type SearchableSnapshot = {
 const PAGES: SearchResult[] = [
   { kind: "page", id: "p:overview", label: "Overview", sublabel: "Company dashboard", href: "/dashboard" },
   { kind: "page", id: "p:rep", label: "Rep Profiles", sublabel: "Per-rep analytics", href: "/dashboard/rep" },
+  { kind: "page", id: "p:customers", label: "Customers", sublabel: "Customer directory + history", href: "/dashboard/customers" },
+  { kind: "page", id: "p:inbox", label: "Mail", sublabel: "Inbox + sent + delivery", href: "/dashboard/inbox" },
   { kind: "page", id: "p:financials", label: "Financials", sublabel: "AR, GP, discounts, commissions", href: "/dashboard/financials" },
   { kind: "page", id: "p:operations", label: "Operations", sublabel: "Labor, capacity, materials cost", href: "/dashboard/operations" },
   { kind: "page", id: "p:map", label: "Map", sublabel: "Geographic heatmap", href: "/dashboard/map" },

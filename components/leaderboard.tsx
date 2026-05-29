@@ -15,7 +15,7 @@ type Props = {
 
 const COLUMNS: { key: SortKey; label: string; align: "right"; format: (r: Rep) => string }[] = [
   { key: "revenueSold", label: "Revenue", align: "right", format: (r) => fmtMoneyK(r.revenueSold) },
-  { key: "closeRate", label: "Conv.", align: "right", format: (r) => `${r.closeRate.toFixed(1)}%` },
+  { key: "closeRate", label: "Close", align: "right", format: (r) => `${r.closeRate.toFixed(1)}%` },
   { key: "avgTicket", label: "Avg Ticket", align: "right", format: (r) => fmtMoneyK(r.avgTicket) },
   { key: "openPipeline", label: "Open Pipeline", align: "right", format: (r) => fmtMoneyK(r.openPipeline) },
 ];
@@ -214,7 +214,7 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
                           {col.format(r)}
                         </div>
                         <div className="text-[9px] uppercase tracking-wide text-ppp-charcoal-500 mt-0.5">
-                          {col.label === "Open Pipeline" ? "Pipe" : col.label === "Close Rate" ? "Close" : col.label === "Avg Ticket" ? "Tkt" : "Rev"}
+                          {col.key === "openPipeline" ? "Pipe" : col.key === "closeRate" ? "Close" : col.key === "avgTicket" ? "Tkt" : "Rev"}
                         </div>
                       </div>
                     ))}

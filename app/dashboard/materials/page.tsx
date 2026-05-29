@@ -34,11 +34,18 @@ export default async function MaterialsOrderingPage({
   const formStatuses = Array.from(aux.formStatusByWO.values());
   const woProgress = Array.from(aux.progressByWO.values());
 
+  // Deep-link support: ?wo=<id> pre-selects that work order (links from
+  // Customer History, the mail timeline, the activity feed, search, etc. all
+  // expect the WO to open, not dump the user on the full list).
+  const rawWo = sp.wo;
+  const initialWoId = typeof rawWo === "string" ? rawWo : Array.isArray(rawWo) ? rawWo[0] : null;
+
   return (
     <MaterialsView
       bundle={bundle}
       formStatuses={formStatuses}
       woProgress={woProgress}
+      initialWoId={initialWoId ?? null}
     />
   );
 }
