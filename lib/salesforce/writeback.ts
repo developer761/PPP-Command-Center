@@ -93,7 +93,7 @@ export async function writeSf(
           retryCount: attempts - 1,
           durationMs: Date.now() - t0,
         });
-        clearSalesforceCache();
+        await clearSalesforceCache();
         return { ok: true, recordId: attempt.recordId, attempts };
       }
       // SF returned a non-success — extract error info, don't retry validation errors

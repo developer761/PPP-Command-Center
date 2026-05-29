@@ -1,5 +1,7 @@
 import "server-only";
 
+import { gzipSync, gunzipSync } from "zlib";
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 
 /**
@@ -48,8 +50,97 @@ async function cached<T>(key: string, fetcher: () => Promise<T>, ttlMs: number =
   return promise;
 }
 
-export function clearSalesforceCache() {
+export async function clearSalesforceCache() {
   cache.clear();
+  // Also invalidate the SHARED snapshot cache — otherwise a manual refresh or a
+  // post-writeback invalidation would just re-read the stale blob and mask the
+  // fresh data. Best-effort; awaited so the very next snapshot read re-pulls.
+  await invalidateSharedSnapshot("snapshot-v5");
+}
+
+async function invalidateSharedSnapshot(key: string): Promise<void> {
+  try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return;
+    await snapshotCacheClient().from("snapshot_cache").delete().eq("key", key);
+  } catch (err) {
+    console.warn("[SF] shared snapshot invalidate failed (non-fatal):", err instanceof Error ? err.message : err);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Shared (cross-instance) snapshot cache — speed fix #150.
+ *
+ * The in-memory `cache` above is per serverless instance, so cold instances
+ * keep re-paging Salesforce (8-15s). This layer stores the finished snapshot
+ * (gzipped) in Supabase so any instance can read what one instance computed.
+ *
+ * SAFETY CONTRACT: this is a PURE optimization. Every failure path (missing
+ * table / migration not run / Supabase error / stale / corrupt / oversized
+ * blob / shape mismatch) returns null (read) or no-ops (write), so the caller
+ * transparently falls back to the live Salesforce query — today's exact
+ * behavior. It can only make the dashboard faster, never break or change it.
+ * ───────────────────────────────────────────────────────────────── */
+
+const SHARED_SNAPSHOT_MAX_GZ_BYTES = 45 * 1024 * 1024; // refuse to push an absurd blob into Postgres
+
+function snapshotCacheClient() {
+  return createSupabaseAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
+
+async function readSharedSnapshot(key: string): Promise<SalesforceSnapshot | null> {
+  try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return null;
+    const sb = snapshotCacheClient();
+    const { data, error } = await sb
+      .from("snapshot_cache")
+      .select("payload_gz, expires_at")
+      .eq("key", key)
+      .maybeSingle();
+    if (error || !data) return null;
+    if (new Date(data.expires_at as string).getTime() < Date.now()) return null; // stale
+    const json = gunzipSync(Buffer.from(data.payload_gz as string, "base64")).toString("utf-8");
+    const parsed = JSON.parse(json) as SalesforceSnapshot;
+    // Shape sanity — never trust a malformed/partial blob.
+    if (
+      !parsed ||
+      !Array.isArray(parsed.opportunities) ||
+      !Array.isArray(parsed.workOrders) ||
+      !Array.isArray(parsed.reps) ||
+      !Array.isArray(parsed.accounts)
+    ) {
+      return null;
+    }
+    console.log(`[SF] snapshot served from SHARED cache (${parsed.opportunities.length} opps, ${parsed.workOrders.length} WOs)`);
+    return parsed;
+  } catch (err) {
+    console.warn("[SF] shared snapshot read failed — falling back to live query:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+async function writeSharedSnapshot(key: string, snap: SalesforceSnapshot): Promise<void> {
+  try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return;
+    const gz = gzipSync(Buffer.from(JSON.stringify(snap), "utf-8"));
+    if (gz.length > SHARED_SNAPSHOT_MAX_GZ_BYTES) {
+      console.warn(`[SF] snapshot too large to share-cache (${(gz.length / 1e6).toFixed(1)}MB gz) — skipping shared write`);
+      return;
+    }
+    const sb = snapshotCacheClient();
+    await sb.from("snapshot_cache").upsert({
+      key,
+      payload_gz: gz.toString("base64"),
+      fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
+    });
+    console.log(`[SF] snapshot written to SHARED cache (${(gz.length / 1e6).toFixed(1)}MB gz)`);
+  } catch (err) {
+    console.warn("[SF] shared snapshot write failed (non-fatal):", err instanceof Error ? err.message : err);
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -583,6 +674,13 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
   // auto-prefill). Falls back gracefully when org doesn't have Person
   // Accounts enabled (rich SELECT errors → base SELECT runs successfully).
   return cached("snapshot-v5", async () => {
+    // Cross-instance fast path: if another instance already built a fresh
+    // snapshot, read it (one gzipped Supabase row) instead of re-paging
+    // Salesforce ~45 times. Pure optimization — readSharedSnapshot returns null
+    // on ANY problem, so we fall through to the live query below unchanged.
+    const sharedHit = await readSharedSnapshot("snapshot-v5");
+    if (sharedHit) return sharedHit;
+
     const conn = await getSalesforceClient();
 
     // STEP 1: Discover Opportunity schema + pick the canonical revenue field.
@@ -1682,7 +1780,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     const instanceUrl = conn.instanceUrl ?? null;
     const isSandbox = instanceUrl ? /sandbox\.my\.salesforce\.com/i.test(instanceUrl) : false;
 
-    return {
+    const snapshot: SalesforceSnapshot = {
       reps,
       opportunities,
       workOrders,
@@ -1702,6 +1800,10 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       isSandbox,
       instanceUrl,
     };
+    // Populate the shared cache so OTHER cold instances skip the SF paging.
+    // Best-effort + non-blocking — a write failure never affects this response.
+    void writeSharedSnapshot("snapshot-v5", snapshot);
+    return snapshot;
   });
 }
 

@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   const last = lastRefreshByUser.get(data.user.id) ?? 0;
   if (now - last >= REFRESH_COOLDOWN_MS) {
     lastRefreshByUser.set(data.user.id, now);
-    clearSalesforceCache();
+    await clearSalesforceCache();
   }
 
   // Redirect back to the page the user clicked from. Same-origin guard above
