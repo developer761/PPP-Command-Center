@@ -429,7 +429,11 @@ function resolveLineItems(
         windows: woli.numWindows,           // 0/missing → estimator default (1/room)
         closets: woli.numClosets,           // 0/missing → estimator default (0/room)
         coats: woli.numCoats,               // 0/missing → estimator default (2)
-        paintDoorFaces: false,              // no WO scope flag yet → casings only
+        // Katie's rule: when WOLI.# of doors is explicitly set, those door
+        // faces (room-side) are in scope along with the casings. Default-
+        // assumed doors (1/room fallback) don't trigger faces — only an
+        // explicit count from the estimator does.
+        paintDoorFaces: woli.numDoors > 0,
         surfaces: roomSurfaces,
       });
     }

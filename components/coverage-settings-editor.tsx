@@ -16,46 +16,49 @@ type Group = { title: string; note?: string; fields: FieldDef[] };
 
 const GROUPS: Group[] = [
   {
-    title: "Coverage & coats",
+    title: "How far paint goes & how many coats",
     fields: [
-      { key: "coverageSqftPerGallon", label: "Coverage rate", suffix: "sq ft / gal", help: "BM Regal ~400; 375 is conservative" },
-      { key: "defaultCoats", label: "Default coats", help: "When the line item doesn't specify" },
-      { key: "bufferPct", label: "Buffer", suffix: "%", percent: true, help: "Added to every color at the job level" },
+      { key: "coverageSqftPerGallon", label: "Paint coverage", suffix: "sq ft / gal", help: "How many square feet one gallon covers. Most paint does 350–400; we use 375 to stay safe and never run short." },
+      { key: "defaultCoats", label: "Coats of paint", help: "How many coats we assume when the job doesn't say. Standard is 2." },
+      { key: "bufferPct", label: "Extra cushion", suffix: "%", percent: true, help: "A little extra added to every color so a crew never runs out mid-job. 10% means order 10% more." },
     ],
   },
   {
-    title: "Room defaults (used when a room's dimensions aren't entered)",
+    title: "If a room's size isn't filled in, assume this",
+    note: "Salesforce often doesn't have a room's exact height or door/window counts. These are the fallback guesses used when it's blank.",
     fields: [
-      { key: "defaultHeightFt", label: "Ceiling height", suffix: "ft" },
-      { key: "defaultDoorsPerRoom", label: "Doors / room" },
-      { key: "defaultWindowsPerRoom", label: "Windows / room" },
-      { key: "defaultClosetsPerRoom", label: "Closets / room" },
+      { key: "defaultHeightFt", label: "Ceiling height", suffix: "ft", help: "Assumed room height when it isn't recorded. Most homes are 8 ft." },
+      { key: "defaultDoorsPerRoom", label: "Doors per room", help: "Assumed number of doors when not recorded." },
+      { key: "defaultWindowsPerRoom", label: "Windows per room", help: "Assumed number of windows when not recorded." },
+      { key: "defaultClosetsPerRoom", label: "Closets per room", help: "Assumed number of closets when not recorded." },
     ],
   },
   {
-    title: "Wall deductions (subtracted from wall area, per opening)",
+    title: "Wall space that doesn't get painted",
+    note: "Doors, windows, and closet openings aren't wall — we subtract their size from the wall area so you don't over-order.",
     fields: [
-      { key: "deductDoorSqft", label: "Door", suffix: "sq ft" },
-      { key: "deductWindowSqft", label: "Window", suffix: "sq ft" },
-      { key: "deductClosetSqft", label: "Closet", suffix: "sq ft" },
+      { key: "deductDoorSqft", label: "A door covers", suffix: "sq ft", help: "Wall space one door takes up. About 20 sq ft." },
+      { key: "deductWindowSqft", label: "A window covers", suffix: "sq ft", help: "Wall space one window takes up. About 15 sq ft." },
+      { key: "deductClosetSqft", label: "A closet covers", suffix: "sq ft", help: "Wall space one closet opening takes up. About 30 sq ft." },
     ],
   },
   {
-    title: "Trim (casings added per opening + width)",
+    title: "Trim & casings",
+    note: "Trim paint is figured from the trim around the room plus the casing around each door, window, and closet.",
     fields: [
-      { key: "casingDoorLf", label: "Door casing", suffix: "lin ft" },
-      { key: "casingWindowLf", label: "Window casing", suffix: "lin ft" },
-      { key: "casingClosetLf", label: "Closet casing", suffix: "lin ft" },
-      { key: "trimWidthFt", label: "Trim width", suffix: "ft", help: "Converts linear ft → sq ft (3\" = 0.25)" },
-      { key: "doorFaceSqft", label: "Door face", suffix: "sq ft", help: "Single-sided, when door faces are in scope" },
+      { key: "casingDoorLf", label: "Trim around a door", suffix: "linear ft", help: "Feet of casing around one door. About 17 ft." },
+      { key: "casingWindowLf", label: "Trim around a window", suffix: "linear ft", help: "Feet of casing around one window. About 15 ft." },
+      { key: "casingClosetLf", label: "Trim around a closet", suffix: "linear ft", help: "Feet of casing around one closet. About 18 ft." },
+      { key: "trimWidthFt", label: "Trim width", suffix: "ft", help: "How wide the trim is, to turn length into paintable area. 3 inches = 0.25 ft." },
+      { key: "doorFaceSqft", label: "Door face", suffix: "sq ft", help: "Paint for the room-facing side of a door. Added automatically whenever a work order lists a door count for the room. About 20 sq ft." },
     ],
   },
   {
-    title: "Packaging",
-    note: "Individual gallons up to the threshold; switch to buckets above it.",
+    title: "Single gallons vs. buckets",
+    note: "Small amounts are ordered as single gallons; bigger amounts switch to 5-gallon buckets (cheaper per gallon).",
     fields: [
-      { key: "bucketThresholdGallons", label: "Bucket threshold", suffix: "gal" },
-      { key: "bucketSizeGallons", label: "Bucket size", suffix: "gal" },
+      { key: "bucketThresholdGallons", label: "Switch to buckets above", suffix: "gal", help: "Order single gallons up to this amount; more than this, order a bucket instead. Standard is 4." },
+      { key: "bucketSizeGallons", label: "Bucket size", suffix: "gal", help: "How many gallons are in one bucket. Standard is 5." },
     ],
   },
 ];
@@ -150,7 +153,7 @@ export default function CoverageSettingsEditor() {
   return (
     <div className="space-y-5 animate-fade-up">
       <div className="rounded-lg border border-ppp-blue-100 bg-ppp-blue-50 px-4 py-3 text-xs text-ppp-blue-700">
-        These tune the gallon calculator everywhere — supplier orders + the work-order estimate. Changes take effect on the next order. Leave a value at its default to keep the standard.
+        The system uses these numbers to estimate how much paint to order. They feed both the work-order screen and the order emails sent to suppliers. Change a number, hit Save, and it applies to the next order you build. Not sure about one? Leave it alone, or use &ldquo;Reset to defaults&rdquo; to put everything back.
       </div>
 
       {GROUPS.map((g) => (
@@ -177,8 +180,13 @@ export default function CoverageSettingsEditor() {
                     onChange={(e) => setField(f.key, e.target.value)}
                     className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue ${changed ? "border-ppp-blue-200 bg-ppp-blue-50/40" : "border-ppp-charcoal-100"}`}
                   />
-                  <div className="text-[10px] text-ppp-charcoal-400 mt-1 min-h-[1.1em]">
-                    {f.help ?? (def !== undefined ? `default ${def}${f.suffix ? ` ${f.suffix}` : ""}` : "")}
+                  <div className="text-[10px] text-ppp-charcoal-400 mt-1 leading-snug">
+                    {f.help && <span className="block">{f.help}</span>}
+                    {def !== undefined && (
+                      <span className="block text-ppp-charcoal-400">
+                        Standard: {def}{f.suffix ? ` ${f.suffix}` : ""}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
