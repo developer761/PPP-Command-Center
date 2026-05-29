@@ -14,6 +14,14 @@ import {
 } from "@/lib/salesforce/materials";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 import type { SnapshotAccount, SnapshotPaintColor } from "@/lib/salesforce/queries";
+import {
+  estimateOrderGallons,
+  summarizeOrder,
+  formatBucketsCans,
+  classifySurface,
+  type RoomTakeoff,
+  type RoomSurface,
+} from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
 import SupplierOrderModal from "@/components/supplier-order-modal";
@@ -644,6 +652,50 @@ function JobDetail({
       .sort((a, b) => b.count - a.count);
   }, [job, snapshot]);
 
+  // At-a-glance paint estimate for the whole WO (all colors, no supplier
+  // filter) — so the worker sees the job size before opening the order modal.
+  const paintEstimate = useMemo(() => {
+    const rooms: RoomTakeoff[] = [];
+    for (const li of job.lineItems) {
+      const surfaces: RoomSurface[] = [];
+      const slots = [
+        { label: "Walls", color: li.wall, finish: li.raw.finishWall },
+        { label: "Ceiling", color: li.ceiling, finish: li.raw.finishCeiling },
+        { label: "Trim", color: li.trim, finish: li.raw.finishTrim },
+        { label: "Floor", color: li.floor, finish: li.raw.finishFloor },
+        { label: "Other", color: li.other, finish: li.raw.finishOther },
+      ];
+      for (const s of slots) {
+        if (!s.color) continue;
+        surfaces.push({
+          kind: classifySurface(s.label),
+          surfaceLabel: s.label,
+          colorId: s.color.id,
+          colorName: s.color.name,
+          colorCode: s.color.code,
+          finish: s.finish,
+        });
+      }
+      if (surfaces.length > 0) {
+        rooms.push({
+          woliId: li.raw.id,
+          roomLabel: li.raw.areaLabel ?? "Area",
+          floorAreaSqft: li.raw.sqFootage,
+          wallSurfaceAreaSqft: li.raw.wallSurfaceArea,
+          perimeterLf: li.raw.perimeter,
+          heightFt: li.raw.heightFt,
+          doors: li.raw.numDoors,
+          windows: li.raw.numWindows,
+          closets: li.raw.numClosets,
+          coats: li.raw.numCoats,
+          paintDoorFaces: false,
+          surfaces,
+        });
+      }
+    }
+    return summarizeOrder(estimateOrderGallons(rooms));
+  }, [job]);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -706,6 +758,20 @@ function JobDetail({
               <span className="text-ppp-charcoal-500">· {s.count} color{s.count === 1 ? "" : "s"}</span>
             </div>
           ))}
+          {/* At-a-glance paint estimate (whole WO, all brands) — job size before
+              opening the order. "est." since it's the spec calculator's number. */}
+          {(paintEstimate.buckets > 0 || paintEstimate.cans > 0) && (
+            <div
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ppp-green-50 border border-ppp-green-100 text-[11px] font-medium text-ppp-green-700"
+              title="System estimate of total paint for this work order — review in the order modal before sending"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10" />
+              </svg>
+              <span className="font-semibold">~{formatBucketsCans(paintEstimate.buckets, paintEstimate.cans)}</span>
+              <span className="text-ppp-charcoal-500">est.{paintEstimate.reviewColors > 0 ? ` · ${paintEstimate.reviewColors} to confirm` : ""}</span>
+            </div>
+          )}
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
