@@ -214,7 +214,13 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           {isEditing ? "Your changes are saved!" : copy.thankyouTitle}
         </h1>
         <p className="mt-3 text-sm sm:text-base text-ppp-charcoal-500 max-w-md mx-auto whitespace-pre-line">
-          {isEditing ? "We've updated your color selections. You can come back and adjust them again any time before your job starts." : copy.thankyouBody}
+          {isEditing
+            ? (postSubmitNote
+                // Order already went out — don't tell them they can freely adjust
+                // again; the orange note below explains they must contact us.
+                ? "We've saved your updated color selections."
+                : "We've updated your color selections. You can come back and adjust them again any time before your job starts.")
+            : copy.thankyouBody}
         </p>
         {postSubmitNote && (
           <p className="mt-4 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 max-w-md mx-auto">

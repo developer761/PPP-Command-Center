@@ -132,11 +132,20 @@ export async function POST(
     const freshLi = freshById.get(submitted.id)!;
     const fields: Record<string, string | null> = {};
     for (const s of submitted.surfaces) {
+      const fieldName = SURFACE_TO_FIELD[s.surface.toLowerCase()];
+      // On a RE-EDIT, an explicit "don't paint this" (skipped) must CLEAR any
+      // color we previously wrote — otherwise a customer removing a color on a
+      // second pass silently leaves the old color in SF. First submit keeps the
+      // conservative behavior (a blank surface never overwrites with null), so
+      // we only force-clear when the customer is revising a prior submission.
+      if (isReedit && s.skipped && fieldName) {
+        fields[fieldName] = null;
+        continue;
+      }
       // Skip surfaces the customer didn't pick. Empty/null colorId means the
       // customer chose to skip — don't overwrite any existing value with null
       // unintentionally. (If admin wants to force-clear, they edit in SF.)
       if (!s.colorId) continue;
-      const fieldName = SURFACE_TO_FIELD[s.surface.toLowerCase()];
       if (!fieldName) continue; // Unknown surface label — skip safely
       fields[fieldName] = s.colorId;
     }

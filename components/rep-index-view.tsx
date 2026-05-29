@@ -395,7 +395,7 @@ function RepCard({
       <div className="mt-4 grid grid-cols-3 gap-2 text-center">
         <Metric label="Revenue" value={fmtMoneyK(r.revenueSold)} primary />
         <Metric
-          label="Conv."
+          label="Close"
           value={`${r.closeRate.toFixed(1)}%`}
         />
         <Metric label="Avg Ticket" value={fmtMoneyK(r.avgTicket)} />

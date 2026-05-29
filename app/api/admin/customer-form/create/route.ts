@@ -38,7 +38,17 @@ function computeFormExpiry(scheduledStart: string | null): string {
   const DAY = 86_400_000;
   const now = Date.now();
   if (!scheduledStart) return new Date(now + 30 * DAY).toISOString();
-  const start = new Date(scheduledStart).getTime();
+  // A date-only value (e.g. Opportunity.CloseDate "2026-06-15", used as the
+  // last-resort start anchor) parses as MIDNIGHT UTC — which is the prior
+  // evening on the US East Coast, so "start − 24h" would kill the link ~28h
+  // early. PPP operates Eastern, so anchor a date-only start to noon Eastern
+  // (≈17:00Z) before subtracting 24h. Real datetime starts (WorkOrder.StartDate)
+  // already carry a zone and are parsed as-is. The ≤1h EST/EDT drift is
+  // immaterial next to the full-day error it replaces.
+  const anchored = /^\d{4}-\d{2}-\d{2}$/.test(scheduledStart)
+    ? `${scheduledStart}T12:00:00-05:00`
+    : scheduledStart;
+  const start = new Date(anchored).getTime();
   if (isNaN(start)) return new Date(now + 30 * DAY).toISOString();
   const cutoff = start - DAY; // 24h before start
   const floor = now + 2 * DAY; // never less than 48h of usable time

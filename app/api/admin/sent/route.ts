@@ -121,7 +121,12 @@ export async function GET(request: Request) {
     let orderQuery = sb
       .from("supplier_orders")
       .select("id, work_order_id, work_order_number, supplier_name, po_number, sent_to_email, sent_at, resend_message_id, status, acknowledged_at, delivered_at, delivery_status")
-      .eq("status", "sent")
+      // The Sent tab is the complete record of what actually went out. An order
+      // that progressed past "sent" (acknowledged/delivered) is still a sent
+      // email — keep it visible so its lifecycle chips render. Excludes "failed"
+      // (never sent) and "cancelled" (withdrawn). sent_at NOT NULL is the real
+      // "was it sent" guard.
+      .in("status", ["sent", "acknowledged", "delivered"])
       .not("sent_at", "is", null)
       .order("sent_at", { ascending: false })
       .limit(limit);
