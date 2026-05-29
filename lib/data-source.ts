@@ -15,6 +15,7 @@ import {
   deriveRepMonthly,
   deriveRepRecentDeals,
   deriveRepUpcomingWork,
+  deriveRepRecentlySentQuotes,
   deriveRepsForPeriod,
   derivePeriodDelta,
   derivePipelineAtRisk,
@@ -178,6 +179,14 @@ export function getRepUpcomingWorkFor(
   repId: string
 ): Deal[] | null {
   if (bundle.snapshot) return deriveRepUpcomingWork(bundle.snapshot, repId);
+  return null;
+}
+
+export function getRepRecentlySentQuotesFor(
+  bundle: LiveDashboardBundle,
+  repId: string
+): Deal[] | null {
+  if (bundle.snapshot) return deriveRepRecentlySentQuotes(bundle.snapshot, repId);
   return null;
 }
 

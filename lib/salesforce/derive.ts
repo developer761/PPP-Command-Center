@@ -1481,6 +1481,16 @@ export function deriveRepUpcomingWork(
         s.includes("closed") ||
         s.includes("balance owed")
       ) return false;
+      // Katie 2026-05-29: Upcoming Work should show real upcoming JOBS, not
+      // Estimate / Appointment work orders (those exist on every opp pre-quote
+      // and aren't scheduled paint work).
+      const wt = (w.workTypeName ?? "").toLowerCase();
+      if (
+        wt.includes("estimate") ||
+        wt.includes("appointment") ||
+        wt.includes("inspection") ||
+        wt.includes("consultation")
+      ) return false;
       return true;
     })
     .sort((a, b) => {
@@ -1510,6 +1520,40 @@ export function deriveRepUpcomingWork(
     } as Deal & {
       workOrderNumber: string | null;
       status: string | null;
+    };
+  });
+}
+
+/**
+ * Recently Sent Quotes (Katie 2026-05-29) — companion window to Upcoming Work.
+ * The rep's OPEN opportunities that have an estimate sent, ordered by most
+ * recent Estimate Sent date. This is the rep's "quotes out / awaiting a
+ * decision" follow-up list. Won/lost opps drop off (the quote was decided).
+ */
+export function deriveRepRecentlySentQuotes(
+  snapshot: SalesforceSnapshot,
+  repId: string
+): Array<Deal & { workOrderNumber: string | null; status: string | null }> {
+  if (snapshot.opportunities.length === 0) return [];
+
+  const sent = snapshot.opportunities
+    .filter((o) => o.ownerId === repId)
+    .filter((o) => !o.isClosed)              // still pending a decision
+    .filter((o) => o.estimateSent && !!o.dateEstimateSent)
+    .sort((a, b) => (b.dateEstimateSent ?? "").localeCompare(a.dateEstimateSent ?? ""))
+    .slice(0, 8);
+
+  return sent.map((o) => {
+    const dollars = o.quotedSubtotal > 0 ? o.quotedSubtotal : o.amount;
+    return {
+      id: o.id,
+      customer: o.accountName ?? "(Account)",
+      amount: +(dollars / 1000).toFixed(1),
+      stage: stageBucket(o),
+      closedAt: o.dateEstimateSent, // estimate-sent date — UI labels it "Quote sent"
+      daysInStage: daysSince(o.dateEstimateSent ?? o.createdDate),
+      workOrderNumber: null,
+      status: o.stageName,
     };
   });
 }

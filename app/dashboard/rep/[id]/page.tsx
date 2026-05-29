@@ -13,6 +13,7 @@ import {
   getRepMonthlyFor,
   getRepRecentDealsFor,
   getRepUpcomingWorkFor,
+  getRepRecentlySentQuotesFor,
 } from "@/lib/data-source";
 import { deriveRepsForPeriod, deriveRepAccountStats } from "@/lib/salesforce/derive";
 import { deriveRepScorecard, type RepScorecard } from "@/lib/salesforce/rep-scorecard";
@@ -113,6 +114,7 @@ export default async function RepDetailPage({
   const recentDeals =
     getRepRecentDealsFor(bundle, rep.id) ?? getMockRepRecentDeals(rep.id);
   const upcomingWork = getRepUpcomingWorkFor(bundle, rep.id) ?? [];
+  const recentlySentQuotes = getRepRecentlySentQuotesFor(bundle, rep.id) ?? [];
   const hasActivity =
     monthly.some((m) => m.revenue > 0) || recentDeals.length > 0 || upcomingWork.length > 0;
   const noHistoricalData = !hasActivity;
@@ -1135,6 +1137,97 @@ export default async function RepDetailPage({
                       </div>
                       <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                         {d.closedAt ?? `${d.daysInStage}d open`}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-semibold text-ppp-charcoal">
+                        {d.amount > 0 ? fmtMoneyK(d.amount) : <span className="text-ppp-charcoal-500 font-normal italic">TBD</span>}
+                      </div>
+                      <span
+                        className={[
+                          "inline-flex items-center px-1.5 py-0 mt-1 rounded text-[10px] font-medium border",
+                          STAGE_STYLES[d.stage] ?? STAGE_STYLES["Quoted"],
+                        ].join(" ")}
+                      >
+                        {d.stage}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* ─── Recently Sent Quotes (open opps, by Estimate Sent date) ─── */}
+      {recentlySentQuotes.length > 0 && (
+        <section>
+          <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+            <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-ppp-charcoal">Recently Sent Quotes</h3>
+                <p className="text-xs text-ppp-charcoal-500 mt-0.5">
+                  Open opportunities with an estimate sent — most recent first
+                </p>
+              </div>
+              <span className="text-[11px] font-medium text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 px-2 py-0.5 rounded-full">
+                {recentlySentQuotes.length} quote{recentlySentQuotes.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full min-w-[560px]">
+                <thead className="bg-ppp-charcoal-50 text-[11px] font-semibold tracking-wide text-ppp-charcoal-500 uppercase">
+                  <tr>
+                    <th className="text-left px-6 py-3">Customer</th>
+                    <th className="text-left px-6 py-3">Stage</th>
+                    <th className="text-right px-6 py-3">Quoted</th>
+                    <th className="text-right px-6 py-3">Quote Sent</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {recentlySentQuotes.map((d) => (
+                    <tr key={d.id} className="border-t border-ppp-charcoal-100">
+                      <td className="px-6 py-3.5 font-medium text-ppp-charcoal">
+                        <span className="inline-flex items-center gap-1.5">
+                          {d.customer}
+                          <CustomerBadges acct={accountByName.get(d.customer)} />
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <span
+                          className={[
+                            "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border",
+                            STAGE_STYLES[d.stage] ?? STAGE_STYLES["Quoted"],
+                          ].join(" ")}
+                        >
+                          {d.stage}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5 text-right font-semibold text-ppp-charcoal">
+                        {d.amount > 0 ? fmtMoneyK(d.amount) : <span className="text-ppp-charcoal-500 font-normal italic">TBD</span>}
+                      </td>
+                      <td className="px-6 py-3.5 text-right text-ppp-charcoal-500">
+                        {d.closedAt ?? `${d.daysInStage}d ago`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <ul className="sm:hidden divide-y divide-ppp-charcoal-100">
+              {recentlySentQuotes.map((d) => (
+                <li key={d.id} className="px-5 py-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-ppp-charcoal truncate">
+                        {d.customer}
+                        <CustomerBadges acct={accountByName.get(d.customer)} />
+                      </div>
+                      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                        Quote sent {d.closedAt ?? `${d.daysInStage}d ago`}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
