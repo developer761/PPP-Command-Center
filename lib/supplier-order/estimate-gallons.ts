@@ -72,6 +72,10 @@ export type RoomTakeoff = {
   roomLabel: string;
   /** WOLI.Sq_Footage__c (floor area W×L). 0 / missing → "needs measurement". */
   floorAreaSqft: number;
+  /** WOLI.Wall_Surface_Area__c — the MEASURED paintable wall area. When > 0 we
+   *  trust it directly (most accurate) and skip the perimeter×height estimate +
+   *  opening deductions (the measurement already reflects them). 0 → derive. */
+  wallSurfaceAreaSqft: number;
   /** WOLI.Perimeter__c. 0 / missing → derived as 4×√(floor area). */
   perimeterLf: number;
   /** Room height. 0 / missing → DEFAULT_HEIGHT_FT. */
@@ -122,15 +126,21 @@ export function classifySurface(label: string): PaintSurfaceKind {
   return "unsized";
 }
 
+type RoomCoverage = {
+  ceiling: number; walls: number; trim: number; floor: number;
+  // Per-bucket: was this surface's area derived without the data it needed
+  // (so the figure is an under-count the worker should verify)?
+  ceilingMissing: boolean; wallsMissing: boolean; trimMissing: boolean; floorMissing: boolean;
+};
+
 /** Per-room coverage sq ft for each bucket (2-coat, post-deduction). */
-function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): {
-  ceiling: number; walls: number; trim: number; floor: number; missingFloor: boolean;
-} {
-  const missingFloor = !(room.floorAreaSqft > 0);
+function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   const floor = room.floorAreaSqft > 0 ? room.floorAreaSqft : 0;
+  const noFloor = floor <= 0;
   const coats = room.coats > 0 ? room.coats : cfg.defaultCoats;
   const height = room.heightFt > 0 ? room.heightFt : cfg.defaultHeightFt;
-  const perimeter = room.perimeterLf > 0
+  const haveRealPerimeter = room.perimeterLf > 0;
+  const perimeter = haveRealPerimeter
     ? room.perimeterLf
     : (floor > 0 ? 4 * Math.sqrt(floor) : 0); // assume square when no perimeter
   const doors = room.doors > 0 ? room.doors : cfg.defaultDoorsPerRoom;
@@ -140,15 +150,33 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): {
   const ceilingSqft = floor * coats;
   const floorSqft = floor * coats;
 
-  const grossWall = perimeter * height;
-  const wallDeduct = doors * cfg.deductDoorSqft + windows * cfg.deductWindowSqft + closets * cfg.deductClosetSqft;
-  const wallSqft = Math.max(0, grossWall - wallDeduct) * coats;
+  // Prefer the MEASURED paintable wall area when present (most accurate — it
+  // already reflects this room's real walls + openings). Otherwise estimate
+  // from perimeter × height minus standard opening deductions.
+  const haveMeasuredWall = room.wallSurfaceAreaSqft > 0;
+  let wallSqft: number;
+  if (haveMeasuredWall) {
+    wallSqft = room.wallSurfaceAreaSqft * coats;
+  } else {
+    const grossWall = perimeter * height;
+    const wallDeduct = doors * cfg.deductDoorSqft + windows * cfg.deductWindowSqft + closets * cfg.deductClosetSqft;
+    wallSqft = Math.max(0, grossWall - wallDeduct) * coats;
+  }
 
   const trimLf = perimeter + doors * cfg.casingDoorLf + windows * cfg.casingWindowLf + closets * cfg.casingClosetLf;
   const trimSqft = trimLf * cfg.trimWidthFt * coats
     + (room.paintDoorFaces ? doors * cfg.doorFaceSqft * coats : 0);
 
-  return { ceiling: ceilingSqft, walls: wallSqft, trim: trimSqft, floor: floorSqft, missingFloor };
+  return {
+    ceiling: ceilingSqft, walls: wallSqft, trim: trimSqft, floor: floorSqft,
+    ceilingMissing: noFloor,
+    floorMissing: noFloor,
+    // walls fine if measured directly OR derivable from floor; missing only if neither.
+    wallsMissing: !haveMeasuredWall && noFloor,
+    // trim needs a perimeter; if neither a real perimeter nor a floor to derive
+    // one, it's only the default casings — flag it.
+    trimMissing: !haveRealPerimeter && noFloor,
+  };
 }
 
 /** Package raw gallons into 5-gal buckets + 1-gal cans (Katie's rule). */
@@ -207,16 +235,17 @@ export function estimateOrderGallons(
       b.surfaces.add(s.surfaceLabel);
       if (room.roomLabel) b.rooms.add(room.roomLabel);
       let sqft = 0;
+      let missing = false;
       switch (s.kind) {
-        case "ceiling": sqft = cov.ceiling; break;
-        case "walls":   sqft = cov.walls;   break;
-        case "trim":    sqft = cov.trim;    break;
-        case "floor":   sqft = cov.floor;   break;
+        case "ceiling": sqft = cov.ceiling; missing = cov.ceilingMissing; break;
+        case "walls":   sqft = cov.walls;   missing = cov.wallsMissing;   break;
+        case "trim":    sqft = cov.trim;    missing = cov.trimMissing;    break;
+        case "floor":   sqft = cov.floor;   missing = cov.floorMissing;   break;
         case "unsized": b.unsized = true;   break; // can't size — flag, no sqft
       }
       if (s.kind !== "unsized") {
         b.totalSqft += sqft;
-        if (cov.missingFloor) b.anyMissingFloor = true;
+        if (missing) b.anyMissingFloor = true;
       }
     }
   }

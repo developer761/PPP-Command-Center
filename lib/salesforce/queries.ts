@@ -421,6 +421,8 @@ export type SnapshotWoli = {
   sqFootage: number;
   wallSurfaceArea: number;
   perimeter: number;
+  /** Room height (ft). Sparse in SF; 0 when not captured → estimator default. */
+  heightFt: number;
   numCoats: number;
   primer: string | null;
   prepLevel: string | null;
@@ -1057,12 +1059,31 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         return [];
       }
       try {
-        const fields = [
+        const baseFields = [
           "Id", "WorkOrderId",
           "AreaLabel__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
         ];
+        // Extra geometry fields that sharpen the paint-gallon estimate when
+        // populated (Perimeter__c, Dimensions_Height__c — both sparse today).
+        // PROBE before committing the 88k-row fetch: a wrong/missing field name
+        // would make the whole WOLI query throw → the catch returns [] → empty
+        // materials. The probe uses the WHERE-IN pattern (direct WOLI selects
+        // hit an org MALFORMED_QUERY restriction) against one real WO id; if it
+        // fails we silently keep the proven base fields and fall back to the
+        // estimator's defaults. Zero risk to the critical path.
+        let fields = baseFields;
+        if (woIds.length > 0) {
+          try {
+            await conn.query(
+              `SELECT Perimeter__c, Dimensions_Height__c FROM WorkOrderLineItem WHERE WorkOrderId IN ('${woIds[0]}') LIMIT 1`
+            );
+            fields = [...baseFields, "Perimeter__c", "Dimensions_Height__c"];
+          } catch (probeErr) {
+            console.warn(`[SF] WOLI geometry fields unavailable, using base set: ${probeErr instanceof Error ? probeErr.message : probeErr}`);
+          }
+        }
         const records: Array<Record<string, unknown>> = [];
         const batchCount = Math.ceil(woIds.length / WOLI_BATCH_SIZE);
         console.log(`[SF] WOLI fetch starting — ${woIds.length} WO ids in ${batchCount} batch(es) of ${WOLI_BATCH_SIZE}`);
@@ -1094,7 +1115,8 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           surfaces: str(r, "Surfaces__c"),
           sqFootage: num(r, "Sq_Footage__c"),
           wallSurfaceArea: num(r, "Wall_Surface_Area__c"),
-          perimeter: 0,
+          perimeter: num(r, "Perimeter__c"),       // 0 when not selected/populated → estimator derives
+          heightFt: num(r, "Dimensions_Height__c"), // 0 when not selected/populated → estimator default
           numCoats: num(r, "of_Coats__c"),
           primer: null,
           prepLevel: null,

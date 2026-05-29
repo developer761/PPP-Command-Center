@@ -32,6 +32,7 @@ function room(p: Partial<RoomTakeoff> & { woliId: string; surfaces: RoomSurface[
     woliId: p.woliId,
     roomLabel: p.roomLabel ?? "Room",
     floorAreaSqft: p.floorAreaSqft ?? 0,
+    wallSurfaceAreaSqft: p.wallSurfaceAreaSqft ?? 0,
     perimeterLf: p.perimeterLf ?? 0,
     heightFt: p.heightFt ?? 0,
     doors: p.doors ?? 0,
@@ -137,6 +138,25 @@ console.log("\nunsized surface (Accent Wall) → needs review:");
   const out = estimateOrderGallons([r]);
   check("unsized flag", out[0]?.unsized === true);
   check("formatOrderQuantity = needs review", formatOrderQuantity(out[0]) === "needs review");
+}
+
+console.log("\nmeasured wall area (Wall_Surface_Area__c) used directly, no floor needed:");
+{
+  // wallSurfaceArea 400, 2 coats → 800 sqft → /375*1.1 = 2.35 → 3 cans; floor=0
+  // must NOT flag needsMeasurement (the wall was measured).
+  const r = room({ woliId: "w1", floorAreaSqft: 0, wallSurfaceAreaSqft: 400, coats: 2, surfaces: [surf("walls", "WL", "Walls")] });
+  const out = estimateOrderGallons([r]);
+  check("uses measured wall area → totalSqft 800", out[0]?.totalSqft === 800, `${out[0]?.totalSqft}`);
+  check("3 cans", out[0]?.cans === 3 && out[0]?.buckets === 0, JSON.stringify(out[0]));
+  check("NOT needsMeasurement (wall measured despite no floor)", out[0]?.needsMeasurement === false);
+}
+
+console.log("\nreal height used when present (10ft taller → more wall):");
+{
+  // perimeter 48, height 10, default openings(1/1/0): (48*10 - 35)*2 = 890
+  const r = room({ woliId: "w1", floorAreaSqft: 144, perimeterLf: 48, heightFt: 10, coats: 2, surfaces: [surf("walls", "WL", "Walls")] });
+  const out = estimateOrderGallons([r]);
+  check("height 10 → walls totalSqft 890", out[0]?.totalSqft === 890, `${out[0]?.totalSqft}`);
 }
 
 console.log("\nformatOrderQuantity packaging strings:");

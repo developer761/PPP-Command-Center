@@ -374,6 +374,51 @@ function resolveLineItems(
       });
     }
 
+    // Extra surfaces the customer picked that aren't one of the 5 standard SF
+    // color slots (Accent Wall, Cabinets, Door, Window, Closet, Shelves). These
+    // have no structured SF color field, so without this they'd be INVISIBLE to
+    // the supplier order (they'd live only in ColorNotes text). Surface them as
+    // "unsized" → they show in the buy-list + email as "needs review (PPP to
+    // confirm quantity)" for the worker to set. We don't auto-size them (no
+    // reliable geometry for a cabinet front or a single accent wall).
+    const STANDARD_SURFACES = new Set(["walls", "ceiling", "trim", "other", "floor"]);
+    if (customer) {
+      for (const cs of customer.surfaces) {
+        const key = cs.surface.toLowerCase();
+        if (STANDARD_SURFACES.has(key)) continue; // handled by the slots above
+        if (cs.skipped || !cs.colorId) continue;  // opted out / no pick
+        const color = input.paintColorsById.get(cs.colorId);
+        if (!color) continue;
+        // Same supplier filter as the standard slots.
+        if (!color.manufacturerId) {
+          if (!input.includeUnattributedColors) continue;
+        } else if (color.manufacturerId !== input.supplierAccountId) {
+          continue;
+        }
+        out.push({
+          surface: cs.surface,
+          colorId: cs.colorId,
+          colorName: color.name,
+          colorCode: color.code,
+          manufacturerName: input.supplierAccount.name,
+          finish: cs.finish ?? null,
+          sqft: 0,
+          coats,
+          gallons: 0,
+          sourceWoliId: woli.id,
+          roomLabel,
+        });
+        roomSurfaces.push({
+          kind: "unsized",
+          surfaceLabel: cs.surface,
+          colorId: cs.colorId,
+          colorName: color.name,
+          colorCode: color.code,
+          finish: cs.finish ?? null,
+        });
+      }
+    }
+
     // One RoomTakeoff per WOLI that has at least one ordered surface. Geometry
     // comes straight from the WOLI; missing values (perimeter, height, opening
     // counts, coats) fall back to the estimator's spec defaults.
@@ -382,8 +427,9 @@ function resolveLineItems(
         woliId: woli.id,
         roomLabel,
         floorAreaSqft: woli.sqFootage,
+        wallSurfaceAreaSqft: woli.wallSurfaceArea, // measured wall area wins when >0
         perimeterLf: woli.perimeter,        // 0/missing → estimator derives 4×√(floor)
-        heightFt: 0,                        // not in snapshot → estimator default (8 ft)
+        heightFt: woli.heightFt,            // 0/missing → estimator default (8 ft)
         doors: woli.numDoors,               // 0/missing → estimator default (1/room)
         windows: woli.numWindows,           // 0/missing → estimator default (1/room)
         closets: woli.numClosets,           // 0/missing → estimator default (0/room)
