@@ -200,7 +200,7 @@ export async function POST(request: Request) {
     extras: body.extras ?? [],
     specialInstructions: body.specialInstructions,
     requiredByDate: body.requiredByDate,
-    includeUnattributedColors: body.manualSupplier ?? false,
+    includeAllColors: body.manualSupplier ?? false,
   });
 
   return NextResponse.json({ ok: true, draft });

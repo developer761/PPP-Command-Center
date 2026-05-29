@@ -108,13 +108,13 @@ export type BuildSupplierOrderInput = {
   specialInstructions?: string;
   /** Override required-by date (default: WO close date OR today+3, whichever later). */
   requiredByDate?: string;  // ISO date
-  /** True when the worker MANUALLY picked this supplier (vs the supplier being
-   *  auto-derived from the colors' manufacturer). The manual picker exists for
-   *  WOs whose colors have no manufacturer set on SF — so in that case we
-   *  attribute the WO's unattributed colors to the chosen supplier instead of
-   *  dropping them (which would send an empty paint order). Colors belonging to
-   *  a DIFFERENT known manufacturer are still excluded — never cross-contaminate. */
-  includeUnattributedColors?: boolean;
+  /** True when the worker MANUALLY picked this supplier (a store), vs the
+   *  supplier being auto-derived from a color's manufacturer. PPP buys paint of
+   *  any brand from stores (Aboffs sells BM, SW, etc.), so a hand-picked store
+   *  order includes EVERY color on the WO regardless of manufacturer — otherwise
+   *  the order goes out empty/short. Auto-detected groups still filter by
+   *  manufacturer (to split brands across their mapped suppliers). */
+  includeAllColors?: boolean;
 };
 
 export type CustomerSubmittedPayload = {
@@ -326,22 +326,19 @@ function resolveLineItems(
       if (!colorId) continue;
       const color = input.paintColorsById.get(colorId);
       if (!color) continue;
-      // Paint colors with null manufacturerId can't be auto-attributed to any
-      // supplier. Normally we skip them (they'd otherwise leak onto every
-      // supplier's order). BUT when the worker MANUALLY picked this supplier,
-      // the picker's whole purpose is the no-manufacturer case — so attribute
-      // these colors to the chosen supplier instead of sending an empty order.
-      if (!color.manufacturerId) {
-        if (!input.includeUnattributedColors) {
-          console.warn(`[supplier-order/builder] PaintColor ${color.id} (${color.name}) has no manufacturerId — skipping from supplier order ${input.supplierAccountId}`);
+      // Supplier filtering:
+      // - MANUAL store pick (includeAllColors): include EVERY color on the WO,
+      //   whatever the brand. PPP buys BM/SW/etc. from stores like Aboffs, so a
+      //   hand-picked store order is "this whole job's paint from this store."
+      //   (To split brands across stores, use the auto-detected groups / batch.)
+      // - AUTO-detected supplier group: only colors whose manufacturer maps to
+      //   this supplier — don't put a BM color on a different manufacturer's order.
+      if (!input.includeAllColors) {
+        if (!color.manufacturerId) {
+          console.warn(`[supplier-order/builder] PaintColor ${color.id} (${color.name}) has no manufacturerId — skipping from auto supplier order ${input.supplierAccountId}`);
           continue;
         }
-        // manual pick → fall through and include this unattributed color
-      } else if (color.manufacturerId !== input.supplierAccountId) {
-        // Color belongs to a DIFFERENT known manufacturer — never put a BM color
-        // on an SW order, even on a manual pick. Only colors matching the
-        // supplier (or unattributed, handled above) belong here.
-        continue;
+        if (color.manufacturerId !== input.supplierAccountId) continue;
       }
 
       out.push({
@@ -384,11 +381,11 @@ function resolveLineItems(
         if (cs.skipped || !cs.colorId) continue;  // opted out / no pick
         const color = input.paintColorsById.get(cs.colorId);
         if (!color) continue;
-        // Same supplier filter as the standard slots.
-        if (!color.manufacturerId) {
-          if (!input.includeUnattributedColors) continue;
-        } else if (color.manufacturerId !== input.supplierAccountId) {
-          continue;
+        // Same supplier filter as the standard slots: manual store pick takes
+        // every color; auto-detected groups filter by manufacturer.
+        if (!input.includeAllColors) {
+          if (!color.manufacturerId) continue;
+          if (color.manufacturerId !== input.supplierAccountId) continue;
         }
         out.push({
           surface: cs.surface,
