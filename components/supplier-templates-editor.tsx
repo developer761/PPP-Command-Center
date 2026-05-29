@@ -180,22 +180,20 @@ export default function SupplierTemplatesEditor() {
         </div>
       )}
 
-      {/* Curated view toggle. Default shows only the 4-5 active suppliers PPP
-          actually uses; "Show all" exposes every Vendor-typed SF Account for
-          the rare case admin needs to enable a new one. */}
+      {/* Active vs. all toggle over PPP's curated vendor list (the stores PPP
+          orders from, configured in Settings → Suppliers) — not the 2,000 SF
+          accounts. "Show all" includes vendors marked inactive. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-[11px] text-ppp-charcoal-500">
-          {filter === "active" ? (
-            showingFallback ? (
-              <>
-                Showing top {suppliers.length} suppliers by paint catalog size. No active list curated yet —
-                set <Link href="/dashboard/settings/suppliers">Active</Link> on the suppliers you actually use.
-              </>
-            ) : (
-              <>Showing <span className="font-bold text-ppp-charcoal">{suppliers.length}</span> active suppliers · {totalCandidates} total in Salesforce</>
-            )
+          {totalCandidates === 0 ? (
+            <>
+              No vendors configured yet — add the ones you order from in{" "}
+              <Link href="/dashboard/settings/suppliers">Settings → Suppliers</Link>.
+            </>
+          ) : filter === "active" ? (
+            <>Showing <span className="font-bold text-ppp-charcoal">{suppliers.length}</span> active {suppliers.length === 1 ? "vendor" : "vendors"} · {totalCandidates} configured</>
           ) : (
-            <>Showing all <span className="font-bold text-ppp-charcoal">{suppliers.length}</span> Vendor-typed accounts from Salesforce</>
+            <>Showing all <span className="font-bold text-ppp-charcoal">{suppliers.length}</span> configured {suppliers.length === 1 ? "vendor" : "vendors"}</>
           )}
         </div>
         <div className="inline-flex bg-ppp-charcoal-50 rounded-lg p-0.5 text-[11px] font-semibold">

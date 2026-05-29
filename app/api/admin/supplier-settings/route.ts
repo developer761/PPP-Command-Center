@@ -61,87 +61,59 @@ export async function GET() {
   if (settingsErr) {
     return NextResponse.json({ error: "settings_query_failed", message: settingsErr.message }, { status: 500 });
   }
-  const settingsById = new Map<string, SupplierSettingsRow>();
-  for (const row of (settingsRows ?? []) as SupplierSettingsRow[]) {
-    settingsById.set(row.supplier_account_id, row);
-  }
 
-  // 2. Candidate suppliers from SF — every Account flagged as a Vendor
-  //    PLUS any Account referenced by a PaintColor's Manufacturer field.
-  //    The union catches retailers PPP buys from + any historical color
-  //    manufacturer that isn't in the Vendor types list.
-  const snapshot = await loadSalesforceSnapshot();
-  const supplierIds = new Set<string>();
-  for (const a of snapshot.accounts) {
-    if (a.type && /Vendor|Supplier|Retailer/i.test(a.type)) {
-      supplierIds.add(a.id);
-    }
-  }
-  for (const c of snapshot.paintColors) {
-    if (c.manufacturerId) supplierIds.add(c.manufacturerId);
-  }
-  const accountById = new Map(snapshot.accounts.map((a) => [a.id, a]));
-
-  // 3. Merged view — for every candidate supplier, return:
-  //    - sf side (name, type, isBMRetailer flag)
-  //    - settings side (order_email, ppp_account_number, etc.)
-  //    - gaps (missing fields, sorted to surface the highest-priority gaps first)
+  // 2. The supplier universe IS PPP's curated vendor list (supplier_settings) —
+  //    the stores PPP actually orders from (Katie's list), NOT the ~2,000 SF
+  //    Vendor accounts. Many of those vendors are stores, not SF Accounts, so
+  //    they only live in supplier_settings. Enrich with SF account data when the
+  //    id happens to be a real SF Account (for the BM-retailer flag / canonical
+  //    name); otherwise use the settings row as-is.
   type CandidateRow = {
     supplierAccountId: string;
     supplierName: string;
     sfType: string | null;
     isBMRetailer: boolean;
     settings: SupplierSettingsRow | null;
-    /** Count of colors in the catalog from this supplier — proxy for
-     *  how often PPP actually orders from them (high count = high priority). */
     colorsInCatalog: number;
     gaps: string[];
   };
 
-  // Count colors per supplier for prioritization
+  const accountById = new Map<string, { name: string; type: string | null; isBMRetailer: boolean }>();
   const colorCountBySupplier = new Map<string, number>();
-  for (const c of snapshot.paintColors) {
-    if (!c.manufacturerId) continue;
-    colorCountBySupplier.set(c.manufacturerId, (colorCountBySupplier.get(c.manufacturerId) ?? 0) + 1);
+  try {
+    const snapshot = await loadSalesforceSnapshot();
+    for (const a of snapshot.accounts) {
+      accountById.set(a.id, { name: a.name, type: a.type, isBMRetailer: a.isBMRetailer });
+    }
+    for (const c of snapshot.paintColors) {
+      if (c.manufacturerId) colorCountBySupplier.set(c.manufacturerId, (colorCountBySupplier.get(c.manufacturerId) ?? 0) + 1);
+    }
+  } catch {
+    // Snapshot is only for enrichment — the curated list still renders without it.
   }
 
   const candidates: CandidateRow[] = [];
-  for (const id of supplierIds) {
-    const acct = accountById.get(id);
-    if (!acct) continue; // SF account no longer in snapshot
-    const settings = settingsById.get(id) ?? null;
+  for (const row of (settingsRows ?? []) as SupplierSettingsRow[]) {
+    const acct = accountById.get(row.supplier_account_id);
     const gaps: string[] = [];
-    if (!settings) {
-      gaps.push("no_settings_row");
-    } else {
-      // Only flag the truly REQUIRED-to-send fields. Per the autofill/one-click
-      // rule the PPP account number is optional — many suppliers don't need it
-      // on every PO. When admin leaves it blank the email omits the line entirely
-      // via the conditional `{{#ppp_account_number}}` block, so it's not a gap.
-      // Pickup locations are also optional (only matters if worker picks pickup
-      // fulfillment, and the modal handles that case independently).
-      if (!settings.order_email?.trim()) gaps.push("missing_order_email");
-    }
+    if (!row.order_email?.trim()) gaps.push("missing_order_email");
     candidates.push({
-      supplierAccountId: id,
-      supplierName: acct.name,
-      sfType: acct.type,
-      isBMRetailer: acct.isBMRetailer,
-      settings,
-      colorsInCatalog: colorCountBySupplier.get(id) ?? 0,
+      supplierAccountId: row.supplier_account_id,
+      supplierName: acct?.name ?? row.supplier_name,
+      sfType: acct?.type ?? null,
+      isBMRetailer: acct?.isBMRetailer ?? false,
+      settings: row,
+      colorsInCatalog: colorCountBySupplier.get(row.supplier_account_id) ?? 0,
       gaps,
     });
   }
 
-  // Sort: active+configured suppliers first (the curated 4-5), then by
-  // color-catalog size desc, then by name. Active suppliers are what workers
-  // actually use day-to-day — admin should see them up top, not scroll past
-  // 40 unconfigured SF Vendor accounts to find BM.
+  // Active+ready suppliers first, then by name.
   candidates.sort((a, b) => {
     const aActive = (a.settings?.is_active && a.settings?.order_email) ? 1 : 0;
     const bActive = (b.settings?.is_active && b.settings?.order_email) ? 1 : 0;
     if (aActive !== bActive) return bActive - aActive;
-    return b.colorsInCatalog - a.colorsInCatalog || a.supplierName.localeCompare(b.supplierName);
+    return a.supplierName.localeCompare(b.supplierName);
   });
 
   return NextResponse.json({
@@ -149,7 +121,7 @@ export async function GET() {
     candidates,
     summary: {
       totalCandidates: candidates.length,
-      withSettings: candidates.filter((c) => c.settings !== null).length,
+      withSettings: candidates.length,
       readyToSend: candidates.filter((c) => c.settings?.order_email).length,
     },
   });

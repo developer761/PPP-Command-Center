@@ -56,43 +56,14 @@ export async function GET(request: Request) {
     });
   }
 
-  // List mode — every supplier the system knows about. Mirrors the
-  // logic in /api/admin/supplier-settings/route.ts so both surfaces
-  // show the same supplier list. Snapshot is allowed to fail — if SF is
-  // unreachable we still return a usable response (empty supplier list +
-  // an explicit warning) so the editor never shows the generic browser
-  // "Load failed" message.
-  let snapshot: Awaited<ReturnType<typeof loadSalesforceSnapshot>> | null = null;
-  let snapshotError: string | null = null;
-  try {
-    snapshot = await loadSalesforceSnapshot();
-  } catch (err) {
-    snapshotError = err instanceof Error ? err.message : String(err);
-    console.warn("[supplier-templates] snapshot load failed:", err);
-  }
-  if (!snapshot) {
-    return NextResponse.json({
-      ok: true,
-      suppliers: [],
-      defaults: DEFAULT_SUPPLIER_TEMPLATE,
-      warning: `Couldn't reach Salesforce: ${snapshotError ?? "unknown"}. Try again in a moment.`,
-    });
-  }
-  const supplierIds = new Set<string>();
-  for (const a of snapshot.accounts) {
-    if (a.type && /Vendor|Supplier|Retailer/i.test(a.type)) supplierIds.add(a.id);
-  }
-  for (const c of snapshot.paintColors) {
-    if (c.manufacturerId) supplierIds.add(c.manufacturerId);
-  }
-  const accountById = new Map(snapshot.accounts.map((a) => [a.id, a]));
-
-  // Pull customized templates AND the active-supplier whitelist in one
-  // batch. supplier_settings.is_active=true is the canonical "this is a
-  // supplier PPP actually orders from" signal — defaults the list to the
-  // 4-5 real suppliers instead of every Vendor-typed SF Account.
-  let customizedIds = new Set<string>();
-  let activeIds = new Set<string>();
+  // List mode — the supplier universe IS PPP's curated vendor list
+  // (supplier_settings), the stores PPP actually orders from. NOT the ~2,000 SF
+  // Vendor accounts. Load the settings rows + customized-template ids; the SF
+  // snapshot is OPTIONAL enrichment (BM-retailer flag / canonical name) and is
+  // allowed to fail — the curated list still renders without it.
+  type SettingRow = { supplier_account_id: string; supplier_name: string; is_active: boolean; order_email: string | null };
+  let settingsRows: SettingRow[] = [];
+  const customizedIds = new Set<string>();
   try {
     const sb = createSupabaseAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -103,8 +74,7 @@ export async function GET(request: Request) {
       sb.from("supplier_email_templates")
         .select("supplier_account_id, subject, greeting, intro, outro, signoff"),
       sb.from("supplier_settings")
-        .select("supplier_account_id, is_active")
-        .eq("is_active", true),
+        .select("supplier_account_id, supplier_name, is_active, order_email"),
     ]);
     if (templatesRes.status === "fulfilled" && templatesRes.value.data) {
       for (const r of templatesRes.value.data) {
@@ -115,65 +85,52 @@ export async function GET(request: Request) {
       }
     }
     if (settingsRes.status === "fulfilled" && settingsRes.value.data) {
-      for (const r of settingsRes.value.data) {
-        if (r.supplier_account_id) activeIds.add(r.supplier_account_id);
-      }
+      settingsRows = (settingsRes.value.data as SettingRow[]);
+    } else if (settingsRes.status === "rejected") {
+      console.warn("[supplier-templates] settings load failed:", settingsRes.reason);
     }
   } catch (err) {
     console.warn("[supplier-templates] lookup failed (non-fatal):", err);
   }
 
-  // Count colors per supplier for sort priority
-  const colorCountBySupplier = new Map<string, number>();
-  for (const c of snapshot.paintColors) {
-    if (!c.manufacturerId) continue;
-    colorCountBySupplier.set(c.manufacturerId, (colorCountBySupplier.get(c.manufacturerId) ?? 0) + 1);
+  // Optional SF enrichment for canonical name / BM-retailer flag.
+  const accountById = new Map<string, { name: string; type: string | null; isBMRetailer: boolean }>();
+  try {
+    const snapshot = await loadSalesforceSnapshot();
+    for (const a of snapshot.accounts) {
+      accountById.set(a.id, { name: a.name, type: a.type, isBMRetailer: a.isBMRetailer });
+    }
+  } catch (err) {
+    console.warn("[supplier-templates] snapshot enrichment skipped:", err);
   }
 
-  // ?filter=all overrides the curation; default is "active". When admin has
-  // curated an active list, show ONLY those — that's the 4-5 PPP actually
-  // uses. When the active list is empty (fresh install / pre-curation), fall
-  // back to the top suppliers by color count so the page isn't empty.
+  // ?filter=all shows inactive vendors too; default "active".
   const filter = url.searchParams.get("filter") === "all" ? "all" : "active";
-  const totalCandidates = supplierIds.size;
-  const noActiveCurated = activeIds.size === 0;
+  const rows = filter === "active" ? settingsRows.filter((r) => r.is_active) : settingsRows;
 
-  const allSuppliers = Array.from(supplierIds)
-    .map((id) => {
-      const acct = accountById.get(id);
-      if (!acct) return null;
+  const suppliers = rows
+    .map((r) => {
+      const acct = accountById.get(r.supplier_account_id);
       return {
-        supplierAccountId: id,
-        supplierName: acct.name,
-        sfType: acct.type,
-        isBMRetailer: acct.isBMRetailer,
-        colorsInCatalog: colorCountBySupplier.get(id) ?? 0,
-        isCustomized: customizedIds.has(id),
-        isActive: activeIds.has(id),
+        supplierAccountId: r.supplier_account_id,
+        supplierName: acct?.name ?? r.supplier_name,
+        sfType: acct?.type ?? null,
+        isBMRetailer: acct?.isBMRetailer ?? false,
+        colorsInCatalog: 0,
+        isCustomized: customizedIds.has(r.supplier_account_id),
+        isActive: r.is_active,
       };
     })
-    .filter((x): x is NonNullable<typeof x> => x !== null)
-    .sort((a, b) => b.colorsInCatalog - a.colorsInCatalog || a.supplierName.localeCompare(b.supplierName));
-
-  let suppliers = allSuppliers;
-  if (filter === "active") {
-    if (!noActiveCurated) {
-      suppliers = allSuppliers.filter((s) => s.isActive);
-    } else {
-      // No curation yet — show top-5-by-color-count so BM/SW/PPG surface.
-      // Admin enables more via /dashboard/settings/suppliers.
-      suppliers = allSuppliers.slice(0, 5);
-    }
-  }
+    .sort((a, b) => a.supplierName.localeCompare(b.supplierName));
 
   return NextResponse.json({
     ok: true,
     suppliers,
     defaults: DEFAULT_SUPPLIER_TEMPLATE,
     filter,
-    totalCandidates,
-    activeCount: activeIds.size,
-    showingFallback: filter === "active" && noActiveCurated,
+    totalCandidates: settingsRows.length,
+    activeCount: settingsRows.filter((r) => r.is_active).length,
+    showingFallback: false,
   });
   } catch (err) {
     console.error("[supplier-templates GET] unhandled:", err);

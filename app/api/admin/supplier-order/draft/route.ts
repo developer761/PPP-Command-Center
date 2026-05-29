@@ -92,10 +92,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "wo_not_in_snapshot" }, { status: 404 });
   }
   // General Supplies = synthetic supplier id (no SF Account lookup).
-  // For real suppliers we still require a snapshot match so a typo'd id
-  // doesn't silently produce a bogus draft.
   const isGeneral = body.supplierAccountId === GENERAL_SUPPLIES_ID;
-  const supplierAccount = isGeneral
+  let supplierAccount = isGeneral
     ? {
         id: GENERAL_SUPPLIES_ID,
         name: generalSuppliesLabel(),
@@ -110,6 +108,41 @@ export async function POST(request: Request) {
         phone: null,
       } as unknown as typeof snapshot.accounts[number]
     : snapshot.accounts.find((a) => a.id === body.supplierAccountId);
+  // PPP's real ordering vendors (Katie's curated list in supplier_settings) are
+  // STORES, not Salesforce Accounts, so they won't be in the snapshot. Build the
+  // supplier from supplier_settings instead of failing. Only 404 if the id is in
+  // neither the snapshot nor the configured supplier list.
+  if (!supplierAccount && !isGeneral) {
+    try {
+      const sbLookup = createSupabaseAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SECRET_KEY!,
+        { auth: { persistSession: false, autoRefreshToken: false } }
+      );
+      const { data: settingRow } = await sbLookup
+        .from("supplier_settings")
+        .select("supplier_name")
+        .eq("supplier_account_id", body.supplierAccountId)
+        .maybeSingle();
+      if (settingRow) {
+        supplierAccount = {
+          id: body.supplierAccountId,
+          name: (settingRow.supplier_name as string | null) ?? body.supplierAccountId,
+          type: "Vendor",
+          isBMRetailer: false,
+          accountManagerId: null,
+          billingStreet: null,
+          billingCity: null,
+          billingState: null,
+          billingPostalCode: null,
+          email: null,
+          phone: null,
+        } as unknown as typeof snapshot.accounts[number];
+      }
+    } catch (err) {
+      console.warn("[supplier-order/draft] supplier_settings lookup failed:", err);
+    }
+  }
   if (!supplierAccount) {
     return NextResponse.json({ error: "supplier_not_in_snapshot" }, { status: 404 });
   }
