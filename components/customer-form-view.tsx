@@ -116,14 +116,15 @@ export default function CustomerFormView({ token, customerName, formData, copy }
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
-  // Delivery address confirmation — seeded from SF Account.BillingAddress.
-  // Customer can edit before submit. Saved into customer_form_tokens.
-  // submitted_payload.deliveryAddress so the supplier-order builder uses
-  // the customer-verified address (preferred) over the stale SF account row.
-  const [deliveryStreet, setDeliveryStreet] = useState(formData.billingAddress.street ?? "");
-  const [deliveryCity, setDeliveryCity] = useState(formData.billingAddress.city ?? "");
-  const [deliveryState, setDeliveryState] = useState(formData.billingAddress.state ?? "");
-  const [deliveryPostalCode, setDeliveryPostalCode] = useState(formData.billingAddress.postalCode ?? "");
+  // Delivery address is DISPLAY-ONLY (Katie 2026-05-29). It's the address on
+  // file in Salesforce; the customer can't edit it here — if it's wrong they
+  // contact the team, who fix it in SF (the source of truth the supplier order
+  // reads). We still record what they saw in submitted_payload.deliveryAddress.
+  const addr = formData.billingAddress;
+  const addrCityStateZip = [addr.city, [addr.state, addr.postalCode].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(", ");
+  const hasAddress = !!(addr.street || addrCityStateZip);
 
   // Fetch the full color catalog ONCE on form mount so every ColorPicker
   // filters in-memory (zero latency per keystroke). Previously every keystroke
@@ -255,10 +256,10 @@ export default function CustomerFormView({ token, customerName, formData, copy }
         // in, builder will fall back to the SF account address.
         deliveryAddress: {
           name: customerName ?? null,
-          street: deliveryStreet.trim(),
-          city: deliveryCity.trim(),
-          state: deliveryState.trim(),
-          postalCode: deliveryPostalCode.trim(),
+          street: (addr.street ?? "").trim(),
+          city: (addr.city ?? "").trim(),
+          state: (addr.state ?? "").trim(),
+          postalCode: (addr.postalCode ?? "").trim(),
         },
       };
       const res = await fetch(`/api/customer-form/submit/${encodeURIComponent(token)}`, {
@@ -316,84 +317,35 @@ export default function CustomerFormView({ token, customerName, formData, copy }
         ))
       )}
 
-      {/* Confirm delivery address — last review before submit. Materials get
-          shipped here unless customer specifies pickup with PPP. Pre-filled
-          from SF Account.BillingAddress so most customers just confirm
-          rather than type. */}
+      {/* Delivery address — DISPLAY ONLY (Katie 2026-05-29). The address on
+          file in Salesforce; not editable here. If it's wrong the customer
+          contacts the team, who correct it in SF (the source the supplier
+          order reads). */}
       {formData.lineItems.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
           <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
             Delivery address
           </div>
           <h2 className="font-condensed text-lg sm:text-xl font-bold text-ppp-navy mt-1">
-            Where should we deliver the materials?
+            Where we&apos;ll deliver the materials
           </h2>
-          <p className="mt-2 text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed">
-            Our team will deliver paint + supplies straight to this address before
-            your job starts. Please correct anything that&apos;s out of date —
-            this is the address our supplier uses.
-          </p>
-          <div className="mt-4 space-y-3">
-            <div>
-              <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
-                Street address
-              </label>
-              <input
-                type="text"
-                value={deliveryStreet}
-                onChange={(e) => setDeliveryStreet(e.target.value)}
-                placeholder="123 Main St"
-                className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
-                autoComplete="street-address"
-              />
-            </div>
-            {/* Mobile: City full-width on its own row; State + ZIP share the
-                next row (50/50 split, both readable on iPhone SE 375px).
-                Desktop keeps the existing 1fr / 160 / 140 layout. */}
-            <div className="grid grid-cols-[1fr_1fr] sm:grid-cols-[1fr_160px_140px] gap-3 [&>:first-child]:col-span-2 sm:[&>:first-child]:col-span-1">
-              <div>
-                <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
-                  City
-                </label>
-                <input
-                  type="text"
-                  value={deliveryCity}
-                  onChange={(e) => setDeliveryCity(e.target.value)}
-                  placeholder="Smithtown"
-                  className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
-                  autoComplete="address-level2"
-                />
+          <div className="mt-3 rounded-lg bg-[var(--color-surface-muted)]/50 border border-ppp-charcoal-100 px-4 py-3">
+            {hasAddress ? (
+              <div className="text-sm sm:text-base text-ppp-charcoal leading-relaxed">
+                {addr.street && <div>{addr.street}</div>}
+                {addrCityStateZip && <div>{addrCityStateZip}</div>}
               </div>
-              <div>
-                <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
-                  State
-                </label>
-                <input
-                  type="text"
-                  value={deliveryState}
-                  onChange={(e) => setDeliveryState(e.target.value)}
-                  placeholder="NY"
-                  maxLength={2}
-                  className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue uppercase"
-                  autoComplete="address-level1"
-                />
+            ) : (
+              <div className="text-sm text-ppp-charcoal-500 italic">
+                We have your address on file with our team.
               </div>
-              <div>
-                <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
-                  ZIP
-                </label>
-                <input
-                  type="text"
-                  value={deliveryPostalCode}
-                  onChange={(e) => setDeliveryPostalCode(e.target.value)}
-                  placeholder="11787"
-                  inputMode="numeric"
-                  className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
-                  autoComplete="postal-code"
-                />
-              </div>
-            </div>
+            )}
           </div>
+          <p className="mt-3 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 leading-relaxed">
+            If this delivery address is incorrect, please reach out to our team
+            right away so we can update it before your materials are ordered —
+            it can&apos;t be changed from this form.
+          </p>
         </div>
       )}
 
