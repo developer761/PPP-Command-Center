@@ -27,6 +27,25 @@ import { loadFormRenderData } from "@/lib/customer-form/render-data";
  *   6. Return { token, formUrl, resendMessageId }
  */
 
+/**
+ * Form link expiry = 24h before the scheduled job start.
+ *   - No scheduled date → 30-day default.
+ *   - Cutoff already past / under 48h away (form sent late) → floor to the
+ *     LATER of the start date itself or 48h from now, so a late send never
+ *     produces an already-dead link.
+ */
+function computeFormExpiry(scheduledStart: string | null): string {
+  const DAY = 86_400_000;
+  const now = Date.now();
+  if (!scheduledStart) return new Date(now + 30 * DAY).toISOString();
+  const start = new Date(scheduledStart).getTime();
+  if (isNaN(start)) return new Date(now + 30 * DAY).toISOString();
+  const cutoff = start - DAY; // 24h before start
+  const floor = now + 2 * DAY; // never less than 48h of usable time
+  if (cutoff < floor) return new Date(Math.max(start, floor)).toISOString();
+  return new Date(cutoff).toISOString();
+}
+
 export async function POST(request: Request) {
   // 1. Auth
   const supabase = await createClient();
@@ -74,13 +93,17 @@ export async function POST(request: Request) {
 
   const customerName = body.customerName?.trim() || wo.accountName || null;
 
-  // 4. Create token
+  // 4. Create token — expires 24h before the scheduled job start (Katie
+  // 2026-05-29). The anchor is StartDate → DesiredStart__c → CloseDate. If
+  // that cutoff is already past or <48h out (form sent late), floor it so we
+  // never create a dead link; no scheduled date at all → 30-day default.
   const tokenResult = await createToken({
     work_order_id: workOrderId,
     work_order_number: wo.workOrderNumber,
     customer_email: customerEmail,
     customer_name: customerName,
     created_by_user_id: data.user.id,
+    expiresAt: computeFormExpiry(wo.scheduledStart),
   });
   if ("error" in tokenResult) {
     return NextResponse.json({ error: "token_create_failed", message: tokenResult.error }, { status: 500 });

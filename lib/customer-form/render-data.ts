@@ -54,6 +54,10 @@ export type FormRenderData = {
   accountName: string | null;
   ownerName: string | null;
   closeDate: string | null;
+  /** Best-available scheduled job start: WorkOrder.StartDate (sparse) →
+   *  DesiredStart__c → Opp CloseDate (PPP's projected date). Drives the
+   *  "link expires 24h before start" rule. Null when none is set. */
+  scheduledStart: string | null;
   lineItems: FormLineItem[];
   /** Fresh-fetch timestamp — written to customer_form_tokens.woli_snapshot_at
    *  for drift detection if the rep edits SF mid-form. */
@@ -90,6 +94,7 @@ export async function loadFormRenderData(
     const woEsc = workOrderId.replace(/'/g, "\\'");
     const woQuery = `
       SELECT Id, WorkOrderNumber, Status, CreatedDate,
+             StartDate, DesiredStart__c,
              WorkType.Name,
              Opportunity__c, Opportunity__r.Owner.Name,
              Opportunity__r.Account.Name, Opportunity__r.CloseDate,
@@ -165,6 +170,11 @@ export async function loadFormRenderData(
     const ownerName = (opp?.Owner as { Name?: string } | undefined)?.Name ?? null;
     const closeDate = (opp?.CloseDate as string | undefined) ?? null;
     const workTypeName = (w.WorkType as { Name?: string } | null | undefined)?.Name ?? null;
+    // Scheduled start anchor: real StartDate → DesiredStart__c → CloseDate.
+    const scheduledStart =
+      (typeof w.StartDate === "string" ? (w.StartDate as string) : null) ??
+      (typeof w.DesiredStart__c === "string" ? (w.DesiredStart__c as string) : null) ??
+      closeDate;
 
     return {
       workOrderId: w.Id as string,
@@ -174,6 +184,7 @@ export async function loadFormRenderData(
       accountName,
       ownerName,
       closeDate,
+      scheduledStart,
       lineItems,
       fetchedAt: new Date().toISOString(),
       billingAddress: {

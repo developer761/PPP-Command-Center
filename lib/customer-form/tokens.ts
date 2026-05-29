@@ -69,11 +69,13 @@ export async function createToken(input: {
   customer_name?: string | null;
   account_id?: string | null;
   created_by_user_id?: string | null;
-  expiresInDays?: number; // default 30
+  expiresInDays?: number; // default 30 — used only when expiresAt isn't given
+  expiresAt?: string;      // explicit ISO expiry (e.g. 24h before WO start). Wins over expiresInDays.
 }): Promise<{ token: string } | { error: string }> {
   const token = generateToken();
   const expiresInDays = input.expiresInDays ?? 30;
-  const expires_at = new Date(Date.now() + expiresInDays * 86_400_000).toISOString();
+  const expires_at =
+    input.expiresAt ?? new Date(Date.now() + expiresInDays * 86_400_000).toISOString();
 
   const sb = adminClient();
   const { error } = await sb.from("customer_form_tokens").insert({
