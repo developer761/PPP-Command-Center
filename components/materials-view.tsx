@@ -771,7 +771,13 @@ function JobDetail({
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
+          {/* key forces a fresh instance when the worker switches WOs — the
+              button holds local state (looked-up email, typed name, open
+              modal, sent-result, "already looked up" ref) that's per-WO; without
+              this, WO-A's looked-up email and ref would leak into WO-B and the
+              email lookup would be silently skipped. */}
           <SendColorFormButton
+            key={job.wo.id}
             workOrderId={job.wo.id}
             accountName={job.wo.accountName ?? null}
             defaultEmail={customerAccount?.email ?? null}
