@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, type SurfacePick, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, formatOrderQuantity, type RoomTakeoff, type RoomSurface, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 import type {
   SnapshotAccount,
   SnapshotPaintColor,
@@ -267,12 +267,12 @@ const SURFACE_FIELD_TO_LABEL: Record<string, string> = {
  *  otherwise have to guess whether the customer forgot or chose not to. */
 function resolveLineItems(
   input: BuildSupplierOrderInput
-): { lineItems: SupplierOrderLineItem[]; picks: SurfacePick[]; skippedSurfaces: Array<{ roomLabel: string; surface: string }> } {
+): { lineItems: SupplierOrderLineItem[]; rooms: RoomTakeoff[]; skippedSurfaces: Array<{ roomLabel: string; surface: string }> } {
   const out: SupplierOrderLineItem[] = [];
-  // Parallel feed for the gallon estimator — one entry per painted surface that
-  // made it onto THIS supplier's order (same filter as `out`), so the rollup
-  // only counts colors actually being ordered here.
-  const picks: SurfacePick[] = [];
+  // Per-room geometry + painted surfaces for the gallon estimator — only the
+  // surfaces that made it onto THIS supplier's order (same filter as `out`),
+  // so the rollup counts only colors actually being ordered here.
+  const rooms: RoomTakeoff[] = [];
   const skipped: Array<{ roomLabel: string; surface: string }> = [];
   const customerByLineId = new Map<string, CustomerSubmittedPayload["lineItems"][number]>();
   if (input.customerSubmittedPayload) {
@@ -295,6 +295,9 @@ function resolveLineItems(
         customerSurfaces.set(s.surface.toLowerCase(), s);
       }
     }
+
+    // Surfaces on THIS supplier's order for this room — fed to the estimator.
+    const roomSurfaces: RoomSurface[] = [];
 
     type SurfaceSlot = { fieldKey: string; surfaceLabel: string; existingColorId: string | null };
     const slots: SurfaceSlot[] = [
@@ -358,24 +361,40 @@ function resolveLineItems(
         sourceWoliId: woli.id,
         roomLabel,
       });
-      // Feed the gallon estimator with FLOOR area (the estimator derives wall
-      // area = floor × multiplier itself). Pass raw Sq_Footage__c — 0/missing
-      // becomes a "needs measurement" line rather than a guess.
-      picks.push({
-        woliId: woli.id,
-        roomLabel,
+      // Feed the gallon estimator — classify the surface into a paint bucket
+      // (ceiling/walls/trim/floor/unsized). The estimator derives wall area,
+      // trim linear feet, deductions, buffer + packaging from the room geometry.
+      roomSurfaces.push({
+        kind: classifySurface(slot.surfaceLabel),
         surfaceLabel: slot.surfaceLabel,
         colorId,
         colorName: color.name,
         colorCode: color.code,
         finish: customerPick?.finish ?? null,
+      });
+    }
+
+    // One RoomTakeoff per WOLI that has at least one ordered surface. Geometry
+    // comes straight from the WOLI; missing values (perimeter, height, opening
+    // counts, coats) fall back to the estimator's spec defaults.
+    if (roomSurfaces.length > 0) {
+      rooms.push({
+        woliId: woli.id,
+        roomLabel,
         floorAreaSqft: woli.sqFootage,
-        coats,
+        perimeterLf: woli.perimeter,        // 0/missing → estimator derives 4×√(floor)
+        heightFt: 0,                        // not in snapshot → estimator default (8 ft)
+        doors: woli.numDoors,               // 0/missing → estimator default (1/room)
+        windows: woli.numWindows,           // 0/missing → estimator default (1/room)
+        closets: woli.numClosets,           // 0/missing → estimator default (0/room)
+        coats: woli.numCoats,               // 0/missing → estimator default (2)
+        paintDoorFaces: false,              // no WO scope flag yet → casings only
+        surfaces: roomSurfaces,
       });
     }
   }
 
-  return { lineItems: out, picks, skippedSurfaces: skipped };
+  return { lineItems: out, rooms, skippedSurfaces: skipped };
 }
 
 /** Resolve the delivery address with the fallback chain:
@@ -447,8 +466,8 @@ function formatOrderSummaryBlock(estimates: GallonEstimate[]): string {
     const code = e.colorCode ? ` ${e.colorCode}` : "";
     const finish = e.finish ? ` · ${e.finish}` : "";
     const where = e.surfaces.length ? ` (${e.surfaces.join(", ")})` : "";
-    if (e.gallons > 0) {
-      lines.push(`  ${e.gallons} gal — ${e.colorName}${code}${finish}${where}`);
+    if (e.buckets > 0 || e.cans > 0) {
+      lines.push(`  ${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}${where}`);
     } else {
       lines.push(`  ___ — ${e.colorName}${code}${finish}${where} (PPP to confirm quantity)`);
     }
@@ -577,8 +596,8 @@ export async function buildSupplierOrderDraft(
   // paint colors entirely — none of the WO's PaintColors match the synthetic
   // manufacturer id so resolveLineItems returns empty, which is the right
   // shape (extras-only order).
-  const { lineItems, picks, skippedSurfaces } = resolveLineItems(input);
-  const gallonEstimates = estimateOrderGallons(picks);
+  const { lineItems, rooms, skippedSurfaces } = resolveLineItems(input);
+  const gallonEstimates = estimateOrderGallons(rooms);
   const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates);
   const placementBlock = formatPlacementBlock(lineItems);
   const deliveryAddress = resolveDeliveryAddress(input);

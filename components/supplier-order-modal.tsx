@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
-import type { GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
+import { formatOrderQuantity, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 
 /**
  * Supplier Order Modal — the full draft → review → send experience for one
@@ -450,10 +450,8 @@ export default function SupplierOrderModal({
                                 <span className="text-[10px] text-ppp-charcoal-400 ml-1">({e.surfaces.join(", ")})</span>
                               )}
                             </div>
-                            <span className={`shrink-0 font-semibold whitespace-nowrap ${e.gallons > 0 ? "text-ppp-charcoal" : "text-ppp-orange-700"}`}>
-                              {e.gallons > 0
-                                ? `${e.gallons} gal`
-                                : e.needsMeasurement ? "needs measurement" : "—"}
+                            <span className={`shrink-0 font-semibold whitespace-nowrap ${(e.buckets > 0 || e.cans > 0) ? "text-ppp-charcoal" : "text-ppp-orange-700"}`}>
+                              {formatOrderQuantity(e)}
                             </span>
                           </li>
                         ))}
@@ -465,7 +463,7 @@ export default function SupplierOrderModal({
                       surface like cabinets) so the worker sets a quantity in the
                       email instead of the vendor receiving a blank line. */}
                   {(() => {
-                    const unsized = draft.gallonEstimates.filter((e) => e.gallons === 0);
+                    const unsized = draft.gallonEstimates.filter((e) => e.buckets === 0 && e.cans === 0);
                     if (unsized.length === 0) return null;
                     return (
                       <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
