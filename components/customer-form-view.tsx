@@ -67,6 +67,29 @@ const FINISH_OPTIONS = [
   "Gloss / High-Gloss",
 ];
 
+/**
+ * Sensible default finish per surface (Katie 2026-05-29) — auto-filled the
+ * moment a customer picks a color so the choice is complete without extra
+ * taps. Values match FINISH_OPTIONS exactly. Covers PPP's full Surfaces__c
+ * picklist (Walls/Ceiling/Trim/Floor/Accent Wall/Cabinets/Door/Window/
+ * Closet/Shelves): ceilings flat, woodwork semi-gloss, floors satin, the
+ * rest eggshell.
+ */
+function defaultFinishForSurface(surface: string): string {
+  const s = surface.toLowerCase();
+  if (s.includes("ceiling")) return "Flat / Matte";
+  if (s.includes("trim") || s.includes("door") || s.includes("window")) return "Semi-Gloss";
+  if (s.includes("floor")) return "Satin";
+  return "Eggshell";
+}
+
+/** Room/section title: Product Name · Area Label, with fallbacks. Shared by
+ *  the section header + the submit-validation message so they always match. */
+function roomTitle(li: FormLineItem, oneBasedIndex: number): string {
+  const parts = [li.productName?.trim() || "", li.areaLabel?.trim() || ""].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : li.productFamily?.trim() || `Section ${oneBasedIndex}`;
+}
+
 export default function CustomerFormView({ token, customerName, formData, copy }: Props) {
   // Seed state from any existing color picks on the WOLI (in case admin
   // resent the form after a prior submission).
@@ -180,6 +203,24 @@ export default function CustomerFormView({ token, customerName, formData, copy }
           ? `Couldn't load the color catalog: ${catalog.message}. Refresh the page and try again.`
           : "Color catalog still loading — wait a moment and try again."
       );
+      return;
+    }
+    // Finish is required wherever a color is picked (Katie 2026-05-29). A
+    // default auto-fills on pick, so this only fires if the customer cleared a
+    // finish. Name the exact room → surface so they can find it fast.
+    const missingFinish: string[] = [];
+    formData.lineItems.forEach((li, i) => {
+      const st = state[li.id];
+      if (!st) return;
+      for (const s of li.surfaces) {
+        const p = st.picks[s];
+        if (p && !p.skipped && p.colorId && !p.finish) {
+          missingFinish.push(`${roomTitle(li, i + 1)} → ${s}`);
+        }
+      }
+    });
+    if (missingFinish.length > 0) {
+      setSubmitError(`Please choose a finish for: ${missingFinish.join("; ")}.`);
       return;
     }
     submitInFlight.current = true;
@@ -515,6 +556,23 @@ function SurfaceRow({
     }
   };
 
+  // When the customer picks a color, auto-fill the surface's default finish if
+  // they haven't chosen one — so a color always lands complete (finish is
+  // required). Clearing the color also clears the finish so a stale finish
+  // doesn't linger on an empty surface.
+  const handleColorPick = (patch: Partial<SurfacePick>) => {
+    if (patch.colorId) {
+      onChange({ finish: pick.finish ?? defaultFinishForSurface(surface), ...patch });
+    } else if (patch.colorId === null) {
+      onChange({ ...patch, finish: null });
+    } else {
+      onChange(patch);
+    }
+  };
+
+  // A picked color with no finish is incomplete — flag it (submit also blocks).
+  const finishMissing = !!pick.colorId && !pick.finish;
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[110px_1fr_180px] gap-3 sm:items-start">
       <div className="flex items-center gap-2 sm:pt-2.5 justify-between sm:justify-start">
@@ -547,21 +605,35 @@ function SurfaceRow({
         </div>
       ) : (
         <>
-          <ColorPicker pick={pick} onPick={onChange} />
+          <ColorPicker pick={pick} onPick={handleColorPick} />
           <div className="flex flex-col gap-1">
             <select
               value={pick.finish ?? ""}
               onChange={(e) => onChange({ finish: e.target.value || null })}
+              aria-invalid={finishMissing}
               // text-base on mobile to keep ≥16px and avoid iOS zoom-on-focus;
               // py-3 on mobile to hit 44px target. Native <select> renders the
               // iOS wheel picker which is touch-perfect — keep using native here.
-              className="w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              className={[
+                "w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm border rounded-lg bg-white focus:outline-none focus:ring-2",
+                finishMissing
+                  ? "border-ppp-orange-300 focus:ring-ppp-orange-100 focus:border-ppp-orange-400"
+                  : "border-ppp-charcoal-100 focus:ring-ppp-blue/30 focus:border-ppp-blue",
+              ].join(" ")}
             >
-              <option value="">Finish (optional)</option>
+              {/* When a color is picked, finish is REQUIRED (Katie 2026-05-29).
+                  A default is auto-filled on pick, so this empty option only
+                  appears if the customer deliberately clears it. */}
+              <option value="">{pick.colorId ? "Choose a finish…" : "Finish (optional)"}</option>
               {FINISH_OPTIONS.map((f) => (
                 <option key={f} value={f}>{f}</option>
               ))}
             </select>
+            {finishMissing && (
+              <span className="text-[10px] text-ppp-orange-700 font-medium">
+                Pick a finish for this color
+              </span>
+            )}
             {/* Desktop-only skip link — under finish dropdown to match
                 visual rhythm. Mobile gets the inline link in the label row. */}
             <button
