@@ -84,7 +84,8 @@ const WOLI_FIELDS = [
 ];
 
 export async function loadFormRenderData(
-  workOrderId: string
+  workOrderId: string,
+  opts?: { throwOnError?: boolean }
 ): Promise<FormRenderData | null> {
   try {
     const conn = await getSalesforceClient();
@@ -197,6 +198,13 @@ export async function loadFormRenderData(
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);
     console.error(`[customer-form] loadFormRenderData failed for WO ${workOrderId}:`, m);
+    // A thrown error here is an INFRASTRUCTURE failure (SF unreachable, auth
+    // expired, network) — NOT "the WO doesn't exist" (that's the empty-result
+    // `return null` at the records-length check). Callers that need to tell the
+    // two apart (the submit route, so it can say "try again" instead of
+    // "removed" and lose a customer's submission) pass throwOnError. Default
+    // stays null so the select page + create route are unchanged.
+    if (opts?.throwOnError) throw err instanceof Error ? err : new Error(m);
     return null;
   }
 }

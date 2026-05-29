@@ -87,6 +87,12 @@ export async function POST(
   if (!body || body.token !== tokenFromUrl) {
     return NextResponse.json({ error: "token_mismatch" }, { status: 400 });
   }
+  // This is a public, token-gated endpoint — a malformed body (missing or
+  // non-array lineItems) must return a clean 400, never crash the for...of
+  // loops below into an unhandled 500.
+  if (!Array.isArray(body.lineItems)) {
+    return NextResponse.json({ error: "invalid_line_items" }, { status: 400 });
+  }
 
   // 1. Validate. "ok" = first submission; "editable" = customer revising a
   // prior submission before the cutoff (Katie 2026-05-29). "submitted" now
@@ -103,8 +109,19 @@ export async function POST(
   }
   const isReedit = status.kind === "editable";
 
-  // 2. Fresh re-fetch + drift detection
-  const fresh = await loadFormRenderData(status.token.work_order_id);
+  // 2. Fresh re-fetch + drift detection. throwOnError lets us tell a transient
+  // Salesforce outage from a genuinely-removed WO: a blip must NOT tell the
+  // customer their job is gone (and lose the colors they just picked) — that's
+  // a retryable 503, whereas a true empty result is the permanent 410.
+  let fresh;
+  try {
+    fresh = await loadFormRenderData(status.token.work_order_id, { throwOnError: true });
+  } catch {
+    return NextResponse.json({
+      error: "salesforce_unreachable",
+      message: "We couldn't reach Salesforce just now — your color picks aren't lost. Please try submitting again in a moment.",
+    }, { status: 503 });
+  }
   if (!fresh) {
     return NextResponse.json({
       error: "wo_not_found_in_sf",
@@ -112,17 +129,33 @@ export async function POST(
     }, { status: 410 });
   }
 
-  // Build a quick lookup of fresh line items by Id. If any line item the
-  // customer filled out is missing from the fresh fetch, the rep deleted it
-  // — surface that as drift so we don't silently lose data.
+  // Build a quick lookup of fresh line items by Id, then detect drift two ways:
+  // (a) a line item the customer filled out is GONE (rep deleted it), or
+  // (b) a line item was EDITED by the rep after the customer loaded the form
+  //     (its LastModifiedDate is newer than the render). Either way we 409 so we
+  //     don't silently overwrite the rep's change / lose the customer's picks.
+  // The 60s tolerance absorbs clock skew between Salesforce and our server so a
+  // WO edited just before the customer loaded never false-triggers.
   const freshById = new Map(fresh.lineItems.map((li) => [li.id, li]));
+  const renderedAtMs = body.renderFetchedAt ? new Date(body.renderFetchedAt).getTime() : NaN;
   for (const submitted of body.lineItems) {
-    if (!freshById.has(submitted.id)) {
+    const freshLi = freshById.get(submitted.id);
+    if (!freshLi) {
       return NextResponse.json({
         error: "drift_line_item_removed",
         message: "One of the rooms you filled out has been changed by our team. Please reload the form and try again.",
         removedLineItemId: submitted.id,
       }, { status: 409 });
+    }
+    if (!Number.isNaN(renderedAtMs) && freshLi.lastModifiedDate) {
+      const modMs = new Date(freshLi.lastModifiedDate).getTime();
+      if (!Number.isNaN(modMs) && modMs > renderedAtMs + 60_000) {
+        return NextResponse.json({
+          error: "drift_line_item_changed",
+          message: "One of the rooms you filled out was just updated by our team. Please reload the form so you're working from the latest version.",
+          changedLineItemId: submitted.id,
+        }, { status: 409 });
+      }
     }
   }
 
@@ -131,7 +164,10 @@ export async function POST(
   for (const submitted of body.lineItems) {
     const freshLi = freshById.get(submitted.id)!;
     const fields: Record<string, string | null> = {};
-    for (const s of submitted.surfaces) {
+    // Defensive: a malformed payload could omit/ill-type surfaces. Guard so the
+    // loop never throws on a public endpoint.
+    const surfaces = Array.isArray(submitted.surfaces) ? submitted.surfaces : [];
+    for (const s of surfaces) {
       const fieldName = SURFACE_TO_FIELD[s.surface.toLowerCase()];
       // On a RE-EDIT, an explicit "don't paint this" (skipped) must CLEAR any
       // color we previously wrote — otherwise a customer removing a color on a
@@ -153,17 +189,25 @@ export async function POST(
     // the field crew + materials shop see them. Format is human-readable on
     // purpose since PPP staff read this field directly.
     const noteLines: string[] = [];
-    for (const s of submitted.surfaces) {
+    for (const s of surfaces) {
       if (s.colorId && s.finish) {
         noteLines.push(`${s.surface}: ${s.colorName ?? "(color picked)"}${s.colorCode ? ` (${s.colorCode})` : ""} — ${s.finish}`);
       }
     }
-    if (submitted.notes.trim()) {
+    const submittedNotes = typeof submitted.notes === "string" ? submitted.notes : "";
+    if (submittedNotes.trim()) {
       noteLines.push("");
-      noteLines.push(`Customer notes: ${submitted.notes.trim()}`);
+      noteLines.push(`Customer notes: ${submittedNotes.trim()}`);
     }
     if (noteLines.length > 0) {
       fields.ColorNotes__c = noteLines.join("\n");
+    } else if (isReedit && freshLi.existingNotes) {
+      // Re-edit that left this room with no colors/notes — clear the prior note
+      // too, so a removed color doesn't leave a stale "Walls: Stardust —
+      // Eggshell" description the crew would still paint. Only when there's an
+      // existing note to clear (avoids no-op writes), and only on re-edit (first
+      // submit keeps the conservative "don't write empty notes").
+      fields.ColorNotes__c = null;
     }
     if (Object.keys(fields).length === 0) continue; // Nothing to write
     attempts.push({

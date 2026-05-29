@@ -104,6 +104,13 @@ export type BuildSupplierOrderInput = {
   specialInstructions?: string;
   /** Override required-by date (default: WO close date OR today+3, whichever later). */
   requiredByDate?: string;  // ISO date
+  /** True when the worker MANUALLY picked this supplier (vs the supplier being
+   *  auto-derived from the colors' manufacturer). The manual picker exists for
+   *  WOs whose colors have no manufacturer set on SF — so in that case we
+   *  attribute the WO's unattributed colors to the chosen supplier instead of
+   *  dropping them (which would send an empty paint order). Colors belonging to
+   *  a DIFFERENT known manufacturer are still excluded — never cross-contaminate. */
+  includeUnattributedColors?: boolean;
 };
 
 export type CustomerSubmittedPayload = {
@@ -206,9 +213,13 @@ async function nextPoNumber(woNumber: string, supplierName: string): Promise<str
   } catch (err) {
     console.warn("[supplier-order] PO sequence unreachable:", err);
   }
-  // Fallback: timestamp-based PO. Not race-safe across machines but works
-  // for solo QA + the modal preview before the DB sequence is wired.
-  return `PPP-WO${woNumber}-${code}-${String(Date.now()).slice(-6)}`;
+  // Fallback (RPC unreachable): timestamp + short random suffix. The timestamp
+  // alone could collide for two drafts of the same supplier+WO in the same
+  // millisecond (the po_number UNIQUE constraint would then 409 the send as a
+  // confusing "duplicate order"); the random suffix makes that effectively
+  // impossible while staying human-readable.
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `PPP-WO${woNumber}-${code}-${String(Date.now()).slice(-6)}${rand}`;
 }
 
 /** Compute required-by: WO close date if it's already 3+ days out, else today + 3 days. */
@@ -299,16 +310,23 @@ function resolveLineItems(
       if (!colorId) continue;
       const color = input.paintColorsById.get(colorId);
       if (!color) continue;
-      // Paint colors with null manufacturerId can't be attributed to any
-      // supplier — log a warning + skip. SF data corruption case; should
-      // not happen in normal operation. Without this warning the color
-      // would silently disappear from EVERY supplier's order.
+      // Paint colors with null manufacturerId can't be auto-attributed to any
+      // supplier. Normally we skip them (they'd otherwise leak onto every
+      // supplier's order). BUT when the worker MANUALLY picked this supplier,
+      // the picker's whole purpose is the no-manufacturer case — so attribute
+      // these colors to the chosen supplier instead of sending an empty order.
       if (!color.manufacturerId) {
-        console.warn(`[supplier-order/builder] PaintColor ${color.id} (${color.name}) has no manufacturerId — skipping from supplier order ${input.supplierAccountId}`);
+        if (!input.includeUnattributedColors) {
+          console.warn(`[supplier-order/builder] PaintColor ${color.id} (${color.name}) has no manufacturerId — skipping from supplier order ${input.supplierAccountId}`);
+          continue;
+        }
+        // manual pick → fall through and include this unattributed color
+      } else if (color.manufacturerId !== input.supplierAccountId) {
+        // Color belongs to a DIFFERENT known manufacturer — never put a BM color
+        // on an SW order, even on a manual pick. Only colors matching the
+        // supplier (or unattributed, handled above) belong here.
         continue;
       }
-      // Only include if this color is from the target supplier
-      if (color.manufacturerId !== input.supplierAccountId) continue;
 
       const surfaceCoverage = coats * sqft;
       // 0 coats × N sqft (or N coats × 0 sqft) = 0 paint needed. Previously

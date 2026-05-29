@@ -81,6 +81,7 @@ export default function SupplierOrderModal({
   supplierAccountId,
   supplierName,
   customerName,
+  manualSupplier = false,
   onClose,
 }: {
   workOrderId: string;
@@ -88,6 +89,10 @@ export default function SupplierOrderModal({
   supplierAccountId: string;
   supplierName: string;
   customerName: string | null;
+  /** True when the worker chose this supplier via the manual picker (vs an
+   *  auto-detected supplier). Tells the draft builder to attribute the WO's
+   *  unattributed colors to this supplier instead of dropping them. */
+  manualSupplier?: boolean;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -171,6 +176,7 @@ export default function SupplierOrderModal({
             pickupLocation: fulfillment === "pickup" ? pickupLocation : undefined,
             extras: Array.from(extras.values()),
             specialInstructions: specialInstructions.trim() || undefined,
+            manualSupplier,
           }),
         });
         const data = await res.json();
@@ -200,7 +206,7 @@ export default function SupplierOrderModal({
       }
     }, 120); // Was 250ms — reduced to 120ms so extras-toggle feels snappy.
     return () => { cancelled = true; clearTimeout(timeout); };
-  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, extras, specialInstructions]);
+  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, extras, specialInstructions, manualSupplier]);
 
   // Scroll the email body into view on first draft load. Re-builds from
   // extras/fulfillment toggles don't re-scroll (ref guard).

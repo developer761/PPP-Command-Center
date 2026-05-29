@@ -57,6 +57,8 @@ export async function POST(request: Request) {
     extras?: SupplierOrderExtra[];
     specialInstructions?: string;
     requiredByDate?: string;
+    /** Worker manually picked this supplier (vs auto-derived from colors). */
+    manualSupplier?: boolean;
   };
   try {
     body = await request.json();
@@ -165,6 +167,7 @@ export async function POST(request: Request) {
     extras: body.extras ?? [],
     specialInstructions: body.specialInstructions,
     requiredByDate: body.requiredByDate,
+    includeUnattributedColors: body.manualSupplier ?? false,
   });
 
   return NextResponse.json({ ok: true, draft });

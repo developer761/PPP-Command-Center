@@ -41,8 +41,8 @@ const RESEND_API_URL = "https://api.resend.com/emails";
 
 /**
  * Send a transactional email through Resend. Returns the Resend message id on
- * success (used for webhook correlation + status tracking in vendor_email_sends
- * and customer_form_tokens).
+ * success (used for webhook correlation + status tracking in supplier_orders,
+ * inbox_messages, and customer_form_tokens).
  *
  * Fails LOUDLY in dev (throws) and SOFTLY in prod (returns error) so a single
  * misconfigured env doesn't kill the page render. The caller decides what to

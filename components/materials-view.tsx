@@ -68,6 +68,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     supplierAccountId: string;
     supplierName: string;
     customerName: string | null;
+    /** Worker chose this supplier via the manual picker (not auto-detected). */
+    manual?: boolean;
   } | null>(null);
 
   // Batch compose queue — when admin "Compose all (N)" in DraftOrderModal,
@@ -503,13 +505,14 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                 <JobDetail
                   snapshot={snapshot}
                   job={activeJob}
-                  onOpenOrderModal={(supplierAccountId, supplierName) =>
+                  onOpenOrderModal={(supplierAccountId, supplierName, manual) =>
                     setOrderModal({
                       workOrderId: activeJob.wo.id,
                       workOrderNumber: activeJob.wo.workOrderNumber,
                       supplierAccountId,
                       supplierName,
                       customerName: activeJob.wo.accountName ?? null,
+                      manual: manual ?? false,
                     })
                   }
                   onOpenBatchStart={(suppliers) => {
@@ -553,6 +556,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           supplierAccountId={orderModal.supplierAccountId}
           supplierName={orderModal.supplierName}
           customerName={orderModal.customerName}
+          manualSupplier={orderModal.manual ?? false}
           onClose={() => {
             // Re-entrancy guard: onClose can fire twice in <100ms (Esc +
             // backdrop click, or send-success + manual close). Second call
@@ -609,8 +613,10 @@ function JobDetail({
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   job: OpenWorkOrderForMaterials;
   /** Called when the worker clicks "Order from {supplier}" — triggers
-   *  the top-level Supplier Order Modal with that supplier pre-selected. */
-  onOpenOrderModal: (supplierAccountId: string, supplierName: string) => void;
+   *  the top-level Supplier Order Modal with that supplier pre-selected.
+   *  `manual` is true when chosen via the manual picker (vs auto-detected),
+   *  so the builder attributes unattributed colors to the chosen supplier. */
+  onOpenOrderModal: (supplierAccountId: string, supplierName: string, manual?: boolean) => void;
   /** Called when worker selects multiple suppliers + hits "Compose all (N)" —
    *  parent starts a queue and sequentially opens each. */
   onOpenBatchStart: (suppliers: Array<{ accountId: string; name: string }>) => void;
@@ -798,7 +804,10 @@ function JobDetail({
       {showPicker && (
         <SupplierPickerModal
           onClose={() => setShowPicker(false)}
-          onPick={(s) => onOpenOrderModal(s.accountId, s.name)}
+          // manual=true: this supplier was hand-picked (not auto-detected from
+          // the colors' manufacturer), so the builder must attribute the WO's
+          // unattributed colors to it instead of sending an empty order.
+          onPick={(s) => onOpenOrderModal(s.accountId, s.name, true)}
           excludeIds={supplierRows
             .map((r) => r.manufacturerId)
             .filter((id) => id && id !== "unknown") as string[]}

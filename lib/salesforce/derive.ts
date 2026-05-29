@@ -920,7 +920,12 @@ export function deriveRepMomentum(
 
   for (const row of revenueRows(snapshot)) {
     if (!row.ownerId || !row.closeDate || row.amount === 0) continue;
-    const closed = new Date(row.closeDate).getTime();
+    // Anchor the date-only closeDate to UTC midnight like every other revenue
+    // function in this file — a bare new Date("YYYY-MM-DD") is already UTC
+    // midnight, but the explicit suffix keeps the week-boundary bucketing
+    // consistent with deriveTrend/deriveTodaySnapshot and avoids drift if the
+    // value ever arrives as a full datetime.
+    const closed = new Date(row.closeDate + "T00:00:00Z").getTime();
     if (isNaN(closed)) continue;
 
     const stats = byRep.get(row.ownerId) ?? { thisWeek: 0, priorWeek: 0, deltaPct: 0 };

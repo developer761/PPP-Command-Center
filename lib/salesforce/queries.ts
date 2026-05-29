@@ -1807,17 +1807,6 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
   });
 }
 
-/** Lightweight summary for the integrations dashboard. */
-export async function getSalesforceDataSummary() {
-  const snap = await loadSalesforceSnapshot();
-  return {
-    users: snap.reps.length,
-    accounts: new Set(snap.opportunities.map((o) => o.accountName).filter(Boolean)).size,
-    opportunities: snap.opportunities.length,
-    workOrders: 0, // TBD
-  };
-}
-
 /* ─────────────────────────────────────────────────────────────────
  * Schema Inspector — list custom fields on key objects.
  * Use this when the dashboard shows wrong values: load this on the

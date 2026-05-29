@@ -525,7 +525,11 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             value={fmtMoneyK(snapshot && region !== "all" && liveKpis ? liveKpis.totalRevenue : revenueKpi.value)}
             change={
               snapshot && region !== "all"
-                ? `${region} · this period`
+                // Region-scoped: show a neutral descriptor parallel to the other
+                // cards ("Sold ÷ Opps", "Per deal with revenue", …) rather than
+                // restating the region (already in the page subtitle). A true
+                // region-scoped prior-period delta isn't cheaply available here.
+                ? "Sold this period"
                 : period === "lifetime" ? "All time" : `${sign(revenueKpi.change)}% vs prior`
             }
             trend={snapshot && region !== "all" ? "flat" : period === "lifetime" ? "flat" : revenueKpi.trend}
