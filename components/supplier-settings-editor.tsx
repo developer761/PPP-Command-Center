@@ -116,9 +116,18 @@ export default function SupplierSettingsEditor() {
 
       {/* Supplier list */}
       <div className="space-y-3">
-        {state.candidates.map((c) => (
-          <SupplierRow key={c.supplierAccountId} candidate={c} onSaved={load} />
-        ))}
+        {state.candidates.length === 0 ? (
+          <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+            <p className="text-sm font-semibold text-ppp-charcoal">No vendors configured yet</p>
+            <p className="text-xs text-ppp-charcoal-500 mt-1.5 max-w-md mx-auto">
+              These are the stores PPP orders materials from. They load from your vendor list — if it&apos;s empty, the seed migration hasn&apos;t run yet, or no vendors have been added.
+            </p>
+          </div>
+        ) : (
+          state.candidates.map((c) => (
+            <SupplierRow key={c.supplierAccountId} candidate={c} onSaved={load} />
+          ))
+        )}
       </div>
     </div>
   );
