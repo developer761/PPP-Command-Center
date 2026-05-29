@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
 import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatBucketsCans, summarizeOrder, type RoomTakeoff, type RoomSurface, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
+import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import type {
   SnapshotAccount,
   SnapshotPaintColor,
@@ -656,7 +657,8 @@ export async function buildSupplierOrderDraft(
   // manufacturer id so resolveLineItems returns empty, which is the right
   // shape (extras-only order).
   const { lineItems, rooms, skippedSurfaces } = resolveLineItems(input);
-  const gallonEstimates = estimateOrderGallons(rooms);
+  // Tunable coverage config (Settings → Coverage); falls back to code defaults.
+  const gallonEstimates = estimateOrderGallons(rooms, await loadCoverageConfig());
   const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates);
   const placementBlock = formatPlacementBlock(lineItems);
   const deliveryAddress = resolveDeliveryAddress(input);
