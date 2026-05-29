@@ -551,6 +551,24 @@ function isLikelyRep(profileName: string | null, isActive: boolean): boolean {
   return !skip.some((tok) => p.includes(tok));
 }
 
+// PPP's field-team rep universe (Katie, 2026-05-29). The Rep Profiles page +
+// all KPI/scoring + team-average denominators use this set. Profile names carry
+// a literal "*" prefix in PPP's org. Michael Zilberman is included by Id despite
+// his "*Manager" profile (the other *Manager users stay excluded).
+const FIELD_REP_PROFILES = new Set([
+  "*standard.field",
+  "*experience",
+  "*wallpapers",
+  "*tomco",
+]);
+const FIELD_REP_USER_ID_OVERRIDES = new Set<string>([
+  "0056g000008Xfe7AAC", // Michael Zilberman (*Manager) — Katie wants him in
+]);
+function isFieldRep(profileName: string | null, userId: string): boolean {
+  if (FIELD_REP_USER_ID_OVERRIDES.has(userId)) return true;
+  return FIELD_REP_PROFILES.has((profileName ?? "").trim().toLowerCase());
+}
+
 /* ─────────────────────────────────────────────────────────────────
  * Public — one bulk snapshot fetch, parallel queries
  * ─────────────────────────────────────────────────────────────── */
@@ -1052,13 +1070,14 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       .filter((u) => u.UserType === "Standard" || u.UserType === "PowerPartner" || u.UserType === null)
       .filter((u) => isLikelyRep(u.Profile?.Name ?? null, u.IsActive))
       .map((u) => {
-        // PPP's canonical rep universe = Profile.Name ending in "Standard.Field"
-        // (~26 active reps per the BUSINESS_RULES doc). Non-field-standard
-        // users (admins / managers / office) are still pulled so we can name
-        // them in WO/Opp owner lookups, but they're excluded from KPIs +
-        // team-average denominators via isFieldStandard.
+        // PPP's field-team rep universe (Katie 2026-05-29): profiles
+        // *Standard.Field / *Experience / *Wallpapers / *Tomco, plus Michael
+        // Zilberman by Id. Non-field users (admins / other managers / office)
+        // are still pulled so we can name them in WO/Opp owner lookups, but
+        // they're excluded from the Rep Profiles page + KPIs + team-average
+        // denominators via isFieldStandard.
         const profile = u.Profile?.Name ?? "";
-        const isFieldStandard = /Standard\.Field\s*$/i.test(profile);
+        const isFieldStandard = isFieldRep(profile, u.Id);
         return {
           id: u.Id,
           name: u.Name,

@@ -58,7 +58,14 @@ export default function RepIndexView({ bundle }: Props) {
   const { source, reason, snapshot } = bundle;
 
   const reps = useMemo(() => {
-    if (snapshot) return deriveRepsForPeriod(snapshot, period);
+    if (snapshot) {
+      // Rep Profiles page shows only PPP's field team (Katie 2026-05-29) —
+      // profiles *Standard.Field / *Experience / *Wallpapers / *Tomco + Michael
+      // Zilberman, flagged via isFieldStandard on the snapshot. Non-field users
+      // (admins / other managers / office) are filtered out here. Mock reps
+      // have isFieldStandard=undefined → kept.
+      return deriveRepsForPeriod(snapshot, period).filter((r) => r.isFieldStandard !== false);
+    }
     return mockReps;
   }, [snapshot, period]);
 
