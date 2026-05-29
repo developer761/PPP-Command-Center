@@ -712,40 +712,22 @@ function JobDetail({
             accountName={job.wo.accountName ?? null}
             defaultEmail={customerAccount?.email ?? null}
           />
-          {/* Smart short-circuit: when this WO has only ONE supplier, the
-              Draft Order modal is just a confirmation step before the real
-              Supplier Order Modal — we can skip it. Single-supplier WOs are
-              ~80% of PPP's volume (single-brand paint jobs), so this cuts
-              the path to "send order" from 3 clicks to 2.
-              Multi-supplier WOs still see the "Draft order (preview)" button
-              which lets admin pick which supplier to order from first. */}
-          {supplierRows.length === 1 ? (
-            <button
-              type="button"
-              onClick={() => onOpenOrderModal(supplierRows[0].manufacturerId, supplierRows[0].name)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M3 3h18v18H3z M3 9h18 M9 21V9" />
-              </svg>
-              Order from {supplierRows[0].name.split(" ")[0]}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowDraft(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M3 3h18v18H3z M3 9h18 M9 21V9" />
-              </svg>
-              Order materials · {supplierRows.length} suppliers
-            </button>
-          )}
-          {/* Preview button — kept for both paths so admin can review colors
-              before ordering (useful even on single-supplier WOs). Demoted
-              to secondary outline style since "Order materials" is now the
-              primary CTA. */}
+          {/* Order materials = pick a STORE (Katie's model: PPP buys paint of
+              any brand from stores like Aboffs/Willis, not from the manufacturer).
+              The picker lists PPP's configured vendors; the chosen store's order
+              includes the whole WO's colors. The manufacturer breakdown above is
+              informational only (it's what the email describes as "what to buy"). */}
+          <button
+            type="button"
+            onClick={() => setShowPicker(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 3h18v18H3z M3 9h18 M9 21V9" />
+            </svg>
+            Order materials
+          </button>
+          {/* Preview colors — review the per-room color breakdown before ordering. */}
           <button
             type="button"
             onClick={() => setShowDraft(true)}
@@ -769,20 +751,6 @@ function JobDetail({
             </svg>
             Mail history
           </Link>
-          {/* Pick supplier manually — edge case: workers sometimes don't set
-              supplier (manufacturer) on Salesforce, so the WO has paint colors
-              but no auto-detected supplier. This button lets the worker pick
-              from admin-configured suppliers regardless of what SF says. */}
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 5v14 M5 12h14" />
-            </svg>
-            Pick supplier
-          </button>
           {/* General Supplies — extras-only order (rollers, brushes, tape,
               drop cloths) sent to PPP's warehouse/Home Depot email, NOT a
               paint vendor. Same modal flow as paint orders so the worker
@@ -829,22 +797,15 @@ function JobDetail({
         </ul>
       </div>
 
-      {/* Draft preview modal */}
+      {/* Color preview modal — read-only review, then order from a store */}
       {showDraft && (
         <DraftOrderModal
           job={job}
           snapshot={snapshot}
           onClose={() => setShowDraft(false)}
-          onOpenOrderModal={(supplierAccountId, supplierName) => {
+          onOrderMaterials={() => {
             setShowDraft(false);
-            onOpenOrderModal(supplierAccountId, supplierName);
-          }}
-          onOpenBatch={(suppliers) => {
-            setShowDraft(false);
-            if (suppliers.length === 0) return;
-            // Start the queue + open the first supplier. Parent's onClose
-            // handler will auto-advance through the rest.
-            onOpenBatchStart(suppliers);
+            setShowPicker(true);
           }}
         />
       )}
@@ -963,35 +924,18 @@ function DraftOrderModal({
   job,
   snapshot,
   onClose,
-  onOpenOrderModal,
-  onOpenBatch,
+  onOrderMaterials,
 }: {
   job: OpenWorkOrderForMaterials;
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   onClose: () => void;
-  onOpenOrderModal: (supplierAccountId: string, supplierName: string) => void;
-  /** Open a batch queue — modal sequentially opens each supplier order modal
-   *  so worker can review + send to all selected suppliers in one flow. */
-  onOpenBatch: (suppliers: Array<{ accountId: string; name: string }>) => void;
+  /** Proceed to order — opens the store picker (PPP orders from stores). */
+  onOrderMaterials: () => void;
 }) {
   // Esc key closes the modal — keyboard a11y for the rest of Phase 2.
   useEscClose(onClose);
 
-  // Multi-select state for the "compose all" batch. Starts EMPTY on purpose —
-  // these checkboxes gate outbound supplier emails, so the worker explicitly
-  // ticks who to order from rather than us pre-selecting (and risking an
-  // accidental send to a supplier they didn't intend). "Compose all (N)"
-  // appears once they've ticked 2+.
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const toggleSelected = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  // Aggregate by supplier × color × surface for the draft order body
+  // Aggregate by brand × color × surface for the read-only color preview
   const groups = useMemo(() => {
     const byMfg = new Map<
       string,
@@ -1082,27 +1026,8 @@ function DraftOrderModal({
             {groups.map((g) => (
               <div key={g.name} className="border border-ppp-charcoal-100 rounded-lg overflow-hidden">
                 <div className="px-3 py-2 bg-ppp-blue-50 border-b border-ppp-blue-100 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    {g.supplierAccountId && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(g.supplierAccountId)}
-                        onChange={() => toggleSelected(g.supplierAccountId!)}
-                        className="shrink-0 h-4 w-4 accent-ppp-blue cursor-pointer"
-                        aria-label={`Select ${g.name} for batch order`}
-                      />
-                    )}
-                    <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.name}</span>
-                  </div>
-                  {g.supplierAccountId && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenOrderModal(g.supplierAccountId!, g.name)}
-                      className="shrink-0 px-2.5 py-1 rounded text-[11px] font-semibold bg-ppp-blue text-white hover:bg-ppp-blue-600 transition-colors"
-                    >
-                      Order from {g.name.split(" ")[0]} →
-                    </button>
-                  )}
+                  <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.name}</span>
+                  <span className="shrink-0 text-[10px] text-ppp-charcoal-500">{g.colors.size} color{g.colors.size === 1 ? "" : "s"}</span>
                 </div>
                 <ul className="divide-y divide-ppp-charcoal-100 text-xs">
                   {Array.from(g.colors.values()).map(({ color, rooms }) => (
@@ -1127,17 +1052,7 @@ function DraftOrderModal({
 
         <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] text-ppp-charcoal-500 italic">
-            {selectedIds.size > 0 ? (
-              <>
-                <strong className="text-ppp-charcoal">{selectedIds.size} supplier{selectedIds.size === 1 ? "" : "s"} selected.</strong>{" "}
-                Click <strong>Compose all</strong> to review + send each in sequence.
-              </>
-            ) : (
-              <>
-                Tick the checkboxes to compose <strong>multiple supplier orders at once</strong>, or
-                click <strong>Order from {"{supplier}"}</strong> on a single group.
-              </>
-            )}
+            Review the colors, then <strong>Order materials</strong> to pick the store you&apos;re buying from.
           </div>
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
@@ -1147,20 +1062,13 @@ function DraftOrderModal({
             >
               Close
             </button>
-            {selectedIds.size > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  const picked = groups
-                    .filter((g) => g.supplierAccountId && selectedIds.has(g.supplierAccountId))
-                    .map((g) => ({ accountId: g.supplierAccountId!, name: g.name }));
-                  if (picked.length > 0) onOpenBatch(picked);
-                }}
-                className="px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
-              >
-                Compose all ({selectedIds.size}) →
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onOrderMaterials}
+              className="px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+            >
+              Order materials →
+            </button>
           </div>
         </div>
       </div>
