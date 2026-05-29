@@ -49,7 +49,6 @@ type SupplierOrderLineItem = {
   finish: string | null;
   sqft: number;
   coats: number;
-  gallons: number;
   sourceWoliId: string;
   roomLabel: string;
 };

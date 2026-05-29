@@ -73,12 +73,15 @@ export type SupplierOrderLineItem = {
   colorCode: string | null;
   manufacturerName: string | null;
   finish: string | null;    // "Eggshell" / "Semi-Gloss" / etc.
-  sqft: number;             // From WOLI.Sq_Footage__c (or wallSurfaceArea fallback)
-  coats: number;            // From WOLI.of_Coats__c (default 2)
-  gallons: number;          // ceil(sqft × coats / coveragePerGallon)
+  sqft: number;             // From WOLI.Sq_Footage__c (floor area) — context only
+  coats: number;            // From WOLI.of_Coats__c (default 2) — context only
   sourceWoliId: string;
   roomLabel: string;        // "Master Bedroom" / "Living Room"
 };
+// NOTE: order QUANTITIES live in gallonEstimates (the per-color roll-up). These
+// per-surface line items are placement context (which color goes where); they
+// deliberately carry NO gallon figure — the old per-surface number triple-
+// counted (full floor sqft for walls AND ceiling AND trim).
 
 export type SupplierOrderExtra = {
   extraId: string;
@@ -341,13 +344,6 @@ function resolveLineItems(
         continue;
       }
 
-      const surfaceCoverage = coats * sqft;
-      // 0 coats × N sqft (or N coats × 0 sqft) = 0 paint needed. Previously
-      // fell back to 1 gallon "to be safe" — but if WOLI has 0 sqft it's a
-      // data issue, not a quantity to guess. Emit 0 so the supplier order
-      // surface line item is visible (admin can spot the bad data) but no
-      // paint is over-ordered for a phantom surface.
-      const gallons = surfaceCoverage > 0 ? Math.ceil(surfaceCoverage / 350) : 0;
       out.push({
         surface: slot.surfaceLabel,
         colorId,
@@ -357,7 +353,6 @@ function resolveLineItems(
         finish: customerPick?.finish ?? null,
         sqft,
         coats,
-        gallons,
         sourceWoliId: woli.id,
         roomLabel,
       });
@@ -404,7 +399,6 @@ function resolveLineItems(
           finish: cs.finish ?? null,
           sqft: 0,
           coats,
-          gallons: 0,
           sourceWoliId: woli.id,
           roomLabel,
         });
