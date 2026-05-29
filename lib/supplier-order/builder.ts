@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
+import { estimateOrderGallons, type SurfacePick, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 import type {
   SnapshotAccount,
   SnapshotPaintColor,
@@ -148,6 +149,11 @@ export type SupplierOrderDraft = {
   subject: string;
   body: string;
   lineItems: SupplierOrderLineItem[];
+  /** Per-color "what to buy" rollup — whole gallons aggregated across every
+   *  room (the clean shopping list that leads the email + drives the app's
+   *  estimate banner). Quantities are system estimates; the app shows a
+   *  "review before sending" banner, the vendor email shows clean numbers. */
+  gallonEstimates: GallonEstimate[];
   /** Surfaces the customer explicitly opted out of painting. Surfaced in
    *  the email body so the supplier knows "customer is not painting the
    *  ceiling" vs "customer forgot to pick a ceiling color" — these used
@@ -261,8 +267,12 @@ const SURFACE_FIELD_TO_LABEL: Record<string, string> = {
  *  otherwise have to guess whether the customer forgot or chose not to. */
 function resolveLineItems(
   input: BuildSupplierOrderInput
-): { lineItems: SupplierOrderLineItem[]; skippedSurfaces: Array<{ roomLabel: string; surface: string }> } {
+): { lineItems: SupplierOrderLineItem[]; picks: SurfacePick[]; skippedSurfaces: Array<{ roomLabel: string; surface: string }> } {
   const out: SupplierOrderLineItem[] = [];
+  // Parallel feed for the gallon estimator — one entry per painted surface that
+  // made it onto THIS supplier's order (same filter as `out`), so the rollup
+  // only counts colors actually being ordered here.
+  const picks: SurfacePick[] = [];
   const skipped: Array<{ roomLabel: string; surface: string }> = [];
   const customerByLineId = new Map<string, CustomerSubmittedPayload["lineItems"][number]>();
   if (input.customerSubmittedPayload) {
@@ -348,10 +358,24 @@ function resolveLineItems(
         sourceWoliId: woli.id,
         roomLabel,
       });
+      // Feed the gallon estimator with FLOOR area (the estimator derives wall
+      // area = floor × multiplier itself). Pass raw Sq_Footage__c — 0/missing
+      // becomes a "needs measurement" line rather than a guess.
+      picks.push({
+        woliId: woli.id,
+        roomLabel,
+        surfaceLabel: slot.surfaceLabel,
+        colorId,
+        colorName: color.name,
+        colorCode: color.code,
+        finish: customerPick?.finish ?? null,
+        floorAreaSqft: woli.sqFootage,
+        coats,
+      });
     }
   }
 
-  return { lineItems: out, skippedSurfaces: skipped };
+  return { lineItems: out, picks, skippedSurfaces: skipped };
 }
 
 /** Resolve the delivery address with the fallback chain:
@@ -412,9 +436,32 @@ function formatAddressBlock(address: DeliveryAddress): string {
   return lines.join("\n");
 }
 
-/** Group line items by room → formatted multi-line block. */
-function formatLineItemsBlock(items: SupplierOrderLineItem[]): string {
-  if (items.length === 0) return "(no colors picked yet — customer has not submitted the color form)";
+/** The "what to buy" shopping list — per-color whole-gallon totals. Leads the
+ *  email so the vendor sees order quantities first. NO "estimate" wording (the
+ *  app shows the estimate banner; the vendor email stays clean). Lines we can't
+ *  size from a floor measurement show a blank quantity + "PPP to confirm". */
+function formatOrderSummaryBlock(estimates: GallonEstimate[]): string {
+  if (estimates.length === 0) return "(no colors picked yet — customer has not submitted the color form)";
+  const lines: string[] = [];
+  for (const e of estimates) {
+    const code = e.colorCode ? ` ${e.colorCode}` : "";
+    const finish = e.finish ? ` · ${e.finish}` : "";
+    const where = e.surfaces.length ? ` (${e.surfaces.join(", ")})` : "";
+    if (e.gallons > 0) {
+      lines.push(`  ${e.gallons} gal — ${e.colorName}${code}${finish}${where}`);
+    } else {
+      lines.push(`  ___ — ${e.colorName}${code}${finish}${where} (PPP to confirm quantity)`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Per-room "where each color goes" detail. Deliberately carries NO gallon
+ *  numbers — quantities live in the order summary above (the old per-surface
+ *  gallon figure triple-counted, using the full sqft for walls AND ceiling AND
+ *  trim). This block is context for the crew/vendor, not a quantity source. */
+function formatPlacementBlock(items: SupplierOrderLineItem[]): string {
+  if (items.length === 0) return "(no colors picked yet)";
   const byRoom = new Map<string, SupplierOrderLineItem[]>();
   for (const li of items) {
     if (!byRoom.has(li.roomLabel)) byRoom.set(li.roomLabel, []);
@@ -426,7 +473,7 @@ function formatLineItemsBlock(items: SupplierOrderLineItem[]): string {
     for (const r of rows) {
       const code = r.colorCode ? ` (${r.colorCode})` : "";
       const finish = r.finish ? `, ${r.finish}` : "";
-      blocks.push(`  - ${r.surface} — ${r.colorName}${code}${finish} × ${r.gallons} gal`);
+      blocks.push(`  - ${r.surface}: ${r.colorName}${code}${finish}`);
     }
     blocks.push("");
   }
@@ -530,7 +577,10 @@ export async function buildSupplierOrderDraft(
   // paint colors entirely — none of the WO's PaintColors match the synthetic
   // manufacturer id so resolveLineItems returns empty, which is the right
   // shape (extras-only order).
-  const { lineItems, skippedSurfaces } = resolveLineItems(input);
+  const { lineItems, picks, skippedSurfaces } = resolveLineItems(input);
+  const gallonEstimates = estimateOrderGallons(picks);
+  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates);
+  const placementBlock = formatPlacementBlock(lineItems);
   const deliveryAddress = resolveDeliveryAddress(input);
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);
   const poNumber = await nextPoNumber(
@@ -556,7 +606,8 @@ export async function buildSupplierOrderDraft(
     fulfillment_block: formatFulfillmentBlock(input.fulfillmentMethod, deliveryAddress, input.pickupLocation),
     delivery_address_block: deliveryAddress ? formatAddressBlock(deliveryAddress) : "",
     pickup_location: input.pickupLocation ?? "",
-    line_items_block: formatLineItemsBlock(lineItems),
+    // For templates that inline {{line_items_block}}: the buy-list + placement.
+    line_items_block: `${orderSummaryBlock}\n\nCOLOR PLACEMENT (where each color goes)\n${placementBlock}`,
     extras_block: formatExtrasBlock(input.extras),
     special_instructions: input.specialInstructions?.trim() ?? "",
     ppp_brand: "Precision Painting Plus",
@@ -579,8 +630,11 @@ export async function buildSupplierOrderDraft(
     "",
     intro.trim(),
     "",
-    "COLORS",
-    formatLineItemsBlock(lineItems),
+    "ORDER — WHAT TO BUY",
+    orderSummaryBlock,
+    "",
+    "COLOR PLACEMENT (where each color goes)",
+    placementBlock,
   ];
   // Customer-opted-out surfaces — surface explicitly so the supplier knows
   // the intent. Without this block the supplier would just see paint for
@@ -613,6 +667,7 @@ export async function buildSupplierOrderDraft(
     subject,
     body: sections.join("\n"),
     lineItems,
+    gallonEstimates,
     skippedSurfaces,
     noColorsPicked: lineItems.length === 0,
     unresolvedAddress: input.fulfillmentMethod === "delivery" && !deliveryAddress,

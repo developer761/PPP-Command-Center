@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
+import type { GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 
 /**
  * Supplier Order Modal — the full draft → review → send experience for one
@@ -58,6 +59,7 @@ type Draft = {
   subject: string;
   body: string;
   lineItems: SupplierOrderLineItem[];
+  gallonEstimates: GallonEstimate[];
   noColorsPicked: boolean;
   unresolvedAddress: boolean;
   deliveryAddress: DeliveryAddress | null;
@@ -417,17 +419,57 @@ export default function SupplierOrderModal({
                       Settings → Suppliers, or use Copy-to-Clipboard below and paste into Gmail.
                     </div>
                   )}
-                  {/* Zero-gallon warning — when SF data is missing sqft for a
-                      WOLI, the gallons calc returns 0. We surface this so
-                      admin spots the data issue BEFORE sending (otherwise
-                      the supplier gets "Walls — Cloud White × 0 gal" which
-                      looks like a typo). */}
+                  {/* Paint quantities are SYSTEM ESTIMATES (derived from the
+                      floor-area measurement in Salesforce). App-only banner —
+                      the vendor email shows clean numbers with no "estimate"
+                      wording. The worker reviews the buy-list before sending. */}
+                  {draft.gallonEstimates.length > 0 && (
+                    <div className="bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-4 py-3 text-xs text-ppp-blue-700">
+                      <strong>Paint quantities are estimates.</strong> Gallons are calculated from the
+                      square footage in Salesforce — review the buy-list below and adjust the email if a
+                      job needs more (heavy texture, dark-over-light, etc.) before sending.
+                    </div>
+                  )}
+
+                  {/* The clean "what to buy" shopping list — per color, whole
+                      gallons. Mirrors the ORDER section of the email so the
+                      worker eyeballs quantities without scanning the body. */}
+                  {draft.gallonEstimates.length > 0 && (
+                    <div className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden">
+                      <div className="px-4 py-2 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
+                        <span className="text-xs font-semibold text-ppp-charcoal">Order — what to buy</span>
+                      </div>
+                      <ul className="divide-y divide-ppp-charcoal-100">
+                        {draft.gallonEstimates.map((e, i) => (
+                          <li key={`${e.colorId}-${e.finish ?? ""}-${i}`} className="flex items-center justify-between gap-3 px-4 py-2 text-xs">
+                            <div className="min-w-0">
+                              <span className="font-medium text-ppp-charcoal">{e.colorName}</span>
+                              {e.colorCode && <span className="text-ppp-charcoal-400 ml-1">{e.colorCode}</span>}
+                              {e.finish && <span className="text-ppp-charcoal-500"> · {e.finish}</span>}
+                              {e.surfaces.length > 0 && (
+                                <span className="text-[10px] text-ppp-charcoal-400 ml-1">({e.surfaces.join(", ")})</span>
+                              )}
+                            </div>
+                            <span className={`shrink-0 font-semibold whitespace-nowrap ${e.gallons > 0 ? "text-ppp-charcoal" : "text-ppp-orange-700"}`}>
+                              {e.gallons > 0
+                                ? `${e.gallons} gal`
+                                : e.needsMeasurement ? "needs measurement" : "—"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Surface any color we couldn't size (missing sqft / unsized
+                      surface like cabinets) so the worker sets a quantity in the
+                      email instead of the vendor receiving a blank line. */}
                   {(() => {
-                    const zeroes = draft.lineItems.filter((li) => li.gallons === 0);
-                    if (zeroes.length === 0) return null;
+                    const unsized = draft.gallonEstimates.filter((e) => e.gallons === 0);
+                    if (unsized.length === 0) return null;
                     return (
                       <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
-                        <strong>⚠ {zeroes.length} line item{zeroes.length === 1 ? "" : "s"} show 0 gallons</strong> — the WOLI is missing sqft data in Salesforce. Edit the email body below to set quantities manually, or fix the WOLI in SF first.
+                        <strong>⚠ {unsized.length} color{unsized.length === 1 ? "" : "s"} need a manual quantity</strong> — Salesforce has no square footage for {unsized.length === 1 ? "it" : "them"} (or it&apos;s a surface we can&apos;t size, like cabinets). Set the gallons in the email body before sending, or fix the WOLI sqft in SF.
                       </div>
                     );
                   })()}
