@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import type { WoProgress } from "@/components/work-order-progress-bar";
+import { getJobCompletedAt } from "@/lib/wo-progress/completion";
 
 /**
  * One-shot loader for the materials page's two auxiliary datasets:
@@ -81,15 +82,27 @@ export type MaterialsPageAuxData = {
   progressByWO: Map<string, WoProgress>;
 };
 
-export async function getMaterialsPageAuxData(workOrderIds: string[]): Promise<MaterialsPageAuxData> {
+/** Optional per-WO Salesforce metadata. When provided, the progress builder
+ *  uses it to stamp `jobCompletedAt` from the WO's Status + CloseDate so the
+ *  Job Complete stage of the progress bar can advance automatically (no
+ *  manual admin action). When omitted, jobCompletedAt stays null. */
+export type WorkOrderCompletionMeta = { status: string | null; closeDate: string | null };
+
+export async function getMaterialsPageAuxData(
+  workOrderIds: string[],
+  workOrderMeta?: Map<string, WorkOrderCompletionMeta>,
+): Promise<MaterialsPageAuxData> {
   const formStatusByWO = new Map<string, FormStatus>();
   const progressByWO = new Map<string, WoProgress>();
   if (workOrderIds.length === 0) return { formStatusByWO, progressByWO };
 
-  // Seed all-defaults so callers can do constant-time lookups
+  // Seed all-defaults so callers can do constant-time lookups. When the caller
+  // passed WO metadata, derive jobCompletedAt now so the bar reflects the SF
+  // status on first render (no waiting for a separate request).
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
   for (const id of workOrderIds) {
     formStatusByWO.set(id, { status: "none", woId: id });
+    const meta = workOrderMeta?.get(id);
     progressByWO.set(id, {
       workOrderId: id,
       workOrderNumber: null,
@@ -100,7 +113,7 @@ export async function getMaterialsPageAuxData(workOrderIds: string[]): Promise<M
       supplierSentAt: null,
       supplierAcknowledgedAt: null,
       materialsDeliveredAt: null,
-      jobCompletedAt: null,
+      jobCompletedAt: meta ? getJobCompletedAt(meta) : null,
     });
   }
 

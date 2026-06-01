@@ -2,24 +2,28 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import type { WoProgress } from "@/components/work-order-progress-bar";
+import { getJobCompletedAt } from "@/lib/wo-progress/completion";
 
 /**
  * Builds the canonical progress timeline for one (or many) work orders.
  * Pulls timestamps from:
  *   - customer_form_tokens  (formSentAt / formOpenedAt / formSubmittedAt)
  *   - supplier_orders       (drafted / sent / acknowledged / delivered)
+ *   - SF Work Order Status  (jobCompletedAt — when caller passes woMeta)
  *
  * "Per supplier" sub-rows are populated when a WO has 2+ supplier orders
  * so the UI can break down each leg of fulfillment.
  *
- * Job complete is currently admin-marked via /api/admin/supplier-order
- * (status='complete' on the WO-level marker — to be added in Phase 2.1
- * once we have a wo_status_overrides table; for now jobCompletedAt is
- * null and the stage stays pending).
+ * jobCompletedAt is filled when the caller passes per-WO Status + CloseDate
+ * and the Status indicates a successful completion ("Complete Paid in
+ * Full", "Paid in Full"). Cancellations/voids/abandonments do NOT count.
+ * When the caller doesn't pass meta, jobCompletedAt stays null.
  *
  * Falls back to all-null progress on any DB error so the page still
  * renders the bar in "not started" state.
  */
+
+export type WorkOrderCompletionMeta = { status: string | null; closeDate: string | null };
 
 function adminClient() {
   return createClient(
@@ -84,14 +88,21 @@ function pickMin(values: Array<string | null | undefined>): string | null {
  * Returns a Map<workOrderId, WoProgress> for the given WO IDs. One Supabase
  * round-trip for tokens + one for supplier orders. Cheap at PPP scale.
  */
-export async function getProgressByWO(workOrderIds: string[]): Promise<Map<string, WoProgress>> {
+export async function getProgressByWO(
+  workOrderIds: string[],
+  workOrderMeta?: Map<string, WorkOrderCompletionMeta>,
+): Promise<Map<string, WoProgress>> {
   const out = new Map<string, WoProgress>();
   if (workOrderIds.length === 0) return out;
 
   // Seed empty progress for every WO so callers can rely on the map being
-  // dense (UI loops don't need an existence check).
+  // dense (UI loops don't need an existence check). When the caller passed
+  // per-WO metadata, fill jobCompletedAt up front from SF status.
   for (const id of workOrderIds) {
-    out.set(id, emptyProgress(id));
+    const seed = emptyProgress(id);
+    const meta = workOrderMeta?.get(id);
+    if (meta) seed.jobCompletedAt = getJobCompletedAt(meta);
+    out.set(id, seed);
   }
 
   const sb = adminClient();

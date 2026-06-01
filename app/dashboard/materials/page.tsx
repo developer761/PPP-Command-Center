@@ -25,7 +25,15 @@ export default async function MaterialsOrderingPage({
   const openJobs = bundle.snapshot ? deriveOpenMaterialsWorkOrders(bundle.snapshot) : [];
   const woIds = openJobs.map((j) => j.wo.id);
 
-  const aux = await getMaterialsPageAuxData(woIds).catch((err) => {
+  // Pass WO Status + CloseDate to the progress-bar builder so the Job
+  // Complete stage advances automatically when the WO is marked
+  // "Complete Paid in Full" in Salesforce — no manual admin action needed.
+  const woMeta = new Map<string, { status: string | null; closeDate: string | null }>();
+  for (const j of openJobs) {
+    woMeta.set(j.wo.id, { status: j.wo.status, closeDate: j.wo.closeDate });
+  }
+
+  const aux = await getMaterialsPageAuxData(woIds, woMeta).catch((err) => {
     console.error("[materials] aux data load failed:", err);
     return { formStatusByWO: new Map(), progressByWO: new Map() };
   });

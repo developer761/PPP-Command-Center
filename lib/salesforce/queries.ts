@@ -33,15 +33,77 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 // dedupe they BOTH end up fetching the full snapshot — doubling SF API load
 // and wall time. Caching the Promise lets the second caller await the same
 // in-flight request.
-type CacheEntry<T> = { promise: Promise<T>; expiresAt: number };
+//
+// Cross-server coherence: each cache entry remembers the snapshot_generation
+// it was filled at. If the generation has advanced (any server bumped it via
+// clearSalesforceCache after a writeback), the entry is invalidated even
+// before its TTL expires. Throttled to ≤1 Postgres read per 5s per instance.
+type CacheEntry<T> = { promise: Promise<T>; expiresAt: number; generation: number };
 const cache = new Map<string, CacheEntry<unknown>>();
+
+// Cross-instance generation cache (per-server-instance memo of the global
+// generation counter). Throttled fetches keep Postgres load trivial.
+const GEN_REFRESH_MIN_INTERVAL_MS = 5_000;
+let cachedGeneration = 0;
+let lastGenFetchAt = 0;
+
+async function getCurrentGeneration(): Promise<number> {
+  const now = Date.now();
+  if (now - lastGenFetchAt < GEN_REFRESH_MIN_INTERVAL_MS) return cachedGeneration;
+  lastGenFetchAt = now;
+  try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return cachedGeneration;
+    const { data } = await snapshotCacheClient()
+      .from("snapshot_generation")
+      .select("generation")
+      .eq("key", "global")
+      .maybeSingle();
+    if (data && typeof data.generation === "number") {
+      cachedGeneration = data.generation;
+    }
+  } catch (err) {
+    // Failsafe: keep the last known value so a transient Supabase blip doesn't
+    // cascade into stampeding SF queries.
+    console.warn("[SF] generation fetch failed (using last known):", err instanceof Error ? err.message : err);
+  }
+  return cachedGeneration;
+}
+
+async function bumpGeneration(): Promise<void> {
+  try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return;
+    const sb = snapshotCacheClient();
+    // Read-then-write rather than a SQL atomic increment — at PPP's scale
+    // (1-2 writebacks per minute max) the race window is irrelevant, and we
+    // sidestep needing a custom RPC.
+    const { data } = await sb
+      .from("snapshot_generation")
+      .select("generation")
+      .eq("key", "global")
+      .maybeSingle();
+    const next = (typeof data?.generation === "number" ? data.generation : 0) + 1;
+    await sb
+      .from("snapshot_generation")
+      .upsert({ key: "global", generation: next, updated_at: new Date().toISOString() });
+    // Update local memo so the very next cached() call on THIS instance
+    // immediately sees the new generation (don't wait for the 5s throttle
+    // to elapse before our own request reflects the bump).
+    cachedGeneration = next;
+    lastGenFetchAt = Date.now();
+  } catch (err) {
+    console.warn("[SF] generation bump failed (non-fatal):", err instanceof Error ? err.message : err);
+  }
+}
 
 async function cached<T>(key: string, fetcher: () => Promise<T>, ttlMs: number = CACHE_TTL_MS): Promise<T> {
   const now = Date.now();
+  const currentGen = await getCurrentGeneration();
   const hit = cache.get(key);
-  if (hit && hit.expiresAt > now) return hit.promise as Promise<T>;
+  if (hit && hit.expiresAt > now && hit.generation === currentGen) {
+    return hit.promise as Promise<T>;
+  }
   const promise = fetcher();
-  cache.set(key, { promise, expiresAt: now + ttlMs });
+  cache.set(key, { promise, expiresAt: now + ttlMs, generation: currentGen });
   // If the fetch rejects, invalidate the cache so the next request retries
   // instead of returning the same rejection for 5 minutes.
   promise.catch(() => {
@@ -54,8 +116,12 @@ export async function clearSalesforceCache() {
   cache.clear();
   // Also invalidate the SHARED snapshot cache — otherwise a manual refresh or a
   // post-writeback invalidation would just re-read the stale blob and mask the
-  // fresh data. Best-effort; awaited so the very next snapshot read re-pulls.
-  await invalidateSharedSnapshot("snapshot-v6");
+  // fresh data. And bump the global generation counter so OTHER serverless
+  // instances drop their stale in-memory cache too (within 5s).
+  await Promise.all([
+    invalidateSharedSnapshot("snapshot-v6"),
+    bumpGeneration(),
+  ]);
 }
 
 async function invalidateSharedSnapshot(key: string): Promise<void> {

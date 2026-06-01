@@ -1,20 +1,17 @@
 "use client";
 
 /**
- * Work Order Progress Bar — 7-stage timeline per WO.
+ * Work Order Progress Bar — 8-stage timeline per WO.
  *
- *   ⓪ Form Sent              (auto)
- *   ① Customer Opened        (auto — Resend events)
- *   ② Customer Submitted     (auto)
- *   ③ Order Drafted          (auto — supplier_orders row)
- *   ④ Sent to Supplier       (auto — sent_at)
+ *   ⓪ Form Sent              (auto — customer_form_tokens.sent_at)
+ *   ① Customer Opened        (auto — Resend email.opened event)
+ *   ② Customer Submitted     (auto — customer_form_tokens.submitted_at)
+ *   ③ Order Drafted          (auto — supplier_orders row created)
+ *   ④ Sent to Supplier       (auto — supplier_orders.sent_at)
  *   ⑤ Supplier Confirmed     (manual — admin marks Acknowledged)
  *   ⑥ Materials Delivered    (manual — admin marks Delivered)
- *
- * Job Complete was previously listed as stage ⑦ but there's no data source
- * for it yet (waiting on the wo_status_overrides table). It was always
- * stuck in pending which confused admins reading the bar — removed until
- * the data source ships.
+ *   ⑦ Job Complete           (auto — SF Work Order Status reaches
+ *                              "Complete Paid in Full" / "Paid in Full")
  *
  * Color coding (per Karan's spec):
  *   green  = stage completed
@@ -43,10 +40,10 @@ export type WoProgress = {
   supplierSentAt: string | null;
   supplierAcknowledgedAt: string | null;
   materialsDeliveredAt: string | null;
-  /** Reserved for the future wo_status_overrides table. Currently always
-   *  null because there's no data source — kept in the type so the derive
-   *  helpers don't need to change when we wire it. NOT in STAGES so the
-   *  UI doesn't render a perpetually-pending phantom stage. */
+  /** Stamped from Salesforce WorkOrder Status — when Status reaches
+   *  "Complete Paid in Full" / "Paid in Full", CloseDate is used as the
+   *  jobCompletedAt timestamp. Cancelled/voided/abandoned WOs do NOT count
+   *  as complete. See lib/wo-progress/completion.ts. */
   jobCompletedAt: string | null;
   /** Per-supplier breakdown for stages 3-6 (when multi-supplier WO). */
   perSupplier?: Array<{
@@ -66,7 +63,7 @@ type StageDef = {
     WoProgress,
     "formSentAt" | "formOpenedAt" | "formSubmittedAt"
     | "supplierDraftedAt" | "supplierSentAt" | "supplierAcknowledgedAt"
-    | "materialsDeliveredAt"
+    | "materialsDeliveredAt" | "jobCompletedAt"
   >;
   label: string;
   shortLabel: string;          // compact label for mobile
@@ -88,6 +85,11 @@ const STAGES: StageDef[] = [
   { key: "supplierSentAt",         label: "Sent to Supplier",   shortLabel: "Sent",        stuckAfterDays: 1 },
   { key: "supplierAcknowledgedAt", label: "Supplier Confirmed", shortLabel: "Confirmed",   stuckAfterDays: 3,  manualOnly: true },
   { key: "materialsDeliveredAt",   label: "Materials Delivered",shortLabel: "Delivered",   stuckAfterDays: null, manualOnly: true },
+  // Auto-stamped from Salesforce: when the WO Status reaches "Complete Paid
+  // in Full" / "Paid in Full", the CloseDate becomes jobCompletedAt. Open
+  // WOs always show this pending — that's correct (it's the destination
+  // step). Completed WOs (visible on Customer History) show it ✓.
+  { key: "jobCompletedAt",         label: "Job Complete",       shortLabel: "Complete",    stuckAfterDays: null },
 ];
 
 /** Resolve each stage's visual state from the timestamps. */
