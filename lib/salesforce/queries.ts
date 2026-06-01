@@ -55,7 +55,7 @@ export async function clearSalesforceCache() {
   // Also invalidate the SHARED snapshot cache — otherwise a manual refresh or a
   // post-writeback invalidation would just re-read the stale blob and mask the
   // fresh data. Best-effort; awaited so the very next snapshot read re-pulls.
-  await invalidateSharedSnapshot("snapshot-v5");
+  await invalidateSharedSnapshot("snapshot-v6");
 }
 
 async function invalidateSharedSnapshot(key: string): Promise<void> {
@@ -675,12 +675,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
   // fields on Account for Phase 2 (supplier order delivery + customer email
   // auto-prefill). Falls back gracefully when org doesn't have Person
   // Accounts enabled (rich SELECT errors → base SELECT runs successfully).
-  return cached("snapshot-v5", async () => {
+  return cached("snapshot-v6", async () => {
     // Cross-instance fast path: if another instance already built a fresh
     // snapshot, read it (one gzipped Supabase row) instead of re-paging
     // Salesforce ~45 times. Pure optimization — readSharedSnapshot returns null
     // on ANY problem, so we fall through to the live query below unchanged.
-    const sharedHit = await readSharedSnapshot("snapshot-v5");
+    const sharedHit = await readSharedSnapshot("snapshot-v6");
     if (sharedHit) return sharedHit;
 
     const conn = await getSalesforceClient();
@@ -883,7 +883,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           Total_Won_Oppties__c, Total_Lost_Oppties__c, Number_Open_Oppties__c,
           VendorBMRetailer__c, VendorBMAutoSubmit__c, Key_Relationship__c,
           Last_Appointment__c, LastWorkOrderCompleted__c,
-          PersonEmail, Phone,
+          PersonEmail, Email__c, Phone,
           BillingStreet, BillingCity, BillingState, BillingPostalCode
         `.replace(/\s+/g, " ").trim();
         const records: Array<Record<string, unknown>> = [];
@@ -903,7 +903,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         const fallbackAccountFields = ACCT_FIELDS
           .split(",")
           .map((s) => s.trim())
-          .filter((f) => !/^(PersonEmail|Phone|BillingStreet|BillingCity|BillingState|BillingPostalCode)$/.test(f))
+          .filter((f) => !/^(PersonEmail|Email__c|Phone|BillingStreet|BillingCity|BillingState|BillingPostalCode)$/.test(f))
           .join(", ");
         let result: Awaited<ReturnType<typeof conn.query<Record<string, unknown>>>>;
         try {
@@ -990,8 +990,13 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           lastWorkOrderCompleted: (a.LastWorkOrderCompleted__c as string | null) ?? null,
           // Phase 2 — customer contact + address fields. When the rich query
           // fell back to the base SELECT, these keys won't be present on the
-          // record → safe `?? null` resolves to null.
-          email: (a.PersonEmail as string | null) ?? null,
+          // record → safe `?? null` resolves to null. PersonEmail is the
+          // Person-Account-model field; Email__c is the Business-Account
+          // free-text fallback. Prefer the populated one; some PPP customers
+          // are on each model.
+          email: ((a.PersonEmail as string | null)?.trim() || null)
+            ?? ((a.Email__c as string | null)?.trim() || null)
+            ?? null,
           phone: (a.Phone as string | null) ?? null,
           billingStreet: (a.BillingStreet as string | null) ?? null,
           billingCity: (a.BillingCity as string | null) ?? null,
@@ -1824,7 +1829,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     };
     // Populate the shared cache so OTHER cold instances skip the SF paging.
     // Best-effort + non-blocking — a write failure never affects this response.
-    void writeSharedSnapshot("snapshot-v5", snapshot);
+    void writeSharedSnapshot("snapshot-v6", snapshot);
     return snapshot;
   });
 }

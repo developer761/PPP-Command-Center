@@ -105,7 +105,9 @@ export default function CustomersIndexView({
               <tbody className="divide-y divide-ppp-charcoal-100">
                 {visible.slice(0, 200).map((c) => {
                   const href = c.accountId ? `/dashboard/customer/${encodeURIComponent(c.accountId)}` : null;
-                  const isRepeat = c.woCount > 1;
+                  // Repeat = 2+ separate projects (opportunities), not 2+ WOs
+                  // from one project that got split into walls/trim/deck.
+                  const isRepeat = c.oppCount > 1;
                   return (
                     <tr key={`${c.accountId}::${c.name}`} className="hover:bg-ppp-charcoal-50/30 transition-colors">
                       <td className="px-5 py-2.5">

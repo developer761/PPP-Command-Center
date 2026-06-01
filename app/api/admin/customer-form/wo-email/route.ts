@@ -35,17 +35,30 @@ export async function GET(request: Request) {
 
   try {
     const conn = await getSalesforceClient();
-    // Person Account customers (PPP's model) store email in PersonEmail, reached
-    // via the WO's Opportunity → Account relationship (same path render-data uses).
-    const r = await conn.query<Record<string, unknown>>(
-      `SELECT Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`
-    );
-    const rec = r.records[0] as
-      | { Opportunity__r?: { Account?: { PersonEmail?: string | null; Name?: string | null } } }
-      | undefined;
-    const acct = rec?.Opportunity__r?.Account;
-    const email = (typeof acct?.PersonEmail === "string" && acct.PersonEmail.trim()) ? acct.PersonEmail.trim() : null;
-    return NextResponse.json({ ok: true, email, customerName: acct?.Name ?? null });
+    // Try Person-Account email first (PPP's primary customer model) plus the
+    // Business-Account custom Email__c fallback in a single round-trip. Either
+    // can be null per-customer; we pick the populated one.
+    type AcctEmailFields = { PersonEmail?: string | null; Email__c?: string | null; Name?: string | null };
+    type AcctEmailShape = { Opportunity__r?: { Account?: AcctEmailFields } };
+    let account: AcctEmailFields | undefined;
+    try {
+      const r = await conn.query<Record<string, unknown>>(
+        `SELECT Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`
+      );
+      account = (r.records[0] as AcctEmailShape | undefined)?.Opportunity__r?.Account;
+    } catch (richErr) {
+      // INVALID_FIELD if Email__c doesn't exist on this org → fall back to the
+      // narrower query without it.
+      console.warn("[customer-form/wo-email] rich query failed, retrying without Email__c:", richErr instanceof Error ? richErr.message : richErr);
+      const r = await conn.query<Record<string, unknown>>(
+        `SELECT Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`
+      );
+      account = (r.records[0] as AcctEmailShape | undefined)?.Opportunity__r?.Account;
+    }
+    const personEmail = typeof account?.PersonEmail === "string" ? account.PersonEmail.trim() : "";
+    const customEmail = typeof account?.Email__c === "string" ? account.Email__c.trim() : "";
+    const email = personEmail || customEmail || null;
+    return NextResponse.json({ ok: true, email, customerName: account?.Name ?? null });
   } catch (err) {
     // Soft-fail — the modal still works, the worker just types the email.
     console.warn("[customer-form/wo-email] lookup failed:", err instanceof Error ? err.message : err);

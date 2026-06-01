@@ -175,7 +175,10 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
 
   const addressLine = [account.billingStreet, account.billingCity, account.billingState, account.billingPostalCode]
     .filter(Boolean).join(", ");
-  const isRepeat = summary.workOrderCount > 1;
+  // "Repeat" = customer came back for a SECOND distinct project, not a
+  // customer whose one project happened to be split into multiple WOs (walls,
+  // trim, deck, etc.). Opportunities are the right unit; WOs over-fire.
+  const isRepeat = summary.opportunityCount > 1;
 
   return (
     <div className="space-y-5 animate-fade-up">
@@ -196,7 +199,7 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
             <div className="text-xs text-ppp-charcoal-500 mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
               {isRepeat && (
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-blue-50 text-ppp-blue-700 border border-ppp-blue-100">
-                  Repeat · {summary.workOrderCount} projects
+                  Repeat · {summary.opportunityCount} projects
                 </span>
               )}
               {account.isKeyRelationship && (
