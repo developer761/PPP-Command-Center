@@ -20,10 +20,14 @@ export type CompletionInput = {
 };
 
 /** True when the WO status indicates a SUCCESSFUL completion (paid + closed),
- *  not a cancellation/void/abandonment. */
+ *  not a cancellation/void/abandonment.
+ *
+ *  Note the explicit "incomplete" check — `.includes("complete")` would
+ *  match it otherwise, false-flagging unfinished WOs as done. */
 export function isJobComplete(status: string | null): boolean {
   if (!status) return false;
   const s = status.toLowerCase();
+  if (s.includes("incomplete")) return false;
   if (s.includes("cancel") || s.includes("void") || s.includes("abandon")) return false;
   return s.includes("complete") || s.includes("paid in full");
 }

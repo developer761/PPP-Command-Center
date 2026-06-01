@@ -19,6 +19,7 @@ import {
   type RoomSurface,
 } from "../lib/supplier-order/estimate-gallons";
 import { isValidCoverageValue, MAX_COVERAGE_VALUES } from "../lib/supplier-order/coverage-validation";
+import { isJobComplete } from "../lib/wo-progress/completion";
 
 let passed = 0;
 let failed = 0;
@@ -201,6 +202,51 @@ console.log("\nsummarizeOrder + formatBucketsCans (job total):");
   check("formatBucketsCans(2,4)", formatBucketsCans(2, 4) === "2 buckets (×5 gal) + 4 gal", formatBucketsCans(2, 4));
   check("formatBucketsCans(0,5)", formatBucketsCans(0, 5) === "5 gal", formatBucketsCans(0, 5));
   check("formatBucketsCans(0,0) = —", formatBucketsCans(0, 0) === "—");
+}
+
+console.log("\nisJobComplete — must not false-positive on 'Incomplete':");
+{
+  check("'Complete Paid in Full' = complete", isJobComplete("Complete Paid in Full") === true);
+  check("'Paid in Full' = complete", isJobComplete("Paid in Full") === true);
+  check("'Complete' = complete", isJobComplete("Complete") === true);
+  // The bug we're fixing: includes('complete') matches 'incomplete' too.
+  check("'Incomplete' is NOT complete", isJobComplete("Incomplete") === false);
+  check("'incomplete' is NOT complete (lowercase)", isJobComplete("incomplete") === false);
+  check("'Cancelled' is NOT complete", isJobComplete("Cancelled") === false);
+  check("'Void' is NOT complete", isJobComplete("Void") === false);
+  check("'Abandoned' is NOT complete", isJobComplete("Abandoned") === false);
+  check("null is NOT complete", isJobComplete(null) === false);
+  check("empty string is NOT complete", isJobComplete("") === false);
+  check("'Open' is NOT complete", isJobComplete("Open") === false);
+  check("'In Progress' is NOT complete", isJobComplete("In Progress") === false);
+}
+
+console.log("\nAudit-fix regressions:");
+{
+  // 1. classifySurface trims whitespace
+  check("classifySurface(' Walls ') = walls", classifySurface(" Walls ") === "walls");
+  check("classifySurface('Walls') = walls", classifySurface("Walls") === "walls");
+  check("classifySurface('   Ceiling') = ceiling", classifySurface("   Ceiling") === "ceiling");
+
+  // 2. Door/window/closet per-WO cap at 20 (a typo'd numDoors=50 must NOT
+  //    contribute 50 × casing/face area into the gallon math).
+  const rCapped = room({
+    woliId: "cap1", floorAreaSqft: 144, perimeterLf: 48, heightFt: 8,
+    doors: 50,         // typo — should be capped
+    windows: 50,       // typo
+    closets: 50,       // typo
+    coats: 2, paintDoorFaces: true,
+    surfaces: [surf("trim", "C1", "Trim")],
+  });
+  const rSane = room({
+    woliId: "cap2", floorAreaSqft: 144, perimeterLf: 48, heightFt: 8,
+    doors: 20, windows: 20, closets: 20, coats: 2, paintDoorFaces: true,
+    surfaces: [surf("trim", "C2", "Trim")],
+  });
+  const capped = estimateOrderGallons([rCapped])[0];
+  const sane = estimateOrderGallons([rSane])[0];
+  check("door/window/closet capped at 20 — totalSqft matches sane 20s",
+    capped.totalSqft === sane.totalSqft, `${capped.totalSqft} vs ${sane.totalSqft}`);
 }
 
 console.log("\nKatie's door-face rule (paintDoorFaces toggles room-facing door area):");

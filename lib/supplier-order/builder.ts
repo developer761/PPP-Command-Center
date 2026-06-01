@@ -432,8 +432,10 @@ function resolveLineItems(
         // Katie's rule: when WOLI.# of doors is explicitly set, those door
         // faces (room-side) are in scope along with the casings. Default-
         // assumed doors (1/room fallback) don't trigger faces — only an
-        // explicit count from the estimator does.
-        paintDoorFaces: woli.numDoors > 0,
+        // explicit count from the estimator does. Explicit typeof guard so
+        // a null/undefined/NaN/string field can't sneak past `> 0` (which
+        // would silently evaluate false and suppress door faces on garbage).
+        paintDoorFaces: typeof woli.numDoors === "number" && woli.numDoors > 0,
         surfaces: roomSurfaces,
       });
     }

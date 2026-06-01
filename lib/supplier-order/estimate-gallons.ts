@@ -114,9 +114,11 @@ export type GallonEstimate = {
 };
 
 /** Map a Surfaces__c label to a paint bucket. Order matters: "Accent Wall"
- *  must be caught before "wall"; doors/windows are trim (casings/faces). */
+ *  must be caught before "wall"; doors/windows are trim (casings/faces).
+ *  Trims whitespace defensively — "Walls " from a customer-form payload
+ *  shouldn't fall through to unsized. */
 export function classifySurface(label: string): PaintSurfaceKind {
-  const s = label.toLowerCase();
+  const s = label.toLowerCase().trim();
   if (s.includes("accent")) return "unsized";
   if (s.includes("cabinet") || s.includes("closet") || s.includes("shelf") || s.includes("shelves")) return "unsized";
   if (s.includes("ceil")) return "ceiling";
@@ -143,9 +145,17 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   const perimeter = haveRealPerimeter
     ? room.perimeterLf
     : (floor > 0 ? 4 * Math.sqrt(floor) : 0); // assume square when no perimeter
-  const doors = room.doors > 0 ? room.doors : cfg.defaultDoorsPerRoom;
-  const windows = room.windows > 0 ? room.windows : cfg.defaultWindowsPerRoom;
-  const closets = room.closets > 0 ? room.closets : cfg.defaultClosetsPerRoom;
+  // Per-WO sanity cap: a typo of `numDoors=50` on one WOLI would silently
+  // order 10× the paint. Cap each opening count at MAX_OPENINGS_PER_ROOM
+  // (same ceiling we apply to the defaults in coverage-validation.ts) so
+  // a single bad data entry can't run away with the gallon math.
+  const MAX_OPENINGS_PER_ROOM = 20;
+  const doorsRaw = room.doors > 0 ? room.doors : cfg.defaultDoorsPerRoom;
+  const windowsRaw = room.windows > 0 ? room.windows : cfg.defaultWindowsPerRoom;
+  const closetsRaw = room.closets > 0 ? room.closets : cfg.defaultClosetsPerRoom;
+  const doors = Math.min(doorsRaw, MAX_OPENINGS_PER_ROOM);
+  const windows = Math.min(windowsRaw, MAX_OPENINGS_PER_ROOM);
+  const closets = Math.min(closetsRaw, MAX_OPENINGS_PER_ROOM);
 
   const ceilingSqft = floor * coats;
   const floorSqft = floor * coats;

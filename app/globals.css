@@ -124,7 +124,10 @@ h1, h2, h3, h4, .font-condensed {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-up,
-  .animate-fade-in {
+  .animate-fade-in,
+  .animate-ping,
+  .animate-pulse,
+  .animate-spin {
     animation: none;
   }
 }

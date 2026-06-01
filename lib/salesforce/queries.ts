@@ -73,9 +73,21 @@ async function bumpGeneration(): Promise<void> {
   try {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return;
     const sb = snapshotCacheClient();
-    // Read-then-write rather than a SQL atomic increment — at PPP's scale
-    // (1-2 writebacks per minute max) the race window is irrelevant, and we
-    // sidestep needing a custom RPC.
+
+    // Prefer the atomic RPC (migration 012) — a single SQL statement so two
+    // concurrent writebacks can never lose a bump. Falls back to read-then-
+    // write if the RPC isn't installed yet (deployment hasn't run 012).
+    const rpcRes = await sb.rpc("bump_snapshot_generation");
+    if (!rpcRes.error && typeof rpcRes.data === "number") {
+      cachedGeneration = rpcRes.data;
+      lastGenFetchAt = Date.now();
+      return;
+    }
+    // RPC unavailable — fall through to legacy read-then-write. This loses
+    // a bump under exact-simultaneous writebacks, but never blocks the flow.
+    if (rpcRes.error) {
+      console.warn("[SF] bump_snapshot_generation RPC unavailable — falling back to read-then-write:", rpcRes.error.message);
+    }
     const { data } = await sb
       .from("snapshot_generation")
       .select("generation")
@@ -85,9 +97,6 @@ async function bumpGeneration(): Promise<void> {
     await sb
       .from("snapshot_generation")
       .upsert({ key: "global", generation: next, updated_at: new Date().toISOString() });
-    // Update local memo so the very next cached() call on THIS instance
-    // immediately sees the new generation (don't wait for the 5s throttle
-    // to elapse before our own request reflects the bump).
     cachedGeneration = next;
     lastGenFetchAt = Date.now();
   } catch (err) {

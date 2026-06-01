@@ -611,6 +611,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     Mark Acknowledged / Mark Delivered / Cancel buttons. */}
                 <WoPastOrders workOrderId={activeJob.wo.id} refreshKey={pastOrdersRefreshKey} />
                 <JobDetail
+                  key={activeJob.wo.id}
                   snapshot={snapshot}
                   job={activeJob}
                   coverageConfig={coverageConfig}
