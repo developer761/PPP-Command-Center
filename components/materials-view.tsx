@@ -568,12 +568,28 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                             <span className="font-mono">{j.wo.workOrderNumber ?? j.wo.id.slice(-6)}</span>
                             <span>·</span>
                             <span>{j.wo.status ?? "Open"}</span>
-                            {j.wo.closeDate && (
-                              <>
-                                <span>·</span>
-                                <span>{j.wo.closeDate}</span>
-                              </>
-                            )}
+                            {j.wo.closeDate && (() => {
+                              // Relative close-date display: "in 3d" / "today"
+                              // / "5d overdue" with subtle color escalation
+                              // so workers can scan the list and see urgency
+                              // without doing date math. Raw ISO date is
+                              // preserved in the title for hover-verify.
+                              const r = formatRelativeCloseDate(j.wo.closeDate);
+                              const cls =
+                                r.tone === "overdue"
+                                  ? "text-ppp-orange-700 font-semibold"
+                                  : r.tone === "urgent"
+                                  ? "text-ppp-orange-700"
+                                  : "";
+                              return (
+                                <>
+                                  <span>·</span>
+                                  <span className={cls} title={`Scheduled close: ${j.wo.closeDate}`}>
+                                    {r.label}
+                                  </span>
+                                </>
+                              );
+                            })()}
                           </div>
                           <div className="mt-1.5 flex items-center gap-2 text-[10px] text-ppp-charcoal-500">
                             {j.lineItems.length === 0 ? (
@@ -1287,6 +1303,29 @@ function FormStatusBadge({ status }: { status: FormStatus | undefined }) {
       {c.label}
     </span>
   );
+}
+
+/** Convert a YYYY-MM-DD close date into a human relative label
+ *  ("in 3d" / "today" / "5d overdue") with an urgency tone for color tinting.
+ *  Anchored at the user's local midnight so a closeDate of "today" parses to
+ *  today's start (not the 4pm UTC drift you'd get from naive `new Date()`). */
+function formatRelativeCloseDate(iso: string): { label: string; tone: "normal" | "urgent" | "overdue" } {
+  // Parse as LOCAL midnight to match how the closeDate is conceptually
+  // anchored ("the day of the job"). new Date(YYYY-MM-DD) parses as UTC
+  // midnight which can drift; "T00:00" without Z parses as local.
+  const target = new Date(iso + "T00:00:00").getTime();
+  if (isNaN(target)) return { label: iso, tone: "normal" };
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((target - now.getTime()) / 86_400_000);
+  if (diffDays < 0) return { label: `${Math.abs(diffDays)}d overdue`, tone: "overdue" };
+  if (diffDays === 0) return { label: "today", tone: "urgent" };
+  if (diffDays === 1) return { label: "tomorrow", tone: "urgent" };
+  if (diffDays <= 7) return { label: `in ${diffDays}d`, tone: "urgent" };
+  if (diffDays <= 14) return { label: `in ${diffDays}d`, tone: "normal" };
+  if (diffDays <= 30) return { label: `in ${Math.round(diffDays / 7)}w`, tone: "normal" };
+  if (diffDays <= 365) return { label: `in ${Math.round(diffDays / 30)}mo`, tone: "normal" };
+  return { label: iso, tone: "normal" };
 }
 
 function Pill({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "orange" }) {
