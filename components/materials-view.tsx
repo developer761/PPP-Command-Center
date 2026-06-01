@@ -267,7 +267,12 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
 
       {/* Top stat strip */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard label="Open WOs" value={stats.openWoCount.toLocaleString()} accent="blue" />
+        <StatCard
+          label="Open WOs"
+          value={stats.openWoCount.toLocaleString()}
+          accent="blue"
+          hint="Active work orders that aren't paid, complete, or cancelled. Estimate-appointment and inspection WOs are filtered out — these are jobs that actually need paint."
+        />
         <StatCard
           label="Sq ft to paint"
           value={
@@ -276,9 +281,20 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
               : stats.totalSqFt.toLocaleString()
           }
           accent="navy"
+          hint="Total square footage across all the open work orders' line items. Pulled from each WOLI's Sq_Footage__c in Salesforce."
         />
-        <StatCard label="Distinct colors" value={stats.distinctColors.toLocaleString()} accent="orange" />
-        <StatCard label="Suppliers" value={stats.distinctSuppliers.toLocaleString()} accent="green" />
+        <StatCard
+          label="Distinct colors"
+          value={stats.distinctColors.toLocaleString()}
+          accent="orange"
+          hint="How many unique paint colors are being used across all the open jobs. Each color × finish counts once even if it appears in multiple rooms."
+        />
+        <StatCard
+          label="Suppliers"
+          value={stats.distinctSuppliers.toLocaleString()}
+          accent="green"
+          hint="How many different paint suppliers (BM, SW, etc.) we'd need to order from across all the open jobs."
+        />
       </section>
 
       {/* Needs-attention rollup — at-a-glance "what to do next" across all open
@@ -288,7 +304,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         const n = needsAttention;
         const anything = n.needsForm || n.awaitingCustomer || n.readyToOrder || n.jobCriticalNotOrdered || n.jobSoonNotOrdered || n.orderedThisWeek;
         if (!anything) return null;
-        const chip = (cond: boolean, label: string, value: number, tone: "blue" | "orange" | "green" | "charcoal" | "critical") => {
+        const chip = (
+          cond: boolean,
+          label: string,
+          value: number,
+          tone: "blue" | "orange" | "green" | "charcoal" | "critical",
+          hint?: string,
+        ) => {
           if (!cond) return null;
           const cls = {
             blue: "bg-ppp-blue-50 border-ppp-blue-100 text-ppp-blue-700",
@@ -300,7 +322,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
             critical: "bg-ppp-orange-100 border-ppp-orange-200 text-ppp-orange-700 font-semibold",
           }[tone];
           return (
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${cls}`}>
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${cls}`}
+              title={hint}
+            >
               {tone === "critical" && (
                 <span className="relative inline-flex h-1.5 w-1.5" aria-hidden>
                   <span className="absolute inset-0 rounded-full bg-ppp-orange-500 opacity-75 animate-ping" />
@@ -308,6 +333,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                 </span>
               )}
               <strong className="font-bold">{value}</strong> {label}
+              {hint && <InfoDot text={hint} />}
             </span>
           );
         };
@@ -315,12 +341,18 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mr-1">Needs attention</span>
-              {chip(n.jobCriticalNotOrdered > 0, "start in ≤2 days — not ordered", n.jobCriticalNotOrdered, "critical")}
-              {chip(n.jobSoonNotOrdered > 0, "start this week — not ordered", n.jobSoonNotOrdered, "orange")}
-              {chip(n.needsForm > 0, "need a color form", n.needsForm, "blue")}
-              {chip(n.awaitingCustomer > 0, "awaiting customer", n.awaitingCustomer, "charcoal")}
-              {chip(n.readyToOrder > 0, "ready to order", n.readyToOrder, "green")}
-              {chip(n.orderedThisWeek > 0, "ordered this week", n.orderedThisWeek, "charcoal")}
+              {chip(n.jobCriticalNotOrdered > 0, "start in ≤2 days — not ordered", n.jobCriticalNotOrdered, "critical",
+                "Jobs whose scheduled start date is within the next 2 days where no paint has been ordered yet. These need an order today or tomorrow.")}
+              {chip(n.jobSoonNotOrdered > 0, "start this week — not ordered", n.jobSoonNotOrdered, "orange",
+                "Jobs starting 3–7 days from now that haven't had paint ordered yet.")}
+              {chip(n.needsForm > 0, "need a color form", n.needsForm, "blue",
+                "Open jobs where the customer hasn't been sent the color-selection form yet. Click into a WO and hit 'Send Color Form' to start the process.")}
+              {chip(n.awaitingCustomer > 0, "awaiting customer", n.awaitingCustomer, "charcoal",
+                "We sent the color form but the customer hasn't submitted their picks yet.")}
+              {chip(n.readyToOrder > 0, "ready to order", n.readyToOrder, "green",
+                "Customer has submitted their color picks; we can now build a supplier order for these jobs.")}
+              {chip(n.orderedThisWeek > 0, "ordered this week", n.orderedThisWeek, "charcoal",
+                "Supplier orders we've already sent out in the last 7 days.")}
             </div>
           </section>
         );
@@ -339,6 +371,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
               <span className="text-[11px] text-ppp-charcoal-500">
                 in flight across these jobs
               </span>
+              <InfoDot text="The color-selection emails we've sent customers and where each one is in the loop: ✓ submitted means we have their colors; opened means they clicked the link but haven't picked yet; sent means it's in their inbox waiting; expired means the link timed out without a submission." />
             </div>
             <div className="flex items-center gap-2 flex-wrap text-[11px] font-semibold">
               {formSummary.submitted > 0 && (
@@ -1177,10 +1210,16 @@ function StatCard({
   label,
   value,
   accent,
+  hint,
 }: {
   label: string;
   value: string;
   accent: "blue" | "navy" | "orange" | "green";
+  /** Plain-English explanation shown when the small ⓘ next to the label is
+   *  hovered (desktop) or tapped (mobile). Wired through native <details> +
+   *  title so non-technical owners know what each number counts without a
+   *  separate docs page. */
+  hint?: string;
 }) {
   const tone =
     accent === "blue"
@@ -1192,9 +1231,41 @@ function StatCard({
           : "text-ppp-green-700";
   return (
     <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-      <div className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 flex items-center gap-1">
+        <span>{label}</span>
+        {hint && <InfoDot text={hint} />}
+      </div>
       <div className={`mt-1 font-condensed text-2xl sm:text-3xl font-bold ${tone}`}>{value}</div>
     </div>
+  );
+}
+
+/** Small ⓘ icon button — hover for desktop tooltip, tap for mobile popover.
+ *  Click toggles a tiny inline panel so non-technical owners can see what
+ *  the number counts without poking around. */
+function InfoDot({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        onBlur={() => setOpen(false)}
+        title={text}
+        aria-label={`What this means: ${text}`}
+        className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-ppp-charcoal-200 text-[9px] font-bold text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 hover:text-ppp-charcoal transition-colors"
+      >
+        ?
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          className="absolute left-0 top-5 z-30 w-56 normal-case tracking-normal font-normal text-[11px] leading-snug text-ppp-charcoal bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg p-2.5"
+        >
+          {text}
+        </span>
+      )}
+    </span>
   );
 }
 
