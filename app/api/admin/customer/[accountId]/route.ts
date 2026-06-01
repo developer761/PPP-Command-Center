@@ -114,7 +114,7 @@ export async function GET(
       if (!sourceName) {
         // No WOs or Opps either → this is genuinely an unknown / nonexistent
         // account, or one that's outside our 365-day data window.
-        return NextResponse.json({ error: "account_not_found" }, { status: 404 });
+        return NextResponse.json({ ok: false, error: "account_not_found", message: "Customer not found, outside the 365-day data window, or not visible to you." }, { status: 404 });
       }
       // Build minimal stub. totalLifetimeRevenue from WO sum is an
       // approximation; for top-5k accounts SF provides the canonical figure
@@ -160,14 +160,14 @@ export async function GET(
     if (viewer.scope !== "all") {
       if (!viewer.effectiveUserId) {
         // No SF mapping → enumeration-resistant 404
-        return NextResponse.json({ error: "account_not_found" }, { status: 404 });
+        return NextResponse.json({ ok: false, error: "account_not_found", message: "Customer not found, outside the 365-day data window, or not visible to you." }, { status: 404 });
       }
       visibleWos = allWos.filter((w) => w.ownerId === viewer.effectiveUserId);
       visibleOpps = allOpps.filter((o) => o.ownerId === viewer.effectiveUserId);
       // Worker who has NO WOs at this account → also 404 (they shouldn't see
       // a customer they don't have a relationship with)
       if (visibleWos.length === 0 && visibleOpps.length === 0) {
-        return NextResponse.json({ error: "account_not_found" }, { status: 404 });
+        return NextResponse.json({ ok: false, error: "account_not_found", message: "Customer not found, outside the 365-day data window, or not visible to you." }, { status: 404 });
       }
     }
 
