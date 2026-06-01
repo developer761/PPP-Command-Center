@@ -1,16 +1,20 @@
 "use client";
 
 /**
- * Work Order Progress Bar — 8-stage timeline per WO.
+ * Work Order Progress Bar — 7-stage timeline per WO.
  *
- *   ⓪ Form Sent
- *   ① Customer Opened
- *   ② Customer Submitted
- *   ③ Supplier Order Drafted
- *   ④ Sent to Supplier
- *   ⑤ Supplier Acknowledged
- *   ⑥ Materials Delivered
- *   ⑦ Job Complete
+ *   ⓪ Form Sent              (auto)
+ *   ① Customer Opened        (auto — Resend events)
+ *   ② Customer Submitted     (auto)
+ *   ③ Order Drafted          (auto — supplier_orders row)
+ *   ④ Sent to Supplier       (auto — sent_at)
+ *   ⑤ Supplier Confirmed     (manual — admin marks Acknowledged)
+ *   ⑥ Materials Delivered    (manual — admin marks Delivered)
+ *
+ * Job Complete was previously listed as stage ⑦ but there's no data source
+ * for it yet (waiting on the wo_status_overrides table). It was always
+ * stuck in pending which confused admins reading the bar — removed until
+ * the data source ships.
  *
  * Color coding (per Karan's spec):
  *   green  = stage completed
@@ -39,6 +43,10 @@ export type WoProgress = {
   supplierSentAt: string | null;
   supplierAcknowledgedAt: string | null;
   materialsDeliveredAt: string | null;
+  /** Reserved for the future wo_status_overrides table. Currently always
+   *  null because there's no data source — kept in the type so the derive
+   *  helpers don't need to change when we wire it. NOT in STAGES so the
+   *  UI doesn't render a perpetually-pending phantom stage. */
   jobCompletedAt: string | null;
   /** Per-supplier breakdown for stages 3-6 (when multi-supplier WO). */
   perSupplier?: Array<{
@@ -58,13 +66,18 @@ type StageDef = {
     WoProgress,
     "formSentAt" | "formOpenedAt" | "formSubmittedAt"
     | "supplierDraftedAt" | "supplierSentAt" | "supplierAcknowledgedAt"
-    | "materialsDeliveredAt" | "jobCompletedAt"
+    | "materialsDeliveredAt"
   >;
   label: string;
   shortLabel: string;          // compact label for mobile
   /** When this stage has been "active" for longer than N days without
    *  advancing, render in orange to flag the bottleneck. null = never stuck. */
   stuckAfterDays: number | null;
+  /** True when this stage only advances when an admin clicks a button in
+   *  the past-orders strip (Mark Acknowledged / Mark Delivered). UI tags
+   *  these with a "manual" pill so admins know they're not waiting on a
+   *  system signal — they're waiting on themselves. */
+  manualOnly?: boolean;
 };
 
 const STAGES: StageDef[] = [
@@ -73,9 +86,8 @@ const STAGES: StageDef[] = [
   { key: "formSubmittedAt",        label: "Customer Submitted", shortLabel: "Submitted",   stuckAfterDays: null },
   { key: "supplierDraftedAt",      label: "Order Drafted",      shortLabel: "Drafted",     stuckAfterDays: 2 },
   { key: "supplierSentAt",         label: "Sent to Supplier",   shortLabel: "Sent",        stuckAfterDays: 1 },
-  { key: "supplierAcknowledgedAt", label: "Supplier Confirmed", shortLabel: "Confirmed",   stuckAfterDays: 3 },
-  { key: "materialsDeliveredAt",   label: "Materials Delivered",shortLabel: "Delivered",   stuckAfterDays: null },
-  { key: "jobCompletedAt",         label: "Job Complete",       shortLabel: "Complete",    stuckAfterDays: null },
+  { key: "supplierAcknowledgedAt", label: "Supplier Confirmed", shortLabel: "Confirmed",   stuckAfterDays: 3,  manualOnly: true },
+  { key: "materialsDeliveredAt",   label: "Materials Delivered",shortLabel: "Delivered",   stuckAfterDays: null, manualOnly: true },
 ];
 
 /** Resolve each stage's visual state from the timestamps. */
@@ -231,6 +243,11 @@ export default function WorkOrderProgressBar({
                     Waiting
                   </div>
                 )}
+                {!ts && stage.manualOnly && state !== "done" && state !== "stuck" && (
+                  <div className="text-[9px] leading-tight mt-0.5 text-ppp-charcoal-400 italic">
+                    Admin updates
+                  </div>
+                )}
               </div>
             </li>
           );
@@ -265,6 +282,11 @@ export default function WorkOrderProgressBar({
                 {ts && (
                   <div className={`text-[10px] leading-tight mt-0.5 ${cls.time}`}>
                     {formatStepTime(ts)}
+                  </div>
+                )}
+                {!ts && stage.manualOnly && state !== "done" && state !== "stuck" && (
+                  <div className="text-[10px] leading-tight mt-0.5 text-ppp-charcoal-400 italic">
+                    Admin updates this step
                   </div>
                 )}
                 {!ts && state === "stuck" && (
