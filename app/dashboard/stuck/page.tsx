@@ -37,6 +37,16 @@ export default async function StuckDealsPage({
   const totalAtRisk = deals.reduce((sum, d) => sum + d.amount, 0);
   const uniqueOwners = new Set(deals.map((d) => d.ownerId)).size;
 
+  // Owner email lookup for the one-click "email rep" action. Only present
+  // when the SF User record has an Email field on the snapshot — silently
+  // hidden otherwise so we never render a broken mailto:.
+  const repEmailById = new Map<string, string>();
+  if (bundle.snapshot) {
+    for (const r of bundle.snapshot.reps) {
+      if (r.email && r.id) repEmailById.set(r.id, r.email);
+    }
+  }
+
   return (
     <div className="animate-fade-up">
       <PageHeader
@@ -96,12 +106,23 @@ export default async function StuckDealsPage({
                       </span>
                     </td>
                     <td className="px-5 py-3 text-ppp-charcoal-500">
-                      <Link
-                        href={`/dashboard/rep/${d.ownerId}`}
-                        className="hover:text-ppp-blue hover:underline"
-                      >
-                        {d.ownerName}
-                      </Link>
+                      <div className="inline-flex items-center gap-1.5">
+                        <Link
+                          href={`/dashboard/rep/${d.ownerId}`}
+                          className="hover:text-ppp-blue hover:underline"
+                        >
+                          {d.ownerName}
+                        </Link>
+                        {repEmailById.has(d.ownerId) && (
+                          <EmailRepLink
+                            email={repEmailById.get(d.ownerId)!}
+                            ownerName={d.ownerName}
+                            accountName={d.accountName ?? "this customer"}
+                            amount={d.amount}
+                            daysSinceActivity={d.daysSinceActivity}
+                          />
+                        )}
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-right font-semibold text-ppp-charcoal">
                       {d.amount > 0 ? fmtMoneyK(Math.round(d.amount / 1000)) : <span className="text-ppp-charcoal-500 font-normal italic">no $</span>}
@@ -129,6 +150,15 @@ export default async function StuckDealsPage({
                       >
                         {d.ownerName}
                       </Link>
+                      {repEmailById.has(d.ownerId) && (
+                        <EmailRepLink
+                          email={repEmailById.get(d.ownerId)!}
+                          ownerName={d.ownerName}
+                          accountName={d.accountName ?? "this customer"}
+                          amount={d.amount}
+                          daysSinceActivity={d.daysSinceActivity}
+                        />
+                      )}
                       <span>·</span>
                       <span>{d.stageName}</span>
                     </div>
@@ -166,6 +196,46 @@ function SummaryCard({
       <div className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
       <div className={`mt-1 font-condensed text-2xl sm:text-3xl font-bold ${valueClass}`}>{value}</div>
     </div>
+  );
+}
+
+/** One-click "ping rep about this deal" — opens the user's default mail
+ *  client with subject + body prefilled. Removes the friction of finding
+ *  the rep's email + composing manually. Renders only when we know the
+ *  rep's email from the snapshot; silently hidden otherwise. */
+function EmailRepLink({
+  email,
+  ownerName,
+  accountName,
+  amount,
+  daysSinceActivity,
+}: {
+  email: string;
+  ownerName: string;
+  accountName: string;
+  amount: number;
+  daysSinceActivity: number;
+}) {
+  const firstName = (ownerName?.split(/\s+/)[0] || "there");
+  const amountStr = amount > 0 ? ` ($${Math.round(amount / 1000)}K at risk)` : "";
+  const subject = `Stalled deal: ${accountName}${amountStr}`;
+  const body =
+    `Hi ${firstName},\n\n` +
+    `${accountName} has had no activity in ${daysSinceActivity} days. Can you give me a quick update on where this stands?\n\n` +
+    `Thanks`;
+  const href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return (
+    <a
+      href={href}
+      title={`Email ${ownerName} about this stalled deal`}
+      aria-label={`Email ${ownerName} about ${accountName}`}
+      className="inline-flex items-center justify-center h-5 w-5 rounded-full border border-ppp-blue-100 bg-ppp-blue-50 text-ppp-blue-700 hover:bg-ppp-blue-100 hover:text-ppp-blue-800 transition-colors"
+    >
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m3 7 9 6 9-6" />
+      </svg>
+    </a>
   );
 }
 
