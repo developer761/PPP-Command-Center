@@ -534,6 +534,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             }
             trend={snapshot && region !== "all" ? "flat" : period === "lifetime" ? "flat" : revenueKpi.trend}
             accent="blue"
+            hint="Total revenue from work orders that closed in the selected period. Compared to the same window one period earlier."
           />
           <KPICard
             label="Close Rate"
@@ -545,6 +546,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             }
             trend={liveKpis ? "flat" : view.kpis.closeRate.trend}
             accent="green"
+            hint="Of all the opportunities created in the period, what share became real paid jobs. Higher is better — it means quotes are turning into work."
           />
           <KPICard
             label="Avg Ticket"
@@ -556,6 +558,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             }
             trend={liveKpis ? "flat" : view.kpis.avgTicket.trend}
             accent="orange"
+            hint="Average dollar size of a closed-won deal in the period. Rising means we're winning bigger jobs; falling means smaller jobs or a price-mix shift."
           />
           <KPICard
             label={liveKpis ? "Open Pipeline" : "Open Quotes"}
@@ -567,6 +570,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             change={liveKpis ? "Not yet committed" : sign(view.kpis.openQuotes.change)}
             trend={liveKpis ? "flat" : view.kpis.openQuotes.trend}
             accent="blue"
+            hint="Dollars in opportunities still in progress (not yet won or lost). This is the runway — what could still close this quarter."
           />
           {conversionRate !== null && (
             <KPICard
@@ -575,6 +579,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
               change="Leads → Opps · 12mo"
               trend="flat"
               accent="green"
+              hint="Of all the leads that came in over the last 12 months, what share turned into a real opportunity. Measures the top of the funnel — marketing + intake."
             />
           )}
         </div>
@@ -624,12 +629,15 @@ export default function DashboardView({ bundle, formSummary }: Props) {
               <div>
                 <h3 className="text-base font-semibold text-ppp-charcoal">Top Customers</h3>
                 <p className="text-xs text-ppp-charcoal-500 mt-1">
-                  By lifetime revenue across all Work Orders
+                  By lifetime revenue across all Work Orders · click a name to see full history
                 </p>
               </div>
-              <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">
-                Top {topCustomers.length}
-              </div>
+              <Link
+                href="/dashboard/customers"
+                className="text-[11px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 hover:underline whitespace-nowrap"
+              >
+                All customers →
+              </Link>
             </div>
             <ul className="divide-y divide-ppp-charcoal-100">
               {topCustomers.map((c, i) => (
@@ -638,8 +646,13 @@ export default function DashboardView({ bundle, formSummary }: Props) {
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-ppp-charcoal truncate flex items-center gap-2">
-                      {c.name}
+                    <div className="text-sm font-medium truncate flex items-center gap-2">
+                      <Link
+                        href={`/dashboard/customer/${encodeURIComponent(c.id)}`}
+                        className="text-ppp-charcoal hover:text-ppp-blue hover:underline transition-colors"
+                      >
+                        {c.name}
+                      </Link>
                       {c.isRepeat && (
                         <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold border text-ppp-green-700 bg-ppp-green-50 border-ppp-green-100">
                           Repeat

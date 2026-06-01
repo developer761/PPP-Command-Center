@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PageHeader from "@/components/page-header";
+import InfoDot from "@/components/info-dot";
 import SupplierPickerModal from "@/components/supplier-picker-modal";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { fmtMoneyK } from "@/lib/format";
@@ -1238,35 +1239,6 @@ function StatCard({
       </div>
       <div className={`mt-1 font-condensed text-2xl sm:text-3xl font-bold ${tone}`}>{value}</div>
     </div>
-  );
-}
-
-/** Small ⓘ icon button — hover for desktop tooltip, tap for mobile popover.
- *  Click toggles a tiny inline panel so non-technical owners can see what
- *  the number counts without poking around. */
-function InfoDot({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <span className="relative inline-flex items-center">
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        onBlur={() => setOpen(false)}
-        title={text}
-        aria-label={`What this means: ${text}`}
-        className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-ppp-charcoal-200 text-[9px] font-bold text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 hover:text-ppp-charcoal transition-colors"
-      >
-        ?
-      </button>
-      {open && (
-        <span
-          role="tooltip"
-          className="absolute left-0 top-5 z-30 w-56 normal-case tracking-normal font-normal text-[11px] leading-snug text-ppp-charcoal bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg p-2.5"
-        >
-          {text}
-        </span>
-      )}
-    </span>
   );
 }
 

@@ -1,9 +1,15 @@
+import InfoDot from "./info-dot";
+
 type Props = {
   label: string;
   value: string;
   change: string;
   trend: "up" | "down" | "flat";
   accent?: "blue" | "orange" | "green";
+  /** Optional plain-English explanation rendered as an ⓘ next to the label.
+   *  Useful for non-technical owners (Alex) who shouldn't have to ask "what
+   *  does Close Rate mean?" Hover on desktop, tap on mobile. */
+  hint?: string;
 };
 
 const accentRing: Record<NonNullable<Props["accent"]>, string> = {
@@ -24,7 +30,7 @@ const trendColor = {
   flat: "text-ppp-charcoal-500 bg-ppp-charcoal-50 border-ppp-charcoal-100",
 } as const;
 
-export default function KPICard({ label, value, change, trend, accent = "blue" }: Props) {
+export default function KPICard({ label, value, change, trend, accent = "blue", hint }: Props) {
   return (
     <div
       className={[
@@ -37,8 +43,9 @@ export default function KPICard({ label, value, change, trend, accent = "blue" }
         accentRing[accent],
       ].join(" ")}
     >
-      <div className="font-condensed text-[10px] sm:text-[11px] font-semibold tracking-[0.15em] text-ppp-charcoal-500 uppercase">
-        {label}
+      <div className="font-condensed text-[10px] sm:text-[11px] font-semibold tracking-[0.15em] text-ppp-charcoal-500 uppercase flex items-center gap-1">
+        <span>{label}</span>
+        {hint && <InfoDot text={hint} />}
       </div>
       <div className="font-condensed mt-2 sm:mt-3 text-2xl sm:text-3xl font-bold text-ppp-navy tracking-tight">
         {value}
