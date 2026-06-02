@@ -85,14 +85,13 @@ export async function GET() {
       missingMessage: "Supplier and customer reply emails won't be ingested into the Mail Hub inbox. Admin would have to check Gmail manually.",
       presentMessage: "Set — replies are ingested into the Mail Hub.",
     },
-    {
-      id: "general_supplies_email",
-      label: "General Supplies recipient (GENERAL_SUPPLIES_EMAIL)",
-      envVar: "GENERAL_SUPPLIES_EMAIL",
-      severity: "warn",
-      missingMessage: "General Supplies orders (rollers, brushes, drop cloths, etc.) will fall back to RESEND_FROM_ADDRESS as the recipient. Set this to the warehouse / Home Depot pro account email.",
-      presentMessage: "Set — General Supplies orders route to the configured recipient.",
-    },
+    // GENERAL_SUPPLIES_EMAIL check removed 2026-06-02 — workers now order
+    // loose supplies (rollers, brushes, drop cloths) directly from their
+    // configured paint suppliers (Aboffs/Willis/Janovic/etc., which carry
+    // those items too), not through a separate "General Supplies" recipient.
+    // Legacy "__general__" plumbing is kept in the backend for backward-
+    // compatible rendering of existing sent orders, but isn't on the
+    // happy-path flow anymore.
   ];
   for (const c of envChecks) {
     const value = process.env[c.envVar];
