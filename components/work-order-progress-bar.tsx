@@ -1,17 +1,23 @@
 "use client";
 
 /**
- * Work Order Progress Bar — 8-stage timeline per WO.
+ * Work Order Progress Bar — 5-stage timeline per WO.
  *
  *   ⓪ Form Sent              (auto — customer_form_tokens.sent_at)
  *   ① Customer Opened        (auto — Resend email.opened event)
  *   ② Customer Submitted     (auto — customer_form_tokens.submitted_at)
  *   ③ Order Drafted          (auto — supplier_orders row created)
  *   ④ Sent to Supplier       (auto — supplier_orders.sent_at)
- *   ⑤ Supplier Confirmed     (manual — admin marks Acknowledged)
- *   ⑥ Materials Delivered    (manual — admin marks Delivered)
- *   ⑦ Job Complete           (auto — SF Work Order Status reaches
- *                              "Complete Paid in Full" / "Paid in Full")
+ *
+ * Supplier Confirmed + Materials Delivered + Job Complete previously
+ * lived here as stages 5-7 but admin doesn't want to manually mark
+ * acknowledged/delivered on every order, and Job Complete on the
+ * materials view never showed ✓ because materials filters to OPEN WOs
+ * only (completed WOs leave the list). Karan 2026-06-02: drop them.
+ *
+ * The acknowledged_at / delivered_at / jobCompletedAt fields are still
+ * captured in supplier_orders + the WoProgress type for downstream use
+ * (audit trail, future reporting) — just not rendered as bar stages.
  *
  * Color coding (per Karan's spec):
  *   green  = stage completed
@@ -83,13 +89,6 @@ const STAGES: StageDef[] = [
   { key: "formSubmittedAt",        label: "Customer Submitted", shortLabel: "Submitted",   stuckAfterDays: null },
   { key: "supplierDraftedAt",      label: "Order Drafted",      shortLabel: "Drafted",     stuckAfterDays: 2 },
   { key: "supplierSentAt",         label: "Sent to Supplier",   shortLabel: "Sent",        stuckAfterDays: 1 },
-  { key: "supplierAcknowledgedAt", label: "Supplier Confirmed", shortLabel: "Confirmed",   stuckAfterDays: 3,  manualOnly: true },
-  { key: "materialsDeliveredAt",   label: "Materials Delivered",shortLabel: "Delivered",   stuckAfterDays: null, manualOnly: true },
-  // Auto-stamped from Salesforce: when the WO Status reaches "Complete Paid
-  // in Full" / "Paid in Full", the CloseDate becomes jobCompletedAt. Open
-  // WOs always show this pending — that's correct (it's the destination
-  // step). Completed WOs (visible on Customer History) show it ✓.
-  { key: "jobCompletedAt",         label: "Job Complete",       shortLabel: "Complete",    stuckAfterDays: null },
 ];
 
 /** Resolve each stage's visual state from the timestamps. */

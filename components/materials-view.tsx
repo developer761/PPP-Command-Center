@@ -114,23 +114,58 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // Workers usually have <20 WOs so search is less critical for them but
   // the field stays visible for both — same UX everyone.
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Sort selector — defaults to "soonest job start" (deriveOpenMaterialsWorkOrders
+  // returns the list pre-sorted that way). Karan asked for the option to flip
+  // to other orderings: latest start (push-back review), newest WO (recent
+  // intake), oldest WO (jobs that have been sitting too long). We re-sort
+  // client-side on top of the existing list — cheap at PPP's scale.
+  type SortMode = "close-asc" | "close-desc" | "created-desc" | "created-asc";
+  const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
+    { value: "close-asc", label: "Soonest job start" },
+    { value: "close-desc", label: "Latest job start" },
+    { value: "created-desc", label: "Newest work order" },
+    { value: "created-asc", label: "Oldest work order" },
+  ];
+  const [sortMode, setSortMode] = useState<SortMode>("close-asc");
+
   const visibleJobs = useMemo<OpenWorkOrderForMaterials[]>(() => {
+    // Search filter first — typically narrows to a handful of WOs.
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return openJobs;
-    return openJobs.filter((j) => {
-      // Match against the fields a worker/admin would actually type:
-      // customer name, WO number, status string, line-item area labels
-      // (so "kitchen" finds WOs with a kitchen room).
-      const woNumber = (j.wo.workOrderNumber ?? "").toLowerCase();
-      const accountName = (j.wo.accountName ?? "").toLowerCase();
-      const status = (j.wo.status ?? "").toLowerCase();
-      if (woNumber.includes(q) || accountName.includes(q) || status.includes(q)) return true;
-      for (const li of j.lineItems) {
-        if ((li.raw.areaLabel ?? "").toLowerCase().includes(q)) return true;
+    const filtered = !q
+      ? [...openJobs]
+      : openJobs.filter((j) => {
+          // Match against the fields a worker/admin would actually type:
+          // customer name, WO number, status string, line-item area labels
+          // (so "kitchen" finds WOs with a kitchen room).
+          const woNumber = (j.wo.workOrderNumber ?? "").toLowerCase();
+          const accountName = (j.wo.accountName ?? "").toLowerCase();
+          const status = (j.wo.status ?? "").toLowerCase();
+          if (woNumber.includes(q) || accountName.includes(q) || status.includes(q)) return true;
+          for (const li of j.lineItems) {
+            if ((li.raw.areaLabel ?? "").toLowerCase().includes(q)) return true;
+          }
+          return false;
+        });
+
+    // Re-sort based on the worker's choice. WOs without a relevant date go
+    // to the end so the meaningful entries always lead the list.
+    const sorter = (a: OpenWorkOrderForMaterials, b: OpenWorkOrderForMaterials): number => {
+      if (sortMode === "close-asc" || sortMode === "close-desc") {
+        const ad = a.wo.closeDate;
+        const bd = b.wo.closeDate;
+        if (!ad && !bd) return 0;
+        if (!ad) return 1; // missing dates push to bottom regardless of direction
+        if (!bd) return -1;
+        return sortMode === "close-asc" ? ad.localeCompare(bd) : bd.localeCompare(ad);
       }
-      return false;
-    });
-  }, [openJobs, searchQuery]);
+      // createdDate is always populated, but guard defensively.
+      const ac = a.wo.createdDate ?? "";
+      const bc = b.wo.createdDate ?? "";
+      return sortMode === "created-desc" ? bc.localeCompare(ac) : ac.localeCompare(bc);
+    };
+    return filtered.sort(sorter);
+  }, [openJobs, searchQuery, sortMode]);
 
   // Seed from the ?wo= deep-link when that WO is actually an open materials
   // job; otherwise start unselected (the WO may be closed / out of scope, in
@@ -487,7 +522,27 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     {visibleJobs.length}{searchQuery ? `/${openJobs.length}` : ""}
                   </span>
                 </div>
-                <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">Soonest jobs first</p>
+                {/* Sort selector — replaces the fixed "Soonest jobs first" label
+                    so workers + admins can flip the order. Native <select> for
+                    accessibility + zero JS overhead; styled to match the
+                    surrounding chips. */}
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <label htmlFor="wo-sort" className="text-[11px] text-ppp-charcoal-500">
+                    Sort by:
+                  </label>
+                  <select
+                    id="wo-sort"
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as SortMode)}
+                    className="text-[11px] font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors"
+                  >
+                    {SORT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               {/* Search — instant client-side filter. Admins see hundreds
                   of WOs so this is critical for "find Mrs. Smith fast".
@@ -1469,6 +1524,11 @@ function SendColorFormButton({
   // name mismatch), look it up DIRECTLY from Salesforce by the WO on open so
   // the worker never has to type it. Only fetches once, and only if still blank.
   const [lookingUpEmail, setLookingUpEmail] = useState(false);
+  /** Set to true after the SF lookup runs to completion (success or null
+   *  result), so we can show a clear "no email on file" hint when the
+   *  lookup tried + found nothing. Without this signal, an empty input
+   *  is ambiguous: "did the system look?" vs "did SF just not have it?" */
+  const [lookupCompleted, setLookupCompleted] = useState(false);
   const emailLookedUp = useRef(false);
   useEffect(() => {
     if (!open || emailLookedUp.current || customerEmail.trim()) return;
@@ -1486,7 +1546,10 @@ function SendColorFormButton({
       } catch {
         // soft — worker can still type
       } finally {
-        if (!cancelled) setLookingUpEmail(false);
+        if (!cancelled) {
+          setLookingUpEmail(false);
+          setLookupCompleted(true);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -1589,6 +1652,11 @@ function SendColorFormButton({
                   />
                   {lookingUpEmail && (
                     <p className="text-[11px] text-ppp-charcoal-500 mt-1">Looking up the customer&apos;s email from Salesforce…</p>
+                  )}
+                  {!lookingUpEmail && lookupCompleted && !customerEmail.trim() && (
+                    <p className="text-[11px] text-ppp-orange-700 mt-1">
+                      No email on file for this customer in Salesforce — type it below to send.
+                    </p>
                   )}
                 </div>
                 <div>
