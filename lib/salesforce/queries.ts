@@ -47,6 +47,14 @@ const GEN_REFRESH_MIN_INTERVAL_MS = 5_000;
 let cachedGeneration = 0;
 let lastGenFetchAt = 0;
 
+// WOLI geometry-field probe result, cached at module scope. The probe is a
+// 1-row SOQL pre-check that determines whether Perimeter__c + Dimensions_Height__c
+// exist on this org's WorkOrderLineItem. The result is stable per deployment
+// (schema doesn't change at runtime), so re-probing on every snapshot rebuild
+// burns ~300-500ms per cold load for no new information. Reset on process
+// restart so a redeploy after a schema migration picks up the new fields.
+let cachedWoliExtraFields: string[] | null = null;
+
 async function getCurrentGeneration(): Promise<number> {
   const now = Date.now();
   if (now - lastGenFetchAt < GEN_REFRESH_MIN_INTERVAL_MS) return cachedGeneration;
@@ -792,8 +800,14 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
 
     let revenueField: string | null = null;
     let allCurrencyFields: string[] = [];
+    // PERF: capture the Opportunity describe ONCE — we used to call it again at
+    // the rep-performance field discovery block below (~line 891). Each describe
+    // is a ~500ms SF round-trip on cold cache; reusing the metadata cuts that
+    // duplicate round-trip out of every snapshot rebuild.
+    let oppMetaFieldNames: Set<string> = new Set<string>();
     try {
       const meta = await conn.sobject("Opportunity").describe();
+      oppMetaFieldNames = new Set(meta.fields.map((f) => f.name));
       allCurrencyFields = meta.fields
         .filter((f) => f.custom && (f.type === "currency" || f.type === "double"))
         .map((f) => f.name);
@@ -886,21 +900,16 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
 
     // Non-currency rep-performance fields (KPI 3/5/6). Read-conditional via
     // describe() so we don't blow up the query when a field is missing/FLS-hidden.
-    let allOppFieldNames = new Set<string>();
-    try {
-      const oppMeta2 = await conn.sobject("Opportunity").describe();
-      allOppFieldNames = new Set(oppMeta2.fields.map((f) => f.name));
-    } catch {
-      // Already logged above in schema discovery — describe failures shouldn't
-      // block the pull. We'll get null for fields we can't confirm exist.
-    }
+    // Reuses oppMetaFieldNames captured in the schema-discovery block above —
+    // no second describe round-trip. Empty Set when describe failed, so all
+    // optional fields safely drop out of the SELECT.
     const REP_PERF_OPP_FIELDS = [
       "LeadGroup__c",
       "AppointmentDate__c",
       "Cancelled_Appointment__c",
       "Estimate_Sent__c",
       "Date_Estimate_Sent__c",
-    ].filter((f) => allOppFieldNames.has(f));
+    ].filter((f) => oppMetaFieldNames.has(f));
     const repPerfOppFieldsSelect = REP_PERF_OPP_FIELDS.length > 0
       ? `, ${REP_PERF_OPP_FIELDS.join(", ")}`
       : "";
@@ -1153,14 +1162,24 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         // hit an org MALFORMED_QUERY restriction) against one real WO id; if it
         // fails we silently keep the proven base fields and fall back to the
         // estimator's defaults. Zero risk to the critical path.
+        //
+        // PERF: the probe result is stable per deployment (schema doesn't
+        // change at runtime), so we cache `cachedWoliExtraFields` at module
+        // scope and skip the probe on every subsequent snapshot rebuild. Saves
+        // ~300-500ms per cold load. Module-scope cache resets on process restart
+        // so a schema migration → redeploy picks up the new fields.
         let fields = baseFields;
-        if (woIds.length > 0) {
+        if (cachedWoliExtraFields !== null) {
+          fields = [...baseFields, ...cachedWoliExtraFields];
+        } else if (woIds.length > 0) {
           try {
             await conn.query(
               `SELECT Perimeter__c, Dimensions_Height__c FROM WorkOrderLineItem WHERE WorkOrderId IN ('${woIds[0]}') LIMIT 1`
             );
-            fields = [...baseFields, "Perimeter__c", "Dimensions_Height__c"];
+            cachedWoliExtraFields = ["Perimeter__c", "Dimensions_Height__c"];
+            fields = [...baseFields, ...cachedWoliExtraFields];
           } catch (probeErr) {
+            cachedWoliExtraFields = []; // remember the negative — don't re-probe
             console.warn(`[SF] WOLI geometry fields unavailable, using base set: ${probeErr instanceof Error ? probeErr.message : probeErr}`);
           }
         }
