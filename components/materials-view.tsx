@@ -159,9 +159,17 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         if (!bd) return -1;
         return sortMode === "close-asc" ? ad.localeCompare(bd) : bd.localeCompare(ad);
       }
-      // createdDate is always populated, but guard defensively.
+      // createdDate should always be populated on real SF WOs, but legacy /
+      // partial data could have an empty string. Push empties to the bottom
+      // regardless of sort direction (same pattern as closeDate above) so a
+      // junk row never beats real entries for the top slot — was a real bug
+      // before the empty-guard since `"".localeCompare("2026-01-01")` puts
+      // empty FIRST in ascending order, landing the bad row at the top.
       const ac = a.wo.createdDate ?? "";
       const bc = b.wo.createdDate ?? "";
+      if (!ac && !bc) return 0;
+      if (!ac) return 1;
+      if (!bc) return -1;
       return sortMode === "created-desc" ? bc.localeCompare(ac) : ac.localeCompare(bc);
     };
     return filtered.sort(sorter);
@@ -614,7 +622,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="font-semibold text-ppp-charcoal text-sm truncate">
+                            {/* min-w-0 + flex-1 lets the customer name truncate
+                                ELSE-where in the row; the FormStatusBadge stays
+                                pinned to the right at all widths. Before this,
+                                a long name (e.g., "ABC Properties Management,
+                                LLC") could wrap to a 2nd line and push the
+                                badge below it on 375px. */}
+                            <div className="font-semibold text-ppp-charcoal text-sm truncate min-w-0 flex-1">
                               {j.wo.accountName ?? "(unknown account)"}
                             </div>
                             <FormStatusBadge status={formStatus} />
@@ -1373,17 +1387,19 @@ function FormStatusBadge({ status }: { status: FormStatus | undefined }) {
 
 /** Convert a YYYY-MM-DD close date into a human relative label
  *  ("in 3d" / "today" / "5d overdue") with an urgency tone for color tinting.
- *  Anchored at the user's local midnight so a closeDate of "today" parses to
- *  today's start (not the 4pm UTC drift you'd get from naive `new Date()`). */
+ *  UTC-anchored on both sides so the server-rendered and client-rendered
+ *  values agree (no hydration mismatch flicker for non-UTC users). The
+ *  precision loss vs. "feels like local time" near midnight is acceptable
+ *  for a day-granular urgency display. */
 function formatRelativeCloseDate(iso: string): { label: string; tone: "normal" | "urgent" | "overdue" } {
-  // Parse as LOCAL midnight to match how the closeDate is conceptually
-  // anchored ("the day of the job"). new Date(YYYY-MM-DD) parses as UTC
-  // midnight which can drift; "T00:00" without Z parses as local.
-  const target = new Date(iso + "T00:00:00").getTime();
+  // Parse the close date as UTC midnight (Z suffix), matching how SF stores
+  // date-only values. Comparing to UTC-midnight-of-today on both sides means
+  // SSR + hydration always see the same diffDays — no flicker.
+  const target = new Date(iso + "T00:00:00Z").getTime();
   if (isNaN(target)) return { label: iso, tone: "normal" };
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((target - now.getTime()) / 86_400_000);
+  const nowDate = new Date();
+  const todayUtcMidnight = Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), nowDate.getUTCDate());
+  const diffDays = Math.round((target - todayUtcMidnight) / 86_400_000);
   if (diffDays < 0) return { label: `${Math.abs(diffDays)}d overdue`, tone: "overdue" };
   if (diffDays === 0) return { label: "today", tone: "urgent" };
   if (diffDays === 1) return { label: "tomorrow", tone: "urgent" };
