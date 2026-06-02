@@ -92,7 +92,13 @@ export async function POST(request: Request) {
   // don't accept "user@domain" (Resend would silently reject and admin would
   // think the customer was emailed when the form invite never sent).
   if (!customerEmail || !/^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(customerEmail)) {
-    return NextResponse.json({ error: "invalid_customer_email" }, { status: 400 });
+    // Friendlier message for the admin UI so workers know what's wrong without
+    // reading the error code (the regex requires a TLD — "user@domain"
+    // without "." rejects; Resend would silently swallow such addresses).
+    return NextResponse.json({
+      error: "invalid_customer_email",
+      message: "That email doesn't look right — check that it has an @ and a domain (e.g., name@example.com).",
+    }, { status: 400 });
   }
 
   // 3. Confirm the WO exists in SF + capture account name for the token row

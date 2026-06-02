@@ -1578,7 +1578,10 @@ function SendColorFormButton({
   const [result, setResult] = useState<
     | null
     | { ok: true; formUrl: string; resendId: string }
-    | { ok: false; error: string }
+    // formUrl is present on the 502 "email_send_failed" path (token was
+    // created, Resend rejected). Surfaces a copy-paste fallback so admin can
+    // share the link manually instead of retrying blind.
+    | { ok: false; error: string; formUrl?: string }
   >(null);
 
   // Esc closes the send-form modal. Not while a send is in flight — admin
@@ -1612,7 +1615,14 @@ function SendColorFormButton({
       });
       const data = await res.json();
       if (!res.ok || data.ok === false) {
-        setResult({ ok: false, error: data.message ?? data.error ?? `HTTP ${res.status}` });
+        // 502 "email_send_failed" path: the token + formUrl were still created,
+        // Resend just rejected. Carry the formUrl forward so the admin sees a
+        // copy-paste fallback instead of a dead-end error.
+        setResult({
+          ok: false,
+          error: data.message ?? data.error ?? `HTTP ${res.status}`,
+          formUrl: typeof data.formUrl === "string" ? data.formUrl : undefined,
+        });
       } else {
         setResult({ ok: true, formUrl: data.formUrl, resendId: data.resendMessageId });
       }
@@ -1712,8 +1722,48 @@ function SendColorFormButton({
 
             {result?.ok === false && (
               <div className="p-5 sm:p-6 space-y-3 text-sm">
-                <div className="text-ppp-orange-700 font-semibold">Couldn&apos;t send.</div>
+                <div className="text-ppp-orange-700 font-semibold">Couldn&apos;t send the email.</div>
                 <div className="text-xs text-ppp-charcoal-500">{result.error}</div>
+                {/* Partial-success fallback: when the API returns a 502
+                    "email_send_failed" the token + form URL were created
+                    successfully — only Resend itself rejected. Surface the
+                    URL so admin can share it manually (text it to the
+                    customer, send via Gmail, etc.) without retrying blind. */}
+                {result.formUrl && (
+                  <div className="mt-3 pt-3 border-t border-ppp-charcoal-100 space-y-2">
+                    <div className="text-[11px] font-semibold text-ppp-charcoal">
+                      The form link was created — share it manually:
+                    </div>
+                    <div className="text-xs break-all">
+                      <a
+                        href={result.formUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-ppp-blue hover:underline"
+                      >
+                        {result.formUrl}
+                      </a>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          navigator.clipboard.writeText(result.formUrl!);
+                        } catch {
+                          // older browsers / file:// — fall through silently;
+                          // user can long-press the link above to copy.
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ppp-charcoal-100 bg-white text-xs font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                      Copy link
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
