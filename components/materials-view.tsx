@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PageHeader from "@/components/page-header";
 import InfoDot from "@/components/info-dot";
-import SupplierPickerModal from "@/components/supplier-picker-modal";
+// PERF: modals only render when admin actively opens them — defer their JS
+// (~1100 lines combined) from the materials-page initial bundle. First-click
+// pays a one-time ~50ms chunk fetch; subsequent opens are instant. Page first
+// paint loads ~30-40KB less JS.
+const SupplierPickerModal = dynamic(() => import("@/components/supplier-picker-modal"));
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { fmtMoneyK } from "@/lib/format";
 import {
@@ -27,7 +32,7 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
-import SupplierOrderModal from "@/components/supplier-order-modal";
+const SupplierOrderModal = dynamic(() => import("@/components/supplier-order-modal"));
 import WoPastOrders from "@/components/wo-past-orders";
 
 type Props = {
