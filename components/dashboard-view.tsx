@@ -96,23 +96,30 @@ export default function DashboardView({ bundle, formSummary }: Props) {
   );
   const [region, setRegionState] = useState<RegionFilter>(() => urlRegion ?? "all");
 
-  // Single localStorage-restore effect for both filters (one effect = one
-  // router.replace on mount, no double-write race). Fires only when the URL
-  // has neither param — preserves intentional URL filters from deep links.
+  // Restore each filter independently from localStorage on mount. Fires
+  // when EITHER param is missing from the URL (a deep link like
+  // /dashboard?region=Nassau should still restore the user's saved period).
+  // Honors URL params over localStorage so a shared deep link wins. One
+  // router.replace on mount maxes out — no double-write race.
   useEffect(() => {
-    if (urlPeriod || urlRegion) return;
+    if (urlPeriod && urlRegion) return;
     if (typeof window === "undefined") return;
     try {
-      const savedPeriod = window.localStorage.getItem("dashboard_period");
-      const savedRegion = window.localStorage.getItem("dashboard_region");
       const next: Record<string, string> = {};
-      if (savedPeriod && isValidPeriod(savedPeriod) && savedPeriod !== "this-month") {
-        setPeriodState(savedPeriod);
-        next.period = savedPeriod;
+      // Only restore each filter if the URL didn't already set it.
+      if (!urlPeriod) {
+        const savedPeriod = window.localStorage.getItem("dashboard_period");
+        if (savedPeriod && isValidPeriod(savedPeriod) && savedPeriod !== "this-month") {
+          setPeriodState(savedPeriod);
+          next.period = savedPeriod;
+        }
       }
-      if (savedRegion && savedRegion !== "all") {
-        setRegionState(savedRegion);
-        next.region = savedRegion;
+      if (!urlRegion) {
+        const savedRegion = window.localStorage.getItem("dashboard_region");
+        if (savedRegion && savedRegion !== "all") {
+          setRegionState(savedRegion);
+          next.region = savedRegion;
+        }
       }
       if (Object.keys(next).length > 0) {
         const params = new URLSearchParams(searchParams.toString());
@@ -270,7 +277,9 @@ export default function DashboardView({ bundle, formSummary }: Props) {
   // months. Surfaces re-engagement opportunities (PPP's repeat-customer
   // book is one of the most profitable channels per Karan). Sorted by
   // lifetime $ desc so the biggest dormant accounts surface first.
-  // Hidden entirely when there are no candidates.
+  // Honors the region filter so when Alex narrows to "Nassau," he sees
+  // Nassau's dormant customers, not Suffolk's. Hidden entirely when no
+  // candidates.
   const customerPulse = useMemo(() => {
     if (!snapshot) return [];
     const TWELVE_MONTHS_MS = 365 * 86_400_000;
@@ -286,6 +295,10 @@ export default function DashboardView({ bundle, formSummary }: Props) {
     for (const a of snapshot.accounts) {
       if (a.totalLifetimeRevenue <= 0) continue;
       if (!a.lastWorkOrderCompleted) continue;
+      // Region filter — when Alex narrows to a region, Pulse should reflect
+      // that scope. Accounts without a region tag are excluded from a
+      // filtered view (we can't confidently place them).
+      if (region !== "all" && a.region !== region) continue;
       const last = new Date(a.lastWorkOrderCompleted).getTime();
       if (isNaN(last)) continue;
       const ageMs = now - last;
@@ -301,7 +314,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
     return candidates
       .sort((a, b) => b.lifetimeRevenue - a.lifetimeRevenue)
       .slice(0, 5);
-  }, [snapshot]);
+  }, [snapshot, region]);
 
   // Hot reps this week — top 3 with biggest week-over-week jump.
   const hotReps = useMemo(() => {

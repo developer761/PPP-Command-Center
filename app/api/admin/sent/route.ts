@@ -83,7 +83,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
           ok: true,
           messages: [],
-          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0 },
+          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0, scopeNote: "no_sf_user_mapping" },
         });
       }
       const snapshot = await loadSalesforceSnapshot();
@@ -94,14 +94,14 @@ export async function GET(request: Request) {
         return NextResponse.json({
           ok: true,
           messages: [],
-          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0 },
+          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0, scopeNote: "wo_not_owned" },
         });
       }
       if (owned.length === 0) {
         return NextResponse.json({
           ok: true,
           messages: [],
-          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0 },
+          summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0, scopeNote: "no_owned_wos" },
         });
       }
       scopedWoIds = owned;
