@@ -759,12 +759,20 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
   // auto-prefill). Falls back gracefully when org doesn't have Person
   // Accounts enabled (rich SELECT errors → base SELECT runs successfully).
   return cached("snapshot-v6", async () => {
+    // Timing: surface cold-load breakdown in Vercel logs so we can see the
+    // real impact of the parallelization + cron perf work without guessing.
+    const tSnapStart = Date.now();
     // Cross-instance fast path: if another instance already built a fresh
     // snapshot, read it (one gzipped Supabase row) instead of re-paging
     // Salesforce ~45 times. Pure optimization — readSharedSnapshot returns null
     // on ANY problem, so we fall through to the live query below unchanged.
+    const tSharedStart = Date.now();
     const sharedHit = await readSharedSnapshot("snapshot-v6");
-    if (sharedHit) return sharedHit;
+    if (sharedHit) {
+      console.log(`[SF] snapshot WARM-HIT in ${Date.now() - tSharedStart}ms`);
+      return sharedHit;
+    }
+    console.log(`[SF] snapshot COLD START — no shared cache (${Date.now() - tSharedStart}ms check)`);
 
     const conn = await getSalesforceClient();
 
@@ -1940,6 +1948,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // Populate the shared cache so OTHER cold instances skip the SF paging.
     // Best-effort + non-blocking — a write failure never affects this response.
     void writeSharedSnapshot("snapshot-v6", snapshot);
+    console.log(`[SF] snapshot COLD-COMPLETE in ${Date.now() - tSnapStart}ms`);
     return snapshot;
   });
 }
