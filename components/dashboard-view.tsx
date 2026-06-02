@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import FilterDropdown from "@/components/filter-dropdown";
 import HorizontalBar from "@/components/horizontal-bar";
 import KPICard from "@/components/kpi-card";
@@ -76,7 +77,54 @@ export default function DashboardView({ bundle, formSummary }: Props) {
   // ("show me May", "what did we do this month"). Their SF reports default
   // to a similar window. Other periods are opt-in via the dropdown.
   const [period, setPeriod] = useState<Period>("this-month");
-  const [region, setRegion] = useState<RegionFilter>("all");
+  // Region filter — persisted across page navigations via URL ?region=X +
+  // localStorage as a fallback when navigating in from a clean URL. Alex
+  // expected his region selection to survive clicking into a customer +
+  // back; was a per-page reset before.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlRegion = searchParams.get("region");
+  const [region, setRegionState] = useState<RegionFilter>(() => urlRegion ?? "all");
+
+  // On mount, if the URL doesn't carry a region but localStorage has a saved
+  // one, restore it. Server renders with region="all" matching the URL so
+  // there's no hydration mismatch — this fires post-mount only.
+  useEffect(() => {
+    if (urlRegion) return;
+    if (typeof window === "undefined") return;
+    try {
+      const saved = window.localStorage.getItem("dashboard_region");
+      if (saved && saved !== "all") {
+        setRegionState(saved);
+        // Reflect in URL so the next link click carries it forward.
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("region", saved);
+        router.replace(`/dashboard?${params.toString()}`, { scroll: false });
+      }
+    } catch {
+      // localStorage can throw in private mode / unsupported envs — silent
+      // fall-back to "all" is fine.
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Set region + persist to URL + localStorage in one shot. Use everywhere
+   *  the dropdown changes value so the three sources stay in sync. */
+  const setRegion = (next: RegionFilter) => {
+    setRegionState(next);
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("dashboard_region", next);
+      }
+    } catch {
+      // ignore localStorage write failures
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "all") params.delete("region");
+    else params.set("region", next);
+    const qs = params.toString();
+    router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
+  };
   const [funnelPeriod, setFunnelPeriod] = useState<Period | "page">("page");
 
   const dataSource = bundle.source;
