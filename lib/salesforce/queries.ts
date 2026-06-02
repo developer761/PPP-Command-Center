@@ -1361,10 +1361,19 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     });
 
     /* ─────── Work Orders (PPP's true revenue unit) ─────── */
-
-    // Detect WO revenue field the same way we did Opps. PPP's report sums
-    // "Quoted Subtotal with Change Order" + "Net Value" — both live on WO.
-    // We pick the canonical field by highest aggregate sum.
+    //
+    // PERF: wrapped in an IIFE so the WO describe + query runs IN PARALLEL
+    // with accountsPromise / quotesPromise / paintColorsPromise / etc. The
+    // WO chain takes ~5s on cold load; running it concurrent with the rest
+    // turns cold-cache snapshot from ~17s to ~10-12s (max of WO vs the
+    // other parallel pulls instead of their sum).
+    //
+    // WOLI fetch still runs AFTER this promise resolves because it needs
+    // WO Ids (intentional dependency — see wrapWoliFetch comment above).
+    const workOrdersPromise: Promise<{
+      workOrders: SnapshotWorkOrder[];
+      woRevenueField: string | null;
+    }> = (async () => {
     let woRevenueField: string | null = null;
     let woQuotedField: string | null = null;
     let woNetField: string | null = null;
@@ -1592,6 +1601,9 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         endDate: typeof w.EndDate === "string" ? (w.EndDate as string) : null,
       };
     });
+
+      return { workOrders, woRevenueField };
+    })();
 
     // ─────────────────────────────────────────────────────────────────
     // Rep-performance pulls (Katie's REP_PROFILES_INTEGRATION_GUIDE §6.8)
@@ -1830,9 +1842,10 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
-    // Await the Account + Quote + PaintColor promises that have been running
-    // in parallel with the WO query above + the new rep-performance pulls.
-    const [accounts, quotes, paintColors, quotas, subQuotas, transactions, reviews, cases, leadStats] = await Promise.all([
+    // Await every parallel pull — Account/Quote/PaintColor + rep-performance
+    // pulls + workOrders. Each ran concurrent with the others; Promise.all
+    // resolves to whichever takes longest (typically WO or PaintColor on cold).
+    const [accounts, quotes, paintColors, quotas, subQuotas, transactions, reviews, cases, leadStats, woResult] = await Promise.all([
       accountsPromise,
       quotesPromise,
       paintColorsPromise,
@@ -1842,7 +1855,10 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       reviewsPromise,
       casesPromise,
       leadStatsPromise,
+      workOrdersPromise,
     ]);
+    const workOrders = woResult.workOrders;
+    const woRevenueField = woResult.woRevenueField;
 
     // WOLI fetch runs LAST because it explicitly batches by WorkOrderId IN
     // (...) — needs the WO Ids first. We only scope to the active-WO subset
