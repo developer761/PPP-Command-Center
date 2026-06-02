@@ -632,6 +632,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   snapshot={snapshot}
                   job={activeJob}
                   coverageConfig={coverageConfig}
+                  formStatus={formStatusByWO.get(activeJob.wo.id)}
                   onOpenOrderModal={(supplierAccountId, supplierName, manual) =>
                     setOrderModal({
                       workOrderId: activeJob.wo.id,
@@ -681,11 +682,16 @@ function JobDetail({
   snapshot,
   job,
   coverageConfig,
+  formStatus,
   onOpenOrderModal,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   job: OpenWorkOrderForMaterials;
   coverageConfig: CoverageConfig;
+  /** Current state of this WO's customer color form (sent/opened/submitted/
+   *  expired/none). Drives the "Send Reminder" button — only renderable when
+   *  the form is in-flight (sent or opened) AND not yet submitted/expired. */
+  formStatus: FormStatus | undefined;
   /** Opens the Supplier Order Modal with a supplier pre-selected. `manual` is
    *  true when chosen via the store picker (vs auto-detected), so the builder
    *  includes all the WO's colors on that store's order. */
@@ -851,6 +857,17 @@ function JobDetail({
             accountName={job.wo.accountName ?? null}
             defaultEmail={customerAccount?.email ?? null}
           />
+          {/* When the customer-form invite is already in flight (sent or
+              opened, not yet submitted/expired), surface a one-click
+              "Send Reminder" that re-fires the SAME existing link via the
+              already-tested /api/admin/sent/resend endpoint (5-min server-side
+              dedup, scope-checked, expiry-aware). Saves admin from creating
+              a second token + email — the customer would otherwise get two
+              competing links and not know which one to click. Renders nothing
+              when the form was never sent or was already submitted. */}
+          {(formStatus?.status === "sent" || formStatus?.status === "opened") && (
+            <SendReminderButton key={`remind-${formStatus.token}`} token={formStatus.token} />
+          )}
           {/* Order materials = pick a STORE (Katie's model: PPP buys paint of
               any brand from stores like Aboffs/Willis, not from the manufacturer).
               The picker lists PPP's configured vendors; the chosen store's order
@@ -1331,6 +1348,102 @@ function Pill({ children, tone = "neutral" }: { children: React.ReactNode; tone?
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}`}>
       {children}
     </span>
+  );
+}
+
+/* ─── Send Reminder button — re-fires an existing form invite ─── */
+
+/** One-click "Send Reminder" for a customer form that was sent but the
+ *  customer hasn't submitted yet. Calls /api/admin/sent/resend with
+ *  `id: "form:<token>"` — the same already-tested code path used for
+ *  bounced supplier orders. Server-side dedup (5-min window, idempotent
+ *  by message id), scope-checked, expiry-aware. Synchronous in-flight
+ *  ref against rapid double-clicks. Shows an inline result toast so the
+ *  worker knows it actually went out.
+ *
+ *  Renders nothing when called with no token (defensive — the parent
+ *  already gates on status === sent/opened). */
+function SendReminderButton({ token }: { token: string }) {
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<
+    | null
+    | { ok: true; deduped: boolean }
+    | { ok: false; error: string }
+  >(null);
+  const inFlightRef = useRef(false);
+
+  // Auto-clear the result toast after 4s so it doesn't linger.
+  useEffect(() => {
+    if (!result) return;
+    const t = setTimeout(() => setResult(null), 4000);
+    return () => clearTimeout(t);
+  }, [result]);
+
+  const send = async () => {
+    if (inFlightRef.current || sending) return;
+    inFlightRef.current = true;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/sent/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: `form:${token}` }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        const msg =
+          data.error === "token_expired" ? "Link expired — send a fresh form."
+          : data.error === "form_already_submitted" ? "Customer already submitted — no reminder needed."
+          : data.error === "wo_not_owned" ? "Not your work order."
+          : data.message ?? data.error ?? `HTTP ${res.status}`;
+        setResult({ ok: false, error: msg });
+      } else {
+        // Server returns { ok, deduped?: true } when a recent reminder
+        // was already sent (within 5 min). We surface that so the worker
+        // knows it didn't go out twice.
+        setResult({ ok: true, deduped: !!data.deduped });
+      }
+    } catch (err) {
+      setResult({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setSending(false);
+      inFlightRef.current = false;
+    }
+  };
+
+  return (
+    <div className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        onClick={send}
+        disabled={sending}
+        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 text-sm font-medium hover:bg-ppp-blue-100 transition-colors disabled:opacity-50"
+        title="Re-send the same color-form link to the customer"
+      >
+        {sending ? (
+          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
+            <path d="M21 12a9 9 0 1 1-6.2-8.55" />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 12a9 9 0 1 0 3-6.7" />
+            <path d="M3 4v5h5" />
+          </svg>
+        )}
+        {sending ? "Sending…" : "Send Reminder"}
+      </button>
+      {result?.ok === true && (
+        <span className="text-[11px] font-medium text-ppp-green-700">
+          {result.deduped ? "Already sent recently" : "Reminder sent ✓"}
+        </span>
+      )}
+      {result?.ok === false && (
+        <span className="text-[11px] font-medium text-ppp-orange-700" title={result.error}>
+          {result.error}
+        </span>
+      )}
+    </div>
   );
 }
 
