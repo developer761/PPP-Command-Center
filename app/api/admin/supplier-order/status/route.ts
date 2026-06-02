@@ -60,6 +60,29 @@ export async function POST(request: Request) {
                  : body.status === "delivered"    ? "delivered_at"
                  : "cancelled_at";
 
+  // Terminal-state guard: a cancelled order can't be promoted back to
+  // acknowledged/delivered (otherwise IS NULL guard alone would let admins
+  // flip a withdrawn order back to live by clicking the wrong button).
+  // Fetch current state once so we can decide whether to allow the move.
+  const current = await sb
+    .from("supplier_orders")
+    .select("id, status, acknowledged_at, delivered_at, cancelled_at")
+    .eq("id", body.supplierOrderId)
+    .maybeSingle();
+  if (current.error) {
+    return NextResponse.json({ error: "lookup_failed", message: current.error.message }, { status: 500 });
+  }
+  if (!current.data) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  if (current.data.cancelled_at && body.status !== "cancelled") {
+    return NextResponse.json({
+      error: "cancelled_order_locked",
+      message: "This order was cancelled — it can't be marked acknowledged or delivered. Re-send the order to start a new one.",
+      order: current.data,
+    }, { status: 409 });
+  }
+
   const { data: row, error } = await sb
     .from("supplier_orders")
     .update({ [tsColumn]: now, status: body.status })
@@ -72,18 +95,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "update_failed", message: error.message }, { status: 500 });
   }
 
-  // No row returned → already had the stamp (idempotent path). Fetch current
-  // state so the UI can stay in sync.
+  // No row returned → already had the stamp (idempotent path). Return the
+  // state we already fetched above so the UI can stay in sync without a
+  // second round trip.
   if (!row) {
-    const { data: existing } = await sb
-      .from("supplier_orders")
-      .select("id, status, acknowledged_at, delivered_at, cancelled_at")
-      .eq("id", body.supplierOrderId)
-      .maybeSingle();
-    if (!existing) {
-      return NextResponse.json({ error: "not_found" }, { status: 404 });
-    }
-    return NextResponse.json({ ok: true, idempotentNoOp: true, order: existing });
+    return NextResponse.json({ ok: true, idempotentNoOp: true, order: current.data });
   }
 
   return NextResponse.json({ ok: true, order: row });

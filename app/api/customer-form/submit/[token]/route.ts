@@ -71,6 +71,21 @@ const SURFACE_TO_FIELD: Record<string, string> = {
   other: "ColorOther__c",
 };
 
+/**
+ * Server-side allowlist for finish values — must stay in lockstep with
+ * FINISH_OPTIONS in customer-form-view.tsx. Public endpoint so we can't
+ * trust the client to send a valid picklist value; an off-list finish
+ * would otherwise land verbatim in ColorNotes__c and the crew would paint
+ * with the wrong sheen.
+ */
+const VALID_FINISHES = new Set([
+  "Flat / Matte",
+  "Eggshell",
+  "Satin",
+  "Semi-Gloss",
+  "Gloss / High-Gloss",
+]);
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> }
@@ -158,6 +173,18 @@ export async function POST(
       }
     }
   }
+  // (c) a rep ADDED a line item after the customer loaded — the new room was
+  //     never shown, so accepting the submit would leave that room un-colored
+  //     and the crew would skip it. Force a reload so the customer sees + picks.
+  const submittedIds = new Set(body.lineItems.map((li) => li.id));
+  const addedLineItem = fresh.lineItems.find((li) => !submittedIds.has(li.id));
+  if (addedLineItem) {
+    return NextResponse.json({
+      error: "drift_line_item_added",
+      message: "Our team just added a new room to your job. Please reload the form so you can pick colors for it.",
+      addedLineItemId: addedLineItem.id,
+    }, { status: 409 });
+  }
 
   // 3. Build SF write batch
   const attempts: SfWriteAttempt[] = [];
@@ -187,7 +214,19 @@ export async function POST(
     }
     // Combine surface-specific finishes + room notes into ColorNotes__c so
     // the field crew + materials shop see them. Format is human-readable on
-    // purpose since PPP staff read this field directly.
+    // purpose since PPP staff read this field directly. Reject off-list
+    // finishes server-side — the client picklist is the source of truth and
+    // a tampered payload shouldn't land "Eggshell Gloss" in the notes.
+    for (const s of surfaces) {
+      if (s.colorId && s.finish && !VALID_FINISHES.has(s.finish)) {
+        return NextResponse.json({
+          error: "invalid_finish",
+          message: `Finish "${s.finish}" isn't a valid choice. Please pick from the list and try again.`,
+          lineItemId: submitted.id,
+          surface: s.surface,
+        }, { status: 400 });
+      }
+    }
     const noteLines: string[] = [];
     for (const s of surfaces) {
       if (s.colorId && s.finish) {
