@@ -1681,7 +1681,7 @@ function SendColorFormButton({
                   )}
                   {!lookingUpEmail && lookupCompleted && !customerEmail.trim() && (
                     <p className="text-[11px] text-ppp-orange-700 mt-1">
-                      No email on file for this customer in Salesforce — type it below to send.
+                      No email on file for this customer in Salesforce — type one above to send.
                     </p>
                   )}
                 </div>
