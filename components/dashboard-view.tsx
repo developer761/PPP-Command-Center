@@ -181,6 +181,43 @@ export default function DashboardView({ bundle, formSummary }: Props) {
   const topCustomers = useMemo(() => snapshot ? deriveTopCustomers(snapshot, 8) : [], [snapshot]);
   const velocity = useMemo(() => snapshot ? deriveQuoteToCashVelocity(snapshot) : null, [snapshot]);
 
+  // ─── Customer Pulse: high-LTV customers we haven't worked with in 12+
+  // months. Surfaces re-engagement opportunities (PPP's repeat-customer
+  // book is one of the most profitable channels per Karan). Sorted by
+  // lifetime $ desc so the biggest dormant accounts surface first.
+  // Hidden entirely when there are no candidates.
+  const customerPulse = useMemo(() => {
+    if (!snapshot) return [];
+    const TWELVE_MONTHS_MS = 365 * 86_400_000;
+    const now = Date.now();
+    type PulseRow = {
+      id: string;
+      name: string;
+      lifetimeRevenue: number;
+      monthsSince: number;
+      lastWorkOrderCompleted: string;
+    };
+    const candidates: PulseRow[] = [];
+    for (const a of snapshot.accounts) {
+      if (a.totalLifetimeRevenue <= 0) continue;
+      if (!a.lastWorkOrderCompleted) continue;
+      const last = new Date(a.lastWorkOrderCompleted).getTime();
+      if (isNaN(last)) continue;
+      const ageMs = now - last;
+      if (ageMs < TWELVE_MONTHS_MS) continue;
+      candidates.push({
+        id: a.id,
+        name: a.name,
+        lifetimeRevenue: a.totalLifetimeRevenue,
+        monthsSince: Math.round(ageMs / (30 * 86_400_000)),
+        lastWorkOrderCompleted: a.lastWorkOrderCompleted,
+      });
+    }
+    return candidates
+      .sort((a, b) => b.lifetimeRevenue - a.lifetimeRevenue)
+      .slice(0, 5);
+  }, [snapshot]);
+
   // Hot reps this week — top 3 with biggest week-over-week jump.
   const hotReps = useMemo(() => {
     if (!snapshot) return [];
@@ -671,6 +708,56 @@ export default function DashboardView({ bundle, formSummary }: Props) {
                         {c.lastWorkOrderCompleted && `Last job ${c.lastWorkOrderCompleted}`}
                       </div>
                     )}
+                  </div>
+                  <span className="font-condensed font-bold text-ppp-navy whitespace-nowrap">
+                    {fmtMoneyK(c.lifetimeRevenue / 1000)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* ─── Customer Pulse: dormant high-LTV accounts ───
+          Renders only when there's at least one candidate; never an
+          empty card. Sits below Top Customers so Alex reads "biggest
+          customers" → "biggest customers we should re-engage" as a
+          natural pair. */}
+      {customerPulse.length > 0 && (
+        <section>
+          <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
+            <div className="flex items-baseline justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-base font-semibold text-ppp-charcoal">
+                  Customers to reach out to
+                </h3>
+                <p className="text-xs text-ppp-charcoal-500 mt-1">
+                  High-lifetime customers we haven&apos;t worked with in 12+ months
+                </p>
+              </div>
+              <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">
+                {customerPulse.length}
+              </div>
+            </div>
+            <ul className="divide-y divide-ppp-charcoal-100">
+              {customerPulse.map((c, i) => (
+                <li key={c.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <span className="font-condensed text-xs font-bold text-ppp-charcoal-500 w-5 shrink-0">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium truncate">
+                      <Link
+                        href={`/dashboard/customer/${encodeURIComponent(c.id)}`}
+                        className="text-ppp-charcoal hover:text-ppp-blue hover:underline transition-colors"
+                      >
+                        {c.name}
+                      </Link>
+                    </div>
+                    <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                      Last job {c.monthsSince} mo ago
+                    </div>
                   </div>
                   <span className="font-condensed font-bold text-ppp-navy whitespace-nowrap">
                     {fmtMoneyK(c.lifetimeRevenue / 1000)}
