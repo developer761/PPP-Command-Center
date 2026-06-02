@@ -73,40 +73,77 @@ type Props = {
 };
 
 export default function DashboardView({ bundle, formSummary }: Props) {
-  // Default to "This Month" — PPP's day-to-day mental model is month-by-month
-  // ("show me May", "what did we do this month"). Their SF reports default
-  // to a similar window. Other periods are opt-in via the dropdown.
-  const [period, setPeriod] = useState<Period>("this-month");
-  // Region filter — persisted across page navigations via URL ?region=X +
-  // localStorage as a fallback when navigating in from a clean URL. Alex
-  // expected his region selection to survive clicking into a customer +
-  // back; was a per-page reset before.
+  // Both `period` and `region` filters are URL-persisted (with localStorage
+  // as a fallback when navigating in from a clean URL). Karan: filters should
+  // survive clicking into a customer + hitting back, since the dashboard is
+  // a 5-min-a-day read for Alex and the filters scope the entire session.
   const router = useRouter();
   const searchParams = useSearchParams();
+  const urlPeriod = searchParams.get("period") as Period | null;
   const urlRegion = searchParams.get("region");
+
+  // Default to "This Month" when no URL/storage value — PPP's day-to-day
+  // mental model is month-by-month, SF reports default to similar windows.
+  const ALLOWED_PERIODS: Period[] = [
+    "lifetime", "this-month", "last-month", "this-year", "last-year",
+    "7d", "30d", "90d", "6m", "12m", "ytd",
+  ];
+  const isValidPeriod = (v: string | null): v is Period =>
+    v !== null && (ALLOWED_PERIODS as string[]).includes(v);
+
+  const [period, setPeriodState] = useState<Period>(() =>
+    isValidPeriod(urlPeriod) ? urlPeriod : "this-month"
+  );
   const [region, setRegionState] = useState<RegionFilter>(() => urlRegion ?? "all");
 
-  // On mount, if the URL doesn't carry a region but localStorage has a saved
-  // one, restore it. Server renders with region="all" matching the URL so
-  // there's no hydration mismatch — this fires post-mount only.
+  // Single localStorage-restore effect for both filters (one effect = one
+  // router.replace on mount, no double-write race). Fires only when the URL
+  // has neither param — preserves intentional URL filters from deep links.
   useEffect(() => {
-    if (urlRegion) return;
+    if (urlPeriod || urlRegion) return;
     if (typeof window === "undefined") return;
     try {
-      const saved = window.localStorage.getItem("dashboard_region");
-      if (saved && saved !== "all") {
-        setRegionState(saved);
-        // Reflect in URL so the next link click carries it forward.
+      const savedPeriod = window.localStorage.getItem("dashboard_period");
+      const savedRegion = window.localStorage.getItem("dashboard_region");
+      const next: Record<string, string> = {};
+      if (savedPeriod && isValidPeriod(savedPeriod) && savedPeriod !== "this-month") {
+        setPeriodState(savedPeriod);
+        next.period = savedPeriod;
+      }
+      if (savedRegion && savedRegion !== "all") {
+        setRegionState(savedRegion);
+        next.region = savedRegion;
+      }
+      if (Object.keys(next).length > 0) {
         const params = new URLSearchParams(searchParams.toString());
-        params.set("region", saved);
+        for (const [k, v] of Object.entries(next)) params.set(k, v);
         router.replace(`/dashboard?${params.toString()}`, { scroll: false });
       }
     } catch {
       // localStorage can throw in private mode / unsupported envs — silent
-      // fall-back to "all" is fine.
+      // fall-back to defaults is fine.
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Set period + persist to URL + localStorage. The default ("this-month")
+   *  is omitted from the URL so a clean `?` doesn't carry a redundant
+   *  param when the user just resets to default. */
+  const setPeriod = (next: Period) => {
+    setPeriodState(next);
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("dashboard_period", next);
+      }
+    } catch {
+      // ignore
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "this-month") params.delete("period");
+    else params.set("period", next);
+    const qs = params.toString();
+    router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
+  };
 
   /** Set region + persist to URL + localStorage in one shot. Use everywhere
    *  the dropdown changes value so the three sources stay in sync. */
