@@ -29,11 +29,19 @@ import { isJobComplete } from "@/lib/wo-progress/completion";
  */
 
 export type HealthStatus = "ok" | "warn" | "fail";
+/** Setup Health groups checks into two buckets in the UI so 8+ checks feel
+ *  organized rather than a wall:
+ *    - "platform" — env vars + database migrations (infra config)
+ *    - "data"     — Salesforce data quality + supplier settings (PPP-side fixes)
+ *  Anything without an explicit group defaults to "platform".
+ */
+export type HealthGroup = "platform" | "data";
 export type HealthCheck = {
   id: string;
   label: string;
   status: HealthStatus;
   message: string;
+  group?: HealthGroup;
   /** Optional "where to fix it" pointer (settings page url or env var name). */
   fix?: string;
 };
@@ -103,6 +111,7 @@ export async function GET() {
       label: c.label,
       status: present ? "ok" : c.severity,
       message: present ? c.presentMessage : c.missingMessage,
+      group: "platform",
       fix: present ? undefined : `Set ${c.envVar} in Vercel → Project Settings → Environment Variables.`,
     });
   }
@@ -123,6 +132,7 @@ export async function GET() {
         id: "active_suppliers",
         label: "Active suppliers configured",
         status: "warn",
+        group: "data",
         message: "No suppliers are flagged active. Workers can still pick from the full Salesforce list, but the curated quick-pick will be empty.",
         fix: "/dashboard/settings/suppliers",
       });
@@ -131,6 +141,7 @@ export async function GET() {
         id: "active_suppliers",
         label: "Active suppliers configured",
         status: "fail",
+        group: "data",
         message: `${missingEmail.length} active supplier${missingEmail.length === 1 ? "" : "s"} ${missingEmail.length === 1 ? "has" : "have"} no order email: ${missingEmail.map((s) => s.supplier_name ?? s.supplier_account_id).join(", ")}. Orders to ${missingEmail.length === 1 ? "this supplier" : "these suppliers"} cannot Send (button is blocked).`,
         fix: "/dashboard/settings/suppliers",
       });
@@ -139,6 +150,7 @@ export async function GET() {
         id: "active_suppliers",
         label: "Active suppliers configured",
         status: "ok",
+        group: "data",
         message: `${activeCount} active supplier${activeCount === 1 ? "" : "s"}, all with order emails set.`,
       });
     }
@@ -147,6 +159,7 @@ export async function GET() {
       id: "active_suppliers",
       label: "Active suppliers configured",
       status: "warn",
+      group: "data",
       message: `Couldn't read supplier_settings: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
@@ -163,6 +176,7 @@ export async function GET() {
       id: "migration_011",
       label: "Cross-server cache coherence (migration 011)",
       status: "ok",
+      group: "platform",
       message: "snapshot_generation table exists — post-writeback cache invalidation propagates to all Vercel instances within 5s.",
     });
   } catch (err) {
@@ -170,6 +184,7 @@ export async function GET() {
       id: "migration_011",
       label: "Cross-server cache coherence (migration 011)",
       status: "warn",
+      group: "platform",
       message: `snapshot_generation table missing — cross-server cache lag falls back to the 15-minute TTL. ${err instanceof Error ? err.message : ""}`.trim(),
       fix: "Paste supabase/migrations/011_snapshot_generation.sql into the Supabase SQL editor + run.",
     });
@@ -194,6 +209,7 @@ export async function GET() {
       id: "migration_013",
       label: "Paint coverage settings (migration 013)",
       status: "ok",
+      group: "platform",
       message: "paint_coverage_config table exists — admin can tune the gallon calculator from /dashboard/settings/coverage without a deploy.",
     });
   } catch (err) {
@@ -201,6 +217,7 @@ export async function GET() {
       id: "migration_013",
       label: "Paint coverage settings (migration 013)",
       status: "warn",
+      group: "platform",
       message: `paint_coverage_config table missing — coverage settings silently fall back to code defaults. ${err instanceof Error ? err.message : ""}`.trim(),
       fix: "Paste supabase/migrations/013_paint_coverage_config.sql (if it exists) into the Supabase SQL editor + run.",
     });
@@ -264,6 +281,7 @@ export async function GET() {
         id: "woli_surfaces",
         label: "Work order surfaces set in Salesforce",
         status: "ok",
+        group: "data",
         message: `All active work orders have Surfaces__c set on every line item — customers will see exactly the surfaces admin scoped.`,
       });
     } else {
@@ -275,6 +293,7 @@ export async function GET() {
         id: "woli_surfaces",
         label: "Work order surfaces set in Salesforce",
         status: "warn",
+        group: "data",
         message: `${missingCount} active work order${missingCount === 1 ? "" : "s"} ${missingCount === 1 ? "has" : "have"} at least one line item with no Surfaces__c value (${sample}). The color form will fall back to a single "Walls" input for those rooms — customers won't see ceiling / trim / floor / other inputs you might have intended.`,
         fix: `Open each WO in Salesforce → open its Work Order Line Items → set the Surfaces__c picklist to whatever should be painted (e.g., "Walls;Ceiling;Trim"). Resend the color form after.`,
       });
@@ -286,6 +305,7 @@ export async function GET() {
       id: "woli_surfaces",
       label: "Work order surfaces set in Salesforce",
       status: "warn",
+      group: "data",
       message: `Couldn't read the Salesforce snapshot to verify surfaces: ${err instanceof Error ? err.message : String(err)}`,
       fix: "Wait a moment and reload — the next snapshot rebuild should resolve this. If it persists, check Salesforce connectivity in /dashboard/integrations.",
     });

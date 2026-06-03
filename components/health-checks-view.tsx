@@ -8,7 +8,22 @@ type HealthCheck = {
   label: string;
   status: "ok" | "warn" | "fail";
   message: string;
+  /** Visual grouping: "platform" = env vars + db migrations (infra config),
+   *  "data" = Salesforce + supplier data quality (PPP-side fixes). Undefined
+   *  defaults to "platform" so older check shapes still render. */
+  group?: "platform" | "data";
   fix?: string;
+};
+
+const GROUP_META: Record<"platform" | "data", { heading: string; subhead: string }> = {
+  platform: {
+    heading: "Platform setup",
+    subhead: "Environment variables + database migrations the platform needs to run end-to-end.",
+  },
+  data: {
+    heading: "Salesforce data quality",
+    subhead: "PPP-side data that the platform reads — things to fix in Salesforce or in supplier settings.",
+  },
 };
 
 type Summary = { ok: number; warn: number; fail: number; total: number };
@@ -99,41 +114,58 @@ export default function HealthChecksView() {
         </button>
       </div>
 
-      {/* Individual checks */}
-      <ul className="space-y-2">
-        {checks.map((c) => (
-          <li
-            key={c.id}
-            className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3"
-          >
-            <div className="flex items-start gap-3">
-              <StatusBadge status={c.status} />
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-ppp-charcoal">{c.label}</div>
-                <p className="text-[11px] text-ppp-charcoal-500 mt-1 leading-snug">
-                  {c.message}
-                </p>
-                {c.fix && c.status !== "ok" && (
-                  <div className="mt-2">
-                    {c.fix.startsWith("/dashboard/") ? (
-                      <Link
-                        href={c.fix}
-                        className="inline-flex items-center text-[11px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 hover:underline"
-                      >
-                        Fix it →
-                      </Link>
-                    ) : (
-                      <p className="text-[11px] font-medium text-ppp-charcoal-600 italic">
-                        How to fix: {c.fix}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
+      {/* Grouped checks — "Platform setup" first, then "Salesforce data quality".
+          Each group hides itself when empty so a single-bucket health page
+          doesn't render a lone heading. */}
+      {(["platform", "data"] as const).map((group) => {
+        const groupChecks = checks.filter((c) => (c.group ?? "platform") === group);
+        if (groupChecks.length === 0) return null;
+        const meta = GROUP_META[group];
+        return (
+          <section key={group} className="space-y-2">
+            <div>
+              <h2 className="text-xs font-condensed uppercase tracking-[0.18em] text-ppp-charcoal-500 font-bold">
+                {meta.heading}
+              </h2>
+              <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">{meta.subhead}</p>
             </div>
-          </li>
-        ))}
-      </ul>
+            <ul className="space-y-2">
+              {groupChecks.map((c) => (
+                <li
+                  key={c.id}
+                  className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <StatusBadge status={c.status} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-ppp-charcoal">{c.label}</div>
+                      <p className="text-[11px] text-ppp-charcoal-500 mt-1 leading-snug">
+                        {c.message}
+                      </p>
+                      {c.fix && c.status !== "ok" && (
+                        <div className="mt-2">
+                          {c.fix.startsWith("/dashboard/") ? (
+                            <Link
+                              href={c.fix}
+                              className="inline-flex items-center text-[11px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 hover:underline"
+                            >
+                              Fix it →
+                            </Link>
+                          ) : (
+                            <p className="text-[11px] font-medium text-ppp-charcoal-600 italic">
+                              How to fix: {c.fix}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }
