@@ -43,6 +43,31 @@ let cached: EmailPathDiscovery | null = null;
 let cacheBuiltAt = 0;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h — survives normal use; resets on redeploy
 
+/**
+ * Pattern-matches field/relationship names that ALMOST CERTAINLY point at
+ * PPP staff (owner / salesperson / estimator / manager / employee /
+ * technician / rep / etc.) — these carry staff emails, not customer emails.
+ * Filtered out of the discovery up front so we never accidentally pre-fill
+ * the Send Color Form modal with the rep's own email address (Katie
+ * 2026-06-03: every WO was pre-filling matt@precisionpaintingplus.com,
+ * which is a PPP rep).
+ *
+ * Customer-side names are intentionally left through. We don't have a
+ * positive customer-pattern list because customer custom-fields can be
+ * named anything; the safer move is to blocklist the known-staff patterns
+ * AND domain-filter the winning email at lookup time.
+ */
+const STAFF_PATH_PATTERNS: RegExp[] = [
+  /\b(owner|owned_by|created_by|last_modified_by|modified_by|user|manager)\b/i,
+  /\b(salesperson|sales_rep|sales_manager|estimator|crew_lead|crew_leader)\b/i,
+  /\b(rep|tech|technician|employee|staff|admin|assigned|supervisor)\b/i,
+];
+function isStaffPath(path: string): boolean {
+  // Normalize so "Sales_Rep__r" matches /sales_rep/. Replace separators.
+  const norm = path.replace(/__r/g, "").replace(/__c/g, "").replace(/[._]/g, " ");
+  return STAFF_PATH_PATTERNS.some((re) => re.test(norm));
+}
+
 function findEmailFields(meta: SfDescribeResult): string[] {
   return meta.fields
     .filter((f) => {
@@ -50,6 +75,7 @@ function findEmailFields(meta: SfDescribeResult): string[] {
       const n = (f.name + " " + (f.label ?? "")).toLowerCase();
       return n.includes("email");
     })
+    .filter((f) => !isStaffPath(f.name) && !isStaffPath(f.label ?? ""))
     .map((f) => f.name);
 }
 
@@ -140,13 +166,18 @@ export async function discoverEmailPaths(opts?: { forceRefresh?: boolean }): Pro
     }
   }
 
+  // Final blocklist sweep — even after filtering email FIELD names earlier,
+  // a customer-side email field can sit under a staff RELATIONSHIP (e.g.,
+  // Account.Salesperson__r.Email — Email is fine on Contact but the
+  // relationship label "Salesperson" routes us to a PPP rep). Apply the
+  // same staff-name filter to full dotted paths to catch those.
   cached = {
-    emailPaths: Array.from(new Set(emailPaths)),
-    accountIdPaths: Array.from(new Set(accountIdPaths)),
-    namePaths: Array.from(new Set(namePaths)),
+    emailPaths: Array.from(new Set(emailPaths)).filter((p) => !isStaffPath(p)),
+    accountIdPaths: Array.from(new Set(accountIdPaths)).filter((p) => !isStaffPath(p)),
+    namePaths: Array.from(new Set(namePaths)).filter((p) => !isStaffPath(p)),
   };
   cacheBuiltAt = Date.now();
-  console.log(`[customer-form] email-path discovery — ${cached.emailPaths.length} paths cached: ${cached.emailPaths.slice(0, 10).join(", ")}${cached.emailPaths.length > 10 ? "…" : ""}`);
+  console.log(`[customer-form] email-path discovery — ${cached.emailPaths.length} customer-side paths cached: ${cached.emailPaths.slice(0, 10).join(", ")}${cached.emailPaths.length > 10 ? "…" : ""}`);
   return cached;
 }
 

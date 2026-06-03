@@ -89,16 +89,40 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, email: null, customerName: null, source: "(WO not found)" });
     }
 
-    // Walk every email path in order — first populated value wins. PPP's
-    // schema typically has the right path first because the discovery loop
-    // builds them in "most specific to least specific" order (direct
-    // WorkOrder fields → WO.Contact → WO.Account → WO.Opportunity → walks).
+    // Safety net: PPP's own staff email domains. Even after path-name
+    // filtering ("Owner", "Salesperson", etc.) catches most staff-side
+    // references, a customer-named field can still legitimately hold a
+    // staff email (e.g., admin typed their own address into a customer
+    // contact for testing). Refusing matches that resolve to a company
+    // domain stops the modal from ever pre-filling with a rep email.
+    // Override-able by COMPANY_EMAIL_DOMAINS env (comma-separated) when
+    // PPP adds a domain.
+    const COMPANY_EMAIL_DOMAINS = (process.env.COMPANY_EMAIL_DOMAINS ?? "precisionpaintingplus.com,precisionpaintingplus.net")
+      .split(",")
+      .map((d) => d.trim().toLowerCase())
+      .filter(Boolean);
+    const isCompanyEmail = (e: string): boolean => {
+      const lower = e.toLowerCase();
+      return COMPANY_EMAIL_DOMAINS.some((d) => lower.endsWith(`@${d}`));
+    };
+
+    // Walk every email path in order — first populated CUSTOMER email wins.
+    // Staff-domain emails skipped so the modal never pre-fills with a PPP
+    // rep's address (Katie 2026-06-03 — every WO was filling with the rep's
+    // own email because PPP's schema has staff-email fields the discovery
+    // was matching).
     let email: string | null = null;
     let source = "(none)";
+    const staffMatches: string[] = []; // For diagnostic logging
     for (const path of emailPaths) {
       const v = readPath(rec, path);
       if (typeof v === "string" && v.trim() && v.includes("@")) {
-        email = v.trim();
+        const candidate = v.trim();
+        if (isCompanyEmail(candidate)) {
+          staffMatches.push(`${path}=<staff-domain>`);
+          continue; // Skip staff emails — keep looking for the actual customer
+        }
+        email = candidate;
         source = path;
         break;
       }
@@ -129,14 +153,21 @@ export async function GET(request: Request) {
       }
       if (accountId) {
         try {
+          // Pull a few recent contacts (not just the latest) — we'll skip
+          // any that are PPP staff and pick the first real customer one.
           const child = await conn.query<{ Email: string | null; Name: string | null }>(
-            `SELECT Email, Name FROM Contact WHERE AccountId = '${accountId}' AND Email != null ORDER BY CreatedDate DESC LIMIT 1`
+            `SELECT Email, Name FROM Contact WHERE AccountId = '${accountId}' AND Email != null ORDER BY CreatedDate DESC LIMIT 10`
           );
-          const c = child.records[0];
-          if (c?.Email && c.Email.includes("@")) {
+          for (const c of child.records) {
+            if (!c.Email || !c.Email.includes("@")) continue;
+            if (isCompanyEmail(c.Email.trim())) {
+              staffMatches.push(`Account.Contacts.<${c.Name ?? "?"}>=<staff-domain>`);
+              continue;
+            }
             email = c.Email.trim();
-            source = "Account.Contacts (most recent)";
+            source = `Account.Contacts (${c.Name ?? "most recent"})`;
             if (!customerName && c.Name) customerName = c.Name;
+            break;
           }
         } catch (childErr) {
           console.warn(`[customer-form/wo-email] child-Contacts fallback failed:`, childErr instanceof Error ? childErr.message : childErr);
@@ -144,9 +175,11 @@ export async function GET(request: Request) {
       }
     }
 
-    // Diagnostic — log the winning source name only (no PII). Vercel logs
-    // surface PPP's actual schema location for confirmation + future audits.
-    console.log(`[customer-form/wo-email] WO=${workOrderId.slice(0, 6)}… email source: ${source} ${email ? "(populated)" : "(EMPTY — no email anywhere)"}`);
+    // Diagnostic — log the winning source AND any staff-domain matches we
+    // skipped so we can see in Vercel logs whether PPP's schema needs more
+    // staff-pattern blocklist entries. No PII logged — only field names.
+    const skipNote = staffMatches.length > 0 ? ` (skipped staff: ${staffMatches.join(", ")})` : "";
+    console.log(`[customer-form/wo-email] WO=${workOrderId.slice(0, 6)}… email source: ${source} ${email ? "(populated)" : "(EMPTY — no customer email anywhere)"}${skipNote}`);
 
     return NextResponse.json({ ok: true, email, customerName, source });
   } catch (err) {
