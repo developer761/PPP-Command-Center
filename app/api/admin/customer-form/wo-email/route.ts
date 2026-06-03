@@ -35,42 +35,65 @@ export async function GET(request: Request) {
 
   try {
     const conn = await getSalesforceClient();
-    // Try several PPP customer-email locations in one round-trip:
-    //   • Account.PersonEmail            (Person Account model — PPP's primary)
-    //   • Account.Email__c               (Business Account custom field — fallback)
-    //   • Account.Primary_Contact__r.Email  (Account.Primary_Contact lookup → Contact email)
-    // On INVALID_FIELD (org doesn't have one of the optional fields), fall
-    // back to a narrower SELECT progressively. Diagnostic console.log shows
-    // which source actually provided the email (or that nothing did) so
-    // production logs surface PPP's real schema.
+    // Pull customer email from every plausible PPP schema location in ONE
+    // round-trip, then prefer them in this order:
+    //   • WorkOrder.Contact.Email             (Katie's canonical answer
+    //                                          2026-06-03 — PPP stores the
+    //                                          customer email on the Contact
+    //                                          linked to the Work Order)
+    //   • Account.PersonEmail                  (Person Account model)
+    //   • Account.Email__c                     (Business Account custom field)
+    //   • Account.Primary_Contact__r.Email     (Account → Primary Contact → Email)
+    //
+    // We tried only the Account-side paths before this commit, which silently
+    // failed for every PPP customer whose email lives on WorkOrder.Contact.
+    // Falls back through progressively narrower SELECTs on INVALID_FIELD so
+    // missing/FLS'd fields don't take down the whole lookup. Diagnostic
+    // console.log shows the winning source (or that none had data) in Vercel
+    // logs so we can confirm Katie's path against PPP's real data.
+    type ContactEmailFields = {
+      Email?: string | null;
+      Name?: string | null;
+    };
     type AcctEmailFields = {
       PersonEmail?: string | null;
       Email__c?: string | null;
       Name?: string | null;
       Primary_Contact__r?: { Email?: string | null } | null;
     };
-    type AcctEmailShape = { Opportunity__r?: { Account?: AcctEmailFields } };
-    let account: AcctEmailFields | undefined;
+    type WoEmailShape = {
+      Contact?: ContactEmailFields | null;
+      Opportunity__r?: { Account?: AcctEmailFields };
+    };
+    let row: WoEmailShape | undefined;
     const queries: Array<{ label: string; soql: string }> = [
       {
-        label: "rich (PersonEmail + Email__c + Primary_Contact__r.Email)",
-        soql: `SELECT Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Primary_Contact__r.Email, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+        label: "full (Contact.Email + PersonEmail + Email__c + Primary_Contact__r.Email)",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Primary_Contact__r.Email, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
       },
       {
-        label: "medium (PersonEmail + Email__c)",
+        label: "drop-primary-contact (Contact.Email + PersonEmail + Email__c)",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+      },
+      {
+        label: "drop-email-custom (Contact.Email + PersonEmail)",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+      },
+      {
+        label: "contact-only (Contact.Email only)",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+      },
+      {
+        label: "account-only (no Contact field on WorkOrder for this org)",
         soql: `SELECT Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
-      },
-      {
-        label: "narrow (PersonEmail only)",
-        soql: `SELECT Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
       },
     ];
     let lastErr: unknown = null;
     for (const q of queries) {
       try {
         const r = await conn.query<Record<string, unknown>>(q.soql);
-        account = (r.records[0] as AcctEmailShape | undefined)?.Opportunity__r?.Account;
-        if (account || r.records.length > 0) {
+        row = r.records[0] as WoEmailShape | undefined;
+        if (row || r.records.length > 0) {
           // Query succeeded (record found, or WO simply doesn't have an Opp)
           break;
         }
@@ -80,25 +103,37 @@ export async function GET(request: Request) {
         // Keep iterating to the next narrower query.
       }
     }
-    if (account === undefined && lastErr) {
-      // All three queries failed — surface as soft-fail (email:null) so the
-      // modal still works.
+    if (row === undefined && lastErr) {
+      // Every fallback failed — surface as soft-fail (email:null) so the
+      // modal still works (worker types the email manually).
       throw lastErr;
     }
 
+    const contact = row?.Contact ?? null;
+    const account = row?.Opportunity__r?.Account;
+    const contactDirectEmail = typeof contact?.Email === "string" ? contact.Email.trim() : "";
     const personEmail = typeof account?.PersonEmail === "string" ? account.PersonEmail.trim() : "";
     const customEmail = typeof account?.Email__c === "string" ? account.Email__c.trim() : "";
-    const contactEmail = typeof account?.Primary_Contact__r?.Email === "string" ? account.Primary_Contact__r.Email.trim() : "";
-    const email = personEmail || customEmail || contactEmail || null;
+    const primaryContactEmail = typeof account?.Primary_Contact__r?.Email === "string" ? account.Primary_Contact__r.Email.trim() : "";
+    // Priority chain — Katie's path first, then the fallbacks.
+    const email = contactDirectEmail || personEmail || customEmail || primaryContactEmail || null;
 
     // Diagnostic — log WHICH source supplied the email (or that none did).
-    // Helps Karan + me see in Vercel logs whether PPP customers actually
-    // have email anywhere, and if so, which field. Truncated so the email
-    // itself doesn't end up in long-term log retention.
-    const source = personEmail ? "PersonEmail" : customEmail ? "Email__c" : contactEmail ? "Primary_Contact__r.Email" : "(none)";
+    // Helps Karan + me see in Vercel logs which schema location PPP customers
+    // actually use, and confirm Katie's WorkOrder.Contact.Email path against
+    // real data. Email itself NOT logged so PII doesn't end up in long-term
+    // log retention — only the field name + populated/empty signal.
+    const source = contactDirectEmail ? "WorkOrder.Contact.Email"
+                 : personEmail ? "Account.PersonEmail"
+                 : customEmail ? "Account.Email__c"
+                 : primaryContactEmail ? "Account.Primary_Contact__r.Email"
+                 : "(none)";
     console.log(`[customer-form/wo-email] WO=${workOrderId.slice(0, 6)}… email source: ${source} ${email ? "(populated)" : "(EMPTY — no email on file)"}`);
 
-    return NextResponse.json({ ok: true, email, customerName: account?.Name ?? null, source });
+    // Customer name: WorkOrder.Contact.Name is the most specific (the actual
+    // person we're emailing); fall back to the account name if Contact is null.
+    const customerName = (typeof contact?.Name === "string" && contact.Name.trim()) ? contact.Name.trim() : (account?.Name ?? null);
+    return NextResponse.json({ ok: true, email, customerName, source });
   } catch (err) {
     // Soft-fail — the modal still works, the worker just types the email.
     console.warn("[customer-form/wo-email] lookup failed:", err instanceof Error ? err.message : err);
