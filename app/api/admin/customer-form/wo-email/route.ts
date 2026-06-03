@@ -35,104 +35,136 @@ export async function GET(request: Request) {
 
   try {
     const conn = await getSalesforceClient();
-    // Pull customer email from every plausible PPP schema location in ONE
-    // round-trip, then prefer them in this order:
-    //   • WorkOrder.Contact.Email             (Katie's canonical answer
-    //                                          2026-06-03 — PPP stores the
-    //                                          customer email on the Contact
-    //                                          linked to the Work Order)
-    //   • Account.PersonEmail                  (Person Account model)
-    //   • Account.Email__c                     (Business Account custom field)
-    //   • Account.Primary_Contact__r.Email     (Account → Primary Contact → Email)
+    // Pull customer email from EVERY plausible PPP schema location, then
+    // prefer them in priority order. The chain (highest → lowest):
     //
-    // We tried only the Account-side paths before this commit, which silently
-    // failed for every PPP customer whose email lives on WorkOrder.Contact.
+    //   1. WorkOrder.Contact.Email                       (Katie's canonical path)
+    //   2. Account.PersonEmail                            (Person Account model)
+    //   3. Account.Email__c                               (Business Account custom)
+    //   4. Account.Primary_Contact__r.Email               (Account's primary contact)
+    //   5. Opportunity.Primary_Contact__r.Email           (Opp's primary contact)
+    //   6. Most-recent child Contact on the Account.Email (related list)
+    //
+    // We tried only the Account-side paths originally, then added
+    // WorkOrder.Contact, but Katie was still seeing blanks — so this commit
+    // expands to cover the Opportunity-Primary-Contact path AND the child-
+    // Contacts related list on the Account. If admin still sees blanks
+    // after this, hit /api/admin/customer-form/wo-email-debug?workOrderId=X
+    // for a full schema dump showing every email field's actual value.
+    //
     // Falls back through progressively narrower SELECTs on INVALID_FIELD so
-    // missing/FLS'd fields don't take down the whole lookup. Diagnostic
-    // console.log shows the winning source (or that none had data) in Vercel
-    // logs so we can confirm Katie's path against PPP's real data.
-    type ContactEmailFields = {
-      Email?: string | null;
-      Name?: string | null;
-    };
+    // missing/FLS'd fields don't break the lookup. Diagnostic console.log
+    // shows the winning source name (no email value logged — PII safe).
+    type ContactEmailFields = { Email?: string | null; Name?: string | null };
     type AcctEmailFields = {
+      Id?: string | null;
       PersonEmail?: string | null;
       Email__c?: string | null;
       Name?: string | null;
       Primary_Contact__r?: { Email?: string | null } | null;
     };
+    type OppEmailFields = {
+      Account?: AcctEmailFields;
+      Primary_Contact__r?: { Email?: string | null; Name?: string | null } | null;
+    };
     type WoEmailShape = {
       Contact?: ContactEmailFields | null;
-      Opportunity__r?: { Account?: AcctEmailFields };
+      Opportunity__r?: OppEmailFields;
     };
-    let row: WoEmailShape | undefined;
+    // Progressive query fallbacks. Each fewer field than the previous so a
+    // single missing/FLS'd field never kills the whole lookup. The widest
+    // query also includes Opp.Primary_Contact path; the narrowest falls
+    // back to the Account-only fields (covers orgs without WorkOrder.ContactId).
     const queries: Array<{ label: string; soql: string }> = [
       {
-        label: "full (Contact.Email + PersonEmail + Email__c + Primary_Contact__r.Email)",
-        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Primary_Contact__r.Email, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+        label: "all (WO.Contact + Account.* + Opp.Primary_Contact)",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.Id, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Primary_Contact__r.Email, Opportunity__r.Account.Name, Opportunity__r.Primary_Contact__r.Email, Opportunity__r.Primary_Contact__r.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
       },
       {
-        label: "drop-primary-contact (Contact.Email + PersonEmail + Email__c)",
-        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+        label: "drop-opp-primary-contact",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.Id, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Primary_Contact__r.Email, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
       },
       {
-        label: "drop-email-custom (Contact.Email + PersonEmail)",
-        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+        label: "drop-account-primary-contact",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.Id, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
       },
       {
-        label: "contact-only (Contact.Email only)",
-        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+        label: "drop-email-custom",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.Id, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
       },
       {
-        label: "account-only (no Contact field on WorkOrder for this org)",
-        soql: `SELECT Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+        label: "contact-only",
+        soql: `SELECT Contact.Email, Contact.Name, Opportunity__r.Account.Id, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
+      },
+      {
+        label: "account-only (no WO.ContactId on this org)",
+        soql: `SELECT Opportunity__r.Account.Id, Opportunity__r.Account.PersonEmail, Opportunity__r.Account.Email__c, Opportunity__r.Account.Name FROM WorkOrder WHERE Id = '${workOrderId}' LIMIT 1`,
       },
     ];
+    let row: WoEmailShape | undefined;
     let lastErr: unknown = null;
     for (const q of queries) {
       try {
         const r = await conn.query<Record<string, unknown>>(q.soql);
         row = r.records[0] as WoEmailShape | undefined;
-        if (row || r.records.length > 0) {
-          // Query succeeded (record found, or WO simply doesn't have an Opp)
-          break;
-        }
+        if (row || r.records.length > 0) break;
       } catch (err) {
         lastErr = err;
         console.warn(`[customer-form/wo-email] ${q.label} query failed, trying narrower:`, err instanceof Error ? err.message : err);
-        // Keep iterating to the next narrower query.
       }
     }
-    if (row === undefined && lastErr) {
-      // Every fallback failed — surface as soft-fail (email:null) so the
-      // modal still works (worker types the email manually).
-      throw lastErr;
-    }
+    if (row === undefined && lastErr) throw lastErr;
 
     const contact = row?.Contact ?? null;
-    const account = row?.Opportunity__r?.Account;
+    const opp = row?.Opportunity__r;
+    const account = opp?.Account;
+    const oppPrimary = opp?.Primary_Contact__r ?? null;
+
     const contactDirectEmail = typeof contact?.Email === "string" ? contact.Email.trim() : "";
     const personEmail = typeof account?.PersonEmail === "string" ? account.PersonEmail.trim() : "";
     const customEmail = typeof account?.Email__c === "string" ? account.Email__c.trim() : "";
-    const primaryContactEmail = typeof account?.Primary_Contact__r?.Email === "string" ? account.Primary_Contact__r.Email.trim() : "";
-    // Priority chain — Katie's path first, then the fallbacks.
-    const email = contactDirectEmail || personEmail || customEmail || primaryContactEmail || null;
+    const acctPrimaryEmail = typeof account?.Primary_Contact__r?.Email === "string" ? account.Primary_Contact__r.Email.trim() : "";
+    const oppPrimaryEmail = typeof oppPrimary?.Email === "string" ? oppPrimary.Email.trim() : "";
 
-    // Diagnostic — log WHICH source supplied the email (or that none did).
-    // Helps Karan + me see in Vercel logs which schema location PPP customers
-    // actually use, and confirm Katie's WorkOrder.Contact.Email path against
-    // real data. Email itself NOT logged so PII doesn't end up in long-term
-    // log retention — only the field name + populated/empty signal.
-    const source = contactDirectEmail ? "WorkOrder.Contact.Email"
-                 : personEmail ? "Account.PersonEmail"
-                 : customEmail ? "Account.Email__c"
-                 : primaryContactEmail ? "Account.Primary_Contact__r.Email"
-                 : "(none)";
-    console.log(`[customer-form/wo-email] WO=${workOrderId.slice(0, 6)}… email source: ${source} ${email ? "(populated)" : "(EMPTY — no email on file)"}`);
+    let email = contactDirectEmail || personEmail || customEmail || acctPrimaryEmail || oppPrimaryEmail || null;
+    let source = contactDirectEmail ? "WorkOrder.Contact.Email"
+               : personEmail ? "Account.PersonEmail"
+               : customEmail ? "Account.Email__c"
+               : acctPrimaryEmail ? "Account.Primary_Contact__r.Email"
+               : oppPrimaryEmail ? "Opportunity.Primary_Contact__r.Email"
+               : "(none)";
 
-    // Customer name: WorkOrder.Contact.Name is the most specific (the actual
-    // person we're emailing); fall back to the account name if Contact is null.
-    const customerName = (typeof contact?.Name === "string" && contact.Name.trim()) ? contact.Name.trim() : (account?.Name ?? null);
+    // If every direct path came up empty, fall back to the Account's child
+    // Contacts (related list). Most-recent Contact wins (matches PPP's
+    // "latest active contact for this customer" semantics). Skipped when
+    // we don't even have an Account id (WO with no Opp) — nothing to query.
+    if (!email && account?.Id) {
+      try {
+        const childRes = await conn.query<{ Id: string; Email: string | null; Name: string | null; CreatedDate: string }>(
+          `SELECT Id, Email, Name, CreatedDate FROM Contact WHERE AccountId = '${account.Id}' AND Email != null ORDER BY CreatedDate DESC LIMIT 1`
+        );
+        const childContact = childRes.records[0];
+        if (childContact?.Email) {
+          email = childContact.Email.trim();
+          source = "Account.Contacts (most recent with email)";
+        }
+      } catch (childErr) {
+        console.warn(`[customer-form/wo-email] child-Contact fallback failed:`, childErr instanceof Error ? childErr.message : childErr);
+      }
+    }
+
+    // Diagnostic — winning source name only, no PII. Confirms which path
+    // PPP's data actually lives on so we can prune dead fallbacks later.
+    console.log(`[customer-form/wo-email] WO=${workOrderId.slice(0, 6)}… email source: ${source} ${email ? "(populated)" : "(EMPTY — no email anywhere on this WO/Account/Contact)"}`);
+
+    // Customer name priority: WorkOrder.Contact.Name → Opp.Primary_Contact.Name
+    // → Account.Name. Use the most-specific name we have so the modal
+    // pre-fills the actual person we're emailing.
+    const customerName = (typeof contact?.Name === "string" && contact.Name.trim())
+      ? contact.Name.trim()
+      : (typeof oppPrimary?.Name === "string" && oppPrimary.Name.trim())
+        ? oppPrimary.Name.trim()
+        : (account?.Name ?? null);
     return NextResponse.json({ ok: true, email, customerName, source });
   } catch (err) {
     // Soft-fail — the modal still works, the worker just types the email.
