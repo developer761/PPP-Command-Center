@@ -374,7 +374,13 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       });
       const data = await res.json().catch(() => ({} as Record<string, unknown>));
       if (!res.ok) {
-        throw new Error((data as { error?: string })?.error || `Submit failed (${res.status})`);
+        // Prefer the human-readable `message` (drift detection, invalid finish,
+        // locked submission, etc. all attach one). Fall back to the error code
+        // only when no message exists. Showing "drift_line_item_added" to a
+        // customer is opaque; "Our team just added a new room — please reload"
+        // is what we actually want them to see.
+        const d = data as { error?: string; message?: string };
+        throw new Error(d.message || d.error || `Submit failed (${res.status})`);
       }
       if ((data as { orderAlreadyPlaced?: boolean }).orderAlreadyPlaced) {
         setPostSubmitNote(
