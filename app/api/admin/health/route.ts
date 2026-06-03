@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
+import { isJobComplete } from "@/lib/wo-progress/completion";
 
 /**
  * Setup Health — admin-only diagnostic that catches platform-wide
@@ -201,6 +203,91 @@ export async function GET() {
       status: "warn",
       message: `paint_coverage_config table missing — coverage settings silently fall back to code defaults. ${err instanceof Error ? err.message : ""}`.trim(),
       fix: "Paste supabase/migrations/013_paint_coverage_config.sql (if it exists) into the Supabase SQL editor + run.",
+    });
+  }
+
+  // ── Salesforce data quality: WOLIs missing Surfaces__c on active WOs ──
+  // When an admin forgets to set Surfaces__c on a Work Order Line Item, the
+  // customer color form falls back to showing a single "Walls" input row.
+  // That's a safe default (customer can still submit), but it means the
+  // customer never sees the ceiling/trim/floor inputs admin intended. Surface
+  // those WOs here so admin can fix them in SF BEFORE sending the form.
+  //
+  // Scope: ONLY active WOs (not complete/cancelled/void/abandoned) and ONLY
+  // line items on real paint jobs (not Estimate/Appointment workTypes — those
+  // don't go through the color form). Completed jobs with missing surfaces
+  // are historical noise and can't be retroactively fixed anyway.
+  try {
+    const snapshot = await loadSalesforceSnapshot();
+    // Build a lookup of WO id → { status, workTypeName, workOrderNumber } so
+    // we can filter line items to only the ones that matter.
+    type WoMeta = { status: string | null; workTypeName: string | null; workOrderNumber: string | null };
+    const woMeta = new Map<string, WoMeta>();
+    for (const wo of snapshot.workOrders) {
+      woMeta.set(wo.id, {
+        status: wo.status,
+        workTypeName: wo.workTypeName,
+        workOrderNumber: wo.workOrderNumber,
+      });
+    }
+    // Active WO = paint-job workType + status that isn't terminal-failed/done.
+    // Mirrors the same filter the snapshot loader uses for WOLI eligibility so
+    // this check stays in lockstep with materials-ordering scope.
+    const isActiveWO = (m: WoMeta): boolean => {
+      const wt = (m.workTypeName ?? "").toLowerCase();
+      if (
+        wt.includes("estimate") ||
+        wt.includes("appointment") ||
+        wt.includes("inspection") ||
+        wt.includes("consultation")
+      ) return false;
+      if (isJobComplete(m.status)) return false;
+      const s = (m.status ?? "").toLowerCase();
+      if (s.includes("cancel") || s.includes("void") || s.includes("abandon") || s.includes("closed")) return false;
+      return true;
+    };
+
+    // Group WOLIs missing surfaces by parent WO so we report "3 work orders"
+    // not "12 line items" — admin opens the WO, fixes all rooms at once.
+    const woNumbersWithMissingSurfaces = new Set<string>();
+    for (const li of snapshot.woLineItems) {
+      if (li.surfaces && li.surfaces.length > 0) continue; // has surfaces — fine
+      const meta = woMeta.get(li.workOrderId);
+      if (!meta || !isActiveWO(meta)) continue;
+      const display = meta.workOrderNumber ?? `WO ${li.workOrderId.slice(-6)}`;
+      woNumbersWithMissingSurfaces.add(display);
+    }
+
+    const missingCount = woNumbersWithMissingSurfaces.size;
+    if (missingCount === 0) {
+      checks.push({
+        id: "woli_surfaces",
+        label: "Work order surfaces set in Salesforce",
+        status: "ok",
+        message: `All active work orders have Surfaces__c set on every line item — customers will see exactly the surfaces admin scoped.`,
+      });
+    } else {
+      // Cap the sample list at 5 to keep the message readable; show count if more.
+      const sampleList = Array.from(woNumbersWithMissingSurfaces).slice(0, 5);
+      const remaining = missingCount - sampleList.length;
+      const sample = sampleList.join(", ") + (remaining > 0 ? `, +${remaining} more` : "");
+      checks.push({
+        id: "woli_surfaces",
+        label: "Work order surfaces set in Salesforce",
+        status: "warn",
+        message: `${missingCount} active work order${missingCount === 1 ? "" : "s"} ${missingCount === 1 ? "has" : "have"} at least one line item with no Surfaces__c value (${sample}). The color form will fall back to a single "Walls" input for those rooms — customers won't see ceiling / trim / floor / other inputs you might have intended.`,
+        fix: `Open each WO in Salesforce → open its Work Order Line Items → set the Surfaces__c picklist to whatever should be painted (e.g., "Walls;Ceiling;Trim"). Resend the color form after.`,
+      });
+    }
+  } catch (err) {
+    // Snapshot load failed — surface the error but don't fail the whole
+    // health page. Admin can re-run health after the SF connection recovers.
+    checks.push({
+      id: "woli_surfaces",
+      label: "Work order surfaces set in Salesforce",
+      status: "warn",
+      message: `Couldn't read the Salesforce snapshot to verify surfaces: ${err instanceof Error ? err.message : String(err)}`,
+      fix: "Wait a moment and reload — the next snapshot rebuild should resolve this. If it persists, check Salesforce connectivity in /dashboard/integrations.",
     });
   }
 
