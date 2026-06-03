@@ -120,19 +120,18 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // the field stays visible for both — same UX everyone.
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Sort selector — defaults to "soonest job start" (deriveOpenMaterialsWorkOrders
-  // returns the list pre-sorted that way). Karan asked for the option to flip
-  // to other orderings: latest start (push-back review), newest WO (recent
-  // intake), oldest WO (jobs that have been sitting too long). We re-sort
-  // client-side on top of the existing list — cheap at PPP's scale.
-  type SortMode = "close-asc" | "close-desc" | "created-desc" | "created-asc";
+  // Sort selector — Karan 2026-06-03: default flipped to "latest job start
+  // first" so the next-up materials needs surface at the top. (Was "soonest
+  // first" but Alex's actual workflow looks at the back end of the schedule
+  // because near-term jobs are usually already ordered.)
+  type SortMode = "close-desc" | "close-asc" | "created-desc" | "created-asc";
   const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
-    { value: "close-asc", label: "Soonest job start" },
     { value: "close-desc", label: "Latest job start" },
+    { value: "close-asc", label: "Soonest job start" },
     { value: "created-desc", label: "Newest work order" },
     { value: "created-asc", label: "Oldest work order" },
   ];
-  const [sortMode, setSortMode] = useState<SortMode>("close-asc");
+  const [sortMode, setSortMode] = useState<SortMode>("close-desc");
 
   const visibleJobs = useMemo<OpenWorkOrderForMaterials[]>(() => {
     // Search filter first — typically narrows to a handful of WOs.
