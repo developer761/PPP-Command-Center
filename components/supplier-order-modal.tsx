@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { formatOrderQuantity, formatBucketsCans, summarizeOrder, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
+import { isNycAddress } from "@/lib/supplier-order/nyc-zips";
 
 /**
  * Supplier Order Modal — the full draft → review → send experience for one
@@ -102,6 +103,15 @@ export default function SupplierOrderModal({
 
   // Worker inputs
   const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
+  // Track whether the admin has manually touched the fulfillment toggle. If
+  // they have, we never auto-flip (NYC default or otherwise) — admin's
+  // explicit choice wins. Ref instead of state so the auto-flip useEffect
+  // doesn't race React's render cycle.
+  const adminTouchedFulfillment = useRef(false);
+  // Whether the current draft's delivery address falls inside the NYC
+  // 5-borough ZIP ranges. Triggers a "pickup recommended" chip + auto-flip
+  // the default (only if admin hasn't already touched the toggle).
+  const [isNycDelivery, setIsNycDelivery] = useState(false);
   const [pickupLocation, setPickupLocation] = useState("");
   // Manually-typed delivery address — used when SF has no address on file. Flows
   // into the draft (top-priority candidate) → the email's delivery block, the
@@ -230,6 +240,21 @@ export default function SupplierOrderModal({
     }, 120); // Was 250ms — reduced to 120ms so extras-toggle feels snappy.
     return () => { cancelled = true; clearTimeout(timeout); };
   }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier]);
+
+  // NYC pickup default (Katie 2026-06-04: "5 boroughs only"). Detect when
+  // the resolved delivery address falls in NYC ZIP ranges and auto-flip
+  // fulfillment to "pickup" — UNLESS admin already touched the toggle, in
+  // which case their explicit choice wins. Re-runs whenever a fresh draft
+  // resolves a new delivery address (e.g. admin typed a new manual address
+  // and the /draft endpoint re-resolved it).
+  useEffect(() => {
+    if (!draft) return;
+    const nyc = isNycAddress(draft.deliveryAddress);
+    setIsNycDelivery(nyc);
+    if (nyc && !adminTouchedFulfillment.current && fulfillment !== "pickup") {
+      setFulfillment("pickup");
+    }
+  }, [draft, fulfillment]);
 
   // Scroll the email body into view on first draft load. Re-builds from
   // extras/fulfillment toggles don't re-scroll (ref guard).
@@ -659,10 +684,24 @@ export default function SupplierOrderModal({
 
                   {/* Fulfillment */}
                   <Section title="Fulfillment">
+                    {/* NYC-pickup chip — surfaces WHY the default is pickup when
+                        the delivery address is in NYC's 5 boroughs (Katie
+                        2026-06-04). Admin can still toggle to delivery; the
+                        chip just explains the default. Hidden once admin
+                        actually picks delivery so they don't get nagged. */}
+                    {isNycDelivery && fulfillment === "pickup" && (
+                      <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ppp-blue-50 border border-ppp-blue-100 text-[11px] font-medium text-ppp-blue-700">
+                        <span aria-hidden>🗽</span>
+                        NYC address — defaulted to pickup (delivery often unavailable in the city)
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <FulfillmentChoice
                         selected={fulfillment === "delivery"}
-                        onSelect={() => setFulfillment("delivery")}
+                        onSelect={() => {
+                          adminTouchedFulfillment.current = true;
+                          setFulfillment("delivery");
+                        }}
                         title="Deliver to customer"
                         description={
                           draft.deliveryAddress
@@ -677,7 +716,10 @@ export default function SupplierOrderModal({
                       />
                       <FulfillmentChoice
                         selected={fulfillment === "pickup"}
-                        onSelect={() => setFulfillment("pickup")}
+                        onSelect={() => {
+                          adminTouchedFulfillment.current = true;
+                          setFulfillment("pickup");
+                        }}
                         title="Pickup at supplier"
                         description="PPP staff will pick up"
                       />
