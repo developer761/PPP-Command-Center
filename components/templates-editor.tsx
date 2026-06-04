@@ -105,6 +105,40 @@ const FORM_FIELDS: FieldDef[] = [
 
 const ALL_FIELDS: FieldDef[] = [...EMAIL_FIELDS, ...FORM_FIELDS];
 
+/**
+ * Variables the customer-form template renderer actually substitutes —
+ * MUST stay in lockstep with `buildVars()` in lib/customer-form/templates.ts.
+ * Used by the typo linter so a `{{custmer_name}}` lights up as a warning
+ * instead of silently shipping into the email as literal text. Round 4
+ * audit 2026-06-04: admin editor agent flagged the silent-typo risk.
+ */
+const KNOWN_VARIABLES = new Set([
+  "customer_name",
+  "customer_first",
+  "wo_number",
+  "form_url",
+  "ppp_brand",
+]);
+
+/** Extract every {{token}} from a template body and return the unknown ones. */
+function findUnknownVariables(text: string): string[] {
+  const out = new Set<string>();
+  // Match {{name}} with optional surrounding whitespace; allow [a-z0-9_].
+  // Reject Mustache section markers (#name / /name) — those are syntax,
+  // not variables, and the customer-form renderer doesn't support them.
+  const re = /\{\{\s*([#/]?[a-zA-Z0-9_]+)\s*\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[1];
+    // Skip Mustache section markers — flag separately if needed; the
+    // customer-form templating doesn't support them, but we don't want
+    // to spam the editor for now.
+    if (raw.startsWith("#") || raw.startsWith("/")) continue;
+    if (!KNOWN_VARIABLES.has(raw)) out.add(raw);
+  }
+  return Array.from(out);
+}
+
 export default function TemplatesEditor({ initial, defaults, isCustomized, updatedAt }: Props) {
   const [draft, setDraft] = useState<Templates>(initial);
   const [saving, setSaving] = useState(false);
@@ -139,6 +173,10 @@ export default function TemplatesEditor({ initial, defaults, isCustomized, updat
         setSaveResult({ ok: false, message: data.message ?? data.error ?? `HTTP ${res.status}` });
       } else {
         setSaveResult({ ok: true, message: "Saved. Next email/form render uses the new copy." });
+        // Auto-dismiss the success message after 3s so it doesn't linger
+        // through the next edit cycle. Failures stay visible until the next
+        // save attempt — admin needs to read the error.
+        setTimeout(() => setSaveResult((cur) => (cur?.ok ? null : cur)), 3000);
       }
     } catch (err) {
       setSaveResult({ ok: false, message: err instanceof Error ? err.message : String(err) });
@@ -304,6 +342,7 @@ function FieldRow({
   onReset: () => void;
 }) {
   const isAtDefault = value === defaultValue;
+  const unknownVars = findUnknownVariables(value);
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2 mb-1.5">
@@ -341,6 +380,19 @@ function FieldRow({
         />
       )}
       <p className="text-[11px] text-ppp-charcoal-500 mt-1">{field.help}</p>
+      {unknownVars.length > 0 && (
+        <p className="text-[11px] text-ppp-orange-700 mt-1.5 leading-snug">
+          ⚠ Unknown variable{unknownVars.length === 1 ? "" : "s"}:{" "}
+          {unknownVars.map((v, i) => (
+            <span key={v}>
+              <code className="font-mono">{`{{${v}}}`}</code>
+              {i < unknownVars.length - 1 ? ", " : ""}
+            </span>
+          ))}
+          {" "}— this will render as literal text in the email. Check the spelling
+          against the variables list above.
+        </p>
+      )}
     </div>
   );
 }

@@ -40,7 +40,24 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 // clearSalesforceCache after a writeback), the entry is invalidated even
 // before its TTL expires. Throttled to ≤1 Postgres read per 5s per instance.
 type CacheEntry<T> = { promise: Promise<T>; expiresAt: number; generation: number };
-const cache = new Map<string, CacheEntry<unknown>>();
+
+// Survive HMR in dev. Next.js + Turbopack re-evaluate this module on every
+// file save, which would normally reset `cache` to an empty Map — but the OLD
+// in-flight requests still resolve into the OLD map (now garbage), so the new
+// map starts cold AND the old promises are unreachable. Worse: a writeback
+// fired by the old module wouldn't invalidate the new module's cache.
+//
+// Stash the cache map on globalThis so all reloaded module copies share the
+// same Map identity. Production NODE_ENV gets a fresh per-process map (no
+// global pollution between Vercel instances).
+//
+// Round 4 audit (2026-06-04) flagged this as the cause of "stale data after
+// I just saved" complaints during local dev.
+const cache: Map<string, CacheEntry<unknown>> =
+  process.env.NODE_ENV === "development"
+    ? ((globalThis as unknown as { __pppSnapshotCache?: Map<string, CacheEntry<unknown>> }).__pppSnapshotCache ??=
+        new Map())
+    : new Map();
 
 // Cross-instance generation cache (per-server-instance memo of the global
 // generation counter). Throttled fetches keep Postgres load trivial.
@@ -1114,18 +1131,37 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     })();
 
     const quotesPromise: Promise<SnapshotQuote[]> = (async () => {
-      try {
-        // Funnel derivation needs count + grandTotal + opportunityId (the link
-        // back to the parent opp so scopeSnapshotToViewer can filter quotes
-        // when viewer.scope === "my"). Subtotal__c is dead — left off.
+      // Funnel derivation needs count + grandTotal + opportunityId (the link
+      // back to the parent opp so scopeSnapshotToViewer can filter quotes
+      // when viewer.scope === "my"). Subtotal__c is dead — left off.
+      // Round 4 audit 2026-06-04: matched the rich → narrow fallback pattern
+      // used by the WO + Account queries so an INVALID_FIELD on GrandTotal__c
+      // (unlikely but possible if PPP renames the custom field) still returns
+      // count + opportunityId — the funnel "Quotes Sent" KPI still works,
+      // only the grandTotal sum drops to 0.
+      const richSelect = `SELECT Id, OpportunityId, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`;
+      const narrowSelect = `SELECT Id, OpportunityId, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`;
+      const runQuery = async (soql: string) => {
         const records: Array<Record<string, unknown>> = [];
-        let result = await conn.query<Record<string, unknown>>(
-          `SELECT Id, OpportunityId, GrandTotal__c, CreatedDate FROM Quote WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
-        );
+        let result = await conn.query<Record<string, unknown>>(soql);
         records.push(...result.records);
         while (!result.done && result.nextRecordsUrl) {
           result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
           records.push(...result.records);
+        }
+        return records;
+      };
+      try {
+        let records: Array<Record<string, unknown>>;
+        try {
+          records = await runQuery(richSelect);
+        } catch (e) {
+          // INVALID_FIELD → try narrower (no GrandTotal__c). Anything else
+          // re-throws into the outer catch which returns [] for the snapshot.
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!/INVALID_FIELD|NO_SUCH_FIELD/i.test(msg)) throw e;
+          console.warn("[SF] Quote rich query failed, falling back to narrow:", msg);
+          records = await runQuery(narrowSelect);
         }
         console.log(`[SF] Pulled ${records.length} quotes (last ${RECENCY_WINDOW_DAYS}d) — PARALLEL`);
         return records.map((q) => ({
@@ -1136,7 +1172,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           createdDate: q.CreatedDate as string,
         }));
       } catch (err) {
-        console.error("[SF] Quote query failed:", err);
+        console.error("[SF] Quote query failed (both rich + narrow):", err);
         return [];
       }
     })();

@@ -3,6 +3,7 @@ import { validateToken, markSubmitted, markResubmitted } from "@/lib/customer-fo
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
 import { writeSfBatch, type SfWriteAttempt } from "@/lib/salesforce/writeback";
 import { decideWriteback } from "@/lib/customer-form/writeback-mode";
+import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 
 /**
  * Customer form submit handler.
@@ -126,6 +127,29 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token: tokenFromUrl } = await params;
+
+  // Rate-limit the public endpoint BEFORE any DB / SF work. A leaked token
+  // shouldn't let an attacker burn SF API calls or audit-log capacity.
+  // Per-token bucket: 8 attempts per minute. Happy path = 1 submit; this
+  // covers a double-tap + a couple of retries after transient errors and
+  // still chokes any botnet to a trickle. Random 1-in-32 sweep keeps the
+  // bucket map bounded without a separate timer.
+  if (Math.random() < 0.03125) sweepRateLimit();
+  const limit = checkRateLimit(`submit:${tokenFromUrl}`, { max: 8, windowMs: 60_000 });
+  if (!limit.ok) {
+    return NextResponse.json(
+      {
+        error: "rate_limited",
+        message: "You're submitting too fast — please wait a minute and try again. If you keep seeing this, reply to the PPP email.",
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.ceil((limit.resetAt - Date.now()) / 1000)),
+        },
+      }
+    );
+  }
 
   let body: SubmitPayload;
   try {
