@@ -294,7 +294,18 @@ export async function POST(
       noteLines.push(`Customer notes: ${submittedNotes.trim()}`);
     }
     if (noteLines.length > 0) {
-      fields.ColorNotes__c = noteLines.join("\n");
+      // ColorNotes__c is a Long Text Area in PPP's org (32k cap), but a Long
+      // Text Area sObject field on jsforce can also silently reject at much
+      // smaller limits depending on the field's "Length" property. Defensive
+      // cap at 30,000 chars (well under 32k) — if a customer pasted a wall of
+      // text into the notes textarea, truncate with a marker so the crew can
+      // see something was cut. Round 4 audit 2026-06-04: writeback agent
+      // flagged this as a real risk that would silently fail the WOLI write.
+      const MAX_COLOR_NOTES_CHARS = 30_000;
+      const joined = noteLines.join("\n");
+      fields.ColorNotes__c = joined.length > MAX_COLOR_NOTES_CHARS
+        ? joined.slice(0, MAX_COLOR_NOTES_CHARS - 80) + `\n\n[…truncated — customer notes exceeded ${MAX_COLOR_NOTES_CHARS} chars]`
+        : joined;
     } else if (isReedit && freshLi.existingNotes) {
       // Re-edit that left this room with no colors/notes — clear the prior note
       // too, so a removed color doesn't leave a stale "Walls: Stardust —
@@ -319,19 +330,22 @@ export async function POST(
   const customerMaterialType = typeof body.materialType === "string" ? body.materialType.trim() : "";
   if (customerMaterialType) {
     if (!VALID_MATERIAL_TYPES.has(customerMaterialType)) {
-      // Tampered or stale client. Reject before any SF write so we don't
-      // mark the token submitted with a value SF will refuse — that would
-      // leave the customer thinking they're done while the WO never updates.
-      return NextResponse.json({
-        error: "invalid_material_type",
-        message: `"${customerMaterialType}" isn't a valid paint product line. Please refresh the page and pick again.`,
-      }, { status: 400 });
+      // Value isn't in our 10-item allowlist. Two real reasons this happens:
+      //   (a) Tampered/stale client — picklist changed since the form loaded.
+      //   (b) Legacy SF value — admin set MaterialType__c to "Aura ULTRA" or
+      //       some retired picklist value before our allowlist existed, the
+      //       form pre-filled it, and the customer submitted without changing.
+      // Either way: DON'T fail the whole submit (would block the colors from
+      // writing back too). Skip the MaterialType__c write only — leave the
+      // existing SF value alone — and log so admin can clean up the picklist.
+      console.warn(`[customer-form] dropping MaterialType__c write for WO ${status.token.work_order_id.slice(0, 8)}…: value "${customerMaterialType}" not in VALID_MATERIAL_TYPES allowlist (likely legacy SF value or tampered client). WOLI writes proceed normally.`);
+    } else {
+      attempts.push({
+        sObject: "WorkOrder",
+        recordId: status.token.work_order_id,
+        fields: { MaterialType__c: customerMaterialType },
+      });
     }
-    attempts.push({
-      sObject: "WorkOrder",
-      recordId: status.token.work_order_id,
-      fields: { MaterialType__c: customerMaterialType },
-    });
   }
 
   // 4. Persist the submission payload FIRST so a write failure doesn't leave

@@ -1,0 +1,12 @@
+# PPP Command Center — internal tool. Nothing here should rank in Google.
+# The /select/<token> customer-form links are sent to specific customers;
+# we don't want search engines indexing them (their tokens are private and
+# they'd 410 the moment they expire anyway).
+
+User-agent: *
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /select/
+Disallow: /sign-in
+Disallow: /sign-up
+Allow: /
