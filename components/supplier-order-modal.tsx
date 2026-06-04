@@ -517,7 +517,7 @@ export default function SupplierOrderModal({
                         selected={fulfillment === "pickup"}
                         onSelect={() => setFulfillment("pickup")}
                         title="Pickup at supplier"
-                        description="PPP staff will pick up — uncommon"
+                        description="PPP staff will pick up"
                       />
                     </div>
                     {fulfillment === "pickup" && (

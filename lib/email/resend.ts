@@ -130,6 +130,19 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
  * let the modal in materials-view.tsx provide per-send custom copy ahead of
  * the global template (rarely used; mostly for one-off VIP customers).
  */
+/** HTML escape for customer-supplied values rendered inside the invite email
+ *  template. PPP customers come from Salesforce so injection is unlikely, but
+ *  these values cross our system boundary into a third-party email body, so
+ *  we escape defensively. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function sendCustomerFormInvite(input: {
   to: string;
   customerName: string | null;
@@ -150,12 +163,17 @@ export async function sendCustomerFormInvite(input: {
     formUrl: input.formUrl,
   });
 
-  const greeting = vars.customer_name ? `Hi ${vars.customer_name},` : "Hi there,";
+  // Use customer's FIRST name only in the greeting (matches Katie's HTML
+  // template: "Hi Joseph,"). Falls back to "Hi there," when unknown.
+  const firstName = vars.customer_name.trim().split(/\s+/)[0] ?? "";
+  const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
   const subject = input.subjectOverride ?? render(templates.email_subject, vars);
   const intro = input.introOverride ?? render(templates.email_intro, vars);
   const outro = render(templates.email_outro, vars);
   const signoff = render(templates.email_signoff, vars);
 
+  // Plain-text fallback (always sent alongside the HTML for clients that
+  // don't render HTML + for deliverability scoring).
   const text = [
     greeting,
     "",
@@ -170,10 +188,76 @@ export async function sendCustomerFormInvite(input: {
     signoff,
   ].join("\n");
 
+  // HTML body — matches the standard PPP transactional email template Katie
+  // sent over (2026-06-03). Tahoma 10pt / orange #d35400 brand color, logo
+  // hosted on PPP's Salesforce file server (the same URL PPP uses on every
+  // other customer transactional email so it's already on the customer's
+  // implicit-trust list). The work order number is shown in a gray box
+  // with "Awaiting your color selections" status copy.
+  const escName = firstName ? escapeHtml(firstName) : "there";
+  const escWo = vars.wo_number ? escapeHtml(vars.wo_number) : "";
+  const escUrl = encodeURI(input.formUrl); // safe-for-href
+  const woBlock = escWo
+    ? `<strong>Work Order:</strong> #${escWo}<br/>\n                <strong>Status:</strong> <span style="color:#c0392b;">Awaiting your color selections</span>`
+    : `<strong>Status:</strong> <span style="color:#c0392b;">Awaiting your color selections</span>`;
+  const html = `<table border="0" cellpadding="0" cellspacing="0" style="width:600px; font-family:tahoma,geneva,sans-serif; font-size:10pt; line-height:1.5; color:#333;">
+  <tbody>
+    <tr>
+      <td style="padding:20px 20px 10px 20px; text-align:center;">
+        <img alt="Precision Painting Plus" src="https://precisionplus.file.force.com/servlet/servlet.ImageServer?id=0156g000003hGa2AAE&amp;oid=00D6g000001XvD9EAK" width="200" height="55" />
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:15px 20px 5px 20px;">
+        <p style="margin:0 0 12px 0;">Hi ${escName},</p>
+        <p style="margin:0 0 12px 0; font-size:11pt; font-weight:bold;">Thanks for choosing Precision Painting Plus!</p>
+        <p style="margin:0 0 12px 0;">We're getting ready to start your paint job and need a few quick details from you &mdash; your color choices for each room.</p>
+        <p style="margin:0 0 12px 0;">It should only take a couple of minutes.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:5px 20px;">
+        <table border="0" cellpadding="10" cellspacing="0" style="width:100%; background:#f5f5f5; border:1px solid #ddd;">
+          <tbody>
+            <tr>
+              <td style="font-size:9pt;">
+                ${woBlock}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:20px 20px 10px 20px; text-align:center;">
+        <a href="${escUrl}" target="_blank" style="display:inline-block; padding:12px 28px; background-color:#d35400; color:#ffffff; text-decoration:none; font-weight:bold; font-size:11pt; border-radius:4px;">Select Your Colors</a>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:10px 20px;">
+        <p style="margin:0 0 12px 0;">Once you submit your selections, we'll order materials and confirm your start date.</p>
+        <p style="margin:0 0 12px 0; font-size:9pt; color:#777;"><em>This link is unique to your job &mdash; please don't share it.</em></p>
+        <p style="margin:0 0 12px 0;">If you have questions or want to add anything, just reply to this email.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:10px 20px 20px 20px; border-top:1px solid #ddd;">
+        <p style="margin:0 0 4px 0;">Thank you,</p>
+        <p style="margin:0; font-weight:bold; color:#d35400;">Precision Painting Plus</p>
+        <p style="margin:8px 0 0 0; font-size:9pt; color:#777;">
+          825 East Gate Blvd, Ste 310, Garden City, NY 11530<br/>
+          <a href="https://www.precisionpaintingplus.com" style="color:#d35400; text-decoration:none;">precisionpaintingplus.com</a>
+        </p>
+      </td>
+    </tr>
+  </tbody>
+</table>`;
+
   return sendEmail({
     to: input.to,
     subject,
     text,
+    html,
     tags: [
       { name: "kind", value: "customer_form_invite" },
       ...(input.workOrderNumber ? [{ name: "wo", value: input.workOrderNumber }] : []),

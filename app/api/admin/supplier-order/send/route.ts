@@ -222,11 +222,25 @@ export async function POST(request: Request) {
       `[supplier-order/send] RESEND_FROM_ADDRESS env var not set — supplier replies for PO ${body.poNumber} will NOT thread back to the inbox. Set it in Vercel.`
     );
   }
+  // CC the requester (the admin who clicked Send) so supplier replies hit
+  // their inbox too — Katie 2026-06-03: "replies go to the command center
+  // but also CC the requester's email." Replies still flow into the Mail
+  // Hub via the reply-to address; CC just gives the originating admin a
+  // direct copy in their personal inbox. Skip when the user's email is a
+  // PPP-internal/system address or matches the supplier address (don't CC
+  // the vendor onto their own order).
+  const requesterEmail = (data.user.email ?? "").trim().toLowerCase();
+  const supplierEmail = body.sentToEmail!.trim().toLowerCase();
+  const ccList: string[] = [];
+  if (requesterEmail && requesterEmail !== supplierEmail && requesterEmail.includes("@")) {
+    ccList.push(requesterEmail);
+  }
   const send = await sendEmail({
-    to: body.sentToEmail!.trim().toLowerCase(),
+    to: supplierEmail,
     subject: body.subject!,
     text: body.body!,
     replyTo: replyTo || undefined,
+    cc: ccList.length > 0 ? ccList : undefined,
     tags: [
       { name: "kind", value: "supplier_order" },
       { name: "po", value: body.poNumber! },

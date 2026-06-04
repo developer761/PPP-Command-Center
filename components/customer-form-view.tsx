@@ -76,12 +76,19 @@ type LineItemState = {
   notes: string;
 };
 
+// Katie 2026-06-03: Flat and Matte split into separate options — they are
+// technically different sheens across different paint products (e.g. BM
+// Ultra Spec ships them as distinct SKUs), and conflating them caused vendor
+// confusion on the supplier email ("which one do I mix?"). Order matters —
+// listed flattest-to-glossiest so customers can scan.
 const FINISH_OPTIONS = [
-  "Flat / Matte",
+  "Flat",
+  "Matte",
   "Eggshell",
   "Satin",
   "Semi-Gloss",
-  "Gloss / High-Gloss",
+  "Gloss",
+  "High-Gloss",
 ];
 
 /**
@@ -94,7 +101,7 @@ const FINISH_OPTIONS = [
  */
 function defaultFinishForSurface(surface: string): string {
   const s = surface.toLowerCase();
-  if (s.includes("ceiling")) return "Flat / Matte";
+  if (s.includes("ceiling")) return "Flat";
   if (s.includes("trim") || s.includes("door") || s.includes("window")) return "Semi-Gloss";
   if (s.includes("floor")) return "Satin";
   return "Eggshell";

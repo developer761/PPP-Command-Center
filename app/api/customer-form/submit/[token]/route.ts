@@ -79,10 +79,18 @@ const SURFACE_TO_FIELD: Record<string, string> = {
  * with the wrong sheen.
  */
 const VALID_FINISHES = new Set([
+  // Katie 2026-06-03: Flat and Matte are distinct sheens on different
+  // products; same for Gloss vs High-Gloss. Keep the legacy combined values
+  // accepted so any in-flight form a customer was filling out before the
+  // split doesn't fail server-side validation on submit.
+  "Flat",
+  "Matte",
   "Flat / Matte",
   "Eggshell",
   "Satin",
   "Semi-Gloss",
+  "Gloss",
+  "High-Gloss",
   "Gloss / High-Gloss",
 ]);
 

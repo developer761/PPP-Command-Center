@@ -692,8 +692,14 @@ export async function buildSupplierOrderDraft(
     fulfillment_block: formatFulfillmentBlock(input.fulfillmentMethod, deliveryAddress, input.pickupLocation),
     delivery_address_block: deliveryAddress ? formatAddressBlock(deliveryAddress) : "",
     pickup_location: input.pickupLocation ?? "",
-    // For templates that inline {{line_items_block}}: the buy-list + placement.
-    line_items_block: `${orderSummaryBlock}\n\nCOLOR PLACEMENT (where each color goes)\n${placementBlock}`,
+    // For templates that inline {{line_items_block}}: the buy-list ONLY.
+    // Katie 2026-06-03: drop the COLOR PLACEMENT breakdown — vendor doesn't
+    // need to know which room each color goes in; that's PPP's concern,
+    // not theirs. `placementBlock` is still built (cheap) so templates that
+    // explicitly reference {{placement_block}} continue to work, but the
+    // default assembly below no longer includes it.
+    line_items_block: orderSummaryBlock,
+    placement_block: placementBlock,
     extras_block: formatExtrasBlock(input.extras),
     special_instructions: input.specialInstructions?.trim() ?? "",
     ppp_brand: "Precision Painting Plus",
@@ -718,10 +724,10 @@ export async function buildSupplierOrderDraft(
     "",
     "ORDER — WHAT TO BUY",
     orderSummaryBlock,
-    "",
-    "COLOR PLACEMENT (where each color goes)",
-    placementBlock,
   ];
+  // Katie 2026-06-03: COLOR PLACEMENT (where each color goes) removed from
+  // the default email — vendor doesn't need PPP's internal room mapping.
+  // Still rendered by templates that explicitly reference {{placement_block}}.
   // Customer-opted-out surfaces — surface explicitly so the supplier knows
   // the intent. Without this block the supplier would just see paint for
   // walls + trim and wonder if the ceiling color was forgotten. Only render
