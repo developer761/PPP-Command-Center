@@ -171,12 +171,15 @@ export default function HealthChecksView() {
 }
 
 function StatusBadge({ status, large = false }: { status: "ok" | "warn" | "fail"; large?: boolean }) {
+  // fail uses a distinct red-tinged orange + thicker ring so it stands out
+  // from warn at a glance. Was previously orange-200/orange-800 vs warn's
+  // orange-100/orange-700 — too close, both read as "amber" in low light.
   const cls =
     status === "ok"
       ? "bg-ppp-green-100 text-ppp-green-700"
       : status === "warn"
       ? "bg-ppp-orange-100 text-ppp-orange-700"
-      : "bg-ppp-orange-200 text-ppp-orange-800";
+      : "bg-ppp-orange-700 text-white ring-2 ring-ppp-orange-200";
   const icon = status === "ok" ? "✓" : status === "warn" ? "!" : "×";
   const size = large ? "h-6 w-6 text-sm" : "h-5 w-5 text-[11px]";
   return (

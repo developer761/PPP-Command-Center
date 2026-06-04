@@ -1739,6 +1739,12 @@ function SendColorFormButton({
     setResult(null);
     setSending(false);
     setOpen(false);
+    // Clear the email-lookup state so re-opening the modal doesn't show
+    // stale "Looking up…" or "no email on file" messages from a previous
+    // session. Audit-flagged 2026-06-04.
+    setLookingUpEmail(false);
+    setLookupCompleted(false);
+    emailLookedUp.current = false;
   };
 
   const send = async () => {
