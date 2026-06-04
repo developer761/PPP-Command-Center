@@ -1610,7 +1610,11 @@ function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
     // tied to the user gesture. Opening about:blank synchronously inside the
     // click, then redirecting once we have the URL, keeps the popup allowed.
     // Audit-flagged 2026-06-04.
-    const win = window.open("about:blank", "_blank", "noopener,noreferrer");
+    // CRITICAL: don't pass noopener/noreferrer here — those flags strip
+    // our reference to the new tab so win.location.href silently no-ops
+    // (tab stays on about:blank). Without them the new tab keeps an
+    // opener reference back to us — fine for an admin-only tool.
+    const win = window.open("about:blank", "_blank");
     try {
       const res = await fetch("/api/admin/customer-form/preview", {
         method: "POST",

@@ -74,8 +74,12 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
       setLoading(null);
       return;
     }
-    // Reserve popup tab BEFORE awaiting fetch — Safari blocks otherwise.
-    const win = window.open("about:blank", "_blank", "noopener,noreferrer");
+    // Reserve the popup synchronously inside the click. CRITICAL: don't
+    // pass `noopener` — those flags strip our reference to the new tab,
+    // making win.location.href silently a no-op (the tab stays on
+    // about:blank). Without noopener the new tab inherits an opener
+    // reference back to us — fine for an admin-only tool. Audit 2026-06-04.
+    const win = window.open("about:blank", "_blank");
     try {
       const res = await fetch("/api/admin/customer-form/preview", {
         method: "POST",
@@ -90,10 +94,22 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
         raw: data,
         mode: "preview",
       });
-      if (data.ok && data.formUrl && win) win.location.href = data.formUrl;
-      else if (win) win.close();
+      if (data.ok && data.formUrl && win) {
+        win.location.href = data.formUrl;
+      } else if (win) {
+        // Replace about:blank with a small error page so admin sees what
+        // went wrong if they look at the popup before noticing the inline
+        // result on the main page.
+        try {
+          win.document.write(`<title>Preview failed</title><body style="font-family:system-ui;padding:2rem;color:#c0392b"><h2>Preview couldn't open</h2><p>${data.message ?? data.error ?? "Unknown error"}</p><p>Check the Test Color Form tab for details.</p></body>`);
+          setTimeout(() => { try { win.close(); } catch { /* close blocked by browser; leave the error page */ } }, 8000);
+        } catch {
+          // Cross-origin write blocked — at minimum try to close
+          try { win.close(); } catch { /* noop */ }
+        }
+      }
     } catch (err) {
-      if (win) win.close();
+      if (win) try { win.close(); } catch { /* noop */ }
       setResult({ ok: false, error: err instanceof Error ? err.message : String(err), mode: "preview" });
     } finally {
       setLoading(null);
