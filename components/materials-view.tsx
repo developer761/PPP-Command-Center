@@ -1248,6 +1248,25 @@ function DraftOrderModal({
                 Order draft preview
               </div>
               <h4 className="text-sm font-semibold text-ppp-charcoal">Group by supplier → color → rooms</h4>
+              {/* Material Type — the paint product line. Pulled from
+                  WorkOrder.MaterialType__c (admin pre-set OR customer's pick
+                  via the color form, since the submit handler writes it back).
+                  Yellow chip when not set so admin knows the vendor won't
+                  know which BM / SW line to mix. */}
+              <div className="mt-2">
+                {job.wo.materialType ? (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-ppp-blue-50 border border-ppp-blue-100 text-[10px] font-semibold text-ppp-blue-700">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M3 3l18 18 M3 21L21 3" />
+                    </svg>
+                    Paint line: {job.wo.materialType}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-ppp-orange-50 border border-ppp-orange-200 text-[10px] font-semibold text-ppp-orange-700">
+                    ⚠ Paint line not set — customer or admin needs to pick
+                  </span>
+                )}
+              </div>
             </div>
             {groups.length === 0 ? (
               // Katie 2026-06-03: "Preview Colors button displays a summary

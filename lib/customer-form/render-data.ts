@@ -93,6 +93,12 @@ export type FormRenderData = {
     shouldWrite: boolean;
     isInAllowlist: boolean;
   };
+  /** Count of line items hidden by the Status filter (Canceled / Completed /
+   *  Closed / Cannot Complete / Pending REMOVE). When lineItems.length=0 AND
+   *  hiddenLineItemCount>0, the form can show a more specific empty state
+   *  ("all rooms on this job are cancelled") instead of the generic "no
+   *  rooms detailed yet" message. */
+  hiddenLineItemCount: number;
 };
 
 const WOLI_FIELDS = [
@@ -163,6 +169,11 @@ export async function loadFormRenderData(
     const woliQuery = `SELECT ${WOLI_FIELDS.join(", ")} FROM WorkOrderLineItem WHERE WorkOrderId = '${woEsc}'`;
     const woliResult = await conn.query<Record<string, unknown>>(woliQuery);
 
+    // Count how many got hidden (used by the form's empty-state copy to say
+    // "your rooms are all cancelled" vs the generic "no rooms yet").
+    const hiddenLineItemCount = woliResult.records.filter((r) =>
+      isHiddenWoliStatus(typeof r.Status === "string" ? r.Status : null)
+    ).length;
     const lineItems: FormLineItem[] = woliResult.records
       // Hide Canceled / Completed / Closed / Cannot Complete / Pending REMOVE
       // BEFORE mapping. Uses the shared filter so this surface stays in
@@ -245,6 +256,7 @@ export async function loadFormRenderData(
       // SELECT fallback hit) — the form's picker still renders, just empty.
       materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
       lineItems,
+      hiddenLineItemCount,
       fetchedAt: new Date().toISOString(),
       billingAddress: {
         street: oppAccount?.BillingStreet ?? null,

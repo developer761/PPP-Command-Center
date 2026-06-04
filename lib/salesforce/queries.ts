@@ -476,6 +476,12 @@ export type SnapshotWorkOrder = {
   /** Job completion anchor for KPI 7 (Jobs completed vs sold) + KPI 2 GM.
    *  Often null on open/in-progress WOs. */
   endDate: string | null;
+  /** Paint product line picked at WO creation OR overridden by the customer
+   *  via the color form. Picklist values mirror MaterialType__c in SF
+   *  (Ultra Spec Interior / Regal Select Interior / Aura Interior / ...
+   *  SW Emerald / SW Duration / SW Super Paint / Other). Null when not set
+   *  (about 50% of PPP WOs at time of writing per Katie 2026-06-03). */
+  materialType: string | null;
 };
 
 /**
@@ -1534,12 +1540,18 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         ...(woQuotedField ? [woQuotedField] : []),
         ...opsFields,
       ]);
+      // MaterialType__c (Katie 2026-06-03) — paint product line picked at WO
+      // creation (or overridden by customer via the color form). Surfaced in
+      // the Preview Colors review modal + downstream in the supplier email.
+      // Conditional on the field existing in the org (~50% adoption per Katie).
+      const hasMaterialType = woMeta.fields.some((f) => f.name === "MaterialType__c");
       const woFieldList = [
         "Id",
         woNumberField,
         woStatusField,
         "CreatedDate",
         hasEndDate ? "EndDate" : null,
+        hasMaterialType ? "MaterialType__c" : null,
         // Standard SF geocoding fields — 20k+ WOs have these populated
         "Latitude",
         "Longitude",
@@ -1646,6 +1658,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
         totalNonBillablePurchases: num("TotalNonBillablePurchases__c"),
         totalChangeOrder: num("TotalChangeOrder__c"),
         endDate: typeof w.EndDate === "string" ? (w.EndDate as string) : null,
+        materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
       };
     });
 

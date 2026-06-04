@@ -226,14 +226,30 @@ export async function POST(request: Request) {
   // their inbox too — Katie 2026-06-03: "replies go to the command center
   // but also CC the requester's email." Replies still flow into the Mail
   // Hub via the reply-to address; CC just gives the originating admin a
-  // direct copy in their personal inbox. Skip when the user's email is a
-  // PPP-internal/system address or matches the supplier address (don't CC
-  // the vendor onto their own order).
+  // direct copy in their personal inbox.
+  //
+  // Restricted to PPP-owned domains: Karan/Claude admin accounts sign in
+  // as @gmail.com to test, but we don't want their personal email leaking
+  // into the vendor's CC header on production orders. Configurable via
+  // env COMPANY_EMAIL_DOMAINS (same list the customer-email lookup uses).
   const requesterEmail = (data.user.email ?? "").trim().toLowerCase();
   const supplierEmail = body.sentToEmail!.trim().toLowerCase();
+  const PPP_DOMAINS = (process.env.COMPANY_EMAIL_DOMAINS ?? "precisionpaintingplus.com,precisionpaintingplus.net")
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean);
+  const isPppEmail = (e: string) =>
+    PPP_DOMAINS.some((d) => e.endsWith(`@${d}`));
   const ccList: string[] = [];
-  if (requesterEmail && requesterEmail !== supplierEmail && requesterEmail.includes("@")) {
+  if (
+    requesterEmail &&
+    requesterEmail.includes("@") &&
+    requesterEmail !== supplierEmail &&
+    isPppEmail(requesterEmail)
+  ) {
     ccList.push(requesterEmail);
+  } else if (requesterEmail && requesterEmail.includes("@") && !isPppEmail(requesterEmail)) {
+    console.log(`[supplier-order/send] requester ${requesterEmail.replace(/(.{2}).*@/, "$1***@")} is not a PPP domain — skipping CC to keep personal inbox out of vendor headers`);
   }
   const send = await sendEmail({
     to: supplierEmail,

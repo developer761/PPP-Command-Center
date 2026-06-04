@@ -534,8 +534,22 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       {/* Per-line-item sections */}
       {formData.lineItems.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-8 text-center text-sm text-ppp-charcoal-500">
-          We don&apos;t have any rooms detailed for this work order yet. Please
-          reply to the PPP email so they can add the details and resend the form.
+          {formData.hiddenLineItemCount > 0 ? (
+            <>
+              <strong className="block text-ppp-orange-700 mb-1">
+                All rooms on this job have been removed or completed.
+              </strong>
+              {formData.hiddenLineItemCount === 1
+                ? "1 room was on this work order but it's been marked Canceled or Completed."
+                : `${formData.hiddenLineItemCount} rooms were on this work order but they've all been marked Canceled or Completed.`}
+              {" "}If you think this is wrong, please reply to the PPP email so they can take a look.
+            </>
+          ) : (
+            <>
+              We don&apos;t have any rooms detailed for this work order yet. Please
+              reply to the PPP email so they can add the details and resend the form.
+            </>
+          )}
         </div>
       ) : (
         formData.lineItems.map((li, idx) => (
@@ -608,16 +622,24 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       {formData.lineItems.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] sm:text-xs text-ppp-charcoal-500">
-            {isEditing
-              ? "Save your changes — you can keep updating your colors any time before your job starts."
-              : "Once you submit, we'll order the materials. You can still come back and update your colors before your job starts."}
+            {isPreview
+              ? "Preview only — nothing will be saved when you click. This is to let our team test the form."
+              : isEditing
+              ? "Save your changes — you can keep updating your colors up to 24 hours prior to your start date."
+              : "Once you submit, we'll order the materials. You can still come back and update your colors up to 24 hours prior to your start date."}
           </div>
           <button
             type="submit"
             disabled={submitting}
             className="shrink-0 inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg bg-ppp-blue text-white text-sm sm:text-base font-semibold hover:bg-ppp-blue-600 transition-colors shadow-md shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {submitting ? "Saving…" : isEditing ? "Save changes" : "Submit my colors"}
+            {submitting
+              ? "Saving…"
+              : isPreview
+              ? "Submit (preview only)"
+              : isEditing
+              ? "Save changes"
+              : "Submit my colors"}
           </button>
         </div>
       )}
