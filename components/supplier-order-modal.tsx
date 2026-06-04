@@ -241,6 +241,14 @@ export default function SupplierOrderModal({
     return () => { cancelled = true; clearTimeout(timeout); };
   }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier]);
 
+  // Reset the "admin touched fulfillment" guard whenever a different WO
+  // becomes the modal's target. Without this, admin manually picking
+  // delivery on WO A's modal would leak into WO B's modal — the NYC
+  // auto-flip would skip there too (audit-flagged 2026-06-04).
+  useEffect(() => {
+    adminTouchedFulfillment.current = false;
+  }, [workOrderId, supplierAccountId]);
+
   // NYC pickup default (Katie 2026-06-04: "5 boroughs only"). Detect when
   // the resolved delivery address falls in NYC ZIP ranges and auto-flip
   // fulfillment to "pickup" — UNLESS admin already touched the toggle, in
