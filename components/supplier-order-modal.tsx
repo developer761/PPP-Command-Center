@@ -130,6 +130,7 @@ export default function SupplierOrderModal({
     | { ok: false; error: string }
   >(null);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   // Esc to close — but NOT while a send is in flight (admin shouldn't be
   // able to accidentally cancel an order mid-Resend-roundtrip).
@@ -369,6 +370,7 @@ export default function SupplierOrderModal({
   }
 
   const handleCopy = async () => {
+    setCopyError(null);
     try {
       const subject = draft?.subject ?? "";
       // Include subject as first line so admin can paste into Gmail's compose
@@ -377,7 +379,13 @@ export default function SupplierOrderModal({
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (err) {
-      alert(`Couldn't copy: ${err instanceof Error ? err.message : String(err)}`);
+      // Show inline (non-blocking) instead of alert() — older browsers
+      // and embedded webviews (PPP team uses Safari + iOS quite a bit) can
+      // reject clipboard.writeText() outside a secure context. Auto-clears
+      // after 5s so the message doesn't sit forever.
+      const msg = err instanceof Error ? err.message : String(err);
+      setCopyError(`Couldn't copy automatically — select the email body below and Cmd/Ctrl+C. (${msg})`);
+      setTimeout(() => setCopyError(null), 5000);
     }
   };
 
@@ -877,14 +885,21 @@ export default function SupplierOrderModal({
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  disabled={!draft || sending}
-                  className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
-                >
-                  {copied ? "✓ Copied" : "Copy to Clipboard"}
-                </button>
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    disabled={!draft || sending}
+                    className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
+                  >
+                    {copied ? "✓ Copied" : "Copy to Clipboard"}
+                  </button>
+                  {copyError && (
+                    <span className="text-[11px] text-ppp-orange-700 max-w-xs text-right" role="alert">
+                      {copyError}
+                    </span>
+                  )}
+                </div>
               </div>
               {(() => {
                 // Send is blocked when there's literally nothing to order:
