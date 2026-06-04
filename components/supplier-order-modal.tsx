@@ -635,7 +635,7 @@ export default function SupplierOrderModal({
                                     aria-label={`Decrease ${e.colorName} by one gallon`}
                                     disabled={totalCans <= 0}
                                     onClick={() => adjustQuantity(e, -1)}
-                                    className="h-6 w-6 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:border-ppp-charcoal-200 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none"
+                                    className="h-9 w-9 sm:h-7 sm:w-7 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:border-ppp-charcoal-200 disabled:cursor-not-allowed flex items-center justify-center text-lg sm:text-base leading-none"
                                   >
                                     −
                                   </button>
@@ -649,7 +649,7 @@ export default function SupplierOrderModal({
                                     aria-label={`Increase ${e.colorName} by one gallon`}
                                     disabled={totalCans >= 99}
                                     onClick={() => adjustQuantity(e, +1)}
-                                    className="h-6 w-6 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:border-ppp-charcoal-200 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none"
+                                    className="h-9 w-9 sm:h-7 sm:w-7 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:border-ppp-charcoal-200 disabled:cursor-not-allowed flex items-center justify-center text-lg sm:text-base leading-none"
                                   >
                                     +
                                   </button>

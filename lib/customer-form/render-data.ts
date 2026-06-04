@@ -107,7 +107,9 @@ const WOLI_FIELDS = [
   // In Progress, On Hold, Completed, Closed, Cannot Complete, Canceled,
   // Pending Approval - REMOVE / ADD. We pull it so the form can skip rooms
   // that won't be painted (Canceled / Completed / Closed / Cannot Complete /
-  // Pending REMOVE) — Katie 2026-06-03: "only Status = New."
+  // Pending REMOVE). Katie 2026-06-04 clarified to KEEP Pending Approval -
+  // ADD visible (rep proposed adding the room — customer needs to pick a
+  // color so it can be added with paint specified).
   "Status",
   "AreaLabel__c", "ProductName__c", "Surfaces__c",
   "of_Coats__c", "Product_Family__c",

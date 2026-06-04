@@ -99,6 +99,28 @@ const VALID_FINISHES = new Set([
   "Gloss / High-Gloss",
 ]);
 
+/**
+ * Server-side allowlist for WorkOrder.MaterialType__c — mirrors
+ * MATERIAL_TYPE_GROUPS in customer-form-view.tsx and the live SF picklist
+ * (queried 2026-06-03 via scripts/answer-katies-questions.ts). Public
+ * endpoint, so we never trust client-sent values: an off-list value would
+ * otherwise hit SF's STRING_TOO_LONG / INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST
+ * error AFTER the customer thinks they successfully submitted, leaving the
+ * customer-form token marked submitted with the WO un-updated.
+ */
+const VALID_MATERIAL_TYPES = new Set([
+  "Ultra Spec Interior",
+  "Regal Select Interior",
+  "Aura Interior",
+  "Ultra Spec Exterior",
+  "Regal Select Exterior",
+  "Aura Exterior",
+  "SW Emerald",
+  "SW Duration",
+  "SW Super Paint",
+  "Other",
+]);
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> }
@@ -296,6 +318,15 @@ export async function POST(
   // logic in writeSfBatch.
   const customerMaterialType = typeof body.materialType === "string" ? body.materialType.trim() : "";
   if (customerMaterialType) {
+    if (!VALID_MATERIAL_TYPES.has(customerMaterialType)) {
+      // Tampered or stale client. Reject before any SF write so we don't
+      // mark the token submitted with a value SF will refuse — that would
+      // leave the customer thinking they're done while the WO never updates.
+      return NextResponse.json({
+        error: "invalid_material_type",
+        message: `"${customerMaterialType}" isn't a valid paint product line. Please refresh the page and pick again.`,
+      }, { status: 400 });
+    }
     attempts.push({
       sObject: "WorkOrder",
       recordId: status.token.work_order_id,

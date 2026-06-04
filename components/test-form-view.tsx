@@ -219,6 +219,9 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Defaults to SF account name"
+              autoCorrect="off"
+              autoCapitalize="words"
+              spellCheck={false}
               className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
             />
           </div>

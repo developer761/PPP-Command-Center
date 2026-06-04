@@ -143,7 +143,42 @@ function roomTitle(li: FormLineItem, oneBasedIndex: number): string {
   return parts.length > 0 ? parts.join(" · ") : li.productFamily?.trim() || `Section ${oneBasedIndex}`;
 }
 
+/** Format the editable-window deadline as a concrete date for the customer.
+ *  Returns "Friday, June 6 at 8:00 AM" style — long enough that they don't
+ *  misread "6/6" as today vs. days from now. Falls back to null when the
+ *  scheduled start isn't set yet (admin will follow up). Renders in the
+ *  US/Eastern timezone (PPP HQ is on Long Island; safer than the customer's
+ *  TZ which we don't know). Katie 2026-06-04: agent flagged that "24 hours
+ *  prior to start" copy without a concrete date leaves customers guessing. */
+function formatEditDeadline(scheduledStart: string | null): string | null {
+  if (!scheduledStart) return null;
+  const start = new Date(scheduledStart);
+  if (Number.isNaN(start.getTime())) return null;
+  // 24h before — same anchor lib/customer-form/expiry.ts uses for the token.
+  const deadline = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+  if (deadline.getTime() <= Date.now()) {
+    // Deadline already past — admin sent the form late; the link is still
+    // active until token expiry, but say so honestly rather than display a
+    // negative countdown.
+    return "in the next few hours (your start date is approaching)";
+  }
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(deadline);
+  } catch {
+    return deadline.toDateString();
+  }
+}
+
 export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, isPreview = false }: Props) {
+  const editDeadline = formatEditDeadline(formData.scheduledStart);
   // Seed state. When re-editing, pre-fill each surface from the customer's
   // prior submission (colors + finishes + skipped + notes) so they tweak what
   // they already chose rather than starting over. Otherwise start blank.
@@ -468,7 +503,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         {isEditing && !isPreview && (
           <div className="mt-4 text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
             You&apos;ve already submitted these colors — feel free to update anything below
-            and save again. You can keep making changes up to 24 hours prior to your start date.
+            and save again. {editDeadline
+              ? <>You can keep making changes until <strong>{editDeadline}</strong>.</>
+              : "You can keep making changes up to 24 hours prior to your start date."}
           </div>
         )}
         {/* Preview-mode banner — admin generated this link to test the form
@@ -500,19 +537,22 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           actively confirms which line to use. */}
       {formData.lineItems.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
-          <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
-            Paint Product Line
-          </div>
-          <h2 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy mt-1">
-            Which paint product would you like?
-          </h2>
+          <label htmlFor="paint-product-line" className="block cursor-pointer">
+            <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
+              Paint Product Line
+            </div>
+            <h2 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy mt-1">
+              Which paint product would you like?
+            </h2>
+          </label>
           <p className="text-xs text-ppp-charcoal-500 mt-1 leading-relaxed">
             Pick one product line for all the colors below. The same color (e.g. &ldquo;Stardust&rdquo;) can be mixed in different product lines &mdash; each has its own price point and finish quality. If you&apos;re not sure, ask your project manager.
           </p>
           <select
+            id="paint-product-line"
             value={materialType}
             onChange={(e) => setMaterialType(e.target.value)}
-            className="mt-3 w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue bg-white"
+            className="mt-3 w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue bg-white"
           >
             <option value="">— Select product line —</option>
             {MATERIAL_TYPE_GROUPS.map((g) => (
@@ -625,7 +665,11 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             {isPreview
               ? "Preview only — nothing will be saved when you click. This is to let our team test the form."
               : isEditing
-              ? "Save your changes — you can keep updating your colors up to 24 hours prior to your start date."
+              ? editDeadline
+                ? `Save your changes — you can keep updating until ${editDeadline}.`
+                : "Save your changes — you can keep updating your colors up to 24 hours prior to your start date."
+              : editDeadline
+              ? `Once you submit, we'll order the materials. You can still come back and update your colors until ${editDeadline}.`
               : "Once you submit, we'll order the materials. You can still come back and update your colors up to 24 hours prior to your start date."}
           </div>
           <button
@@ -810,11 +854,13 @@ function SurfaceRow({
         </div>
         {/* Skip toggle — small text button. When skipped, label changes to
             "Add color" so customer can revert. Available always so the
-            customer can opt out of any surface they don't want painted. */}
+            customer can opt out of any surface they don't want painted.
+            Mobile: px-3 py-2 so the tap target hits the ~44px iOS HIG —
+            tiny text without padding made this hard to land a finger on. */}
         <button
           type="button"
           onClick={toggleSkip}
-          className="text-[10px] text-ppp-charcoal-500 hover:text-ppp-blue underline-offset-2 hover:underline transition-colors sm:hidden"
+          className="text-[11px] text-ppp-charcoal-500 hover:text-ppp-blue underline-offset-2 hover:underline transition-colors sm:hidden px-3 py-2 -my-2 -mr-1"
         >
           {pick.skipped ? "Add color" : "Skip this"}
         </button>
@@ -865,12 +911,13 @@ function SurfaceRow({
             )}
             {/* Apply this color to the same surface in every other room that
                 doesn't have one yet (Katie 2026-05-29) — fill-empty-only,
-                never overwrites. Only offered with a color picked + >1 room. */}
+                never overwrites. Only offered with a color picked + >1 room.
+                Mobile: py-2 lifts the tap target above the 24px floor. */}
             {pick.colorId && canApplyToAll && (
               <button
                 type="button"
                 onClick={onApplyToAll}
-                className="inline-flex items-center justify-end gap-1 text-[11px] text-ppp-blue hover:text-ppp-blue-700 font-medium text-right"
+                className="inline-flex items-center justify-end gap-1 text-[11px] sm:text-[11px] text-ppp-blue hover:text-ppp-blue-700 font-medium text-right self-end px-2 py-2 sm:py-1 -mr-2"
               >
                 <span aria-hidden>⮌</span> Apply to all areas
               </button>
