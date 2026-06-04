@@ -1130,6 +1130,16 @@ function ColorPicker({
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="text-ppp-charcoal truncate">{c.name}</div>
+                  {/* Manufacturer label — Round 3 audit 2026-06-04: customers
+                      could pick "White Dove" from SW when their Material Type
+                      was Benjamin Moore (BM also has a "White Dove"). Showing
+                      the manufacturer disambiguates same-name colors across
+                      paint lines + lets the customer verify their pick. */}
+                  {c.manufacturerName && (
+                    <div className="text-[10px] text-ppp-charcoal-500 truncate">
+                      {c.manufacturerName}
+                    </div>
+                  )}
                 </div>
                 {c.code && (
                   <span className="font-mono text-[10px] text-ppp-charcoal-500 shrink-0">{c.code}</span>
