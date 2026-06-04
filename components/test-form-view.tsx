@@ -141,9 +141,8 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
   return (
     <div className="p-4 sm:p-6 max-w-2xl mx-auto space-y-6">
       <PageHeader
-        eyebrow="Admin tools"
         title="Test the customer color form"
-        subtitle="Paste a Salesforce Work Order ID. Preview opens the form without sending an email or writing to SF. Send creates a real form, emails the invite, and gives you the URL to click through immediately."
+        subtitle="Paste either a Salesforce record Id (starts with 0WO) or a WO number (digits only). Preview opens the form in a new tab without sending an email or writing to Salesforce. Send creates a real form, emails the invite, and shows you the URL to click through immediately."
       />
 
       <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-6 space-y-4">
@@ -213,7 +212,7 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
           <button
             type="button"
             onClick={onPreview}
-            disabled={!idLooksValid || loading !== null}
+            disabled={!inputUsable || loading !== null}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading === "preview" ? "Opening…" : "Preview (no email, no SF writes)"}
@@ -221,7 +220,7 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
           <button
             type="button"
             onClick={onSend}
-            disabled={!idLooksValid || loading !== null}
+            disabled={!inputUsable || loading !== null}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-ppp-blue/30"
           >
             {loading === "send" ? "Sending…" : "Send real form (writes to SF if WO is on allowlist)"}

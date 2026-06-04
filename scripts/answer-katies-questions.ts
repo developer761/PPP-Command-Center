@@ -30,7 +30,7 @@ type SfField = {
   picklistValues?: Array<{ value: string; label: string; active: boolean; defaultValue: boolean }>;
 };
 
-async function getConn(): Promise<jsforce.Connection> {
+async function getConn(): Promise<InstanceType<typeof jsforce.Connection>> {
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SECRET_KEY!,
