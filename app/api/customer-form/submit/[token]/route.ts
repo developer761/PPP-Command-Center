@@ -47,6 +47,10 @@ type SubmitPayload = {
   token: string;
   lineItems: SubmittedLineItem[];
   globalNotes: string;
+  /** Customer's selection from the Material Type picker. Null when the
+   *  customer didn't pick (we don't blank out admin's pre-set value). When
+   *  set, the submit handler writes it back to WorkOrder.MaterialType__c. */
+  materialType?: string | null;
   renderFetchedAt: string;
   /** Customer-confirmed delivery address from the form's last step. The
    *  supplier-order builder reads this in preference to the stale SF
@@ -264,12 +268,27 @@ export async function POST(
     });
   }
 
+  // Material Type writeback — single WorkOrder.MaterialType__c update when
+  // the customer picked a paint product line. Skip when empty/null so we
+  // don't blank out an admin-set value. Pushed as a WorkOrder-level attempt
+  // alongside the WOLI batch so it benefits from the same audit + retry
+  // logic in writeSfBatch.
+  const customerMaterialType = typeof body.materialType === "string" ? body.materialType.trim() : "";
+  if (customerMaterialType) {
+    attempts.push({
+      sObject: "WorkOrder",
+      recordId: status.token.work_order_id,
+      fields: { MaterialType__c: customerMaterialType },
+    });
+  }
+
   // 4. Persist the submission payload FIRST so a write failure doesn't leave
   // the token half-submitted. First submit uses markSubmitted (idempotent,
   // first-write-only); a re-edit uses markResubmitted (deliberate overwrite).
   const payloadRecord = {
     lineItems: body.lineItems,
     globalNotes: body.globalNotes,
+    materialType: customerMaterialType || null,
     deliveryAddress: body.deliveryAddress ?? null,
     submittedAt: new Date().toISOString(),
   };

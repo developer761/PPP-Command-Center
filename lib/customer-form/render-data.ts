@@ -17,6 +17,10 @@ import { getSalesforceClient } from "@/lib/salesforce/client";
 
 export type FormLineItem = {
   id: string;
+  /** Standard FSL WorkOrderLineItem.Status — used by render-data to skip
+   *  Canceled/Completed/Closed rooms before they ever reach the form. Kept
+   *  on the returned shape for diagnostic surfaces (admin debug pages). */
+  status: string | null;
   areaLabel: string | null;          // e.g. "Master Bedroom", "elevator foyer"
   productName: string | null;        // ProductName__c — paired with areaLabel for the room title
   surfaces: string[];                // ["Walls", "Ceiling", "Trim"]
@@ -54,6 +58,12 @@ export type FormRenderData = {
   accountName: string | null;
   ownerName: string | null;
   closeDate: string | null;
+  /** Pre-populated paint product line from WorkOrder.MaterialType__c.
+   *  Picklist values: Ultra Spec Interior, Regal Select Interior, Aura
+   *  Interior, Ultra Spec Exterior, Regal Select Exterior, Aura Exterior,
+   *  SW Emerald, SW Duration, SW Super Paint, Other. Null when admin hasn't
+   *  set it yet (about 50% of PPP WOs as of 2026-06-03 per Katie). */
+  materialType: string | null;
   /** Best-available scheduled job start: WorkOrder.StartDate (sparse) →
    *  DesiredStart__c → Opp CloseDate (PPP's projected date). Drives the
    *  "link expires 24h before start" rule. Null when none is set. */
@@ -76,12 +86,32 @@ export type FormRenderData = {
 
 const WOLI_FIELDS = [
   "Id", "WorkOrderId",
+  // Status is the standard FSL field with picklist values: New (default),
+  // In Progress, On Hold, Completed, Closed, Cannot Complete, Canceled,
+  // Pending Approval - REMOVE / ADD. We pull it so the form can skip rooms
+  // that won't be painted (Canceled / Completed / Closed / Cannot Complete /
+  // Pending REMOVE) — Katie 2026-06-03: "only Status = New."
+  "Status",
   "AreaLabel__c", "ProductName__c", "Surfaces__c",
   "of_Coats__c", "Product_Family__c",
   "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
   "FinishWall__c", "FinishCeiling__c", "FinishTrim__c", "FinishOther__c", "FinishFloor__c",
   "ColorNotes__c", "SortOrder__c", "LastModifiedDate",
 ];
+
+/** WOLI statuses the customer should NEVER see on the form. Anything else
+ *  (New, In Progress, On Hold, both Pending Approval - ADD, blank/null) gets
+ *  shown so the customer can pick colors. Katie 2026-06-03: at minimum
+ *  Canceled must be excluded. We're a little broader — also drop Completed /
+ *  Closed / Cannot Complete / Pending REMOVE because those rooms aren't going
+ *  to be repainted in this engagement either. */
+const HIDDEN_WOLI_STATUSES = new Set<string>([
+  "Canceled",
+  "Completed",
+  "Closed",
+  "Cannot Complete",
+  "Pending Approval - REMOVE",
+]);
 
 export async function loadFormRenderData(
   workOrderId: string,
@@ -93,8 +123,19 @@ export async function loadFormRenderData(
     // Pull the WO header (account + owner via Opportunity relationship, work
     // type, billing address for the delivery-confirm step on the form).
     const woEsc = workOrderId.replace(/'/g, "\\'");
-    const woQuery = `
-      SELECT Id, WorkOrderNumber, Status, CreatedDate,
+    // MaterialType__c added 2026-06-03 (Katie) — drives the paint-line picker
+    // on the customer form. Falls back to a narrower SELECT on INVALID_FIELD
+    // so older orgs without that field still render.
+    const richFields = `Id, WorkOrderNumber, Status, CreatedDate,
+             StartDate, DesiredStart__c, MaterialType__c,
+             WorkType.Name,
+             Opportunity__c, Opportunity__r.Owner.Name,
+             Opportunity__r.Account.Name, Opportunity__r.CloseDate,
+             Opportunity__r.Account.BillingStreet,
+             Opportunity__r.Account.BillingCity,
+             Opportunity__r.Account.BillingState,
+             Opportunity__r.Account.BillingPostalCode`;
+    const baseFields = `Id, WorkOrderNumber, Status, CreatedDate,
              StartDate, DesiredStart__c,
              WorkType.Name,
              Opportunity__c, Opportunity__r.Owner.Name,
@@ -102,10 +143,18 @@ export async function loadFormRenderData(
              Opportunity__r.Account.BillingStreet,
              Opportunity__r.Account.BillingCity,
              Opportunity__r.Account.BillingState,
-             Opportunity__r.Account.BillingPostalCode
-      FROM WorkOrder WHERE Id = '${woEsc}' LIMIT 1
-    `.replace(/\s+/g, " ").trim();
-    const woResult = await conn.query<Record<string, unknown>>(woQuery);
+             Opportunity__r.Account.BillingPostalCode`;
+    let woResult: Awaited<ReturnType<typeof conn.query<Record<string, unknown>>>>;
+    try {
+      woResult = await conn.query<Record<string, unknown>>(
+        `SELECT ${richFields} FROM WorkOrder WHERE Id = '${woEsc}' LIMIT 1`.replace(/\s+/g, " ").trim()
+      );
+    } catch (e) {
+      console.warn(`[customer-form] WO rich-fields query failed, falling back to base:`, e instanceof Error ? e.message : e);
+      woResult = await conn.query<Record<string, unknown>>(
+        `SELECT ${baseFields} FROM WorkOrder WHERE Id = '${woEsc}' LIMIT 1`.replace(/\s+/g, " ").trim()
+      );
+    }
     if (woResult.records.length === 0) return null;
     const w = woResult.records[0];
 
@@ -114,42 +163,53 @@ export async function loadFormRenderData(
     const woliQuery = `SELECT ${WOLI_FIELDS.join(", ")} FROM WorkOrderLineItem WHERE WorkOrderId = '${woEsc}'`;
     const woliResult = await conn.query<Record<string, unknown>>(woliQuery);
 
-    const lineItems: FormLineItem[] = woliResult.records.map((r) => {
-      const surfacesRaw = typeof r.Surfaces__c === "string" ? (r.Surfaces__c as string) : "";
-      const surfaces = surfacesRaw
-        .split(";")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-      const num = (k: string): number | null =>
-        typeof r[k] === "number" ? (r[k] as number) : null;
-      const str = (k: string): string | null =>
-        typeof r[k] === "string" ? (r[k] as string) : null;
-      return {
-        id: r.Id as string,
-        areaLabel: str("AreaLabel__c"),
-        productName: str("ProductName__c"),
-        surfaces,
-        numCoats: num("of_Coats__c"),
-        productFamily: str("Product_Family__c"),
-        sortOrder: num("SortOrder__c") ?? 0,
-        currentColors: {
-          wallId: str("ColorWall__c"),
-          ceilingId: str("ColorCeiling__c"),
-          trimId: str("ColorTrim__c"),
-          floorId: str("ColorFloor__c"),
-          otherId: str("ColorOther__c"),
-        },
-        currentFinishes: {
-          wall: str("FinishWall__c"),
-          ceiling: str("FinishCeiling__c"),
-          trim: str("FinishTrim__c"),
-          floor: str("FinishFloor__c"),
-          other: str("FinishOther__c"),
-        },
-        existingNotes: str("ColorNotes__c"),
-        lastModifiedDate: r.LastModifiedDate as string,
-      };
-    });
+    const lineItems: FormLineItem[] = woliResult.records
+      // Filter Canceled / Completed / Closed / Cannot Complete / Pending REMOVE
+      // BEFORE mapping so the customer never sees those rooms. Status null /
+      // empty is allowed (treated as "New"-equivalent) so older orgs that
+      // don't populate the field still show every line item.
+      .filter((r) => {
+        const status = typeof r.Status === "string" ? r.Status.trim() : "";
+        if (!status) return true;
+        return !HIDDEN_WOLI_STATUSES.has(status);
+      })
+      .map((r) => {
+        const surfacesRaw = typeof r.Surfaces__c === "string" ? (r.Surfaces__c as string) : "";
+        const surfaces = surfacesRaw
+          .split(";")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        const num = (k: string): number | null =>
+          typeof r[k] === "number" ? (r[k] as number) : null;
+        const str = (k: string): string | null =>
+          typeof r[k] === "string" ? (r[k] as string) : null;
+        return {
+          id: r.Id as string,
+          status: str("Status"),
+          areaLabel: str("AreaLabel__c"),
+          productName: str("ProductName__c"),
+          surfaces,
+          numCoats: num("of_Coats__c"),
+          productFamily: str("Product_Family__c"),
+          sortOrder: num("SortOrder__c") ?? 0,
+          currentColors: {
+            wallId: str("ColorWall__c"),
+            ceilingId: str("ColorCeiling__c"),
+            trimId: str("ColorTrim__c"),
+            floorId: str("ColorFloor__c"),
+            otherId: str("ColorOther__c"),
+          },
+          currentFinishes: {
+            wall: str("FinishWall__c"),
+            ceiling: str("FinishCeiling__c"),
+            trim: str("FinishTrim__c"),
+            floor: str("FinishFloor__c"),
+            other: str("FinishOther__c"),
+          },
+          existingNotes: str("ColorNotes__c"),
+          lastModifiedDate: r.LastModifiedDate as string,
+        };
+      });
 
     // Sort line items by SortOrder then by AreaLabel for a stable display order
     lineItems.sort((a, b) => {
@@ -186,6 +246,9 @@ export async function loadFormRenderData(
       ownerName,
       closeDate,
       scheduledStart,
+      // Falls through as null if the org doesn't have MaterialType__c (rich
+      // SELECT fallback hit) — the form's picker still renders, just empty.
+      materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
       lineItems,
       fetchedAt: new Date().toISOString(),
       billingAddress: {

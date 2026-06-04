@@ -499,6 +499,11 @@ export type SnapshotQuote = {
 export type SnapshotWoli = {
   id: string;
   workOrderId: string;
+  /** Standard FSL Status: New (default) / In Progress / On Hold / Completed /
+   *  Closed / Cannot Complete / Canceled / Pending Approval - REMOVE | ADD.
+   *  Materials view + customer color form filter Canceled/Completed/Closed/
+   *  Cannot Complete/Pending REMOVE out (Katie 2026-06-03). */
+  status: string | null;
   areaLabel: string | null; // "Master Bedroom" / "Living Room" / etc.
   surfaces: string | null; // multipicklist as ";"-joined string ("Walls;Ceiling;Trim")
   sqFootage: number;
@@ -1158,6 +1163,10 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       try {
         const baseFields = [
           "Id", "WorkOrderId",
+          // Standard FSL Status — used to filter Canceled / Completed / Closed
+          // / Cannot Complete / Pending REMOVE rooms out of the materials view
+          // + customer color form. Katie 2026-06-03: don't show those rooms.
+          "Status",
           "AreaLabel__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
           "of_Coats__c", "Product_Family__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
@@ -1215,9 +1224,30 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           typeof r[k] === "number" ? (r[k] as number) : 0;
         const str = (r: Record<string, unknown>, k: string): string | null =>
           typeof r[k] === "string" ? (r[k] as string) : null;
-        return records.map<SnapshotWoli>((r) => ({
+        // Filter Canceled / Completed / Closed / Cannot Complete / Pending REMOVE
+        // BEFORE mapping. These rooms aren't going to be repainted in this
+        // engagement, so showing them on the materials view (and customer
+        // color form) would lead to wrong orders. Katie 2026-06-03. Status
+        // null/empty is kept (older orgs that don't populate the field).
+        const HIDDEN_WOLI_STATUSES = new Set<string>([
+          "Canceled",
+          "Completed",
+          "Closed",
+          "Cannot Complete",
+          "Pending Approval - REMOVE",
+        ]);
+        const filtered = records.filter((r) => {
+          const s = typeof r.Status === "string" ? (r.Status as string).trim() : "";
+          if (!s) return true;
+          return !HIDDEN_WOLI_STATUSES.has(s);
+        });
+        if (filtered.length !== records.length) {
+          console.log(`[SF] WOLI status filter dropped ${records.length - filtered.length} row(s) (Canceled/Completed/Closed/Cannot Complete/Pending REMOVE)`);
+        }
+        return filtered.map<SnapshotWoli>((r) => ({
           id: r.Id as string,
           workOrderId: r.WorkOrderId as string,
+          status: str(r, "Status"),
           areaLabel: str(r, "AreaLabel__c"),
           surfaces: str(r, "Surfaces__c"),
           sqFootage: num(r, "Sq_Footage__c"),

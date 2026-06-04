@@ -657,7 +657,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                               return (
                                 <>
                                   <span>·</span>
-                                  <span className={cls} title={`Scheduled close: ${j.wo.closeDate}`}>
+                                  <span
+                                    className={cls}
+                                    title={`Scheduled job start: ${j.wo.closeDate}\n\nThe "overdue" / "in Xd" countdown is measured from the scheduled START date — not when the work order was created. So "5d overdue" means the job was supposed to start 5 days ago.`}
+                                  >
                                     {r.label}
                                   </span>
                                 </>

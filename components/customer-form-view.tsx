@@ -91,6 +91,30 @@ const FINISH_OPTIONS = [
   "High-Gloss",
 ];
 
+// Material Type picklist mirrored from WorkOrder.MaterialType__c in the live
+// PPP Salesforce org (queried 2026-06-03 via answer-katies-questions.ts).
+// Customer picks which paint product line to mix their chosen colors in.
+// Grouped visually so a customer can scan Benjamin Moore options vs Sherwin
+// Williams vs Other without picking the wrong family.
+const MATERIAL_TYPE_GROUPS: Array<{ label: string; options: string[] }> = [
+  {
+    label: "Benjamin Moore — Interior",
+    options: ["Ultra Spec Interior", "Regal Select Interior", "Aura Interior"],
+  },
+  {
+    label: "Benjamin Moore — Exterior",
+    options: ["Ultra Spec Exterior", "Regal Select Exterior", "Aura Exterior"],
+  },
+  {
+    label: "Sherwin Williams",
+    options: ["SW Emerald", "SW Duration", "SW Super Paint"],
+  },
+  {
+    label: "Other",
+    options: ["Other"],
+  },
+];
+
 /**
  * Sensible default finish per surface (Katie 2026-05-29) — auto-filled the
  * moment a customer picks a color so the choice is complete without extra
@@ -155,6 +179,11 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
 
   const [state, setState] = useState(initialState);
   const [globalNotes, setGlobalNotes] = useState(priorSubmission?.globalNotes ?? "");
+  // Material Type (paint product line). Pre-populated from
+  // WorkOrder.MaterialType__c if admin set it, else empty so customer picks.
+  // Katie 2026-06-03: this dictates which Benjamin Moore / Sherwin-Williams
+  // product line we mix the customer's chosen colors in.
+  const [materialType, setMaterialType] = useState<string>(formData.materialType ?? "");
   const [submitting, setSubmitting] = useState(false);
   // Ref-based guard — React batches setState so two rapid clicks could
   // both pass `if (submitting) return` before either commits the new value.
@@ -360,6 +389,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           notes: state[li.id]?.notes ?? "",
         })),
         globalNotes,
+        // Material Type (paint product line) — sent only when the customer
+        // actually picked one. Empty string skips the WO writeback so we
+        // don't blank out an admin-set MaterialType__c.
+        materialType: materialType.trim() || null,
         renderFetchedAt: formData.fetchedAt,
         // Customer-confirmed delivery address. Persisted to
         // customer_form_tokens.submitted_payload.deliveryAddress; the
@@ -421,10 +454,48 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         {isEditing && (
           <div className="mt-4 text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
             You&apos;ve already submitted these colors — feel free to update anything below
-            and save again. You can keep making changes up until your job starts.
+            and save again. You can keep making changes up to 24 hours prior to your start date.
           </div>
         )}
       </div>
+
+      {/* Material Type (paint product line) — one selection that applies to
+          every color on this job. Pre-filled from WorkOrder.MaterialType__c
+          when admin set it (about half of PPP WOs as of 2026-06-03); the
+          customer can change it. Falls back to no default so the customer
+          actively confirms which line to use. */}
+      {formData.lineItems.length > 0 && (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
+          <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
+            Paint Product Line
+          </div>
+          <h2 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy mt-1">
+            Which paint product would you like?
+          </h2>
+          <p className="text-xs text-ppp-charcoal-500 mt-1 leading-relaxed">
+            Pick one product line for all the colors below. The same color (e.g. &ldquo;Stardust&rdquo;) can be mixed in different product lines &mdash; each has its own price point and finish quality. If you&apos;re not sure, ask your project manager.
+          </p>
+          <select
+            value={materialType}
+            onChange={(e) => setMaterialType(e.target.value)}
+            className="mt-3 w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue bg-white"
+          >
+            <option value="">— Select product line —</option>
+            {MATERIAL_TYPE_GROUPS.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.options.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {materialType && formData.materialType && materialType !== formData.materialType && (
+            <p className="text-[11px] text-ppp-orange-700 mt-2">
+              ⓘ You changed this from the original ({formData.materialType}). The new selection will be saved when you submit.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Per-line-item sections */}
       {formData.lineItems.length === 0 ? (

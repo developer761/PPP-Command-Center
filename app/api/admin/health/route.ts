@@ -311,6 +311,62 @@ export async function GET() {
     });
   }
 
+  // ── Salesforce writeback health — last 30 days customer-form submits ──
+  // Katie 2026-06-03 raised a concern that customer-form colors weren't
+  // landing in Salesforce. Every WOLI write fires through writeSfBatch and
+  // logs to sf_writes_audit (succeeded boolean per record). If a meaningful
+  // fraction are failing — FLS, validation rule, picklist mismatch — admin
+  // sees it here BEFORE customers complain that their colors didn't carry
+  // through to the crew.
+  try {
+    const sb = adminClient();
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: rows, error } = await sb
+      .from("sf_writes_audit")
+      .select("succeeded, source")
+      .gte("written_at", since)
+      .eq("source", "customer_form_submit");
+    if (error) throw error;
+    const total = rows?.length ?? 0;
+    const failed = rows?.filter((r) => r.succeeded === false).length ?? 0;
+    const succeeded = total - failed;
+    if (total === 0) {
+      checks.push({
+        id: "sf_writeback_customer_form",
+        label: "Customer-form Salesforce writeback (last 30d)",
+        status: "ok",
+        group: "data",
+        message: "No customer form submits in the past 30 days — nothing to verify yet. Once a customer submits colors, this check will track how many landed in Salesforce.",
+      });
+    } else if (failed === 0) {
+      checks.push({
+        id: "sf_writeback_customer_form",
+        label: "Customer-form Salesforce writeback (last 30d)",
+        status: "ok",
+        group: "data",
+        message: `All ${succeeded} customer-form writes in the past 30 days landed in Salesforce successfully — ColorWall__c / ColorCeiling__c / ColorTrim__c / ColorOther__c / ColorFloor__c / ColorNotes__c are updating as expected.`,
+      });
+    } else {
+      const failRate = Math.round((failed / total) * 100);
+      checks.push({
+        id: "sf_writeback_customer_form",
+        label: "Customer-form Salesforce writeback (last 30d)",
+        status: failRate > 20 ? "fail" : "warn",
+        group: "data",
+        message: `${failed} of ${total} customer-form writes failed (${failRate}%). Common causes: a Salesforce validation rule blocking the write, FLS hiding ColorXxx__c from the OAuth user, or a picklist mismatch (e.g. a new finish value the SF picklist doesn't have).`,
+        fix: "Check sf_writes_audit in Supabase (filter source='customer_form_submit', succeeded=false) for the error_message column — it usually pinpoints which field SF rejected. Most-common fix: ensure ColorWall__c / ColorCeiling__c / ColorTrim__c / ColorOther__c / ColorFloor__c are editable by the OAuth user's profile.",
+      });
+    }
+  } catch (err) {
+    checks.push({
+      id: "sf_writeback_customer_form",
+      label: "Customer-form Salesforce writeback (last 30d)",
+      status: "warn",
+      group: "data",
+      message: `Couldn't read sf_writes_audit: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+
   // Aggregate summary
   const summary = {
     ok: checks.filter((c) => c.status === "ok").length,

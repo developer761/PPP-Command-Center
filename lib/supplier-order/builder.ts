@@ -141,6 +141,12 @@ export type CustomerSubmittedPayload = {
     notes: string;
   }>;
   globalNotes?: string;
+  /** Customer-selected paint product line from the Material Type picker on
+   *  the form. Mirrors WorkOrder.MaterialType__c. When set, surfaced at the
+   *  top of the "ORDER — WHAT TO BUY" section in the supplier email so the
+   *  vendor knows which BM / SW line to mix. Null when customer didn't pick
+   *  AND admin hadn't pre-set MaterialType__c on the WO. */
+  materialType?: string | null;
   /** Customer-confirmed/corrected delivery address from the form's last step. */
   deliveryAddress?: {
     name?: string;
@@ -518,10 +524,19 @@ function formatAddressBlock(address: DeliveryAddress): string {
 /** The "what to buy" shopping list — per-color whole-gallon totals. Leads the
  *  email so the vendor sees order quantities first. NO "estimate" wording (the
  *  app shows the estimate banner; the vendor email stays clean). Lines we can't
- *  size from a floor measurement show a blank quantity + "PPP to confirm". */
-function formatOrderSummaryBlock(estimates: GallonEstimate[]): string {
+ *  size from a floor measurement show a blank quantity + "PPP to confirm".
+ *
+ *  materialType (optional) is included on each line as the paint product line
+ *  ("Regal Select Interior" / "Aura Interior" / "SW Emerald" etc.) so the
+ *  vendor mixes the right SKU. Katie 2026-06-03: "Missing the product name —
+ *  ex: Regal, Aura, etc. This is very important." */
+function formatOrderSummaryBlock(estimates: GallonEstimate[], materialType: string | null): string {
   if (estimates.length === 0) return "(no colors picked yet — customer has not submitted the color form)";
   const lines: string[] = [];
+  if (materialType) {
+    lines.push(`  Paint product line: ${materialType}`);
+    lines.push("");
+  }
   for (const e of estimates) {
     const code = e.colorCode ? ` ${e.colorCode}` : "";
     const finish = e.finish ? ` · ${e.finish}` : "";
@@ -537,6 +552,10 @@ function formatOrderSummaryBlock(estimates: GallonEstimate[]): string {
   if (t.buckets > 0 || t.cans > 0) {
     lines.push(`  ─────`);
     lines.push(`  TOTAL: ${formatBucketsCans(t.buckets, t.cans)}${t.reviewColors > 0 ? ` (+ ${t.reviewColors} to confirm)` : ""}`);
+  }
+  if (!materialType) {
+    lines.push("");
+    lines.push("  ⚠ Paint product line not specified — please confirm before mixing.");
   }
   return lines.join("\n");
 }
@@ -665,7 +684,15 @@ export async function buildSupplierOrderDraft(
   const { lineItems, rooms, skippedSurfaces } = resolveLineItems(input);
   // Tunable coverage config (Settings → Coverage); falls back to code defaults.
   const gallonEstimates = estimateOrderGallons(rooms, await loadCoverageConfig());
-  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates);
+  // Paint product line — prefer the customer's selection (they may have
+  // refined the admin pre-set value), fall back to whatever was on the WO at
+  // build time. Null when neither has it; the summary block flags it as a
+  // "please confirm before mixing" warning to the vendor.
+  const materialType =
+    (input.customerSubmittedPayload?.materialType ?? "").trim() ||
+    "" ||
+    null;
+  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates, materialType);
   const placementBlock = formatPlacementBlock(lineItems);
   const deliveryAddress = resolveDeliveryAddress(input);
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { resolveViewer } from "@/lib/auth/viewer-server";
-import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 
 /**
@@ -44,45 +43,73 @@ export async function GET() {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
+    // PERF: this endpoint used to call loadSalesforceSnapshot() just to read
+    // is_bm_retailer + a canonical name per supplier — but the snapshot can
+    // take 10s+ on cold cache, which made the Pick a Supplier modal hang for
+    // up to a minute (Katie 2026-06-03). The supplier list is admin-curated
+    // in supplier_settings already; we don't need the snapshot for it.
+    // is_bm_retailer + sort_order are now read directly from the table.
     const sb = adminClient();
     const { data: rows, error } = await sb
       .from("supplier_settings")
-      .select("supplier_account_id, supplier_name, order_email, ppp_account_number, pickup_locations")
+      .select("supplier_account_id, supplier_name, order_email, ppp_account_number, pickup_locations, is_bm_retailer, sort_order")
       .eq("is_active", true)
       .not("order_email", "is", null);
     if (error) {
-      return NextResponse.json({ ok: false, error: "query_failed", message: error.message }, { status: 500 });
+      // is_bm_retailer / sort_order may be missing in older deployments. Retry
+      // without them so the picker still renders.
+      const retry = await sb
+        .from("supplier_settings")
+        .select("supplier_account_id, supplier_name, order_email, ppp_account_number, pickup_locations")
+        .eq("is_active", true)
+        .not("order_email", "is", null);
+      if (retry.error) {
+        return NextResponse.json({ ok: false, error: "query_failed", message: retry.error.message }, { status: 500 });
+      }
+      const suppliers: ActiveSupplier[] = (retry.data ?? [])
+        .filter((r) => r.order_email && r.supplier_account_id)
+        .map((r) => ({
+          accountId: r.supplier_account_id as string,
+          name: (r.supplier_name ?? r.supplier_account_id) as string,
+          orderEmail: r.order_email as string,
+          pppAccountNumber: (r.ppp_account_number as string | null) ?? null,
+          isBMRetailer: false,
+          hasPickupLocations: Array.isArray(r.pickup_locations) && r.pickup_locations.length > 0,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return NextResponse.json({ ok: true, suppliers });
     }
-
-    // Enrich with snapshot data for the supplier's BM-retailer flag + canonical
-    // SF name (in case supplier_settings has a stale label). Snapshot is cached
-    // so this is a fast lookup.
-    let snapshot: Awaited<ReturnType<typeof loadSalesforceSnapshot>> | null = null;
-    try {
-      snapshot = await loadSalesforceSnapshot();
-    } catch {
-      // Soft fail — fall through with no enrichment; the row still has enough
-      // to render in the picker (id + name + email).
-    }
-    const acctById = snapshot
-      ? new Map(snapshot.accounts.map((a) => [a.id, a]))
-      : new Map();
 
     const suppliers: ActiveSupplier[] = (rows ?? [])
       .filter((r) => r.order_email && r.supplier_account_id)
       .map((r) => {
-        const acct = acctById.get(r.supplier_account_id);
         const pickup = Array.isArray(r.pickup_locations) ? r.pickup_locations : [];
         return {
           accountId: r.supplier_account_id as string,
-          name: (acct?.name ?? r.supplier_name ?? r.supplier_account_id) as string,
+          name: (r.supplier_name ?? r.supplier_account_id) as string,
           orderEmail: r.order_email as string,
           pppAccountNumber: (r.ppp_account_number as string | null) ?? null,
-          isBMRetailer: acct?.isBMRetailer ?? false,
+          isBMRetailer: Boolean(r.is_bm_retailer),
           hasPickupLocations: pickup.length > 0,
-        };
+          // Carry sort_order forward for the picker's display order. NULL last,
+          // then ascending. Used by the `.sort()` below.
+          _sortOrder: typeof r.sort_order === "number" ? r.sort_order : null,
+        } as ActiveSupplier & { _sortOrder: number | null };
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => {
+        const ao = (a as ActiveSupplier & { _sortOrder: number | null })._sortOrder;
+        const bo = (b as ActiveSupplier & { _sortOrder: number | null })._sortOrder;
+        if (ao == null && bo == null) return a.name.localeCompare(b.name);
+        if (ao == null) return 1;  // unsorted go last
+        if (bo == null) return -1;
+        if (ao !== bo) return ao - bo;
+        return a.name.localeCompare(b.name);
+      })
+      .map((s) => {
+        // Strip the internal _sortOrder before returning
+        const { _sortOrder: _drop, ...clean } = s as ActiveSupplier & { _sortOrder: number | null };
+        return clean as ActiveSupplier;
+      });
 
     return NextResponse.json({ ok: true, suppliers });
   } catch (err) {
