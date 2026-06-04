@@ -34,17 +34,53 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
   } | null>(null);
 
   const trimmedId = woId.trim();
-  const idLooksValid = /^[a-zA-Z0-9]{15,18}$/.test(trimmedId);
+  // Accept BOTH formats:
+  //   - 15/18-char Salesforce record Id ("0WOWj000005e9L3OAI")
+  //   - WO number ("00284666" / digits only)
+  // The /api/admin/wo-resolve endpoint normalizes either to the canonical Id.
+  const looksLikeSfId = /^[a-zA-Z0-9]{15,18}$/.test(trimmedId);
+  const looksLikeWoNumber = /^\d{4,15}$/.test(trimmedId.replace(/\s+/g, ""));
+  const inputUsable = looksLikeSfId || looksLikeWoNumber;
+
+  /** Normalize whatever's in the input box to the canonical 18-char SF Id.
+   *  Returns null + sets result on failure. */
+  const resolveToSfId = async (mode: "preview" | "send"): Promise<string | null> => {
+    if (looksLikeSfId) return trimmedId; // already canonical, skip the round-trip
+    try {
+      const res = await fetch(`/api/admin/wo-resolve?q=${encodeURIComponent(trimmedId)}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok || !data.id) {
+        setResult({
+          ok: false,
+          error: data.message ?? data.error ?? `Couldn't resolve "${trimmedId}" to a WO`,
+          raw: data,
+          mode,
+        });
+        return null;
+      }
+      return data.id as string;
+    } catch (err) {
+      setResult({ ok: false, error: err instanceof Error ? err.message : String(err), mode });
+      return null;
+    }
+  };
 
   const onPreview = async () => {
-    if (!idLooksValid || loading) return;
+    if (!inputUsable || loading) return;
     setLoading("preview");
     setResult(null);
+    const sfId = await resolveToSfId("preview");
+    if (!sfId) {
+      setLoading(null);
+      return;
+    }
+    // Reserve popup tab BEFORE awaiting fetch — Safari blocks otherwise.
+    const win = window.open("about:blank", "_blank", "noopener,noreferrer");
     try {
       const res = await fetch("/api/admin/customer-form/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workOrderId: trimmedId }),
+        body: JSON.stringify({ workOrderId: sfId }),
       });
       const data = await res.json();
       setResult({
@@ -54,8 +90,10 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
         raw: data,
         mode: "preview",
       });
-      if (data.ok && data.formUrl) window.open(data.formUrl, "_blank", "noopener,noreferrer");
+      if (data.ok && data.formUrl && win) win.location.href = data.formUrl;
+      else if (win) win.close();
     } catch (err) {
+      if (win) win.close();
       setResult({ ok: false, error: err instanceof Error ? err.message : String(err), mode: "preview" });
     } finally {
       setLoading(null);
@@ -63,19 +101,24 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
   };
 
   const onSend = async () => {
-    if (!idLooksValid || loading) return;
+    if (!inputUsable || loading) return;
     if (!email.trim() || !email.includes("@")) {
       setResult({ ok: false, error: "Email looks invalid — needs an @ and a domain.", mode: "send" });
       return;
     }
     setLoading("send");
     setResult(null);
+    const sfId = await resolveToSfId("send");
+    if (!sfId) {
+      setLoading(null);
+      return;
+    }
     try {
       const res = await fetch("/api/admin/customer-form/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workOrderId: trimmedId,
+          workOrderId: sfId,
           customerEmail: email.trim(),
           customerName: name.trim() || undefined,
         }),
@@ -106,31 +149,36 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
       <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-6 space-y-4">
         <div>
           <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
-            Work Order ID (starts with <code className="font-mono">0WO</code>, 15 or 18 chars)
+            Work Order — paste either format
           </label>
           <input
             type="text"
             value={woId}
             onChange={(e) => setWoId(e.target.value)}
-            placeholder="0WOWj000005e9L3OAI"
+            placeholder="0WOWj000005e9L3OAI  or  00284666"
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
             className={`w-full px-3 py-2.5 text-sm font-mono border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue ${
               trimmedId === ""
                 ? "border-ppp-charcoal-100"
-                : idLooksValid
+                : inputUsable
                 ? "border-ppp-green-300 bg-ppp-green-50"
                 : "border-ppp-orange-300 bg-ppp-orange-50"
             }`}
           />
           {trimmedId && (
-            <p className={`text-[11px] mt-1 ${idLooksValid ? "text-ppp-green-700" : "text-ppp-orange-700"}`}>
-              {idLooksValid
-                ? `✓ Looks valid (${trimmedId.length} chars, alphanumeric)`
-                : `✗ Looks invalid: ${trimmedId.length} chars, expected 15 or 18 alphanumeric — check for hidden whitespace or non-alphanumeric characters`}
+            <p className={`text-[11px] mt-1 ${inputUsable ? "text-ppp-green-700" : "text-ppp-orange-700"}`}>
+              {looksLikeSfId
+                ? `✓ Looks like a Salesforce record Id (${trimmedId.length} chars)`
+                : looksLikeWoNumber
+                ? `✓ Looks like a WO number (${trimmedId.length} digits) — we'll look it up`
+                : `✗ Doesn't match either format. Expected 15/18 alphanumeric (record Id) or all digits (WO number). Check for hidden whitespace or typos.`}
             </p>
           )}
+          <p className="text-[10px] text-ppp-charcoal-500 mt-1.5 leading-relaxed">
+            <strong>Record Id</strong> (18 chars, starts with <code className="font-mono">0WO</code>) is what shows in the Salesforce URL. <strong>WO number</strong> (digits like <code className="font-mono">00284666</code>) is what shows in the materials list. Either works.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -162,12 +162,20 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
       }
     }
 
-    // Work Orders (by number)
+    // Work Orders — match by WO number (human-readable), account name, OR
+    // the 15/18-char Salesforce record Id. The Id match handles "I copied
+    // the WO URL from Salesforce" — pasting the Id finds the same record
+    // the WO number would have. 2026-06-04.
     if (snapshot?.workOrders) {
       const woHits = snapshot.workOrders
         .filter((w) =>
           (w.workOrderNumber ?? "").toLowerCase().includes(q) ||
-          (w.accountName ?? "").toLowerCase().includes(q)
+          (w.accountName ?? "").toLowerCase().includes(q) ||
+          // Match a partial Id (caseful — SF Ids ARE case-sensitive in their
+          // suffix bits) so a paste of "0WOWj000005e9L3OAI" or a fragment
+          // like "0WOWj" also finds the record. Use the raw query, not the
+          // lowercased one.
+          (q.length >= 5 && w.id.toLowerCase().includes(q))
         )
         .slice(0, 6);
       for (const w of woHits) {
