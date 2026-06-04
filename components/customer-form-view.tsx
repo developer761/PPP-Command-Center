@@ -432,6 +432,15 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           "Heads up — your materials order was already placed, so please contact our team to make sure this change makes it onto the order."
         );
       }
+      // Preview-mode submit — admin tested the form. Override the celebratory
+      // copy so it's obvious nothing actually persisted. The banner during
+      // the form already warned, but the thank-you state would otherwise
+      // look identical to a real customer submission.
+      if ((data as { preview?: boolean }).preview) {
+        setPostSubmitNote(
+          "Preview submit — nothing was saved to Salesforce or marked as the real customer's submission. Close the tab when you're done testing."
+        );
+      }
       setSubmitted(true);
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);

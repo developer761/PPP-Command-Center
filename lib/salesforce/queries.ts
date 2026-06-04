@@ -3,6 +3,7 @@ import "server-only";
 import { gzipSync, gunzipSync } from "zlib";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getSalesforceClient } from "@/lib/salesforce/client";
+import { isHiddenWoliStatus } from "@/lib/customer-form/woli-status";
 
 /**
  * Bulk Salesforce snapshot. One server-side fetch on each page load
@@ -1224,23 +1225,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
           typeof r[k] === "number" ? (r[k] as number) : 0;
         const str = (r: Record<string, unknown>, k: string): string | null =>
           typeof r[k] === "string" ? (r[k] as string) : null;
-        // Filter Canceled / Completed / Closed / Cannot Complete / Pending REMOVE
-        // BEFORE mapping. These rooms aren't going to be repainted in this
-        // engagement, so showing them on the materials view (and customer
-        // color form) would lead to wrong orders. Katie 2026-06-03. Status
-        // null/empty is kept (older orgs that don't populate the field).
-        const HIDDEN_WOLI_STATUSES = new Set<string>([
-          "Canceled",
-          "Completed",
-          "Closed",
-          "Cannot Complete",
-          "Pending Approval - REMOVE",
-        ]);
-        const filtered = records.filter((r) => {
-          const s = typeof r.Status === "string" ? (r.Status as string).trim() : "";
-          if (!s) return true;
-          return !HIDDEN_WOLI_STATUSES.has(s);
-        });
+        // Hide Canceled / Completed / Closed / Cannot Complete / Pending REMOVE
+        // BEFORE mapping. Uses the shared filter helper so this surface stays
+        // in lockstep with the customer-form render layer.
+        const filtered = records.filter((r) =>
+          !isHiddenWoliStatus(typeof r.Status === "string" ? (r.Status as string) : null)
+        );
         if (filtered.length !== records.length) {
           console.log(`[SF] WOLI status filter dropped ${records.length - filtered.length} row(s) (Canceled/Completed/Closed/Cannot Complete/Pending REMOVE)`);
         }

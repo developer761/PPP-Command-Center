@@ -101,7 +101,15 @@ export async function createToken(input: {
     kind: input.kind ?? null,
   };
   let { error } = await sb.from("customer_form_tokens").insert(richRow);
-  if (error && /kind/i.test(error.message)) {
+  // Only fall back when SF/Supabase says the SCHEMA is missing the column —
+  // a too-broad regex would silently swallow unrelated errors that happen
+  // to mention "kind" (e.g., type-coercion messages). Audit 2026-06-04.
+  if (
+    error &&
+    (/column "?kind"? (does not exist|of relation .* does not exist)/i.test(error.message)
+      || /could not find the 'kind' column/i.test(error.message)
+      || (error as { code?: string }).code === "42703")
+  ) {
     console.warn("[customer-form] createToken: kind column missing (run migration 015) — falling back");
     const { kind: _drop, ...legacyRow } = richRow;
     ({ error } = await sb.from("customer_form_tokens").insert(legacyRow));

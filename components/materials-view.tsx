@@ -1275,11 +1275,21 @@ function DraftOrderModal({
                           <span
                             aria-hidden
                             className="h-5 w-5 mt-0.5 rounded border border-ppp-charcoal-200 shrink-0"
-                            style={{
-                              backgroundColor: color.hexValue && /^#?[0-9a-f]{3,6}$/i.test(color.hexValue.trim())
-                                ? color.hexValue.startsWith("#") ? color.hexValue : `#${color.hexValue}`
-                                : "repeating-linear-gradient(45deg, #ddd 0 4px, #fafafa 4px 8px)",
-                            }}
+                            style={(() => {
+                              // Strict: only EXACTLY 3 or 6 hex digits (4/5 are
+                              // invalid CSS; older code accepted 3-6 and browsers
+                              // silently dropped them — audit-flagged 2026-06-04).
+                              // Falls back to a diagonal-stripe gradient so the
+                              // swatch reads as "color but unknown hex" rather
+                              // than disappearing.
+                              const hex = color.hexValue?.trim() ?? "";
+                              const valid = /^#?(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex);
+                              if (valid) {
+                                const withHash = hex.startsWith("#") ? hex : `#${hex}`;
+                                return { backgroundColor: withHash };
+                              }
+                              return { backgroundImage: "repeating-linear-gradient(45deg, #ddd 0 4px, #fafafa 4px 8px)" };
+                            })()}
                           />
                           <div className="min-w-0">
                             <div className="font-medium text-ppp-charcoal">{color.name}</div>
@@ -1576,6 +1586,12 @@ function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
     inFlight.current = true;
     setLoading(true);
     setError(null);
+    // Reserve the popup BEFORE awaiting fetch. Browsers (especially Safari)
+    // block window.open() called after an await because the call is no longer
+    // tied to the user gesture. Opening about:blank synchronously inside the
+    // click, then redirecting once we have the URL, keeps the popup allowed.
+    // Audit-flagged 2026-06-04.
+    const win = window.open("about:blank", "_blank", "noopener,noreferrer");
     try {
       const res = await fetch("/api/admin/customer-form/preview", {
         method: "POST",
@@ -1584,13 +1600,18 @@ function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
       });
       const data = await res.json();
       if (!res.ok || data.ok === false) {
+        if (win) win.close();
         setError(data.message ?? data.error ?? `HTTP ${res.status}`);
         return;
       }
-      // Open in a new tab. Browsers may block the popup if we're too far from
-      // the click — but this is the click handler so allow-listed by default.
-      window.open(data.formUrl, "_blank", "noopener,noreferrer");
+      if (win) {
+        win.location.href = data.formUrl;
+      } else {
+        // Browser blocked the popup. Surface the URL so admin can copy it.
+        setError(`Popup blocked — open this URL manually: ${data.formUrl}`);
+      }
     } catch (err) {
+      if (win) win.close();
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);

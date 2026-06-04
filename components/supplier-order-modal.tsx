@@ -211,6 +211,12 @@ export default function SupplierOrderModal({
           // body" hint + Reset button lets the user pull in fresh extras
           // when they're ready.
           setDraft(data.draft as Draft);
+          // Gallon-quantity overrides are tied to the SPECIFIC draft.body
+          // string. When the body refreshes (admin toggled an extra), the
+          // line is back to the original estimate so the override is stale.
+          // Clear the Map so the +/- "edited" badge doesn't lie about the
+          // current body state (audit-flagged 2026-06-04).
+          setQuantityOverrides(new Map());
         }
       } catch (err) {
         if (!cancelled) {
@@ -308,28 +314,41 @@ export default function SupplierOrderModal({
     const oldPrefix = formatPrefix(cur.buckets, cur.cans);
     const newPrefix = formatPrefix(nextBuckets, nextCans);
 
-    // Try to update the body line for this color. Match by color NAME (regex-
-    // escaped) so manual edits to the suffix (e.g., admin added "(2 coats)") don't
-    // break the find. The leading whitespace + dash separator is preserved.
+    // Try to update the body line for this color. The format the builder
+    // emits per color line is:
+    //   `  <qty> — <colorName>[ <colorCode>][ · <finish>][ (<surfaces>)][ (PPP to confirm quantity)]`
+    // We match by color name AND (when present) finish + colorCode, so two
+    // entries with the same color but different finishes don't collide
+    // (audit-flagged 2026-06-04). Escape every regex metacharacter
+    // including `/` and backticks. Then capture the trailing rest-of-line
+    // (after the name + optional finish) so we can preserve it AND
+    // re-attach (or strip) the "(PPP to confirm quantity)" suffix based on
+    // whether the new quantity is 0.
+    const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\/`]/g, "\\$&");
     const currentBody = editedBody ?? draft?.body ?? "";
-    const escapedName = e.colorName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Match a line that starts with the indent, has SOME quantity (`Xg`,
-    // `Xbucket`, `___`, or just blanks), an em-dash, then the color name.
+    const escapedName = escapeRe(e.colorName);
+    const escapedFinish = e.finish ? escapeRe(e.finish) : "";
+    // The full "— <discriminator>" suffix that identifies THIS specific line.
+    // Includes finish when present to disambiguate same-name-different-finish.
+    const discriminator = escapedFinish
+      ? `${escapedName}[^\\n]*?·\\s*${escapedFinish}`
+      : escapedName;
     const lineRe = new RegExp(
-      `^([ \\t]*)(?:[0-9]+\\s+bucket[^—]*|[0-9]+\\s+gal(?:[^—]*?)|___)\\s*—\\s*(${escapedName})`,
+      `^([ \\t]*)(?:[0-9]+\\s+bucket[^—]*|[0-9]+\\s+gal(?:[^—]*?)|___)\\s*—\\s*(${discriminator}[^\\n]*?)(\\s*\\(PPP to confirm quantity\\))?$`,
       "m"
     );
     let bodyUpdated = false;
-    const newBody = currentBody.replace(lineRe, (_match, indent: string, name: string) => {
+    const newBody = currentBody.replace(lineRe, (_match, indent: string, restOfLine: string) => {
       bodyUpdated = true;
-      // Build the trailing "(PPP to confirm quantity)" if quantity is zero,
-      // dropping it when set. Keep the rest of the line (the original ${name}
-      // ${code} ${finish} ${where} part) — we only swap the prefix and the
-      // "PPP to confirm" suffix below.
-      return `${indent}${newPrefix} — ${name}`;
+      // When we drop to zero, re-attach the "(PPP to confirm quantity)"
+      // marker so the vendor sees the same prompt the original empty
+      // estimate would have produced. When raising back above zero, drop it.
+      const isZero = nextBuckets === 0 && nextCans === 0;
+      const suffix = isZero ? " (PPP to confirm quantity)" : "";
+      return `${indent}${newPrefix} — ${restOfLine}${suffix}`;
     });
     if (!bodyUpdated) {
-      console.warn(`[supplier-order-modal] couldn't find body line for "${e.colorName}" — admin may have manually edited it. Override badge updated, but body text not changed.`);
+      console.warn(`[supplier-order-modal] couldn't find body line for "${e.colorName}${e.finish ? ` · ${e.finish}` : ""}" — admin may have manually edited it. Override badge updated, but body text not changed.`);
     }
     setEditedBody(bodyUpdated ? newBody : currentBody);
 

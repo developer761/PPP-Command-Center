@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { decideWriteback } from "@/lib/customer-form/writeback-mode";
+import { isHiddenWoliStatus } from "@/lib/customer-form/woli-status";
 
 /**
  * Live-from-Salesforce fetch for a single WO's customer-form context. NOT
@@ -109,19 +110,8 @@ const WOLI_FIELDS = [
   "ColorNotes__c", "SortOrder__c", "LastModifiedDate",
 ];
 
-/** WOLI statuses the customer should NEVER see on the form. Anything else
- *  (New, In Progress, On Hold, both Pending Approval - ADD, blank/null) gets
- *  shown so the customer can pick colors. Katie 2026-06-03: at minimum
- *  Canceled must be excluded. We're a little broader — also drop Completed /
- *  Closed / Cannot Complete / Pending REMOVE because those rooms aren't going
- *  to be repainted in this engagement either. */
-const HIDDEN_WOLI_STATUSES = new Set<string>([
-  "Canceled",
-  "Completed",
-  "Closed",
-  "Cannot Complete",
-  "Pending Approval - REMOVE",
-]);
+// HIDDEN_WOLI_STATUSES + isHiddenWoliStatus live in lib/customer-form/woli-status.ts
+// so this filter and the snapshot loader's filter can never drift.
 
 export async function loadFormRenderData(
   workOrderId: string,
@@ -174,15 +164,10 @@ export async function loadFormRenderData(
     const woliResult = await conn.query<Record<string, unknown>>(woliQuery);
 
     const lineItems: FormLineItem[] = woliResult.records
-      // Filter Canceled / Completed / Closed / Cannot Complete / Pending REMOVE
-      // BEFORE mapping so the customer never sees those rooms. Status null /
-      // empty is allowed (treated as "New"-equivalent) so older orgs that
-      // don't populate the field still show every line item.
-      .filter((r) => {
-        const status = typeof r.Status === "string" ? r.Status.trim() : "";
-        if (!status) return true;
-        return !HIDDEN_WOLI_STATUSES.has(status);
-      })
+      // Hide Canceled / Completed / Closed / Cannot Complete / Pending REMOVE
+      // BEFORE mapping. Uses the shared filter so this surface stays in
+      // lockstep with the materials view's snapshot filter.
+      .filter((r) => !isHiddenWoliStatus(typeof r.Status === "string" ? r.Status : null))
       .map((r) => {
         const surfacesRaw = typeof r.Surfaces__c === "string" ? (r.Surfaces__c as string) : "";
         const surfaces = surfacesRaw
