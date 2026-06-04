@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { validateToken, markSubmitted, markResubmitted } from "@/lib/customer-form/tokens";
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
 import { writeSfBatch, type SfWriteAttempt } from "@/lib/salesforce/writeback";
+import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 
 /**
  * Customer form submit handler.
@@ -135,6 +136,26 @@ export async function POST(
     return NextResponse.json({ error: "locked", message: "The window to change your colors has closed. Please reply to PPP if you still need a change." }, { status: 409 });
   }
   const isReedit = status.kind === "editable";
+
+  // PREVIEW MODE — admin opened this from materials view to test the form.
+  // Skip submission marking + SF writes entirely, return success so the UI
+  // shows the thank-you page. Multiple preview submits are allowed
+  // (audience: admin, exploring). No customer data is altered.
+  if (status.token.kind === "preview") {
+    console.log(`[customer-form] preview submit accepted for token ${tokenFromUrl.slice(0, 8)}… (skipping SF writes + submission stamping)`);
+    return NextResponse.json({
+      ok: true,
+      preview: true,
+      reedited: false,
+      orderAlreadyPlaced: false,
+      writes: 0,
+      writesAttempted: 0,
+      writesSucceeded: 0,
+      writeSkippedReason: "Preview mode — submission accepted but no Salesforce write performed.",
+      writebackMode: "off" as const,
+      workOrderNumber: status.token.work_order_number,
+    });
+  }
 
   // 2. Fresh re-fetch + drift detection. throwOnError lets us tell a transient
   // Salesforce outage from a genuinely-removed WO: a blip must NOT tell the
@@ -312,15 +333,27 @@ export async function POST(
     }
   }
 
-  // 5. Fire the SF writes.
+  // 5. Fire the SF writes — gated by the writeback safety mode (migration 015).
+  // Katie 2026-06-03: during the testing phase we only write to test WOs.
+  const decision = await decideWriteback(status.token.work_order_id);
+  let writesAttempted = 0;
+  let writesSucceeded = 0;
+  let writeSkippedReason: string | null = null;
   if (runWrites && attempts.length > 0) {
-    const writeResults = await writeSfBatch(attempts, {
-      source: "customer_form_submit",
-      triggeredByToken: tokenFromUrl,
-    });
-    const failed = writeResults.filter((r) => !r.ok);
-    if (failed.length > 0) {
-      console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl.slice(0, 8)}…:`, failed);
+    if (!decision.shouldWrite) {
+      writeSkippedReason = decision.reason;
+      console.log(`[customer-form] SF writes SKIPPED for WO ${status.token.work_order_id.slice(0, 8)}… (mode=${decision.mode}, inAllowlist=${decision.isInAllowlist}): ${decision.reason}`);
+    } else {
+      writesAttempted = attempts.length;
+      const writeResults = await writeSfBatch(attempts, {
+        source: "customer_form_submit",
+        triggeredByToken: tokenFromUrl,
+      });
+      writesSucceeded = writeResults.filter((r) => r.ok).length;
+      const failed = writeResults.filter((r) => !r.ok);
+      if (failed.length > 0) {
+        console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl.slice(0, 8)}…:`, failed);
+      }
     }
   }
 
@@ -334,6 +367,10 @@ export async function POST(
     reedited: isReedit,
     orderAlreadyPlaced,
     writes: attempts.length,
+    writesAttempted,
+    writesSucceeded,
+    writeSkippedReason,
+    writebackMode: decision.mode,
     workOrderNumber: fresh.workOrderNumber,
   });
 }

@@ -92,6 +92,10 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
     thankyouBody: render(templates.form_thankyou_body, vars),
   };
 
+  // Preview tokens render the same form but with banner + a no-op submit.
+  // Admin generated this from the Materials page to test the flow.
+  const isPreview = status.token.kind === "preview";
+
   return (
     <CustomerFormShell>
       <CustomerFormView
@@ -101,6 +105,7 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
         copy={copy}
         isEditing={isEditing}
         priorSubmission={priorSubmission}
+        isPreview={isPreview}
       />
     </CustomerFormShell>
   );

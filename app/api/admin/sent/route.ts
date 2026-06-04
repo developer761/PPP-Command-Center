@@ -111,8 +111,13 @@ export async function GET(request: Request) {
 
     let tokenQuery = sb
       .from("customer_form_tokens")
-      .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, resend_message_id_invite")
+      .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, delivery_status, opened_at, submitted_at, resend_message_id_invite, kind")
       .not("sent_at", "is", null)
+      // Exclude preview tokens — they shouldn't show as "sent emails" in
+      // Mail Hub (admin spun them up to test, no real email went out).
+      // Uses Supabase's OR(kind.is.null,kind.neq.preview) so legacy rows
+      // without the `kind` column populated still show up.
+      .or("kind.is.null,kind.neq.preview")
       .order("sent_at", { ascending: false })
       .limit(limit);
     if (workOrderId) tokenQuery = tokenQuery.eq("work_order_id", workOrderId);

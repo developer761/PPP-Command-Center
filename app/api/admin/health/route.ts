@@ -311,6 +311,68 @@ export async function GET() {
     });
   }
 
+  // ── Customer-form Salesforce writeback MODE (migration 015) ──────────
+  // Surfaces the current writeback gate so admin can see at a glance:
+  //   - mode='test_only' (default) — only WOs on allowlist write back
+  //   - mode='all'                  — production: every WO writes back
+  //   - mode='off'                  — disabled: nothing writes back
+  try {
+    const sb = adminClient();
+    const [{ data: modeRow }, { count: allowlistCount }] = await Promise.all([
+      sb
+        .from("customer_form_writeback_settings")
+        .select("mode, updated_at, updated_by")
+        .eq("key", "global")
+        .maybeSingle(),
+      sb
+        .from("customer_form_writeback_allowlist")
+        .select("work_order_id", { count: "exact", head: true }),
+    ]);
+    const mode = (modeRow?.mode as string | undefined) ?? "test_only";
+    const count = allowlistCount ?? 0;
+    if (mode === "all") {
+      checks.push({
+        id: "writeback_mode",
+        label: "Customer-form Salesforce writeback mode",
+        status: "ok",
+        group: "platform",
+        message: `Production mode — every customer-form submission writes to Salesforce. Allowlist is ignored in this mode.`,
+      });
+    } else if (mode === "off") {
+      checks.push({
+        id: "writeback_mode",
+        label: "Customer-form Salesforce writeback mode",
+        status: "warn",
+        group: "platform",
+        message: `Writeback is DISABLED — customer submissions save in Command Center but no data flows to Salesforce. Flip mode to 'test_only' or 'all' when ready.`,
+        fix: "UPDATE customer_form_writeback_settings SET mode='all' WHERE key='global'; (production) or 'test_only' (allowlist gating).",
+      });
+    } else {
+      // test_only
+      checks.push({
+        id: "writeback_mode",
+        label: "Customer-form Salesforce writeback mode",
+        status: count === 0 ? "warn" : "ok",
+        group: "platform",
+        message: count === 0
+          ? `Test mode is on but the allowlist is empty — NO work orders are currently writing to Salesforce. Add WO ids to customer_form_writeback_allowlist or flip mode to 'all' for production.`
+          : `Test mode — only ${count} work order${count === 1 ? "" : "s"} on the allowlist write back to Salesforce. All other submissions save in Command Center only.`,
+        fix: count === 0
+          ? "INSERT INTO customer_form_writeback_allowlist (work_order_id, label) VALUES ('0WO...', 'Katie test'); or flip mode to 'all' when ready for production."
+          : undefined,
+      });
+    }
+  } catch (err) {
+    checks.push({
+      id: "writeback_mode",
+      label: "Customer-form Salesforce writeback mode",
+      status: "warn",
+      group: "platform",
+      message: `Couldn't read writeback settings (migration 015 may not be applied): ${err instanceof Error ? err.message : String(err)}`,
+      fix: "Paste supabase/migrations/015_customer_form_writeback_safety.sql into the Supabase SQL editor + run.",
+    });
+  }
+
   // ── Salesforce writeback health — last 30 days customer-form submits ──
   // Katie 2026-06-03 raised a concern that customer-form colors weren't
   // landing in Salesforce. Every WOLI write fires through writeSfBatch and

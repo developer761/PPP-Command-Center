@@ -41,6 +41,10 @@ export type CustomerFormToken = {
   woli_snapshot_at: string | null;
   customer_ip: string | null;
   customer_user_agent: string | null;
+  /** Token classification. NULL = standard invite (legacy + default).
+   *  "preview" = admin-generated preview link; skips Mail Hub Sent, skips
+   *  SF writeback on submit, can be used multiple times. */
+  kind: string | null;
 };
 
 function adminClient() {
@@ -71,6 +75,10 @@ export async function createToken(input: {
   created_by_user_id?: string | null;
   expiresInDays?: number; // default 30 — used only when expiresAt isn't given
   expiresAt?: string;      // explicit ISO expiry (e.g. 24h before WO start). Wins over expiresInDays.
+  /** Token kind. Null/undefined = standard customer invite. "preview" =
+   *  admin generating a preview link to test the form without sending an
+   *  email or creating real submission state. Migration 015 added the column. */
+  kind?: string | null;
 }): Promise<{ token: string } | { error: string }> {
   const token = generateToken();
   const expiresInDays = input.expiresInDays ?? 30;
@@ -78,7 +86,10 @@ export async function createToken(input: {
     input.expiresAt ?? new Date(Date.now() + expiresInDays * 86_400_000).toISOString();
 
   const sb = adminClient();
-  const { error } = await sb.from("customer_form_tokens").insert({
+  // Try the rich INSERT first (with the new `kind` column). If migration 015
+  // hasn't been applied yet the column won't exist — fall back to the
+  // pre-015 shape so admin can still send standard invites.
+  const richRow = {
     token,
     work_order_id: input.work_order_id,
     work_order_number: input.work_order_number ?? null,
@@ -87,7 +98,14 @@ export async function createToken(input: {
     account_id: input.account_id ?? null,
     created_by_user_id: input.created_by_user_id ?? null,
     expires_at,
-  });
+    kind: input.kind ?? null,
+  };
+  let { error } = await sb.from("customer_form_tokens").insert(richRow);
+  if (error && /kind/i.test(error.message)) {
+    console.warn("[customer-form] createToken: kind column missing (run migration 015) — falling back");
+    const { kind: _drop, ...legacyRow } = richRow;
+    ({ error } = await sb.from("customer_form_tokens").insert(legacyRow));
+  }
   if (error) {
     console.error("[customer-form] createToken failed:", error.message);
     return { error: error.message };

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSalesforceClient } from "@/lib/salesforce/client";
+import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 
 /**
  * Live-from-Salesforce fetch for a single WO's customer-form context. NOT
@@ -81,6 +82,15 @@ export type FormRenderData = {
     city: string | null;
     state: string | null;
     postalCode: string | null;
+  };
+  /** Customer-form SF writeback safety state (migration 015). Lets the form
+   *  show a banner explaining that this WO's data will OR won't propagate
+   *  back to Salesforce — important during Katie's testing phase where only
+   *  WOs on the allowlist write back. */
+  writeback: {
+    mode: "test_only" | "all" | "off";
+    shouldWrite: boolean;
+    isInAllowlist: boolean;
   };
 };
 
@@ -257,6 +267,10 @@ export async function loadFormRenderData(
         state: oppAccount?.BillingState ?? null,
         postalCode: oppAccount?.BillingPostalCode ?? null,
       },
+      writeback: await (async () => {
+        const d = await decideWriteback(w.Id as string);
+        return { mode: d.mode, shouldWrite: d.shouldWrite, isInAllowlist: d.isInAllowlist };
+      })(),
     };
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);

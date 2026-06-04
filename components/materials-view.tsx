@@ -1525,6 +1525,78 @@ function SendReminderButton({ token }: { token: string }) {
   );
 }
 
+/* ─── Preview Color Form button (admin opens form without sending email) ─── */
+
+/**
+ * Admin "Preview" button — opens the customer color form in a new tab so
+ * Katie / Alex can see exactly what the customer will see. Generates a
+ * kind="preview" token via /api/admin/customer-form/preview. The preview
+ * token doesn't fire an email, doesn't show in Mail Hub Sent, and any
+ * submit through it is a no-op (no SF writes). 24-hour expiry.
+ */
+function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
+
+  // Auto-clear error toast after 4s so it doesn't sit forever.
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 4000);
+    return () => clearTimeout(t);
+  }, [error]);
+
+  const onClick = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/customer-form/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        setError(data.message ?? data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      // Open in a new tab. Browsers may block the popup if we're too far from
+      // the click — but this is the click handler so allow-listed by default.
+      window.open(data.formUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+      inFlight.current = false;
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={loading}
+        title="Open the customer color form in a new tab as a preview — no email is sent and nothing is saved to Salesforce. Useful for testing without touching real data."
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+        {loading ? "Opening…" : "Preview"}
+      </button>
+      {error && (
+        <div className="text-[11px] text-ppp-orange-700 max-w-[18rem]" role="alert">
+          Preview failed: {error}
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ─── Send Color Form button (Phase 2 — Customer Color Form trigger) ─── */
 
 function SendColorFormButton({
@@ -1644,16 +1716,22 @@ function SendColorFormButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
-        </svg>
-        Send Color Form
-      </button>
+      <div className="inline-flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
+          </svg>
+          Send Color Form
+        </button>
+        {/* Preview opens the same form in a new tab so admin can see exactly
+            what the customer will see, without sending an email or affecting
+            any submission state. */}
+        <PreviewColorFormButton workOrderId={workOrderId} />
+      </div>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
