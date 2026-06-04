@@ -28,6 +28,18 @@ const BOOTSTRAP_ADMIN_EMAILS = [
   "katie.batilla@precisionpaintingplus.net",
   "kbatilla@precisionpaintingplus.com",
   "kbatilla@precisionpaintingplus.net",
+  // Jeremy Meyer (added per Katie 2026-05-28 — "Users who should get the
+  // full admin access: Alex, Jeremy Meyer, Kate Sutton, me"). Multiple
+  // email variants since PPP isn't standardized on .com vs .net or on
+  // jeremy.meyer vs jmeyer vs j.meyer — list everything that could ring.
+  "jeremy@precisionpaintingplus.com",
+  "jeremy@precisionpaintingplus.net",
+  "jeremy.meyer@precisionpaintingplus.com",
+  "jeremy.meyer@precisionpaintingplus.net",
+  "jmeyer@precisionpaintingplus.com",
+  "jmeyer@precisionpaintingplus.net",
+  "j.meyer@precisionpaintingplus.com",
+  "j.meyer@precisionpaintingplus.net",
 ];
 
 /** Normalize an email for comparison: lowercase + trim. */
