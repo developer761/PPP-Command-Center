@@ -585,9 +585,13 @@ function formatPlacementBlock(items: SupplierOrderLineItem[]): string {
 }
 
 function formatExtrasBlock(extras: SupplierOrderExtra[]): string {
-  if (extras.length === 0) return "";
+  // Filter qty <= 0 first — an extra with qty 0 reads as garbage to the vendor
+  // ("- Painter's Tape × 0") and shouldn't have made the array in the first
+  // place, but guard here too so a stale draft can't ship a confusing line.
+  const visible = extras.filter((e) => e.qty > 0);
+  if (visible.length === 0) return "";
   const lines = ["EXTRAS (added by PPP worker)"];
-  for (const e of extras) {
+  for (const e of visible) {
     lines.push(`- ${e.name} × ${e.qty}${e.unit && e.unit !== "each" ? ` ${e.unit}` : ""}`);
   }
   return lines.join("\n");
@@ -608,8 +612,14 @@ function formatFulfillmentBlock(
 }
 
 function readableDate(iso: string): string {
+  // Empty or whitespace input (no date set yet) → "TBD" rather than a blank
+  // gap in the email — vendors otherwise wonder if the line broke.
+  if (!iso || !iso.trim()) return "TBD — please confirm";
   const d = new Date(iso + "T00:00:00Z");
-  if (isNaN(d.getTime())) return iso;
+  // Bad date string (typo'd month, garbage from a custom field) — surface
+  // "(invalid date)" instead of the raw ISO so a worker proofreading the
+  // draft sees something's wrong rather than letting a malformed date ride.
+  if (isNaN(d.getTime())) return `(invalid date: ${iso})`;
   return d.toLocaleDateString("en-US", {
     weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
   });

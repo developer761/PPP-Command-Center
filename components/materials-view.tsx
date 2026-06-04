@@ -653,6 +653,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                                   ? "text-ppp-orange-700 font-semibold"
                                   : r.tone === "urgent"
                                   ? "text-ppp-orange-700"
+                                  : r.tone === "soon"
+                                  ? "text-ppp-blue-700"
                                   : "";
                               return (
                                 <>
@@ -1452,7 +1454,7 @@ function FormStatusBadge({ status }: { status: FormStatus | undefined }) {
  *  values agree (no hydration mismatch flicker for non-UTC users). The
  *  precision loss vs. "feels like local time" near midnight is acceptable
  *  for a day-granular urgency display. */
-function formatRelativeCloseDate(iso: string): { label: string; tone: "normal" | "urgent" | "overdue" } {
+function formatRelativeCloseDate(iso: string): { label: string; tone: "normal" | "soon" | "urgent" | "overdue" } {
   // Parse the close date as UTC midnight (Z suffix), matching how SF stores
   // date-only values. Comparing to UTC-midnight-of-today on both sides means
   // SSR + hydration always see the same diffDays — no flicker.
@@ -1465,7 +1467,11 @@ function formatRelativeCloseDate(iso: string): { label: string; tone: "normal" |
   if (diffDays === 0) return { label: "today", tone: "urgent" };
   if (diffDays === 1) return { label: "tomorrow", tone: "urgent" };
   if (diffDays <= 7) return { label: `in ${diffDays}d`, tone: "urgent" };
-  if (diffDays <= 14) return { label: `in ${diffDays}d`, tone: "normal" };
+  // Days 8-14: still close enough that the materials worker should notice
+  // ("soon" tone — softer than urgent, not a plain timestamp). Audit fix
+  // 2026-06-04: round-2 agent flagged that "in 8d" was visually identical to
+  // "in 11mo" which buried jobs that need ordering this week.
+  if (diffDays <= 14) return { label: `in ${diffDays}d`, tone: "soon" };
   if (diffDays <= 30) return { label: `in ${Math.round(diffDays / 7)}w`, tone: "normal" };
   if (diffDays <= 365) return { label: `in ${Math.round(diffDays / 30)}mo`, tone: "normal" };
   return { label: iso, tone: "normal" };

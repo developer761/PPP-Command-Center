@@ -112,6 +112,36 @@ export async function POST(request: Request) {
         }, { status: 409 });
       }
 
+      // Extend the expiry so the customer gets a fresh 24h to respond, even
+      // if the original token was about to die (audit 2026-06-04: a resend
+      // that buys the customer 30 minutes is worse than no resend at all).
+      // Cap at the original natural cutoff (24h before WO start) — never
+      // re-extend past the rep's deadline. When `original` is already past
+      // "now + 24h" (plenty of time left), keep it unchanged to avoid the
+      // pointless write.
+      const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+      const desiredExpiry = Date.now() + ONE_DAY_MS;
+      const originalExpiry = row.expires_at ? new Date(row.expires_at).getTime() : 0;
+      const cappedExpiry = originalExpiry > 0 ? Math.min(desiredExpiry, originalExpiry) : desiredExpiry;
+      let extendedExpiresAt: string | null = null;
+      if (originalExpiry === 0 || cappedExpiry > originalExpiry) {
+        // Safe to extend — either no expiry on file (legacy row) or the
+        // computed cap is later than what's stored (customer was losing time
+        // off the front of the window). Push the row forward.
+        const newIso = new Date(cappedExpiry).toISOString();
+        const { error: updateErr } = await sb
+          .from("customer_form_tokens")
+          .update({ expires_at: newIso })
+          .eq("token", row.token);
+        if (updateErr) {
+          // Don't fail the resend — log + continue with stale expiry. The
+          // customer still gets the email; only the cutoff display is off.
+          console.warn(`[resend] couldn't extend expires_at for token ${row.token.slice(0, 8)}…:`, updateErr.message);
+        } else {
+          extendedExpiresAt = newIso;
+        }
+      }
+
       const baseUrl =
         process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
         new URL(request.url).origin;
@@ -142,6 +172,8 @@ export async function POST(request: Request) {
         kind: "form_invite",
         resendMessageId: send.id,
         formUrl,
+        expiresAt: extendedExpiresAt ?? row.expires_at,
+        expiryExtended: extendedExpiresAt !== null,
       });
     }
 
