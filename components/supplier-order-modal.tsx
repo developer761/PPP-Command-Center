@@ -110,6 +110,13 @@ export default function SupplierOrderModal({
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [extras, setExtras] = useState<Map<string, SelectedExtra>>(new Map());
   const [editedBody, setEditedBody] = useState<string | null>(null); // null = use draft.body unchanged
+  // Per-color quantity overrides — Katie 2026-06-03 wanted +/- buttons to
+  // tweak the recommended gallon count before sending. Keyed by
+  // colorId + finish so different finishes of the same color stay separate.
+  // When non-empty, replaces the matching line in the email body via a
+  // narrow regex (matches by color name + code + finish + surfaces — admin
+  // can still edit the body manually). Cleared on draft refetch.
+  const [quantityOverrides, setQuantityOverrides] = useState<Map<string, { buckets: number; cans: number }>>(new Map());
 
   // Extras catalog
   const [catalog, setCatalog] = useState<ExtraCatalogItem[]>([]);
@@ -262,6 +269,85 @@ export default function SupplierOrderModal({
   };
 
   const bodyToSend = editedBody ?? draft?.body ?? "";
+
+  /**
+   * Per-color gallon +/- handler. Updates the override Map AND rewrites
+   * the matching line in the email body so the supplier sees the new
+   * quantity. Triple-guard against silent corruption:
+   *
+   *   1. Cap final cans at 0..99 — prevents typo-tornado of 999 gallons
+   *   2. Find the line by escaping the color name (regex-safe) + matching
+   *      the standard prefix the builder emits (`  Xg — ` / `  X bucket — `
+   *      / `  ___ — `). If we can't find the line, the body might have been
+   *      manually edited — surface a console warning + skip the body
+   *      rewrite (override still updates the visible badge).
+   *   3. Reset=true clears the override + restores the original line in
+   *      the body via the same find-replace.
+   */
+  function adjustQuantity(
+    e: { colorId: string; colorName: string; colorCode: string | null; finish: string | null; surfaces: string[]; buckets: number; cans: number },
+    delta: number,
+    reset?: boolean,
+  ) {
+    const key = `${e.colorId}::${e.finish ?? ""}`;
+    const cur = quantityOverrides.get(key) ?? { buckets: e.buckets, cans: e.cans };
+    const curTotalCans = cur.buckets * 5 + cur.cans;
+    let nextTotalCans = reset ? e.buckets * 5 + e.cans : Math.max(0, Math.min(99, curTotalCans + delta));
+    const nextBuckets = Math.floor(nextTotalCans / 5);
+    const nextCans = nextTotalCans % 5;
+
+    // Build the "old" + "new" quantity prefixes so we can swap them in the
+    // email body. Mirrors estimate-gallons.ts formatOrderQuantity().
+    const formatPrefix = (buckets: number, cans: number) => {
+      if (buckets === 0 && cans === 0) return "___";
+      const parts: string[] = [];
+      if (buckets > 0) parts.push(`${buckets} bucket${buckets === 1 ? "" : "s"} (×5 gal)`);
+      if (cans > 0) parts.push(`${cans} gal`);
+      return parts.join(" + ");
+    };
+    const oldPrefix = formatPrefix(cur.buckets, cur.cans);
+    const newPrefix = formatPrefix(nextBuckets, nextCans);
+
+    // Try to update the body line for this color. Match by color NAME (regex-
+    // escaped) so manual edits to the suffix (e.g., admin added "(2 coats)") don't
+    // break the find. The leading whitespace + dash separator is preserved.
+    const currentBody = editedBody ?? draft?.body ?? "";
+    const escapedName = e.colorName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Match a line that starts with the indent, has SOME quantity (`Xg`,
+    // `Xbucket`, `___`, or just blanks), an em-dash, then the color name.
+    const lineRe = new RegExp(
+      `^([ \\t]*)(?:[0-9]+\\s+bucket[^—]*|[0-9]+\\s+gal(?:[^—]*?)|___)\\s*—\\s*(${escapedName})`,
+      "m"
+    );
+    let bodyUpdated = false;
+    const newBody = currentBody.replace(lineRe, (_match, indent: string, name: string) => {
+      bodyUpdated = true;
+      // Build the trailing "(PPP to confirm quantity)" if quantity is zero,
+      // dropping it when set. Keep the rest of the line (the original ${name}
+      // ${code} ${finish} ${where} part) — we only swap the prefix and the
+      // "PPP to confirm" suffix below.
+      return `${indent}${newPrefix} — ${name}`;
+    });
+    if (!bodyUpdated) {
+      console.warn(`[supplier-order-modal] couldn't find body line for "${e.colorName}" — admin may have manually edited it. Override badge updated, but body text not changed.`);
+    }
+    setEditedBody(bodyUpdated ? newBody : currentBody);
+
+    // Update override Map. Reset removes the override entirely so the row
+    // shows no "edited" badge.
+    setQuantityOverrides((prev) => {
+      const next = new Map(prev);
+      if (reset) {
+        next.delete(key);
+      } else if (nextBuckets === e.buckets && nextCans === e.cans) {
+        // Adjusted back to the original estimate — clear the override too
+        next.delete(key);
+      } else {
+        next.set(key, { buckets: nextBuckets, cans: nextCans });
+      }
+      return next;
+    });
+  }
 
   const handleCopy = async () => {
     try {
@@ -455,29 +541,78 @@ export default function SupplierOrderModal({
                         })()}
                       </div>
                       <ul className="divide-y divide-ppp-charcoal-100">
-                        {draft.gallonEstimates.map((e, i) => (
-                          <li key={`${e.colorId}-${e.finish ?? ""}-${i}`} className="flex items-center justify-between gap-3 px-4 py-2 text-xs">
-                            <div className="min-w-0">
-                              <span className="font-medium text-ppp-charcoal">{e.colorName}</span>
-                              {e.colorCode && <span className="text-ppp-charcoal-400 ml-1">{e.colorCode}</span>}
-                              {e.finish && <span className="text-ppp-charcoal-500"> · {e.finish}</span>}
-                              {e.surfaces.length > 0 && (
-                                <span className="text-[10px] text-ppp-charcoal-400 ml-1">({e.surfaces.join(", ")})</span>
+                        {draft.gallonEstimates.map((e, i) => {
+                          // Use the override when set, otherwise the estimate.
+                          // Key matches what we use in adjustQuantity below.
+                          const overrideKey = `${e.colorId}::${e.finish ?? ""}`;
+                          const override = quantityOverrides.get(overrideKey);
+                          const effective = override ?? { buckets: e.buckets, cans: e.cans };
+                          const hasOverride = !!override;
+                          const totalCans = effective.buckets * 5 + effective.cans;
+                          const displayQty = effective.buckets > 0 || effective.cans > 0
+                            ? formatOrderQuantity({ ...e, buckets: effective.buckets, cans: effective.cans })
+                            : "___ (PPP to confirm)";
+
+                          return (
+                            <li key={`${e.colorId}-${e.finish ?? ""}-${i}`} className="px-4 py-2 text-xs">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <span className="font-medium text-ppp-charcoal">{e.colorName}</span>
+                                  {e.colorCode && <span className="text-ppp-charcoal-400 ml-1">{e.colorCode}</span>}
+                                  {e.finish && <span className="text-ppp-charcoal-500"> · {e.finish}</span>}
+                                  {e.surfaces.length > 0 && (
+                                    <span className="text-[10px] text-ppp-charcoal-400 ml-1">({e.surfaces.join(", ")})</span>
+                                  )}
+                                </div>
+                                <div className="shrink-0 flex items-center gap-1.5">
+                                  {/* +/- buttons. Katie 2026-06-03 wanted to
+                                      tweak the recommended count before sending.
+                                      Cap 0-99 cans total (99 = 19 buckets + 4
+                                      cans). Below 0 disables minus; at 99
+                                      disables plus. */}
+                                  <button
+                                    type="button"
+                                    aria-label={`Decrease ${e.colorName} by one gallon`}
+                                    disabled={totalCans <= 0}
+                                    onClick={() => adjustQuantity(e, -1)}
+                                    className="h-6 w-6 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none"
+                                  >
+                                    −
+                                  </button>
+                                  <span
+                                    className={`font-semibold min-w-[5.5rem] text-right whitespace-nowrap ${(effective.buckets > 0 || effective.cans > 0) ? "text-ppp-charcoal" : "text-ppp-orange-700"}`}
+                                  >
+                                    {displayQty}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    aria-label={`Increase ${e.colorName} by one gallon`}
+                                    disabled={totalCans >= 99}
+                                    onClick={() => adjustQuantity(e, +1)}
+                                    className="h-6 w-6 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                              {hasOverride && (
+                                <div className="flex items-center justify-end gap-2 mt-1">
+                                  <span className="text-[10px] text-ppp-blue-700">edited from {formatOrderQuantity(e)}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => adjustQuantity(e, 0, /* reset */ true)}
+                                    className="text-[10px] text-ppp-blue-700 hover:underline"
+                                  >
+                                    reset
+                                  </button>
+                                </div>
                               )}
-                            </div>
-                            <span className="shrink-0 text-right whitespace-nowrap">
-                              <span className={`font-semibold ${(e.buckets > 0 || e.cans > 0) ? "text-ppp-charcoal" : "text-ppp-orange-700"}`}>
-                                {formatOrderQuantity(e)}
-                              </span>
-                              {/* Partially measured: has a quantity but a room
-                                  had no sqft, so this is an UNDER-count. Flag it
-                                  so the worker tops it up before sending. */}
-                              {e.needsMeasurement && (e.buckets > 0 || e.cans > 0) && (
-                                <span className="block text-[10px] font-normal text-ppp-orange-700">⚠ a room is unmeasured — may be low</span>
+                              {e.needsMeasurement && (effective.buckets > 0 || effective.cans > 0) && (
+                                <span className="block text-[10px] font-normal text-ppp-orange-700 mt-0.5 text-right">⚠ a room is unmeasured — may be low</span>
                               )}
-                            </span>
-                          </li>
-                        ))}
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   )}

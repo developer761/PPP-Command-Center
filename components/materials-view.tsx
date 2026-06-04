@@ -1249,30 +1249,55 @@ function DraftOrderModal({
               </div>
               <h4 className="text-sm font-semibold text-ppp-charcoal">Group by supplier → color → rooms</h4>
             </div>
-            {groups.map((g) => (
-              <div key={g.name} className="border border-ppp-charcoal-100 rounded-lg overflow-hidden">
-                <div className="px-3 py-2 bg-ppp-blue-50 border-b border-ppp-blue-100 flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.name}</span>
-                  <span className="shrink-0 text-[10px] text-ppp-charcoal-500">{g.colors.size} color{g.colors.size === 1 ? "" : "s"}</span>
-                </div>
-                <ul className="divide-y divide-ppp-charcoal-100 text-xs">
-                  {Array.from(g.colors.values()).map(({ color, rooms }) => (
-                    <li key={color.id} className="px-3 py-2 flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-medium text-ppp-charcoal">{color.name}</div>
-                        {color.code && (
-                          <div className="text-[10px] text-ppp-charcoal-500 font-mono">{color.code}</div>
-                        )}
-                      </div>
-                      <div className="text-right shrink-0 text-[11px] text-ppp-charcoal-500">
-                        {rooms.slice(0, 3).join(", ")}
-                        {rooms.length > 3 && ` +${rooms.length - 3} more`}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+            {groups.length === 0 ? (
+              // Katie 2026-06-03: "Preview Colors button displays a summary
+              // of the areas but no color info." Most common cause: customer
+              // hasn't submitted the form yet (so no Color__c values on the
+              // WOLIs). Now we surface that explicitly instead of showing
+              // an empty modal.
+              <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg p-4 text-xs text-ppp-orange-700">
+                <strong>No colors picked yet.</strong> The customer hasn&apos;t submitted the color form, or the WOLIs in Salesforce don&apos;t have ColorWall__c / ColorCeiling__c / etc. set. Send the color form (or wait for the customer&apos;s submission) to populate this view.
               </div>
-            ))}
+            ) : (
+              groups.map((g) => (
+                <div key={g.name} className="border border-ppp-charcoal-100 rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 bg-ppp-blue-50 border-b border-ppp-blue-100 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-ppp-blue-700 truncate">{g.name}</span>
+                    <span className="shrink-0 text-[10px] text-ppp-charcoal-500">{g.colors.size} color{g.colors.size === 1 ? "" : "s"}</span>
+                  </div>
+                  <ul className="divide-y divide-ppp-charcoal-100 text-xs">
+                    {Array.from(g.colors.values()).map(({ color, rooms }) => (
+                      <li key={color.id} className="px-3 py-2 flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex items-start gap-2">
+                          {/* Color swatch — falls back to a subtle stripe when
+                              hexValue isn't populated in Salesforce so the
+                              shape still reads as "this is a color." */}
+                          <span
+                            aria-hidden
+                            className="h-5 w-5 mt-0.5 rounded border border-ppp-charcoal-200 shrink-0"
+                            style={{
+                              backgroundColor: color.hexValue && /^#?[0-9a-f]{3,6}$/i.test(color.hexValue.trim())
+                                ? color.hexValue.startsWith("#") ? color.hexValue : `#${color.hexValue}`
+                                : "repeating-linear-gradient(45deg, #ddd 0 4px, #fafafa 4px 8px)",
+                            }}
+                          />
+                          <div className="min-w-0">
+                            <div className="font-medium text-ppp-charcoal">{color.name}</div>
+                            {color.code && (
+                              <div className="text-[10px] text-ppp-charcoal-500 font-mono">{color.code}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 text-[11px] text-ppp-charcoal-500">
+                          {rooms.slice(0, 3).join(", ")}
+                          {rooms.length > 3 && ` +${rooms.length - 3} more`}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
