@@ -167,13 +167,16 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
                   </div>
                 </div>
                 {/* Status transition buttons — only show valid next steps */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                {/* Mobile: action buttons wrap to their own row to keep each
+                    ≥40px tall (px-3 + py-2 = ~36px target). Desktop keeps
+                    the inline compact look. */}
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0 mt-2 sm:mt-0">
                   {(o.status === "sent") && (
                     <button
                       type="button"
                       onClick={() => transition(o.id, "acknowledged")}
                       disabled={isOpen}
-                      className="px-2.5 py-1 text-[11px] rounded border border-ppp-blue-100 bg-ppp-blue-50 text-ppp-blue-700 hover:bg-ppp-blue-100 disabled:opacity-50 transition-colors font-medium"
+                      className="px-3 py-2 sm:py-1 text-xs sm:text-[11px] rounded border border-ppp-blue-100 bg-ppp-blue-50 text-ppp-blue-700 hover:bg-ppp-blue-100 active:bg-ppp-blue-200 disabled:opacity-50 transition-colors font-medium touch-manipulation"
                       title="Supplier confirmed the order"
                     >
                       Mark acknowledged
@@ -184,7 +187,7 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
                       type="button"
                       onClick={() => transition(o.id, "delivered")}
                       disabled={isOpen}
-                      className="px-2.5 py-1 text-[11px] rounded border border-ppp-green-100 bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100 disabled:opacity-50 transition-colors font-medium"
+                      className="px-3 py-2 sm:py-1 text-xs sm:text-[11px] rounded border border-ppp-green-100 bg-ppp-green-50 text-ppp-green-700 hover:bg-ppp-green-100 active:bg-ppp-green-200 disabled:opacity-50 transition-colors font-medium touch-manipulation"
                       title="Materials arrived"
                     >
                       Mark delivered
@@ -199,7 +202,7 @@ export default function WoPastOrders({ workOrderId, refreshKey = 0 }: Props) {
                         }
                       }}
                       disabled={isOpen}
-                      className="px-2.5 py-1 text-[11px] rounded border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-orange-50 hover:text-ppp-orange-700 hover:border-ppp-orange-100 disabled:opacity-50 transition-colors font-medium"
+                      className="px-3 py-2 sm:py-1 text-xs sm:text-[11px] rounded border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-orange-50 hover:text-ppp-orange-700 hover:border-ppp-orange-100 active:bg-ppp-orange-100 disabled:opacity-50 transition-colors font-medium touch-manipulation"
                     >
                       Cancel
                     </button>

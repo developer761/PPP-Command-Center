@@ -354,7 +354,7 @@ export default function InboxView() {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="shrink-0 px-3 py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors"
+                className="shrink-0 px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 active:bg-ppp-orange-100 transition-colors touch-manipulation"
               >
                 Retry
               </button>
@@ -426,7 +426,7 @@ export default function InboxView() {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="shrink-0 px-3 py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 transition-colors"
+                className="shrink-0 px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-white text-xs font-semibold text-ppp-orange-700 hover:bg-ppp-orange-50 active:bg-ppp-orange-100 transition-colors touch-manipulation"
               >
                 Retry
               </button>
@@ -559,7 +559,7 @@ function MessageRow({
             <button
               type="button"
               onClick={onArchive}
-              className="px-3 py-1.5 rounded-lg border border-ppp-charcoal-100 text-xs font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+              className="px-3 py-2 sm:py-1.5 rounded-lg border border-ppp-charcoal-100 text-xs font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation"
             >
               Archive
             </button>
@@ -778,7 +778,7 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
               type="button"
               onClick={handleResend}
               disabled={resending}
-              className="px-3 py-1 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-[11px] font-semibold text-ppp-orange-700 hover:bg-ppp-orange-100 disabled:opacity-60 transition-colors"
+              className="px-3 py-2 sm:py-1 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-xs sm:text-[11px] font-semibold text-ppp-orange-700 hover:bg-ppp-orange-100 active:bg-ppp-orange-200 disabled:opacity-60 transition-colors touch-manipulation"
             >
               {resending ? "Re-sending…" : resendResult?.ok ? "Re-sent ✓" : "Re-send"}
             </button>
@@ -809,7 +809,7 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
                 href={message.formUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-1 rounded-lg border border-ppp-charcoal-100 bg-white text-[11px] font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+                className="px-3 py-2 sm:py-1 rounded-lg border border-ppp-charcoal-100 bg-white text-xs sm:text-[11px] font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation"
               >
                 Open form ↗
               </a>

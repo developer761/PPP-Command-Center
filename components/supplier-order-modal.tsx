@@ -495,7 +495,7 @@ export default function SupplierOrderModal({
             onClick={onClose}
             disabled={sending}
             aria-label="Close"
-            className="shrink-0 h-9 w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 transition-colors flex items-center justify-center disabled:opacity-50"
+            className="shrink-0 h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors flex items-center justify-center disabled:opacity-50 touch-manipulation"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 6l12 12 M18 6l-12 12" />
@@ -635,7 +635,7 @@ export default function SupplierOrderModal({
                                     aria-label={`Decrease ${e.colorName} by one gallon`}
                                     disabled={totalCans <= 0}
                                     onClick={() => adjustQuantity(e, -1)}
-                                    className="h-9 w-9 sm:h-7 sm:w-7 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:border-ppp-charcoal-200 disabled:cursor-not-allowed flex items-center justify-center text-lg sm:text-base leading-none"
+                                    className="h-11 w-11 sm:h-7 sm:w-7 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:border-ppp-charcoal-200 disabled:cursor-not-allowed flex items-center justify-center text-xl sm:text-base leading-none touch-manipulation"
                                   >
                                     −
                                   </button>
@@ -649,7 +649,7 @@ export default function SupplierOrderModal({
                                     aria-label={`Increase ${e.colorName} by one gallon`}
                                     disabled={totalCans >= 99}
                                     onClick={() => adjustQuantity(e, +1)}
-                                    className="h-9 w-9 sm:h-7 sm:w-7 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:border-ppp-charcoal-200 disabled:cursor-not-allowed flex items-center justify-center text-lg sm:text-base leading-none"
+                                    className="h-11 w-11 sm:h-7 sm:w-7 rounded border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:border-ppp-charcoal-200 disabled:cursor-not-allowed flex items-center justify-center text-xl sm:text-base leading-none touch-manipulation"
                                   >
                                     +
                                   </button>
@@ -761,7 +761,8 @@ export default function SupplierOrderModal({
                               value={deliveryAddr.city}
                               onChange={(e) => setDeliveryAddr((a) => ({ ...a, city: e.target.value }))}
                               placeholder="City"
-                              className="px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                              autoCapitalize="words"
+                              className="px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                             />
                             <input
                               type="text"
@@ -769,7 +770,9 @@ export default function SupplierOrderModal({
                               onChange={(e) => setDeliveryAddr((a) => ({ ...a, state: e.target.value }))}
                               placeholder="State"
                               maxLength={4}
-                              className="w-20 px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                              autoCapitalize="characters"
+                              autoCorrect="off"
+                              className="w-20 px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                             />
                             <input
                               type="text"
@@ -778,7 +781,8 @@ export default function SupplierOrderModal({
                               onChange={(e) => setDeliveryAddr((a) => ({ ...a, postalCode: e.target.value }))}
                               placeholder="ZIP"
                               maxLength={10}
-                              className="w-24 px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                              autoCorrect="off"
+                              className="w-24 px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                             />
                           </div>
                         </div>
@@ -789,11 +793,15 @@ export default function SupplierOrderModal({
                   {/* Extras dropdown */}
                   <Section title={`Extras (${extras.size} selected)`}>
                     <input
-                      type="text"
+                      type="search"
+                      inputMode="search"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       value={extrasSearch}
                       onChange={(e) => setExtrasSearch(e.target.value)}
                       placeholder="Search rollers / brushes / tape / …"
-                      className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue mb-3"
+                      className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue mb-3"
                     />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto">
                       {filteredCatalog.map((c) => {

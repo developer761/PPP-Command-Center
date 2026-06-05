@@ -849,7 +849,10 @@ function SurfaceRow({
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[110px_1fr_180px] gap-3 sm:items-start">
       <div className="flex items-center gap-2 sm:pt-2.5 justify-between sm:justify-start">
-        <div className="font-condensed text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+        {/* `truncate` + `min-w-0` so long surface labels ("Window Frame Trim
+            Exterior") don't push the skip button off-screen at 375px.
+            Round 4 mobile audit 2026-06-05. */}
+        <div className="font-condensed text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 truncate min-w-0">
           {surface}
         </div>
         {/* Skip toggle — small text button. When skipped, label changes to

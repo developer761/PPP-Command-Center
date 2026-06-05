@@ -90,8 +90,11 @@ export default function CustomersIndexView({
         </div>
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
+          {/* DESKTOP: 6-col table (≥640px). Hides on mobile because the table
+              would force horizontal scroll at 375px — workers were having to
+              swipe sideways to find the "Last activity" column. */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm">
               <thead className="bg-ppp-charcoal-50/40 text-[11px] font-semibold tracking-wide text-ppp-charcoal-500 uppercase">
                 <tr>
                   <th className="text-left px-5 py-2.5">Customer</th>
@@ -139,6 +142,62 @@ export default function CustomersIndexView({
               </tbody>
             </table>
           </div>
+
+          {/* MOBILE: card list (<640px). One card per customer with the
+              high-value fields surfaced and metadata stacked below. Each
+              card is a full-width tap target → customer detail page.
+              Round 4 mobile audit (2026-06-05) flagged the table's
+              min-w-[640px] as a horizontal-scroll trap. */}
+          <ul className="sm:hidden divide-y divide-ppp-charcoal-100">
+            {visible.slice(0, 200).map((c) => {
+              const href = c.accountId ? `/dashboard/customer/${encodeURIComponent(c.accountId)}` : null;
+              const isRepeat = c.oppCount > 1;
+              const inner = (
+                <div className="px-4 py-3 active:bg-ppp-charcoal-50/40 transition-colors min-h-[64px]">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm text-ppp-charcoal truncate">
+                          {c.name}
+                        </span>
+                        {isRepeat && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-blue-50 text-ppp-blue-700 border border-ppp-blue-100">
+                            Repeat
+                          </span>
+                        )}
+                      </div>
+                      {c.ownerName && (
+                        <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 truncate">
+                          {c.ownerName}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-semibold text-sm text-ppp-charcoal">
+                        {c.totalAmount > 0 ? fmtMoneyK(Math.round(c.totalAmount / 1000)) : "—"}
+                      </div>
+                      <div className="text-[10px] text-ppp-charcoal-500">
+                        {c.woCount} WO{c.woCount === 1 ? "" : "s"} · {c.oppCount} opp{c.oppCount === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                  </div>
+                  {c.lastActivity && (
+                    <div className="text-[11px] text-ppp-charcoal-500 mt-1.5">
+                      Last activity: {c.lastActivity}
+                    </div>
+                  )}
+                </div>
+              );
+              return (
+                <li key={`m::${c.accountId}::${c.name}`}>
+                  {href ? (
+                    <Link href={href} className="block">{inner}</Link>
+                  ) : inner}
+                </li>
+              );
+            })}
+          </ul>
+
           {visible.length > 200 && (
             <div className="px-5 py-3 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500 text-center">
               Showing first 200 of {visible.length}. Refine your search to see more.

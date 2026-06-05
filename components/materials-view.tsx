@@ -1878,10 +1878,14 @@ function SendColorFormButton({
                   </label>
                   <input
                     type="email"
+                    inputMode="email"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
                     placeholder={lookingUpEmail ? "Looking up from Salesforce…" : "customer@example.com"}
-                    className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                    className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                   />
                   {lookingUpEmail && (
                     <p className="text-[11px] text-ppp-charcoal-500 mt-1">Looking up the customer&apos;s email from Salesforce…</p>
@@ -1898,10 +1902,12 @@ function SendColorFormButton({
                   </label>
                   <input
                     type="text"
+                    autoCapitalize="words"
+                    autoCorrect="off"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder={accountName ?? "Customer or company name"}
-                    className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                    className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                   />
                 </div>
                 <div className="text-[11px] text-ppp-charcoal-500 italic">
