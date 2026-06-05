@@ -201,14 +201,24 @@ export async function POST(request: Request) {
     }
   }
 
-  // 2. PO number in subject? Format PPP-WO{wo_number}-{supplier_code}-{seq}.
-  // Structured regex with three bounded segments (alphanumeric WO, ALPHA-ONLY
-  // supplier code, DIGIT-ONLY seq) so the match can't span across two POs
-  // when both appear in the same subject. The previous form
-  // `/PPP-WO[A-Z0-9_\-]+/` greedily consumed hyphens, letting "PPP-WO123-BM-1
-  // and PPP-WO456-SW-2" match as a single bogus PO that threaded to no row.
+  // 2. PO number in subject? Match BOTH the new format (Katie 2026-06-05:
+  // `PPP-WO00284666` or `PPP-WO00284666-2`) AND the legacy format with
+  // supplier-code segment (`PPP-WO00284666-ABO-000123`) so supplier replies
+  // on old in-flight orders still thread correctly after the format change.
+  //
+  // Pattern, anchored to the WO core:
+  //   `PPP-WO`           literal
+  //   `[A-Z0-9]+`        WO number (alphanumeric, no internal hyphens)
+  //   `(?:-[A-Z]+-\d+)?` OPTIONAL legacy supplier-code + seq tail
+  //   `(?:-\d+)?`        OPTIONAL new-format collision suffix (-2, -3, …)
+  //
+  // The two optional tails are mutually exclusive in practice (an old PO
+  // always has the alpha tail; a new PO never does). Regex tries the longest
+  // match first so a legacy `PPP-WO123-ABO-1` doesn't accidentally truncate
+  // to `PPP-WO123`. The DB lookup is exact-match so any false alpha mass-up
+  // here just falls through to "unmatched" — no wrong thread.
   if (kind === "unmatched" && subject) {
-    const poMatch = subject.match(/PPP-WO[A-Z0-9]+-[A-Z]+-[0-9]+/i);
+    const poMatch = subject.match(/PPP-WO[A-Z0-9]+(?:-[A-Z]+-\d+)?(?:-\d+)?/i);
     if (poMatch) {
       const poNumber = poMatch[0];
       const { data: orderRow } = await sb

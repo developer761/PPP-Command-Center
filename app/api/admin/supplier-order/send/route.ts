@@ -64,6 +64,12 @@ export async function POST(request: Request) {
     lineItems?: unknown[];
     extras?: unknown[];
     specialInstructions?: string;
+    // Per-color Material Type overrides — already baked into `body` at draft
+    // time by the modal. Carried through here so a future refactor that
+    // rebuilds the body server-side (e.g. for an audit replay or a resend
+    // with regenerated layout) doesn't silently drop the overrides.
+    // Audit 2026-06-05 — regression scan flagged the type contract gap.
+    materialTypeOverrides?: Record<string, string>;
   };
   try {
     body = await request.json();

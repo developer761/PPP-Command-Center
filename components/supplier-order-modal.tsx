@@ -529,6 +529,14 @@ export default function SupplierOrderModal({
           lineItems: draft.lineItems,
           extras: Array.from(extras.values()),
           specialInstructions: specialInstructions.trim() || null,
+          // Per-color Material Type overrides — already baked into bodyToSend
+          // at draft time. Forwarded here so the send route's audit row has
+          // the structured data alongside the rendered email body (future
+          // re-renders / audit replays can reproduce the email).
+          materialTypeOverrides:
+            materialTypeOverrides.size > 0
+              ? Object.fromEntries(materialTypeOverrides)
+              : undefined,
         }),
       });
       const data = await res.json();
