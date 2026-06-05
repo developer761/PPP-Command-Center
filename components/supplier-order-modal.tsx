@@ -859,12 +859,26 @@ export default function SupplierOrderModal({
                         to drop off at their location instead, they tap
                         this and the manual form expands. The typed-in
                         address overrides SF in the email body. Per-order
-                        only — never saved. */}
+                        only — never saved.
+                        Clears deliveryAddr when toggled OFF so a stale
+                        crew address doesn't keep the form visible
+                        (edge-case audit 2026-06-05). */}
                     {fulfillment === "delivery" && !draft.unresolvedAddress && (
                       <div className="mt-2 text-right">
                         <button
                           type="button"
-                          onClick={() => setUseCustomAddress((v) => !v)}
+                          onClick={() => {
+                            setUseCustomAddress((v) => {
+                              const next = !v;
+                              if (!next) {
+                                // Toggling OFF — wipe any typed value so the
+                                // form actually hides + the draft regenerates
+                                // using the SF address.
+                                setDeliveryAddr({ street: "", city: "", state: "", postalCode: "" });
+                              }
+                              return next;
+                            });
+                          }}
                           className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 font-medium underline-offset-2 hover:underline px-2 py-1 -mr-2 touch-manipulation"
                         >
                           {useCustomAddress
@@ -877,8 +891,13 @@ export default function SupplierOrderModal({
                     {/* No address on file → type it here; it flows straight into
                         the email's DELIVERY block (same as extras / special
                         instructions). Stays open while you fill it. Also opens
-                        when admin chose "different address" above. */}
-                    {fulfillment === "delivery" && (draft.unresolvedAddress || useCustomAddress || deliveryAddr.street.trim() !== "") && (
+                        when admin chose "different address" above.
+                        Dropped the `deliveryAddr.street.trim() !== ""` clause
+                        — it was making the form stick after admin toggled off
+                        (edge-case audit 2026-06-05). useCustomAddress is now
+                        the single explicit signal for "show the manual form
+                        even though SF has an address." */}
+                    {fulfillment === "delivery" && (draft.unresolvedAddress || useCustomAddress) && (
                       <div className="mt-3 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/60 p-3">
                         <div className="text-[11px] font-semibold text-ppp-orange-700 mb-2">
                           {useCustomAddress

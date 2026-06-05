@@ -137,12 +137,18 @@ function formatEditDeadline(scheduledStart: string | null): string | null {
   if (!scheduledStart) return null;
   const start = new Date(scheduledStart);
   if (Number.isNaN(start.getTime())) return null;
+  const now = Date.now();
+  // Job already started → don't tell the customer "deadline approaching" when
+  // the job is underway / past. Edge-case audit 2026-06-05: rare but possible
+  // if admin sent the form late and the token's still alive.
+  if (start.getTime() <= now) {
+    return "your start date has already arrived — please reply to PPP if you still need a change";
+  }
   // 24h before — same anchor lib/customer-form/expiry.ts uses for the token.
   const deadline = new Date(start.getTime() - 24 * 60 * 60 * 1000);
-  if (deadline.getTime() <= Date.now()) {
-    // Deadline already past — admin sent the form late; the link is still
-    // active until token expiry, but say so honestly rather than display a
-    // negative countdown.
+  if (deadline.getTime() <= now) {
+    // Within the last 24h before the job — the cutoff is past but the start
+    // is still ahead, so urgency is real and honest.
     return "in the next few hours (your start date is approaching)";
   }
   try {

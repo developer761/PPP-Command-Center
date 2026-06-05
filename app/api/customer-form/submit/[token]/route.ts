@@ -422,7 +422,23 @@ export async function POST(
   // can the sender also be notified of a submission so they know that they
   // need to review what the customer sent?" Fire-and-forget: any failure
   // logs but never blocks the customer's success response.
-  if (status.token.created_by_user_id && runWrites) {
+  //
+  // Self-audit 2026-06-05: gate on attempts.length too. The race-winner flag
+  // (runWrites) doesn't imply there was anything to write — a customer who
+  // submits with zero colors picked across all rooms produces an empty
+  // attempts list but is still the race winner. Notifying admin "colors
+  // submitted" when no colors actually came in is just inbox noise that
+  // wastes their time opening Mail Hub to investigate.
+  //
+  // Edge-case audit 2026-06-05: also skip the notification when SF writeback
+  // was bypassed (test_only + this WO not allowlisted, or mode=off). The
+  // colors live in the Command Center but nothing changed in SF, and the
+  // notification copy says "submitted" — admin would assume SF was updated
+  // when it wasn't. Admin can still find these submissions via Mail Hub
+  // directly (the token's submitted_payload is preserved either way).
+  const hasMeaningfulSubmission = attempts.length > 0;
+  const writebackHappened = decision.shouldWrite;
+  if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission && writebackHappened) {
     notifySenderOnSubmit({
       adminUserId: status.token.created_by_user_id,
       customerName: status.token.customer_name,

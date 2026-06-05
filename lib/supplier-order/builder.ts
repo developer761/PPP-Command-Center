@@ -235,10 +235,16 @@ async function nextPoNumber(workOrderId: string, woNumber: string): Promise<stri
     // Count existing supplier_orders for this WO (across all suppliers). A
     // count of 0 → first order on the WO → use the bare WO PO. Any count
     // > 0 → suffix with N+1. `head: true` skips returning rows (cheaper).
+    //
+    // Exclude `cancelled` rows so a retracted order doesn't bump the next
+    // live PO to -2 (edge-case audit 2026-06-05). Failed sends DO count —
+    // their PO already went into the audit log + a partial send may have
+    // reached the supplier, so we treat them as "this number is taken."
     const { count, error } = await sb
       .from("supplier_orders")
       .select("id", { count: "exact", head: true })
-      .eq("work_order_id", workOrderId);
+      .eq("work_order_id", workOrderId)
+      .neq("status", "cancelled");
     if (!error && typeof count === "number") {
       return count === 0 ? base : `${base}-${count + 1}`;
     }
