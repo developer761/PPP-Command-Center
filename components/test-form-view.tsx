@@ -174,7 +174,7 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
-            className={`w-full px-3 py-2.5 text-sm font-mono border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue ${
+            className={`w-full px-3 py-2.5 text-base sm:text-sm font-mono border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue ${
               trimmedId === ""
                 ? "border-ppp-charcoal-100"
                 : inputUsable
@@ -207,7 +207,7 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               spellCheck={false}
-              className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
             />
           </div>
           <div>
@@ -222,7 +222,7 @@ export default function TestFormView({ userEmail }: { userEmail: string }) {
               autoCorrect="off"
               autoCapitalize="words"
               spellCheck={false}
-              className="w-full px-3 py-2.5 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
             />
           </div>
         </div>

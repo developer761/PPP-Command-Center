@@ -369,14 +369,17 @@ function FieldRow({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           rows={field.rows ?? 3}
-          className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono leading-relaxed"
+          // text-base on mobile keeps the input ≥16px so iOS doesn't zoom on
+          // focus (which then layout-shifts every other field). sm: drops to
+          // text-sm for desktop density.
+          className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono leading-relaxed"
         />
       ) : (
         <input
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
+          className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
         />
       )}
       <p className="text-[11px] text-ppp-charcoal-500 mt-1">{field.help}</p>

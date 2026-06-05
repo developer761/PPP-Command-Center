@@ -407,7 +407,7 @@ function SupplierTemplateRow({
                     value={draft[f.key]}
                     onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
                     rows={f.rows}
-                    className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono leading-relaxed"
+                    className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono leading-relaxed"
                   />
                 ) : (
                   <input

@@ -93,11 +93,14 @@ export default function FilterDropdown<T extends string>({
         onClick={() => setOpen((v) => !v)}
         onKeyDown={onTriggerKey}
         className={[
-          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium",
+          // py-2.5 on mobile keeps the trigger ≥40px tall (close to the 44px
+          // iOS HIG); sm: drops to py-1.5 for the desktop density. text-sm
+          // on mobile so the value is comfortably scannable on a phone.
+          "inline-flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-sm sm:text-xs font-medium",
           "bg-white border border-ppp-charcoal-100 text-ppp-charcoal",
-          "hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40",
+          "hover:border-ppp-blue-200 hover:text-ppp-blue-700 hover:bg-ppp-blue-50/40 active:bg-ppp-blue-50",
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-ppp-blue/40",
-          "transition-colors whitespace-nowrap",
+          "transition-colors whitespace-nowrap touch-manipulation",
           open ? "border-ppp-blue-200 text-ppp-blue-700 bg-ppp-blue-50/40" : "",
         ].join(" ")}
       >
@@ -149,11 +152,13 @@ export default function FilterDropdown<T extends string>({
                   buttonRef.current?.focus();
                 }}
                 className={[
-                  "w-full text-left flex items-center justify-between gap-3 px-3 py-1.5 text-xs",
+                  // py-2.5 mobile → ~40px row, large enough for thumbs; sm:
+                  // tightens to py-1.5 for desktop density.
+                  "w-full text-left flex items-center justify-between gap-3 px-3 py-2.5 sm:py-1.5 text-sm sm:text-xs touch-manipulation",
                   selected
                     ? "text-ppp-blue-700 font-semibold"
                     : "text-ppp-charcoal font-medium",
-                  focused ? "bg-ppp-blue-50/60" : "hover:bg-ppp-charcoal-50",
+                  focused ? "bg-ppp-blue-50/60" : "hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100",
                   "transition-colors",
                 ].join(" ")}
               >

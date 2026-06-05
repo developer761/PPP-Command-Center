@@ -87,7 +87,7 @@ export default function Topbar({
             type="button"
             onClick={onOpenMenu}
             aria-label="Open menu"
-            className="lg:hidden flex items-center justify-center h-9 w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-blue-50 hover:border-ppp-blue-200 transition-colors shrink-0"
+            className="lg:hidden flex items-center justify-center h-11 w-11 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-blue-50 hover:border-ppp-blue-200 active:bg-ppp-blue-100 transition-colors shrink-0 touch-manipulation"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 6h18 M3 12h18 M3 18h18" />
@@ -144,12 +144,12 @@ export default function Topbar({
         <form action="/api/admin/sf-refresh-cache" method="POST" className="sm:hidden">
           <button
             type="submit"
-            className="flex items-center justify-center gap-1 h-9 px-2.5 rounded-lg bg-ppp-green-50 border border-ppp-green-100 hover:bg-ppp-green-100 transition-colors"
+            className="flex items-center justify-center gap-1 h-11 min-w-[60px] px-3 rounded-lg bg-ppp-green-50 border border-ppp-green-100 hover:bg-ppp-green-100 active:bg-ppp-green-200 transition-colors touch-manipulation"
             title={`Synced ${formatAgo(ago)} · tap to refresh from Salesforce`}
             aria-label={`Synced ${formatAgo(ago)}. Tap to refresh from Salesforce.`}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-ppp-green animate-pulse" aria-hidden />
-            <span className="text-[10px] font-medium text-ppp-green-700 whitespace-nowrap">Sync</span>
+            <span className="text-[11px] font-medium text-ppp-green-700 whitespace-nowrap">Sync</span>
           </button>
         </form>
 

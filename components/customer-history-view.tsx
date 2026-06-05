@@ -295,47 +295,100 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
             No work orders yet for this customer.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-ppp-charcoal-50/40 text-[11px] font-semibold tracking-wide text-ppp-charcoal-500 uppercase">
-                <tr>
-                  <th className="text-left px-5 py-2.5">WO #</th>
-                  <th className="text-left px-5 py-2.5">Type</th>
-                  <th className="text-left px-5 py-2.5">Status</th>
-                  <th className="text-left px-5 py-2.5">Owner</th>
-                  <th className="text-right px-5 py-2.5">Amount</th>
-                  <th className="text-right px-5 py-2.5">Close date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ppp-charcoal-100">
-                {workOrders.map((w) => (
-                  <tr key={w.id} className="hover:bg-ppp-charcoal-50/30 transition-colors">
-                    <td className="px-5 py-2.5">
-                      <Link
-                        href={`/dashboard/materials?wo=${encodeURIComponent(w.id)}`}
-                        className="font-mono text-ppp-charcoal hover:text-ppp-blue hover:underline"
-                      >
-                        {w.workOrderNumber ?? w.id.slice(-6)}
-                      </Link>
-                    </td>
-                    <td className="px-5 py-2.5 text-xs text-ppp-charcoal-500">{w.workTypeName ?? "—"}</td>
-                    <td className="px-5 py-2.5 text-xs">
+          <>
+            {/* DESKTOP table (≥640px) — same 6-col layout as before, without
+                the min-w trick because the wrapper handles overflow naturally
+                at this width. */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-ppp-charcoal-50/40 text-[11px] font-semibold tracking-wide text-ppp-charcoal-500 uppercase">
+                  <tr>
+                    <th className="text-left px-5 py-2.5">WO #</th>
+                    <th className="text-left px-5 py-2.5">Type</th>
+                    <th className="text-left px-5 py-2.5">Status</th>
+                    <th className="text-left px-5 py-2.5">Owner</th>
+                    <th className="text-right px-5 py-2.5">Amount</th>
+                    <th className="text-right px-5 py-2.5">Close date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ppp-charcoal-100">
+                  {workOrders.map((w) => (
+                    <tr key={w.id} className="hover:bg-ppp-charcoal-50/30 transition-colors">
+                      <td className="px-5 py-2.5">
+                        <Link
+                          href={`/dashboard/materials?wo=${encodeURIComponent(w.id)}`}
+                          className="font-mono text-ppp-charcoal hover:text-ppp-blue hover:underline"
+                        >
+                          {w.workOrderNumber ?? w.id.slice(-6)}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-2.5 text-xs text-ppp-charcoal-500">{w.workTypeName ?? "—"}</td>
+                      <td className="px-5 py-2.5 text-xs">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100">
+                          {w.status ?? "—"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-2.5 text-xs text-ppp-charcoal-500">{w.ownerName ?? "—"}</td>
+                      <td className="px-5 py-2.5 text-right font-semibold text-ppp-charcoal">
+                        {w.amount > 0 ? fmtMoneyK(Math.round(w.amount / 1000)) : "—"}
+                      </td>
+                      <td className="px-5 py-2.5 text-right text-xs text-ppp-charcoal-500">
+                        {w.closeDate ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* MOBILE card list — round 5 mobile audit flagged the 6-col
+                table as a horizontal-scroll trap at 375px. Card per WO with
+                WO#/type up top, amount + close date on a right column, and
+                status + owner on a footer row. Whole card is tappable to
+                the materials page (matches the desktop link target). */}
+            <ul className="sm:hidden divide-y divide-ppp-charcoal-100">
+              {workOrders.map((w) => (
+                <li key={`m::${w.id}`}>
+                  <Link
+                    href={`/dashboard/materials?wo=${encodeURIComponent(w.id)}`}
+                    className="block px-4 py-3 active:bg-ppp-charcoal-50/40 transition-colors min-h-[64px]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-mono text-sm text-ppp-charcoal">
+                          {w.workOrderNumber ?? w.id.slice(-6)}
+                        </div>
+                        {w.workTypeName && (
+                          <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 truncate">
+                            {w.workTypeName}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-semibold text-sm text-ppp-charcoal">
+                          {w.amount > 0 ? fmtMoneyK(Math.round(w.amount / 1000)) : "—"}
+                        </div>
+                        {w.closeDate && (
+                          <div className="text-[10px] text-ppp-charcoal-500">
+                            {w.closeDate}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100">
                         {w.status ?? "—"}
                       </span>
-                    </td>
-                    <td className="px-5 py-2.5 text-xs text-ppp-charcoal-500">{w.ownerName ?? "—"}</td>
-                    <td className="px-5 py-2.5 text-right font-semibold text-ppp-charcoal">
-                      {w.amount > 0 ? fmtMoneyK(Math.round(w.amount / 1000)) : "—"}
-                    </td>
-                    <td className="px-5 py-2.5 text-right text-xs text-ppp-charcoal-500">
-                      {w.closeDate ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      {w.ownerName && (
+                        <span className="text-[11px] text-ppp-charcoal-500 truncate">
+                          {w.ownerName}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
 

@@ -266,7 +266,7 @@ export default function CoverageSettingsEditor() {
                       <button
                         type="button"
                         onClick={() => resetField(f.key)}
-                        className="text-[10px] font-medium text-ppp-blue-600 hover:text-ppp-blue-700 transition-colors"
+                        className="text-[11px] font-medium text-ppp-blue-600 hover:text-ppp-blue-700 active:text-ppp-blue-800 transition-colors px-2 py-1 -mx-2 -my-1 touch-manipulation"
                         title={`Reset to standard (${def}${f.suffix ? " " + f.suffix : ""})`}
                       >
                         ↺ standard
@@ -282,7 +282,7 @@ export default function CoverageSettingsEditor() {
                       min={0}
                       value={Number.isFinite(values[f.key]) ? values[f.key] : ""}
                       onChange={(e) => setField(f.key, e.target.value)}
-                      className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue transition-colors ${
+                      className={`w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue transition-colors ${
                         isUnsaved
                           ? "border-ppp-blue-300 bg-ppp-blue-50/50 ring-1 ring-ppp-blue/10"
                           : changedFromDefault
