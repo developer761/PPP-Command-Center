@@ -117,6 +117,11 @@ export default function SupplierOrderModal({
   // into the draft (top-priority candidate) → the email's delivery block, the
   // same way extras + special instructions do.
   const [deliveryAddr, setDeliveryAddr] = useState({ street: "", city: "", state: "", postalCode: "" });
+  // Katie 2026-06-05: "we don't necessarily want to save every crew's
+  // address — leave it as a type-in option." When true, the manual address
+  // form expands even though SF has an address on file, and the typed-in
+  // address WINS in the email body. Per-order only, never persisted.
+  const [useCustomAddress, setUseCustomAddress] = useState(false);
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [extras, setExtras] = useState<Map<string, SelectedExtra>>(new Map());
   const [editedBody, setEditedBody] = useState<string | null>(null); // null = use draft.body unchanged
@@ -304,6 +309,40 @@ export default function SupplierOrderModal({
       const existing = next.get(extraId);
       if (!existing) return prev;
       next.set(extraId, { ...existing, qty: Math.max(1, Math.floor(qty || 1)) });
+      return next;
+    });
+  };
+
+  // Custom typed-in extras — Katie 2026-06-05: workers need to add things
+  // that aren't in the catalog (one-off items per job). Each gets a synthetic
+  // extraId prefixed with "custom-" so the existing toggleExtra / qty paths
+  // work unchanged, and the supplier email renders the typed name as-is.
+  // Stored alongside catalog extras in the same Map.
+  const [customName, setCustomName] = useState("");
+  const [customQty, setCustomQty] = useState("1");
+  const [customUnit, setCustomUnit] = useState("each");
+  const addCustomExtra = () => {
+    const name = customName.trim();
+    if (!name) return;
+    const qty = Math.max(1, Math.floor(Number(customQty) || 1));
+    const unit = customUnit.trim() || "each";
+    setExtras((prev) => {
+      const next = new Map(prev);
+      // Stable id from the lowercased name + timestamp so two rapid adds of
+      // the same name don't overwrite each other; the timestamp suffix
+      // disambiguates without showing up in the user-visible name.
+      const id = `custom-${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
+      next.set(id, { extraId: id, name, unit, qty });
+      return next;
+    });
+    setCustomName("");
+    setCustomQty("1");
+    setCustomUnit("each");
+  };
+  const removeExtra = (extraId: string) => {
+    setExtras((prev) => {
+      const next = new Map(prev);
+      next.delete(extraId);
       return next;
     });
   };
@@ -739,13 +778,37 @@ export default function SupplierOrderModal({
                         onChange={setPickupLocation}
                       />
                     )}
+                    {/* "Deliver to a different address" toggle — Katie
+                        2026-06-05. When the SF address is fine, admin
+                        leaves this off. When the crew wants the supplier
+                        to drop off at their location instead, they tap
+                        this and the manual form expands. The typed-in
+                        address overrides SF in the email body. Per-order
+                        only — never saved. */}
+                    {fulfillment === "delivery" && !draft.unresolvedAddress && (
+                      <div className="mt-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setUseCustomAddress((v) => !v)}
+                          className="text-xs text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 font-medium underline-offset-2 hover:underline px-2 py-1 -mr-2 touch-manipulation"
+                        >
+                          {useCustomAddress
+                            ? "↺ Use the customer address instead"
+                            : "Deliver to a different address (e.g. crew location) →"}
+                        </button>
+                      </div>
+                    )}
+
                     {/* No address on file → type it here; it flows straight into
                         the email's DELIVERY block (same as extras / special
-                        instructions). Stays open while you fill it. */}
-                    {fulfillment === "delivery" && (draft.unresolvedAddress || deliveryAddr.street.trim() !== "") && (
+                        instructions). Stays open while you fill it. Also opens
+                        when admin chose "different address" above. */}
+                    {fulfillment === "delivery" && (draft.unresolvedAddress || useCustomAddress || deliveryAddr.street.trim() !== "") && (
                       <div className="mt-3 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/60 p-3">
                         <div className="text-[11px] font-semibold text-ppp-orange-700 mb-2">
-                          No delivery address on file — enter it and it&apos;ll drop into the email.
+                          {useCustomAddress
+                            ? "Manual delivery address — overrides the customer address for this order only."
+                            : "No delivery address on file — enter it and it'll drop into the email."}
                         </div>
                         <div className="space-y-2">
                           <input
@@ -848,6 +911,93 @@ export default function SupplierOrderModal({
                           No matches.
                         </div>
                       )}
+                    </div>
+
+                    {/* Custom typed-in extras — Katie 2026-06-05: workers
+                        need to add one-off items that aren't in the catalog.
+                        Selected customs (extraId prefix "custom-") render
+                        above with a remove button; the input row below adds
+                        a new one. */}
+                    {Array.from(extras.values()).filter((e) => e.extraId.startsWith("custom-")).length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
+                        <div className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-2">
+                          Custom items added
+                        </div>
+                        <ul className="space-y-1.5">
+                          {Array.from(extras.values())
+                            .filter((e) => e.extraId.startsWith("custom-"))
+                            .map((e) => (
+                              <li key={e.extraId} className="flex items-center gap-2 text-xs bg-ppp-blue-50/40 border border-ppp-blue-100 rounded px-2.5 py-2">
+                                <span className="flex-1 truncate text-ppp-charcoal">{e.name}</span>
+                                <span className="text-[10px] text-ppp-charcoal-500 shrink-0">
+                                  ×{e.qty} {e.unit !== "each" ? e.unit : ""}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeExtra(e.extraId)}
+                                  className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-800 active:text-ppp-orange-900 px-2 py-1 -my-1 -mr-1 touch-manipulation"
+                                  aria-label={`Remove ${e.name}`}
+                                >
+                                  Remove
+                                </button>
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    )}
+                    <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
+                      <div className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-2">
+                        Add custom item (not in catalog)
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={customName}
+                          onChange={(e) => setCustomName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addCustomExtra();
+                            }
+                          }}
+                          placeholder="e.g. 2 in cut brush"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          className="flex-1 min-w-0 px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                        />
+                        <div className="flex gap-2 shrink-0">
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            value={customQty}
+                            onChange={(e) => setCustomQty(e.target.value)}
+                            placeholder="qty"
+                            className="w-16 sm:w-14 px-2 py-2.5 sm:py-2 text-base sm:text-sm text-right border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
+                          />
+                          <input
+                            type="text"
+                            value={customUnit}
+                            onChange={(e) => setCustomUnit(e.target.value)}
+                            placeholder="unit"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            className="w-20 sm:w-16 px-2 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                          />
+                          <button
+                            type="button"
+                            onClick={addCustomExtra}
+                            disabled={!customName.trim()}
+                            className="px-4 py-2.5 sm:py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 active:bg-ppp-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-ppp-charcoal-500 mt-1.5 leading-snug">
+                        Add multiple by entering each one and clicking Add (or pressing Enter).
+                        Examples: &ldquo;1 gallon Behr primer&rdquo;, &ldquo;painter&apos;s plastic (12&apos; x 400&apos;)&rdquo;.
+                      </p>
                     </div>
                   </Section>
 

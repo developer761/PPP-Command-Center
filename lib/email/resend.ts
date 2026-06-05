@@ -152,6 +152,16 @@ export async function sendCustomerFormInvite(input: {
   introOverride?: string;
   /** Optional per-send subject — overrides the global template. */
   subjectOverride?: string;
+  /** Sender info — Katie 2026-06-05: "CC the sender so customer can reply
+   *  directly to their estimator, and include their phone number." Email
+   *  must be a PPP-domain address (server-side enforced). */
+  senderEmail?: string | null;
+  /** Display name of the sender ("Katie B."). Shown in the email body
+   *  alongside their phone so the customer knows who to call. */
+  senderName?: string | null;
+  /** Sender's phone — shown in the email body. Free-form so admin can
+   *  use whatever format ("(516) 555-1234" / "516.555.1234"). */
+  senderPhone?: string | null;
 }): Promise<ResendSendResult> {
   // Lazy import so the rest of the module stays edge-runtime-friendly (the
   // templates loader pulls supabase-js which is server-only).
@@ -174,6 +184,10 @@ export async function sendCustomerFormInvite(input: {
 
   // Plain-text fallback (always sent alongside the HTML for clients that
   // don't render HTML + for deliverability scoring).
+  const senderBlock: string[] = [];
+  if (input.senderName) senderBlock.push(input.senderName);
+  senderBlock.push("Precision Painting Plus");
+  if (input.senderPhone) senderBlock.push(`Direct: ${input.senderPhone}`);
   const text = [
     greeting,
     "",
@@ -185,7 +199,7 @@ export async function sendCustomerFormInvite(input: {
     "",
     outro,
     "",
-    signoff,
+    senderBlock.length > 1 ? `Thank you,\n${senderBlock.join("\n")}` : signoff,
   ].join("\n");
 
   // HTML body — matches the standard PPP transactional email template Katie
@@ -243,7 +257,9 @@ export async function sendCustomerFormInvite(input: {
     <tr>
       <td style="padding:10px 20px 20px 20px; border-top:1px solid #ddd;">
         <p style="margin:0 0 4px 0;">Thank you,</p>
+        ${input.senderName ? `<p style="margin:0 0 2px 0; font-weight:bold; color:#333;">${escapeHtml(input.senderName)}</p>` : ""}
         <p style="margin:0; font-weight:bold; color:#d35400;">Precision Painting Plus</p>
+        ${input.senderPhone ? `<p style="margin:6px 0 0 0; font-size:10pt; color:#333;">Direct: <a href="tel:${encodeURIComponent(input.senderPhone.replace(/[^+\d]/g, ""))}" style="color:#d35400; text-decoration:none;">${escapeHtml(input.senderPhone)}</a></p>` : ""}
         <p style="margin:8px 0 0 0; font-size:9pt; color:#777;">
           825 East Gate Blvd, Ste 310, Garden City, NY 11530<br/>
           <a href="https://www.precisionpaintingplus.com" style="color:#d35400; text-decoration:none;">precisionpaintingplus.com</a>
@@ -253,8 +269,19 @@ export async function sendCustomerFormInvite(input: {
   </tbody>
 </table>`;
 
+  // CC the sender so customer replies go back to their actual estimator,
+  // not just the unattended Mail Hub inbox. Only PPP-owned domains —
+  // belt-and-suspenders even though admin endpoint already validates.
+  const senderEmail = input.senderEmail?.trim().toLowerCase() ?? "";
+  const ccList =
+    senderEmail &&
+    (senderEmail.endsWith("@precisionpaintingplus.com") || senderEmail.endsWith("@precisionpaintingplus.net"))
+      ? [senderEmail]
+      : undefined;
+
   return sendEmail({
     to: input.to,
+    cc: ccList,
     subject,
     text,
     html,

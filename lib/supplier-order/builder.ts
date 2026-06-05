@@ -193,52 +193,57 @@ export type SupplierOrderDraft = {
 
 /* ─── Helpers ─── */
 
-/** Per-supplier code suffix for PO numbers. BM → "BM", SW → "SW", else first 3 chars. */
-function supplierCode(name: string): string {
-  const stripped = name.replace(/[^a-zA-Z0-9]/g, "");
-  // Common explicit codes — keep stable so PO numbers don't change if the
-  // SF Account.Name gets reformatted.
-  const lower = name.toLowerCase();
-  if (lower.includes("benjamin moore")) return "BM";
-  if (lower.includes("sherwin")) return "SW";
-  if (lower.includes("ppg") || lower.includes("paint pickup")) return "PPG";
-  return stripped.slice(0, 3).toUpperCase();
-}
+// supplierCode() helper retired with the ABO/BM/SW PO-prefix format
+// (Katie 2026-06-05 — "remove the ABO-### part"). PO format now lives in
+// nextPoNumber() below.
 
 /**
- * Generate the next PO number using the dedicated DB sequence. Concurrent
- * inserts get distinct numbers (race-safe). Format:
- *   PPP-WO{wo_number}-{supplier_code}-{seq padded to 6}
+ * Generate the next PO number for a supplier order.
  *
- * Uses nextval() via a raw SQL call. Falls back to a timestamp-suffixed
- * value if the sequence isn't reachable (migration not run yet) — that
- * way the draft modal still works for QA / copy-to-clipboard.
+ * Katie 2026-06-05: "remove the ABO-### part — retailers have smaller PO
+ * spaces, keeping it to just our WO number is best." Old format was
+ * `PPP-WO00284666-ABO-000123` (16+ chars after PPP-WO). New format:
+ *
+ *   - First order on a WO  →  `PPP-WO00284666`
+ *   - Second order same WO →  `PPP-WO00284666-2`
+ *   - Third                →  `PPP-WO00284666-3`
+ *
+ * Counter is across all suppliers on the WO (Aboffs first → suffix omitted;
+ * Sunbelt second → -2). Workers + retailers see at-a-glance which WO an
+ * order belongs to without the prefix noise.
+ *
+ * Uniqueness: po_number column has a UNIQUE constraint. Two near-simultaneous
+ * sends on the same WO could both compute the same N (race) — the DB rejects
+ * the loser with 23505. The send-route catches that as "duplicate_order" and
+ * surfaces a friendly message; admin re-tries and gets the next N.
  */
-async function nextPoNumber(woNumber: string, supplierName: string): Promise<string> {
-  const code = supplierCode(supplierName);
+async function nextPoNumber(workOrderId: string, woNumber: string): Promise<string> {
+  const base = `PPP-WO${woNumber}`;
   try {
     const sb = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SECRET_KEY!,
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
-    // PostgREST exposes `nextval` via the `rpc` namespace once a function
-    // wraps it. Until that's set up we call via a tiny RPC fallback below.
-    const { data, error } = await sb.rpc("nextval_supplier_orders_po_seq");
-    if (!error && typeof data === "number") {
-      return `PPP-WO${woNumber}-${code}-${String(data).padStart(6, "0")}`;
+    // Count existing supplier_orders for this WO (across all suppliers). A
+    // count of 0 → first order on the WO → use the bare WO PO. Any count
+    // > 0 → suffix with N+1. `head: true` skips returning rows (cheaper).
+    const { count, error } = await sb
+      .from("supplier_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("work_order_id", workOrderId);
+    if (!error && typeof count === "number") {
+      return count === 0 ? base : `${base}-${count + 1}`;
     }
-    if (error) console.warn("[supplier-order] PO sequence RPC failed:", error.message);
+    if (error) console.warn("[supplier-order] PO count query failed:", error.message);
   } catch (err) {
-    console.warn("[supplier-order] PO sequence unreachable:", err);
+    console.warn("[supplier-order] PO count query unreachable:", err);
   }
-  // Fallback (RPC unreachable): timestamp + short random suffix. The timestamp
-  // alone could collide for two drafts of the same supplier+WO in the same
-  // millisecond (the po_number UNIQUE constraint would then 409 the send as a
-  // confusing "duplicate order"); the random suffix makes that effectively
-  // impossible while staying human-readable.
-  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `PPP-WO${woNumber}-${code}-${String(Date.now()).slice(-6)}${rand}`;
+  // Fallback (Supabase unreachable): use a timestamp suffix so the UNIQUE
+  // constraint can't collide. Format stays human-readable. The 1-in-millions
+  // chance of accidentally landing on `${base}-${N}` for some real N is
+  // acceptable for a fallback path.
+  return `${base}-t${String(Date.now()).slice(-6)}`;
 }
 
 /** Compute required-by: WO close date if it's already 3+ days out, else today + 3 days. */
@@ -707,8 +712,8 @@ export async function buildSupplierOrderDraft(
   const deliveryAddress = resolveDeliveryAddress(input);
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);
   const poNumber = await nextPoNumber(
-    input.workOrder.workOrderNumber ?? input.workOrder.id.slice(-6),
-    isGeneral ? generalSuppliesLabel() : input.supplierAccount.name
+    input.workOrder.id,
+    input.workOrder.workOrderNumber ?? input.workOrder.id.slice(-6)
   );
 
   const customerName = input.customerAccount?.name ?? "(unknown customer)";

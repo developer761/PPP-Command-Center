@@ -5,6 +5,7 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { createToken, markSent } from "@/lib/customer-form/tokens";
 import { sendCustomerFormInvite } from "@/lib/email/resend";
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
+import { getSalesforceClient } from "@/lib/salesforce/client";
 
 /**
  * Admin "Send Color Form" handler.
@@ -133,6 +134,39 @@ export async function POST(request: Request) {
     new URL(request.url).origin;
   const formUrl = `${baseUrl}/select/${token}`;
 
+  // Sender context — Katie 2026-06-05: CC the sender + show their phone
+  // so the customer knows who to call. Pulls MobilePhone (preferred — direct
+  // line) → Phone (desk) from SF User. Skips entirely when admin isn't
+  // mapped to an SF user (e.g., Karan's gmail-only admin login). Best-effort:
+  // any SF blip just omits the phone, never blocks the send.
+  const senderEmail: string | null = data.user.email?.toLowerCase() ?? null;
+  let senderName: string | null = profile?.sf_user_name ?? null;
+  let senderPhone: string | null = null;
+  if (profile?.sf_user_id) {
+    try {
+      const conn = await getSalesforceClient();
+      const idEsc = profile.sf_user_id.replace(/'/g, "\\'");
+      const userResult = await conn.query<Record<string, unknown>>(
+        `SELECT MobilePhone, Phone, Name FROM User WHERE Id = '${idEsc}' LIMIT 1`
+      );
+      const row = userResult.records[0];
+      if (row) {
+        const mob = typeof row.MobilePhone === "string" ? row.MobilePhone.trim() : "";
+        const ph = typeof row.Phone === "string" ? row.Phone.trim() : "";
+        senderPhone = mob || ph || null;
+        if (!senderName && typeof row.Name === "string") senderName = row.Name;
+      }
+    } catch (err) {
+      console.warn("[customer-form/create] couldn't fetch sender phone from SF:", err instanceof Error ? err.message : err);
+    }
+  }
+  // Domain guard: only PPP-owned domains can be CC'd (defense in depth — the
+  // resend wrapper enforces the same rule but a missed env override here
+  // would silently leak admin gmail addresses to customer threads).
+  const ccEmail = senderEmail && (senderEmail.endsWith("@precisionpaintingplus.com") || senderEmail.endsWith("@precisionpaintingplus.net"))
+    ? senderEmail
+    : null;
+
   // 5. Send the invitation email
   const send = await sendCustomerFormInvite({
     to: customerEmail,
@@ -141,6 +175,9 @@ export async function POST(request: Request) {
     formUrl,
     subjectOverride: body.subjectOverride,
     introOverride: body.introOverride,
+    senderEmail: ccEmail,
+    senderName,
+    senderPhone,
   });
 
   if (!send.ok) {

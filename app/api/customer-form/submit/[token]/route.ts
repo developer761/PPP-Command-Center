@@ -4,6 +4,7 @@ import { loadFormRenderData } from "@/lib/customer-form/render-data";
 import { writeSfBatch, type SfWriteAttempt } from "@/lib/salesforce/writeback";
 import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
+import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
 
 /**
  * Customer form submit handler.
@@ -430,6 +431,24 @@ export async function POST(
   // materials were ordered — flag it so the UI can tell the customer to contact
   // the team, and so the admin can spot it (submitted_at now > vendor_email_sent_at).
   const orderAlreadyPlaced = isReedit && !!status.token.vendor_email_sent_at;
+
+  // Notify the sender — Katie 2026-06-05: "When the customer submits a form,
+  // can the sender also be notified of a submission so they know that they
+  // need to review what the customer sent?" Fire-and-forget: any failure
+  // logs but never blocks the customer's success response.
+  if (status.token.created_by_user_id && runWrites) {
+    notifySenderOnSubmit({
+      adminUserId: status.token.created_by_user_id,
+      customerName: status.token.customer_name,
+      workOrderNumber: fresh.workOrderNumber,
+      workOrderId: status.token.work_order_id,
+      isReedit,
+      lineItemCount: body.lineItems.length,
+      orderAlreadyPlaced,
+    }).catch((err) => {
+      console.warn(`[customer-form] sender notification failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
+    });
+  }
 
   return NextResponse.json({
     ok: true,

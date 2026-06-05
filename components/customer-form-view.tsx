@@ -571,6 +571,61 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         </div>
       )}
 
+      {/* Color-picking help — Katie 2026-06-05: customers often don't know
+          where to start with colors. Surface BM's recommended palettes +
+          interactive room visualizer right before the per-room picker so the
+          customer has somewhere to research before they start picking. Both
+          links open in a new tab (target=_blank + rel=noopener,noreferrer)
+          so the customer doesn't lose their place in the form. */}
+      {formData.lineItems.length > 0 && (
+        <div className="bg-ppp-blue-50/40 border border-ppp-blue-100 rounded-2xl p-5 sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 h-9 w-9 rounded-full bg-white border border-ppp-blue-100 flex items-center justify-center text-ppp-blue-700">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy">
+                Need help picking colors?
+              </h3>
+              <p className="text-xs sm:text-sm text-ppp-charcoal-600 mt-1 leading-relaxed">
+                Check out Benjamin Moore&apos;s recommended palettes and their
+                interactive room visualizer to see colors before you pick.
+              </p>
+              <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                <a
+                  href="https://www.benjaminmoore.com/en-us/color-overview/color-palettes"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
+                >
+                  Recommended palettes
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M7 17L17 7 M7 7h10v10" />
+                  </svg>
+                </a>
+                <a
+                  href="https://www.benjaminmoore.com/en-us/color-overview/find-your-color/color-a-room"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
+                >
+                  Visualize on a room
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M7 17L17 7 M7 7h10v10" />
+                  </svg>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Per-line-item sections */}
       {formData.lineItems.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-8 text-center text-sm text-ppp-charcoal-500">
