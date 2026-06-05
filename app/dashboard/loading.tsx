@@ -78,8 +78,8 @@ export default function DashboardLoading() {
       </div>
 
       <p className="text-center text-xs text-ppp-charcoal-500 italic">
-        Loading PPP Salesforce data… (first load can take 10-30s at full
-        production volume; subsequent loads use the 5-min cache)
+        Loading PPP Salesforce data… (first load can take 10–30s at full
+        production volume; subsequent loads use the 15-minute cache.)
       </p>
     </div>
   );
