@@ -101,7 +101,8 @@ const FINISH_OPTIONS = [
 // surface override dropdown all stay in lockstep. Adding a product = one
 // entry in that file. Picker is filtered per-WO (interior-only WOs hide
 // exterior products and vice versa) — Katie 2026-06-05.
-import { filterMaterialTypesForWorkOrder } from "@/lib/customer-form/material-types";
+import { filterMaterialTypesForWorkOrder, isInteriorWorkOrder, isExteriorWorkOrder } from "@/lib/customer-form/material-types";
+import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
  * Sensible default finish per surface (Katie 2026-05-29) — auto-filled the
@@ -168,17 +169,37 @@ function formatEditDeadline(scheduledStart: string | null): string | null {
 
 export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, isPreview = false }: Props) {
   const editDeadline = formatEditDeadline(formData.scheduledStart);
-  // Per-WO filtered Material Type groups — exterior-only WOs hide interior
-  // products, vice versa. Inputs: WO.WorkType.Name + each WOLI.ProductName__c.
-  // Memoized so re-renders don't re-walk the array on every keystroke.
-  const materialTypeGroups = useMemo(
-    () =>
-      filterMaterialTypesForWorkOrder({
+  // Per-WO filtered Material Type values — exterior-only WOs hide interior
+  // products, vice versa. Set form (not grouped) — the MaterialTypePicker
+  // component handles its own grouping/collapsing/search internally. Memoized
+  // so re-renders don't re-walk the array on every keystroke.
+  const materialTypeAvailableValues = useMemo(
+    () => {
+      const groups = filterMaterialTypesForWorkOrder({
         workTypeName: formData.workTypeName,
         lineItemProductNames: formData.lineItems.map((li) => li.productName),
-      }),
+      });
+      const set = new Set<string>();
+      for (const g of groups) for (const v of g.options) set.add(v);
+      return set;
+    },
     [formData.workTypeName, formData.lineItems]
   );
+
+  // Interior/exterior detection for copy + layout decisions. Katie 2026-06-05:
+  // exterior WOs rarely have a WOLI breakdown (workers put context only in
+  // WO.Description), so we surface those notes prominently + ask the customer
+  // for their own notes when no rooms are listed.
+  const workContext = useMemo(() => {
+    const productNames = formData.lineItems.map((li) => li.productName);
+    const hasInterior = isInteriorWorkOrder({ workTypeName: formData.workTypeName, lineItemProductNames: productNames });
+    const hasExterior = isExteriorWorkOrder({ workTypeName: formData.workTypeName, lineItemProductNames: productNames });
+    return { hasInterior, hasExterior, isMixed: hasInterior && hasExterior };
+  }, [formData.workTypeName, formData.lineItems]);
+  const sfDescription = (formData.workOrderDescription ?? "").trim();
+  const sfSubject = (formData.workOrderSubject ?? "").trim();
+  const hasSfNotes = sfDescription.length > 0 || sfSubject.length > 0;
+  const hasLineItems = formData.lineItems.length > 0;
   // Seed state. When re-editing, pre-fill each surface from the customer's
   // prior submission (colors + finishes + skipped + notes) so they tweak what
   // they already chose rather than starting over. Otherwise start blank.
@@ -548,21 +569,15 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           <p className="text-xs text-ppp-charcoal-500 mt-1 leading-relaxed">
             Pick one product line for all the colors below. The same color (e.g. &ldquo;Stardust&rdquo;) can be mixed in different product lines &mdash; each has its own price point and finish quality. If you&apos;re not sure, ask your project manager.
           </p>
-          <select
-            id="paint-product-line"
-            value={materialType}
-            onChange={(e) => setMaterialType(e.target.value)}
-            className="mt-3 w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue bg-white"
-          >
-            <option value="">— Select product line —</option>
-            {materialTypeGroups.map((g) => (
-              <optgroup key={g.label} label={g.label}>
-                {g.options.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          <div className="mt-3">
+            <MaterialTypePicker
+              id="paint-product-line"
+              value={materialType}
+              onChange={setMaterialType}
+              availableValues={materialTypeAvailableValues}
+              placeholder="— Select a product line —"
+            />
+          </div>
           {materialType && formData.materialType && materialType !== formData.materialType && (
             <p className="text-[11px] text-ppp-orange-700 mt-2">
               ⓘ You changed this from the original ({formData.materialType}). The new selection will be saved when you submit.
@@ -626,27 +641,38 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         </div>
       )}
 
-      {/* Per-line-item sections */}
-      {formData.lineItems.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-8 text-center text-sm text-ppp-charcoal-500">
-          {formData.hiddenLineItemCount > 0 ? (
-            <>
-              <strong className="block text-ppp-orange-700 mb-1">
-                All rooms on this job have been removed or completed.
-              </strong>
-              {formData.hiddenLineItemCount === 1
-                ? "1 room was on this work order but it's been marked Canceled or Completed."
-                : `${formData.hiddenLineItemCount} rooms were on this work order but they've all been marked Canceled or Completed.`}
-              {" "}If you think this is wrong, please reply to the PPP email so they can take a look.
-            </>
-          ) : (
-            <>
-              We don&apos;t have any rooms detailed for this work order yet. Please
-              reply to the PPP email so they can add the details and resend the form.
-            </>
+      {/* Project context from PPP — when there's a Subject or Description on
+          the WO, show it prominently. Most useful for exterior jobs where
+          the WOLI breakdown is sparse (Katie 2026-06-05: "workers only put
+          it into the notes section" for exterior). Customers reading the
+          form know what their PPP team has written down for them. */}
+      {hasSfNotes && (
+        <div className="bg-ppp-blue-50/40 border border-ppp-blue-100 rounded-2xl p-5 sm:p-6">
+          <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
+            From your PPP team
+          </div>
+          <h2 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy mt-1">
+            What we have noted for your job
+          </h2>
+          {sfSubject && (
+            <p className="text-sm sm:text-base font-semibold text-ppp-charcoal mt-2 leading-relaxed">
+              {sfSubject}
+            </p>
           )}
+          {sfDescription && (
+            <p className="text-xs sm:text-sm text-ppp-charcoal-700 mt-2 leading-relaxed whitespace-pre-wrap">
+              {sfDescription}
+            </p>
+          )}
+          <p className="text-[11px] text-ppp-charcoal-500 mt-3 leading-relaxed italic">
+            If anything above is wrong or missing, just describe it in the notes section below — we&apos;ll
+            sort it out with you before we order materials.
+          </p>
         </div>
-      ) : (
+      )}
+
+      {/* Per-line-item sections */}
+      {hasLineItems ? (
         formData.lineItems.map((li, idx) => (
           <LineItemSection
             key={li.id}
@@ -660,6 +686,51 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
           />
         ))
+      ) : formData.hiddenLineItemCount > 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-8 text-center text-sm text-ppp-charcoal-500">
+          <strong className="block text-ppp-orange-700 mb-1">
+            All rooms on this job have been removed or completed.
+          </strong>
+          {formData.hiddenLineItemCount === 1
+            ? "1 room was on this work order but it's been marked Canceled or Completed."
+            : `${formData.hiddenLineItemCount} rooms were on this work order but they've all been marked Canceled or Completed.`}
+          {" "}If you think this is wrong, please reply to the PPP email so they can take a look.
+        </div>
+      ) : (
+        // No line items + no hidden items either — typical for exterior jobs
+        // OR new WOs where the rep hasn't filled in room breakdowns yet.
+        // Instead of telling the customer "reply to PPP and wait for a
+        // resend", give them a primary notes textarea to describe what
+        // they want. Their notes save into the token payload (admin reads
+        // via Mail Hub) so PPP isn't blocked on a back-and-forth email.
+        <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
+          <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
+            Tell us about your project
+          </div>
+          <h2 className="font-condensed text-lg sm:text-xl font-bold text-ppp-navy mt-1">
+            {workContext.hasExterior && !workContext.hasInterior
+              ? "Describe what you'd like painted on the exterior"
+              : workContext.hasInterior && !workContext.hasExterior
+              ? "Describe the rooms + colors you'd like"
+              : "Describe what you'd like painted + which colors"}
+          </h2>
+          <p className="text-xs sm:text-sm text-ppp-charcoal-500 mt-2 leading-relaxed">
+            {workContext.hasExterior && !workContext.hasInterior
+              ? "List the surfaces you want painted (siding, trim, doors, deck, fence, etc.) and the colors / finishes you'd like. The more detail the better — we'll confirm everything with you before ordering paint."
+              : "We don't have rooms broken down yet for your job. Give us as much detail as you can — rooms, surfaces (walls / ceiling / trim), colors with names or codes, finish (matte / eggshell / satin / etc.). We'll review and reach out to confirm."}
+          </p>
+          <textarea
+            value={globalNotes}
+            onChange={(e) => setGlobalNotes(e.target.value)}
+            rows={8}
+            placeholder={
+              workContext.hasExterior && !workContext.hasInterior
+                ? "Example:\n• Siding: Benjamin Moore Hale Navy HC-154, Aura Exterior, satin\n• Trim: Simply White OC-117, semi-gloss\n• Front door: Black HC-190\n• Deck (Woodluxe stain): Cedar"
+                : "Example:\n• Living room walls: BM White Dove OC-17, eggshell\n• Living room trim: BM Decorator's White, semi-gloss\n• Bedroom 1: SW Sea Salt SW6204, satin\n• Kitchen ceiling: pure white, flat"
+            }
+            className="w-full mt-3 px-3 py-3 sm:py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y leading-relaxed"
+          />
+        </div>
       )}
 
       {/* Delivery address — DISPLAY ONLY (Katie 2026-05-29). The address on
@@ -694,8 +765,11 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         </div>
       )}
 
-      {/* Global extra notes */}
-      {formData.lineItems.length > 0 && (
+      {/* Global extra notes — only shown when there ARE line items. When
+          there's no breakdown, the primary "tell us about your project"
+          notes block above already owns globalNotes; rendering this again
+          here would double the textarea. */}
+      {hasLineItems && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
           <label className="block text-sm font-semibold text-ppp-charcoal mb-2">
             {copy.globalNotesLabel}
@@ -713,8 +787,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         </div>
       )}
 
-      {/* Submit */}
-      {formData.lineItems.length > 0 && (
+      {/* Submit — allow submit when there ARE line items OR when the
+          customer has typed notes (the notes-only path for sparse
+          exterior WOs). */}
+      {(hasLineItems || globalNotes.trim().length > 0) && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] sm:text-xs text-ppp-charcoal-500">
             {isPreview

@@ -436,8 +436,15 @@ export async function POST(
   // notification copy says "submitted" — admin would assume SF was updated
   // when it wasn't. Admin can still find these submissions via Mail Hub
   // directly (the token's submitted_payload is preserved either way).
-  const hasMeaningfulSubmission = attempts.length > 0;
-  const writebackHappened = decision.shouldWrite;
+  //
+  // Katie batch 3 (2026-06-05): also notify when the customer submitted a
+  // notes-only response (no line items, just project description in
+  // globalNotes). For exterior / sparse WOs the customer's notes ARE the
+  // full submission — admin needs to know it came in even though nothing
+  // wrote to SF. The notes are preserved in submitted_payload regardless.
+  const notesOnly = !!(body.globalNotes && body.globalNotes.trim().length > 0);
+  const hasMeaningfulSubmission = attempts.length > 0 || notesOnly;
+  const writebackHappened = decision.shouldWrite || notesOnly;
   if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission && writebackHappened) {
     notifySenderOnSubmit({
       adminUserId: status.token.created_by_user_id,

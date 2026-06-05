@@ -4,23 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { formatOrderQuantity, formatBucketsCans, summarizeOrder, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 import { isNycAddress } from "@/lib/supplier-order/nyc-zips";
-import { MATERIAL_TYPES } from "@/lib/customer-form/material-types";
-
-/** Material Type optgroups for the per-color override dropdown. Grouped on
- *  render so we don't rebuild the structure for every row. Source of truth
- *  is MATERIAL_TYPES (interior/exterior/any-tagged). */
-const MATERIAL_TYPE_DROPDOWN_GROUPS: ReadonlyArray<{ label: string; options: string[] }> = (() => {
-  const out: Array<{ label: string; options: string[] }> = [];
-  for (const m of MATERIAL_TYPES) {
-    let bucket = out.find((g) => g.label === m.group);
-    if (!bucket) {
-      bucket = { label: m.group, options: [] };
-      out.push(bucket);
-    }
-    bucket.options.push(m.value);
-  }
-  return out;
-})();
+import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
  * Supplier Order Modal — the full draft → review → send experience for one
@@ -771,21 +755,16 @@ export default function SupplierOrderModal({
                                     <label className="text-[10px] text-ppp-charcoal-500 shrink-0" htmlFor={`mt-${mtKey}`}>
                                       Product line:
                                     </label>
-                                    <select
-                                      id={`mt-${mtKey}`}
-                                      value={currentMt}
-                                      onChange={(ev) => setMaterialTypeForColor(e.colorId, e.finish, ev.target.value)}
-                                      className="text-[11px] sm:text-[10px] px-2 py-1 border border-ppp-charcoal-100 rounded bg-white text-ppp-charcoal max-w-[160px] truncate focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
-                                    >
-                                      <option value="">— use default —</option>
-                                      {MATERIAL_TYPE_DROPDOWN_GROUPS.map((g) => (
-                                        <optgroup key={g.label} label={g.label}>
-                                          {g.options.map((opt) => (
-                                            <option key={opt} value={opt}>{opt}</option>
-                                          ))}
-                                        </optgroup>
-                                      ))}
-                                    </select>
+                                    <div className="max-w-[200px]">
+                                      <MaterialTypePicker
+                                        id={`mt-${mtKey}`}
+                                        value={currentMt}
+                                        onChange={(v) => setMaterialTypeForColor(e.colorId, e.finish, v)}
+                                        placeholder="— use default —"
+                                        compact
+                                        allowClear
+                                      />
+                                    </div>
                                   </div>
                                 );
                               })()}

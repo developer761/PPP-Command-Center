@@ -70,6 +70,15 @@ export type FormRenderData = {
    *  DesiredStart__c → Opp CloseDate (PPP's projected date). Drives the
    *  "link expires 24h before start" rule. Null when none is set. */
   scheduledStart: string | null;
+  /** WorkOrder.Description — the workers' free-text notes about the job.
+   *  For exterior WOs Katie 2026-06-05 confirmed: "there's really no
+   *  exterior thing on Salesforce, the workers only put it into the notes
+   *  section." When WOLI breakdown is sparse/empty, the customer form pulls
+   *  this so the customer has context for what they're picking colors for. */
+  workOrderDescription: string | null;
+  /** WorkOrder.Subject — short summary. Sometimes carries the only label
+   *  for an exterior project. */
+  workOrderSubject: string | null;
   lineItems: FormLineItem[];
   /** Fresh-fetch timestamp — written to customer_form_tokens.woli_snapshot_at
    *  for drift detection if the rep edits SF mid-form. */
@@ -134,8 +143,13 @@ export async function loadFormRenderData(
     // MaterialType__c added 2026-06-03 (Katie) — drives the paint-line picker
     // on the customer form. Falls back to a narrower SELECT on INVALID_FIELD
     // so older orgs without that field still render.
+    // Description + Subject added 2026-06-05 (Katie): exterior WOs rarely
+    // have WOLI breakdowns — workers put context only into Description. We
+    // surface this in the customer form so the customer sees what the
+    // project is about and can fill in their own notes if rooms aren't
+    // pre-listed.
     const richFields = `Id, WorkOrderNumber, Status, CreatedDate,
-             StartDate, DesiredStart__c, MaterialType__c,
+             StartDate, DesiredStart__c, MaterialType__c, Description, Subject,
              WorkType.Name,
              Opportunity__c, Opportunity__r.Owner.Name,
              Opportunity__r.Account.Name, Opportunity__r.CloseDate,
@@ -144,7 +158,7 @@ export async function loadFormRenderData(
              Opportunity__r.Account.BillingState,
              Opportunity__r.Account.BillingPostalCode`;
     const baseFields = `Id, WorkOrderNumber, Status, CreatedDate,
-             StartDate, DesiredStart__c,
+             StartDate, DesiredStart__c, Description, Subject,
              WorkType.Name,
              Opportunity__c, Opportunity__r.Owner.Name,
              Opportunity__r.Account.Name, Opportunity__r.CloseDate,
@@ -257,6 +271,8 @@ export async function loadFormRenderData(
       // Falls through as null if the org doesn't have MaterialType__c (rich
       // SELECT fallback hit) — the form's picker still renders, just empty.
       materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
+      workOrderDescription: typeof w.Description === "string" ? (w.Description as string) : null,
+      workOrderSubject: typeof w.Subject === "string" ? (w.Subject as string) : null,
       lineItems,
       hiddenLineItemCount,
       fetchedAt: new Date().toISOString(),
