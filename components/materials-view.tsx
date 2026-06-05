@@ -190,6 +190,23 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   const [activeWoId, setActiveWoId] = useState<string | null>(
     () => (initialWoId && openJobs.some((j) => j.wo.id === initialWoId) ? initialWoId : null)
   );
+
+  // On mobile (single-column layout), the JobDetail panel renders BELOW the
+  // full WO list — tapping a row appears to do nothing until the user scrolls
+  // down. Auto-scroll the JobDetail into view on mobile when activeWoId
+  // changes, so the tap feels responsive. Skipped on lg+ where the side
+  // panel sits in a permanent right rail (no scroll needed).
+  const detailAnchorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!activeWoId) return;
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+    // Defer to next tick so the DOM has rendered the JobDetail before we scroll.
+    const id = window.setTimeout(() => {
+      detailAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [activeWoId]);
   // Cache the relative-close-date label per ISO date string so the row render
   // loop doesn't recompute the same Date+Intl math 100× per render. With
   // search/sort triggering frequent re-renders, this is a real saving on
@@ -725,9 +742,28 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           </div>
 
           {/* Side panel */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3" ref={detailAnchorRef}>
             {activeJob ? (
               <div className="space-y-4">
+                {/* Mobile-only "back" button — closes the JobDetail and
+                    smooth-scrolls the user back to the WO list. On desktop
+                    the side rail is permanent so there's nothing to close. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveWoId(null);
+                    if (typeof window !== "undefined") {
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }
+                  }}
+                  className="lg:hidden inline-flex items-center gap-1.5 px-3 py-2 -ml-1 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 touch-manipulation"
+                  aria-label="Back to work orders list"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M19 12H5 M12 19l-7-7 7-7" />
+                  </svg>
+                  Back to work orders
+                </button>
                 {/* Progress bar — sticky at the top so it's visible while
                     scrolling the long line-item list below. */}
                 {progressByWO.get(activeJob.wo.id) && (
