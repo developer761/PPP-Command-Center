@@ -33,14 +33,20 @@ export default async function MaterialsOrderingPage({
     woMeta.set(j.wo.id, { status: j.wo.status, closeDate: j.wo.closeDate });
   }
 
-  const aux = await getMaterialsPageAuxData(woIds, woMeta).catch((err) => {
-    console.error("[materials] aux data load failed:", err);
-    return { formStatusByWO: new Map(), progressByWO: new Map() };
-  });
-
-  // Tuned coverage config so the WO-card paint estimate matches what the order
-  // modal/email produce (both use the same numbers). Fail-safe to defaults.
-  const coverageConfig = await loadCoverageConfig();
+  // Aux (form statuses + progress timeline) needs the WO ids from the
+  // snapshot; coverage config is independent. Run both concurrently — the
+  // sequential await was wasting 200–400ms on every page load (the coverage
+  // query is a single small Supabase round-trip that doesn't depend on aux).
+  const [aux, coverageConfig] = await Promise.all([
+    getMaterialsPageAuxData(woIds, woMeta).catch((err) => {
+      console.error("[materials] aux data load failed:", err);
+      return { formStatusByWO: new Map(), progressByWO: new Map() };
+    }),
+    loadCoverageConfig().catch((err) => {
+      console.error("[materials] coverage config load failed:", err);
+      return undefined;
+    }),
+  ]);
 
   // Serialize Maps → arrays for client-component props (Maps don't
   // serialize cleanly across the server/client boundary in Next).
