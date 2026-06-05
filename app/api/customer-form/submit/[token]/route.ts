@@ -5,6 +5,7 @@ import { writeSfBatch, type SfWriteAttempt } from "@/lib/salesforce/writeback";
 import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
+import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
 
 /**
  * Customer form submit handler.
@@ -101,27 +102,12 @@ const VALID_FINISHES = new Set([
   "Gloss / High-Gloss",
 ]);
 
-/**
- * Server-side allowlist for WorkOrder.MaterialType__c — mirrors
- * MATERIAL_TYPE_GROUPS in customer-form-view.tsx and the live SF picklist
- * (queried 2026-06-03 via scripts/answer-katies-questions.ts). Public
- * endpoint, so we never trust client-sent values: an off-list value would
- * otherwise hit SF's STRING_TOO_LONG / INVALID_OR_NULL_FOR_RESTRICTED_PICKLIST
- * error AFTER the customer thinks they successfully submitted, leaving the
- * customer-form token marked submitted with the WO un-updated.
- */
-const VALID_MATERIAL_TYPES = new Set([
-  "Ultra Spec Interior",
-  "Regal Select Interior",
-  "Aura Interior",
-  "Ultra Spec Exterior",
-  "Regal Select Exterior",
-  "Aura Exterior",
-  "SW Emerald",
-  "SW Duration",
-  "SW Super Paint",
-  "Other",
-]);
+// Server-side allowlist for WorkOrder.MaterialType__c now lives in
+// lib/customer-form/material-types.ts — same source as the customer picker
+// + the admin per-surface override dropdown. Re-export-by-alias here keeps
+// the local reference name (`VALID_MATERIAL_TYPES`) so the rest of this
+// file reads naturally.
+const VALID_MATERIAL_TYPES = VALID_MATERIAL_TYPE_VALUES;
 
 export async function POST(
   request: Request,

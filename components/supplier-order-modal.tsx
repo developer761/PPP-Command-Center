@@ -4,6 +4,23 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { formatOrderQuantity, formatBucketsCans, summarizeOrder, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 import { isNycAddress } from "@/lib/supplier-order/nyc-zips";
+import { MATERIAL_TYPES } from "@/lib/customer-form/material-types";
+
+/** Material Type optgroups for the per-color override dropdown. Grouped on
+ *  render so we don't rebuild the structure for every row. Source of truth
+ *  is MATERIAL_TYPES (interior/exterior/any-tagged). */
+const MATERIAL_TYPE_DROPDOWN_GROUPS: ReadonlyArray<{ label: string; options: string[] }> = (() => {
+  const out: Array<{ label: string; options: string[] }> = [];
+  for (const m of MATERIAL_TYPES) {
+    let bucket = out.find((g) => g.label === m.group);
+    if (!bucket) {
+      bucket = { label: m.group, options: [] };
+      out.push(bucket);
+    }
+    bucket.options.push(m.value);
+  }
+  return out;
+})();
 
 /**
  * Supplier Order Modal — the full draft → review → send experience for one
@@ -132,6 +149,24 @@ export default function SupplierOrderModal({
   // narrow regex (matches by color name + code + finish + surfaces — admin
   // can still edit the body manually). Cleared on draft refetch.
   const [quantityOverrides, setQuantityOverrides] = useState<Map<string, { buckets: number; cans: number }>>(new Map());
+  // Per-color Material Type overrides — Katie 2026-06-05: "we will want to be
+  // able to adjust per surface in case we mix product lines." Keyed by
+  // `${colorId}::${finish ?? ""}` to match the +/- override map shape. Empty
+  // string value treated as "no override" (admin picked the default). Cleared
+  // on WO/supplier change so different jobs don't carry stale overrides.
+  const [materialTypeOverrides, setMaterialTypeOverrides] = useState<Map<string, string>>(new Map());
+  const setMaterialTypeForColor = (colorId: string, finish: string | null, value: string) => {
+    const key = `${colorId}::${finish ?? ""}`;
+    setMaterialTypeOverrides((prev) => {
+      const next = new Map(prev);
+      if (!value) {
+        next.delete(key);
+      } else {
+        next.set(key, value);
+      }
+      return next;
+    });
+  };
 
   // Extras catalog
   const [catalog, setCatalog] = useState<ExtraCatalogItem[]>([]);
@@ -209,6 +244,10 @@ export default function SupplierOrderModal({
             extras: Array.from(extras.values()),
             specialInstructions: specialInstructions.trim() || undefined,
             manualSupplier,
+            materialTypeOverrides:
+              materialTypeOverrides.size > 0
+                ? Object.fromEntries(materialTypeOverrides)
+                : undefined,
           }),
         });
         const data = await res.json();
@@ -244,14 +283,17 @@ export default function SupplierOrderModal({
       }
     }, 120); // Was 250ms — reduced to 120ms so extras-toggle feels snappy.
     return () => { cancelled = true; clearTimeout(timeout); };
-  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier]);
+  }, [workOrderId, supplierAccountId, fulfillment, pickupLocation, deliveryAddr, extras, specialInstructions, manualSupplier, materialTypeOverrides]);
 
   // Reset the "admin touched fulfillment" guard whenever a different WO
   // becomes the modal's target. Without this, admin manually picking
   // delivery on WO A's modal would leak into WO B's modal — the NYC
-  // auto-flip would skip there too (audit-flagged 2026-06-04).
+  // auto-flip would skip there too (audit-flagged 2026-06-04). Same
+  // reasoning for per-color material type overrides — different WO
+  // means different colors, the keyed map is now stale.
   useEffect(() => {
     adminTouchedFulfillment.current = false;
+    setMaterialTypeOverrides(new Map());
   }, [workOrderId, supplierAccountId]);
 
   // NYC pickup default (Katie 2026-06-04: "5 boroughs only"). Detect when
@@ -706,6 +748,39 @@ export default function SupplierOrderModal({
                                   </button>
                                 </div>
                               )}
+                              {/* Per-color Material Type override — Katie
+                                  2026-06-05. Empty value = "use job-level"
+                                  (whatever the customer picked or what's on
+                                  the WO). Overridden values prefix the
+                                  vendor email line with `[Product]` and the
+                                  shared "Paint product line:" header drops
+                                  when the job is mixed. */}
+                              {(() => {
+                                const mtKey = `${e.colorId}::${e.finish ?? ""}`;
+                                const currentMt = materialTypeOverrides.get(mtKey) ?? "";
+                                return (
+                                  <div className="flex items-center justify-end gap-2 mt-1.5">
+                                    <label className="text-[10px] text-ppp-charcoal-500 shrink-0" htmlFor={`mt-${mtKey}`}>
+                                      Product line:
+                                    </label>
+                                    <select
+                                      id={`mt-${mtKey}`}
+                                      value={currentMt}
+                                      onChange={(ev) => setMaterialTypeForColor(e.colorId, e.finish, ev.target.value)}
+                                      className="text-[11px] sm:text-[10px] px-2 py-1 border border-ppp-charcoal-100 rounded bg-white text-ppp-charcoal max-w-[160px] truncate focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                                    >
+                                      <option value="">— use default —</option>
+                                      {MATERIAL_TYPE_DROPDOWN_GROUPS.map((g) => (
+                                        <optgroup key={g.label} label={g.label}>
+                                          {g.options.map((opt) => (
+                                            <option key={opt} value={opt}>{opt}</option>
+                                          ))}
+                                        </optgroup>
+                                      ))}
+                                    </select>
+                                  </div>
+                                );
+                              })()}
                               {e.needsMeasurement && (effective.buckets > 0 || effective.cans > 0) && (
                                 <span className="block text-[10px] font-normal text-ppp-orange-700 mt-0.5 text-right">⚠ a room is unmeasured — may be low</span>
                               )}

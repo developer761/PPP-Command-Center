@@ -96,29 +96,12 @@ const FINISH_OPTIONS = [
   "High-Gloss",
 ];
 
-// Material Type picklist mirrored from WorkOrder.MaterialType__c in the live
-// PPP Salesforce org (queried 2026-06-03 via answer-katies-questions.ts).
-// Customer picks which paint product line to mix their chosen colors in.
-// Grouped visually so a customer can scan Benjamin Moore options vs Sherwin
-// Williams vs Other without picking the wrong family.
-const MATERIAL_TYPE_GROUPS: Array<{ label: string; options: string[] }> = [
-  {
-    label: "Benjamin Moore — Interior",
-    options: ["Ultra Spec Interior", "Regal Select Interior", "Aura Interior"],
-  },
-  {
-    label: "Benjamin Moore — Exterior",
-    options: ["Ultra Spec Exterior", "Regal Select Exterior", "Aura Exterior"],
-  },
-  {
-    label: "Sherwin Williams",
-    options: ["SW Emerald", "SW Duration", "SW Super Paint"],
-  },
-  {
-    label: "Other",
-    options: ["Other"],
-  },
-];
+// Material Type picklist is now sourced from lib/customer-form/material-types
+// so the customer picker, the server-side allowlist, and the admin per-
+// surface override dropdown all stay in lockstep. Adding a product = one
+// entry in that file. Picker is filtered per-WO (interior-only WOs hide
+// exterior products and vice versa) — Katie 2026-06-05.
+import { filterMaterialTypesForWorkOrder } from "@/lib/customer-form/material-types";
 
 /**
  * Sensible default finish per surface (Katie 2026-05-29) — auto-filled the
@@ -179,6 +162,17 @@ function formatEditDeadline(scheduledStart: string | null): string | null {
 
 export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, isPreview = false }: Props) {
   const editDeadline = formatEditDeadline(formData.scheduledStart);
+  // Per-WO filtered Material Type groups — exterior-only WOs hide interior
+  // products, vice versa. Inputs: WO.WorkType.Name + each WOLI.ProductName__c.
+  // Memoized so re-renders don't re-walk the array on every keystroke.
+  const materialTypeGroups = useMemo(
+    () =>
+      filterMaterialTypesForWorkOrder({
+        workTypeName: formData.workTypeName,
+        lineItemProductNames: formData.lineItems.map((li) => li.productName),
+      }),
+    [formData.workTypeName, formData.lineItems]
+  );
   // Seed state. When re-editing, pre-fill each surface from the customer's
   // prior submission (colors + finishes + skipped + notes) so they tweak what
   // they already chose rather than starting over. Otherwise start blank.
@@ -555,7 +549,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             className="mt-3 w-full px-3 py-3 sm:py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue bg-white"
           >
             <option value="">— Select product line —</option>
-            {MATERIAL_TYPE_GROUPS.map((g) => (
+            {materialTypeGroups.map((g) => (
               <optgroup key={g.label} label={g.label}>
                 {g.options.map((opt) => (
                   <option key={opt} value={opt}>{opt}</option>

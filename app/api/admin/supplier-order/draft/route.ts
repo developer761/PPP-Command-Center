@@ -61,6 +61,9 @@ export async function POST(request: Request) {
     manualSupplier?: boolean;
     /** Worker-typed delivery address (when SF has none). */
     manualDeliveryAddress?: { street: string; city: string; state: string; postalCode: string };
+    /** Per-color Material Type overrides keyed by `${colorId}::${finish ?? ""}`.
+     *  Plain object (not Map) for JSON serialization. */
+    materialTypeOverrides?: Record<string, string>;
   };
   try {
     body = await request.json();
@@ -204,6 +207,7 @@ export async function POST(request: Request) {
     requiredByDate: body.requiredByDate,
     includeAllColors: body.manualSupplier ?? false,
     manualDeliveryAddress: body.manualDeliveryAddress,
+    materialTypeOverrides: body.materialTypeOverrides,
   });
 
   return NextResponse.json({ ok: true, draft });

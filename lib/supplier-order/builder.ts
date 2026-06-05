@@ -112,6 +112,13 @@ export type BuildSupplierOrderInput = {
   /** Worker-typed delivery address (when SF has none). Top-priority candidate —
    *  flows into the email's delivery block, source="manual". */
   manualDeliveryAddress?: { street: string; city: string; state: string; postalCode: string };
+  /** Per-color Material Type overrides — Katie 2026-06-05. Keyed by
+   *  `${colorId}::${finish ?? ""}` (matches the modal's +/- override map
+   *  shape). When set, this color's line in the order-summary block uses
+   *  the override; otherwise falls back to job-level (customer-submitted or
+   *  WO.MaterialType__c). Mixed-product jobs drop the "Paint product line"
+   *  header and prefix each line with its product instead. */
+  materialTypeOverrides?: Record<string, string>;
   /** True when the worker MANUALLY picked this supplier (a store), vs the
    *  supplier being auto-derived from a color's manufacturer. PPP buys paint of
    *  any brand from stores (Aboffs sells BM, SW, etc.), so a hand-picked store
@@ -534,22 +541,49 @@ function formatAddressBlock(address: DeliveryAddress): string {
  *  materialType (optional) is included on each line as the paint product line
  *  ("Regal Select Interior" / "Aura Interior" / "SW Emerald" etc.) so the
  *  vendor mixes the right SKU. Katie 2026-06-03: "Missing the product name —
- *  ex: Regal, Aura, etc. This is very important." */
-function formatOrderSummaryBlock(estimates: GallonEstimate[], materialType: string | null): string {
+ *  ex: Regal, Aura, etc. This is very important."
+ *
+ *  materialTypeOverrides (Katie 2026-06-05): per-color override map keyed by
+ *  `${colorId}::${finish ?? ""}` — same shape as the modal's +/- override map.
+ *  When set, the line shows the override as a tag prefix; the job-level header
+ *  is dropped if NOT every color shares the same value (mixed-product job). */
+function formatOrderSummaryBlock(
+  estimates: GallonEstimate[],
+  materialType: string | null,
+  materialTypeOverrides?: Map<string, string>
+): string {
   if (estimates.length === 0) return "(no colors picked yet — customer has not submitted the color form)";
+  // Resolve the effective material type per color (override → fall through to
+  // job-level). Then decide whether ALL colors share one product (single
+  // header) or whether the job is mixed (per-line prefix, no header).
+  const effective = estimates.map((e) => {
+    const key = `${e.colorId}::${e.finish ?? ""}`;
+    return materialTypeOverrides?.get(key) ?? materialType ?? null;
+  });
+  const uniq = new Set(effective.filter((m): m is string => !!m));
+  const allSame = uniq.size <= 1 && effective.every((m) => m === effective[0]);
+  const sharedMaterial = allSame ? effective[0] ?? null : null;
   const lines: string[] = [];
-  if (materialType) {
-    lines.push(`  Paint product line: ${materialType}`);
+  if (sharedMaterial) {
+    lines.push(`  Paint product line: ${sharedMaterial}`);
+    lines.push("");
+  } else if (uniq.size > 0) {
+    lines.push(`  Paint product lines: mixed — see each line below`);
     lines.push("");
   }
-  for (const e of estimates) {
+  for (let i = 0; i < estimates.length; i++) {
+    const e = estimates[i];
+    const mt = effective[i];
     const code = e.colorCode ? ` ${e.colorCode}` : "";
     const finish = e.finish ? ` · ${e.finish}` : "";
     const where = e.surfaces.length ? ` (${e.surfaces.join(", ")})` : "";
+    // Prefix the per-line material type when the job is mixed; suppress when
+    // every line already shares the header value (no value in repeating it).
+    const matPrefix = !sharedMaterial && mt ? `[${mt}] ` : "";
     if (e.buckets > 0 || e.cans > 0) {
-      lines.push(`  ${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}${where}`);
+      lines.push(`  ${matPrefix}${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}${where}`);
     } else {
-      lines.push(`  ___ — ${e.colorName}${code}${finish}${where} (PPP to confirm quantity)`);
+      lines.push(`  ${matPrefix}___ — ${e.colorName}${code}${finish}${where} (PPP to confirm quantity)`);
     }
   }
   // Job total line — a quick cross-check for purchasing ("grab this many total").
@@ -558,7 +592,9 @@ function formatOrderSummaryBlock(estimates: GallonEstimate[], materialType: stri
     lines.push(`  ─────`);
     lines.push(`  TOTAL: ${formatBucketsCans(t.buckets, t.cans)}${t.reviewColors > 0 ? ` (+ ${t.reviewColors} to confirm)` : ""}`);
   }
-  if (!materialType) {
+  // Only warn when NO material type is set anywhere — a sharedMaterial OR
+  // any per-color overrides means the vendor has what they need.
+  if (uniq.size === 0) {
     lines.push("");
     lines.push("  ⚠ Paint product line not specified — please confirm before mixing.");
   }
@@ -707,7 +743,14 @@ export async function buildSupplierOrderDraft(
     (input.customerSubmittedPayload?.materialType ?? "").trim() ||
     "" ||
     null;
-  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates, materialType);
+  // Per-color Material Type overrides (Katie 2026-06-05). Convert the
+  // serialization-friendly Record<> into a Map for O(1) lookups inside the
+  // formatter. Empty record / undefined → no overrides → formatter falls
+  // through to job-level for every line.
+  const materialTypeOverridesMap = input.materialTypeOverrides
+    ? new Map(Object.entries(input.materialTypeOverrides))
+    : undefined;
+  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates, materialType, materialTypeOverridesMap);
   const placementBlock = formatPlacementBlock(lineItems);
   const deliveryAddress = resolveDeliveryAddress(input);
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);
