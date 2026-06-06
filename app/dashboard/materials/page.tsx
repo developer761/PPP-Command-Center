@@ -14,7 +14,12 @@ export default async function MaterialsOrderingPage({
   searchParams: SP;
 }) {
   const sp = await searchParams;
-  const bundle = await loadDashboardData(sp);
+  // Thin snapshot — materials page only consumes workOrders / woLineItems /
+  // accounts / paintColors, so we skip the 89k-record Opportunity fetch +
+  // 6 secondary queries (quotes, quotas, transactions, reviews, cases,
+  // leadStats). Cuts cold-cache load from ~8-15s to ~2-4s. Separate cache
+  // key so the dashboard's full snapshot isn't poisoned. Shipped 2026-06-06.
+  const bundle = await loadDashboardData(sp, { thin: true });
 
   // Speed: ONE consolidated Supabase load builds both the form-status
   // map + the progress timeline map from the same connection. Was two

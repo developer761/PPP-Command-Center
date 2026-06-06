@@ -83,7 +83,8 @@ export type LiveDashboardBundle = {
  * yet honor viewer state. (Strict scoping kicks in once a page opts in.)
  */
 export async function loadDashboardData(
-  searchParams?: Record<string, string | string[] | undefined>
+  searchParams?: Record<string, string | string[] | undefined>,
+  opts?: { thin?: boolean }
 ): Promise<LiveDashboardBundle> {
   // Viewer + creds are both pure Supabase round-trips with no dependency on
   // each other — running them concurrently shaves 50-200ms off every page
@@ -112,7 +113,7 @@ export async function loadDashboardData(
     return { source: "mock", reason: "sf_not_connected", snapshot: null, viewer };
   }
   try {
-    const raw = await loadSalesforceSnapshot();
+    const raw = await loadSalesforceSnapshot(opts?.thin ? { thin: true } : undefined);
     if (raw.reps.length === 0) {
       return { source: "mock", reason: "sf_returned_no_reps", snapshot: null, viewer };
     }

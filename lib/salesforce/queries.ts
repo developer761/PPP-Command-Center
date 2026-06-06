@@ -156,6 +156,7 @@ export async function clearSalesforceCache() {
   // instances drop their stale in-memory cache too (within 5s).
   await Promise.all([
     invalidateSharedSnapshot("snapshot-v6"),
+    invalidateSharedSnapshot("snapshot-thin-v1"),
     bumpGeneration(),
   ]);
 }
@@ -783,12 +784,25 @@ function isFieldRep(profileName: string | null, userId: string): boolean {
  * Public — one bulk snapshot fetch, parallel queries
  * ─────────────────────────────────────────────────────────────── */
 
-export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
-  // Cache key bumped to v5 — adds customer email + phone + billing address
-  // fields on Account for Phase 2 (supplier order delivery + customer email
-  // auto-prefill). Falls back gracefully when org doesn't have Person
-  // Accounts enabled (rich SELECT errors → base SELECT runs successfully).
-  return cached("snapshot-v6", async () => {
+/**
+ * Load the Salesforce snapshot used by every dashboard surface.
+ *
+ * `opts.thin: true` — added 2026-06-06 for the materials-page speed pass.
+ * Skips the heavy Opportunity fetch (89k+ records paginated, ~6-10s on cold
+ * cache) plus the secondary leadStats / quotes / quotas / subQuotas /
+ * transactions / reviews / cases queries. Returns a snapshot with those
+ * fields as empty arrays. The materials page only consumes
+ * { workOrders, woLineItems, accounts, paintColors } — the empty arrays are
+ * invisible to it. Cached under a separate key so the full snapshot and thin
+ * snapshot don't cross-contaminate; both share the same TTL + generation
+ * counter so a manual refresh / SF writeback invalidates both.
+ */
+export async function loadSalesforceSnapshot(
+  opts?: { thin?: boolean }
+): Promise<SalesforceSnapshot> {
+  const thin = !!opts?.thin;
+  const cacheKey = thin ? "snapshot-thin-v1" : "snapshot-v6";
+  return cached(cacheKey, async () => {
     // Timing: surface cold-load breakdown in Vercel logs so we can see the
     // real impact of the parallelization + cron perf work without guessing.
     const tSnapStart = Date.now();
@@ -797,12 +811,12 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // Salesforce ~45 times. Pure optimization — readSharedSnapshot returns null
     // on ANY problem, so we fall through to the live query below unchanged.
     const tSharedStart = Date.now();
-    const sharedHit = await readSharedSnapshot("snapshot-v6");
+    const sharedHit = await readSharedSnapshot(cacheKey);
     if (sharedHit) {
-      console.log(`[SF] snapshot WARM-HIT in ${Date.now() - tSharedStart}ms`);
+      console.log(`[SF] snapshot${thin ? "(thin)" : ""} WARM-HIT in ${Date.now() - tSharedStart}ms`);
       return sharedHit;
     }
-    console.log(`[SF] snapshot COLD START — no shared cache (${Date.now() - tSharedStart}ms check)`);
+    console.log(`[SF] snapshot${thin ? "(thin)" : ""} COLD START — no shared cache (${Date.now() - tSharedStart}ms check)`);
 
     const conn = await getSalesforceClient();
 
@@ -977,13 +991,21 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     }
 
     let oppRecords: SfOppRow[];
-    try {
-      oppRecords = await queryAllOpps(true);
-    } catch (err) {
-      console.error("[SF] Opp query with custom fields failed — narrowing:", err);
-      oppRecords = await queryAllOpps(false);
+    if (thin) {
+      // Thin mode (materials page): skip the 89k-record opp fetch entirely.
+      // Saves the biggest chunk of cold-cache wall time. Materials only needs
+      // workOrders/woLineItems/accounts/paintColors — opportunities are unused.
+      oppRecords = [];
+      console.log(`[SF] thin mode: skipping Opportunity fetch`);
+    } else {
+      try {
+        oppRecords = await queryAllOpps(true);
+      } catch (err) {
+        console.error("[SF] Opp query with custom fields failed — narrowing:", err);
+        oppRecords = await queryAllOpps(false);
+      }
+      console.log(`[SF] Pulled ${oppRecords.length} opportunities (all batches)`);
     }
-    console.log(`[SF] Pulled ${oppRecords.length} opportunities (all batches)`);
 
     // PERF: kick off Account + Quote queries NOW so they run in parallel with
     // the upcoming WO schema discovery + WO query. Was sequential before
@@ -1131,7 +1153,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
-    const quotesPromise: Promise<SnapshotQuote[]> = (async () => {
+    const quotesPromise: Promise<SnapshotQuote[]> = thin ? Promise.resolve([]) : (async () => {
       // Funnel derivation needs count + grandTotal + opportunityId (the link
       // back to the parent opp so scopeSnapshotToViewer can filter quotes
       // when viewer.scope === "my"). Subtotal__c is dead — left off.
@@ -1726,7 +1748,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // months. Even at PPP scale that's a few thousand rows max.
     const TWO_YEARS_AGO_ISO = new Date(Date.now() - 730 * 86_400_000).toISOString();
 
-    const quotasPromise: Promise<SnapshotQuota[]> = (async () => {
+    const quotasPromise: Promise<SnapshotQuota[]> = thin ? Promise.resolve([]) : (async () => {
       try {
         const fields = "Id, User__c, FY__c, QuotaAssigned__c, Status__c, Allocation__c, QuotaType__c";
         const records: Array<Record<string, unknown>> = [];
@@ -1756,7 +1778,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
-    const subQuotasPromise: Promise<SnapshotSubQuota[]> = (async () => {
+    const subQuotasPromise: Promise<SnapshotSubQuota[]> = thin ? Promise.resolve([]) : (async () => {
       try {
         // PPP actual schema (verified via /api/admin/sf-field-discovery 2026-05-23):
         //   - Field is `Month__c` (picklist: "January".."December") — NOT `FiscalMonth__c`
@@ -1813,7 +1835,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
-    const transactionsPromise: Promise<SnapshotTransaction[]> = (async () => {
+    const transactionsPromise: Promise<SnapshotTransaction[]> = thin ? Promise.resolve([]) : (async () => {
       try {
         // RecordType.DeveloperName for the 3 buckets. Plus WO + Opp linkage
         // for rep attribution. Payee__r.Name for commissions attribution.
@@ -1852,7 +1874,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
-    const reviewsPromise: Promise<SnapshotReview[]> = (async () => {
+    const reviewsPromise: Promise<SnapshotReview[]> = thin ? Promise.resolve([]) : (async () => {
       try {
         const fields = "Id, GoodReview__c, BadReview__c, Removed__c, Account__c, Account__r.OwnerId, CreatedDate";
         const records: Array<Record<string, unknown>> = [];
@@ -1884,7 +1906,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
       }
     })();
 
-    const casesPromise: Promise<SnapshotCase[]> = (async () => {
+    const casesPromise: Promise<SnapshotCase[]> = thin ? Promise.resolve([]) : (async () => {
       try {
         // Customer-facing case types only (per BUSINESS_RULES.md).
         // Opportunity__c is a custom lookup on Case in PPP's org.
@@ -1922,7 +1944,7 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     // Company lead conversion (Conversion Rate = Leads → Opps). AGGREGATE only
     // — COUNT over the trailing 365d, not the 30k+ rows — so it's one tiny
     // query running parallel with the rest (≈ zero wall-time + memory cost).
-    const leadStatsPromise: Promise<{ total: number; converted: number }> = (async () => {
+    const leadStatsPromise: Promise<{ total: number; converted: number }> = thin ? Promise.resolve({ total: 0, converted: 0 }) : (async () => {
       try {
         const r = await conn.query<Record<string, unknown>>(
           `SELECT COUNT(Id) total, COUNT(ConvertedOpportunityId) converted FROM Lead WHERE CreatedDate = LAST_N_DAYS:365`
@@ -2017,8 +2039,8 @@ export async function loadSalesforceSnapshot(): Promise<SalesforceSnapshot> {
     };
     // Populate the shared cache so OTHER cold instances skip the SF paging.
     // Best-effort + non-blocking — a write failure never affects this response.
-    void writeSharedSnapshot("snapshot-v6", snapshot);
-    console.log(`[SF] snapshot COLD-COMPLETE in ${Date.now() - tSnapStart}ms`);
+    void writeSharedSnapshot(cacheKey, snapshot);
+    console.log(`[SF] snapshot${thin ? "(thin)" : ""} COLD-COMPLETE in ${Date.now() - tSnapStart}ms`);
     return snapshot;
   });
 }
