@@ -719,7 +719,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                               );
                             })()}
                           </div>
-                          <div className="mt-1.5 flex items-center gap-2 text-[10px] text-ppp-charcoal-500">
+                          <div className="mt-1.5 flex items-center gap-2 text-[10px] text-ppp-charcoal-500 flex-wrap">
                             {j.lineItems.length === 0 ? (
                               <Pill tone="orange">No rooms entered</Pill>
                             ) : (
@@ -731,6 +731,35 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                               </Pill>
                             )}
                             {j.totalSqFt > 0 && <Pill>{j.totalSqFt.toLocaleString()} sq ft</Pill>}
+                            {/* Status chips — Katie 2026-06-05: workers need to
+                                spot WOs that need extra attention WITHOUT
+                                clicking each one. Two surface-level signals:
+                                  - Colors picked + ANY room missing sqft →
+                                    "Manual qty needed" (sqft = 0 on at least
+                                    one WOLI with a color picked → estimator
+                                    will return 0 for that color)
+                                  - Zero line items → "Customer types notes"
+                                    (notes-only path on the customer form) */}
+                            {(() => {
+                              const colorsPicked = j.lineItems.some((li) => li.wall || li.ceiling || li.trim || li.floor || li.other);
+                              if (!colorsPicked) return null;
+                              const anyUnsized = j.lineItems.some((li) => {
+                                const hasColor = !!(li.wall || li.ceiling || li.trim || li.floor || li.other);
+                                if (!hasColor) return false;
+                                return li.raw.sqFootage === 0 && li.raw.wallSurfaceArea === 0;
+                              });
+                              if (!anyUnsized) return null;
+                              return (
+                                <Pill tone="orange" title="One or more rooms are missing square footage in Salesforce. The supplier order will show '___ (PPP to confirm)' for those colors — you'll have to type in the gallons before sending.">
+                                  ⚠ Manual qty
+                                </Pill>
+                              );
+                            })()}
+                            {j.lineItems.length === 0 && (
+                              <Pill tone="orange" title="No rooms broken down in Salesforce. The customer will type their project description in a notes textarea on the form (typical for exterior jobs). You'll get notified when they submit.">
+                                📝 Notes-only
+                              </Pill>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1596,13 +1625,13 @@ function formatRelativeCloseDate(iso: string): { label: string; tone: "normal" |
   return { label: iso, tone: "normal" };
 }
 
-function Pill({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "orange" }) {
+function Pill({ children, tone = "neutral", title }: { children: React.ReactNode; tone?: "neutral" | "orange"; title?: string }) {
   const cls =
     tone === "orange"
       ? "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100"
       : "bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}`}>
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}${title ? " cursor-help" : ""}`} title={title}>
       {children}
     </span>
   );
