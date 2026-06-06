@@ -446,6 +446,10 @@ export async function POST(
   const hasMeaningfulSubmission = attempts.length > 0 || notesOnly;
   const writebackHappened = decision.shouldWrite || notesOnly;
   if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission && writebackHappened) {
+    // notesOnly = notes were the only meaningful content (no per-room color
+    // writes fired). Drives notification copy so admin doesn't expect color
+    // data in SF when only project-description text arrived.
+    const notifyNotesOnly = attempts.length === 0 && notesOnly;
     notifySenderOnSubmit({
       adminUserId: status.token.created_by_user_id,
       customerName: status.token.customer_name,
@@ -454,6 +458,7 @@ export async function POST(
       isReedit,
       lineItemCount: body.lineItems.length,
       orderAlreadyPlaced,
+      notesOnly: notifyNotesOnly,
     }).catch((err) => {
       console.warn(`[customer-form] sender notification failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
     });

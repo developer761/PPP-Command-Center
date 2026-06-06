@@ -103,13 +103,27 @@ export default function MaterialTypePicker({
   }, [expanded, query, value, visibleGroups]);
 
   const toggleGroup = (label: string) => {
-    setExpanded(() => {
-      // Seed from the currently-visible set (which may be the auto-expanded
-      // fallback when the user hasn't manually toggled anything yet). This
-      // means the user's first click "locks in" the current visible state +
-      // their toggle — a minor wart, acceptable for the realistic use of
-      // tap-to-collapse-one-group.
-      const next: Set<string> = new Set(effectiveExpanded);
+    // Capture the currently-visible expanded set INSIDE the setter so we
+    // don't race a pending memo recompute (audit 2026-06-05). Reading
+    // effectiveExpanded from closure is technically fine for synchronous
+    // onClick handlers, but it's fragile under React 18 batching + slow
+    // devices. Recompute the auto-expand fallback inline based on the
+    // setter's `prev` argument — that's always React's latest state.
+    setExpanded((prev) => {
+      // Mirror effectiveExpanded's fallback logic so the user's first
+      // toggle starts from the visually-correct set.
+      let base: Set<string>;
+      if (query.trim()) {
+        base = new Set(visibleGroups.map((g) => g.label));
+      } else if (prev.size > 0) {
+        base = prev;
+      } else if (value) {
+        const m = MATERIAL_TYPES.find((x) => x.value === value);
+        base = m ? new Set([m.group]) : new Set();
+      } else {
+        base = visibleGroups.length > 0 ? new Set([visibleGroups[0].label]) : new Set();
+      }
+      const next = new Set(base);
       if (next.has(label)) next.delete(label);
       else next.add(label);
       return next;

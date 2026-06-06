@@ -992,35 +992,47 @@ function JobDetail({
           )}
         </div>
 
-        {/* Katie 2026-06-05 (batch 3): when ANY room is missing sqft, we
-            can't estimate — surface a top-level orange banner on the WO
-            header (not buried inside the order modal) so the worker
-            knows BEFORE they click into materials ordering that they'll
-            have to manually set the quantity. paintEstimate.reviewColors
-            counts unsized colors; needsManualQuantity = no estimate at
-            all (zero buckets + zero cans). */}
-        {(paintEstimate.reviewColors > 0 ||
-          (paintEstimate.buckets === 0 && paintEstimate.cans === 0 && job.lineItems.length > 0)) && (
-          <div className="mt-4 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2.5 flex items-start gap-2.5 text-xs text-ppp-orange-700">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden>
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-            <div className="min-w-0 flex-1 leading-relaxed">
-              <strong className="block text-ppp-orange-800">
-                {paintEstimate.buckets === 0 && paintEstimate.cans === 0
-                  ? "No square footage on Salesforce — we can't estimate paint for this job."
-                  : `${paintEstimate.reviewColors} color${paintEstimate.reviewColors === 1 ? "" : "s"} need a manual quantity`}
-              </strong>
-              <span className="text-ppp-orange-700">
-                {paintEstimate.buckets === 0 && paintEstimate.cans === 0
-                  ? "You'll need to fill in the gallons yourself when you order materials. The system won't auto-suggest a quantity."
-                  : "Some rooms are missing measurements. The unsized ones show \"___ (PPP to confirm)\" in the supplier modal — fill them in before sending."}
-              </span>
+        {/* Katie 2026-06-05 (batch 3): banner for "we can't estimate paint"
+            scenarios so the worker sees it BEFORE clicking into materials
+            ordering. The banner only fires when colors ARE picked (otherwise
+            the zero-estimate is just "customer hasn't submitted yet" — a
+            different problem, surfaced by the Send Color Form button state).
+            Three branches:
+              - reviewColors > 0       → partial: some rooms unsized
+              - colors but zero est.   → all-unsized: no sqft anywhere
+              - no colors picked at all → don't show (not a measurement problem)
+            Audit 2026-06-05 fix: don't conflate "all surfaces skipped /
+            colors empty" with "no sqft" — the copy would mislead. */}
+        {(() => {
+          const hasAnyColorsPicked = job.lineItems.some(
+            (li) => li.wall || li.ceiling || li.trim || li.floor || li.other
+          );
+          if (!hasAnyColorsPicked) return null;
+          const noEstimate = paintEstimate.buckets === 0 && paintEstimate.cans === 0;
+          const partial = paintEstimate.reviewColors > 0 && !noEstimate;
+          if (!noEstimate && !partial) return null;
+          return (
+            <div className="mt-4 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2.5 flex items-start gap-2.5 text-xs text-ppp-orange-700">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <div className="min-w-0 flex-1 leading-relaxed">
+                <strong className="block text-ppp-orange-800">
+                  {noEstimate
+                    ? "No square footage on Salesforce — we can't estimate paint for this job."
+                    : `${paintEstimate.reviewColors} color${paintEstimate.reviewColors === 1 ? "" : "s"} need a manual quantity`}
+                </strong>
+                <span className="text-ppp-orange-700">
+                  {noEstimate
+                    ? "You'll need to fill in the gallons yourself when you order materials. The system won't auto-suggest a quantity."
+                    : "Some rooms are missing measurements. The unsized ones show \"___ (PPP to confirm)\" in the supplier modal — fill them in before sending."}
+                </span>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="mt-5 flex flex-wrap gap-2">
           {/* key forces a fresh instance when the worker switches WOs — the

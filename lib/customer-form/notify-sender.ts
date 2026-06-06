@@ -30,6 +30,11 @@ type NotifyInput = {
   isReedit: boolean;
   lineItemCount: number;
   orderAlreadyPlaced: boolean;
+  /** True when the customer submitted notes only (no per-room color picks)
+   *  — typical for exterior WOs the rep didn't break down. Changes the
+   *  notification copy from "colors submitted" to "notes submitted" so admin
+   *  isn't misled to expect color data in Salesforce. */
+  notesOnly?: boolean;
 };
 
 function adminClient() {
@@ -93,10 +98,13 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
 
   const customer = input.customerName?.trim() || "the customer";
   const woLabel = input.workOrderNumber ? `WO #${input.workOrderNumber}` : "the work order";
-  const verb = input.isReedit ? "UPDATED their colors" : "submitted their colors";
-  const subject = input.isReedit
-    ? `Colors updated for ${customer} — ${woLabel}`
-    : `Colors submitted for ${customer} — ${woLabel}`;
+  // Copy varies by submission type so admin's expectation matches reality.
+  // notes-only path = no SF writeback fired, just a notes blob saved in CC.
+  const noun = input.notesOnly ? "project notes" : "colors";
+  const verb = input.isReedit ? `UPDATED their ${noun}` : `submitted their ${noun}`;
+  const subjectVerb = input.isReedit ? "updated" : "submitted";
+  const subjectNoun = input.notesOnly ? "Project notes" : "Colors";
+  const subject = `${subjectNoun} ${subjectVerb} for ${customer} — ${woLabel}`;
 
   // App URL for deep-linking back into materials → this specific WO.
   const baseUrl =
@@ -107,10 +115,17 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
     ? "\n\n⚠ HEADS-UP: The supplier order for this WO already went out — the customer changed colors AFTER materials were ordered. You may need to reach out to the supplier to amend the order, or reach out to the customer to confirm they understand the timing."
     : "";
 
+  // Body line about "N rooms": doesn't apply when the customer submitted
+  // notes-only on a WO with zero line items — call that out explicitly so
+  // the admin opens Mail Hub for the actual notes instead of expecting
+  // structured per-room data.
+  const lineItemsLine = input.notesOnly
+    ? "No room breakdown — the customer's notes are the whole submission. Open Mail Hub to read what they wrote."
+    : `${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"} on this submission.`;
   const text = [
     `${customer} ${verb}${input.workOrderNumber ? ` for WO #${input.workOrderNumber}` : ""}.`,
     "",
-    `${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"} on this submission.`,
+    lineItemsLine,
     orderWarning,
     "",
     "Open in Command Center:",
@@ -130,9 +145,15 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
     <tr>
       <td style="padding:18px 20px 12px 20px;">
         <p style="margin:0; font-size:13pt; font-weight:bold; color:#0a0e17;">
-          ${escapeHtml(customer)} ${input.isReedit ? "updated their colors" : "submitted their colors"}
+          ${escapeHtml(customer)} ${input.isReedit ? `updated their ${noun}` : `submitted their ${noun}`}
         </p>
-        ${input.workOrderNumber ? `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">WO #${escapeHtml(input.workOrderNumber)} · ${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"}</p>` : `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"} on this submission</p>`}
+        ${
+          input.notesOnly
+            ? `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">${input.workOrderNumber ? `WO #${escapeHtml(input.workOrderNumber)} · ` : ""}Notes-only submission — open Mail Hub for what they wrote.</p>`
+            : input.workOrderNumber
+            ? `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">WO #${escapeHtml(input.workOrderNumber)} · ${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"}</p>`
+            : `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"} on this submission</p>`
+        }
         ${orderWarningHtml}
       </td>
     </tr>
