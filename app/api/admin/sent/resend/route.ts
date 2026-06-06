@@ -4,6 +4,7 @@ import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { sendCustomerFormInvite, sendEmail } from "@/lib/email/resend";
 import { markSent } from "@/lib/customer-form/tokens";
+import { prefetchFormRenderData } from "@/lib/customer-form/render-data";
 
 /**
  * Re-fire a previously bounced (or otherwise failed) send. Wired to the
@@ -166,6 +167,12 @@ export async function POST(request: Request) {
       // also resets the row off its old "bounced" status so the next delivery
       // event updates THIS message, not the stale one.
       await markSent(row.token, "sent", send.id ?? undefined);
+
+      // Pre-warm the customer's render-data cache so when they click the
+      // resent link the page loads from cache (~50ms) instead of a cold
+      // SF round-trip (~1-3s). Fire-and-forget — failures are logged but
+      // don't affect the resend response.
+      prefetchFormRenderData(row.work_order_id);
 
       return NextResponse.json({
         ok: true,

@@ -19,14 +19,15 @@ import { isHiddenWoliStatus } from "@/lib/customer-form/woli-status";
  *   3. Period changes are instant client-side recomputes
  */
 
-// 15 minutes — bumped from 5 min after Karan flagged "everything takes way
-// too long." At PPP scale cold-cache loads are 8-15s; warm cache is instant.
-// 15 min means 3x fewer cold loads per function instance over the day with
-// minimal data-staleness cost (the manual refresh button in the topbar
-// still triggers an instant pull when freshness matters, and force-dynamic
-// page rendering means the request still RUNS — it just returns the cached
-// snapshot near-instantly).
-const CACHE_TTL_MS = 15 * 60 * 1000;
+// 30 minutes — bumped from 15 min on 2026-06-06 after Karan's speed pass.
+// At PPP scale cold-cache loads are 8-15s; warm cache is instant. 30 min
+// halves cold-load frequency vs 15min with no observable staleness cost
+// for the open-WO/materials workflow (open WOs change only when SF status
+// flips, which the manual refresh button in the topbar handles immediately).
+// The snapshot_generation counter in Supabase still invalidates across
+// instances on writeback or admin refresh — so a true data change is
+// reflected within ≤5s regardless of the per-instance TTL.
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 // IMPORTANT: cache the PROMISE, not just the resolved value. On a cold cache,
 // when DashboardLayout + the page component both trigger loadDashboardData()

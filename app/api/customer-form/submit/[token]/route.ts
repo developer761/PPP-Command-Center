@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { validateToken, markSubmitted, markResubmitted } from "@/lib/customer-form/tokens";
-import { loadFormRenderData } from "@/lib/customer-form/render-data";
+import { loadFormRenderData, invalidateFormRenderData } from "@/lib/customer-form/render-data";
 import { writeSfBatch, type SfWriteAttempt } from "@/lib/salesforce/writeback";
 import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
@@ -409,6 +409,13 @@ export async function POST(
       const failed = writeResults.filter((r) => !r.ok);
       if (failed.length > 0) {
         console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl.slice(0, 8)}…:`, failed);
+      }
+      // The render-data cache (added 2026-06-06 for the speed pass) holds
+      // the pre-submit WOLI shape. Successful writes invalidate it so the
+      // next admin/customer view reads fresh state, not the stale 3-min
+      // snapshot we cached when admin sent the form.
+      if (writesSucceeded > 0) {
+        invalidateFormRenderData(status.token.work_order_id);
       }
     }
   }

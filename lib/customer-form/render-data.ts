@@ -130,7 +130,77 @@ const WOLI_FIELDS = [
 // HIDDEN_WOLI_STATUSES + isHiddenWoliStatus live in lib/customer-form/woli-status.ts
 // so this filter and the snapshot loader's filter can never drift.
 
+// Per-instance render-data cache + in-flight promise dedup (added 2026-06-06
+// for the speed pass). Customer-form pages re-query SF on every hit; this
+// cache turns repeats (refresh, back button, admin preview after send,
+// prefetch-on-send warmup) into sub-50ms reads. The TTL is intentionally
+// short (3 min) because writeback from a submit immediately stales the
+// cached WOLI shape — the submit handler clears the entry on success
+// (see prefetchFormRenderData notes below).
+//
+// Survives only within a single Vercel function instance — cross-instance
+// freshness is left to the snapshot loader's Supabase-shared cache. That's
+// fine for this surface: hot-link reopens (the dominant repeat case) tend
+// to land on the same warm instance during a single browser session.
+type CacheEntry = {
+  promise: Promise<FormRenderData | null>;
+  expiresAt: number;
+};
+const RENDER_CACHE_TTL_MS = 3 * 60 * 1000;
+const renderCache: Map<string, CacheEntry> =
+  (globalThis as unknown as { __PPP_FORM_RENDER_CACHE__?: Map<string, CacheEntry> }).__PPP_FORM_RENDER_CACHE__ ??
+  ((globalThis as unknown as { __PPP_FORM_RENDER_CACHE__: Map<string, CacheEntry> }).__PPP_FORM_RENDER_CACHE__ = new Map());
+
+/**
+ * Pre-warm the per-instance render-data cache. Fire-and-forget from the
+ * admin "Send Color Form" / "Send Reminder" / "Preview" routes so the
+ * customer's first hit on /select/[token] reads from cache instead of
+ * doing a cold SF round-trip. Throws are swallowed — this is best-effort.
+ */
+export function prefetchFormRenderData(workOrderId: string): void {
+  // No-await: schedule on the next microtask so the caller (admin route)
+  // returns to the user immediately.
+  loadFormRenderData(workOrderId).catch(() => {
+    // already logged in loadFormRenderData
+  });
+}
+
+/** Invalidate the cached render data for a WO. Called by the submit handler
+ *  after a successful writeback so the next admin/customer view reflects
+ *  the new state instead of the pre-submit snapshot. */
+export function invalidateFormRenderData(workOrderId: string): void {
+  renderCache.delete(workOrderId);
+}
+
 export async function loadFormRenderData(
+  workOrderId: string,
+  opts?: { throwOnError?: boolean }
+): Promise<FormRenderData | null> {
+  // Fast-path: hit in-flight or fresh cache entry. Skip caching when the
+  // caller asked for throwOnError (admin debug paths want a real error,
+  // not a stale 3-min-old success).
+  if (!opts?.throwOnError) {
+    const now = Date.now();
+    const hit = renderCache.get(workOrderId);
+    if (hit && hit.expiresAt > now) {
+      return hit.promise;
+    }
+  }
+  const promise = (async (): Promise<FormRenderData | null> => {
+    return loadFormRenderDataInner(workOrderId, opts);
+  })();
+  if (!opts?.throwOnError) {
+    renderCache.set(workOrderId, { promise, expiresAt: Date.now() + RENDER_CACHE_TTL_MS });
+    // On rejection, evict so a retry doesn't keep returning the failure.
+    promise.catch(() => {
+      const cur = renderCache.get(workOrderId);
+      if (cur?.promise === promise) renderCache.delete(workOrderId);
+    });
+  }
+  return promise;
+}
+
+async function loadFormRenderDataInner(
   workOrderId: string,
   opts?: { throwOnError?: boolean }
 ): Promise<FormRenderData | null> {
