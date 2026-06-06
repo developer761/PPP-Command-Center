@@ -35,6 +35,12 @@ type NotifyInput = {
    *  notification copy from "colors submitted" to "notes submitted" so admin
    *  isn't misled to expect color data in Salesforce. */
   notesOnly?: boolean;
+  /** True when SF writeback was bypassed (writeback mode=off, OR mode=
+   *  test_only + WO not on allowlist). When true, the notification adds a
+   *  clarifying footer so admin knows the submission is saved in Command
+   *  Center only, not Salesforce. Without this, admin would assume SF was
+   *  updated and rely on stale data. */
+  writebackSkipped?: boolean;
 };
 
 function adminClient() {
@@ -114,6 +120,15 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
   const orderWarning = input.orderAlreadyPlaced && input.isReedit
     ? "\n\n⚠ HEADS-UP: The supplier order for this WO already went out — the customer changed colors AFTER materials were ordered. You may need to reach out to the supplier to amend the order, or reach out to the customer to confirm they understand the timing."
     : "";
+  // Writeback-skipped clarifier — when SF wasn't updated (test_only WO
+  // off-allowlist, or mode=off), tell admin so they don't assume SF reflects
+  // this submission. Audit 2026-06-05 caught notify firing without this
+  // context, making admin think SF was current when it wasn't.
+  const writebackSkippedNote = input.writebackSkipped
+    ? `\n\n📝 Note: this submission is saved in Command Center only — Salesforce writeback ${
+        input.isReedit ? "didn't run" : "was bypassed"
+      } for this work order (test mode or paused). Open Mail Hub to review + manually reconcile with SF if needed.`
+    : "";
 
   // Body line about "N rooms": doesn't apply when the customer submitted
   // notes-only on a WO with zero line items — call that out explicitly so
@@ -127,6 +142,7 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
     "",
     lineItemsLine,
     orderWarning,
+    writebackSkippedNote,
     "",
     "Open in Command Center:",
     materialsUrl,
@@ -137,6 +153,13 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
   const orderWarningHtml = input.orderAlreadyPlaced && input.isReedit
     ? `<p style="margin:12px 0 0 0; padding:10px; background:#fff4e5; border-left:3px solid #d35400; color:#7a3a00;">
         <strong>⚠ HEADS-UP:</strong> the supplier order for this WO already went out — the customer changed colors <em>after</em> materials were ordered. You may need to contact the supplier to amend the order.
+      </p>`
+    : "";
+  const writebackSkippedHtml = input.writebackSkipped
+    ? `<p style="margin:12px 0 0 0; padding:10px; background:#eff6ff; border-left:3px solid #2563eb; color:#1e3a8a;">
+        <strong>📝 Saved to Command Center only.</strong> Salesforce writeback ${
+          input.isReedit ? "didn't run" : "was bypassed"
+        } for this work order — typically because writeback is in test mode and this WO isn't on the allowlist, or writeback is paused entirely. The customer's submission is preserved in Mail Hub; reconcile with SF manually if needed.
       </p>`
     : "";
 
@@ -155,6 +178,7 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
             : `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"} on this submission</p>`
         }
         ${orderWarningHtml}
+        ${writebackSkippedHtml}
       </td>
     </tr>
     <tr>

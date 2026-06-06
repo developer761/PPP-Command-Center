@@ -450,6 +450,13 @@ export async function POST(
     // writes fired). Drives notification copy so admin doesn't expect color
     // data in SF when only project-description text arrived.
     const notifyNotesOnly = attempts.length === 0 && notesOnly;
+    // writebackSkipped = the SF writeback gate BLOCKED the write even though
+    // there were attempts queued (test_only + not on allowlist, or mode=off).
+    // Tells the notification to add a clarifier so admin knows to manually
+    // reconcile via Mail Hub instead of assuming SF is current. Only set
+    // when there WAS something to write — pure notes-only paths don't
+    // count as "skipped" since there's nothing to write either way.
+    const writebackSkipped = attempts.length > 0 && !decision.shouldWrite;
     notifySenderOnSubmit({
       adminUserId: status.token.created_by_user_id,
       customerName: status.token.customer_name,
@@ -459,6 +466,7 @@ export async function POST(
       lineItemCount: body.lineItems.length,
       orderAlreadyPlaced,
       notesOnly: notifyNotesOnly,
+      writebackSkipped,
     }).catch((err) => {
       console.warn(`[customer-form] sender notification failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
     });
