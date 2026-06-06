@@ -119,6 +119,25 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     [snapshot]
   );
 
+  // Pre-computed chip flags per WO. Without this, the render loop runs
+  // 2 × .some() per WO on EVERY re-render (sort / search / activeJob
+  // change). At 100+ WOs this adds 5-10ms to every keystroke in the
+  // search box. Computing once per snapshot change and keying by WO id
+  // makes the render loop a Map lookup. Audit 2026-06-06 perf flag.
+  const woChipFlags = useMemo(() => {
+    const m = new Map<string, { manualQty: boolean; notesOnly: boolean }>();
+    for (const j of openJobs) {
+      const colorsPicked = j.lineItems.some((li) => li.wall || li.ceiling || li.trim || li.floor || li.other);
+      const manualQty = colorsPicked && j.lineItems.some((li) => {
+        const hasColor = !!(li.wall || li.ceiling || li.trim || li.floor || li.other);
+        return hasColor && li.raw.sqFootage === 0 && li.raw.wallSurfaceArea === 0;
+      });
+      const notesOnly = j.lineItems.length === 0;
+      m.set(j.wo.id, { manualQty, notesOnly });
+    }
+    return m;
+  }, [openJobs]);
+
   // Karan ask: search for work orders by customer name / WO# / status so
   // admins (who see hundreds of WOs) can find a specific one fast.
   // Workers usually have <20 WOs so search is less critical for them but
@@ -720,42 +739,31 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                             })()}
                           </div>
                           <div className="mt-1.5 flex items-center gap-2 text-[10px] text-ppp-charcoal-500 flex-wrap">
-                            {j.lineItems.length === 0 ? (
-                              <Pill tone="orange">No rooms entered</Pill>
-                            ) : (
-                              <Pill>{j.lineItems.length} room{j.lineItems.length === 1 ? "" : "s"}</Pill>
-                            )}
+                            {/* Room count pill — neutral tone for zero-rooms
+                                because the orange "📝 Notes-only" chip below
+                                carries the attention signal. Two orange pills
+                                for the same state was double-noise (UX audit
+                                2026-06-06). */}
+                            <Pill>
+                              {j.lineItems.length === 0
+                                ? "No rooms entered"
+                                : `${j.lineItems.length} room${j.lineItems.length === 1 ? "" : "s"}`}
+                            </Pill>
                             {j.distinctColorCount > 0 && (
                               <Pill>
                                 {j.distinctColorCount} color{j.distinctColorCount === 1 ? "" : "s"}
                               </Pill>
                             )}
                             {j.totalSqFt > 0 && <Pill>{j.totalSqFt.toLocaleString()} sq ft</Pill>}
-                            {/* Status chips — Katie 2026-06-05: workers need to
-                                spot WOs that need extra attention WITHOUT
-                                clicking each one. Two surface-level signals:
-                                  - Colors picked + ANY room missing sqft →
-                                    "Manual qty needed" (sqft = 0 on at least
-                                    one WOLI with a color picked → estimator
-                                    will return 0 for that color)
-                                  - Zero line items → "Customer types notes"
-                                    (notes-only path on the customer form) */}
-                            {(() => {
-                              const colorsPicked = j.lineItems.some((li) => li.wall || li.ceiling || li.trim || li.floor || li.other);
-                              if (!colorsPicked) return null;
-                              const anyUnsized = j.lineItems.some((li) => {
-                                const hasColor = !!(li.wall || li.ceiling || li.trim || li.floor || li.other);
-                                if (!hasColor) return false;
-                                return li.raw.sqFootage === 0 && li.raw.wallSurfaceArea === 0;
-                              });
-                              if (!anyUnsized) return null;
-                              return (
-                                <Pill tone="orange" title="One or more rooms are missing square footage in Salesforce. The supplier order will show '___ (PPP to confirm)' for those colors — you'll have to type in the gallons before sending.">
-                                  ⚠ Manual qty
-                                </Pill>
-                              );
-                            })()}
-                            {j.lineItems.length === 0 && (
+                            {/* Status chips — Katie 2026-06-05. Flags are
+                                pre-computed per-WO in woChipFlags useMemo so
+                                this render loop is a cheap Map lookup. */}
+                            {woChipFlags.get(j.wo.id)?.manualQty && (
+                              <Pill tone="orange" title="One or more rooms are missing square footage in Salesforce. The supplier order will show '___ (PPP to confirm)' for those colors — you'll have to type in the gallons before sending.">
+                                ⚠ Manual qty
+                              </Pill>
+                            )}
+                            {woChipFlags.get(j.wo.id)?.notesOnly && (
                               <Pill tone="orange" title="No rooms broken down in Salesforce. The customer will type their project description in a notes textarea on the form (typical for exterior jobs). You'll get notified when they submit.">
                                 📝 Notes-only
                               </Pill>

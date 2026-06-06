@@ -127,33 +127,47 @@ function roomTitle(li: FormLineItem, oneBasedIndex: number): string {
   return parts.length > 0 ? parts.join(" · ") : li.productFamily?.trim() || `Section ${oneBasedIndex}`;
 }
 
-/** Format the editable-window deadline as a concrete date for the customer.
- *  Returns "Friday, June 6 at 8:00 AM" style — long enough that they don't
- *  misread "6/6" as today vs. days from now. Falls back to null when the
- *  scheduled start isn't set yet (admin will follow up). Renders in the
- *  US/Eastern timezone (PPP HQ is on Long Island; safer than the customer's
- *  TZ which we don't know). Katie 2026-06-04: agent flagged that "24 hours
- *  prior to start" copy without a concrete date leaves customers guessing. */
-function formatEditDeadline(scheduledStart: string | null): string | null {
-  if (!scheduledStart) return null;
+type EditDeadline =
+  /** No scheduled start known → no concrete deadline to show. */
+  | { kind: "unknown" }
+  /** Start date is in the past — job has already begun. The 24h cutoff is
+   *  long gone; the consumer should NOT use deadline.label inline ("until X")
+   *  because the label is a full sentence, not a date. */
+  | { kind: "past_start"; label: string }
+  /** Inside the last 24h before start. Cutoff is past but the job's still
+   *  ahead. Treat like past_start — the label is a phrase, not a date. */
+  | { kind: "approaching"; label: string }
+  /** Normal case — `label` is a date string like "Friday, June 6 at 8:00 AM
+   *  EDT" that's safe to embed in "until {label}" copy. */
+  | { kind: "deadline"; label: string };
+
+/** Format the editable-window deadline for the customer. Returns a tagged
+ *  variant so callers can render appropriate copy when the start has
+ *  already passed (regression caught 2026-06-06: previously the past-start
+ *  string was embedded into "you can keep updating until …" producing
+ *  nonsensical "until your start date has already arrived" copy).
+ *  Katie 2026-06-04: customers shouldn't have to compute "24h before start." */
+function formatEditDeadline(scheduledStart: string | null): EditDeadline {
+  if (!scheduledStart) return { kind: "unknown" };
   const start = new Date(scheduledStart);
-  if (Number.isNaN(start.getTime())) return null;
+  if (Number.isNaN(start.getTime())) return { kind: "unknown" };
   const now = Date.now();
-  // Job already started → don't tell the customer "deadline approaching" when
-  // the job is underway / past. Edge-case audit 2026-06-05: rare but possible
-  // if admin sent the form late and the token's still alive.
   if (start.getTime() <= now) {
-    return "your start date has already arrived — please reply to PPP if you still need a change";
+    return {
+      kind: "past_start",
+      label: "your start date has already arrived — please reply to PPP if you still need a change",
+    };
   }
-  // 24h before — same anchor lib/customer-form/expiry.ts uses for the token.
   const deadline = new Date(start.getTime() - 24 * 60 * 60 * 1000);
   if (deadline.getTime() <= now) {
-    // Within the last 24h before the job — the cutoff is past but the start
-    // is still ahead, so urgency is real and honest.
-    return "in the next few hours (your start date is approaching)";
+    return {
+      kind: "approaching",
+      label: "in the next few hours — your start date is almost here",
+    };
   }
+  let label: string;
   try {
-    return new Intl.DateTimeFormat("en-US", {
+    label = new Intl.DateTimeFormat("en-US", {
       timeZone: "America/New_York",
       weekday: "long",
       month: "long",
@@ -163,8 +177,9 @@ function formatEditDeadline(scheduledStart: string | null): string | null {
       timeZoneName: "short",
     }).format(deadline);
   } catch {
-    return deadline.toDateString();
+    label = deadline.toDateString();
   }
+  return { kind: "deadline", label };
 }
 
 export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, isPreview = false }: Props) {
@@ -524,9 +539,15 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         {isEditing && !isPreview && (
           <div className="mt-4 text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
             You&apos;ve already submitted these colors — feel free to update anything below
-            and save again. {editDeadline
-              ? <>You can keep making changes until <strong>{editDeadline}</strong>.</>
-              : "You can keep making changes up to 24 hours prior to your start date."}
+            and save again. {
+              editDeadline.kind === "deadline"
+                ? <>You can keep making changes until <strong>{editDeadline.label}</strong>.</>
+                : editDeadline.kind === "approaching"
+                ? <><strong>Heads up:</strong> {editDeadline.label}. Save changes now if you need to.</>
+                : editDeadline.kind === "past_start"
+                ? <><strong>Heads up:</strong> {editDeadline.label}.</>
+                : "You can keep making changes up to 24 hours prior to your start date."
+            }
           </div>
         )}
         {/* Preview-mode banner — admin generated this link to test the form
@@ -793,15 +814,25 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       {(hasLineItems || globalNotes.trim().length > 0) && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] sm:text-xs text-ppp-charcoal-500">
-            {isPreview
-              ? "Preview only — nothing will be saved when you click. This is to let our team test the form."
-              : isEditing
-              ? editDeadline
-                ? `Save your changes — you can keep updating until ${editDeadline}.`
+            {isPreview ? (
+              "Preview only — nothing will be saved when you click. This is to let our team test the form."
+            ) : isEditing ? (
+              editDeadline.kind === "deadline"
+                ? `Save your changes — you can keep updating until ${editDeadline.label}.`
+                : editDeadline.kind === "approaching"
+                ? `Save your changes — ${editDeadline.label}.`
+                : editDeadline.kind === "past_start"
+                ? `Save your changes — ${editDeadline.label}.`
                 : "Save your changes — you can keep updating your colors up to 24 hours prior to your start date."
-              : editDeadline
-              ? `Once you submit, we'll order the materials. You can still come back and update your colors until ${editDeadline}.`
-              : "Once you submit, we'll order the materials. You can still come back and update your colors up to 24 hours prior to your start date."}
+            ) : (
+              editDeadline.kind === "deadline"
+                ? `Once you submit, we'll order the materials. You can still come back and update your colors until ${editDeadline.label}.`
+                : editDeadline.kind === "approaching"
+                ? `Once you submit, we'll order the materials right away — ${editDeadline.label}.`
+                : editDeadline.kind === "past_start"
+                ? "Once you submit, we'll order the materials right away. Reach out to PPP if anything else needs to change."
+                : "Once you submit, we'll order the materials. You can still come back and update your colors up to 24 hours prior to your start date."
+            )}
           </div>
           <button
             type="submit"
