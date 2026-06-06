@@ -1086,14 +1086,14 @@ function JobDetail({
             still render correctly in Mail Hub history; it's just no
             longer reachable from the worker UI. */}
         <div className="mt-5 rounded-xl border border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 p-3 sm:p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-4">
             {/* CUSTOMER section: collect color picks from the homeowner. */}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 mb-2">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
                 </svg>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
                   Customer
                 </span>
               </div>
@@ -1137,7 +1137,7 @@ function JobDetail({
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
                   <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
                 </svg>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
                   Materials
                 </span>
               </div>
@@ -1183,7 +1183,7 @@ function JobDetail({
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
                   <path d="M12 8v4l3 3 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
                 </svg>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
                   Reference
                 </span>
               </div>
@@ -1777,7 +1777,7 @@ function SendReminderButton({ token }: { token: string }) {
         type="button"
         onClick={send}
         disabled={sending}
-        className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 text-sm font-medium hover:bg-ppp-blue-100 transition-colors disabled:opacity-50"
+        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 text-sm font-medium hover:bg-ppp-blue-100 transition-colors disabled:opacity-50 flex-1 sm:flex-none"
         title="Re-send the same color-form link to the customer"
       >
         {sending ? (
@@ -1876,7 +1876,7 @@ function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
         onClick={onClick}
         disabled={loading}
         title="Open the customer color form in a new tab as a preview — no email is sent and nothing is saved to Salesforce. Useful for testing without touching real data."
-        className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -2018,11 +2018,11 @@ function SendColorFormButton({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-stretch gap-2">
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30 flex-1 sm:flex-none"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
