@@ -1071,77 +1071,142 @@ function JobDetail({
           );
         })()}
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {/* key forces a fresh instance when the worker switches WOs — the
-              button holds local state (looked-up email, typed name, open
-              modal, sent-result, "already looked up" ref) that's per-WO; without
-              this, WO-A's looked-up email and ref would leak into WO-B and the
-              email lookup would be silently skipped. */}
-          <SendColorFormButton
-            key={job.wo.id}
-            workOrderId={job.wo.id}
-            accountName={job.wo.accountName ?? null}
-            defaultEmail={customerAccount?.email ?? null}
-          />
-          {/* When the customer-form invite is already in flight (sent or
-              opened, not yet submitted/expired), surface a one-click
-              "Send Reminder" that re-fires the SAME existing link via the
-              already-tested /api/admin/sent/resend endpoint (5-min server-side
-              dedup, scope-checked, expiry-aware). Saves admin from creating
-              a second token + email — the customer would otherwise get two
-              competing links and not know which one to click. Renders nothing
-              when the form was never sent or was already submitted. */}
-          {(formStatus?.status === "sent" || formStatus?.status === "opened") && (
-            <SendReminderButton key={`remind-${formStatus.token}`} token={formStatus.token} />
-          )}
-          {/* Order materials = pick a STORE (Katie's model: PPP buys paint of
-              any brand from stores like Aboffs/Willis, not from the manufacturer).
-              The picker lists PPP's configured vendors; the chosen store's order
-              includes the whole WO's colors. The manufacturer breakdown above is
-              informational only (it's what the email describes as "what to buy"). */}
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M3 3h18v18H3z M3 9h18 M9 21V9" />
-            </svg>
-            Order materials
-          </button>
-          {/* Preview colors — review the per-room color breakdown before ordering. */}
-          <button
-            type="button"
-            onClick={() => setShowDraft(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
-            </svg>
-            Preview colors
-          </button>
-          {/* Mail history for this WO — deep-link into the Mail Hub
-              pre-filtered to messages tied to this work order. Faster than
-              hunting through the full inbox/sent feeds when admin wants
-              "what's been sent to this customer + replies". */}
-          <Link
-            href={`/dashboard/inbox?wo=${encodeURIComponent(job.wo.id)}`}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
-            </svg>
-            Mail history
-          </Link>
-          {/* The "General Supplies" button used to live here. Removed per
-              Karan 2026-06-02: PPP's regular paint suppliers (Aboffs, Willis,
-              Janovic, etc.) also carry the loose-supply items (rollers,
-              brushes, tape, drop cloths), so workers just pick a real
-              supplier and add what they need as extras — no separate flow.
-              The synthetic "__general__" supplier id is retained in the
-              backend (builder.ts + send route) so existing sent orders
-              still render correctly in Mail Hub history; it's just no
-              longer reachable from the worker UI. */}
+        {/* Action toolbar — grouped by purpose so workers immediately know
+            what each button does. Karan 2026-06-06: the flat button row
+            "people don't know what it's there for" — now sectioned into
+            Customer / Materials / Reference with subtitles under each button.
+            Primary action per section is filled, secondary is outlined.
+            The "General Supplies" button used to live here. Removed per
+            Karan 2026-06-02: PPP's regular paint suppliers (Aboffs, Willis,
+            Janovic, etc.) also carry the loose-supply items (rollers,
+            brushes, tape, drop cloths), so workers just pick a real
+            supplier and add what they need as extras — no separate flow.
+            The synthetic "__general__" supplier id is retained in the
+            backend (builder.ts + send route) so existing sent orders
+            still render correctly in Mail Hub history; it's just no
+            longer reachable from the worker UI. */}
+        <div className="mt-5 rounded-xl border border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 p-3 sm:p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+            {/* CUSTOMER section: collect color picks from the homeowner. */}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 mb-2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+                </svg>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+                  Customer
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {/* key forces a fresh instance when the worker switches WOs — the
+                    button holds local state (looked-up email, typed name, open
+                    modal, sent-result, "already looked up" ref) that's per-WO; without
+                    this, WO-A's looked-up email and ref would leak into WO-B and the
+                    email lookup would be silently skipped. */}
+                <SendColorFormButton
+                  key={job.wo.id}
+                  workOrderId={job.wo.id}
+                  accountName={job.wo.accountName ?? null}
+                  defaultEmail={customerAccount?.email ?? null}
+                />
+                <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                  Email the homeowner a link to pick colors for each room.
+                </p>
+                {/* When the customer-form invite is already in flight (sent or
+                    opened, not yet submitted/expired), surface a one-click
+                    "Send Reminder" that re-fires the SAME existing link via the
+                    already-tested /api/admin/sent/resend endpoint (5-min server-side
+                    dedup, scope-checked, expiry-aware). Saves admin from creating
+                    a second token + email — the customer would otherwise get two
+                    competing links and not know which one to click. Renders nothing
+                    when the form was never sent or was already submitted. */}
+                {(formStatus?.status === "sent" || formStatus?.status === "opened") && (
+                  <div className="mt-1">
+                    <SendReminderButton key={`remind-${formStatus.token}`} token={formStatus.token} />
+                    <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5 mt-1">
+                      Re-send the same link if they haven&apos;t submitted yet.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* MATERIALS section: turn colors into a real supplier order. */}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 mb-2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
+                  <path d="M3 3h18v18H3z M3 9h18 M9 21V9" />
+                </svg>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+                  Materials
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {/* Order materials = pick a STORE (Katie's model: PPP buys paint of
+                    any brand from stores like Aboffs/Willis, not from the manufacturer).
+                    The picker lists PPP's configured vendors; the chosen store's order
+                    includes the whole WO's colors. The manufacturer breakdown above is
+                    informational only (it's what the email describes as "what to buy"). */}
+                <button
+                  type="button"
+                  onClick={() => setShowPicker(true)}
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
+                  </svg>
+                  Order materials
+                </button>
+                <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                  Pick a store (Aboffs, Willis, etc.) and email the order.
+                </p>
+                {/* Preview colors — review the per-room color breakdown before ordering. */}
+                <button
+                  type="button"
+                  onClick={() => setShowDraft(true)}
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
+                  </svg>
+                  Preview colors
+                </button>
+                <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                  Read-only view of every room and color the customer picked.
+                </p>
+              </div>
+            </div>
+
+            {/* REFERENCE section: cross-check past correspondence. */}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 mb-2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
+                  <path d="M12 8v4l3 3 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                </svg>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+                  Reference
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {/* Mail history for this WO — deep-link into the Mail Hub
+                    pre-filtered to messages tied to this work order. Faster than
+                    hunting through the full inbox/sent feeds when admin wants
+                    "what's been sent to this customer + replies". */}
+                <Link
+                  href={`/dashboard/inbox?wo=${encodeURIComponent(job.wo.id)}`}
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
+                  </svg>
+                  Mail history
+                </Link>
+                <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                  Every email sent or received for this WO, in one feed.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
