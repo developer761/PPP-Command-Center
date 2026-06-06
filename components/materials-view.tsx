@@ -1090,7 +1090,7 @@ function JobDetail({
             {/* CUSTOMER section: collect color picks from the homeowner. */}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 mb-2">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
                 </svg>
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
@@ -1134,8 +1134,8 @@ function JobDetail({
             {/* MATERIALS section: turn colors into a real supplier order. */}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 mb-2">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
-                  <path d="M3 3h18v18H3z M3 9h18 M9 21V9" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
                 </svg>
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
                   Materials
@@ -1150,7 +1150,7 @@ function JobDetail({
                 <button
                   type="button"
                   onClick={() => setShowPicker(true)}
-                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
@@ -1164,7 +1164,7 @@ function JobDetail({
                 <button
                   type="button"
                   onClick={() => setShowDraft(true)}
-                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1"
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
@@ -1180,7 +1180,7 @@ function JobDetail({
             {/* REFERENCE section: cross-check past correspondence. */}
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 mb-2">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
                   <path d="M12 8v4l3 3 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
                 </svg>
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
@@ -1194,7 +1194,7 @@ function JobDetail({
                     "what's been sent to this customer + replies". */}
                 <Link
                   href={`/dashboard/inbox?wo=${encodeURIComponent(job.wo.id)}`}
-                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
@@ -1772,12 +1772,12 @@ function SendReminderButton({ token }: { token: string }) {
   };
 
   return (
-    <div className="inline-flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         onClick={send}
         disabled={sending}
-        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 text-sm font-medium hover:bg-ppp-blue-100 transition-colors disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 text-sm font-medium hover:bg-ppp-blue-100 transition-colors disabled:opacity-50"
         title="Re-send the same color-form link to the customer"
       >
         {sending ? (
@@ -1876,7 +1876,7 @@ function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
         onClick={onClick}
         disabled={loading}
         title="Open the customer color form in a new tab as a preview — no email is sent and nothing is saved to Salesforce. Useful for testing without touching real data."
-        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -2018,11 +2018,11 @@ function SendColorFormButton({
 
   return (
     <>
-      <div className="inline-flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-medium hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
