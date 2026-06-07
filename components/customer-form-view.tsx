@@ -503,6 +503,17 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           "Heads up — your materials order was already placed, so please contact our team to make sure this change makes it onto the order."
         );
       }
+      // Material Type the customer picked wasn't in our current catalog
+      // (legacy SF value or stale picklist). Submit saved everything else
+      // but skipped the paint-line write. Tell the customer so they know
+      // to mention the paint line when they hear from us. Without this
+      // they'd see the standard thank-you and assume their paint pick
+      // landed in our system. Audit 2026-06-07.
+      if ((data as { materialTypeDropped?: boolean }).materialTypeDropped) {
+        setPostSubmitNote(
+          "We saved your color picks, but the paint product line you selected isn't one we currently order. Please reply to our email with the paint line you'd like so we can make sure it's mixed correctly."
+        );
+      }
       // Preview-mode submit — admin tested the form. Override the celebratory
       // copy so it's obvious nothing actually persisted. The banner during
       // the form already warned, but the thank-you state would otherwise
@@ -602,6 +613,20 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           {materialType && formData.materialType && materialType !== formData.materialType && (
             <p className="text-[11px] text-ppp-orange-700 mt-2">
               ⓘ You changed this from the original ({formData.materialType}). Your new selection will be saved when you submit.
+            </p>
+          )}
+          {/* Pre-fill warning — if the WO has a MaterialType already set in SF
+              but that value isn't in our current catalog (legacy SF value, or
+              the catalog shrank since admin set it), the customer wouldn't
+              know to pick something new. Submit would silently drop the
+              write and the supplier email would warn "Paint product line not
+              specified." Surface it at form mount so the customer picks
+              again. Audit 2026-06-07. */}
+          {formData.materialType
+            && !materialTypeAvailableValues.has(formData.materialType)
+            && materialType === formData.materialType && (
+            <p className="text-[11px] text-ppp-orange-700 mt-2">
+              ⚠ The originally selected paint line (<strong>{formData.materialType}</strong>) is no longer available for this job. Please pick a new product line above so your colors get mixed in the right paint.
             </p>
           )}
         </div>

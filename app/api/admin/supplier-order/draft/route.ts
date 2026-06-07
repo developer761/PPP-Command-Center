@@ -11,6 +11,7 @@ import {
   type SupplierOrderExtra,
 } from "@/lib/supplier-order/builder";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
 
 /**
  * Generates an auto-populated supplier order draft for a given WO + supplier.
@@ -76,6 +77,30 @@ export async function POST(request: Request) {
   }
   if (!body.supplierAccountId) {
     return NextResponse.json({ error: "missing_supplier_account_id" }, { status: 400 });
+  }
+
+  // Per-color Material Type override validation — mirrors the send-route
+  // allowlist so the admin's preview can't show an MT value that the send
+  // route would reject anyway. Without this, the modal would happily display
+  // "Paint product line: Fake Paint" in the draft preview and only fail on
+  // Send, surprising the admin. Audit 2026-06-07.
+  if (body.materialTypeOverrides && typeof body.materialTypeOverrides === "object") {
+    const invalid: string[] = [];
+    for (const [colorKey, mt] of Object.entries(body.materialTypeOverrides)) {
+      if (typeof mt !== "string") continue;
+      if (!mt.trim()) continue; // empty = cleared, no-op (handled at builder)
+      if (!VALID_MATERIAL_TYPE_VALUES.has(mt)) {
+        invalid.push(`${colorKey}=${mt}`);
+      }
+    }
+    if (invalid.length > 0) {
+      return NextResponse.json({
+        ok: false,
+        error: "invalid_material_type_override",
+        message: `Unknown Material Type value(s): ${invalid.join(", ")}. Pick from the dropdown.`,
+        invalid,
+      }, { status: 400 });
+    }
   }
 
   // Snapshot fetch can throw on cold cache + SF outage. Catch + return JSON

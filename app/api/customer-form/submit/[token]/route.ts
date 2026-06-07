@@ -339,6 +339,10 @@ export async function POST(
   // alongside the WOLI batch so it benefits from the same audit + retry
   // logic in writeSfBatch.
   const customerMaterialType = typeof body.materialType === "string" ? body.materialType.trim() : "";
+  // Flag surfaced in the response so the form can show a "your paint line
+  // wasn't saved" warning instead of a clean success thank-you. Without this
+  // the customer thinks SF was updated when it wasn't. Audit 2026-06-07.
+  let materialTypeDropped = false;
   if (customerMaterialType) {
     if (!VALID_MATERIAL_TYPES.has(customerMaterialType)) {
       // Value isn't in our 10-item allowlist. Two real reasons this happens:
@@ -350,6 +354,7 @@ export async function POST(
       // writing back too). Skip the MaterialType__c write only — leave the
       // existing SF value alone — and log so admin can clean up the picklist.
       console.warn(`[customer-form] dropping MaterialType__c write for WO ${status.token.work_order_id.slice(0, 8)}…: value "${customerMaterialType}" not in VALID_MATERIAL_TYPES allowlist (likely legacy SF value or tampered client). WOLI writes proceed normally.`);
+      materialTypeDropped = true;
     } else {
       attempts.push({
         sObject: "WorkOrder",
@@ -489,5 +494,10 @@ export async function POST(
     writeSkippedReason,
     writebackMode: decision.mode,
     workOrderNumber: fresh.workOrderNumber,
+    // True when customer submitted a Material Type value that wasn't in our
+    // current allowlist. Customer-facing form uses this to show a clarifier
+    // instead of a clean thank-you so the customer doesn't think their
+    // paint-line pick was saved when it wasn't. Audit 2026-06-07.
+    materialTypeDropped,
   });
 }
