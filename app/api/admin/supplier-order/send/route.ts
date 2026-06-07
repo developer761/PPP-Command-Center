@@ -4,6 +4,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { sendEmail } from "@/lib/email/resend";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
 
 /**
  * Sends a supplier order via Resend + persists a `supplier_orders` row.
@@ -115,6 +116,29 @@ export async function POST(request: Request) {
   // Email-shape validation — paranoid because we're about to send to it.
   if (!/^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(body.sentToEmail!.trim())) {
     return NextResponse.json({ error: "invalid_supplier_email" }, { status: 400 });
+  }
+
+  // materialTypeOverrides validation — defensive, mirrors the customer-form
+  // submit route's allowlist. Without this, an admin (or a tampered client)
+  // could push a fake product name like "Fake Paint" into the supplier email
+  // + audit trail. Catch unknown values before they leak to the vendor.
+  // Audit 2026-06-07.
+  if (body.materialTypeOverrides && typeof body.materialTypeOverrides === "object") {
+    const invalid: string[] = [];
+    for (const [colorKey, mt] of Object.entries(body.materialTypeOverrides)) {
+      if (typeof mt !== "string") continue;
+      if (!mt.trim()) continue; // empty = cleared, no-op (handled at builder)
+      if (!VALID_MATERIAL_TYPE_VALUES.has(mt)) {
+        invalid.push(`${colorKey}=${mt}`);
+      }
+    }
+    if (invalid.length > 0) {
+      return NextResponse.json({
+        error: "invalid_material_type_override",
+        message: `Unknown Material Type value(s): ${invalid.join(", ")}. Pick from the dropdown.`,
+        invalid,
+      }, { status: 400 });
+    }
   }
 
   const sbAdmin = createSupabaseAdminClient(

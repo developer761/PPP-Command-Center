@@ -108,15 +108,25 @@ export async function getProgressByWO(
   const sb = adminClient();
 
   // Pull tokens — most-recent-per-WO wins (admin re-sends create new rows).
+  // CRITICAL: skip kind='preview' rows — those are admin-generated test links
+  // (the "Preview" button on the JobDetail panel), not real customer sends.
+  // Without this filter, a Preview click stamps opened_at on the preview
+  // token, the dedupe picks it as "most recent", and the progress timeline
+  // lights up "Customer Opened" when no real customer ever clicked anything.
+  // Audit 2026-06-07 (Karan caught the false-positive on WO 00303551).
   try {
     const { data: tokenRows, error: tokenErr } = await sb
       .from("customer_form_tokens")
-      .select("work_order_id, work_order_number, sent_at, opened_at, submitted_at, created_at")
+      .select("work_order_id, work_order_number, sent_at, opened_at, submitted_at, created_at, kind")
       .in("work_order_id", workOrderIds)
       .order("created_at", { ascending: false });
     if (tokenErr) throw tokenErr;
     const seenTokenForWO = new Set<string>();
-    for (const row of (tokenRows ?? []) as TokenRow[]) {
+    for (const row of (tokenRows ?? []) as (TokenRow & { kind?: string | null })[]) {
+      // Preview tokens never count toward customer-facing progress. Real send
+      // tokens have kind=null (legacy) or kind='send' (future). Be permissive
+      // — anything that's not explicitly "preview" is treated as a real send.
+      if (row.kind === "preview") continue;
       if (seenTokenForWO.has(row.work_order_id)) continue;
       seenTokenForWO.add(row.work_order_id);
       const existing = out.get(row.work_order_id);

@@ -744,10 +744,14 @@ export async function buildSupplierOrderDraft(
   // Paint product line — prefer the customer's selection (they may have
   // refined the admin pre-set value), fall back to whatever was on the WO at
   // build time. Null when neither has it; the summary block flags it as a
-  // "please confirm before mixing" warning to the vendor.
+  // "please confirm before mixing" warning to the vendor. (Audit 2026-06-07:
+  // the WO fallback link was broken — the middle term was `"" ||` instead of
+  // `input.workOrder.materialType ||`, so the admin's pre-set value was
+  // silently ignored and the vendor warning fired on every order even when
+  // admin had set the paint line.)
   const materialType =
     (input.customerSubmittedPayload?.materialType ?? "").trim() ||
-    "" ||
+    input.workOrder.materialType ||
     null;
   // Per-color Material Type overrides (Katie 2026-06-05). Convert the
   // serialization-friendly Record<> into a Map for O(1) lookups inside the

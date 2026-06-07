@@ -93,9 +93,14 @@ export async function GET(request: Request) {
 
     // Build the three source queries. Each captures its own subset of
     // timestamps — we'll unfold each row into 1-3 events client-side.
+    // Pull token rows including `kind` so we can drop kind='preview' rows
+    // in the unfold loop below. Two .or() calls collide in PostgREST (only
+    // the last one wins as a single filter), so we keep the timestamp .or()
+    // here and filter preview tokens in code. Audit 2026-06-07 (Karan caught
+    // an admin Preview click stamping "Customer Opened" on the timeline).
     let formQuery = sb
       .from("customer_form_tokens")
-      .select("token, work_order_id, work_order_number, customer_name, customer_email, sent_at, opened_at, submitted_at")
+      .select("token, work_order_id, work_order_number, customer_name, customer_email, sent_at, opened_at, submitted_at, kind")
       .or(`sent_at.gte.${cutoff},opened_at.gte.${cutoff},submitted_at.gte.${cutoff}`)
       .limit(limit * 2);
     if (scopedWoIds) formQuery = formQuery.in("work_order_id", scopedWoIds);
@@ -125,7 +130,12 @@ export async function GET(request: Request) {
         token: string; work_order_id: string; work_order_number: string | null;
         customer_name: string | null; customer_email: string;
         sent_at: string | null; opened_at: string | null; submitted_at: string | null;
+        kind?: string | null;
       }>) {
+        // Skip admin Preview tokens — they're internal QA tools, not real
+        // customer activity. Without this guard, a Preview click would
+        // surface as "Customer opened color form" in the activity feed.
+        if (r.kind === "preview") continue;
         const recipient = r.customer_name ?? r.customer_email;
         if (r.sent_at && r.sent_at >= cutoff) {
           events.push({

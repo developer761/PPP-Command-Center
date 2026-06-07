@@ -120,10 +120,15 @@ export async function getMaterialsPageAuxData(
   const sb = adminClient();
 
   // Pull both source tables in parallel — one shared Supabase client.
+  // CRITICAL: include `kind` so we can skip kind='preview' rows below.
+  // Admin Preview clicks must NOT count as real customer activity — the
+  // progress timeline + form status surface both feed off this loop.
+  // Audit 2026-06-07 (Karan caught a Preview click stamping "Customer
+  // Opened" on WO 00303551's timeline).
   const [tokensResult, ordersResult] = await Promise.allSettled([
     sb
       .from("customer_form_tokens")
-      .select("token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at")
+      .select("token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind")
       .in("work_order_id", workOrderIds)
       .order("created_at", { ascending: false }),
     sb
@@ -137,7 +142,11 @@ export async function getMaterialsPageAuxData(
   if (tokensResult.status === "fulfilled" && !tokensResult.value.error) {
     const seen = new Set<string>();
     const now = Date.now();
-    for (const row of (tokensResult.value.data ?? []) as TokenRow[]) {
+    for (const row of (tokensResult.value.data ?? []) as (TokenRow & { kind?: string | null })[]) {
+      // Skip preview tokens — they're admin-generated test links, not real
+      // customer activity. Treat anything not explicitly "preview" as a
+      // real send (legacy rows with null kind still flow through).
+      if (row.kind === "preview") continue;
       if (seen.has(row.work_order_id)) continue;
       seen.add(row.work_order_id);
 

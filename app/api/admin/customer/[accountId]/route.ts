@@ -182,7 +182,10 @@ export async function GET(
     if (visibleWoIds.length > 0) {
       const [formsRes, ordersRes, inboxRes] = await Promise.allSettled([
         sb.from("customer_form_tokens")
-          .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, opened_at, submitted_at, delivery_status")
+          // Include `kind` so we can drop kind='preview' rows from the
+          // per-customer mail timeline below. Preview tokens are admin QA
+          // tools, not real customer correspondence. Audit 2026-06-07.
+          .select("token, work_order_id, work_order_number, customer_email, customer_name, sent_at, opened_at, submitted_at, delivery_status, kind")
           .in("work_order_id", visibleWoIds)
           .order("sent_at", { ascending: false, nullsFirst: false }),
         sb.from("supplier_orders")
@@ -210,7 +213,10 @@ export async function GET(
           customer_email: string; customer_name: string | null;
           sent_at: string | null; opened_at: string | null; submitted_at: string | null;
           delivery_status: string | null;
+          kind?: string | null;
         }>) {
+          // Skip admin Preview tokens — internal QA, not real customer mail.
+          if (t.kind === "preview") continue;
           const who = t.customer_name ?? t.customer_email;
           if (t.sent_at) {
             events.push({

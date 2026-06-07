@@ -63,9 +63,12 @@ export async function getFormStatusByWO(workOrderIds: string[]): Promise<Map<str
   // Pull all tokens for these WOs, sorted newest-first so we can pick the
   // first hit per WO as the "current" token. PPP shouldn't have many tokens
   // per WO (1-2 typically; admin only re-sends on bounce or expiry).
+  //
+  // CRITICAL: include kind so we can skip kind='preview' rows below — admin
+  // Preview clicks must NOT show up as customer activity. Audit 2026-06-07.
   const { data, error } = await sb
     .from("customer_form_tokens")
-    .select("token, work_order_id, sent_at, opened_at, submitted_at, expires_at, created_at")
+    .select("token, work_order_id, sent_at, opened_at, submitted_at, expires_at, created_at, kind")
     .in("work_order_id", workOrderIds)
     .order("created_at", { ascending: false });
 
@@ -78,7 +81,11 @@ export async function getFormStatusByWO(workOrderIds: string[]): Promise<Map<str
   const seen = new Set<string>();
   const now = Date.now();
 
-  for (const row of (data as TokenRow[]) ?? []) {
+  for (const row of (data as (TokenRow & { kind?: string | null })[]) ?? []) {
+    // Skip preview tokens — they're admin-generated test links, not real
+    // customer sends. Without this filter, a Preview click would override
+    // the real send token's status (most-recent-by-created_at wins below).
+    if (row.kind === "preview") continue;
     if (seen.has(row.work_order_id)) continue; // only keep the most recent per WO
     seen.add(row.work_order_id);
     const formUrl = `${baseUrl}/select/${row.token}`;

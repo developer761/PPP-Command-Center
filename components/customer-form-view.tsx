@@ -601,7 +601,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           </div>
           {materialType && formData.materialType && materialType !== formData.materialType && (
             <p className="text-[11px] text-ppp-orange-700 mt-2">
-              ⓘ You changed this from the original ({formData.materialType}). The new selection will be saved when you submit.
+              ⓘ You changed this from the original ({formData.materialType}). Your new selection will be saved when you submit.
             </p>
           )}
         </div>
