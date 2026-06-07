@@ -1,5 +1,48 @@
 "use client";
 
+/**
+ * Materials View — /dashboard/materials
+ *
+ * The hot page workers + Katie spend most of their day on. Big file (~2k
+ * lines) but the structure is consistent — skim the section headers below
+ * before diving in.
+ *
+ * WHAT IT RENDERS:
+ *   - Top stat strip (open WOs, sq ft, distinct colors, suppliers)
+ *   - "Needs attention" chip row (start in ≤2d / need form / awaiting customer / etc.)
+ *   - Customer color-form pipeline summary (sent/opened/submitted/expired)
+ *   - WO list (left) + JobDetail panel (right) — 5-col grid on desktop
+ *
+ * DATA SOURCES (all already loaded server-side, passed as props):
+ *   - bundle.snapshot — the thin SF snapshot (workOrders/woLineItems/accounts/
+ *     paintColors). Loaded via loadDashboardData({thin:true}) in the page.
+ *   - formStatuses[] — per-WO form status (sent/opened/submitted/expired).
+ *     Built by lib/materials-page-data.ts. ALREADY filters kind='preview'.
+ *   - woProgress[] — per-WO 5-stage timeline. Same loader, same filter.
+ *   - coverageConfig — tunable gallon math constants.
+ *
+ * FILE STRUCTURE (top-down):
+ *   1. Imports + lazy-loaded modal references
+ *   2. MaterialsView (main component): indexes data, renders all sections
+ *   3. JobDetail (selected WO right-panel)
+ *   4. SendColorFormButton + SendReminderButton + PreviewColorFormButton
+ *   5. LineItemRow (per-room display)
+ *   6. DebugStat + StatCard (small UI helpers)
+ *
+ * CRITICAL CONVENTIONS (don't break these):
+ *   - Every snapshot read is memoized — derived data uses useMemo keyed on
+ *     snapshot identity. Adding an un-memoized loop over openJobs will slow
+ *     the page at 100+ WOs.
+ *   - SendColorFormButton holds per-WO local state (looked-up email, sent
+ *     result, in-flight ref). The `key={job.wo.id}` on it forces a fresh
+ *     instance when worker switches WOs — DO NOT remove the key.
+ *   - The Send Reminder button only renders for status==='sent' | 'opened'.
+ *     formStatus type guard guarantees `token` is present in both states.
+ *   - Modals are dynamic-imported (SupplierPickerModal, SupplierOrderModal,
+ *     DraftOrderModal, WoPastOrders) so first-paint stays small. Don't
+ *     convert them back to static imports without measuring bundle impact.
+ */
+
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
