@@ -77,7 +77,16 @@ export async function GET() {
           hasPickupLocations: Array.isArray(r.pickup_locations) && r.pickup_locations.length > 0,
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
-      return NextResponse.json({ ok: true, suppliers });
+      return NextResponse.json({ ok: true, suppliers }, {
+      // Stable data — supplier list only changes when admin edits in Settings
+      // (rare). 5-min private cache + 5-min stale-while-revalidate so the
+      // worker's browser serves repeat picker opens instantly without a
+      // network round-trip, then refreshes silently in the background.
+      // `private` (not `public`) because the response is auth-gated; we
+      // never want shared CDN caching across admin/worker scopes.
+      // Audit 2026-06-08.
+      headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=300" },
+    });
     }
 
     const suppliers: ActiveSupplier[] = (rows ?? [])
@@ -111,7 +120,16 @@ export async function GET() {
         return clean as ActiveSupplier;
       });
 
-    return NextResponse.json({ ok: true, suppliers });
+    return NextResponse.json({ ok: true, suppliers }, {
+      // Stable data — supplier list only changes when admin edits in Settings
+      // (rare). 5-min private cache + 5-min stale-while-revalidate so the
+      // worker's browser serves repeat picker opens instantly without a
+      // network round-trip, then refreshes silently in the background.
+      // `private` (not `public`) because the response is auth-gated; we
+      // never want shared CDN caching across admin/worker scopes.
+      // Audit 2026-06-08.
+      headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=300" },
+    });
   } catch (err) {
     console.error("[suppliers/active GET] unhandled:", err);
     return NextResponse.json(

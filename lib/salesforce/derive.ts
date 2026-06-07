@@ -13,6 +13,7 @@ import type {
   SnapshotRep,
   SnapshotWorkOrder,
 } from "@/lib/salesforce/queries";
+import { memoBySnapshot } from "@/lib/salesforce/derive-cache";
 
 /**
  * PPP's revenue truth lives on Work Orders, not Opportunities. PPP's
@@ -648,6 +649,13 @@ export function derivePeriodDelta(
 /* ─── Per-rep monthly history (12 months) ─── */
 
 export function deriveRepMonthly(
+  snapshot: SalesforceSnapshot,
+  repId: string
+): RepMonthlyPoint[] {
+  return memoBySnapshot(snapshot, "deriveRepMonthly", repId, () => deriveRepMonthlyInner(snapshot, repId));
+}
+
+function deriveRepMonthlyInner(
   snapshot: SalesforceSnapshot,
   repId: string
 ): RepMonthlyPoint[] {
@@ -1295,6 +1303,21 @@ export function deriveRealFunnel(
  * page so the cards stop being just "$X revenue" and start telling a story.
  */
 export function deriveRepAccountStats(
+  snapshot: SalesforceSnapshot,
+  repId: string
+): {
+  totalCustomers: number;
+  repeatCustomers: number;
+  newCustomers: number;
+  totalLifetimeRevenue: number;
+  bmRetailerCount: number;
+  topAccountName: string | null;
+  topAccountRevenue: number;
+} {
+  return memoBySnapshot(snapshot, "deriveRepAccountStats", repId, () => deriveRepAccountStatsInner(snapshot, repId));
+}
+
+function deriveRepAccountStatsInner(
   snapshot: SalesforceSnapshot,
   repId: string
 ): {

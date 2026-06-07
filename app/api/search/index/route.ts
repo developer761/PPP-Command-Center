@@ -57,6 +57,13 @@ export async function GET(request: Request) {
           ownerName: w.ownerName,
           opportunityId: w.opportunityId,
         })),
+    }, {
+      // Search index derives from the snapshot (30-min TTL). Browser-side
+      // 5-min cache + 5-min stale-while-revalidate means repeat search
+      // opens within a session skip the round-trip + the snapshot
+      // derivation. `private` because viewer-scoped (worker vs admin
+      // sees different rows). Audit 2026-06-08.
+      headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=300" },
     });
   } catch (err) {
     console.error("[search-index] failed:", err);

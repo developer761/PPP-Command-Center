@@ -26,6 +26,7 @@ import {
   type FiscalQuarter,
   type FiscalYear,
 } from "@/lib/fiscal-year";
+import { memoBySnapshot } from "@/lib/salesforce/derive-cache";
 import type {
   SalesforceSnapshot,
   SnapshotOpp,
@@ -208,6 +209,19 @@ export function deriveRepScorecard(
   snapshot: SalesforceSnapshot,
   repId: string,
   period: ScorecardPeriod = { fy: currentFY(), q: currentFiscalQuarter() }
+): RepScorecard | null {
+  // Cache key composed from repId + a stable serialization of period. Each
+  // period type carries different fields (fy/q, fy only, or start/end dates)
+  // — JSON.stringify gives a deterministic, sortable string across all three.
+  const periodKey = JSON.stringify(period);
+  return memoBySnapshot(snapshot, "deriveRepScorecard", `${repId}:${periodKey}`,
+    () => deriveRepScorecardInner(snapshot, repId, period));
+}
+
+function deriveRepScorecardInner(
+  snapshot: SalesforceSnapshot,
+  repId: string,
+  period: ScorecardPeriod
 ): RepScorecard | null {
   const rep = snapshot.reps.find((r) => r.id === repId);
   if (!rep) return null;
