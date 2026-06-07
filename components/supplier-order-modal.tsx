@@ -977,7 +977,10 @@ export default function SupplierOrderModal({
                                 onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => e.stopPropagation()}
                                 // text-base on mobile to avoid iOS zoom-on-focus.
-                                className="w-16 shrink-0 px-2 py-1 sm:py-0.5 text-base sm:text-xs text-right border border-ppp-blue-100 rounded font-mono"
+                                // py-2 on mobile for proper tap target (matches the
+                                // py-2.5 sm:py-2 used on other modal inputs);
+                                // sm:py-0.5 keeps desktop tight.
+                                className="w-16 shrink-0 px-2 py-2 sm:py-0.5 text-base sm:text-xs text-right border border-ppp-blue-100 rounded font-mono"
                               />
                             ) : (
                               <span className="text-[10px] text-ppp-charcoal-500 shrink-0">
@@ -1158,7 +1161,7 @@ export default function SupplierOrderModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors"
+                className="px-4 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors"
               >
                 Done
               </button>
@@ -1170,7 +1173,7 @@ export default function SupplierOrderModal({
                   type="button"
                   onClick={onClose}
                   disabled={sending}
-                  className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
+                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
                 >
                   Cancel
                 </button>
@@ -1179,7 +1182,7 @@ export default function SupplierOrderModal({
                     type="button"
                     onClick={handleCopy}
                     disabled={!draft || sending}
-                    className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
+                    className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
                   >
                     {copied ? "✓ Copied" : "Copy to Clipboard"}
                   </button>
@@ -1219,7 +1222,7 @@ export default function SupplierOrderModal({
                     onClick={handleSend}
                     disabled={disabled}
                     title={title}
-                    className="px-4 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {sending ? "Sending…"
                       : blockedForEmail ? "Send (email not set)"

@@ -1102,12 +1102,12 @@ function SurfaceRow({
             {/* Apply this color to the same surface in every other room that
                 doesn't have one yet (Katie 2026-05-29) — fill-empty-only,
                 never overwrites. Only offered with a color picked + >1 room.
-                Mobile: py-2 lifts the tap target above the 24px floor. */}
+                Mobile: min-h-[44px] lifts the tap target to iOS HIG. */}
             {pick.colorId && canApplyToAll && (
               <button
                 type="button"
                 onClick={onApplyToAll}
-                className="inline-flex items-center justify-end gap-1 text-[11px] sm:text-[11px] text-ppp-blue hover:text-ppp-blue-700 font-medium text-right self-end px-2 py-2 sm:py-1 -mr-2"
+                className="inline-flex items-center justify-end gap-1 min-h-[44px] sm:min-h-0 text-[11px] text-ppp-blue hover:text-ppp-blue-700 font-medium text-right self-end px-3 py-2 sm:py-1 -mr-1"
               >
                 <span aria-hidden>⮌</span> Apply to all areas
               </button>
@@ -1295,7 +1295,7 @@ function ColorPicker({
                 key={c.id}
                 type="button"
                 onClick={() => pickColor(c)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-ppp-blue-50/60 transition-colors border-t border-ppp-charcoal-100 first:border-t-0"
+                className="w-full flex items-center gap-2 px-3 py-2.5 sm:py-2 min-h-[44px] sm:min-h-0 text-left text-sm hover:bg-ppp-blue-50/60 transition-colors border-t border-ppp-charcoal-100 first:border-t-0 touch-manipulation"
               >
                 {rowSwatch ? (
                   <div
