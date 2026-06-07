@@ -227,6 +227,13 @@ export function deriveRepsForPeriod(
   snapshot: SalesforceSnapshot,
   period: Period
 ): Rep[] {
+  return memoBySnapshot(snapshot, "deriveRepsForPeriod", period, () => deriveRepsForPeriodInner(snapshot, period));
+}
+
+function deriveRepsForPeriodInner(
+  snapshot: SalesforceSnapshot,
+  period: Period
+): Rep[] {
   const now = new Date();
   const { start: periodStart, end: periodEnd } = periodRange(period, now);
 
@@ -359,6 +366,13 @@ export function deriveTopPerformer(
   snapshot: SalesforceSnapshot,
   period: Period
 ): { id: string; name: string; region: string; revenue: number; closeRate: number } | null {
+  return memoBySnapshot(snapshot, "deriveTopPerformer", period, () => deriveTopPerformerInner(snapshot, period));
+}
+
+function deriveTopPerformerInner(
+  snapshot: SalesforceSnapshot,
+  period: Period
+): { id: string; name: string; region: string; revenue: number; closeRate: number } | null {
   const reps = deriveRepsForPeriod(snapshot, period);
   const winner = reps.reduce((best, r) =>
     r.revenueSold > (best?.revenueSold ?? -1) ? r : best,
@@ -377,6 +391,12 @@ export function deriveTopPerformer(
 /* ─── Pipeline at risk: open opps stale 14+ days ─── */
 
 export function derivePipelineAtRisk(
+  snapshot: SalesforceSnapshot
+): { value: number; count: number; reps: number } {
+  return memoBySnapshot(snapshot, "derivePipelineAtRisk", "", () => derivePipelineAtRiskInner(snapshot));
+}
+
+function derivePipelineAtRiskInner(
   snapshot: SalesforceSnapshot
 ): { value: number; count: number; reps: number } {
   const now = Date.now();
@@ -1415,6 +1435,13 @@ export function deriveRepRecentDeals(
   snapshot: SalesforceSnapshot,
   repId: string
 ): Deal[] {
+  return memoBySnapshot(snapshot, "deriveRepRecentDeals", repId, () => deriveRepRecentDealsInner(snapshot, repId));
+}
+
+function deriveRepRecentDealsInner(
+  snapshot: SalesforceSnapshot,
+  repId: string
+): Deal[] {
   // Prefer WO rows (PPP's report unit) so we get the WO number + status the
   // user expects. Fall back to opps when no WO data is present.
   if (snapshot.workOrders.length > 0) {
@@ -1483,6 +1510,13 @@ export function deriveRepRecentDeals(
  * Sorted soonest first. Falls back to parent Opp.amount when the WO is unpriced.
  */
 export function deriveRepUpcomingWork(
+  snapshot: SalesforceSnapshot,
+  repId: string
+): Deal[] {
+  return memoBySnapshot(snapshot, "deriveRepUpcomingWork", repId, () => deriveRepUpcomingWorkInner(snapshot, repId));
+}
+
+function deriveRepUpcomingWorkInner(
   snapshot: SalesforceSnapshot,
   repId: string
 ): Deal[] {
@@ -1559,6 +1593,13 @@ export function deriveRepUpcomingWork(
  * decision" follow-up list. Won/lost opps drop off (the quote was decided).
  */
 export function deriveRepRecentlySentQuotes(
+  snapshot: SalesforceSnapshot,
+  repId: string
+): Array<Deal & { workOrderNumber: string | null; status: string | null }> {
+  return memoBySnapshot(snapshot, "deriveRepRecentlySentQuotes", repId, () => deriveRepRecentlySentQuotesInner(snapshot, repId));
+}
+
+function deriveRepRecentlySentQuotesInner(
   snapshot: SalesforceSnapshot,
   repId: string
 ): Array<Deal & { workOrderNumber: string | null; status: string | null }> {
