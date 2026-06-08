@@ -196,10 +196,18 @@ export default function RepIndexView({ bundle }: Props) {
         </div>
       )}
 
-      {/* Team stat strip */}
+      {/* Team stat strip — Karan 2026-06-08: "Total Revenue $2.0M" next to
+          "Top Rep Andres" reads as if Andres did $2M alone. Renamed to "Team
+          Revenue" + the period label inline + Top Rep value shows the rep's
+          OWN $ next to their name so the team-vs-rep distinction is
+          unambiguous. */}
       {reps.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 sm:px-5 sm:py-4 flex flex-wrap gap-x-6 gap-y-2">
-          <Stat label="Total Revenue" value={fmtMoneyK(teamRevenue)} accent="navy" />
+          <Stat
+            label={`Team Revenue · ${PERIOD_LABELS[period].toLowerCase()}`}
+            value={fmtMoneyK(teamRevenue)}
+            accent="navy"
+          />
           <Stat
             label="Active Reps"
             value={`${activeCount}/${reps.length}`}
@@ -212,7 +220,11 @@ export default function RepIndexView({ bundle }: Props) {
           />
           <Stat
             label="Top Rep"
-            value={sorted[0]?.revenueSold ? sorted[0].name : "—"}
+            value={
+              sorted[0]?.revenueSold
+                ? `${sorted[0].name} · ${fmtMoneyK(sorted[0].revenueSold)}`
+                : "—"
+            }
             accent="charcoal"
           />
         </div>

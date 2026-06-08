@@ -94,7 +94,12 @@ export default function Topbar({
             </svg>
           </button>
         )}
-        <div className="min-w-0 max-w-[110px] xs:max-w-[140px] sm:max-w-none">
+        {/* Greeting block — hidden below sm so the GlobalSearch in the middle
+            column has reliable space on phone-sized viewports. At 375px the
+            greeting (110px) + hamburger (44px) + right cluster (~180px) +
+            padding left a few px for search, causing the search input to
+            overlap adjacent elements. Karan 2026-06-08. */}
+        <div className="hidden sm:block min-w-0 sm:max-w-none">
           <h2 className="text-sm sm:text-base font-semibold text-ppp-charcoal truncate" title={greetingLine}>
             {greetingLine}
           </h2>
