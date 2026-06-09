@@ -289,10 +289,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   const hasAddress = !!(addr.street || addrCityStateZip);
 
   // Fetch the full color catalog ONCE on form mount so every ColorPicker
-  // filters in-memory (zero latency per keystroke). Previously every keystroke
-  // round-tripped to /colors/search — added 200-400ms per character on cell
-  // networks, frustrating customers. Catalog is ~5,762 colors, ~80KB gzipped;
-  // browser caches it for 1 hour via the API's Cache-Control.
+  // filters in-memory (zero latency per keystroke). The earlier per-keystroke
+  // server call added 200-400ms per character on cell networks, frustrating
+  // customers. Catalog is ~5,762 colors, ~80KB gzipped; browser caches it
+  // for 24h via the API's Cache-Control.
   const [catalog, setCatalog] = useState<CatalogState>({ status: "loading" });
   useEffect(() => {
     let cancelled = false;

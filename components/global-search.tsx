@@ -107,6 +107,36 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
     }
   }, [open]);
 
+  // Pre-lowercase a parallel "haystack" string per row so per-keystroke
+  // filtering does ONE `.includes()` per row instead of 3-4 `.toLowerCase()`
+  // + `.includes()` pairs. At PPP scale (20k WOs, 5k accounts), this saves
+  // 60-80k temporary strings per keystroke. Recomputed only when the snapshot
+  // identity changes — same snapshot ref = reused index.
+  const index = useMemo(() => {
+    return {
+      reps: (snapshot?.reps ?? []).map((r) => ({
+        row: r,
+        hay: `${r.name}${r.email ?? ""}${r.region ?? ""}`.toLowerCase(),
+      })),
+      accounts: (snapshot?.accounts ?? []).map((a) => ({
+        row: a,
+        hay: `${a.name}${a.region ?? ""}`.toLowerCase(),
+      })),
+      workOrders: (snapshot?.workOrders ?? []).map((w) => ({
+        row: w,
+        // WO number + account name go in the case-insensitive hay; SF Id
+        // matching stays separate below because it's case-sensitive on the
+        // suffix bits.
+        hay: `${w.workOrderNumber ?? ""}${w.accountName ?? ""}`.toLowerCase(),
+        idLower: w.id.toLowerCase(),
+      })),
+      pages: PAGES.map((p) => ({
+        row: p,
+        hay: `${p.label}${p.sublabel ?? ""}`.toLowerCase(),
+      })),
+    };
+  }, [snapshot]);
+
   const results = useMemo<SearchResult[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return PAGES.slice(0, 6);
@@ -114,23 +144,20 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
     const matches: SearchResult[] = [];
 
     // Pages (always low limit so they don't crowd out data)
-    for (const p of PAGES) {
-      if (p.label.toLowerCase().includes(q) || p.sublabel?.toLowerCase().includes(q)) {
+    let pageHitCount = 0;
+    for (const { row: p, hay } of index.pages) {
+      if (hay.includes(q)) {
         matches.push(p);
-        if (matches.filter((m) => m.kind === "page").length >= 3) break;
+        pageHitCount++;
+        if (pageHitCount >= 3) break;
       }
     }
 
-    // Reps
-    if (snapshot?.reps) {
-      const repHits = snapshot.reps
-        .filter((r) =>
-          r.name.toLowerCase().includes(q) ||
-          (r.email ?? "").toLowerCase().includes(q) ||
-          (r.region ?? "").toLowerCase().includes(q)
-        )
-        .slice(0, 6);
-      for (const r of repHits) {
+    // Reps — short-circuit at 6 hits so we don't scan past the dropdown's
+    // visible slot count.
+    let repHitCount = 0;
+    for (const { row: r, hay } of index.reps) {
+      if (hay.includes(q)) {
         matches.push({
           kind: "rep",
           id: r.id,
@@ -138,18 +165,15 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
           sublabel: r.region ?? r.email ?? "Rep",
           href: `/dashboard/rep/${r.id}`,
         });
+        repHitCount++;
+        if (repHitCount >= 6) break;
       }
     }
 
-    // Accounts
-    if (snapshot?.accounts) {
-      const acctHits = snapshot.accounts
-        .filter((a) =>
-          a.name.toLowerCase().includes(q) ||
-          (a.region ?? "").toLowerCase().includes(q)
-        )
-        .slice(0, 8);
-      for (const a of acctHits) {
+    // Accounts — short-circuit at 8.
+    let acctHitCount = 0;
+    for (const { row: a, hay } of index.accounts) {
+      if (hay.includes(q)) {
         matches.push({
           kind: "account",
           id: a.id,
@@ -159,26 +183,18 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
           // actual customer record instead of dumping on the rep index.
           href: `/dashboard/customer/${a.id}`,
         });
+        acctHitCount++;
+        if (acctHitCount >= 8) break;
       }
     }
 
     // Work Orders — match by WO number (human-readable), account name, OR
     // the 15/18-char Salesforce record Id. The Id match handles "I copied
     // the WO URL from Salesforce" — pasting the Id finds the same record
-    // the WO number would have. 2026-06-04.
-    if (snapshot?.workOrders) {
-      const woHits = snapshot.workOrders
-        .filter((w) =>
-          (w.workOrderNumber ?? "").toLowerCase().includes(q) ||
-          (w.accountName ?? "").toLowerCase().includes(q) ||
-          // Match a partial Id (caseful — SF Ids ARE case-sensitive in their
-          // suffix bits) so a paste of "0WOWj000005e9L3OAI" or a fragment
-          // like "0WOWj" also finds the record. Use the raw query, not the
-          // lowercased one.
-          (q.length >= 5 && w.id.toLowerCase().includes(q))
-        )
-        .slice(0, 6);
-      for (const w of woHits) {
+    // the WO number would have. 2026-06-04. Short-circuit at 6 hits.
+    let woHitCount = 0;
+    for (const { row: w, hay, idLower } of index.workOrders) {
+      if (hay.includes(q) || (q.length >= 5 && idLower.includes(q))) {
         matches.push({
           kind: "workOrder",
           id: w.id,
@@ -188,6 +204,8 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
           // fall to Materials (where WOs are actioned), never a dead generic page.
           href: w.accountId ? `/dashboard/customer/${w.accountId}` : "/dashboard/materials",
         });
+        woHitCount++;
+        if (woHitCount >= 6) break;
       }
     }
 

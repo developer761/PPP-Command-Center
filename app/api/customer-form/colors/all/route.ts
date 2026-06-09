@@ -14,12 +14,12 @@ import { loadPaintCatalogOnly } from "@/lib/salesforce/queries";
  *     wire (one-time cost on form load)
  *   - In-memory client-side filter is O(n) but for 5762 items it's <5ms even
  *     on mid-range phones
- *   - Server response cached via HTTP for 1 hour — repeat opens of the form
+ *   - Server response cached via HTTP for 24h — repeat opens of the form
  *     hit browser cache instantly
  *
  *   GET /api/customer-form/colors/all?token=<t>
  *
- * Token-gated like /colors/search. Returns:
+ * Token-gated by the same color-form submit-token. Returns:
  *   { ok: true, colors: ColorOption[], suppliers: Supplier[], generatedAt }
  *
  * Suppliers (Account references via PaintColor.manufacturerId) returned in

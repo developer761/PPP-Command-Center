@@ -64,10 +64,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: error.message, extras: [] }, { status: 500 });
   }
 
-  return NextResponse.json({
-    ok: true,
-    extras: rows ?? [],
-  });
+  return NextResponse.json(
+    { ok: true, extras: rows ?? [] },
+    {
+      headers: {
+        // Extras catalog is admin-curated (~20 rows) and changes rarely.
+        // Modal mounts hit this every time the worker opens an order draft;
+        // 5-min private cache keeps repeat opens instant. SWR continues
+        // serving cached data while a background refresh happens, so the
+        // worker never waits on a network round-trip for the catalog.
+        "Cache-Control": "private, max-age=300, stale-while-revalidate=300",
+      },
+    }
+  );
   } catch (err) {
     console.error("[supplier-order/extras GET] unhandled:", err);
     return NextResponse.json(

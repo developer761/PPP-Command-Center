@@ -31,7 +31,18 @@ export async function GET() {
     const reps = snap.reps
       .map((r) => ({ id: r.id, name: r.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-    return NextResponse.json({ reps });
+    return NextResponse.json(
+      { reps },
+      {
+        headers: {
+          // Rep list rarely changes; fires on every dashboard chrome mount
+          // from View Switcher + Impersonation Banner. 15-min cache + SWR
+          // keeps the dropdown instant without staling beyond the SF
+          // snapshot's own 30-min TTL.
+          "Cache-Control": "private, max-age=900, stale-while-revalidate=900",
+        },
+      }
+    );
   } catch (err) {
     console.error("[admin/reps] failed:", err);
     return NextResponse.json({ reps: [] });

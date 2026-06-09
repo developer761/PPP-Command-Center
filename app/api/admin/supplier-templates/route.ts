@@ -123,15 +123,28 @@ export async function GET(request: Request) {
     })
     .sort((a, b) => a.supplierName.localeCompare(b.supplierName));
 
-  return NextResponse.json({
-    ok: true,
-    suppliers,
-    defaults: DEFAULT_SUPPLIER_TEMPLATE,
-    filter,
-    totalCandidates: settingsRows.length,
-    activeCount: settingsRows.filter((r) => r.is_active).length,
-    showingFallback: false,
-  });
+  return NextResponse.json(
+    {
+      ok: true,
+      suppliers,
+      defaults: DEFAULT_SUPPLIER_TEMPLATE,
+      filter,
+      totalCandidates: settingsRows.length,
+      activeCount: settingsRows.filter((r) => r.is_active).length,
+      showingFallback: false,
+    },
+    {
+      headers: {
+        // List mode triggers loadSalesforceSnapshot() + two parallel Supabase
+        // queries — heavy. The list itself changes rarely (admin toggling a
+        // supplier active/inactive). Short 5-min private cache so a settings
+        // page revisit doesn't re-pull the whole snapshot for enrichment.
+        // Single-supplier (edit) mode above stays uncached — admin needs to
+        // see saves immediately.
+        "Cache-Control": "private, max-age=300, stale-while-revalidate=300",
+      },
+    }
+  );
   } catch (err) {
     console.error("[supplier-templates GET] unhandled:", err);
     return NextResponse.json(
