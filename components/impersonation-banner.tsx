@@ -83,7 +83,7 @@ export default function ImpersonationBanner({ reps = [] }: Props) {
         type="button"
         onClick={exit}
         disabled={isPending}
-        className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium transition-colors disabled:opacity-60"
+        className="shrink-0 inline-flex items-center gap-1 px-3 py-2 sm:py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white font-medium transition-colors disabled:opacity-60"
       >
         {isPending ? "Exiting…" : "Exit"}
       </button>

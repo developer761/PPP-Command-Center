@@ -39,7 +39,12 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const to = url.searchParams.get("to");
-  if (!to || !/^[a-z0-9._+\-]+@[a-z0-9.\-]+$/i.test(to)) {
+  // Require a TLD on the email — matches the regex used by every other
+  // admin send route (customer-form/create, supplier-order/send,
+  // supplier-settings). Without the TLD requirement, `?to=foo@bar` was
+  // accepted here and silently rejected by Resend, leaving admin to think
+  // the template change worked.
+  if (!to || !/^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(to)) {
     return NextResponse.json({
       error: "missing_or_invalid_to",
       hint: "Add ?to=your@email.com to the URL",

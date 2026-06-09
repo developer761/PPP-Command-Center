@@ -274,7 +274,7 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search…"
-            className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-ppp-blue-200 rounded-lg placeholder:text-ppp-charcoal-300 focus:outline-none focus:ring-2 focus:ring-ppp-blue-100"
+            className="w-full pl-9 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-blue-200 rounded-lg placeholder:text-ppp-charcoal-300 focus:outline-none focus:ring-2 focus:ring-ppp-blue-100"
           />
           {(results.length > 0 || query) && (
             <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg shadow-ppp-charcoal/10 max-h-[60vh] overflow-y-auto z-50">

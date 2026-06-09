@@ -46,7 +46,7 @@ export default function UserMenu({ name, email, initial }: Props) {
         aria-haspopup="menu"
         aria-expanded={open}
         className={[
-          "h-9 w-9 rounded-full bg-ppp-blue text-white flex items-center justify-center font-semibold text-sm shadow-sm shadow-ppp-blue/30",
+          "h-11 w-11 sm:h-9 sm:w-9 rounded-full bg-ppp-blue text-white flex items-center justify-center font-semibold text-sm shadow-sm shadow-ppp-blue/30",
           "hover:ring-2 hover:ring-ppp-blue/20 transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-ppp-blue/40",
         ].join(" ")}
       >

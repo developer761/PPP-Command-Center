@@ -1999,7 +1999,7 @@ function SendColorFormButton({
                 type="button"
                 onClick={reset}
                 disabled={sending}
-                className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
+                className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
               >
                 {result ? "Close" : "Cancel"}
               </button>
@@ -2008,7 +2008,7 @@ function SendColorFormButton({
                   type="button"
                   onClick={send}
                   disabled={sending || !customerEmail.trim()}
-                  className="px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {sending ? "Sending…" : "Send Form"}
                 </button>

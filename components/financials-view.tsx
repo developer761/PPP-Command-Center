@@ -220,7 +220,7 @@ function AgingBucket({
       <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">
         {label}
       </div>
-      <div className="text-[9px] text-ppp-charcoal-400 mt-0.5">{sub}</div>
+      <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">{sub}</div>
       <div className="font-condensed text-lg font-bold text-ppp-navy mt-1">
         {fmtMoneyK(value / 1000)}
       </div>

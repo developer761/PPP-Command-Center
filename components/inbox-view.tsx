@@ -474,7 +474,7 @@ function TabButton({
   count: number;
   tone?: "neutral" | "orange" | undefined;
 }) {
-  const base = "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors";
+  const base = "px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-semibold border transition-colors";
   const activeCls = active
     ? tone === "orange"
       ? "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100"

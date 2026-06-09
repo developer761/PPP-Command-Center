@@ -886,7 +886,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     {applyToast && (
       <div
         role="status"
-        className="fixed inset-x-0 bottom-4 z-50 mx-auto w-fit max-w-[90vw] px-4 py-2.5 rounded-full bg-ppp-navy text-white text-sm font-medium shadow-lg shadow-ppp-navy/30 animate-fade-up"
+        // bottom-[max(1rem,env(safe-area-inset-bottom))] keeps the toast above
+        // the iOS home indicator on notched phones; a plain bottom-4 disappears
+        // under the gesture bar.
+        className="fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 mx-auto w-fit max-w-[90vw] px-4 py-2.5 rounded-full bg-ppp-navy text-white text-sm font-medium shadow-lg shadow-ppp-navy/30 animate-fade-up"
       >
         {applyToast}
       </div>

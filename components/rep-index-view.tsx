@@ -268,7 +268,7 @@ export default function RepIndexView({ bundle }: Props) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search reps…"
-              className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-ppp-charcoal-100 rounded-lg placeholder:text-ppp-charcoal-300 focus:outline-none focus:ring-2 focus:ring-ppp-blue-100 focus:border-ppp-blue-200"
+              className="w-full pl-9 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-100 rounded-lg placeholder:text-ppp-charcoal-300 focus:outline-none focus:ring-2 focus:ring-ppp-blue-100 focus:border-ppp-blue-200"
             />
           </div>
 

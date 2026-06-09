@@ -102,6 +102,42 @@ const VALID_FINISHES = new Set([
   "Gloss / High-Gloss",
 ]);
 
+/**
+ * Sanitize a customer-supplied delivery-address field. Customer input lands
+ * in supplier email bodies verbatim — uncapped strings would let a
+ * customer paste a multi-KB blob into "street" and produce a wall-of-text
+ * email to the supplier. Also strip control chars (except CR/LF which are
+ * still rejected — addresses are single-line fields) so an embedded NUL
+ * can't distort the address block.
+ */
+function sanitizeAddressField(v: unknown, maxLen = 200): string | null {
+  if (v == null) return null;
+  if (typeof v !== "string") return null;
+  // eslint-disable-next-line no-control-regex
+  const stripped = v.replace(/[\x00-\x1F\x7F]/g, " ").trim();
+  if (!stripped) return null;
+  return stripped.slice(0, maxLen);
+}
+
+function sanitizeDeliveryAddress(
+  addr: SubmitPayload["deliveryAddress"]
+): SubmitPayload["deliveryAddress"] | null {
+  if (!addr || typeof addr !== "object") return null;
+  const street = sanitizeAddressField(addr.street);
+  const city = sanitizeAddressField(addr.city);
+  const state = sanitizeAddressField(addr.state, 50);
+  const postalCode = sanitizeAddressField(addr.postalCode, 20);
+  const name = sanitizeAddressField(addr.name);
+  if (!street && !city && !state && !postalCode && !name) return null;
+  return {
+    name,
+    street: street ?? "",
+    city: city ?? "",
+    state: state ?? "",
+    postalCode: postalCode ?? "",
+  };
+}
+
 // Server-side allowlist for WorkOrder.MaterialType__c now lives in
 // lib/customer-form/material-types.ts — same source as the customer picker
 // + the admin per-surface override dropdown. Re-export-by-alias here keeps
@@ -153,6 +189,14 @@ export async function POST(
   // loops below into an unhandled 500.
   if (!Array.isArray(body.lineItems)) {
     return NextResponse.json({ error: "invalid_line_items" }, { status: 400 });
+  }
+  // Per-element shape guard. A null element or one missing `id` would crash
+  // `.map(li => li.id)` + `freshById.get(submitted.id)` further down with a
+  // TypeError → unhandled 500. Reject as 400 instead.
+  for (const li of body.lineItems) {
+    if (!li || typeof li !== "object" || typeof (li as { id?: unknown }).id !== "string") {
+      return NextResponse.json({ error: "invalid_line_item_shape" }, { status: 400 });
+    }
   }
 
   // 1. Validate. "ok" = first submission; "editable" = customer revising a
@@ -261,6 +305,9 @@ export async function POST(
     // loop never throws on a public endpoint.
     const surfaces = Array.isArray(submitted.surfaces) ? submitted.surfaces : [];
     for (const s of surfaces) {
+      // Per-element shape guard — a malformed surface element (null, or
+      // missing `surface` string) would otherwise crash on `.toLowerCase()`.
+      if (!s || typeof s !== "object" || typeof (s as { surface?: unknown }).surface !== "string") continue;
       const fieldName = SURFACE_TO_FIELD[s.surface.toLowerCase()];
       // On a RE-EDIT, an explicit "don't paint this" (skipped) must CLEAR any
       // color we previously wrote — otherwise a customer removing a color on a
@@ -371,7 +418,7 @@ export async function POST(
     lineItems: body.lineItems,
     globalNotes: body.globalNotes,
     materialType: customerMaterialType || null,
-    deliveryAddress: body.deliveryAddress ?? null,
+    deliveryAddress: sanitizeDeliveryAddress(body.deliveryAddress),
     submittedAt: new Date().toISOString(),
   };
   let runWrites: boolean;

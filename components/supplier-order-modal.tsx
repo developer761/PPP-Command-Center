@@ -912,7 +912,7 @@ export default function SupplierOrderModal({
                             onChange={(e) => setDeliveryAddr((a) => ({ ...a, street: e.target.value }))}
                             placeholder="Street address"
                             autoFocus={draft.unresolvedAddress && !useCustomAddress}
-                            className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                            className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                           />
                           <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto] gap-2">
                             <input
@@ -1107,7 +1107,7 @@ export default function SupplierOrderModal({
                       onChange={(e) => setSpecialInstructions(e.target.value)}
                       rows={2}
                       placeholder="e.g. Customer prefers AM delivery. Garage code in scheduling notes."
-                      className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                      className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                     />
                   </Section>
 
@@ -1133,7 +1133,10 @@ export default function SupplierOrderModal({
                         onChange={(e) => setEditedBody(e.target.value)}
                         rows={16}
                         className={[
-                          "w-full px-3 py-2 text-xs font-mono border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue leading-relaxed transition-opacity",
+                          // text-sm on mobile keeps iOS from auto-zooming when admin
+                          // proofreads + the body stays readable on a phone; reverts
+                          // to text-xs on sm+ to fit more lines without scrolling.
+                          "w-full px-3 py-2 text-sm sm:text-xs font-mono border rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue leading-relaxed transition-opacity",
                           loadingDraft && editedBody === null ? "border-ppp-blue-100 opacity-70" : "border-ppp-charcoal-100",
                         ].join(" ")}
                       />
@@ -1353,7 +1356,7 @@ function PickupLocationPicker({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="e.g. BM Smithtown · 123 Main St"
-        className="mt-3 w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+        className="mt-3 w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
       />
     );
   }
@@ -1371,7 +1374,7 @@ function PickupLocationPicker({
           if (v === OTHER) onChange(value && !knownMatch ? value : " ");
           else onChange(v);
         }}
-        className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+        className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
       >
         {locations.length > 1 && <option value="">Pick a location…</option>}
         {locations.map((loc) => (
@@ -1388,7 +1391,7 @@ function PickupLocationPicker({
           value={value.trim()}
           onChange={(e) => onChange(e.target.value)}
           placeholder="e.g. BM Smithtown · 123 Main St"
-          className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+          className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
         />
       )}
     </div>

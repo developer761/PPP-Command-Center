@@ -49,8 +49,12 @@ export async function GET(request: Request) {
     });
   }
 
-  // Escape single quotes for SOQL safety
-  const esc = (s: string) => s.replace(/'/g, "\\'");
+  // Escape single quotes for SOQL safety. Also escape `\` (so `\\'` typed
+  // literally doesn't turn into the SOQL escape sequence) plus the LIKE
+  // wildcards `%` and `_` so an admin typing them in the filter doesn't
+  // accidentally widen the result set unbounded.
+  const esc = (s: string) =>
+    s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/[%_]/g, "\\$&");
 
   try {
     const conn = await getSalesforceClient();

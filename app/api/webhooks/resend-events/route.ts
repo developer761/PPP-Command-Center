@@ -128,6 +128,11 @@ function adminClient() {
 }
 
 export async function POST(request: Request) {
+  // Top-level try/catch — if something unexpected throws (env missing,
+  // Supabase client construction, etc.) we MUST return 200. A 500 would
+  // make Resend retry indefinitely (their default behavior), spamming us
+  // and never delivering downstream effects. Log + ack instead.
+  try {
   // Read raw body BEFORE JSON-parsing for byte-accurate signature verification
   const rawBody = await request.text();
   const headers = request.headers;
@@ -151,7 +156,10 @@ export async function POST(request: Request) {
   const eventType = payload.type;
   const emailId = payload.data?.email_id;
   if (!eventType || !emailId) {
-    console.warn(`[resend-events] missing type or email_id: ${JSON.stringify(payload).slice(0, 200)}`);
+    // Log only the event type, NOT the raw payload — a malformed payload
+    // could include unmasked customer emails in `from`/`to` fields and a
+    // raw dump would leak them to Vercel logs.
+    console.warn(`[resend-events] missing type or email_id: type=${eventType ?? "null"}`);
     // Return 200 so Resend doesn't retry — nothing for us to thread
     return NextResponse.json({ ok: true, skipped: "missing_fields" });
   }
@@ -230,4 +238,10 @@ export async function POST(request: Request) {
     appliedSupplierOrder: appliedOrder,
     appliedCustomerForm: appliedToken,
   });
+  } catch (err) {
+    console.error("[resend-events] unhandled:", err);
+    // Return 200 so Resend stops retrying — we already logged the error,
+    // a 500 would just produce log spam without anyone watching.
+    return NextResponse.json({ ok: true, skipped: "internal_error" });
+  }
 }
