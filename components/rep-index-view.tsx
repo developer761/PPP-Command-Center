@@ -13,6 +13,7 @@ import {
 import {
   deriveRepsForPeriod,
   deriveRepAccountStats,
+  derivePeriodDelta,
   deriveRepMomentum,
 } from "@/lib/salesforce/derive";
 import { fmtMoneyK } from "@/lib/format";
@@ -99,6 +100,20 @@ export default function RepIndexView({ bundle }: Props) {
     () => reps.reduce((s, r) => s + r.revenueSold, 0),
     [reps]
   );
+
+  // Company-wide revenue for the same period — sums EVERY WO that closed in
+  // the period, including those owned by admins / orphaned / non-canonical
+  // reps. Always ≥ teamRevenue. The gap is meaningful to surface: if it's
+  // material ($10K+), there are WOs landing on accounts that aren't being
+  // attributed to a field rep — usually a SF data hygiene issue worth
+  // looking at (orphan account, missing OwnerId, suspended user still on
+  // the deed). Karan 2026-06-08: "team revenue is 495K but total is 535K,
+  // confusing" — adding the company-wide figure inline so the gap is
+  // self-explained instead of forcing comparison against the home dashboard.
+  const companyRevenue = useMemo(() => {
+    if (!snapshot) return null;
+    return derivePeriodDelta(snapshot, period).value; // in $K
+  }, [snapshot, period]);
 
   const searchLower = search.trim().toLowerCase();
   const sorted = useMemo(() => {
@@ -207,6 +222,17 @@ export default function RepIndexView({ bundle }: Props) {
             label={`Team Revenue · ${PERIOD_LABELS[period].toLowerCase()}`}
             value={fmtMoneyK(teamRevenue)}
             accent="navy"
+            // When the company total differs by ≥ $10K from the team-attributed
+            // sum, surface it. Shows "of $535K company · field reps only" so
+            // admin sees why this number differs from the home dashboard's
+            // Revenue KPI (which is company-wide) without having to dig.
+            // Hidden when the gap is < $10K — the rounding noise isn't worth
+            // explaining. Karan 2026-06-08.
+            hint={
+              companyRevenue !== null && companyRevenue - teamRevenue >= 10
+                ? `of ${fmtMoneyK(companyRevenue)} company total · field reps only`
+                : undefined
+            }
           />
           <Stat
             label="Active Reps"
@@ -478,7 +504,20 @@ function Metric({
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent: "navy" | "charcoal" }) {
+function Stat({
+  label,
+  value,
+  accent,
+  hint,
+}: {
+  label: string;
+  value: string;
+  accent: "navy" | "charcoal";
+  /** Optional small line under the label — used to disambiguate scope when
+   *  the headline number differs from a related figure elsewhere on the
+   *  platform (e.g., "of $535K company total" under Team Revenue). */
+  hint?: string;
+}) {
   return (
     <div>
       <div className={`font-condensed text-lg sm:text-xl font-bold ${accent === "navy" ? "text-ppp-navy" : "text-ppp-charcoal"}`}>
@@ -487,6 +526,11 @@ function Stat({ label, value, accent }: { label: string; value: string; accent: 
       <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500 mt-0.5">
         {label}
       </div>
+      {hint && (
+        <div className="text-[10px] text-ppp-charcoal-400 mt-0.5 normal-case font-normal">
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
