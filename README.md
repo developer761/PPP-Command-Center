@@ -32,7 +32,6 @@ for the values — they're not in the repo.
 - **Salesforce** via `jsforce` — source of truth for customers, work orders, line items
 - **Supabase Postgres** — workflow state (drafts, sent emails, audit logs). **NOT a SF mirror.**
 - **Resend** — outbound emails (color form invites, supplier orders, admin notifications)
-- **Anthropic SDK** — supplier email drafting, receipt extraction (Phase 2/3)
 - **Vercel** — hosting + cron + webhooks
 - **No test framework yet** — verified via `tsc`, `lint`, `build`, and manual smoke tests on staging WOs
 
@@ -81,7 +80,6 @@ for the values — they're not in the repo.
 
 ```
 app/
-├── (marketing)/
 ├── dashboard/
 │   ├── materials/page.tsx        # the materials ordering surface (THE hot page)
 │   ├── inbox/page.tsx            # Mail Hub
@@ -223,7 +221,7 @@ safe so re-runs are no-ops. The app must tolerate the migration being unapplied
 ## Deployments
 
 - Vercel auto-deploys from `main`. Push = ship.
-- Cron jobs configured in `vercel.json` (snapshot pre-warm every 10min, etc.).
+- Cron jobs configured in the Vercel project UI (snapshot pre-warm hits `/api/cron/snapshot-warm`).
 - Webhook URLs registered in Resend dashboard (delivery events + inbound).
 - Salesforce OAuth refresh token stored in Supabase `sf_credentials` table.
 

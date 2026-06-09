@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { fmtMonthDay } from "@/lib/format";
 
 /**
  * Home-dashboard "Recent Activity" card — last-N-hours rollup of every
@@ -139,5 +140,5 @@ function formatRelative(date: Date): string {
   if (hr < 24) return `${hr}h`;
   const days = Math.floor(hr / 24);
   if (days < 7) return `${days}d`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return fmtMonthDay(date);
 }

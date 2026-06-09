@@ -14,6 +14,7 @@ import type {
   SnapshotWorkOrder,
 } from "@/lib/salesforce/queries";
 import { memoBySnapshot } from "@/lib/salesforce/derive-cache";
+import { fmtMonthDay } from "@/lib/format";
 
 /**
  * PPP's revenue truth lives on Work Orders, not Opportunities. PPP's
@@ -524,8 +525,7 @@ function bucketStartMonthly(iso: string): string {
 }
 
 function formatDayLabel(yyyymmdd: string): string {
-  const d = new Date(`${yyyymmdd}T00:00:00Z`);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return fmtMonthDay(`${yyyymmdd}T00:00:00Z`, { timeZone: "UTC" });
 }
 
 function formatMonthLabel(yyyymm: string): string {
@@ -1553,7 +1553,7 @@ function deriveRepRecentDealsInner(
         daysInStage: daysSince(w.closeDate ?? w.createdDate),
         workOrderNumber: w.workOrderNumber,
         status: w.status,
-      } as Deal & {
+      } satisfies Deal & {
         workOrderNumber: string | null;
         status: string | null;
       };
@@ -1650,7 +1650,7 @@ function deriveRepUpcomingWorkInner(
       daysInStage: daysSince(w.createdDate),
       workOrderNumber: w.workOrderNumber,
       status: w.status,
-    } as Deal & {
+    } satisfies Deal & {
       workOrderNumber: string | null;
       status: string | null;
     };

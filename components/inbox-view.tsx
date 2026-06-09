@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fmtMonthDay } from "@/lib/format";
 
 /**
  * Inbox list + thread viewer. Filters by kind (All / Customer / Supplier /
@@ -664,7 +665,7 @@ function formatRelative(date: Date): string {
   if (hr < 24) return `${hr}h`;
   const days = Math.floor(hr / 24);
   if (days < 7) return `${days}d`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return fmtMonthDay(date);
 }
 
 /* ─── Sent-mode row ─── */

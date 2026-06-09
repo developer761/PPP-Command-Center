@@ -57,5 +57,8 @@ export function mergeCoverageConfig(override: Record<string, unknown>): Coverage
     const v = override[key as string];
     if (typeof v === "number" && isValidCoverageValue(key as string, v)) merged[key as string] = v;
   }
+  // Double-cast defeats the `as const` layer on CoverageConfig — each key
+  // there has a literal-number type. Runtime shape is correct (we spread
+  // the full default in + only overwrite known keys with validated numbers).
   return merged as unknown as CoverageConfig;
 }
