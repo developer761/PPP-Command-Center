@@ -1452,13 +1452,16 @@ export async function loadSalesforceSnapshot(
         accountId: (o.AccountId as string | null) ?? null,
         accountName: o.Account?.Name ?? null,
         amount: resolved,
-        // Boolean() defensive — SF's REST API normally returns proper
-        // booleans, but the Bulk API + some older path variants return string
-        // "true"/"false". Coercion is a no-op when the value's already a real
-        // boolean; prevents future regressions if a query gets switched to
-        // Bulk for scale reasons. Audit 2026-06-08.
-        isClosed: Boolean(o.IsClosed),
-        isWon: Boolean(o.IsWon),
+        // SF's REST API returns proper booleans; the Bulk API returns the
+        // literal strings "true"/"false". `Boolean("false")` would be TRUE
+        // (any non-empty string is truthy in JS), which would silently flip
+        // every lost opp to Won the moment anyone switches this query to
+        // Bulk. Explicit check for both shapes instead. The `as unknown`
+        // step lets us compare a boolean-typed field against a string
+        // without TS complaining; runtime shape is genuinely the union.
+        // Audit 2026-06-08.
+        isClosed: o.IsClosed === true || (o.IsClosed as unknown) === "true",
+        isWon: o.IsWon === true || (o.IsWon as unknown) === "true",
         stageName: o.StageName,
         createdDate: o.CreatedDate,
         closeDate: o.CloseDate,
