@@ -1114,7 +1114,11 @@ export async function loadSalesforceSnapshot(
           id: a.Id as string,
           name: (a.Name as string) ?? "",
           type: (a.Type as string | null) ?? null,
-          serviceTerritoryId: (a.Service_Territory__c as string | null) ?? null,
+          // .trim() defensive — SF text fields can carry trailing whitespace from
+          // legacy data imports; "Long Island " ≠ "Long Island" would silently
+          // split rep / region counts on KPI surfaces. Cheap normalization;
+          // null/undefined still passes through cleanly. Audit 2026-06-08.
+          serviceTerritoryId: ((a.Service_Territory__c as string | null) ?? null)?.trim() || null,
           region: (a.Region__c as string | null) ?? null,
           geoZone: (a.Geo_Zone__c as string | null) ?? null,
           county: (a.County__c as string | null) ?? null,
@@ -1448,8 +1452,13 @@ export async function loadSalesforceSnapshot(
         accountId: (o.AccountId as string | null) ?? null,
         accountName: o.Account?.Name ?? null,
         amount: resolved,
-        isClosed: o.IsClosed,
-        isWon: o.IsWon,
+        // Boolean() defensive — SF's REST API normally returns proper
+        // booleans, but the Bulk API + some older path variants return string
+        // "true"/"false". Coercion is a no-op when the value's already a real
+        // boolean; prevents future regressions if a query gets switched to
+        // Bulk for scale reasons. Audit 2026-06-08.
+        isClosed: Boolean(o.IsClosed),
+        isWon: Boolean(o.IsWon),
         stageName: o.StageName,
         createdDate: o.CreatedDate,
         closeDate: o.CloseDate,
