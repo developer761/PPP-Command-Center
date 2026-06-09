@@ -29,14 +29,21 @@ export default function CustomersIndexView({
 }) {
   const [search, setSearch] = useState("");
 
+  // Pre-lowercase a parallel `hay` string per customer so per-keystroke
+  // filtering is one `.includes()` per row instead of rebuilding the
+  // concat + .toLowerCase() every keystroke. At admin-scope (5-10K
+  // customers), this saves the per-keystroke string allocation. Index
+  // is recomputed only when the customers array identity changes.
+  const index = useMemo(
+    () => customers.map((c) => ({ row: c, hay: `${c.name} ${c.ownerName ?? ""}`.toLowerCase() })),
+    [customers]
+  );
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return customers;
-    return customers.filter((c) => {
-      const hay = `${c.name} ${c.ownerName ?? ""}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [customers, search]);
+    return index.filter((entry) => entry.hay.includes(q)).map((entry) => entry.row);
+  }, [index, customers, search]);
 
   if (customers.length === 0) {
     return (

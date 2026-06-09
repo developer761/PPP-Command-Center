@@ -4,12 +4,15 @@ import { clearSalesforceCache, loadSalesforceSnapshot } from "@/lib/salesforce/q
 /**
  * Snapshot pre-warm cron.
  *
- *   Vercel cron config: every 10 minutes (see vercel.json).
+ *   Vercel cron config: lives in the Vercel project UI (no vercel.json in
+ *   this repo). Should be set to `*​/10 * * * *` or tighter. The snapshot
+ *   has a 30-min TTL, so a 10-min cron gives a 20-min safety margin — even
+ *   if one fire fails, the next has 10 min to land before users see cold.
  *
  * Purpose: keep the cross-instance shared Salesforce snapshot fresh so users
  * never hit the 7-12s cold-fetch path. Without this, the FIRST user to load
- * any page after 15 min of idle waits the full SF round-trip. With it, the
- * shared cache in Supabase is always warm (max age ~10 min).
+ * any page after the TTL window waits the full SF round-trip. With it, the
+ * shared cache in Supabase is always warm (max age ~10 min in practice).
  *
  * Behavior:
  *   1. Clear the in-process memoization (so `cached()` doesn't return a stale
