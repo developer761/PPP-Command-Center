@@ -35,6 +35,11 @@ for the values — they're not in the repo.
 - **Vercel** — hosting + cron + webhooks
 - **No test framework yet** — verified via `tsc`, `lint`, `build`, and manual smoke tests on staging WOs
 
+**Import alias:** `@/...` is the repo root (`tsconfig.json` → `"@/*": ["./*"]`).
+You'll see `@/lib/salesforce/queries`, `@/components/materials-view`, `@/app/api/...` everywhere — that's the alias, not a node-module package.
+
+**New here?** Read [`docs/ONBOARDING.md`](./docs/ONBOARDING.md) — it lays out the files to read in order to get productive in ~2-3 hours.
+
 ---
 
 ## What it does (end-to-end)
@@ -190,6 +195,17 @@ No migration runner. SQL files in `supabase/migrations/*.sql` get pasted into
 Supabase SQL editor by hand. Write everything `IF NOT EXISTS` / `ON CONFLICT`
 safe so re-runs are no-ops. The app must tolerate the migration being unapplied
 (e.g., `createToken` falls back to a narrower INSERT if `kind` column is missing).
+See [`supabase/migrations/README.md`](./supabase/migrations/README.md) for the
+per-file index and the `011b`/`012b` companion-file naming convention.
+
+### 7. snake_case at the DB boundary, camelCase in TypeScript
+
+Supabase rows arrive snake_case (`work_order_id`, `submitted_at`, `customer_email`).
+The conversion to camelCase (`workOrderId`, `submittedAt`, `customerEmail`)
+happens at the loader / route boundary — inside `lib/` and `components/`
+everything is camelCase. DB-row types (e.g., `TokenRow` in
+`lib/customer-form/tokens.ts`) keep the snake_case shape; everything that
+crosses into derive/UI land is camelCase. Don't mix the two in the same scope.
 
 ---
 

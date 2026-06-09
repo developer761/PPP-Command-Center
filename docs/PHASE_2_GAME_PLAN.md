@@ -1,6 +1,8 @@
 # Phase 2 — Game Plan (v2, updated 2026-05-26)
 
-**Status of week 2:** Customer Color Form pipeline shipped end-to-end last week. This week ships the supplier-side: Customer submits colors → progress bar advances → supplier email auto-generates with everything pre-filled → worker reviews + adds extras from a dropdown + picks delivery vs pickup → sends → reply lands in Command Center inbox → status advances.
+> **Status: SHIPPED (June 2026).** Kept for historical context — execution playbook for the Phase 2 sprint. For current architecture see [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md). For onboarding see [`docs/ONBOARDING.md`](./ONBOARDING.md).
+
+**Status of week 2 (at draft time):** Customer Color Form pipeline shipped end-to-end last week. This week ships the supplier-side: Customer submits colors → progress bar advances → supplier email auto-generates with everything pre-filled → worker reviews + adds extras from a dropdown + picks delivery vs pickup → sends → reply lands in Command Center inbox → status advances.
 
 Architecture decisions in this doc fold in **all** of Karan's requirements (progress bar timeline, customer email migration, 20-item dropdown, pickup-vs-delivery, replies in Command Center) and the **26 edge cases** identified in the pre-execution audit.
 

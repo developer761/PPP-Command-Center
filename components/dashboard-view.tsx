@@ -1,5 +1,30 @@
 "use client";
 
+/**
+ * Dashboard View — /dashboard (home).
+ *
+ * The first surface admins + reps land on after sign-in. Mix of company-wide
+ * KPIs (admins) + per-rep summary (reps in "my" scope).
+ *
+ * WHAT IT RENDERS:
+ *   - Period selector (this-month / last-month / this-quarter / FY / etc.)
+ *   - Region filter chips (drives derived shapes via `getFilteredView`)
+ *   - KPI strip (revenue, close rate, deals won, etc.)
+ *   - Top performer card + period delta
+ *   - Pipeline at risk
+ *   - Recent activity feed (last-N-hours rollup)
+ *   - Trend chart + region rollup table
+ *
+ * DATA SOURCES (all passed as props by page.tsx via `loadDashboardData`):
+ *   - bundle.snapshot — the full SF snapshot, already viewer-scoped
+ *   - bundle.viewer — admin vs rep distinction drives which cards show
+ *   - Period + region filter state — URL-synced so links + back button work
+ *
+ * Derived shapes read from `lib/salesforce/derive.ts` — every derive
+ * there is memoized per-snapshot, so flipping period/region is instant
+ * after the first compute.
+ */
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";

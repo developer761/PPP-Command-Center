@@ -1,5 +1,25 @@
 "use client";
 
+/**
+ * Financials View — /dashboard/financials. Admin-only.
+ *
+ * The CFO-style surface: AR aging, gross profit, lead-fee ROI, discount
+ * leaks, commission totals. All scoped to the selected period.
+ *
+ * WHAT IT RENDERS:
+ *   - AR aging buckets (current / 30 / 60 / 90 / 90+) with bar percentages
+ *   - Net revenue + GP + GP-margin headline
+ *   - Lead-fee ROI + total discount + commission stats
+ *   - Top discounters + top GP contributors tables
+ *
+ * DATA SOURCES:
+ *   - bundle.snapshot — full SF snapshot
+ *   - deriveFinancials(snapshot, period) — pure derive (memoized per-snapshot)
+ *
+ * Period change = instant client-side recompute via the memoized derive;
+ * no SF round-trip on filter changes.
+ */
+
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import FilterDropdown from "@/components/filter-dropdown";

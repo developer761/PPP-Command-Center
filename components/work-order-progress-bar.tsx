@@ -34,33 +34,11 @@
  * presentational only.
  */
 
-export type WoProgress = {
-  workOrderId: string;
-  workOrderNumber: string | null;
-  formSentAt: string | null;
-  formOpenedAt: string | null;
-  formSubmittedAt: string | null;
-  /** When multiple suppliers — earliest draft across them. UI shows
-   *  per-supplier sub-rows when there are >1 supplier orders. */
-  supplierDraftedAt: string | null;
-  supplierSentAt: string | null;
-  supplierAcknowledgedAt: string | null;
-  materialsDeliveredAt: string | null;
-  /** Stamped from Salesforce WorkOrder Status — when Status reaches
-   *  "Complete Paid in Full" / "Paid in Full", CloseDate is used as the
-   *  jobCompletedAt timestamp. Cancelled/voided/abandoned WOs do NOT count
-   *  as complete. See lib/wo-progress/completion.ts. */
-  jobCompletedAt: string | null;
-  /** Per-supplier breakdown for stages 3-6 (when multi-supplier WO). */
-  perSupplier?: Array<{
-    supplierAccountId: string;
-    supplierName: string;
-    draftedAt: string | null;
-    sentAt: string | null;
-    acknowledgedAt: string | null;
-    deliveredAt: string | null;
-  }>;
-};
+// Type moved to lib/wo-progress/types.ts so lib + app code can import without
+// pulling in a UI component. Re-exported here so existing import paths keep
+// working — new callers should prefer the lib path.
+export type { WoProgress } from "@/lib/wo-progress/types";
+import type { WoProgress } from "@/lib/wo-progress/types";
 
 type StageState = "done" | "active" | "stuck" | "pending";
 

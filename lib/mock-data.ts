@@ -1,5 +1,24 @@
-// Mock Salesforce-shaped data. Replaced with live SF queries when access lands.
-// All values are deterministic (no Math.random at module scope) so SSR + client render match.
+// =============================================================================
+// Mock data + LIVE shared types.
+//
+// This file does double duty — confusing if you don't know the contract:
+//
+//   1. The exported TYPES (`Rep`, `Deal`, `Period`, `SeriesPoint`,
+//      `RegionFilter`, `PERIOD_LABELS`, etc.) are the LIVE shared shapes
+//      used across production code. `lib/data-source.ts`,
+//      `components/dashboard-view.tsx`, every derive in
+//      `lib/salesforce/derive.ts` imports from here.
+//
+//   2. The exported VALUES (`reps`, `topPerformer`, `companyTrend`, etc.)
+//      are FIXTURES — deterministic mock data used only as a fallback
+//      when Salesforce isn't connected (see `lib/data-source.ts`).
+//
+// When SF is connected, the values here are unused; the types stay
+// load-bearing. Eventually the types should split into `lib/types/dashboard.ts`
+// and only fixtures stay in this file. Until then: don't delete this file
+// thinking it's "just mocks." All values are deterministic (no Math.random
+// at module scope) so SSR + client render match.
+// =============================================================================
 
 export type Rep = {
   id: string;

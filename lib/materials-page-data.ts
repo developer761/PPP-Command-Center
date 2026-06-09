@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
-import type { WoProgress } from "@/components/work-order-progress-bar";
+import type { WoProgress } from "@/lib/wo-progress/types";
 import { getJobCompletedAt } from "@/lib/wo-progress/completion";
 
 /**

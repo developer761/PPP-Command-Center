@@ -31,11 +31,33 @@ import type {
 } from "@/lib/mock-data";
 
 /**
- * Data adapter for the Command Center.
+ * Data adapter — the single entry point every dashboard page uses to fetch
+ * its data. New devs: start here when you're tracing how a page gets its
+ * data; this file IS the seam between the page layer + the SF cache layer.
  *
- * When SF is connected and queryable, every page pulls from `loadDashboardData`,
- * which returns a single snapshot-derived bundle. When SF isn't connected, the
- * mock data fills in. UI doesn't care which source it's reading from — same shape.
+ * `loadDashboardData(searchParams, opts?)` wraps three things into one call:
+ *
+ *   1. Viewer resolution — reads request cookies + URL params, returns the
+ *      canonical Viewer (admin or rep) including any active "view as"
+ *      impersonation. See `lib/auth/viewer-server.ts`.
+ *   2. Salesforce snapshot — pulled from the cached snapshot layer
+ *      (`lib/salesforce/queries.ts`). Always uses the shared cache, never
+ *      a per-page fetch.
+ *   3. Viewer scoping — `scopeSnapshotToViewer` filters the snapshot so a
+ *      worker only sees their own opps/WOs/accounts; admin sees everything.
+ *      See `lib/auth/scope-snapshot.ts`.
+ *
+ * Falls back to in-repo mock data when SF isn't connected — means a new dev
+ * can clone the repo, set Supabase + Resend env vars, and the dashboard
+ * renders against fake data while they wait for SF credentials. Real SF
+ * takes precedence the moment the OAuth refresh token is stored.
+ *
+ * Thin mode (`opts.thin = true`): skips the heavy opportunity + 6 secondary
+ * queries. Used by `/dashboard/materials`, `/dashboard/operations`,
+ * `/dashboard/map` — pages that don't read opps. Cuts cold loads from
+ * ~8-15s to ~2-4s. See `docs/ARCHITECTURE.md` → "Thin snapshot".
+ *
+ * UI doesn't care which source it's reading from — same shape either way.
  */
 
 export {

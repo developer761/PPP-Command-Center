@@ -1,5 +1,25 @@
 "use client";
 
+/**
+ * Operations View — /dashboard/operations. Admin-only.
+ *
+ * Capacity + throughput surface: labor utilization, materials/labor cost
+ * ratios, over-running WOs, GP-margin outliers.
+ *
+ * WHAT IT RENDERS:
+ *   - Labor capacity headline (days remaining vs actual vs projected)
+ *   - Materials cost + labor payout for the period
+ *   - Cost-ratio chips (labor / materials as % of revenue)
+ *   - Over-runs table (WOs where actual labor days >> projected)
+ *   - Top GP-margin WOs (profitability outliers)
+ *
+ * DATA SOURCES:
+ *   - bundle.snapshot — full SF snapshot (uses thin mode at the page level)
+ *   - deriveOperations(snapshot, period) — pure derive, memoized per-snapshot
+ *
+ * Period change = instant client-side recompute; no SF round-trip.
+ */
+
 import { useMemo, useState } from "react";
 import FilterDropdown from "@/components/filter-dropdown";
 import PageHeader from "@/components/page-header";

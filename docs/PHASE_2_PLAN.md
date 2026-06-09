@@ -1,6 +1,8 @@
 # Phase 2 — Materials Ordering + Color Selection
 
-**Author:** Karan + Claude · **Drafted:** May 19, 2026 · **Status:** Plan B locked, awaiting PPP answers to §8 + Salesforce access (expected 2026-05-20)
+> **Status: SHIPPED (June 2026).** Kept for historical context — this is the original plan that drove the Phase 2 implementation. For current architecture see [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md). For onboarding see [`docs/ONBOARDING.md`](./ONBOARDING.md).
+
+**Author:** Karan + Claude · **Drafted:** May 19, 2026 · **Status (at draft time):** Plan B locked, awaiting PPP answers to §8 + Salesforce access (expected 2026-05-20)
 
 > **2026-05-19 revision (Plan B):** The original ordering had Color Selection first, Materials Ordering second. After a CEO-perspective audit, the order flipped — **Materials Ordering ships first (Phase 2A, Week 1-3), Color Selection portal ships second (Phase 2B, Week 4+).** Reasoning is in `~/Desktop/PPP_Strategy_Notes.md` Decision 4. Short version: every job needs materials, only some jobs need a portal; rep can enter colors faster than a customer can fill out a form; lower risk if customers don't adopt; we prove the supplier integration with one supplier first. The technical sections below still apply; the *order* of work is what changed.
 

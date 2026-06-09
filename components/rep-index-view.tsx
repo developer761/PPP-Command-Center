@@ -1,5 +1,27 @@
 "use client";
 
+/**
+ * Rep Index View — /dashboard/rep (the rep list, not an individual profile).
+ *
+ * Per-period leaderboard surface. Admin sees every rep; rep sees only
+ * themselves + their peer regional context (depending on scope).
+ *
+ * WHAT IT RENDERS:
+ *   - Period selector (PFQ / CFQ / PFY / CFY / etc.) — scorecard-style cadence
+ *   - Region filter chips
+ *   - Team Revenue stat with company-total hint (commit 0da9db3 — 2026-06-08)
+ *   - Top Rep card + active rep count
+ *   - Search bar
+ *   - Rep cards grid — each links to `/dashboard/rep/[id]`
+ *
+ * DATA SOURCES:
+ *   - bundle.repsForPeriod — pre-computed in loadDashboardData via
+ *     deriveRepsForPeriod (memoized per-snapshot)
+ *   - bundle.snapshot — for derivePeriodDelta (company total) + region list
+ *
+ * Period change = instant client-side recompute; no SF round-trip.
+ */
+
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import FilterDropdown from "@/components/filter-dropdown";

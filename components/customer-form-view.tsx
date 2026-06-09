@@ -1,5 +1,52 @@
 "use client";
 
+/**
+ * Customer Color Form — what the homeowner sees at `/select/[token]`.
+ *
+ * Public-facing, NO auth. Token-gated via `validateToken` server-side
+ * before this component ever renders.
+ *
+ * This is the single-most-touched user-facing surface — every paint job
+ * has a customer fill this out. Treat changes here like production code,
+ * not internal dashboard tweaks.
+ *
+ * WHAT IT RENDERS:
+ *   1. Project context header (account name, WO number, address)
+ *   2. Material Type picker (job-level — "BM Aura interior", etc.)
+ *   3. Per-room cards with ColorPicker for each surface (walls / ceiling
+ *      / trim / floor / other). Empty rooms render a notes-only path.
+ *   4. Delivery address confirmation (last step before submit)
+ *   5. Thank-you / re-edit state once submitted
+ *
+ * DATA INPUTS (all passed as props by `/select/[token]/page.tsx`):
+ *   - renderData: FormRenderData — the WO + line items pulled live from
+ *     Salesforce by `lib/customer-form/render-data.ts`. NOT cached — the
+ *     customer must always see the latest WO state (estimators may be
+ *     editing in SF while the customer holds the link).
+ *   - Color catalog — fetched ONCE on mount from `/api/customer-form/
+ *     colors/all` (24h HTTP cache, ~80KB). Every ColorPicker filters
+ *     this in-memory, so per-keystroke filtering is zero-latency.
+ *   - Re-edit prior submission — when status === "editable", the form
+ *     pre-fills from `submitted_payload` so the customer can revise
+ *     their picks before the lock cutoff.
+ *
+ * SUBMIT FLOW:
+ *   POST → /api/customer-form/submit/[token] → drift-check vs latest SF
+ *   data → write back to SF (if writeback-mode allows) → notify admin
+ *   via Resend → show thank-you. See `app/api/customer-form/submit/`.
+ *
+ * SUPPORTING FILES (read these together if you're changing this):
+ *   - lib/customer-form/render-data.ts     — server-side data prep
+ *   - lib/customer-form/material-types.ts  — MT catalog (single source)
+ *   - lib/customer-form/color-swatch.ts    — hex resolution per color
+ *   - lib/customer-form/tokens.ts          — token lifecycle helpers
+ *   - app/select/[token]/page.tsx          — the server-side wrapper
+ *
+ * For the full customer-form deep-dive (including the preview-token
+ * filter, notes-only path, writeback-mode gate, etc.) see
+ * `docs/ARCHITECTURE.md` → "Customer color form deep-dive".
+ */
+
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
 import { resolveSwatchHex } from "@/lib/customer-form/color-swatch";

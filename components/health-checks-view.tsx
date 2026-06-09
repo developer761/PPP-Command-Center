@@ -1,5 +1,25 @@
 "use client";
 
+/**
+ * Health Checks View — /dashboard/settings/health. Admin-only diagnostic page.
+ *
+ * Runs probes against external systems (SF auth, Supabase, Resend, cron
+ * last-fire, snapshot freshness) and renders a status grid so admin can see
+ * at a glance whether the platform is fully wired or has a degraded surface.
+ *
+ * WHAT IT RENDERS:
+ *   - Status badge per check (ok / warn / error / running)
+ *   - Last-checked timestamp + remediation hint per row
+ *   - "Run all" button + per-row "Run one" for targeted re-check
+ *
+ * DATA SOURCES:
+ *   - /api/admin/health/* endpoints — each probe is its own route
+ *   - State lives entirely in this component; no props beyond admin gate
+ *
+ * Used most often when something breaks — keep the surface fast + the
+ * remediation hints actionable.
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
