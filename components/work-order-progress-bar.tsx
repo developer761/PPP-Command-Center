@@ -95,16 +95,32 @@ const STAGES: StageDef[] = [
 function computeStates(progress: WoProgress): StageState[] {
   const now = Date.now();
   const states: StageState[] = STAGES.map(() => "pending");
-  // Walk left-to-right; the latest completed stage is "done", the next is "active".
-  let lastDoneIdx = -1;
+  // Walk left-to-right; mark any stage with a real timestamp as "done".
   for (let i = 0; i < STAGES.length; i++) {
-    const ts = progress[STAGES[i].key];
-    if (ts) {
+    if (progress[STAGES[i].key]) {
       states[i] = "done";
-      lastDoneIdx = i;
     }
   }
-  // The next stage after the last-done is "active" (current cursor)
+  // Cascade backward: if a LATER stage is "done" but an earlier one shows
+  // "pending", the earlier one was almost-certainly reached (you can't
+  // submit without opening, you can't draft an order without a submission).
+  // The webhook might just have missed the in-between event — common for
+  // Resend "opened" since many email clients don't load tracking pixels.
+  // Without cascade, the bar shows "Customer Opened: pending" + "Customer
+  // Submitted: ✓" which is visually incoherent. Walk right-to-left, once
+  // we see a "done" everything to the left is also "done".
+  let foundLaterDone = false;
+  for (let i = STAGES.length - 1; i >= 0; i--) {
+    if (states[i] === "done") foundLaterDone = true;
+    else if (foundLaterDone) states[i] = "done";
+  }
+  // After cascade, recompute lastDoneIdx as the rightmost "done" (unchanged
+  // by cascade since cascade only fills earlier gaps).
+  let lastDoneIdx = -1;
+  for (let i = STAGES.length - 1; i >= 0; i--) {
+    if (states[i] === "done") { lastDoneIdx = i; break; }
+  }
+  // The next stage after the last-done is "active" (current cursor).
   const activeIdx = lastDoneIdx + 1;
   if (activeIdx < STAGES.length) {
     states[activeIdx] = "active";

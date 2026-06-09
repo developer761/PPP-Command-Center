@@ -1204,20 +1204,36 @@ function JobDetail({
                 <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
                   Pick a store (Aboffs, Willis, etc.) and email the order.
                 </p>
-                {/* Preview colors — review the per-room color breakdown before ordering. */}
-                <button
-                  type="button"
-                  onClick={() => setShowDraft(true)}
-                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
-                  </svg>
-                  Preview colors
-                </button>
-                <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                  Read-only view of every room and color the customer picked.
-                </p>
+                {/* Preview colors — review the per-room color breakdown before
+                    ordering. Gated on the customer ACTUALLY submitting the
+                    form. Before submission there's nothing to preview (SF
+                    color fields are empty), so the modal opens to a confusing
+                    blank state. Disabled + helper copy is clearer than a hover
+                    that lies. */}
+                {(() => {
+                  const hasSubmission = formStatus?.status === "submitted";
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowDraft(true)}
+                        disabled={!hasSubmission}
+                        title={hasSubmission ? undefined : "Available after the customer submits the color form"}
+                        className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
+                        </svg>
+                        Preview colors
+                      </button>
+                      <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                        {hasSubmission
+                          ? "Read-only view of every room and color the customer picked."
+                          : "Available once the customer submits the color form."}
+                      </p>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
