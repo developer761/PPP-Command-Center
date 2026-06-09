@@ -558,8 +558,16 @@ export default function SupplierOrderModal({
             </h3>
             <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 truncate">
               {customerName ?? "(unknown customer)"} · WO {workOrderNumber ?? workOrderId.slice(-6)}
-              {draft && (
+              {/* PO badge — show as a skeleton placeholder while the draft is
+                  loading so the admin sees the slot for the PO and isn't left
+                  wondering whether one will appear. Karan walkthrough audit
+                  2026-06-08: PO is the thing PPP staff reference verbally on
+                  calls with suppliers; surfacing the slot immediately reduces
+                  the "is this thing still loading" friction. */}
+              {draft ? (
                 <> · <span className="font-mono">{draft.poNumber}</span></>
+              ) : (
+                <> · <span className="font-mono text-ppp-charcoal-300">PO loading…</span></>
               )}
             </p>
           </div>
@@ -892,11 +900,18 @@ export default function SupplierOrderModal({
                             : "No delivery address on file — enter it and it'll drop into the email."}
                         </div>
                         <div className="space-y-2">
+                          {/* autoFocus only when SF returned no address — admin
+                              has to type something before they can send, so
+                              taking focus is appropriate. We don't autofocus
+                              when admin TOGGLED useCustomAddress (they may have
+                              just been clicking around without intending to
+                              type yet). Karan walkthrough audit 2026-06-08. */}
                           <input
                             type="text"
                             value={deliveryAddr.street}
                             onChange={(e) => setDeliveryAddr((a) => ({ ...a, street: e.target.value }))}
                             placeholder="Street address"
+                            autoFocus={draft.unresolvedAddress && !useCustomAddress}
                             className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
                           />
                           <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto] gap-2">
