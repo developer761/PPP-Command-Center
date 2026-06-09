@@ -455,6 +455,13 @@ export function deriveStuckDeals(
   snapshot: SalesforceSnapshot,
   staleDays: number = 14
 ): StuckDeal[] {
+  return memoBySnapshot(snapshot, "deriveStuckDeals", String(staleDays), () => deriveStuckDealsInner(snapshot, staleDays));
+}
+
+function deriveStuckDealsInner(
+  snapshot: SalesforceSnapshot,
+  staleDays: number
+): StuckDeal[] {
   const now = Date.now();
   const staleMs = staleDays * 86_400_000;
   // Build a User-id → name lookup. Snapshot.reps + WO ownerName both
@@ -528,6 +535,13 @@ function formatMonthLabel(yyyymm: string): string {
 }
 
 export function deriveCompanyTrend(
+  snapshot: SalesforceSnapshot,
+  period: Period
+): { granularity: "daily" | "monthly"; series: SeriesPoint[] } {
+  return memoBySnapshot(snapshot, "deriveCompanyTrend", period, () => deriveCompanyTrendInner(snapshot, period));
+}
+
+function deriveCompanyTrendInner(
   snapshot: SalesforceSnapshot,
   period: Period
 ): { granularity: "daily" | "monthly"; series: SeriesPoint[] } {
@@ -646,6 +660,13 @@ export function derivePeriodDelta(
   snapshot: SalesforceSnapshot,
   period: Period
 ): { value: number; change: number; trend: "up" | "down" | "flat" } {
+  return memoBySnapshot(snapshot, "derivePeriodDelta", period, () => derivePeriodDeltaInner(snapshot, period));
+}
+
+function derivePeriodDeltaInner(
+  snapshot: SalesforceSnapshot,
+  period: Period
+): { value: number; change: number; trend: "up" | "down" | "flat" } {
   const now = new Date();
   const { start: periodStart, end: periodEnd } = periodRange(period, now);
   const prior = priorPeriodStart(period, now);
@@ -738,9 +759,7 @@ function startOfTodayInNY(now: Date = new Date()): Date {
   return new Date(nyDate + "T00:00:00Z");
 }
 
-export function deriveTodaySnapshot(
-  snapshot: SalesforceSnapshot
-): {
+type TodaySnapshotResult = {
   todayRevenue: number;       // $K
   todayDealCount: number;
   yesterdayRevenue: number;   // $K
@@ -754,7 +773,13 @@ export function deriveTodaySnapshot(
     workOrderNumber: string | null;
     status: string | null;
   } | null;
-} {
+};
+
+export function deriveTodaySnapshot(snapshot: SalesforceSnapshot): TodaySnapshotResult {
+  return memoBySnapshot(snapshot, "deriveTodaySnapshot", "", () => deriveTodaySnapshotInner(snapshot));
+}
+
+function deriveTodaySnapshotInner(snapshot: SalesforceSnapshot): TodaySnapshotResult {
   const startOfToday = startOfTodayInNY();
   const startOfYesterday = new Date(startOfToday.getTime() - 86_400_000);
   const startOfSameDayLastWeek = new Date(startOfToday.getTime() - 7 * 86_400_000);
@@ -811,9 +836,7 @@ export function deriveTodaySnapshot(
  * Month-end forecast based on linear extrapolation of the current month's pace.
  * Compares to last month's actual for an "on track vs behind/ahead" call.
  */
-export function deriveMonthForecast(
-  snapshot: SalesforceSnapshot
-): {
+type MonthForecastResult = {
   monthToDateRevenue: number;       // $K
   daysElapsed: number;
   daysInMonth: number;
@@ -822,7 +845,13 @@ export function deriveMonthForecast(
   lastMonthActual: number;          // $K
   vsLastMonthPct: number;           // forecast vs last month, %
   pacePct: number;                  // % of month elapsed (0-100)
-} {
+};
+
+export function deriveMonthForecast(snapshot: SalesforceSnapshot): MonthForecastResult {
+  return memoBySnapshot(snapshot, "deriveMonthForecast", "", () => deriveMonthForecastInner(snapshot));
+}
+
+function deriveMonthForecastInner(snapshot: SalesforceSnapshot): MonthForecastResult {
   const now = new Date();
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
@@ -873,10 +902,7 @@ export function deriveMonthForecast(
  * Top customers by lifetime revenue. Uses Account.Total_Lifetime_Revenue__c
  * (PPP-populated formula field). Returns top N with their type + flags.
  */
-export function deriveTopCustomers(
-  snapshot: SalesforceSnapshot,
-  limit: number = 10
-): Array<{
+type TopCustomerRow = {
   id: string;
   name: string;
   lifetimeRevenue: number;
@@ -885,7 +911,13 @@ export function deriveTopCustomers(
   isKey: boolean;
   region: string | null;
   lastWorkOrderCompleted: string | null;
-}> {
+};
+
+export function deriveTopCustomers(snapshot: SalesforceSnapshot, limit: number = 10): TopCustomerRow[] {
+  return memoBySnapshot(snapshot, "deriveTopCustomers", String(limit), () => deriveTopCustomersInner(snapshot, limit));
+}
+
+function deriveTopCustomersInner(snapshot: SalesforceSnapshot, limit: number): TopCustomerRow[] {
   return [...snapshot.accounts]
     .filter((a) => a.totalLifetimeRevenue > 0)
     .sort((a, b) => b.totalLifetimeRevenue - a.totalLifetimeRevenue)
@@ -908,6 +940,12 @@ export function deriveTopCustomers(
  * is moving. Lower = healthier conversion engine.
  */
 export function deriveQuoteToCashVelocity(
+  snapshot: SalesforceSnapshot
+): { avgDays: number; sampleCount: number } {
+  return memoBySnapshot(snapshot, "deriveQuoteToCashVelocity", "", () => deriveQuoteToCashVelocityInner(snapshot));
+}
+
+function deriveQuoteToCashVelocityInner(
   snapshot: SalesforceSnapshot
 ): { avgDays: number; sampleCount: number } {
   const oppCreated = new Map(snapshot.opportunities.map((o) => [o.id, o.createdDate]));
@@ -939,6 +977,12 @@ export function deriveQuoteToCashVelocity(
  * Positive = trending up, negative = cooling off.
  */
 export function deriveRepMomentum(
+  snapshot: SalesforceSnapshot
+): Map<string, { thisWeek: number; priorWeek: number; deltaPct: number }> {
+  return memoBySnapshot(snapshot, "deriveRepMomentum", "", () => deriveRepMomentumInner(snapshot));
+}
+
+function deriveRepMomentumInner(
   snapshot: SalesforceSnapshot
 ): Map<string, { thisWeek: number; priorWeek: number; deltaPct: number }> {
   const now = Date.now();
@@ -1020,10 +1064,7 @@ function trueGrossProfit(
  * AR aging (from WO.balanceOwed + finalBalanceAging), GP, lead-fee ROI,
  * discount leaks, commissions. All scoped by an optional period.
  */
-export function deriveFinancials(
-  snapshot: SalesforceSnapshot,
-  period: Period = "this-month"
-): {
+type FinancialsResult = {
   arAging: { current: number; days30: number; days60: number; days90: number; days90Plus: number; total: number };
   grossProfit: number;
   netRevenue: number;
@@ -1040,7 +1081,19 @@ export function deriveFinancials(
   commissionPctOfRevenue: number;
   topDiscounters: Array<{ ownerId: string; ownerName: string; discount: number }>;
   topGPContributors: Array<{ ownerId: string; ownerName: string; gp: number }>;
-} {
+};
+
+export function deriveFinancials(
+  snapshot: SalesforceSnapshot,
+  period: Period = "this-month"
+): FinancialsResult {
+  return memoBySnapshot(snapshot, "deriveFinancials", period, () => deriveFinancialsInner(snapshot, period));
+}
+
+function deriveFinancialsInner(
+  snapshot: SalesforceSnapshot,
+  period: Period
+): FinancialsResult {
   const now = new Date();
   const { start: periodStart, end: periodEnd } = periodRange(period, now);
 
@@ -1139,10 +1192,7 @@ export function deriveFinancials(
 /**
  * Operations picture — labor utilization, materials, payout ratios.
  */
-export function deriveOperations(
-  snapshot: SalesforceSnapshot,
-  period: Period = "this-month"
-): {
+type OperationsResult = {
   // Labor capacity (right now)
   totalLaborDaysRemaining: number;
   totalLaborDaysActual: number;
@@ -1157,7 +1207,19 @@ export function deriveOperations(
   overRuns: Array<{ id: string; workOrderNumber: string | null; account: string | null; projected: number; actual: number; overByDays: number }>;
   // Top GP-margin WOs (profitability outliers)
   topGPMargin: Array<{ id: string; workOrderNumber: string | null; account: string | null; revenue: number; gp: number; marginPct: number }>;
-} {
+};
+
+export function deriveOperations(
+  snapshot: SalesforceSnapshot,
+  period: Period = "this-month"
+): OperationsResult {
+  return memoBySnapshot(snapshot, "deriveOperations", period, () => deriveOperationsInner(snapshot, period));
+}
+
+function deriveOperationsInner(
+  snapshot: SalesforceSnapshot,
+  period: Period
+): OperationsResult {
   const now = new Date();
   const { start: periodStart, end: periodEnd } = periodRange(period, now);
 
@@ -1242,10 +1304,19 @@ export function deriveOperations(
  * Real funnel: Leads (Opps Created) → Quotes Sent → Opps Won → WOs Created → Paid in Full.
  * Each step has count + total $ value where applicable.
  */
+type RealFunnelStage = { stage: string; count: number; value: number; dropOffPct: number | null };
+
 export function deriveRealFunnel(
   snapshot: SalesforceSnapshot,
   period: Period = "this-month"
-): Array<{ stage: string; count: number; value: number; dropOffPct: number | null }> {
+): RealFunnelStage[] {
+  return memoBySnapshot(snapshot, "deriveRealFunnel", period, () => deriveRealFunnelInner(snapshot, period));
+}
+
+function deriveRealFunnelInner(
+  snapshot: SalesforceSnapshot,
+  period: Period
+): RealFunnelStage[] {
   const now = new Date();
   const { start: periodStart, end: periodEnd } = periodRange(period, now);
 

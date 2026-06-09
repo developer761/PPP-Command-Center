@@ -62,11 +62,11 @@ export async function GET(request: Request) {
     },
     {
       headers: {
-        // 1 hour browser cache, 1 hour CDN cache, stale-while-revalidate.
-        // Color catalog is essentially static (Benjamin Moore doesn't add new
-        // SKUs daily). If a customer re-opens the form within an hour, no
-        // network roundtrip at all.
-        "Cache-Control": "private, max-age=3600, stale-while-revalidate=3600",
+        // 24h browser cache + stale-while-revalidate. Color catalog is
+        // essentially static (Benjamin Moore doesn't add new SKUs daily); the
+        // previous 1h TTL was over-conservative. SWR keeps perceived loads
+        // instant even after expiry while we refetch in the background.
+        "Cache-Control": "private, max-age=86400, stale-while-revalidate=86400",
       },
     }
   );
