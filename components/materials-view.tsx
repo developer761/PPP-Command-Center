@@ -1289,24 +1289,18 @@ function JobDetail({
         />
       )}
 
-      {/* Notes from Salesforce — only the fields workers actually use as
-          notes. WorkOrder.Description is NOT shown here — Karan
-          confirmed it's the standard PPP scope template (PRICING DETAILS /
-          ABOUT US / financing terms), never per-WO notes. The 4 custom
-          textareas + Subject are the only notes admin should see.
-          Section auto-hides when ALL are empty/whitespace-only. */}
+      {/* Notes from Salesforce — Subject only for now.
+          Karan 2026-06-10: Scheduling_Notes__c turned out to be the AM's
+          workflow log (cancellation/payment/scheduling conversations) —
+          NOT the estimator's per-WO measurement notes about dimensions
+          and square footage that admin needs. The real estimator-notes
+          field is TBD; the enhanced discovery endpoint dumps every text
+          field's value so we can find it. Until then, only Subject (which
+          is short + worker-edited) is safe to display. */}
       {(() => {
         const subject = job.wo.subject?.trim() || null;
-        const pm = job.wo.projectManagerNotes?.trim() || null;
-        const sched = job.wo.schedulingNotes?.trim() || null;
-        const review = job.wo.reviewNotes?.trim() || null;
-        const balance = job.wo.balanceOwedNotes?.trim() || null;
         const blocks: Array<{ label: string; text: string }> = [];
         if (subject) blocks.push({ label: "Subject", text: subject });
-        if (pm) blocks.push({ label: "Project Manager Notes", text: pm });
-        if (sched) blocks.push({ label: "Scheduling Notes", text: sched });
-        if (review) blocks.push({ label: "Review Notes", text: review });
-        if (balance) blocks.push({ label: "Balance Owed Notes", text: balance });
         if (blocks.length === 0) return null;
         return (
           <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">

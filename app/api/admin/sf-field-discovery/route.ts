@@ -265,8 +265,8 @@ export async function GET(request: Request) {
       const n = f.name.toLowerCase();
       const l = f.label.toLowerCase();
       return (
-        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context/.test(n) ||
-        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context/.test(l)
+        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context|estimate|walkthrough|walkthru|measure|dimension|sqft|sq_ft|footage|size|field|site|takeoff|estimator|visit/.test(n) ||
+        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context|estimate|walkthrough|walkthru|measure|dimension|sqft|sq_ft|footage|size|field|site|takeoff|estimator|visit/.test(l)
       );
     });
     // Dedupe by name
@@ -362,15 +362,66 @@ export async function GET(request: Request) {
       const n = f.name.toLowerCase();
       const l = f.label.toLowerCase();
       return (
-        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context/.test(n) ||
-        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context/.test(l)
+        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context|estimate|walkthrough|walkthru|measure|dimension|sqft|sq_ft|footage|size|field|site|takeoff|estimator|visit/.test(n) ||
+        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context|estimate|walkthrough|walkthru|measure|dimension|sqft|sq_ft|footage|size|field|site|takeoff|estimator|visit/.test(l)
       );
     });
+    // Sample WOLI rows for THIS WO with EVERY text field's value, so we
+    // can find estimator measurement-notes content that may be at the
+    // WOLI level (per-room) rather than the WO level (whole job). PPP
+    // estimators write per-room dimensions/sqft/site-condition notes;
+    // those likely live on the line item, not the parent WO.
+    const allWoliTextFields = woliMeta.fields
+      .filter((f) => f.custom && (f.type === "textarea" || f.type === "string" || f.type === "encryptedstring"))
+      .map((f) => f.name);
+    let sampleWoliRows: unknown = null;
+    if (woId && /^[A-Za-z0-9]+$/.test(woId) && allWoliTextFields.length > 0) {
+      const isIdShape = /^[A-Za-z0-9]{15}$|^[A-Za-z0-9]{18}$/.test(woId);
+      try {
+        // Resolve WO id first so we can filter WOLI rows by it.
+        const woIdQ = await conn.query<{ Id: string }>(
+          `SELECT Id FROM WorkOrder WHERE ${isIdShape ? `Id = '${woId}'` : `WorkOrderNumber = '${woId}'`} LIMIT 1`
+        );
+        const resolvedWoId = woIdQ.records[0]?.Id ?? null;
+        if (resolvedWoId) {
+          const fields = ["Id", "AreaLabel__c", ...allWoliTextFields];
+          const uniqueFields = [...new Set(fields)];
+          const rows = await conn.query<Record<string, unknown>>(
+            `SELECT ${uniqueFields.join(", ")} FROM WorkOrderLineItem WHERE WorkOrderId = '${resolvedWoId}' LIMIT 5`
+          );
+          const enriched = rows.records.map((row) => {
+            const nonNullFields: Array<{ name: string; value: unknown }> = [];
+            for (const [k, v] of Object.entries(row)) {
+              if (k === "attributes") continue;
+              if (v == null) continue;
+              if (typeof v === "string" && v.trim().length === 0) continue;
+              nonNullFields.push({ name: k, value: v });
+            }
+            return { row, nonNullFields };
+          });
+          sampleWoliRows = {
+            resolvedWoId,
+            totalTextFieldsRequested: allWoliTextFields.length,
+            rowsReturned: rows.records.length,
+            rows: enriched,
+            hint:
+              enriched.length === 0
+                ? "No WOLI rows found for this WO."
+                : "Each row's nonNullFields lists every text field with content. The estimator's measurement notes (dimensions / sqft / site context) are likely in one of these.",
+          };
+        }
+      } catch (sampleErr) {
+        sampleWoliRows = { error: sampleErr instanceof Error ? sampleErr.message : String(sampleErr) };
+      }
+    }
+
     woliResult = {
       object: "WorkOrderLineItem",
       totalCustomFields: customFields.length,
+      totalTextFields: allWoliTextFields.length,
       noteCandidates,
-      hint: "ColorNotes__c is already pulled. If other candidates surface here that aren't ColorNotes__c, those may be worker-internal notes worth pulling into the snapshot too.",
+      sampleRows: sampleWoliRows,
+      hint: "ColorNotes__c is already pulled. If other candidates or non-null text fields surface here, they may be worker-internal notes worth pulling into the snapshot too. Pass ?woId= to sample real values from up to 5 line items on a specific WO.",
     };
   } catch (err) {
     woliResult = {
