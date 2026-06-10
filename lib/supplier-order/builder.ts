@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
 import { estimateOrderGallons, classifySurface, formatOrderQuantity, formatBucketsCans, summarizeOrder, type RoomTakeoff, type RoomSurface, type GallonEstimate } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
+import { filterMaterialTypesForWorkOrder } from "@/lib/customer-form/material-types";
 import type {
   SnapshotAccount,
   SnapshotPaintColor,
@@ -196,6 +197,13 @@ export type SupplierOrderDraft = {
    *  instead of typing the address every time. Empty array = no curated
    *  locations, modal falls back to a text input. */
   pickupLocations: PickupLocation[];
+  /** Material Type allowlist filtered for THIS WO's interior/exterior context.
+   *  The customer form's job-level picker already filters; the admin's per-
+   *  color override picker in the modal needs the same allowlist so an admin
+   *  can't accidentally pick "Aura Interior" for an exterior WO. Computed
+   *  server-side in the builder from `workTypeName` + WOLI product names.
+   *  Empty array = no filtering (mixed/unknown WO → show all). */
+  allowedMaterialTypeValues: string[];
 };
 
 /* ─── Helpers ─── */
@@ -820,6 +828,39 @@ export async function buildSupplierOrderDraft(
     "ORDER — WHAT TO BUY",
     orderSummaryBlock,
   ];
+  // Customer notes from the form. Two sources:
+  //   - submitted_payload.globalNotes (project-level, e.g. notes-only / exterior)
+  //   - per-line items.notes (room-specific custom requests)
+  // For exterior + sparse-WO jobs these notes ARE the order content the
+  // supplier needs to scope correctly. Karan 2026-06-09: do NOT drop them
+  // between submit and supplier. Render after the ORDER block, before
+  // any other sections, so the vendor reads the customer's words next to
+  // the buy-list. Sanitize (already capped + control-char stripped server-
+  // side in the submit route).
+  const payload = input.customerSubmittedPayload;
+  const customerGlobalNotes = payload?.globalNotes?.trim() ?? "";
+  const perLineNotes: Array<{ roomLabel: string; note: string }> = [];
+  if (payload?.lineItems) {
+    const woliRoomLabel = new Map<string, string>();
+    for (const li of input.woliRows) {
+      if (li.id && li.productName) woliRoomLabel.set(li.id, li.productName);
+    }
+    for (const item of payload.lineItems) {
+      const note = (item.notes ?? "").trim();
+      if (!note) continue;
+      perLineNotes.push({ roomLabel: woliRoomLabel.get(item.id) ?? "Room", note });
+    }
+  }
+  if (customerGlobalNotes || perLineNotes.length > 0) {
+    sections.push("");
+    sections.push("CUSTOMER NOTES");
+    if (customerGlobalNotes) {
+      sections.push(customerGlobalNotes);
+    }
+    for (const { roomLabel, note } of perLineNotes) {
+      sections.push(`  - ${roomLabel}: ${note}`);
+    }
+  }
   // Katie 2026-06-03: COLOR PLACEMENT (where each color goes) removed from
   // the default email — vendor doesn't need PPP's internal room mapping.
   // Still rendered by templates that explicitly reference {{placement_block}}.
@@ -849,6 +890,19 @@ export async function buildSupplierOrderDraft(
   sections.push("");
   sections.push(signoff);
 
+  // Compute the Material Type allowlist for THIS WO's context — same logic
+  // the customer-form picker uses. Modal passes this down to its per-color
+  // override picker so admin can't pick "Aura Interior" for an exterior WO.
+  // filterMaterialTypesForWorkOrder returns groups `{label, options[]}`; we
+  // flatten to a single list of allowed string values.
+  const woliProductNames = input.woliRows
+    .map((li) => li.productName ?? "")
+    .filter((s) => s.length > 0);
+  const allowedMaterialTypeValues = filterMaterialTypesForWorkOrder({
+    workTypeName: input.workOrder.workTypeName ?? null,
+    lineItemProductNames: woliProductNames,
+  }).flatMap((g) => g.options);
+
   return {
     poNumber,
     subject,
@@ -863,5 +917,6 @@ export async function buildSupplierOrderDraft(
     sentToEmail: settings.orderEmail,
     pppAccountNumber: settings.pppAccountNumber,
     pickupLocations: settings.pickupLocations,
+    allowedMaterialTypeValues,
   };
 }

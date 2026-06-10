@@ -69,6 +69,10 @@ type Draft = {
   pppAccountNumber: string | null;
   pickupLocations: Array<{ name: string; address: string }>;
   skippedSurfaces?: Array<{ roomLabel: string; surface: string }>;
+  /** WO-context-filtered Material Type allowlist. Empty array = no filter
+   *  (mixed/unknown WO). Passed to the per-color override picker so an
+   *  admin can't pick "Aura Interior" for an exterior WO. */
+  allowedMaterialTypeValues?: string[];
 };
 
 type SelectedExtra = {
@@ -758,6 +762,13 @@ export default function SupplierOrderModal({
                               {(() => {
                                 const mtKey = `${e.colorId}::${e.finish ?? ""}`;
                                 const currentMt = materialTypeOverrides.get(mtKey) ?? "";
+                                // Pass the WO-filtered allowlist so admin can't pick
+                                // an interior product for an exterior WO (or vice
+                                // versa). Empty array = no filtering (mixed/unknown).
+                                const allowed: ReadonlySet<string> | undefined =
+                                  (draft.allowedMaterialTypeValues ?? []).length > 0
+                                    ? new Set<string>(draft.allowedMaterialTypeValues)
+                                    : undefined;
                                 return (
                                   <div className="flex items-center justify-end gap-2 mt-1.5">
                                     <label className="text-[10px] text-ppp-charcoal-500 shrink-0" htmlFor={`mt-${mtKey}`}>
@@ -771,6 +782,7 @@ export default function SupplierOrderModal({
                                         placeholder="— use default —"
                                         compact
                                         allowClear
+                                        availableValues={allowed}
                                       />
                                     </div>
                                   </div>
@@ -786,16 +798,35 @@ export default function SupplierOrderModal({
                     </div>
                   )}
 
-                  {/* Surface any color we couldn't size (missing sqft / unsized
-                      surface like cabinets) so the worker sets a quantity in the
-                      email instead of the vendor receiving a blank line. */}
+                  {/* Surface any color we couldn't size. Split into TWO banners
+                      so the worker sees the right cause + remediation:
+                       - manualOnly: WO has ZERO measurement data on SF (every
+                         contributing room is bare). Stronger red banner — the
+                         worker MUST set quantities, no auto-estimate possible.
+                         Karan 2026-06-09: "no auto-calculation whatsoever".
+                       - unsized only: SOME surface (cabinets, accent walls,
+                         etc.) can't be sized — milder orange banner. */}
                   {(() => {
-                    const unsized = draft.gallonEstimates.filter((e) => e.buckets === 0 && e.cans === 0);
-                    if (unsized.length === 0) return null;
+                    const manualOnlyEstimates = draft.gallonEstimates.filter((e) => e.manualOnly);
+                    const otherZeroEstimates = draft.gallonEstimates.filter(
+                      (e) => !e.manualOnly && e.buckets === 0 && e.cans === 0
+                    );
                     return (
-                      <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
-                        <strong>⚠ {unsized.length} color{unsized.length === 1 ? "" : "s"} need a manual quantity</strong> — Salesforce has no square footage for {unsized.length === 1 ? "it" : "them"} (or it&apos;s a surface we can&apos;t size, like cabinets). Set the gallons in the email body before sending, or fix the WOLI sqft in SF.
-                      </div>
+                      <>
+                        {manualOnlyEstimates.length > 0 && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700 space-y-1">
+                            <div className="font-semibold text-[13px]">🛑 Manual entry required — no measurements on Salesforce</div>
+                            <div>
+                              {manualOnlyEstimates.length === 1 ? "1 color" : `${manualOnlyEstimates.length} colors`} on this work order have ZERO square footage / wall area / perimeter in SF — we cannot estimate gallons at all. Set the quantity yourself using the +/- buttons above (or fix the WOLI sqft in Salesforce, then re-open this modal).
+                            </div>
+                          </div>
+                        )}
+                        {otherZeroEstimates.length > 0 && (
+                          <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
+                            <strong>⚠ {otherZeroEstimates.length} color{otherZeroEstimates.length === 1 ? "" : "s"} need a manual quantity</strong> — surface{otherZeroEstimates.length === 1 ? "" : "s"} we can&apos;t size from the data (cabinets, accent walls, etc.). Set the gallons in the email body before sending.
+                          </div>
+                        )}
+                      </>
                     );
                   })()}
 

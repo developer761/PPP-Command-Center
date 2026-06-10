@@ -111,6 +111,12 @@ export type GallonEstimate = {
   needsMeasurement: boolean;
   /** Surface we can't size from the data (accent wall, cabinets, …). */
   unsized: boolean;
+  /** EVERY contributing room had ZERO measurement data on Salesforce — no
+   *  floor area, no measured wall area, no perimeter. We CANNOT estimate at
+   *  all; the order line MUST be filled manually by the worker. Stronger
+   *  than `needsMeasurement` (which just means "may be low / under-count").
+   *  Karan 2026-06-09: surface a banner, do not auto-suggest gallons. */
+  manualOnly: boolean;
 };
 
 /** Map a Surfaces__c label to a paint bucket. Order matters: "Accent Wall"
@@ -133,10 +139,32 @@ type RoomCoverage = {
   // Per-bucket: was this surface's area derived without the data it needed
   // (so the figure is an under-count the worker should verify)?
   ceilingMissing: boolean; wallsMissing: boolean; trimMissing: boolean; floorMissing: boolean;
+  // True when the ROOM has zero measurable data at all — no floor area, no
+  // measured wall area, no perimeter. In that case we do NOT auto-derive from
+  // default opening counts (Karan 2026-06-09: "no auto-calculation whatsoever"
+  // when SF has no square footage). Returns all zeros + every Missing flag set.
+  noDataAtAll: boolean;
 };
+
+/** True when the room has ANY measurement data we can build an estimate from. */
+function hasAnyMeasurement(room: RoomTakeoff): boolean {
+  return room.floorAreaSqft > 0 || room.wallSurfaceAreaSqft > 0 || room.perimeterLf > 0;
+}
 
 /** Per-room coverage sq ft for each bucket (2-coat, post-deduction). */
 function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
+  // GUARD: no data at all → return zeros. Default openings would otherwise
+  // synthesize ~16 sqft of trim per room (1 door + 1 window casings × 0.25 ft
+  // trim width × 2 coats), spitting out a phantom ~1 can per color. Karan's
+  // directive (2026-06-09): zero estimate + force manual entry instead.
+  if (!hasAnyMeasurement(room)) {
+    return {
+      ceiling: 0, walls: 0, trim: 0, floor: 0,
+      ceilingMissing: true, wallsMissing: true, trimMissing: true, floorMissing: true,
+      noDataAtAll: true,
+    };
+  }
+
   const floor = room.floorAreaSqft > 0 ? room.floorAreaSqft : 0;
   const noFloor = floor <= 0;
   const coats = room.coats > 0 ? room.coats : cfg.defaultCoats;
@@ -186,6 +214,7 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
     // trim needs a perimeter; if neither a real perimeter nor a floor to derive
     // one, it's only the default casings — flag it.
     trimMissing: !haveRealPerimeter && noFloor,
+    noDataAtAll: false, // we exited earlier if there's truly no data
   };
 }
 
@@ -211,6 +240,11 @@ type Bucket = {
   totalSqft: number;
   anyMissingFloor: boolean;
   unsized: boolean;
+  /** Track whether EVERY contributing room had zero measurement data. If yes,
+   *  the estimate is `manualOnly` — the supplier-order UI + email render a
+   *  strong "MUST be filled manually" banner. Karan 2026-06-09. */
+  allRoomsNoData: boolean;
+  contributingRoomCount: number;
 };
 
 /**
@@ -231,6 +265,8 @@ export function estimateOrderGallons(
       b = {
         colorId: s.colorId, colorName: s.colorName, colorCode: s.colorCode, finish: s.finish,
         surfaces: new Set(), rooms: new Set(), totalSqft: 0, anyMissingFloor: false, unsized: false,
+        allRoomsNoData: true, // assume yes until a measured room contributes
+        contributingRoomCount: 0,
       };
       buckets.set(key, b);
     }
@@ -239,11 +275,21 @@ export function estimateOrderGallons(
 
   for (const room of rooms) {
     const cov = roomCoverage(room, cfg);
+    // Track which buckets have already received a contribution from THIS room so
+    // we count "rooms contributing" cleanly (multiple surfaces of the same color
+    // in one room = one room, not many).
+    const seenThisRoom = new Set<Bucket>();
     for (const s of room.surfaces) {
       if (!s.colorId) continue;
       const b = bucketFor(s);
       b.surfaces.add(s.surfaceLabel);
       if (room.roomLabel) b.rooms.add(room.roomLabel);
+      if (!seenThisRoom.has(b)) {
+        b.contributingRoomCount += 1;
+        // If ANY contributing room has real data, the bucket isn't manualOnly.
+        if (!cov.noDataAtAll) b.allRoomsNoData = false;
+        seenThisRoom.add(b);
+      }
       let sqft = 0;
       let missing = false;
       switch (s.kind) {
@@ -271,6 +317,10 @@ export function estimateOrderGallons(
       const rawGallons = (b.totalSqft / cfg.coverageSqftPerGallon) * (1 + cfg.bufferPct);
       ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
     }
+    // manualOnly = EVERY contributing room had zero measurement data on SF, so
+    // the math couldn't even attempt a sensible estimate. UI/email surfaces a
+    // "MUST be filled manually" banner; gallons stay at 0. Karan 2026-06-09.
+    const manualOnly = b.contributingRoomCount > 0 && b.allRoomsNoData && !sizable;
     out.push({
       colorId: b.colorId,
       colorName: b.colorName,
@@ -289,6 +339,7 @@ export function estimateOrderGallons(
       // cabinets contribution.
       needsMeasurement: sizable ? (b.anyMissingFloor || b.unsized) : true,
       unsized: !sizable && b.unsized,
+      manualOnly,
     });
   }
 
@@ -327,8 +378,9 @@ export function formatBucketsCans(buckets: number, cans: number): string {
   return parts.length ? parts.join(" + ") : "—";
 }
 
-/** Human-readable order, e.g. "1 bucket + 2 gal", "3 gal", "needs measurement". */
+/** Human-readable order, e.g. "1 bucket + 2 gal", "3 gal", "manual entry required". */
 export function formatOrderQuantity(e: GallonEstimate): string {
+  if (e.manualOnly) return "manual entry required";
   if (e.unsized) return "needs review";
   if (e.buckets === 0 && e.cans === 0) return e.needsMeasurement ? "needs measurement" : "—";
   const parts: string[] = [];

@@ -301,7 +301,31 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   }, [formData, priorSubmission]);
 
   const [state, setState] = useState(initialState);
-  const [globalNotes, setGlobalNotes] = useState(priorSubmission?.globalNotes ?? "");
+
+  // Seed the project-notes textarea. Priority order:
+  //   1. Customer's prior submission (re-edit) — their words win, no override.
+  //   2. SF Description / Subject — for sparse WOs (no line items) or exterior
+  //      jobs where SF has the only project context. We pre-fill the textarea
+  //      with PPP's notes so the customer EDITS on top instead of typing the
+  //      same context from scratch. Karan 2026-06-09: "use the notes from
+  //      sales force to make the template as well."
+  //   3. Empty otherwise.
+  // The seed is computed once at mount; toggling pickers later doesn't
+  // re-seed (avoids losing typed content).
+  const initialGlobalNotes = useMemo(() => {
+    if (priorSubmission?.globalNotes) return priorSubmission.globalNotes;
+    const isSparseOrExterior = !hasLineItems || (workContext.hasExterior && !workContext.hasInterior);
+    if (!isSparseOrExterior) return "";
+    if (!hasSfNotes) return "";
+    const parts: string[] = [];
+    if (sfSubject) parts.push(sfSubject);
+    if (sfDescription) parts.push(sfDescription);
+    parts.push("");
+    parts.push("— Add anything else we should know below —");
+    return parts.join("\n\n");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — mount-only
+  const [globalNotes, setGlobalNotes] = useState(initialGlobalNotes);
   // Material Type (paint product line). Pre-populated from
   // WorkOrder.MaterialType__c if admin set it, else empty so customer picks.
   // Katie 2026-06-03: this dictates which Benjamin Moore / Sherwin-Williams
