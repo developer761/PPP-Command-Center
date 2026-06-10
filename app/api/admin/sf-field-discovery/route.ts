@@ -23,7 +23,11 @@ import { getSalesforceClient } from "@/lib/salesforce/client";
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const woId = url.searchParams.get("woId");
+  // Trim defensively — copy-paste from a chat sometimes adds whitespace
+  // or invisible chars that fail the alphanumeric regex below. Also
+  // strip surrounding quotes if a user pasted `?woId="00291627"`.
+  const rawWoId = url.searchParams.get("woId") ?? "";
+  const woId = rawWoId.trim().replace(/^['"]|['"]$/g, "");
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
@@ -529,6 +533,17 @@ export async function GET(request: Request) {
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     investigatingWhy: "Why did /api/admin/quota-coverage show 0 reps with full scorecard data? + Find PPP's worker-notes WorkOrder field (Karan 2026-06-09).",
+    // Echo back the woId we actually parsed so admin can confirm the URL
+    // arrived intact (whitespace + invisible chars would otherwise silently
+    // break the regex).
+    parsedWoId: woId || "(none — pass ?woId= to sample a real WO)",
+    parsedWoIdShape: woId
+      ? /^[A-Za-z0-9]{15}$|^[A-Za-z0-9]{18}$/.test(woId)
+        ? "looks like SF Id (15 or 18 char)"
+        : /^[A-Za-z0-9]+$/.test(woId)
+        ? "looks like WorkOrderNumber (numeric)"
+        : `INVALID — contains non-alphanumeric chars: ${JSON.stringify(woId)}`
+      : "(none)",
     user: userResult,
     subQuota: subQuotaResult,
     totalQuota: totalQuotaResult,
