@@ -1289,31 +1289,22 @@ function JobDetail({
         />
       )}
 
-      {/* Notes from Salesforce — WO Subject + Description. Especially
-          load-bearing on EXTERIOR work orders where workers put the entire
-          project context in Description (no WOLI breakdown). Empty when
-          neither field is populated — clean, no orphan section. */}
-      {(job.wo.subject || job.wo.description) && (
+      {/* Notes from Salesforce — Subject only for now. WorkOrder.Description
+          turned out to be PPP's standard scope template (Pricing Details /
+          ABOUT US / financing terms) — NOT worker notes (Karan 2026-06-09).
+          The actual worker-notes field on PPP's org is TBD; once it's
+          identified we'll add it here as the primary content. Subject stays
+          because it's typically a short job label workers do edit. */}
+      {job.wo.subject && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
-            <h4 className="text-sm font-semibold text-ppp-charcoal">Notes from Salesforce</h4>
+            <h4 className="text-sm font-semibold text-ppp-charcoal">Subject</h4>
             <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-              The worker&apos;s context on this WO — read before you order.
+              From Salesforce — the worker&apos;s short label for this WO.
             </p>
           </div>
-          <div className="px-5 py-4 space-y-3">
-            {job.wo.subject && (
-              <div>
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">Subject</div>
-                <div className="text-sm text-ppp-charcoal whitespace-pre-wrap break-words">{job.wo.subject}</div>
-              </div>
-            )}
-            {job.wo.description && (
-              <div>
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">Description</div>
-                <div className="text-sm text-ppp-charcoal whitespace-pre-wrap break-words">{job.wo.description}</div>
-              </div>
-            )}
+          <div className="px-5 py-4">
+            <div className="text-sm text-ppp-charcoal whitespace-pre-wrap break-words">{job.wo.subject}</div>
           </div>
         </div>
       )}
