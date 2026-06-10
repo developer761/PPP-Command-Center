@@ -362,11 +362,18 @@ export async function GET(request: Request) {
     : { hint: "Pass ?woId= to also probe related-record paths (Note / ContentNote / Task / FeedItem)." };
 
   if (woId && /^[A-Za-z0-9]+$/.test(woId)) {
-    // Resolve WO.Id first if user passed a WorkOrderNumber
+    // Resolve WO.Id first if user passed a WorkOrderNumber. Same SOQL
+    // Id-shape gotcha as the sampleWo query above — Id literals MUST be
+    // 15 or 18 alphanumeric chars or SF throws "invalid ID field" and
+    // the whole resolution fails. Pick the right predicate based on shape.
     let resolvedWoId: string | null = null;
+    const isIdShape = /^[A-Za-z0-9]{15}$|^[A-Za-z0-9]{18}$/.test(woId);
+    const resolveWhere = isIdShape
+      ? `Id = '${woId}'`
+      : `WorkOrderNumber = '${woId}'`;
     try {
       const woIdQ = await conn.query<{ Id: string }>(
-        `SELECT Id FROM WorkOrder WHERE Id = '${woId}' OR WorkOrderNumber = '${woId}' LIMIT 1`
+        `SELECT Id FROM WorkOrder WHERE ${resolveWhere} LIMIT 1`
       );
       resolvedWoId = woIdQ.records[0]?.Id ?? null;
     } catch {
