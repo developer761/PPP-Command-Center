@@ -138,6 +138,23 @@ function sanitizeDeliveryAddress(
   };
 }
 
+/**
+ * Sanitize free-text customer notes (globalNotes + per-line item.notes).
+ * Unlike address fields, these may include newlines — strip control chars
+ * but preserve \n / \r. Cap to a generous-but-bounded length so a paste of
+ * an entire novel can't blow up the supplier email body (~5KB is plenty
+ * for the longest legit note PPP has ever received per Katie). Trims
+ * trailing whitespace. Returns "" for blank/missing so callers can store
+ * empty cleanly.
+ */
+function sanitizeNotesField(v: unknown, maxLen = 5000): string {
+  if (v == null || typeof v !== "string") return "";
+  // eslint-disable-next-line no-control-regex
+  const stripped = v.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, " ").trim();
+  if (!stripped) return "";
+  return stripped.slice(0, maxLen);
+}
+
 // Server-side allowlist for WorkOrder.MaterialType__c now lives in
 // lib/customer-form/material-types.ts — same source as the customer picker
 // + the admin per-surface override dropdown. Re-export-by-alias here keeps
@@ -414,9 +431,19 @@ export async function POST(
   // 4. Persist the submission payload FIRST so a write failure doesn't leave
   // the token half-submitted. First submit uses markSubmitted (idempotent,
   // first-write-only); a re-edit uses markResubmitted (deliberate overwrite).
+  //
+  // Sanitize free-text notes before persistence — globalNotes + per-line
+  // item.notes flow verbatim into the supplier email body, so a 100KB
+  // pasted blob would otherwise blow up the email. Capped + control-char
+  // stripped (newlines preserved). Keeps the rest of the lineItems shape
+  // intact since per-element shape was already validated up top.
+  const sanitizedLineItems = body.lineItems.map((li) => ({
+    ...li,
+    notes: sanitizeNotesField((li as { notes?: unknown }).notes),
+  }));
   const payloadRecord = {
-    lineItems: body.lineItems,
-    globalNotes: body.globalNotes,
+    lineItems: sanitizedLineItems,
+    globalNotes: sanitizeNotesField(body.globalNotes),
     materialType: customerMaterialType || null,
     deliveryAddress: sanitizeDeliveryAddress(body.deliveryAddress),
     submittedAt: new Date().toISOString(),

@@ -1289,25 +1289,45 @@ function JobDetail({
         />
       )}
 
-      {/* Notes from Salesforce — Subject only for now. WorkOrder.Description
-          turned out to be PPP's standard scope template (Pricing Details /
-          ABOUT US / financing terms) — NOT worker notes (Karan 2026-06-09).
-          The actual worker-notes field on PPP's org is TBD; once it's
-          identified we'll add it here as the primary content. Subject stays
-          because it's typically a short job label workers do edit. */}
-      {job.wo.subject && (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
-            <h4 className="text-sm font-semibold text-ppp-charcoal">Subject</h4>
-            <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-              From Salesforce — the worker&apos;s short label for this WO.
-            </p>
+      {/* Worker Notes from Salesforce — 4 custom textarea fields PPP workers
+          actually populate (discovered via sf-field-discovery 2026-06-09 on
+          WO 00303832). Each labeled so admin sees the source. Section hides
+          when ALL are empty (.trim().length > 0 check covers whitespace-only
+          values that SF sometimes stores by default). Subject also included
+          but only if it's non-trivial text. WorkOrder.Description is NOT
+          shown here — it's PPP's scope template, not notes. */}
+      {(() => {
+        const subject = job.wo.subject?.trim() || null;
+        const pm = job.wo.projectManagerNotes?.trim() || null;
+        const sched = job.wo.schedulingNotes?.trim() || null;
+        const review = job.wo.reviewNotes?.trim() || null;
+        const balance = job.wo.balanceOwedNotes?.trim() || null;
+        const blocks: Array<{ label: string; text: string }> = [];
+        if (subject) blocks.push({ label: "Subject", text: subject });
+        if (pm) blocks.push({ label: "Project Manager Notes", text: pm });
+        if (sched) blocks.push({ label: "Scheduling Notes", text: sched });
+        if (review) blocks.push({ label: "Review Notes", text: review });
+        if (balance) blocks.push({ label: "Balance Owed Notes", text: balance });
+        if (blocks.length === 0) return null;
+        return (
+          <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+            <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
+              <h4 className="text-sm font-semibold text-ppp-charcoal">Worker Notes from Salesforce</h4>
+              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                Read before drafting a supplier order — workers may have left context here.
+              </p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              {blocks.map((b) => (
+                <div key={b.label}>
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">{b.label}</div>
+                  <div className="text-sm text-ppp-charcoal whitespace-pre-wrap break-words">{b.text}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="px-5 py-4">
-            <div className="text-sm text-ppp-charcoal whitespace-pre-wrap break-words">{job.wo.subject}</div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Line items per room */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">

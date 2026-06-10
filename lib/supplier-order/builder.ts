@@ -841,9 +841,16 @@ export async function buildSupplierOrderDraft(
   const customerGlobalNotes = payload?.globalNotes?.trim() ?? "";
   const perLineNotes: Array<{ roomLabel: string; note: string }> = [];
   if (payload?.lineItems) {
+    // CRITICAL: room label is `areaLabel`, NOT `productName`. Pre-2026-06-09
+    // productName was hardcoded null in the snapshot mapper so the truthy
+    // guard always failed + the map stayed empty + "Room" was the fallback.
+    // After the 71dd9ed restoration, productName is populated (e.g. "Aura"
+    // or "SW Emerald") — using it here would print product names where
+    // room names belong. areaLabel is what L323 already uses for placement
+    // blocks; keep this consistent.
     const woliRoomLabel = new Map<string, string>();
     for (const li of input.woliRows) {
-      if (li.id && li.productName) woliRoomLabel.set(li.id, li.productName);
+      if (li.id && li.areaLabel) woliRoomLabel.set(li.id, li.areaLabel);
     }
     for (const item of payload.lineItems) {
       const note = (item.notes ?? "").trim();

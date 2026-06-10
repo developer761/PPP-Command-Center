@@ -746,7 +746,13 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           the WOLI breakdown is sparse (Katie 2026-06-05: "workers only put
           it into the notes section" for exterior). Customers reading the
           form know what their PPP team has written down for them. */}
-      {hasSfNotes && (
+      {/* "From your PPP team" card — Subject only. WorkOrder.Description
+          turned out to be PPP's standard scope template (Pricing Details /
+          ABOUT US / 0% financing), NOT context for THIS customer (Karan
+          2026-06-09). Showing it here labeled as "what we have noted for
+          your job" would confuse the customer. Subject is short + usually
+          edited per-job so keep it. Trim guard handles whitespace-only. */}
+      {sfSubject.trim() && (
         <div className="bg-ppp-blue-50/40 border border-ppp-blue-100 rounded-2xl p-5 sm:p-6">
           <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
             From your PPP team
@@ -754,16 +760,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           <h2 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy mt-1">
             What we have noted for your job
           </h2>
-          {sfSubject && (
-            <p className="text-sm sm:text-base font-semibold text-ppp-charcoal mt-2 leading-relaxed">
-              {sfSubject}
-            </p>
-          )}
-          {sfDescription && (
-            <p className="text-xs sm:text-sm text-ppp-charcoal-700 mt-2 leading-relaxed whitespace-pre-wrap">
-              {sfDescription}
-            </p>
-          )}
+          <p className="text-sm sm:text-base font-semibold text-ppp-charcoal mt-2 leading-relaxed">
+            {sfSubject.trim()}
+          </p>
           <p className="text-[11px] text-ppp-charcoal-500 mt-3 leading-relaxed italic">
             If anything above is wrong or missing, just describe it in the notes section below — we&apos;ll
             sort it out with you before we order materials.

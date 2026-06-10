@@ -278,15 +278,23 @@ export async function GET(request: Request) {
     });
 
     // If woId provided, sample one real row with each candidate field.
+    // SOQL can't OR an Id clause with a non-Id-shaped value — `WHERE Id = '00303832'`
+    // throws "invalid ID field" because IDs must be 15/18 alphanumeric chars.
+    // Detect format + use the right clause.
     let sampleWo: Record<string, unknown> | null = null;
     if (woId && /^[A-Za-z0-9]+$/.test(woId) && dedupedCandidates.length > 0) {
+      const isIdShape = /^[A-Za-z0-9]{15}$|^[A-Za-z0-9]{18}$/.test(woId);
+      const where = isIdShape
+        ? `Id = '${woId}'`
+        : `WorkOrderNumber = '${woId}'`;
       try {
         const fields = ["Id", "WorkOrderNumber", "Description", "Subject", ...dedupedCandidates.map((c) => c.name)];
         const q = await conn.query<Record<string, unknown>>(
-          `SELECT ${fields.join(", ")} FROM WorkOrder WHERE Id = '${woId}' OR WorkOrderNumber = '${woId}' LIMIT 1`
+          `SELECT ${fields.join(", ")} FROM WorkOrder WHERE ${where} LIMIT 1`
         );
         sampleWo = {
           fieldsRequested: fields,
+          matchedBy: isIdShape ? "Id" : "WorkOrderNumber",
           row: q.records[0] ?? null,
         };
       } catch (sampleErr) {

@@ -501,15 +501,24 @@ export type SnapshotWorkOrder = {
    *  SW Emerald / SW Duration / SW Super Paint / Other). Null when not set
    *  (about 50% of PPP WOs at time of writing per Katie 2026-06-03). */
   materialType: string | null;
-  /** Standard WorkOrder.Description — workers' free-text notes about the
-   *  job. Especially load-bearing on EXTERIOR WOs where workers may put
-   *  ALL the project context here instead of populating WOLI breakdowns
-   *  (Katie 2026-06-05). Surfaced in the JobDetail Notes section so admin
-   *  sees what the worker wrote before drafting a supplier order. */
+  /** Standard WorkOrder.Description — turned out to be PPP's standard
+   *  scope template ("PRICING DETAILS / ABOUT US / 0% financing"), NOT
+   *  worker notes (Karan 2026-06-09). Pulled into the snapshot but NOT
+   *  surfaced as "notes" anywhere. Customer-form path may still want it
+   *  as supplementary context. */
   description: string | null;
   /** Standard WorkOrder.Subject — short summary. Sometimes carries the
-   *  only label the worker added; pair with description in the UI. */
+   *  only label the worker added. Trim before displaying — SF often
+   *  defaults this to whitespace or the WO number. */
   subject: string | null;
+  /** PPP's actual per-WO worker-notes custom fields, discovered via
+   *  sf-field-discovery 2026-06-09. Each is a textarea workers populate
+   *  with specific kinds of notes — surface ALL on JobDetail so the
+   *  worker sees the full picture before drafting a supplier order. */
+  projectManagerNotes: string | null;
+  schedulingNotes: string | null;
+  reviewNotes: string | null;
+  balanceOwedNotes: string | null;
 };
 
 /**
@@ -1638,13 +1647,24 @@ export async function loadSalesforceSnapshot(
       // the Preview Colors review modal + downstream in the supplier email.
       // Conditional on the field existing in the org (~50% adoption per Katie).
       const hasMaterialType = woMeta.fields.some((f) => f.name === "MaterialType__c");
-      // Standard WorkOrder.Description + Subject — load-bearing on exterior
-      // WOs where workers may put ALL the project context in Description
-      // (no WOLI breakdown). render-data.ts already proves these are pullable
-      // on PPP's org. Probe defensively in case the org has them disabled.
-      // Karan 2026-06-09 — Notes section on JobDetail depends on these.
+      // Standard WorkOrder.Description + Subject — Description turned out
+      // to be PPP's scope template (not worker notes per Karan 2026-06-09).
+      // Subject is short worker-edited summary. render-data.ts already
+      // proves both pullable on PPP's org. Probed defensively in case
+      // the org has them disabled.
       const hasDescription = woMeta.fields.some((f) => f.name === "Description");
       const hasSubject = woMeta.fields.some((f) => f.name === "Subject");
+      // PPP custom worker-notes fields — confirmed via sf-field-discovery
+      // on 2026-06-09 against WO 00303832 (J. Carleton). Each is a textarea
+      // workers actually populate. ProjectManager covers project-level
+      // context (exterior workers' primary surface), Scheduling covers
+      // timing context, Review covers QA/walkthrough notes, BalanceOwed
+      // covers billing follow-ups. Probed because field-level security
+      // could block any of them in the future.
+      const hasPmNotes = woMeta.fields.some((f) => f.name === "Project_Manager_Notes__c");
+      const hasSchedNotes = woMeta.fields.some((f) => f.name === "Scheduling_Notes__c");
+      const hasReviewNotes = woMeta.fields.some((f) => f.name === "Review_Notes__c");
+      const hasBalanceNotes = woMeta.fields.some((f) => f.name === "BalanceOwedNotes__c");
       const woFieldList = [
         "Id",
         woNumberField,
@@ -1654,6 +1674,10 @@ export async function loadSalesforceSnapshot(
         hasMaterialType ? "MaterialType__c" : null,
         hasDescription ? "Description" : null,
         hasSubject ? "Subject" : null,
+        hasPmNotes ? "Project_Manager_Notes__c" : null,
+        hasSchedNotes ? "Scheduling_Notes__c" : null,
+        hasReviewNotes ? "Review_Notes__c" : null,
+        hasBalanceNotes ? "BalanceOwedNotes__c" : null,
         // Standard SF geocoding fields — 20k+ WOs have these populated
         "Latitude",
         "Longitude",
@@ -1763,6 +1787,10 @@ export async function loadSalesforceSnapshot(
         materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
         description: typeof w.Description === "string" ? (w.Description as string) : null,
         subject: typeof w.Subject === "string" ? (w.Subject as string) : null,
+        projectManagerNotes: typeof w.Project_Manager_Notes__c === "string" ? (w.Project_Manager_Notes__c as string) : null,
+        schedulingNotes: typeof w.Scheduling_Notes__c === "string" ? (w.Scheduling_Notes__c as string) : null,
+        reviewNotes: typeof w.Review_Notes__c === "string" ? (w.Review_Notes__c as string) : null,
+        balanceOwedNotes: typeof w.BalanceOwedNotes__c === "string" ? (w.BalanceOwedNotes__c as string) : null,
       };
     });
 
