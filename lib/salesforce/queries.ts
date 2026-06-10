@@ -501,6 +501,15 @@ export type SnapshotWorkOrder = {
    *  SW Emerald / SW Duration / SW Super Paint / Other). Null when not set
    *  (about 50% of PPP WOs at time of writing per Katie 2026-06-03). */
   materialType: string | null;
+  /** Standard WorkOrder.Description — workers' free-text notes about the
+   *  job. Especially load-bearing on EXTERIOR WOs where workers may put
+   *  ALL the project context here instead of populating WOLI breakdowns
+   *  (Katie 2026-06-05). Surfaced in the JobDetail Notes section so admin
+   *  sees what the worker wrote before drafting a supplier order. */
+  description: string | null;
+  /** Standard WorkOrder.Subject — short summary. Sometimes carries the
+   *  only label the worker added; pair with description in the UI. */
+  subject: string | null;
 };
 
 /**
@@ -1237,9 +1246,16 @@ export async function loadSalesforceSnapshot(
           // / Cannot Complete / Pending REMOVE rooms out of the materials view
           // + customer color form. Katie 2026-06-03: don't show those rooms.
           "Status",
-          "AreaLabel__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
-          "of_Coats__c", "Product_Family__c",
+          "AreaLabel__c", "ProductName__c", "Surfaces__c", "Sq_Footage__c", "Wall_Surface_Area__c",
+          "of_Coats__c", "Product_Family__c", "SortOrder__c", "ColorNotes__c",
           "ColorWall__c", "ColorCeiling__c", "ColorTrim__c", "ColorOther__c", "ColorFloor__c",
+          // Finish picklists per surface. Render-data.ts (the customer-form
+          // path) has been pulling these reliably; previously dropped from the
+          // snapshot pull to fit a Vercel timeout that's long since been
+          // lifted (TTL 30 min + thin snapshot + parallelization). Restored
+          // 2026-06-09 — without them gallon math + JobDetail color chips +
+          // supplier email all had blank finishes.
+          "FinishWall__c", "FinishCeiling__c", "FinishTrim__c", "FinishOther__c", "FinishFloor__c",
         ];
         // Extra geometry fields that sharpen the paint-gallon estimate when
         // populated (Perimeter__c, Dimensions_Height__c — both sparse today).
@@ -1314,6 +1330,9 @@ export async function loadSalesforceSnapshot(
           perimeter: num(r, "Perimeter__c"),       // 0 when not selected/populated → estimator derives
           heightFt: num(r, "Dimensions_Height__c"), // 0 when not selected/populated → estimator default
           numCoats: num(r, "of_Coats__c"),
+          // Still null/0 — these API names not yet verified for PPP's org.
+          // Add a probe + map here when the wo-debug endpoint confirms what
+          // PPP actually uses (Doors__c? Num_Doors__c? Primer? Prep_Level__c?).
           primer: null,
           prepLevel: null,
           productFamily: str(r, "Product_Family__c"),
@@ -1321,23 +1340,26 @@ export async function loadSalesforceSnapshot(
           numClosets: 0,
           numDoors: 0,
           numWindows: 0,
-          productName: null,
           totalPrice: 0,
+          changeOrderRelated: false,
+          // Restored 2026-06-09 — render-data.ts has been pulling these
+          // reliably for the customer form; previously hardcoded null/0 here
+          // because the original WOLI pull was timing out. Drove dead-code
+          // in JobDetail (colorNotes never rendered, finish chips always
+          // blank) + dropped data the supplier-email builder consumes.
+          productName: str(r, "ProductName__c"),
           colorWallId: str(r, "ColorWall__c"),
           colorCeilingId: str(r, "ColorCeiling__c"),
           colorTrimId: str(r, "ColorTrim__c"),
           colorOtherId: str(r, "ColorOther__c"),
           colorFloorId: str(r, "ColorFloor__c"),
-          // Finish fields dropped from initial pull to fit Vercel timeout.
-          // Re-add to SELECT + map here once base query is reliably working.
-          finishWall: null,
-          finishCeiling: null,
-          finishTrim: null,
-          finishOther: null,
-          finishFloor: null,
-          colorNotes: null,
-          sortOrder: 0,
-          changeOrderRelated: false,
+          finishWall: str(r, "FinishWall__c"),
+          finishCeiling: str(r, "FinishCeiling__c"),
+          finishTrim: str(r, "FinishTrim__c"),
+          finishOther: str(r, "FinishOther__c"),
+          finishFloor: str(r, "FinishFloor__c"),
+          colorNotes: str(r, "ColorNotes__c"),
+          sortOrder: num(r, "SortOrder__c"),
         }));
       } catch (err) {
         // Don't silently return [] — log the full error shape so we can see
@@ -1616,6 +1638,13 @@ export async function loadSalesforceSnapshot(
       // the Preview Colors review modal + downstream in the supplier email.
       // Conditional on the field existing in the org (~50% adoption per Katie).
       const hasMaterialType = woMeta.fields.some((f) => f.name === "MaterialType__c");
+      // Standard WorkOrder.Description + Subject — load-bearing on exterior
+      // WOs where workers may put ALL the project context in Description
+      // (no WOLI breakdown). render-data.ts already proves these are pullable
+      // on PPP's org. Probe defensively in case the org has them disabled.
+      // Karan 2026-06-09 — Notes section on JobDetail depends on these.
+      const hasDescription = woMeta.fields.some((f) => f.name === "Description");
+      const hasSubject = woMeta.fields.some((f) => f.name === "Subject");
       const woFieldList = [
         "Id",
         woNumberField,
@@ -1623,6 +1652,8 @@ export async function loadSalesforceSnapshot(
         "CreatedDate",
         hasEndDate ? "EndDate" : null,
         hasMaterialType ? "MaterialType__c" : null,
+        hasDescription ? "Description" : null,
+        hasSubject ? "Subject" : null,
         // Standard SF geocoding fields — 20k+ WOs have these populated
         "Latitude",
         "Longitude",
@@ -1730,6 +1761,8 @@ export async function loadSalesforceSnapshot(
         totalChangeOrder: num("TotalChangeOrder__c"),
         endDate: typeof w.EndDate === "string" ? (w.EndDate as string) : null,
         materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
+        description: typeof w.Description === "string" ? (w.Description as string) : null,
+        subject: typeof w.Subject === "string" ? (w.Subject as string) : null,
       };
     });
 
