@@ -5,27 +5,25 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 
 /**
- * Investigates the three blocker fields/objects revealed by the quota-coverage
- * diagnostic (only 0 of 29 reps had GM goal / Quarterly draw / SubQuota data):
+ * Investigates SF custom-field naming for fields the codebase needs:
+ *   - User: GM Goal + Quarterly Draw (originally why this endpoint was built)
+ *   - SubQuota__c + TotalQuota__c (scorecard quota investigation)
+ *   - WorkOrder: WORKER NOTES field (Karan 2026-06-09 — `Description` is the
+ *     scope template, NOT what workers write per-WO; need the real field).
  *
- *   1. Does `SubQuota__c` exist? What's its actual schema (field names,
- *      relationship names)? If it exists but has 0 records → PPP just doesn't
- *      use it. If the object/fields are different from our query → fix query.
+ * For WorkOrder: pass `?woId=<id>` to also sample one real row with each
+ * candidate field SELECTed, so you can see actual content (e.g. the
+ * J. Carleton WO `00303832` Karan flagged). Without `woId` you only get
+ * the field list; with it you get values.
  *
- *   2. Does `User.Gross_Margin_Goal_Percent__c` exist on PPP's User object?
- *      Or is it named something else (Gross_Margin_Goal__c / GM_Target__c)?
- *      Or do they not track per-rep GM targets in SF at all?
- *
- *   3. Does `User.Quarterly_Draw__c` exist? Or named differently
- *      (Quarterly_Draw_Amount__c / Draw__c / Commission_Draw__c)?
- *
- * Returns full describe() output + candidate field-name matches so Katie
- * can confirm what's actually in PPP's org. If the fields just don't exist,
- * we can either ask PPP IT to add them or skip those KPI cards entirely.
+ * Returns full describe() output + candidate matches so admin can confirm
+ * what's actually in PPP's org.
  *
  * Admin-only.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const woId = url.searchParams.get("woId");
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
@@ -240,12 +238,85 @@ export async function GET() {
     };
   }
 
+  // ── WorkOrder ── find PPP's actual worker-notes custom field. Standard
+  // WorkOrder.Description is the scope-template boilerplate, NOT notes the
+  // worker writes (Karan 2026-06-09). Patterns: anything matching
+  // note/instruction/comment/scope/crew/foreman/internal/painter/production/
+  // special. Pass `?woId=<id>` to also SELECT each candidate value from a
+  // real row (otherwise field list only).
+  let workOrderResult: Record<string, unknown> = { error: "not attempted" };
+  try {
+    const woMeta = await conn.sobject("WorkOrder").describe();
+    const customFields = woMeta.fields
+      .filter((f) => f.custom)
+      .map((f) => ({ name: f.name, label: f.label, type: f.type }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Also include standard text-area fields — workers might use Tasks or
+    // standard Description fields. Description we know is template; pull
+    // anything else standard that looks like notes.
+    const allTextish = woMeta.fields.filter((f) =>
+      f.type === "textarea" || f.type === "string" || f.type === "encryptedstring"
+    );
+
+    const noteCandidates = [...customFields, ...allTextish.map((f) => ({
+      name: f.name, label: f.label, type: f.type,
+    }))].filter((f) => {
+      const n = f.name.toLowerCase();
+      const l = f.label.toLowerCase();
+      return (
+        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context/.test(n) ||
+        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context/.test(l)
+      );
+    });
+    // Dedupe by name
+    const seen = new Set<string>();
+    const dedupedCandidates = noteCandidates.filter((f) => {
+      if (seen.has(f.name)) return false;
+      seen.add(f.name);
+      return true;
+    });
+
+    // If woId provided, sample one real row with each candidate field.
+    let sampleWo: Record<string, unknown> | null = null;
+    if (woId && /^[A-Za-z0-9]+$/.test(woId) && dedupedCandidates.length > 0) {
+      try {
+        const fields = ["Id", "WorkOrderNumber", "Description", "Subject", ...dedupedCandidates.map((c) => c.name)];
+        const q = await conn.query<Record<string, unknown>>(
+          `SELECT ${fields.join(", ")} FROM WorkOrder WHERE Id = '${woId}' OR WorkOrderNumber = '${woId}' LIMIT 1`
+        );
+        sampleWo = {
+          fieldsRequested: fields,
+          row: q.records[0] ?? null,
+        };
+      } catch (sampleErr) {
+        sampleWo = { error: sampleErr instanceof Error ? sampleErr.message : String(sampleErr) };
+      }
+    }
+
+    workOrderResult = {
+      object: "WorkOrder",
+      totalCustomFields: customFields.length,
+      noteCandidates: dedupedCandidates,
+      hint: dedupedCandidates.length === 0
+        ? "No custom field on WorkOrder matches note/scope/instruction patterns. Workers may write per-WO notes via the SF Note / ContentNote object (related records, not a field on WO itself) or via Tasks. Check WorkOrder.ChildRelationships from /api/admin/wo-debug for Notes/Tasks subobjects."
+        : `Found ${dedupedCandidates.length} candidate field(s). Pass ?woId=<wo-id-or-number> to sample real values (e.g. ?woId=00303832 for the J. Carleton WO Karan flagged).`,
+      sampleWo,
+    };
+  } catch (err) {
+    workOrderResult = {
+      object: "WorkOrder",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+
   return NextResponse.json({
     timestamp: new Date().toISOString(),
-    investigatingWhy: "Why did /api/admin/quota-coverage show 0 reps with full scorecard data?",
+    investigatingWhy: "Why did /api/admin/quota-coverage show 0 reps with full scorecard data? + Find PPP's worker-notes WorkOrder field (Karan 2026-06-09).",
     user: userResult,
     subQuota: subQuotaResult,
     totalQuota: totalQuotaResult,
+    workOrder: workOrderResult,
     nextSteps: {
       ifGmGoalFieldDoesNotExist: "Ask Katie if PPP tracks per-rep GM targets at all. If not, remove the 'vs target' sub-stat from the GM scorecard card.",
       ifGmGoalFieldExistsAsDifferentName: "Update queries.ts SfUserRow type + usersPromise SELECT to use the correct field name found in user.gmGoalCandidates above. Then rebuild.",
