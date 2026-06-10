@@ -1345,6 +1345,9 @@ function LineItemRow({ item }: { item: ResolvedWoli }) {
             {item.raw.wallSurfaceArea > 0 && item.raw.sqFootage === 0 && (
               <span>{item.raw.wallSurfaceArea.toLocaleString()} sq ft wall</span>
             )}
+            {item.raw.sqFootage === 0 && item.raw.wallSurfaceArea === 0 && (
+              <span className="text-ppp-orange-700 font-medium">⚠ no sq ft on Salesforce</span>
+            )}
           </div>
         </div>
       </div>
