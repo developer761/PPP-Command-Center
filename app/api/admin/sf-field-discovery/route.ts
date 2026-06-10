@@ -310,6 +310,110 @@ export async function GET(request: Request) {
     };
   }
 
+  // ── WOLI-level notes ── PPP workers might write per-room notes on the
+  // WorkOrderLineItem itself instead of the WO. ColorNotes__c is already
+  // pulled (we just restored it 2026-06-09) but there may be others.
+  let woliResult: Record<string, unknown> = { error: "not attempted" };
+  try {
+    const woliMeta = await conn.sobject("WorkOrderLineItem").describe();
+    const customFields = woliMeta.fields
+      .filter((f) => f.custom)
+      .map((f) => ({ name: f.name, label: f.label, type: f.type }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const noteCandidates = customFields.filter((f) => {
+      const n = f.name.toLowerCase();
+      const l = f.label.toLowerCase();
+      return (
+        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context/.test(n) ||
+        /note|instruction|comment|scope|crew|foreman|internal|painter|production|special|memo|context/.test(l)
+      );
+    });
+    woliResult = {
+      object: "WorkOrderLineItem",
+      totalCustomFields: customFields.length,
+      noteCandidates,
+      hint: "ColorNotes__c is already pulled. If other candidates surface here that aren't ColorNotes__c, those may be worker-internal notes worth pulling into the snapshot too.",
+    };
+  } catch (err) {
+    woliResult = {
+      object: "WorkOrderLineItem",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  // ── Related-record notes paths ── workers may write notes via standard
+  // SF objects attached to the WO, not on the WO itself. When ?woId= is
+  // passed, probe each candidate path for actual records linked to that WO.
+  // Candidates:
+  //   - Note (legacy) — ParentId = WO.Id, Body has the text
+  //   - ContentNote (modern) — joined via ContentDocumentLink.LinkedEntityId
+  //   - Task — WhatId = WO.Id, Description has the text (Activity History)
+  //   - FeedItem — ParentId = WO.Id (Chatter posts)
+  let relatedNotesResult: Record<string, unknown> = woId
+    ? { hint: "Probed for related-record notes on this WO." }
+    : { hint: "Pass ?woId= to also probe related-record paths (Note / ContentNote / Task / FeedItem)." };
+
+  if (woId && /^[A-Za-z0-9]+$/.test(woId)) {
+    // Resolve WO.Id first if user passed a WorkOrderNumber
+    let resolvedWoId: string | null = null;
+    try {
+      const woIdQ = await conn.query<{ Id: string }>(
+        `SELECT Id FROM WorkOrder WHERE Id = '${woId}' OR WorkOrderNumber = '${woId}' LIMIT 1`
+      );
+      resolvedWoId = woIdQ.records[0]?.Id ?? null;
+    } catch {
+      // ignore — diagnostic only
+    }
+
+    if (resolvedWoId) {
+      const probes: Record<string, unknown> = { resolvedWoId };
+
+      // Note (legacy)
+      try {
+        const q = await conn.query<Record<string, unknown>>(
+          `SELECT Id, Title, Body, CreatedDate, CreatedById FROM Note WHERE ParentId = '${resolvedWoId}' ORDER BY CreatedDate DESC LIMIT 10`
+        );
+        probes.legacyNotes = { count: q.records.length, records: q.records };
+      } catch (e) {
+        probes.legacyNotes = { error: e instanceof Error ? e.message : String(e) };
+      }
+
+      // ContentNote (modern)
+      try {
+        const q = await conn.query<Record<string, unknown>>(
+          `SELECT ContentDocumentId, ContentDocument.Title, ContentDocument.LatestPublishedVersion.TextPreview FROM ContentDocumentLink WHERE LinkedEntityId = '${resolvedWoId}' LIMIT 10`
+        );
+        probes.contentNotes = { count: q.records.length, records: q.records };
+      } catch (e) {
+        probes.contentNotes = { error: e instanceof Error ? e.message : String(e) };
+      }
+
+      // Tasks (Activity History) — workers often write call/visit notes here
+      try {
+        const q = await conn.query<Record<string, unknown>>(
+          `SELECT Id, Subject, Description, ActivityDate, Status, CreatedDate, OwnerId FROM Task WHERE WhatId = '${resolvedWoId}' ORDER BY CreatedDate DESC LIMIT 10`
+        );
+        probes.tasks = { count: q.records.length, records: q.records };
+      } catch (e) {
+        probes.tasks = { error: e instanceof Error ? e.message : String(e) };
+      }
+
+      // Chatter feed (FeedItem)
+      try {
+        const q = await conn.query<Record<string, unknown>>(
+          `SELECT Id, Type, Body, CreatedDate, CreatedById FROM FeedItem WHERE ParentId = '${resolvedWoId}' ORDER BY CreatedDate DESC LIMIT 10`
+        );
+        probes.chatterFeed = { count: q.records.length, records: q.records };
+      } catch (e) {
+        probes.chatterFeed = { error: e instanceof Error ? e.message : String(e) };
+      }
+
+      relatedNotesResult = probes;
+    } else {
+      relatedNotesResult = { error: `Could not resolve WO id from "${woId}".` };
+    }
+  }
+
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     investigatingWhy: "Why did /api/admin/quota-coverage show 0 reps with full scorecard data? + Find PPP's worker-notes WorkOrder field (Karan 2026-06-09).",
@@ -317,6 +421,8 @@ export async function GET(request: Request) {
     subQuota: subQuotaResult,
     totalQuota: totalQuotaResult,
     workOrder: workOrderResult,
+    workOrderLineItem: woliResult,
+    relatedNotes: relatedNotesResult,
     nextSteps: {
       ifGmGoalFieldDoesNotExist: "Ask Katie if PPP tracks per-rep GM targets at all. If not, remove the 'vs target' sub-stat from the GM scorecard card.",
       ifGmGoalFieldExistsAsDifferentName: "Update queries.ts SfUserRow type + usersPromise SELECT to use the correct field name found in user.gmGoalCandidates above. Then rebuild.",
