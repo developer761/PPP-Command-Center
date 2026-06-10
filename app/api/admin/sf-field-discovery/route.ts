@@ -277,25 +277,55 @@ export async function GET(request: Request) {
       return true;
     });
 
-    // If woId provided, sample one real row with each candidate field.
-    // SOQL can't OR an Id clause with a non-Id-shaped value — `WHERE Id = '00303832'`
-    // throws "invalid ID field" because IDs must be 15/18 alphanumeric chars.
-    // Detect format + use the right clause.
+    // If woId provided, sample one real row. We pull EVERY text-shaped
+    // custom field (textarea / string / encryptedstring) PLUS Description
+    // + Subject — not just the pattern-matched note candidates. PPP may
+    // be writing per-WO context in fields that don't match note/scope/
+    // instruction patterns (e.g. "Job_Summary__c", "Walkthrough_Recap__c").
+    // Returning every value lets admin scan for non-null content.
+    //
+    // SOQL Id-shape gotcha: `WHERE Id = '00303832'` throws "invalid ID
+    // field" because IDs must be 15/18 alphanumeric chars. Detect format
+    // + use the right clause.
     let sampleWo: Record<string, unknown> | null = null;
-    if (woId && /^[A-Za-z0-9]+$/.test(woId) && dedupedCandidates.length > 0) {
+    if (woId && /^[A-Za-z0-9]+$/.test(woId)) {
       const isIdShape = /^[A-Za-z0-9]{15}$|^[A-Za-z0-9]{18}$/.test(woId);
       const where = isIdShape
         ? `Id = '${woId}'`
         : `WorkOrderNumber = '${woId}'`;
+      const allTextFields = woMeta.fields
+        .filter((f) => f.custom && (f.type === "textarea" || f.type === "string" || f.type === "encryptedstring"))
+        .map((f) => f.name);
       try {
-        const fields = ["Id", "WorkOrderNumber", "Description", "Subject", ...dedupedCandidates.map((c) => c.name)];
+        const fields = ["Id", "WorkOrderNumber", "Description", "Subject", ...allTextFields];
+        // Dedupe in case anything overlaps + standard SF fields
+        const uniqueFields = [...new Set(fields)];
         const q = await conn.query<Record<string, unknown>>(
-          `SELECT ${fields.join(", ")} FROM WorkOrder WHERE ${where} LIMIT 1`
+          `SELECT ${uniqueFields.join(", ")} FROM WorkOrder WHERE ${where} LIMIT 1`
         );
+        const row = q.records[0] ?? null;
+        // Auto-surface non-null fields so admin doesn't have to eyeball
+        // the whole dump. Standard SF system fields + the ones we know
+        // about already are noisy — caller wants to find content they
+        // didn't know about.
+        let nonNullFields: Array<{ name: string; value: unknown }> = [];
+        if (row) {
+          for (const [k, v] of Object.entries(row)) {
+            if (k === "attributes") continue;
+            if (v == null) continue;
+            if (typeof v === "string" && v.trim().length === 0) continue;
+            nonNullFields.push({ name: k, value: v });
+          }
+        }
         sampleWo = {
-          fieldsRequested: fields,
+          fieldsRequested: uniqueFields,
           matchedBy: isIdShape ? "Id" : "WorkOrderNumber",
-          row: q.records[0] ?? null,
+          totalTextFieldsRequested: allTextFields.length,
+          row,
+          nonNullFields,
+          hint: nonNullFields.length === 0
+            ? "Every text field returned null/empty. This WO genuinely has no per-WO worker notes. Either workers don't use this WO's note fields, or they write context elsewhere (Tasks/Notes — see relatedNotes block below)."
+            : `Found ${nonNullFields.length} non-null text field(s). Scan the nonNullFields list above — the one with worker-written content is your worker-notes field.`,
         };
       } catch (sampleErr) {
         sampleWo = { error: sampleErr instanceof Error ? sampleErr.message : String(sampleErr) };
