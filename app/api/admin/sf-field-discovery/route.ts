@@ -413,12 +413,28 @@ export async function GET(request: Request) {
         probes.tasks = { error: e instanceof Error ? e.message : String(e) };
       }
 
-      // Chatter feed (FeedItem)
+      // Chatter feed (FeedItem). SF restricts FeedItem queries — `WHERE
+      // ParentId = '...'` throws "FeedItem requires a filter by Id". The
+      // workaround is to use the Connect API's chatter/feeds endpoint
+      // OR to filter by Id IN (subquery) via FeedAttachment or related
+      // helper objects. Cheapest path: query for the Account's feed
+      // when present, or skip with a clearer message. For now, just
+      // surface the restriction so the caller knows it's a SF API quirk,
+      // not a real "no Chatter posts" answer.
       try {
-        const q = await conn.query<Record<string, unknown>>(
-          `SELECT Id, Type, Body, CreatedDate, CreatedById FROM FeedItem WHERE ParentId = '${resolvedWoId}' ORDER BY CreatedDate DESC LIMIT 10`
-        );
-        probes.chatterFeed = { count: q.records.length, records: q.records };
+        // Best-effort: use the Connect API path that doesn't have the
+        // restriction. If jsforce doesn't expose it, fall back to the
+        // typed error so admin knows what's going on.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const feedFn = (conn as any).chatter?.resource?.(`/feeds/record/${resolvedWoId}/feed-items`);
+        if (feedFn && typeof feedFn.retrieve === "function") {
+          const feedRes = await feedFn.retrieve();
+          probes.chatterFeed = { count: Array.isArray((feedRes as { items?: unknown }).items) ? ((feedRes as { items: unknown[] }).items.length) : 0, raw: feedRes };
+        } else {
+          probes.chatterFeed = {
+            error: "FeedItem direct SOQL is restricted by SF (requires filter by Id). Chatter Connect API path also not available in this jsforce version. If workers DO use Chatter on WOs we'd need to wire the Connect API via a custom resource — but legacyNotes/contentNotes/tasks above cover the common cases.",
+          };
+        }
       } catch (e) {
         probes.chatterFeed = { error: e instanceof Error ? e.message : String(e) };
       }

@@ -1289,21 +1289,25 @@ function JobDetail({
         />
       )}
 
-      {/* Worker Notes from Salesforce — 4 custom textarea fields PPP workers
-          actually populate (discovered via sf-field-discovery 2026-06-09 on
-          WO 00303832). Each labeled so admin sees the source. Section hides
-          when ALL are empty (.trim().length > 0 check covers whitespace-only
-          values that SF sometimes stores by default). Subject also included
-          but only if it's non-trivial text. WorkOrder.Description is NOT
-          shown here — it's PPP's scope template, not notes. */}
+      {/* Notes from Salesforce — surfaces every text field workers might
+          have populated. Workers use Description freely (could be address,
+          scope, template, OR actual notes — sf-field-discovery against
+          WO 00303832 showed Description = "175 Post Road\nOld Westbury, NY"
+          so it's NOT just the template Karan first thought). Show it raw
+          with a "Description" label so admin reads with context. The 4
+          custom textareas come from the discovery + give admin a clear
+          breakdown of which kind of note each is. Section auto-hides when
+          ALL blocks are empty/whitespace-only. */}
       {(() => {
         const subject = job.wo.subject?.trim() || null;
+        const description = job.wo.description?.trim() || null;
         const pm = job.wo.projectManagerNotes?.trim() || null;
         const sched = job.wo.schedulingNotes?.trim() || null;
         const review = job.wo.reviewNotes?.trim() || null;
         const balance = job.wo.balanceOwedNotes?.trim() || null;
         const blocks: Array<{ label: string; text: string }> = [];
         if (subject) blocks.push({ label: "Subject", text: subject });
+        if (description) blocks.push({ label: "Description", text: description });
         if (pm) blocks.push({ label: "Project Manager Notes", text: pm });
         if (sched) blocks.push({ label: "Scheduling Notes", text: sched });
         if (review) blocks.push({ label: "Review Notes", text: review });
@@ -1312,9 +1316,9 @@ function JobDetail({
         return (
           <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
             <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
-              <h4 className="text-sm font-semibold text-ppp-charcoal">Worker Notes from Salesforce</h4>
+              <h4 className="text-sm font-semibold text-ppp-charcoal">Notes from Salesforce</h4>
               <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-                Read before drafting a supplier order — workers may have left context here.
+                Whatever the worker wrote on this WO — read before drafting a supplier order.
               </p>
             </div>
             <div className="px-5 py-4 space-y-3">
@@ -1324,6 +1328,28 @@ function JobDetail({
                   <div className="text-sm text-ppp-charcoal whitespace-pre-wrap break-words">{b.text}</div>
                 </div>
               ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* WO-level no-sqft callout — mirrors the strong red banner the
+          supplier-order modal shows once the worker opens it. Surfacing
+          on JobDetail BEFORE drafting means admin sees the gap up-front
+          + understands the per-WOLI "⚠ no sq ft" chips on the Rooms &
+          colors section below. Fires only when EVERY line item is missing
+          sqft (partial case is covered by the per-line chips). */}
+      {(() => {
+        const lineItemsWithSqft = job.lineItems.filter(
+          (li) => li.raw.sqFootage > 0 || li.raw.wallSurfaceArea > 0
+        );
+        const allMissing = job.lineItems.length > 0 && lineItemsWithSqft.length === 0;
+        if (!allMissing) return null;
+        return (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-sm text-red-700 space-y-1">
+            <div className="font-semibold text-[14px]">🛑 No square footage on Salesforce — manual quantity required</div>
+            <div>
+              None of the {job.lineItems.length} line item{job.lineItems.length === 1 ? "" : "s"} on this work order has square footage in Salesforce. The gallon estimator will return zero — you&apos;ll need to fill in the quantity yourself when you open the supplier-order modal. (Or set the WOLI sqft in Salesforce, refresh, and re-open this panel.)
             </div>
           </div>
         );
