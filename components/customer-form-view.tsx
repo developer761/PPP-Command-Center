@@ -258,9 +258,12 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     const hasExterior = isExteriorWorkOrder({ workTypeName: formData.workTypeName, lineItemProductNames: productNames });
     return { hasInterior, hasExterior, isMixed: hasInterior && hasExterior };
   }, [formData.workTypeName, formData.lineItems]);
-  const sfDescription = (formData.workOrderDescription ?? "").trim();
+  // sfDescription intentionally NOT computed — WorkOrder.Description on
+  // PPP's org is the standard scope template (PRICING DETAILS / ABOUT US /
+  // financing), NOT per-WO notes (Karan confirmed 2026-06-10). Showing it
+  // anywhere would surface template boilerplate as "context" to customers
+  // and admins, which is misleading. Only Subject — workers actually edit it.
   const sfSubject = (formData.workOrderSubject ?? "").trim();
-  const hasSfNotes = sfDescription.length > 0 || sfSubject.length > 0;
   const hasLineItems = formData.lineItems.length > 0;
   // Seed state. When re-editing, pre-fill each surface from the customer's
   // prior submission (colors + finishes + skipped + notes) so they tweak what

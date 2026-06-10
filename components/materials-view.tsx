@@ -1289,25 +1289,20 @@ function JobDetail({
         />
       )}
 
-      {/* Notes from Salesforce — surfaces every text field workers might
-          have populated. Workers use Description freely (could be address,
-          scope, template, OR actual notes — sf-field-discovery against
-          WO 00303832 showed Description = "175 Post Road\nOld Westbury, NY"
-          so it's NOT just the template Karan first thought). Show it raw
-          with a "Description" label so admin reads with context. The 4
-          custom textareas come from the discovery + give admin a clear
-          breakdown of which kind of note each is. Section auto-hides when
-          ALL blocks are empty/whitespace-only. */}
+      {/* Notes from Salesforce — only the fields workers actually use as
+          notes. WorkOrder.Description is NOT shown here — Karan
+          confirmed it's the standard PPP scope template (PRICING DETAILS /
+          ABOUT US / financing terms), never per-WO notes. The 4 custom
+          textareas + Subject are the only notes admin should see.
+          Section auto-hides when ALL are empty/whitespace-only. */}
       {(() => {
         const subject = job.wo.subject?.trim() || null;
-        const description = job.wo.description?.trim() || null;
         const pm = job.wo.projectManagerNotes?.trim() || null;
         const sched = job.wo.schedulingNotes?.trim() || null;
         const review = job.wo.reviewNotes?.trim() || null;
         const balance = job.wo.balanceOwedNotes?.trim() || null;
         const blocks: Array<{ label: string; text: string }> = [];
         if (subject) blocks.push({ label: "Subject", text: subject });
-        if (description) blocks.push({ label: "Description", text: description });
         if (pm) blocks.push({ label: "Project Manager Notes", text: pm });
         if (sched) blocks.push({ label: "Scheduling Notes", text: sched });
         if (review) blocks.push({ label: "Review Notes", text: review });

@@ -1697,13 +1697,46 @@ export async function loadSalesforceSnapshot(
       ].filter((x): x is string => Boolean(x));
 
       // Same 2-year window as opps (88,500 WOs lifetime → Vercel timeout risk).
-      let result = await conn.query<Record<string, unknown>>(
-        `SELECT ${woFieldList.join(", ")} FROM WorkOrder WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
-      );
-      workOrderRecords.push(...result.records);
-      while (!result.done && result.nextRecordsUrl) {
-        result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+      // RESILIENCE: if the full field list fails (any of our optional
+      // probed fields turned out to be FLS-blocked at SELECT time, or a
+      // newly-added field has a typo), retry with only the
+      // baseline-essential fields. Materials Ordering can survive without
+      // the notes-style fields but CANNOT survive without Id +
+      // WorkOrderNumber + amount + status, so we must return something.
+      const baselineFields = woFieldList.filter((f) => {
+        if (typeof f !== "string") return false;
+        // Drop the new optional notes/text fields on retry — anything
+        // probe-conditional that the SOQL might choke on.
+        return ![
+          "Description",
+          "Subject",
+          "Project_Manager_Notes__c",
+          "Scheduling_Notes__c",
+          "Review_Notes__c",
+          "BalanceOwedNotes__c",
+        ].includes(f);
+      });
+      const runQuery = async (fieldList: string[]) => {
+        let result = await conn.query<Record<string, unknown>>(
+          `SELECT ${fieldList.join(", ")} FROM WorkOrder WHERE CreatedDate = LAST_N_DAYS:${RECENCY_WINDOW_DAYS}`
+        );
         workOrderRecords.push(...result.records);
+        while (!result.done && result.nextRecordsUrl) {
+          result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
+          workOrderRecords.push(...result.records);
+        }
+      };
+      try {
+        await runQuery(woFieldList.filter((f): f is string => Boolean(f)));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[SF] WorkOrder query with full field list failed — retrying with baseline only. Error: ${msg}`
+        );
+        // Reset accumulator so the partial may-have-succeeded first batch
+        // doesn't double-count + ensure we re-pull fully on the retry.
+        workOrderRecords.length = 0;
+        await runQuery(baselineFields);
       }
       console.log(`[SF] Pulled ${workOrderRecords.length} work orders (last ${RECENCY_WINDOW_DAYS}d)`);
     } catch (err) {
