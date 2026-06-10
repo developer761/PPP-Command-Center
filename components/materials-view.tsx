@@ -8,7 +8,7 @@
  * before diving in.
  *
  * WHAT IT RENDERS:
- *   - Top stat strip (open WOs, sq ft, distinct colors, suppliers)
+ *   - Top stat strip (open WOs, sq ft, distinct colors, paint brands)
  *   - "Needs attention" chip row (start in ≤2d / need form / awaiting customer / etc.)
  *   - Customer color-form pipeline summary (sent/opened/submitted/expired)
  *   - WO list (left) + JobDetail panel (right) — 5-col grid on desktop
@@ -440,10 +440,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           hint="How many unique paint colors are being used across all the open jobs. Each color × finish counts once even if it appears in multiple rooms."
         />
         <StatCard
-          label="Suppliers"
+          label="Paint brands"
           value={stats.distinctSuppliers.toLocaleString()}
           accent="green"
-          hint="How many different paint suppliers (BM, SW, etc.) we'd need to order from across all the open jobs."
+          hint="How many distinct paint MANUFACTURERS (BM, SW, Glidden, etc.) appear across the picked colors on open jobs — NOT the stores PPP orders from. PPP buys from multiple stores (Aboffs, Willis, etc.) which each carry several brands."
         />
       </section>
 
@@ -1052,7 +1052,11 @@ function JobDetail({
           )}
         </div>
 
-        {/* Supplier breakdown row */}
+        {/* Paint-brand breakdown row — chips show the MANUFACTURER (BM /
+            SW / Glidden) of each picked color and how many colors map to
+            it on this WO. Distinct from the supplier-picker modal where
+            "supplier" = the STORE PPP orders from (Aboffs, Willis, etc.)
+            which can carry multiple brands. */}
         <div className="mt-5 flex flex-wrap items-center gap-2">
           {supplierRows.map((s) => (
             <div
