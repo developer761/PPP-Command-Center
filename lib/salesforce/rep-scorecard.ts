@@ -132,6 +132,14 @@ export type RepScorecard = {
     estimatesSentPct: number | null;        // of run, % with Estimate_Sent__c
     cancelledCount: number;                 // raw count of cancelled appts in period
     cancelledPct: number | null;            // of scheduled, % cancelled
+    /** Avg days from appointmentDate → dateEstimateSent for appts that got
+     *  an estimate. Lower is better. PPP's cycle is 3-4 weeks so a 7-day
+     *  estimate-turnaround target is reasonable. Per Katie 2026-06-10:
+     *  "very important for them to see." */
+    avgDaysToEstimate: number | null;
+    /** % of with-estimate appts where the gap > 7 days. Katie's "% of
+     *  estimates that took 7+ days to send" callout. */
+    slowEstimatePct: number | null;
   };
 
   // KPI 3 — Pipeline Management (SNAPSHOT, not period-scoped). NOTE: scoped to the
@@ -562,11 +570,16 @@ function deriveRepScorecardInner(
     if (w.laborDaysActual !== null && w.laborDaysActual > 0) attendanceLogged += 1;
   }
 
-  /* ─ KPI 2 ─ Appointments Activity (Opp Created CFY · Appt Scheduled date PFQ) ─ */
+  /* ─ KPI 2 ─ Appointments Activity (Opp Created CFY · Appt Scheduled date PFQ) ─
+     Speed-to-estimate (avg days, % > 7 days) restored per Katie 2026-06-10
+     follow-up: "very important for them to see." */
   let scheduled = 0;
   let run = 0;
   let runWithEstimate = 0;
   let cancelled = 0;
+  let estimateDaysSum = 0;
+  let estimateDaysCount = 0;
+  let slowEstimateCount = 0;
   for (const o of snapshot.opportunities) {
     if (o.ownerId !== repId) continue;
     if (!inRange(o.createdDate, cohort.start, cohort.end)) continue;
@@ -576,9 +589,37 @@ function deriveRepScorecardInner(
       cancelled += 1;
     } else {
       run += 1;
-      if (o.estimateSent) runWithEstimate += 1;
+      if (o.estimateSent) {
+        runWithEstimate += 1;
+        // Speed-to-estimate calc — only when both anchors exist AND the
+        // appointment has actually happened (apptDate <= today). Future-
+        // scheduled appointments aren't turnaround data; including them
+        // would skew the metric optimistically.
+        //   - appointmentDate must be in the past (already happened)
+        //   - dateEstimateSent must be >= appointmentDate (real turnaround)
+        //   - gap <= 90 days (drops stale/orphan data-entry artifacts)
+        if (o.appointmentDate && o.dateEstimateSent) {
+          const aMs = new Date(o.appointmentDate).getTime();
+          const eMs = new Date(o.dateEstimateSent).getTime();
+          const nowMs = Date.now();
+          if (!isNaN(aMs) && !isNaN(eMs) && aMs <= nowMs) {
+            const days = (eMs - aMs) / 86_400_000;
+            if (days >= 0 && days <= 90) {
+              estimateDaysSum += days;
+              estimateDaysCount += 1;
+              if (days > 7) slowEstimateCount += 1;
+            }
+          }
+        }
+      }
     }
   }
+  const avgDaysToEstimate = estimateDaysCount > 0
+    ? estimateDaysSum / estimateDaysCount
+    : null;
+  const slowEstimatePct = estimateDaysCount > 0
+    ? (slowEstimateCount / estimateDaysCount) * 100
+    : null;
 
   /* ─ KPI 3 ─ Pipeline Management (Open Opps · Created all-time · Status Open · snapshot) ─
      PDF spec is "all-time" but the snapshot's Opp query is windowed to the
@@ -800,6 +841,8 @@ function deriveRepScorecardInner(
       estimatesSentPct: safePct(runWithEstimate, run),
       cancelledCount: cancelled,
       cancelledPct: safePct(cancelled, scheduled),
+      avgDaysToEstimate,
+      slowEstimatePct,
     },
 
     pipeline: {

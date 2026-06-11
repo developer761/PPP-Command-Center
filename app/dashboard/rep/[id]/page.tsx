@@ -490,12 +490,13 @@ export default async function RepDetailPage({
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
 
             {/* KPI 2 — Appointments Activity
-                Maloney FPRC layout: APPTS RUN headline + CANCELLED + ESTIMATES
-                SENT as 3-stat grid. Speed-to-estimate dropped per PDF spec. */}
+                Maloney FPRC 3-stat row (APPTS RUN / CANCELLED / ESTIMATES SENT)
+                + speed-to-estimate gauge restored per Katie 2026-06-10 email
+                ("very important for them to see"). */}
             <ScorecardCard
               title="Appointments Activity"
               kpiTag="KPI 2"
-              tooltip="Opp Created CFY · Appointment Scheduled date PFQ."
+              tooltip="Opp Created CFY · Appointment Scheduled date PFQ. Speed-to-estimate = days from appointment to estimate sent."
             >
               {scorecard.appointments.scheduled === 0 ? (
                 <div className="space-y-2">
@@ -505,45 +506,81 @@ export default async function RepDetailPage({
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Appts Run</div>
-                    <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
-                      {scorecard.appointments.run}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Appts Run</div>
+                      <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
+                        {scorecard.appointments.run}
+                      </div>
+                      <div className="text-[10px] text-ppp-charcoal-500">{scorecard.appointments.scheduled} Scheduled</div>
                     </div>
-                    <div className="text-[10px] text-ppp-charcoal-500">{scorecard.appointments.scheduled} Scheduled</div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Cancelled</div>
+                      <div className={[
+                        "font-condensed text-xl sm:text-2xl font-bold",
+                        (scorecard.appointments.cancelledPct ?? 0) > 20 ? "text-ppp-orange-700" : "text-ppp-navy",
+                      ].join(" ")}>
+                        {fmtPctOrDash(scorecard.appointments.cancelledPct, 1)}
+                      </div>
+                      <div className="text-[10px] text-ppp-charcoal-500">
+                        {scorecard.appointments.cancelledCount} of {scorecard.appointments.scheduled}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Estimates Sent</div>
+                      <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-green-700">
+                        {fmtPctOrDash(scorecard.appointments.estimatesSentPct, 1)}
+                      </div>
+                      <div className="text-[10px] text-ppp-charcoal-500">
+                        {scorecard.appointments.runWithEstimate} of {scorecard.appointments.run}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Cancelled</div>
-                    <div className={[
-                      "font-condensed text-xl sm:text-2xl font-bold",
-                      (scorecard.appointments.cancelledPct ?? 0) > 20 ? "text-ppp-orange-700" : "text-ppp-navy",
-                    ].join(" ")}>
-                      {fmtPctOrDash(scorecard.appointments.cancelledPct, 1)}
+                  {/* Speed-to-estimate gauge — Katie loves this signal because
+                      slow estimates correlate with cancellation + close-rate
+                      drop downstream. Hidden when we have no with-estimate
+                      data to compute from. */}
+                  {scorecard.appointments.avgDaysToEstimate !== null && (
+                    <div className="border-t border-ppp-charcoal-100 pt-2">
+                      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">
+                          Speed to estimate
+                        </span>
+                        <span className={[
+                          "font-condensed text-base sm:text-lg font-bold whitespace-nowrap",
+                          scorecard.appointments.avgDaysToEstimate <= 3 ? "text-ppp-green-700" :
+                          scorecard.appointments.avgDaysToEstimate <= 7 ? "text-ppp-navy" :
+                          "text-ppp-orange-700",
+                        ].join(" ")}>
+                          {scorecard.appointments.avgDaysToEstimate.toFixed(1)} days avg
+                        </span>
+                      </div>
+                      {scorecard.appointments.slowEstimatePct !== null && scorecard.appointments.slowEstimatePct > 0 && (
+                        <p className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                          <strong className={
+                            scorecard.appointments.slowEstimatePct > 30 ? "text-ppp-orange-700" : "text-ppp-charcoal"
+                          }>
+                            {scorecard.appointments.slowEstimatePct.toFixed(0)}%
+                          </strong>{" "}
+                          took 7+ days to send estimate
+                        </p>
+                      )}
                     </div>
-                    <div className="text-[10px] text-ppp-charcoal-500">
-                      {scorecard.appointments.cancelledCount} of {scorecard.appointments.scheduled}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Estimates Sent</div>
-                    <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-green-700">
-                      {fmtPctOrDash(scorecard.appointments.estimatesSentPct, 1)}
-                    </div>
-                    <div className="text-[10px] text-ppp-charcoal-500">
-                      {scorecard.appointments.runWithEstimate} of {scorecard.appointments.run}
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
             </ScorecardCard>
 
             {/* KPI 3 — Pipeline Management
-                Maloney FPRC: 3-stat row Open Opps | Stale Estimates | % Stale. */}
+                Maloney FPRC: 3-stat row Open Opps | Stale Estimates | % Stale.
+                Tooltip explains the 12-month scope honestly — PPP's 3-4 week
+                sales cycle means opps open >12mo are dead deals nobody
+                marked closed. */}
             <ScorecardCard
               title="Pipeline Management"
               kpiTag="KPI 3"
-              tooltip="Open Opps · Created all-time · Status Open · snapshot at run date."
+              tooltip="Open Opps · Created in the last 12 months · Status Open · snapshot at run date. (Older opens are rare on PPP's 3-4 week cycle; the snapshot scope keeps the metric actionable.)"
             >
               <div className="grid grid-cols-3 gap-2">
                 <div>
