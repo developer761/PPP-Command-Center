@@ -217,7 +217,12 @@ export default async function RepDetailPage({
 
   const last6 = monthly.slice(-6).reduce((s, m) => s + m.revenue, 0);
   const prior6 = monthly.slice(0, 6).reduce((s, m) => s + m.revenue, 0);
-  const halfDelta = prior6 === 0 ? 0 : Math.round(((last6 - prior6) / prior6) * 100);
+  // halfDelta = null when prior6 = 0 (the % is mathematically undefined). Lets
+  // the UI render "—" / "New" instead of a misleading "0%" or "+Infinity%".
+  // Per Katie 2026-06-10: the "0%" in this slot kept confusing reps.
+  const halfDelta: number | null = prior6 === 0
+    ? null
+    : Math.round(((last6 - prior6) / prior6) * 100);
   const ttmRevenue = monthly.reduce((s, m) => s + m.revenue, 0);
 
   return (
@@ -244,7 +249,12 @@ export default async function RepDetailPage({
                 {rep.name}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs">
-                <span className="text-ppp-charcoal-500">{rep.region}</span>
+                <span
+                  className="text-ppp-charcoal-500"
+                  title="Most-common Service Territory across the rep's recent Accounts (Account.Service_Territory__c)."
+                >
+                  {rep.region}
+                </span>
                 <span className="text-ppp-charcoal-200">·</span>
                 <span
                   className={[
@@ -253,11 +263,17 @@ export default async function RepDetailPage({
                       ? "text-ppp-orange-700 bg-ppp-orange-50 border-ppp-orange-100"
                       : "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100",
                   ].join(" ")}
+                  title="Service line — currently derived from User.UserRole.Name + Profile.Name. Add User.Service_Line__c in SF for an authoritative read."
                 >
                   {rep.serviceLine}
                 </span>
                 <span className="text-ppp-charcoal-200">·</span>
-                <span className="text-ppp-charcoal-500">{tenure(rep.startedAt)} at PPP</span>
+                <span
+                  className="text-ppp-charcoal-500"
+                  title="Time since the User record was created in Salesforce (User.CreatedDate)."
+                >
+                  {tenure(rep.startedAt)} at PPP
+                </span>
                 {daysSinceLast !== null && (
                   <>
                     <span className="text-ppp-charcoal-200">·</span>
@@ -270,6 +286,7 @@ export default async function RepDetailPage({
                           ? "text-ppp-charcoal-500 bg-ppp-charcoal-50"
                           : "text-ppp-orange-700 bg-ppp-orange-50",
                       ].join(" ")}
+                      title="Days since this rep's most recent Appointment or Work Order Completion in Salesforce."
                     >
                       Last activity {daysSinceLast === 0 ? "today" : `${daysSinceLast}d ago`}
                     </span>
@@ -292,10 +309,17 @@ export default async function RepDetailPage({
             <div
               className={[
                 "mt-1 text-[11px] font-semibold",
-                halfDelta > 0 ? "text-ppp-green-700" : halfDelta < 0 ? "text-ppp-orange-700" : "text-ppp-charcoal-500",
+                halfDelta === null
+                  ? "text-ppp-charcoal-500"
+                  : halfDelta > 0 ? "text-ppp-green-700"
+                  : halfDelta < 0 ? "text-ppp-orange-700"
+                  : "text-ppp-charcoal-500",
               ].join(" ")}
+              title="Revenue closed in the last 6 months vs the 6 months before that. Independent of the period picker below. Helps spot acceleration or slowdown without flipping fiscal periods."
             >
-              {halfDelta > 0 ? "+" : ""}{halfDelta}% last 6mo vs prior 6mo
+              {halfDelta === null
+                ? (last6 > 0 ? "New revenue (no prior 6mo to compare)" : "No revenue in the last 12 mo")
+                : `${halfDelta > 0 ? "+" : ""}${halfDelta}% last 6mo vs prior 6mo`}
             </div>
           </div>
         </div>
@@ -324,16 +348,38 @@ export default async function RepDetailPage({
           className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
           title="Headline 12-month view. For the canonical PPP fiscal-period KPIs, see the Scorecard section below."
         >
-          <KPICard label="Revenue Sold" value={fmtMoneyK(rep.revenueSold)} change={dRev.text} trend={dRev.trend} accent="blue" />
+          <KPICard
+            label="Revenue Sold"
+            value={fmtMoneyK(rep.revenueSold)}
+            change={dRev.text}
+            trend={dRev.trend}
+            accent="blue"
+            hint="Total $ value of opportunities you won (Opp.IsWon = true · CloseDate in the last 12 months). Source field: QuotedSubtotalWithChangeOrder__c."
+          />
           <KPICard
             label="Close Rate"
             value={`${rep.closeRate.toFixed(1)}%`}
             change={dClose.text}
             trend={dClose.trend}
             accent="green"
+            hint="Won opps ÷ opps created in the last 12 months. Excludes Estimate / Appointment WOs + cancelled deals. Trends high vs other CRMs because PPP's SF stages don't include a 'Closed Lost' type."
           />
-          <KPICard label="Avg Ticket" value={fmtMoneyK(rep.avgTicket)} change={dTicket.text} trend={dTicket.trend} accent="orange" />
-          <KPICard label="Open Pipeline" value={fmtMoneyK(rep.openPipeline)} change={dPipe.text} trend={dPipe.trend} accent="blue" />
+          <KPICard
+            label="Avg Ticket"
+            value={fmtMoneyK(rep.avgTicket)}
+            change={dTicket.text}
+            trend={dTicket.trend}
+            accent="orange"
+            hint="Average $ size of a won deal in the last 12 months (Revenue Sold ÷ # of won opps)."
+          />
+          <KPICard
+            label="Open Pipeline"
+            value={fmtMoneyK(rep.openPipeline)}
+            change={dPipe.text}
+            trend={dPipe.trend}
+            accent="blue"
+            hint="Total $ value of opportunities still open right now (Opp.IsClosed = false). Snapshot at run-time."
+          />
         </div>
         <p className="mt-2 text-[11px] text-ppp-charcoal-500 italic px-1">
           <strong>Close Rate</strong> = sold ÷ opps (opps that became a real paid job ÷ opps created). Excludes Estimate / Appointment WOs and cancelled / dead deals. See <strong>Scorecard · Close Rate</strong> below for PPP&apos;s canonical KPI 3 metric (IsWon-based, fiscal-period). <em>Conversion Rate (leads → opps) is coming once lead data is wired.</em>
@@ -763,7 +809,7 @@ export default async function RepDetailPage({
               kpiTag="KPI 7"
               tooltip="Completed: Opp Close CFY · WO End PFQ. Sold: KPI1 won set. Reviews / Complaints: PFQ."
             >
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Comp / Sold</div>
                   <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-navy">
@@ -814,7 +860,7 @@ export default async function RepDetailPage({
               kpiTag="KPI 8"
               tooltip="Opp Close Date CFY, Transaction Date PFQ."
             >
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <FlowStat
                   label="Money Collected"
                   amount={scorecard.moneyFlow.moneyCollected}
@@ -1790,43 +1836,3 @@ function FlowStat({ label, amount, countLabel, warnIfNonZero = false }: {
   );
 }
 
-/** Inline row for the Money Flow card.
- *
- *  Per Katie 2026-06-10: rounded $ as headline, full $ as native tooltip on
- *  hover, record count below the label so reps see e.g. "$256K · 87 records"
- *  instead of just an unanchored dollar number. */
-function FlowRow({
-  label,
-  amount,
-  count,
-  accent,
-}: {
-  label: string;
-  amount: number;
-  /** Optional — when provided, rendered as "· N records" under the label. */
-  count?: number;
-  accent: "green" | "navy" | "charcoal" | "orange";
-}) {
-  const valueClass =
-    accent === "green" ? "text-ppp-green-700" :
-    accent === "navy" ? "text-ppp-navy" :
-    accent === "orange" ? "text-ppp-orange-700" :
-    "text-ppp-charcoal";
-  const fullDollar = `$${Math.round(amount).toLocaleString()}`;
-  return (
-    <div className="flex items-baseline justify-between gap-2">
-      <span className="text-[11px] uppercase tracking-wide text-ppp-charcoal-500">
-        {label}
-        {typeof count === "number" && count > 0 && (
-          <span className="ml-1 text-ppp-charcoal-400 normal-case tracking-normal">· {count.toLocaleString()}</span>
-        )}
-      </span>
-      <span
-        className={`font-condensed text-lg font-bold ${valueClass}`}
-        title={amount !== 0 ? fullDollar : undefined}
-      >
-        {amount === 0 ? "—" : fmtMoneyK(amount / 1000)}
-      </span>
-    </div>
-  );
-}
