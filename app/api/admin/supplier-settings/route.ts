@@ -201,3 +201,82 @@ export async function PUT(request: Request) {
 
   return NextResponse.json({ ok: true });
 }
+
+/**
+ * POST /api/admin/supplier-settings — Create a brand-new supplier that doesn't
+ *   exist in PPP's Salesforce yet. Body: { supplier_name, order_email,
+ *   ppp_account_number?, pickup_locations? }. Generates a synthetic
+ *   supplier_account_id `custom_<slug>_<rand>` so the row coexists with
+ *   SF-Account-keyed rows without colliding. Returns the new id.
+ *
+ *   Use case: Katie 2026-06-10 — workers need to add a supplier inline
+ *   from the picker without round-tripping to SF + waiting for the next
+ *   snapshot. Active rows show up on the picker via /api/suppliers/active
+ *   within the cache window (≤10 min).
+ */
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  if (!data?.user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const profile = await getProfileByUserId(data.user.id);
+  const isAdmin = profile?.is_admin ?? isAdminEmail(data.user.email);
+  if (!isAdmin) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  let body: {
+    supplier_name?: string;
+    order_email?: string | null;
+    ppp_account_number?: string | null;
+    pickup_locations?: Array<{ name: string; address: string }> | null;
+  };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "bad_json" }, { status: 400 });
+  }
+
+  const name = body.supplier_name?.trim();
+  if (!name) {
+    return NextResponse.json({ error: "missing_supplier_name" }, { status: 400 });
+  }
+  if (name.length > 200) {
+    return NextResponse.json({ error: "supplier_name_too_long" }, { status: 400 });
+  }
+  const email = body.order_email?.trim() ?? null;
+  if (email && !/^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(email)) {
+    return NextResponse.json({ error: "invalid_email" }, { status: 400 });
+  }
+  if (body.pickup_locations) {
+    for (const loc of body.pickup_locations) {
+      if (typeof loc !== "object" || !loc.name?.trim()) {
+        return NextResponse.json({ error: "invalid_pickup_location" }, { status: 400 });
+      }
+    }
+  }
+
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "supplier";
+  // 6-char random suffix keeps it unique against name collisions; full-uuid
+  // would work but the readable id helps DB grepping during incidents.
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const id = `custom_${slug}_${suffix}`;
+
+  const sb = adminClient();
+  const { error } = await sb
+    .from("supplier_settings")
+    .insert({
+      supplier_account_id: id,
+      supplier_name: name,
+      order_email: email,
+      ppp_account_number: body.ppp_account_number?.trim() || null,
+      pickup_locations: body.pickup_locations ?? [],
+      is_active: true,
+      updated_by_user_id: data.user.id,
+    });
+  if (error) {
+    return NextResponse.json({ error: "insert_failed", message: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, supplier_account_id: id });
+}

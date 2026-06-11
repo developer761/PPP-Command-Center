@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 /**
  * Supplier Settings editor. Lists every supplier the snapshot knows about
@@ -48,6 +49,13 @@ type LoadState =
 
 export default function SupplierSettingsEditor() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [addOpen, setAddOpen] = useState(false);
+  // Auto-open the Add modal when the page is opened with ?new=1 (the path
+  // the supplier-picker-modal's "+ Add" button uses to land here).
+  const params = useSearchParams();
+  useEffect(() => {
+    if (params?.get("new") === "1") setAddOpen(true);
+  }, [params]);
 
   const load = useCallback(async () => {
     setState({ status: "loading" });
@@ -95,7 +103,7 @@ export default function SupplierSettingsEditor() {
 
   return (
     <div className="space-y-5">
-      {/* Summary chips */}
+      {/* Summary chips + Add */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-5 py-4">
         <div className="flex flex-wrap items-center gap-3">
           <SummaryChip label="Suppliers" value={state.summary.totalCandidates} accent="navy" />
@@ -106,6 +114,16 @@ export default function SupplierSettingsEditor() {
             accent={state.summary.readyToSend > 0 ? "green" : "muted"}
             sub={state.summary.readyToSend === 0 ? "no suppliers have order email set yet" : `of ${state.summary.totalCandidates}`}
           />
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-ppp-blue text-white text-xs font-semibold hover:bg-ppp-blue-700 active:bg-ppp-blue-700 transition-colors shadow-sm"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            Add new supplier
+          </button>
         </div>
         <p className="text-[11px] text-ppp-charcoal-500 mt-2.5 leading-relaxed">
           Each supplier needs an <strong>order email</strong> set before the Supplier Order Modal can send orders to them.
@@ -128,6 +146,138 @@ export default function SupplierSettingsEditor() {
             <SupplierRow key={c.supplierAccountId} candidate={c} onSaved={load} />
           ))
         )}
+      </div>
+
+      {addOpen && <AddSupplierModal onClose={() => setAddOpen(false)} onCreated={() => { setAddOpen(false); void load(); }} />}
+    </div>
+  );
+}
+
+/* ─── Add-new-supplier modal ───
+   Lightweight create form. Hits POST /api/admin/supplier-settings which
+   generates a synthetic `custom_<slug>_<rand>` id and inserts the row.
+   Once active, /api/suppliers/active picks it up within the browser cache
+   window (≤10 min) and it appears in the supplier picker on the materials
+   page. */
+function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const valid = name.trim().length > 0 && (!email || /^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(email.trim()));
+
+  const submit = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/supplier-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplier_name: name.trim(),
+          order_email: email.trim() || null,
+          ppp_account_number: accountNumber.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setError(data.message ?? data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="relative z-10 w-full sm:max-w-md bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden">
+        <div className="px-5 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-ppp-navy">Add a new supplier</h3>
+            <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+              Shows up in the supplier picker for workers right after you save.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="shrink-0 h-9 w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M6 6l12 12 M18 6l-12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div>
+            <label className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 block mb-1">Supplier name *</label>
+            <input
+              type="text"
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Smithtown Paints"
+              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 block mb-1">Order email</label>
+            <input
+              type="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="orders@supplier.com"
+              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+            />
+            <p className="text-[10px] text-ppp-charcoal-500 mt-1">Needed for the Send button to activate on the Supplier Order Modal.</p>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 block mb-1">PPP account number</label>
+            <input
+              type="text"
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+              placeholder="optional"
+              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+            />
+          </div>
+          {error && (
+            <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700">
+              {error}
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-4 border-t border-ppp-charcoal-100 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-2 text-xs font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!valid || saving}
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-ppp-blue text-white hover:bg-ppp-blue-700 disabled:bg-ppp-charcoal-200 disabled:text-ppp-charcoal-500 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? "Saving…" : "Add supplier"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -369,62 +369,87 @@ export default async function RepDetailPage({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
-            {/* KPI 1 — Closed-Won Sales (% to Goal)
-                Position 1 per Katie 2026-06-10 (mirrors Maloney FPRC scorecard). */}
+          {/* KPI 1 spans the full width per Maloney layout — 5 sub-stats + a
+              12-month prior-year overlay chart. The rest of the cards live in
+              a 3-col grid below. */}
+          <div className="mb-2.5 sm:mb-4">
             <ScorecardCard
-              title="Closed-Won Sales"
+              title="Revenue Performance"
               kpiTag="KPI 1"
-              tooltip="Closed-Won sales (QuotedSubtotalWithChangeOrder__c, CloseDate in period) ÷ TotalQuota__c.QuotaAssigned__c (Owner / Active / FY26)."
+              tooltip="Won Opps · Created CFY · Close Date PFQ. Goal = sum of monthly Owner SubQuotas in the quarter."
             >
-              {scorecard.sales.goal === null ? (
-                <div className="space-y-2">
-                  <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
-                  <p className="text-xs text-ppp-charcoal-500">
-                    No quota set for {rep.name.split(" ")[0]} in this period.
-                  </p>
-                  <p className="text-[11px] text-ppp-charcoal-500">
-                    Closed sales · {fmtMoneyK(scorecard.sales.totalSales / 1000)}
-                  </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Total Sales</div>
+                  <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-navy" title={`$${Math.round(scorecard.sales.totalSales).toLocaleString()}`}>
+                    {fmtMoneyK(scorecard.sales.totalSales / 1000)}
+                  </div>
+                  <div className="text-[10px] text-ppp-charcoal-500">{scorecard.period.label}</div>
                 </div>
-              ) : (
-                <div className="space-y-2">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Period Goal</div>
+                  <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-charcoal" title={scorecard.sales.goal !== null ? `$${Math.round(scorecard.sales.goal).toLocaleString()}` : undefined}>
+                    {scorecard.sales.goal !== null ? fmtMoneyK(scorecard.sales.goal / 1000) : "—"}
+                  </div>
+                  {scorecard.sales.goalIsDerived && (
+                    <div
+                      className="text-[10px] text-ppp-charcoal-500 italic"
+                      title="PPP hasn't populated SubQuota__c monthly data for FY26. Quarterly goal = annual ÷ 4 until IT backfills."
+                    >
+                      (annual ÷ 4)
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">% to Goal</div>
                   <div className={[
-                    "font-condensed text-3xl font-bold",
+                    "font-condensed text-2xl sm:text-3xl font-bold",
                     (scorecard.sales.pctToGoal ?? 0) >= 100 ? "text-ppp-green-700" :
                     (scorecard.sales.pctToGoal ?? 0) >= 75 ? "text-ppp-navy" :
                     "text-ppp-orange-700",
                   ].join(" ")}>
-                    {scorecard.sales.pctToGoal !== null ? `${scorecard.sales.pctToGoal.toFixed(0)}%` : "—"}
+                    {scorecard.sales.pctToGoal !== null ? `${scorecard.sales.pctToGoal.toFixed(1)}%` : "—"}
                   </div>
-                  <ProgressBar pct={scorecard.sales.pctToGoal ?? 0} />
-                  <p className="text-[11px] text-ppp-charcoal-500">
-                    {fmtMoneyK(scorecard.sales.totalSales / 1000)} of {fmtMoneyK(scorecard.sales.goal / 1000)} goal
-                    {scorecard.sales.goalIsDerived && (
-                      <span
-                        className="ml-1 italic"
-                        title="PPP doesn't maintain SubQuota__c monthly data this FY. Quarterly goal = annual TotalQuota__c ÷ 4."
-                      >
-                        (annual ÷ 4)
-                      </span>
-                    )}
-                  </p>
-                  {scorecard.sales.rank !== null && scorecard.sales.rankOf !== null && (
-                    <p className="text-[11px] text-ppp-charcoal-500">
-                      Rank <strong className="text-ppp-charcoal">#{scorecard.sales.rank}</strong> of {scorecard.sales.rankOf} field reps
-                    </p>
+                  <div className="mt-1"><ProgressBar pct={scorecard.sales.pctToGoal ?? 0} /></div>
+                </div>
+                {scorecard.sales.rank !== null && scorecard.sales.rankOf !== null && (
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Rank vs Team</div>
+                    <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-navy">
+                      {scorecard.sales.rank} / {scorecard.sales.rankOf}
+                    </div>
+                    <div className="text-[10px] text-ppp-charcoal-500">field reps</div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Prior YOY</div>
+                  <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-charcoal" title={`$${Math.round(scorecard.priorYoy.amount).toLocaleString()}`}>
+                    {scorecard.priorYoy.amount > 0 ? fmtMoneyK(scorecard.priorYoy.amount / 1000) : "—"}
+                  </div>
+                  {scorecard.priorYoy.deltaPct !== null && (
+                    <div className={[
+                      "text-[10px] font-semibold",
+                      scorecard.priorYoy.deltaPct >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700",
+                    ].join(" ")}>
+                      {scorecard.priorYoy.deltaPct >= 0 ? "+" : ""}{scorecard.priorYoy.deltaPct.toFixed(1)}% vs current
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
+              {/* Monthly bar chart with prior-year overlay — Maloney style. */}
+              <RevenueYoyChart data={scorecard.monthlySalesChart} />
             </ScorecardCard>
+          </div>
 
-            {/* KPI 2 — Appointments Activity (+ Speed-to-Estimate signal)
-                Moved to slot 2 per Katie 2026-06-10. Now surfaces raw cancelled
-                count next to %. */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
+
+            {/* KPI 2 — Appointments Activity
+                Maloney FPRC layout: APPTS RUN headline + CANCELLED + ESTIMATES
+                SENT as 3-stat grid. Speed-to-estimate dropped per PDF spec. */}
             <ScorecardCard
-              title="Appointments"
+              title="Appointments Activity"
               kpiTag="KPI 2"
-              tooltip="Opportunity.AppointmentDate__c in period. Run = scheduled AND NOT Cancelled_Appointment__c. Speed-to-estimate = days from appointment to estimate sent."
+              tooltip="Opp Created CFY · Appointment Scheduled date PFQ."
             >
               {scorecard.appointments.scheduled === 0 ? (
                 <div className="space-y-2">
@@ -434,200 +459,166 @@ export default async function RepDetailPage({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-condensed text-3xl font-bold text-ppp-navy">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Appts Run</div>
+                    <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
                       {scorecard.appointments.run}
-                    </span>
-                    <span className="text-xs text-ppp-charcoal-500">
-                      run / {scorecard.appointments.scheduled} scheduled
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div>
-                      <span className="text-ppp-charcoal-500">Estimates sent</span>{" "}
-                      <strong className="text-ppp-green-700">{fmtPctOrDash(scorecard.appointments.estimatesSentPct, 0)}</strong>
                     </div>
-                    <div>
-                      <span className="text-ppp-charcoal-500">Cancelled</span>{" "}
-                      <strong className={
-                        (scorecard.appointments.cancelledPct ?? 0) > 20 ? "text-ppp-orange-700" : "text-ppp-charcoal"
-                      }>
-                        {fmtPctOrDash(scorecard.appointments.cancelledPct, 0)}
-                        {scorecard.appointments.cancelledCount > 0 && (
-                          <span className="text-ppp-charcoal-400 font-normal"> · {scorecard.appointments.cancelledCount}</span>
-                        )}
-                      </strong>
+                    <div className="text-[10px] text-ppp-charcoal-500">{scorecard.appointments.scheduled} Scheduled</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Cancelled</div>
+                    <div className={[
+                      "font-condensed text-xl sm:text-2xl font-bold",
+                      (scorecard.appointments.cancelledPct ?? 0) > 20 ? "text-ppp-orange-700" : "text-ppp-navy",
+                    ].join(" ")}>
+                      {fmtPctOrDash(scorecard.appointments.cancelledPct, 1)}
+                    </div>
+                    <div className="text-[10px] text-ppp-charcoal-500">
+                      {scorecard.appointments.cancelledCount} of {scorecard.appointments.scheduled}
                     </div>
                   </div>
-                  {scorecard.appointments.avgDaysToEstimate !== null && (
-                    <div className="border-t border-ppp-charcoal-100 pt-2 mt-1">
-                      <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                        <span className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">
-                          Speed to estimate
-                        </span>
-                        <span className={[
-                          "font-condensed text-base sm:text-lg font-bold whitespace-nowrap",
-                          scorecard.appointments.avgDaysToEstimate <= 3 ? "text-ppp-green-700" :
-                          scorecard.appointments.avgDaysToEstimate <= 7 ? "text-ppp-navy" :
-                          "text-ppp-orange-700",
-                        ].join(" ")}>
-                          {scorecard.appointments.avgDaysToEstimate.toFixed(1)} days
-                        </span>
-                      </div>
-                      {scorecard.appointments.slowEstimatePct !== null && scorecard.appointments.slowEstimatePct > 0 && (
-                        <p className="text-[10px] text-ppp-charcoal-500 mt-0.5">
-                          <strong className={
-                            scorecard.appointments.slowEstimatePct > 30 ? "text-ppp-orange-700" : "text-ppp-charcoal"
-                          }>
-                            {scorecard.appointments.slowEstimatePct.toFixed(0)}%
-                          </strong>{" "}
-                          took 7+ days to send estimate
-                        </p>
-                      )}
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Estimates Sent</div>
+                    <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-green-700">
+                      {fmtPctOrDash(scorecard.appointments.estimatesSentPct, 1)}
                     </div>
-                  )}
+                    <div className="text-[10px] text-ppp-charcoal-500">
+                      {scorecard.appointments.runWithEstimate} of {scorecard.appointments.run}
+                    </div>
+                  </div>
                 </div>
               )}
             </ScorecardCard>
 
             {/* KPI 3 — Pipeline Management
-                Moved to slot 3 per Katie 2026-06-10. Headline is now Open Opps
-                (raw count) — stale % moved to a secondary stat. */}
+                Maloney FPRC: 3-stat row Open Opps | Stale Estimates | % Stale. */}
             <ScorecardCard
-              title="Pipeline · Open Opps"
+              title="Pipeline Management"
               kpiTag="KPI 3"
-              tooltip="Open Opportunities created in the snapshot's 365-day window. Stale = estimate sent > 30 days ago. NOTE: opps created >12 months ago aren't in scope — on PPP's 3-4 week sales cycle a year-old open opp is almost always a dead deal nobody closed. To surface true all-time pipeline, widen the snapshot Opp query."
+              tooltip="Open Opps · Created all-time · Status Open · snapshot at run date."
             >
-              {scorecard.pipeline.openOpps === 0 ? (
-                <div className="space-y-2">
-                  <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">0</div>
-                  <p className="text-xs text-ppp-charcoal-500">
-                    No open opportunities in the last 12 months.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-condensed text-3xl font-bold text-ppp-navy">
-                      {scorecard.pipeline.openOpps}
-                    </span>
-                    <span className="text-xs text-ppp-charcoal-500">open opps · last 12 mo</span>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Open Opps</div>
+                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
+                    {scorecard.pipeline.openOpps}
                   </div>
-                  {scorecard.pipeline.staleEstimates > 0 && (
-                    <div className="border-t border-ppp-charcoal-100 pt-2">
-                      <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                        <span className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">
-                          Stale (est. &gt; 30 d ago)
-                        </span>
-                        <span className={[
-                          "font-condensed text-base font-bold whitespace-nowrap",
-                          (scorecard.pipeline.stalePct ?? 0) <= 10 ? "text-ppp-green-700" :
-                          (scorecard.pipeline.stalePct ?? 0) <= 25 ? "text-ppp-charcoal" :
-                          "text-ppp-orange-700",
-                        ].join(" ")}>
-                          {scorecard.pipeline.staleEstimates}
-                          <span className="text-[11px] font-normal text-ppp-charcoal-500"> ({fmtPctOrDash(scorecard.pipeline.stalePct, 0)})</span>
-                        </span>
-                      </div>
-                    </div>
-                  )}
                 </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Stale Estimates</div>
+                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
+                    {scorecard.pipeline.staleEstimates}
+                  </div>
+                  <div className="text-[10px] text-ppp-charcoal-500">Sent &gt; 30d ago</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">% Stale</div>
+                  <div className={[
+                    "font-condensed text-xl sm:text-2xl font-bold",
+                    (scorecard.pipeline.stalePct ?? 0) <= 10 ? "text-ppp-green-700" :
+                    (scorecard.pipeline.stalePct ?? 0) <= 25 ? "text-ppp-navy" :
+                    "text-ppp-orange-700",
+                  ].join(" ")}>
+                    {fmtPctOrDash(scorecard.pipeline.stalePct, 1)}
+                  </div>
+                  <div className="text-[10px] text-ppp-charcoal-500">Cutoff {scorecard.pipeline.cutoffDate}</div>
+                </div>
+              </div>
+              {scorecard.pipeline.scopedToLast12Months && (
+                <p
+                  className="mt-2 text-[10px] text-ppp-charcoal-500 italic"
+                  title="Snapshot Opp query is windowed to the last 365 days. PPP's 3-4 week sales cycle means opps open >12 months are overwhelmingly abandoned deals. Widen the snapshot to expose true all-time pipeline."
+                >
+                  Snapshot scope: last 12 months only
+                </p>
               )}
             </ScorecardCard>
 
-            {/* KPI 4A — Close Rate (3 buckets)
-                Moved to slot 4A per Katie 2026-06-10.
-
-                PPP DATA QUIRK: SF stages here don't include a "Closed Lost"
-                type per the integration guide §4.5, so IsWon ≈ IsClosed and
-                this metric trends very high (often 95%+). The LeadGroup
-                split (Self-Gen vs Marketing) is where the signal actually
-                shows up — different reps perform very differently on each. */}
+            {/* KPI 4A — Close Rate
+                Maloney FPRC: 3-stat row Self-Gen | Marketing | Overall. */}
             <ScorecardCard
               title="Close Rate"
               kpiTag="KPI 4A"
-              tooltip="Won ÷ Opportunities CREATED in period. Self-gen = LeadGroup__c='Self-Generated'; everything else = marketing. NOTE: PPP's data trends high because of how their SF stage config handles 'lost' opps — the LeadGroup split is the actionable signal."
+              tooltip="Opp Created CFY · Close Date PFQ · won ÷ cohort."
             >
-              <div className="space-y-2.5">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Overall</span>
-                  <span className="font-condensed text-2xl font-bold text-ppp-navy">
-                    {fmtPctOrDash(scorecard.closeRate.overall.pct, 0)}
-                  </span>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Self-Gen</div>
+                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-green-700">
+                    {fmtPctOrDash(scorecard.closeRate.selfGen.pct, 1)}
+                  </div>
+                  <div className="text-[10px] text-ppp-charcoal-500">{scorecard.closeRate.selfGen.won} won / {scorecard.closeRate.selfGen.total}</div>
                 </div>
-                <div className="text-[11px] text-ppp-charcoal-500 -mt-1">
-                  {scorecard.closeRate.overall.won} of {scorecard.closeRate.overall.total} opps
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Marketing</div>
+                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-blue-700">
+                    {fmtPctOrDash(scorecard.closeRate.marketing.pct, 1)}
+                  </div>
+                  <div className="text-[10px] text-ppp-charcoal-500">{scorecard.closeRate.marketing.won} won / {scorecard.closeRate.marketing.total}</div>
                 </div>
-                <div className="border-t border-ppp-charcoal-100 pt-2 space-y-1.5">
-                  <CloseRateRow label="Self-Gen" stats={scorecard.closeRate.selfGen} accent="green" />
-                  <CloseRateRow label="Marketing" stats={scorecard.closeRate.marketing} accent="blue" />
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Overall</div>
+                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
+                    {fmtPctOrDash(scorecard.closeRate.overall.pct, 1)}
+                  </div>
+                  <div className="text-[10px] text-ppp-charcoal-500">{scorecard.closeRate.overall.won} won / {scorecard.closeRate.overall.total}</div>
                 </div>
-                {scorecard.closeRate.overall.total === 0 && (
-                  <p className="text-[10px] text-ppp-charcoal-500 italic pt-1">
-                    No opportunities created in this period yet.
-                  </p>
-                )}
               </div>
+              {scorecard.closeRate.overall.total === 0 && (
+                <p className="text-[10px] text-ppp-charcoal-500 italic mt-2">
+                  No opportunities in this period yet.
+                </p>
+              )}
             </ScorecardCard>
 
-            {/* KPI 4B — Sales Mix · Self-Gen vs Goal
-                Per Katie 2026-06-10: compare actual self-gen $ share to the
-                rep's target on User.Self_Gen_Sales_Goal_Percent__c. */}
+            {/* KPI 4B — Sales Mix · Self-Gen vs Marketing
+                Maloney FPRC: 3-col stat (Self-Gen % | Marketing % | Total Won)
+                + Below/Above goal badge under Self-Gen %. */}
             <ScorecardCard
-              title="Sales Mix · Self-Gen"
+              title="Sales Mix · Self-Gen vs Marketing"
               kpiTag="KPI 4B"
-              tooltip="Of closed-won sales (CloseDate in period), the $-based self-generated share. Self-gen = LeadGroup__c='Self-Generated'. Goal = User.Self_Gen_Sales_Goal_Percent__c."
+              tooltip="Won Opps · Created CFY · Close Date PFQ."
             >
               {scorecard.salesMix.selfGenSharePct === null ? (
                 <div className="font-condensed text-3xl font-bold text-ppp-charcoal-200">—</div>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex items-baseline gap-2 flex-wrap">
-                    <span className={[
-                      "font-condensed text-3xl font-bold",
-                      scorecard.salesMix.vsGoal !== null && scorecard.salesMix.vsGoal >= 0 ? "text-ppp-green-700" :
-                      scorecard.salesMix.vsGoal !== null && scorecard.salesMix.vsGoal < -5 ? "text-ppp-orange-700" :
-                      "text-ppp-navy",
-                    ].join(" ")}>
-                      {scorecard.salesMix.selfGenSharePct.toFixed(0)}%
-                    </span>
-                    {scorecard.salesMix.goalPct !== null && scorecard.salesMix.vsGoal !== null && (
-                      <span className="text-[11px] text-ppp-charcoal-500">
-                        vs {scorecard.salesMix.goalPct.toFixed(0)}% goal ·{" "}
-                        <strong className={scorecard.salesMix.vsGoal >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700"}>
-                          {scorecard.salesMix.vsGoal >= 0 ? "+" : ""}{scorecard.salesMix.vsGoal.toFixed(0)}pp
-                        </strong>
-                      </span>
-                    )}
-                  </div>
-                  {/* Two-segment stacked bar — left green (self-gen) / right
-                      blue (marketing). Replaces the misleading single-color
-                      bar that filled only N% and made the remaining (100-N)%
-                      look like missing data instead of marketing share. */}
-                  <div className="h-2 w-full bg-ppp-charcoal-50 rounded overflow-hidden flex">
-                    <div
-                      className="h-full bg-ppp-green transition-[width] duration-500"
-                      style={{ width: `${scorecard.salesMix.selfGenSharePct}%` }}
-                      aria-hidden
-                    />
-                    <div
-                      className="h-full bg-ppp-blue transition-[width] duration-500"
-                      style={{ width: `${100 - scorecard.salesMix.selfGenSharePct}%` }}
-                      aria-hidden
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-2 text-[11px]">
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block h-2 w-2 rounded-sm bg-ppp-green" aria-hidden />
-                      <span className="text-ppp-charcoal-500">Self-gen</span>{" "}
-                      <strong className="text-ppp-charcoal">{fmtMoneyK(scorecard.salesMix.selfGenDollars / 1000)}</strong>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block h-2 w-2 rounded-sm bg-ppp-blue" aria-hidden />
-                      <span className="text-ppp-charcoal-500">Marketing</span>{" "}
-                      <strong className="text-ppp-charcoal">{fmtMoneyK(scorecard.salesMix.marketingDollars / 1000)}</strong>
-                    </span>
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Self-Gen % of Sales</div>
+                      <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-green-700">
+                        {scorecard.salesMix.selfGenSharePct.toFixed(1)}%
+                      </div>
+                      <div className="text-[10px] text-ppp-charcoal-500" title={`$${Math.round(scorecard.salesMix.selfGenDollars).toLocaleString()}`}>
+                        {fmtMoneyK(scorecard.salesMix.selfGenDollars / 1000)}
+                      </div>
+                      {scorecard.salesMix.goalPct !== null && scorecard.salesMix.vsGoal !== null && (
+                        <div className={[
+                          "inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide",
+                          scorecard.salesMix.vsGoal >= 0 ? "bg-ppp-green-50 text-ppp-green-700" : "bg-ppp-orange-50 text-ppp-orange-700",
+                        ].join(" ")}>
+                          Goal {scorecard.salesMix.goalPct.toFixed(0)}% · {scorecard.salesMix.vsGoal >= 0 ? "Above" : "Below"}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Marketing % of Sales</div>
+                      <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-blue-700">
+                        {(100 - scorecard.salesMix.selfGenSharePct).toFixed(1)}%
+                      </div>
+                      <div className="text-[10px] text-ppp-charcoal-500" title={`$${Math.round(scorecard.salesMix.marketingDollars).toLocaleString()}`}>
+                        {fmtMoneyK(scorecard.salesMix.marketingDollars / 1000)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Total Won Sales</div>
+                      <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy" title={`$${Math.round(scorecard.salesMix.totalWonSales).toLocaleString()}`}>
+                        {fmtMoneyK(scorecard.salesMix.totalWonSales / 1000)}
+                      </div>
+                      <div className="text-[10px] text-ppp-charcoal-500">{scorecard.salesMix.totalWonOpps} Won Opps</div>
+                    </div>
                   </div>
                   {scorecard.salesMix.goalPct === null && (
                     <p className="text-[10px] text-ppp-charcoal-500 italic">
@@ -639,12 +630,13 @@ export default async function RepDetailPage({
             </ScorecardCard>
 
             {/* KPI 5 — Pricing Discipline
-                Per Katie 2026-06-10: Materials % promoted to a headline-level
-                read; Actual vs Projected over/under coloring kept. */}
+                Maloney FPRC: 3-stat row Materials % | Projected $/Day | Actual
+                $/Day. Actual carries a "+$X vs Projected" $-denominated delta
+                (NOT percent). */}
             <ScorecardCard
               title="Pricing Discipline"
               kpiTag="KPI 5"
-              tooltip="Restricted to attendance-logged subset only (LaborDaysActual > 0). Materials % = SUM(TotalNonBillablePurchases__c) ÷ SUM(quoted)."
+              tooltip="Opp Close Date CFY · WO End Date PFQ · Status Closed / Complete Paid in Full. $/Day over WOs with attendance logged."
             >
               {scorecard.pricing.revPerLaborDayActual === null && scorecard.pricing.revPerLaborDayProjected === null ? (
                 <div className="space-y-2">
@@ -655,71 +647,63 @@ export default async function RepDetailPage({
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {scorecard.pricing.materialsPct !== null && (
+                  <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Materials % of revenue</div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Materials %</div>
                       <div className={[
-                        "font-condensed text-3xl font-bold",
+                        "font-condensed text-xl sm:text-2xl font-bold",
+                        scorecard.pricing.materialsPct === null ? "text-ppp-charcoal-200" :
                         scorecard.pricing.materialsPct <= 15 ? "text-ppp-green-700" :
-                        scorecard.pricing.materialsPct <= 25 ? "text-ppp-charcoal" :
+                        scorecard.pricing.materialsPct <= 25 ? "text-ppp-navy" :
                         "text-ppp-orange-700",
                       ].join(" ")}>
-                        {scorecard.pricing.materialsPct.toFixed(1)}%
+                        {scorecard.pricing.materialsPct !== null ? `${scorecard.pricing.materialsPct.toFixed(1)}%` : "—"}
                       </div>
                     </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-2 border-t border-ppp-charcoal-100 pt-2">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Proj. Rev/Day</div>
-                      <div className="font-condensed text-base font-bold text-ppp-navy">
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Projected $/Day</div>
+                      <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
                         {scorecard.pricing.revPerLaborDayProjected !== null
                           ? `$${Math.round(scorecard.pricing.revPerLaborDayProjected).toLocaleString()}`
                           : "—"}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Actual Rev/Day</div>
+                      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Actual $/Day</div>
                       <div className={[
-                        "font-condensed text-base font-bold",
-                        scorecard.pricing.revPerLaborDayActual !== null && scorecard.pricing.revPerLaborDayProjected !== null
-                          && scorecard.pricing.revPerLaborDayActual >= scorecard.pricing.revPerLaborDayProjected
-                          ? "text-ppp-green-700" : "text-ppp-orange-700",
+                        "font-condensed text-xl sm:text-2xl font-bold",
+                        scorecard.pricing.actualVsProjectedDollar === null ? "text-ppp-navy" :
+                        scorecard.pricing.actualVsProjectedDollar >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700",
                       ].join(" ")}>
                         {scorecard.pricing.revPerLaborDayActual !== null
                           ? `$${Math.round(scorecard.pricing.revPerLaborDayActual).toLocaleString()}`
                           : "—"}
                       </div>
+                      {scorecard.pricing.actualVsProjectedDollar !== null && (
+                        <div className={[
+                          "text-[10px] font-semibold",
+                          scorecard.pricing.actualVsProjectedDollar >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700",
+                        ].join(" ")}>
+                          {scorecard.pricing.actualVsProjectedDollar >= 0 ? "+" : "-"}${Math.abs(Math.round(scorecard.pricing.actualVsProjectedDollar)).toLocaleString()} vs Projected
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {scorecard.pricing.revPerLaborDayActual !== null && scorecard.pricing.revPerLaborDayProjected !== null && scorecard.pricing.revPerLaborDayProjected > 0 && (() => {
-                    const delta = scorecard.pricing.revPerLaborDayActual - scorecard.pricing.revPerLaborDayProjected;
-                    const deltaPct = (delta / scorecard.pricing.revPerLaborDayProjected) * 100;
-                    return (
-                      <p className="text-[11px] text-ppp-charcoal-500">
-                        Actual vs Projected:{" "}
-                        <strong className={delta >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700"}>
-                          {delta >= 0 ? "+" : ""}{deltaPct.toFixed(1)}%
-                        </strong>
-                      </p>
-                    );
-                  })()}
                   {scorecard.pricing.excludedNoAttendance > 0 && (
-                    <p className="text-[10px] text-ppp-charcoal-500 italic">
-                      {scorecard.pricing.excludedNoAttendance} WO{scorecard.pricing.excludedNoAttendance === 1 ? "" : "s"} excluded — no attendance logged
+                    <p className="text-[10px] text-ppp-orange-700 font-semibold">
+                      Excludes {scorecard.pricing.excludedNoAttendance} of {scorecard.pricing.completedTotal} closed WOs — attendance not logged
                     </p>
                   )}
                 </div>
               )}
             </ScorecardCard>
 
-            {/* KPI 6 — Gross Margin vs Target
-                Moved to slot 6 per Katie 2026-06-10. PPP IT now populates
-                User.Gross_Margin_Goal_Percent__c — when set, the per-rep
-                target lights up below the headline GM%. */}
+            {/* KPI 6 — Gross Margin on Closed Jobs
+                Maloney FPRC: 3-stat row Avg GM% (+ goal badge) | GM vs Target | Total GP $. */}
             <ScorecardCard
-              title="Gross Margin"
+              title="Gross Margin on Closed Jobs"
               kpiTag="KPI 6"
-              tooltip="Avg WorkOrder.Gross_Margin_Percent__c on completed WOs (EndDate in period). Target = User.Gross_Margin_Goal_Percent__c."
+              tooltip="Opp Close Date CFY · WO End Date PFQ · Status Closed / Complete Paid in Full."
             >
               {scorecard.margin.avgGmPct === null ? (
                 <div className="space-y-2">
@@ -729,148 +713,139 @@ export default async function RepDetailPage({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className={[
-                    "font-condensed text-3xl font-bold",
-                    scorecard.margin.vsTarget !== null && scorecard.margin.vsTarget >= 0 ? "text-ppp-green-700" :
-                    scorecard.margin.vsTarget !== null && scorecard.margin.vsTarget < -5 ? "text-ppp-orange-700" :
-                    "text-ppp-navy",
-                  ].join(" ")}>
-                    {scorecard.margin.avgGmPct.toFixed(1)}%
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Avg GM%</div>
+                    <div className={[
+                      "font-condensed text-xl sm:text-2xl font-bold",
+                      scorecard.margin.vsTarget !== null && scorecard.margin.vsTarget >= 0 ? "text-ppp-green-700" :
+                      scorecard.margin.vsTarget !== null && scorecard.margin.vsTarget < -5 ? "text-ppp-orange-700" :
+                      "text-ppp-navy",
+                    ].join(" ")}>
+                      {scorecard.margin.avgGmPct.toFixed(1)}%
+                    </div>
+                    <div className="text-[10px] text-ppp-charcoal-500">{scorecard.margin.completedCount} Closed WOs</div>
+                    {scorecard.margin.target !== null && scorecard.margin.vsTarget !== null && (
+                      <div className={[
+                        "inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide",
+                        scorecard.margin.vsTarget >= 0 ? "bg-ppp-green-50 text-ppp-green-700" : "bg-ppp-orange-50 text-ppp-orange-700",
+                      ].join(" ")}>
+                        Goal {scorecard.margin.target.toFixed(1)}% · {scorecard.margin.vsTarget >= 0 ? "Above" : "Below"}
+                      </div>
+                    )}
                   </div>
-                  {scorecard.margin.target !== null && scorecard.margin.vsTarget !== null && (
-                    <p className="text-[11px] text-ppp-charcoal-500">
-                      Target {scorecard.margin.target.toFixed(1)}% ·{" "}
-                      <strong className={scorecard.margin.vsTarget >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700"}>
-                        {scorecard.margin.vsTarget >= 0 ? "+" : ""}{scorecard.margin.vsTarget.toFixed(1)}pp
-                      </strong>
-                    </p>
-                  )}
-                  {scorecard.margin.target === null && (
-                    <p className="text-[10px] text-ppp-charcoal-500 italic">
-                      No Gross Margin Goal set for this rep.
-                    </p>
-                  )}
-                  <p className="text-[11px] text-ppp-charcoal-500">
-                    Total GP: <strong className="text-ppp-charcoal">{fmtMoneyK(scorecard.margin.totalGpDollars / 1000)}</strong>
-                    {" · "}
-                    {scorecard.margin.completedCount} completed WO{scorecard.margin.completedCount === 1 ? "" : "s"}
-                  </p>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">GM vs Target</div>
+                    <div className={[
+                      "font-condensed text-xl sm:text-2xl font-bold",
+                      scorecard.margin.vsTarget === null ? "text-ppp-charcoal-200" :
+                      scorecard.margin.vsTarget >= 0 ? "text-ppp-green-700" : "text-ppp-orange-700",
+                    ].join(" ")}>
+                      {scorecard.margin.vsTarget !== null
+                        ? `${scorecard.margin.vsTarget >= 0 ? "+" : ""}${scorecard.margin.vsTarget.toFixed(1)}pp`
+                        : "—"}
+                    </div>
+                    {scorecard.margin.target !== null && (
+                      <div className="text-[10px] text-ppp-charcoal-500">Target {scorecard.margin.target.toFixed(1)}%</div>
+                    )}
+                    {scorecard.margin.target === null && (
+                      <div className="text-[10px] text-ppp-charcoal-500 italic">No goal set</div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Total GP $</div>
+                    <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy" title={`$${Math.round(scorecard.margin.totalGpDollars).toLocaleString()}`}>
+                      {fmtMoneyK(scorecard.margin.totalGpDollars / 1000)}
+                    </div>
+                  </div>
                 </div>
               )}
             </ScorecardCard>
 
-            {/* KPI 7 — Production Quality */}
+            {/* KPI 7 — Production Quality
+                Maloney FPRC: 4-stat row Comp/Sold | Change Orders | Reviews | Complaints. */}
             <ScorecardCard
               title="Production Quality"
               kpiTag="KPI 7"
-              tooltip="Jobs completed vs sold + reviews + complaints + change orders. Reviews by Account.OwnerId; complaints by Opportunity.OwnerId narrowed to FPRC's 2 true types (Dissatisfied Customer, Service Call). Change Orders $ = SUM(WorkOrder.TotalChangeOrder__c) over completed WOs (already nets to Approved/Approved-Auto via SF rollup)."
+              tooltip="Completed: Opp Close CFY · WO End PFQ. Sold: KPI1 won set. Reviews / Complaints: PFQ."
             >
-              <div className="space-y-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-condensed text-2xl font-bold text-ppp-navy">
-                    {scorecard.production.jobsCompleted}
-                  </span>
-                  <span className="text-xs text-ppp-charcoal-500">
-                    completed / {scorecard.production.oppsWon} sold
-                  </span>
-                </div>
-                {scorecard.production.completionRatio !== null && (
-                  <ProgressBar pct={scorecard.production.completionRatio} />
-                )}
-                <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-ppp-charcoal-100">
-                  <div>
-                    <div className="font-condensed text-base font-bold text-ppp-green-700">
-                      {scorecard.production.goodReviews}
-                    </div>
-                    <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">Good rev.</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Comp / Sold</div>
+                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
+                    {scorecard.production.jobsCompleted} / {scorecard.production.oppsWon}
                   </div>
-                  <div>
-                    <div className={[
-                      "font-condensed text-base font-bold",
-                      scorecard.production.badReviews > 0 ? "text-ppp-orange-700" : "text-ppp-charcoal-200",
-                    ].join(" ")}>
-                      {scorecard.production.badReviews}
-                    </div>
-                    <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">Bad rev.</div>
-                  </div>
-                  <div>
-                    <div className={[
-                      "font-condensed text-base font-bold",
-                      scorecard.production.complaints > 0 ? "text-ppp-orange-700" : "text-ppp-charcoal-200",
-                    ].join(" ")}>
-                      {scorecard.production.complaints}
-                    </div>
-                    <div className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">Cases</div>
+                  <div className="text-[10px] text-ppp-charcoal-500">
+                    {scorecard.production.completionRatio !== null ? `${scorecard.production.completionRatio.toFixed(1)}% Ratio` : "—"}
                   </div>
                 </div>
-                {scorecard.production.changeOrders > 0 && (
-                  <div className="flex items-baseline justify-between pt-2 border-t border-ppp-charcoal-100">
-                    <span className="text-[10px] uppercase tracking-wide text-ppp-charcoal-500">
-                      Change Orders
-                    </span>
-                    <span className="font-condensed text-sm font-bold text-ppp-navy">
-                      {fmtMoneyK(scorecard.production.changeOrders)}
-                    </span>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Change Orders</div>
+                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy" title={`$${Math.round(scorecard.production.changeOrders).toLocaleString()}`}>
+                    ${Math.round(scorecard.production.changeOrders).toLocaleString()}
                   </div>
-                )}
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Reviews</div>
+                  <div className="font-condensed text-xl sm:text-2xl font-bold">
+                    <span className="text-ppp-green-700">+{scorecard.production.goodReviews}</span>
+                    <span className="text-ppp-charcoal-400 mx-1">/</span>
+                    <span className={scorecard.production.badReviews > 0 ? "text-ppp-orange-700" : "text-ppp-charcoal-300"}>-{scorecard.production.badReviews}</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Complaints</div>
+                  <div className={[
+                    "font-condensed text-xl sm:text-2xl font-bold",
+                    scorecard.production.complaints > 0 ? "text-ppp-orange-700" : "text-ppp-navy",
+                  ].join(" ")}>
+                    {scorecard.production.complaints}
+                  </div>
+                </div>
               </div>
             </ScorecardCard>
 
             {/* KPI 8 — Money Flow
-                Per Katie 2026-06-10: each row carries a record count, $
-                figures show rounded (e.g. $256K) with full $ on hover, and
-                Balance Owed is surfaced. */}
+                Maloney FPRC: 4-stat grid Money Collected | Labor Paid Out |
+                Total Purchases | Balance Owed. Each shows $ + record count. */}
             <ScorecardCard
               title="Money Flow"
               kpiTag="KPI 8"
-              tooltip="Transaction__c by WorkOrder.OwnerId, Date__c in period. Payments In / Labor Payouts / Total Purchases. Balance Owed = SUM(WO.BalanceOwed__c) on completed WOs (EndDate in period). Hover $ for full precision."
+              tooltip="Opp Close Date CFY, Transaction Date PFQ."
             >
-              <div className="space-y-2">
-                <FlowRow
-                  label="Payments In"
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <FlowStat
+                  label="Money Collected"
                   amount={scorecard.moneyFlow.moneyCollected}
-                  count={scorecard.moneyFlow.moneyCollectedCount}
-                  accent="green"
+                  countLabel={`${scorecard.moneyFlow.moneyCollectedCount} Payments received`}
                 />
-                <FlowRow
-                  label="Labor Payouts"
+                <FlowStat
+                  label="Labor Paid Out"
                   amount={scorecard.moneyFlow.laborPaidOut}
-                  count={scorecard.moneyFlow.laborPaidOutCount}
-                  accent="navy"
+                  countLabel={`${scorecard.moneyFlow.laborPaidOutCount} Payouts`}
                 />
-                <FlowRow
-                  label="Purchases"
+                <FlowStat
+                  label="Total Purchases"
                   amount={scorecard.moneyFlow.purchases}
-                  count={scorecard.moneyFlow.purchasesCount}
-                  accent="charcoal"
+                  countLabel={`${scorecard.moneyFlow.purchasesCount} Purchases`}
                 />
-                <FlowRow
+                <FlowStat
                   label="Balance Owed"
                   amount={scorecard.moneyFlow.balanceOwed}
-                  count={scorecard.moneyFlow.balanceOwedCount}
-                  accent="orange"
+                  countLabel={`${scorecard.moneyFlow.balanceOwedCount} WOs in Complete Balance Owed`}
+                  warnIfNonZero
                 />
-                {scorecard.moneyFlow.moneyCollected === 0 &&
-                  scorecard.moneyFlow.laborPaidOut === 0 &&
-                  scorecard.moneyFlow.purchases === 0 &&
-                  scorecard.moneyFlow.balanceOwed === 0 && (
-                    <p className="text-[10px] text-ppp-charcoal-500 italic">
-                      No Transaction__c records for this rep in this period.
-                    </p>
-                )}
               </div>
             </ScorecardCard>
 
             {/* KPI 9 — Commissions
-                Per Katie 2026-06-10 (Maloney FPRC layout): explicit 3-cell
-                grid Draw Received | Commissions Earned | Overpaid box. When
-                User.Quarterly_Draw__c is null, the Draw + Overpaid cells
-                gracefully fall away leaving just Earned. */}
+                Maloney FPRC: 3-stat row Draw Received | Earned | Overpaid box.
+                Overpaid renders as a NEGATIVE signed amount per the PDF
+                (e.g. -$1,030 in red). */}
             <ScorecardCard
               title="Commissions"
               kpiTag="KPI 9"
-              tooltip="CFY-to-date. Earned = Payment_Out with PayeeType=Sales + Description contains 'Draw', Payee matches rep name (incl. shadow '<name>-inactive'/'-portal' and 'LC <name>' labor-company alias). Draw Received = Quarterly Draw × fiscal-quarter index (Q1→×1 … Q4→×4). Overpaid = Draw − Earned when Earned < Draw."
+              tooltip="Earned: Payment Out, Payee Type Sales, Date CFY."
             >
               {scorecard.commissions.earned === 0 && scorecard.commissions.drawReceived === null ? (
                 <div className="space-y-2">
@@ -880,7 +855,6 @@ export default async function RepDetailPage({
                   </p>
                 </div>
               ) : scorecard.commissions.drawReceived === null ? (
-                // No-draw rep — render Earned cleanly without an empty Draw cell.
                 <div className="space-y-2">
                   <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Commissions Earned</div>
                   <div className="font-condensed text-3xl font-bold text-ppp-navy">
@@ -895,48 +869,55 @@ export default async function RepDetailPage({
                   const draw = scorecard.commissions.drawReceived ?? 0;
                   const earned = scorecard.commissions.earned;
                   const diff = scorecard.commissions.difference ?? 0;
-                  const overpaid = diff < 0; // earned < draw → rep owes
+                  const overpaid = diff < 0;
+                  const qtrAmt = scorecard.commissions.drawQuarterly;
+                  const qInP = scorecard.commissions.quartersInPeriod;
                   return (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Draw Received</div>
-                          <div className="font-condensed text-lg font-bold text-ppp-charcoal" title={`$${Math.round(draw).toLocaleString()}`}>
-                            {fmtCommissionDollars(draw)}
-                          </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Draw Received</div>
+                        <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy" title={`$${Math.round(draw).toLocaleString()}`}>
+                          {fmtCommissionDollars(draw)}
                         </div>
-                        <div>
-                          <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Earned</div>
-                          <div className="font-condensed text-lg font-bold text-ppp-navy" title={`$${Math.round(earned).toLocaleString()}`}>
-                            {fmtCommissionDollars(earned)}
+                        {qtrAmt !== null && qInP !== null && (
+                          <div className="text-[10px] text-ppp-charcoal-500">
+                            ${Math.round(qtrAmt).toLocaleString()}/qtr × {qInP} (CFY to date)
                           </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Commissions Earned</div>
+                        <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy" title={`$${Math.round(earned).toLocaleString()}`}>
+                          {fmtCommissionDollars(earned)}
+                        </div>
+                        <div className="text-[10px] text-ppp-charcoal-500">
+                          {scorecard.commissions.payoutCount} Sales/Draw payouts
                         </div>
                       </div>
-                      {/* Overpaid box only when rep is in the hole — green
-                          "underpaid" was confusing reps who thought green
-                          meant good. Per Maloney layout, just an orange
-                          alert box. */}
-                      {overpaid ? (
-                        <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
-                          <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-orange-700">Overpaid</div>
-                          <div className="font-condensed text-lg font-bold text-ppp-orange-700" title={`$${Math.round(Math.abs(diff)).toLocaleString()}`}>
-                            {fmtCommissionDollars(Math.abs(diff))}
-                          </div>
-                          <p className="text-[10px] text-ppp-orange-700 mt-0.5">
-                            Draw &gt; commissions earned this FY
-                          </p>
+                      <div className={[
+                        "rounded-lg px-2.5 py-2",
+                        overpaid ? "bg-ppp-orange-50 border border-ppp-orange-100" : "bg-ppp-green-50 border border-ppp-green-100",
+                      ].join(" ")}>
+                        <div className={[
+                          "text-[10px] uppercase tracking-wide font-semibold leading-tight",
+                          overpaid ? "text-ppp-orange-700" : "text-ppp-green-700",
+                        ].join(" ")}>
+                          {overpaid ? "Overpaid (Draw > Earned)" : "Net Earned"}
                         </div>
-                      ) : (
-                        <div className="bg-ppp-green-50 border border-ppp-green-100 rounded-lg px-3 py-2">
-                          <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-green-700">Net Earned</div>
-                          <div className="font-condensed text-lg font-bold text-ppp-green-700" title={`$${Math.round(diff).toLocaleString()}`}>
-                            +{fmtCommissionDollars(diff)}
-                          </div>
-                          <p className="text-[10px] text-ppp-green-700 mt-0.5">
-                            Earned ahead of draw
-                          </p>
+                        <div className={[
+                          "font-condensed text-xl sm:text-2xl font-bold",
+                          overpaid ? "text-ppp-orange-700" : "text-ppp-green-700",
+                        ].join(" ")} title={`$${Math.round(diff).toLocaleString()}`}>
+                          {/* Signed display per PDF — e.g. -$1,030 when overpaid. */}
+                          {diff >= 0 ? "+" : "-"}${Math.abs(Math.round(diff)).toLocaleString()}
                         </div>
-                      )}
+                        <div className={[
+                          "text-[10px]",
+                          overpaid ? "text-ppp-orange-700" : "text-ppp-green-700",
+                        ].join(" ")}>
+                          Earned − Draw
+                        </div>
+                      </div>
                     </div>
                   );
                 })()
@@ -1666,6 +1647,130 @@ function CloseRateRow({
         {" · "}
         {stats.won}/{stats.total}
       </span>
+    </div>
+  );
+}
+
+/**
+ * 12-month revenue chart with prior-year overlay (Maloney FPRC KPI 1 style).
+ * Light bars behind, dark bars in front. Pure SVG, no chart library.
+ */
+function RevenueYoyChart({ data }: {
+  data: { monthLabel: string; monthShort: string; yearLabel: string; current: number; priorYear: number }[];
+}) {
+  if (data.length === 0) return null;
+  const maxVal = Math.max(1, ...data.flatMap((d) => [d.current, d.priorYear]));
+  // Scale to "nice" round 4-step ticks above the data max.
+  const ticks = (() => {
+    const niceMax = Math.ceil(maxVal / 10_000) * 10_000;
+    return [0, niceMax * 0.25, niceMax * 0.5, niceMax * 0.75, niceMax];
+  })();
+  const top = ticks[ticks.length - 1];
+  const chartH = 140;
+  const chartW = 100; // percent
+  const barGroupW = chartW / data.length;
+  const barW = (barGroupW * 0.38);
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-3 mb-1.5 text-[10px] text-ppp-charcoal-500">
+        <span className="inline-flex items-center gap-1">
+          <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm bg-ppp-blue-200" />
+          prior year
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm bg-ppp-navy" />
+          current year
+        </span>
+      </div>
+      <div className="relative" style={{ height: `${chartH}px` }}>
+        {/* Y-axis tick lines + labels */}
+        <div className="absolute inset-0">
+          {ticks.map((t, i) => {
+            const y = chartH - (t / top) * chartH;
+            return (
+              <div
+                key={i}
+                className="absolute left-0 right-0 border-t border-ppp-charcoal-50"
+                style={{ top: `${y}px` }}
+              >
+                <span className="absolute -top-2 -left-1 text-[9px] text-ppp-charcoal-400">
+                  {t === 0 ? "$0" : `$${Math.round(t / 1000)}k`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        {/* Bars */}
+        <svg
+          viewBox={`0 0 100 ${chartH}`}
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full"
+          style={{ height: `${chartH}px`, paddingLeft: 26 }}
+        >
+          {data.map((d, i) => {
+            const cx = i * barGroupW + barGroupW * 0.5;
+            const priorH = (d.priorYear / top) * chartH;
+            const currH = (d.current / top) * chartH;
+            return (
+              <g key={i}>
+                <rect
+                  x={cx - barW * 1.05}
+                  y={chartH - priorH}
+                  width={barW}
+                  height={priorH}
+                  fill="#bfdbfe"
+                  rx="0.6"
+                >
+                  <title>{`${d.monthLabel} (prior): $${Math.round(d.priorYear).toLocaleString()}`}</title>
+                </rect>
+                <rect
+                  x={cx + barW * 0.05}
+                  y={chartH - currH}
+                  width={barW}
+                  height={currH}
+                  fill="#0a3d52"
+                  rx="0.6"
+                >
+                  <title>{`${d.monthLabel} (current): $${Math.round(d.current).toLocaleString()}`}</title>
+                </rect>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      {/* Month labels */}
+      <div className="flex justify-between mt-1 pl-7 pr-1 text-[9px] text-ppp-charcoal-500">
+        {data.map((d, i) => (
+          <div key={i} className="flex flex-col items-center" style={{ width: `${barGroupW}%` }}>
+            <span>{d.monthShort}</span>
+            {/* Show year label only on Jan + first bucket — reduces visual noise */}
+            {(d.monthShort === "Jan" || i === 0) && (
+              <span className="text-ppp-charcoal-400">{d.yearLabel}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Money-Flow cell, Maloney FPRC style: stacked label / $ / count subtitle.
+ *  $ shows rounded ($K) with full $ in the title tooltip on hover. */
+function FlowStat({ label, amount, countLabel, warnIfNonZero = false }: {
+  label: string;
+  amount: number;
+  countLabel: string;
+  warnIfNonZero?: boolean;
+}) {
+  const fullDollar = `$${Math.round(amount).toLocaleString()}`;
+  const color = warnIfNonZero && amount > 0 ? "text-ppp-orange-700" : "text-ppp-navy";
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">{label}</div>
+      <div className={`font-condensed text-xl sm:text-2xl font-bold ${color}`} title={fullDollar}>
+        {amount === 0 ? "$0" : fullDollar}
+      </div>
+      <div className="text-[10px] text-ppp-charcoal-500">{countLabel}</div>
     </div>
   );
 }

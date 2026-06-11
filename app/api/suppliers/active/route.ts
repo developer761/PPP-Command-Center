@@ -78,14 +78,14 @@ export async function GET() {
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
       return NextResponse.json({ ok: true, suppliers }, {
-      // Stable data — supplier list only changes when admin edits in Settings
-      // (rare). 5-min private cache + 5-min stale-while-revalidate so the
-      // worker's browser serves repeat picker opens instantly without a
-      // network round-trip, then refreshes silently in the background.
-      // `private` (not `public`) because the response is auth-gated; we
-      // never want shared CDN caching across admin/worker scopes.
-      // Audit 2026-06-08.
-      headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=300" },
+      // Per Katie 2026-06-10: admin can now add a new supplier inline from
+      // the picker. Cut the cache to 30 seconds (down from 5 min) so newly-
+      // added suppliers appear quickly. The endpoint is cheap (single
+      // Supabase query) so the freshness > cache trade-off is worth it.
+      // stale-while-revalidate keeps perceived latency low after the
+      // 30-second window: workers see the cached list immediately while the
+      // browser refreshes silently.
+      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
     });
     }
 
@@ -121,14 +121,14 @@ export async function GET() {
       });
 
     return NextResponse.json({ ok: true, suppliers }, {
-      // Stable data — supplier list only changes when admin edits in Settings
-      // (rare). 5-min private cache + 5-min stale-while-revalidate so the
-      // worker's browser serves repeat picker opens instantly without a
-      // network round-trip, then refreshes silently in the background.
-      // `private` (not `public`) because the response is auth-gated; we
-      // never want shared CDN caching across admin/worker scopes.
-      // Audit 2026-06-08.
-      headers: { "Cache-Control": "private, max-age=300, stale-while-revalidate=300" },
+      // Per Katie 2026-06-10: admin can now add a new supplier inline from
+      // the picker. Cut the cache to 30 seconds (down from 5 min) so newly-
+      // added suppliers appear quickly. The endpoint is cheap (single
+      // Supabase query) so the freshness > cache trade-off is worth it.
+      // stale-while-revalidate keeps perceived latency low after the
+      // 30-second window: workers see the cached list immediately while the
+      // browser refreshes silently.
+      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
     });
   } catch (err) {
     console.error("[suppliers/active GET] unhandled:", err);
