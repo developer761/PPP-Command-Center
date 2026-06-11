@@ -231,7 +231,7 @@ export default async function RepDetailPage({
       <div>
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-ppp-charcoal-500 hover:text-ppp-blue transition-colors mb-4 sm:mb-5"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-ppp-charcoal-500 hover:text-ppp-blue transition-colors mb-4 sm:mb-5 min-h-[44px] sm:min-h-0 py-2 sm:py-0 -my-2 sm:my-0 touch-manipulation"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M19 12H5 M12 19l-7-7 7-7" />
@@ -1692,7 +1692,7 @@ function ScorecardCard({
           on phones to see the KPI definition (replaces the desktop-only
           hover tooltip on the KPI tag). */}
       <details className="mt-2 sm:mt-3">
-        <summary className="text-[10px] text-ppp-charcoal-500 cursor-pointer hover:text-ppp-blue list-none flex items-center gap-1">
+        <summary className="text-[10px] text-ppp-charcoal-500 cursor-pointer hover:text-ppp-blue list-none flex items-center gap-1 min-h-[44px] sm:min-h-0 py-2 sm:py-0 -my-1 sm:my-0 touch-manipulation">
           <span aria-hidden>ⓘ</span> What this measures
         </summary>
         <p className="text-[10px] text-ppp-charcoal-500 mt-1.5 leading-relaxed">

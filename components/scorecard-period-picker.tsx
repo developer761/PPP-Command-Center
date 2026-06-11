@@ -28,7 +28,7 @@ export default function ScorecardPeriodPicker({ value }: { value: ScorecardPerio
       <select
         value={value}
         onChange={onChange}
-        className="text-base sm:text-xs font-medium text-ppp-navy bg-white border border-ppp-charcoal-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ppp-blue-100 cursor-pointer"
+        className="text-base sm:text-xs font-medium text-ppp-navy bg-white border border-ppp-charcoal-200 rounded-md px-2 py-2.5 sm:py-1 min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue-100 cursor-pointer touch-manipulation"
       >
         {SCORECARD_PERIOD_OPTIONS.map((o) => (
           <option key={o.key} value={o.key}>

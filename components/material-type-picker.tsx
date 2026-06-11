@@ -314,7 +314,7 @@ export default function MaterialTypePicker({
                 aria-selected={!value}
                 onClick={() => pick("")}
                 className={[
-                  "w-full text-left px-3 py-2.5 sm:py-2 text-sm border-b border-ppp-charcoal-100 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation",
+                  "w-full text-left px-3 py-2.5 sm:py-2 min-h-[44px] sm:min-h-0 text-sm border-b border-ppp-charcoal-100 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation",
                   !value ? "font-semibold text-ppp-blue-700" : "text-ppp-charcoal-500 italic",
                 ].join(" ")}
               >
@@ -333,7 +333,7 @@ export default function MaterialTypePicker({
                     <button
                       type="button"
                       onClick={() => toggleGroup(g.label)}
-                      className="w-full flex items-center justify-between px-3 py-2.5 sm:py-2 text-xs font-semibold uppercase tracking-wider text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation"
+                      className="w-full flex items-center justify-between px-3 py-2.5 sm:py-2 min-h-[44px] sm:min-h-0 text-xs font-semibold uppercase tracking-wider text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation"
                       aria-expanded={isExpanded}
                     >
                       <span className="text-left flex items-center gap-2">
@@ -369,7 +369,7 @@ export default function MaterialTypePicker({
                                 aria-selected={selected}
                                 onClick={() => pick(m.value)}
                                 className={[
-                                  "w-full text-left px-5 py-2.5 sm:py-2 text-sm border-t border-ppp-charcoal-50 first:border-t-0 hover:bg-ppp-blue-50/60 active:bg-ppp-blue-50 transition-colors touch-manipulation",
+                                  "w-full text-left px-5 py-2.5 sm:py-2 min-h-[44px] sm:min-h-0 text-sm border-t border-ppp-charcoal-50 first:border-t-0 hover:bg-ppp-blue-50/60 active:bg-ppp-blue-50 transition-colors touch-manipulation",
                                   selected ? "font-semibold text-ppp-blue-700 bg-ppp-blue-50/40" : "text-ppp-charcoal",
                                 ].join(" ")}
                               >

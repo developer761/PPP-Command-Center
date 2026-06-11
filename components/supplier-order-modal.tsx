@@ -1382,7 +1382,10 @@ function FulfillmentChoice({
       type="button"
       onClick={onSelect}
       className={[
-        "text-left px-3 py-2.5 rounded-lg border text-xs transition-colors",
+        // min-h-[44px] iOS HIG floor on mobile; collapses to natural height
+        // on desktop. Delivery/Pickup toggle is a primary action — gets the
+        // full thumb-reach surface on phones.
+        "text-left px-3 py-2.5 min-h-[44px] sm:min-h-0 rounded-lg border text-xs transition-colors touch-manipulation",
         selected
           ? "bg-ppp-blue-50 border-ppp-blue ring-2 ring-ppp-blue/20"
           : "bg-white border-ppp-charcoal-100 hover:bg-ppp-charcoal-50",
@@ -1464,7 +1467,7 @@ function PickupLocationPicker({
           if (v === OTHER) onChange(value && !knownMatch ? value : " ");
           else onChange(v);
         }}
-        className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+        className="w-full px-3 py-2.5 sm:py-2 min-h-[44px] sm:min-h-0 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
       >
         {locations.length > 1 && <option value="">Pick a location…</option>}
         {locations.map((loc) => (
