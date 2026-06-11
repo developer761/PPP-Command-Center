@@ -30,6 +30,9 @@ type CandidateRow = {
     pickup_locations: Array<{ name: string; address: string }>;
     preferred_template_key: string | null;
     is_active: boolean;
+    phone_only?: boolean;
+    phone_number?: string | null;
+    pickup_default?: boolean;
     updated_at: string;
   } | null;
   colorsInCatalog: number;
@@ -293,6 +296,9 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
     candidate.settings?.pickup_locations ?? []
   );
   const [isActive, setIsActive] = useState(candidate.settings?.is_active ?? true);
+  const [phoneOnly, setPhoneOnly] = useState(Boolean(candidate.settings?.phone_only));
+  const [phoneNumber, setPhoneNumber] = useState(candidate.settings?.phone_number ?? "");
+  const [pickupDefault, setPickupDefault] = useState(Boolean(candidate.settings?.pickup_default));
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -301,9 +307,12 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
       orderEmail !== (candidate.settings?.order_email ?? "") ||
       accountNumber !== (candidate.settings?.ppp_account_number ?? "") ||
       JSON.stringify(pickupLocations) !== JSON.stringify(candidate.settings?.pickup_locations ?? []) ||
-      isActive !== (candidate.settings?.is_active ?? true)
+      isActive !== (candidate.settings?.is_active ?? true) ||
+      phoneOnly !== Boolean(candidate.settings?.phone_only) ||
+      phoneNumber !== (candidate.settings?.phone_number ?? "") ||
+      pickupDefault !== Boolean(candidate.settings?.pickup_default)
     );
-  }, [orderEmail, accountNumber, pickupLocations, isActive, candidate.settings]);
+  }, [orderEmail, accountNumber, pickupLocations, isActive, phoneOnly, phoneNumber, pickupDefault, candidate.settings]);
 
   const handleSave = async () => {
     if (!isDirty || saving) return;
@@ -320,6 +329,9 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
           ppp_account_number: accountNumber.trim() || null,
           pickup_locations: pickupLocations.filter((p) => p.name.trim()),
           is_active: isActive,
+          phone_only: phoneOnly,
+          phone_number: phoneNumber.trim() || null,
+          pickup_default: pickupDefault,
         }),
       });
       const data = await res.json();
@@ -472,6 +484,41 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
               />
               <span className="text-sm text-ppp-charcoal">
                 {isActive ? "Active — appears in Supplier Order Modal" : "Inactive — hidden from order workflow"}
+              </span>
+            </label>
+          </Field>
+
+          <Field label="Phone-only supplier">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={phoneOnly}
+                onChange={(e) => setPhoneOnly(e.target.checked)}
+              />
+              <span className="text-sm text-ppp-charcoal">
+                {phoneOnly ? "Phone orders only — Send button hidden, Call CTA shown" : "Email orders (default)"}
+              </span>
+            </label>
+            {phoneOnly && (
+              <input
+                type="text"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="(212) 555-0123"
+                className="mt-2 w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              />
+            )}
+          </Field>
+
+          <Field label="Default to pickup">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pickupDefault}
+                onChange={(e) => setPickupDefault(e.target.checked)}
+              />
+              <span className="text-sm text-ppp-charcoal">
+                {pickupDefault ? "Order modal opens with Pickup pre-selected (NYC suppliers)" : "Address-based default (NYC zips → pickup, else delivery)"}
               </span>
             </label>
           </Field>

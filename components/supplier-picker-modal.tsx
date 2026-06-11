@@ -20,6 +20,10 @@ type ActiveSupplier = {
   pppAccountNumber: string | null;
   isBMRetailer: boolean;
   hasPickupLocations: boolean;
+  phoneOnly: boolean;
+  phoneNumber: string | null;
+  pickupDefault: boolean;
+  isActive: boolean;
 };
 
 export default function SupplierPickerModal({
@@ -180,27 +184,54 @@ export default function SupplierPickerModal({
                 <button
                   type="button"
                   onClick={() => { onPick(s); onClose(); }}
-                  className="w-full text-left px-5 py-3 hover:bg-ppp-charcoal-50/50 transition-colors"
+                  className={[
+                    // Larger tap target on mobile (min-h 64px), normal on desktop.
+                    "w-full text-left px-4 sm:px-5 py-3.5 sm:py-3 min-h-[64px] sm:min-h-0",
+                    "hover:bg-ppp-blue-50/40 active:bg-ppp-blue-50 transition-colors touch-manipulation",
+                    !s.isActive ? "opacity-70" : "",
+                  ].join(" ")}
                 >
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-ppp-charcoal flex items-center gap-2 flex-wrap">
-                        {s.name}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[15px] sm:text-sm font-semibold text-ppp-charcoal flex items-center gap-1.5 flex-wrap leading-tight">
+                        <span className="truncate">{s.name}</span>
                         {s.isBMRetailer && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-orange-50 text-ppp-orange-700 border border-ppp-orange-100">
-                            BM Retailer
+                            BM
+                          </span>
+                        )}
+                        {s.phoneOnly && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-blue-50 text-ppp-blue-700 border border-ppp-blue-100" title="Phone orders only — no email">
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.35 1.85.59 2.81.72A2 2 0 0 1 22 16.92z" />
+                            </svg>
+                            Phone
+                          </span>
+                        )}
+                        {s.pickupDefault && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-charcoal-50 text-ppp-charcoal-700 border border-ppp-charcoal-100" title="Pickup is the default for this supplier">
+                            Pickup
+                          </span>
+                        )}
+                        {!s.isActive && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-charcoal-50 text-ppp-charcoal-500 border border-ppp-charcoal-100" title="Soft-retired in Settings. Still usable.">
+                            Inactive
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex flex-wrap items-center gap-x-2">
-                        <span className="truncate">{s.orderEmail}</span>
+                      <div className="text-[12px] sm:text-[11px] text-ppp-charcoal-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        {s.phoneOnly && s.phoneNumber ? (
+                          <span className="font-mono text-ppp-blue-700">{s.phoneNumber}</span>
+                        ) : (
+                          <span className="truncate min-w-0">{s.orderEmail}</span>
+                        )}
                         {s.pppAccountNumber && (
                           <>
                             <span>·</span>
                             <span className="font-mono">Acct {s.pppAccountNumber}</span>
                           </>
                         )}
-                        {s.hasPickupLocations && (
+                        {s.hasPickupLocations && !s.pickupDefault && (
                           <>
                             <span>·</span>
                             <span>Pickup configured</span>
@@ -208,7 +239,7 @@ export default function SupplierPickerModal({
                         )}
                       </div>
                     </div>
-                    <span className="shrink-0 text-ppp-blue text-xs">→</span>
+                    <span className="shrink-0 text-ppp-blue text-lg leading-none" aria-hidden>→</span>
                   </div>
                 </button>
               </li>

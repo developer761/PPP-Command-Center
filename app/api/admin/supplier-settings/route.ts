@@ -29,6 +29,9 @@ type SupplierSettingsRow = {
   pickup_locations: Array<{ name: string; address: string }>;
   preferred_template_key: string | null;
   is_active: boolean;
+  phone_only?: boolean;
+  phone_number?: string | null;
+  pickup_default?: boolean;
   updated_at: string;
 };
 
@@ -146,6 +149,9 @@ export async function PUT(request: Request) {
     ppp_account_number?: string | null;
     pickup_locations?: Array<{ name: string; address: string }> | null;
     is_active?: boolean;
+    phone_only?: boolean;
+    phone_number?: string | null;
+    pickup_default?: boolean;
   };
   try {
     body = await request.json();
@@ -190,6 +196,15 @@ export async function PUT(request: Request) {
   }
   if ("is_active" in body) {
     row.is_active = body.is_active;
+  }
+  if ("phone_only" in body) {
+    row.phone_only = body.phone_only;
+  }
+  if ("phone_number" in body) {
+    row.phone_number = body.phone_number?.trim() || null;
+  }
+  if ("pickup_default" in body) {
+    row.pickup_default = body.pickup_default;
   }
 
   const { error } = await sb

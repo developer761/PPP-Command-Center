@@ -68,6 +68,13 @@ type Draft = {
   sentToEmail: string | null;
   pppAccountNumber: string | null;
   pickupLocations: Array<{ name: string; address: string }>;
+  /** Phone-only suppliers (Janovic): modal swaps the Send button for a Call
+   *  CTA and the order content stays composed for copy-to-clipboard. */
+  phoneOnly?: boolean;
+  phoneNumber?: string | null;
+  /** When true, modal opens with fulfillment=pickup pre-selected (Katie 2026-
+   *  06-10: NYC suppliers don't generally deliver). */
+  pickupDefault?: boolean;
   skippedSurfaces?: Array<{ roomLabel: string; surface: string }>;
   /** WO-context-filtered Material Type allowlist. Empty array = no filter
    *  (mixed/unknown WO). Passed to the per-color override picker so an
@@ -284,17 +291,19 @@ export default function SupplierOrderModal({
     setMaterialTypeOverrides(new Map());
   }, [workOrderId, supplierAccountId]);
 
-  // NYC pickup default (Katie 2026-06-04: "5 boroughs only"). Detect when
-  // the resolved delivery address falls in NYC ZIP ranges and auto-flip
-  // fulfillment to "pickup" — UNLESS admin already touched the toggle, in
-  // which case their explicit choice wins. Re-runs whenever a fresh draft
-  // resolves a new delivery address (e.g. admin typed a new manual address
-  // and the /draft endpoint re-resolved it).
+  // Pickup default — three sources, descending priority:
+  //   1. Supplier-level pickup_default (Katie 2026-06-10: NYC suppliers like
+  //      Janovic, Ricciardi default to pickup regardless of delivery address).
+  //   2. NYC delivery address (Katie 2026-06-04: 5 boroughs).
+  //   3. Admin's manual toggle (always wins once they touch it).
+  // Admin's explicit choice always wins; the auto-flip only fires before they
+  // touch the toggle.
   useEffect(() => {
     if (!draft) return;
     const nyc = isNycAddress(draft.deliveryAddress);
     setIsNycDelivery(nyc);
-    if (nyc && !adminTouchedFulfillment.current && fulfillment !== "pickup") {
+    const shouldPickup = draft.pickupDefault || nyc;
+    if (shouldPickup && !adminTouchedFulfillment.current && fulfillment !== "pickup") {
       setFulfillment("pickup");
     }
   }, [draft, fulfillment]);
@@ -1242,7 +1251,35 @@ export default function SupplierOrderModal({
                   )}
                 </div>
               </div>
-              {(() => {
+              {/* Phone-only suppliers (Janovic) — replace Send button with a
+                  Call CTA. The order content is still composed (so admin can
+                  use Copy to phone the PO over verbally) but no email goes
+                  out. */}
+              {draft?.phoneOnly ? (
+                <div className="flex flex-col items-end gap-1">
+                  {draft.phoneNumber ? (
+                    <a
+                      href={`tel:${draft.phoneNumber.replace(/[^0-9+]/g, "")}`}
+                      className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-700 transition-colors"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.72 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.35 1.85.59 2.81.72A2 2 0 0 1 22 16.92z" />
+                      </svg>
+                      Call {draft.phoneNumber}
+                    </a>
+                  ) : (
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-charcoal-100 text-ppp-charcoal-500 text-sm font-semibold cursor-not-allowed"
+                      title="Add this supplier's phone number in Settings → Suppliers"
+                    >
+                      Phone number not set
+                    </span>
+                  )}
+                  <span className="text-[10px] text-ppp-charcoal-500 max-w-xs text-right">
+                    {supplierName} takes phone orders only. Use Copy above + read it to them.
+                  </span>
+                </div>
+              ) : (() => {
                 // Send is blocked when there's literally nothing to order:
                 // zero paint colors AND zero extras (and not a special-
                 // instructions-only general supplies note). Catches the

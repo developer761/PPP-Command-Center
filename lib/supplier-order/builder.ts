@@ -197,6 +197,13 @@ export type SupplierOrderDraft = {
    *  instead of typing the address every time. Empty array = no curated
    *  locations, modal falls back to a text input. */
   pickupLocations: PickupLocation[];
+  /** Supplier accepts phone orders only — modal hides email Send/Copy and
+   *  shows a "Call this supplier" panel with phoneNumber. */
+  phoneOnly: boolean;
+  phoneNumber: string | null;
+  /** Supplier defaults to pickup regardless of delivery address (NYC suppliers
+   *  per Katie 2026-06-10). When true the modal opens with fulfillment=pickup. */
+  pickupDefault: boolean;
   /** Material Type allowlist filtered for THIS WO's interior/exterior context.
    *  The customer form's job-level picker already filters; the admin's per-
    *  color override picker in the modal needs the same allowlist so an admin
@@ -682,11 +689,16 @@ function readableDate(iso: string): string {
 
 export type PickupLocation = { name: string; address: string };
 
-/** Read supplier_settings row for the target supplier (best-effort). */
+/** Read supplier_settings row for the target supplier (best-effort).
+ *  Returns the phone/pickup flags too so the order-modal can switch flows
+ *  for phone-only suppliers (Janovic) and NYC pickup-default suppliers. */
 async function loadSupplierSettings(supplierAccountId: string): Promise<{
   orderEmail: string | null;
   pppAccountNumber: string | null;
   pickupLocations: PickupLocation[];
+  phoneOnly: boolean;
+  phoneNumber: string | null;
+  pickupDefault: boolean;
 }> {
   try {
     const sb = createClient(
@@ -694,12 +706,24 @@ async function loadSupplierSettings(supplierAccountId: string): Promise<{
       process.env.SUPABASE_SECRET_KEY!,
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
-    const { data } = await sb
+    // Rich SELECT first, fall back to base if the new columns aren't migrated.
+    let row: Record<string, unknown> | null = null;
+    const rich = await sb
       .from("supplier_settings")
-      .select("order_email, ppp_account_number, pickup_locations")
+      .select("order_email, ppp_account_number, pickup_locations, phone_only, phone_number, pickup_default")
       .eq("supplier_account_id", supplierAccountId)
       .maybeSingle();
-    const raw = data?.pickup_locations;
+    if (rich.error) {
+      const base = await sb
+        .from("supplier_settings")
+        .select("order_email, ppp_account_number, pickup_locations")
+        .eq("supplier_account_id", supplierAccountId)
+        .maybeSingle();
+      row = (base.data as Record<string, unknown> | null) ?? null;
+    } else {
+      row = (rich.data as Record<string, unknown> | null) ?? null;
+    }
+    const raw = row?.pickup_locations;
     const pickupLocations: PickupLocation[] = Array.isArray(raw)
       ? (raw as unknown[])
           .filter((p): p is { name: string; address: string } =>
@@ -710,13 +734,23 @@ async function loadSupplierSettings(supplierAccountId: string): Promise<{
           .filter((p) => p.name.trim().length > 0)
       : [];
     return {
-      orderEmail: (data?.order_email as string | null) ?? null,
-      pppAccountNumber: (data?.ppp_account_number as string | null) ?? null,
+      orderEmail: (row?.order_email as string | null) ?? null,
+      pppAccountNumber: (row?.ppp_account_number as string | null) ?? null,
       pickupLocations,
+      phoneOnly: Boolean(row?.phone_only),
+      phoneNumber: (row?.phone_number as string | null) ?? null,
+      pickupDefault: Boolean(row?.pickup_default),
     };
   } catch (err) {
     console.warn(`[supplier-order/builder] loadSupplierSettings failed:`, err);
-    return { orderEmail: null, pppAccountNumber: null, pickupLocations: [] };
+    return {
+      orderEmail: null,
+      pppAccountNumber: null,
+      pickupLocations: [],
+      phoneOnly: false,
+      phoneNumber: null,
+      pickupDefault: false,
+    };
   }
 }
 
@@ -739,6 +773,9 @@ export async function buildSupplierOrderDraft(
         orderEmail: generalSuppliesEmail(),
         pppAccountNumber: null,
         pickupLocations: [] as Array<{ name: string; address: string }>,
+        phoneOnly: false,
+        phoneNumber: null,
+        pickupDefault: false,
       }
     : await loadSupplierSettings(input.supplierAccountId);
 
@@ -924,6 +961,9 @@ export async function buildSupplierOrderDraft(
     sentToEmail: settings.orderEmail,
     pppAccountNumber: settings.pppAccountNumber,
     pickupLocations: settings.pickupLocations,
+    phoneOnly: settings.phoneOnly,
+    phoneNumber: settings.phoneNumber,
+    pickupDefault: settings.pickupDefault,
     allowedMaterialTypeValues,
   };
 }
