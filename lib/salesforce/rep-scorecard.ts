@@ -52,7 +52,7 @@ export type RepScorecard = {
     rankOf: number | null;                 // denominator for rank ("3 of 24")
   };
 
-  // KPI 2 — Gross Margin (completed WOs)
+  // KPI 6 — Gross Margin (completed WOs)
   margin: {
     avgGmPct: number | null;               // AVG(WO.Gross_Margin_Percent__c) over completed WOs in period
     totalGpDollars: number;                // SUM(WO.GrossProfit__c)
@@ -61,7 +61,7 @@ export type RepScorecard = {
     vsTarget: number | null;               // avgGmPct − target (percentage-points)
   };
 
-  // KPI 3 — Close Rate (Opps CREATED in period; won fraction)
+  // KPI 4A — Close Rate (Opps CREATED in period; won fraction)
   closeRate: {
     overall: { won: number; total: number; pct: number | null };
     selfGen: { won: number; total: number; pct: number | null };
@@ -80,7 +80,7 @@ export type RepScorecard = {
     vsGoal: number | null;
   };
 
-  // KPI 4 — Pricing Discipline (completed WOs, attendance-logged subset)
+  // KPI 5 — Pricing Discipline (completed WOs, attendance-logged subset)
   pricing: {
     revPerLaborDayProjected: number | null; // $ / projected labor day
     revPerLaborDayActual: number | null;    // $ / actual labor day
@@ -111,7 +111,7 @@ export type RepScorecard = {
     slowEstimatePct: number | null;
   };
 
-  // KPI 6 — Pipeline Health (SNAPSHOT, not period-scoped). NOTE: scoped to the
+  // KPI 3 — Pipeline Management (SNAPSHOT, not period-scoped). NOTE: scoped to the
   // snapshot's 365-day CreatedDate window — opps created >12 months ago are not
   // present (~2/3 of all-time "open" opps on PPP, but those are overwhelmingly
   // dead deals nobody closed). UI labels this "last 12 months". See §A.
@@ -192,9 +192,10 @@ function isCompletedWo(w: SnapshotWorkOrder): boolean {
   return COMPLETED_STATUSES.has((w.status ?? "").toLowerCase());
 }
 
-// FPRC KPI 2 (GM) + KPI 5 (Pricing) use only the strict pair — Balance-Owed
-// jobs report separately on PPP's cards. Attendance gauge (KPI 4b) keeps the
-// broader COMPLETED_STATUSES so completeness isn't artificially deflated.
+// FPRC KPI 6 (Gross Margin) + KPI 5 (Pricing) use only the strict pair —
+// Balance-Owed jobs report separately on PPP's cards. The attendance-quality
+// gauge keeps the broader COMPLETED_STATUSES so completeness isn't
+// artificially deflated.
 const GM_PRICING_STATUSES = new Set(["closed", "complete paid in full"]);
 function isGmPricingCompletedWo(w: SnapshotWorkOrder): boolean {
   return GM_PRICING_STATUSES.has((w.status ?? "").toLowerCase());
@@ -211,8 +212,8 @@ function isSelfGen(o: SnapshotOpp): boolean {
 }
 
 /**
- * Choose a period anchor for each WO — prefer EndDate (PPP's KPI 2 anchor),
- * fall back to closeDate when EndDate is null (common on older WOs).
+ * Choose a period anchor for each WO — prefer EndDate (PPP's Gross Margin
+ * anchor), fall back to closeDate when EndDate is null (common on older WOs).
  */
 function woPeriodAnchor(w: SnapshotWorkOrder): string | null {
   return w.endDate ?? w.closeDate;
@@ -371,7 +372,7 @@ function deriveRepScorecardInner(
     }
   }
 
-  /* ─ KPI 3b ─ Sales Mix ($ share, CloseDate in period) ─ */
+  /* ─ KPI 4B ─ Sales Mix ($ share, CloseDate in period) ─ */
   let selfDollars = 0, mktDollars = 0;
   for (const o of snapshot.opportunities) {
     if (o.ownerId !== repId) continue;
