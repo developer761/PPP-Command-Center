@@ -2,11 +2,14 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MATERIAL_TYPES, filterMaterialTypesForWorkOrder, type MaterialType } from "@/lib/customer-form/material-types";
+import { MATERIAL_TYPES, type MaterialType } from "@/lib/customer-form/material-types";
 
 /**
- * Material Type picker with three asks Katie 2026-06-05 called out for the
- * incoming ~100-product list:
+ * Material Type picker — paint product-line dropdown for both the customer
+ * color form and the admin per-color override on the supplier-order modal.
+ *
+ * Sized for Katie's 2026-06-10 24-item list (Primer / BM Interior / BM
+ * Exterior / Sherwin Williams / Other) with these affordances:
  *
  *  1. **Categorized + collapsible groups** — BM Interior, BM Exterior, SW,
  *     Behr, etc. all collapsed by default once the list grows; click a

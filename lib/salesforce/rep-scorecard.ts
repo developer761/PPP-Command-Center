@@ -1,21 +1,62 @@
 /**
  * Per-rep KPI scorecard — derived from a SalesforceSnapshot.
  *
- * Implements all 9 KPIs from PPP's REP_PERFORMANCE_KPIS.md (the spec PPP staff
- * already read in their FPRC reports). Pure functions, no SF calls.
+ * Implements all 9 KPIs from PPP's FPRC (Field Performance Report Card)
+ * spec — the Maloney FY2026 Q1 PDF Katie shared 2026-06-10 is the
+ * pixel-target. Pure functions, no SF calls.
  *
- * Period model: fiscal-aware. Pass either a fiscal year (+ optional quarter)
- * — recommended for matching PPP's reports — or a raw {start, end} range.
+ * ───────────────────────────────────────────────────────────────────
+ * Period model — two-window cohort + period (Maloney spec).
+ * ───────────────────────────────────────────────────────────────────
  *
- *   deriveRepScorecard(snapshot, repId, { fy: 2026, q: 3 })
- *   deriveRepScorecard(snapshot, repId, { fy: 2026 })             // full FY
- *   deriveRepScorecard(snapshot, repId, { start, end })
+ *   period  = the user's selected period (PFQ / CFQ / PFY / CFY or
+ *             a raw start+end range)
+ *   cohort  = the FY containing `period` — the "Opp Created CFY"
+ *             window. For full-FY periods (CFY / PFY), cohort = period.
  *
- * Every KPI is null-tolerant: returns null for the metric (not 0) when the
- * required data isn't populated. UI must distinguish "no data" from "$0".
+ * Almost every Maloney KPI says "Opp Created CFY · Close Date PFQ"
+ * (KPI 1, 2, 4A, 4B) or "Opp Close Date CFY · WO End Date PFQ" (KPI 5,
+ * 6, 7, 8). The derive runs each with BOTH `inRange(…, cohort)` AND
+ * `inRange(…, period)`. KPI 9 (Commissions) is CFY-only — no period
+ * filter. KPI 3 (Pipeline) is snapshot-windowed open-opps, not
+ * period-scoped (PPP's 3-4 week sales cycle means opps >12mo open are
+ * dead deals; the snapshot already constrains to the last 365 days).
  *
- * Audit rule: every number must match PPP's FPRC_* reports for the same
- * (rep, period). The /api/admin/rep-validation endpoint walks the deltas.
+ * ───────────────────────────────────────────────────────────────────
+ * Period entry-point shapes
+ * ───────────────────────────────────────────────────────────────────
+ *
+ *   deriveRepScorecard(snapshot, repId, { fy: 2026, q: 3 })  // CFQ/PFQ
+ *   deriveRepScorecard(snapshot, repId, { fy: 2026 })        // full FY
+ *   deriveRepScorecard(snapshot, repId, { start, end })      // raw range
+ *
+ * ───────────────────────────────────────────────────────────────────
+ * Null-tolerance contract
+ * ───────────────────────────────────────────────────────────────────
+ *
+ * Every metric returns null (not 0) when the source data isn't
+ * populated. The UI must distinguish "no data" from "$0" — a brand new
+ * rep with no quota set is NOT 0% to goal. Helpers `safePct()` and the
+ * graceful-null branches handle the common cases.
+ *
+ * ───────────────────────────────────────────────────────────────────
+ * Audit rule
+ * ───────────────────────────────────────────────────────────────────
+ *
+ * Every number this function returns must reconcile to PPP's FPRC_*
+ * Salesforce reports for the same (rep, period). The /api/admin/
+ * rep-validation endpoint walks the deltas; ship deltas at zero.
+ *
+ * ───────────────────────────────────────────────────────────────────
+ * File layout (top to bottom)
+ * ───────────────────────────────────────────────────────────────────
+ *
+ *   1. Imports + types (ScorecardPeriod, RepScorecard)
+ *   2. Internal helpers (rangeFor, cohortRangeFor, priorYearSameRange,
+ *      inRange, safePct, isSelfGen, isCompletedWo, etc.)
+ *   3. Public entry point `deriveRepScorecard` (memoized)
+ *   4. `deriveRepScorecardInner` — the actual KPI derivation, blocks
+ *      labeled "KPI N" in source order matching the UI grid order.
  */
 
 import {

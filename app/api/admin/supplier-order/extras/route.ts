@@ -5,8 +5,9 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 
 /**
- * Returns the active supplier_extras catalog for the 20-item dropdown in
- * the Supplier Order Draft Modal.
+ * Returns the active supplier_extras catalog for the worker dropdown in
+ * the Supplier Order Draft Modal (~20 items as of Katie's 2026-06-10
+ * reseed — see supabase/migrations/017_supplier_extras_katie_2026_06_10.sql).
  *
  *   GET /api/admin/supplier-order/extras?supplierAccountId=<id>
  *
