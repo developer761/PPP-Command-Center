@@ -264,6 +264,22 @@ export async function POST(request: Request) {
   const id = `custom_${slug}_${suffix}`;
 
   const sb = adminClient();
+  // Duplicate-name guard. Without this, admin can typo-create the same
+  // supplier twice and the picker shows two rows for one real vendor.
+  // Case-insensitive compare so "BM Ronkonkoma" vs "bm ronkonkoma" collides.
+  const { data: existingByName, error: dupCheckErr } = await sb
+    .from("supplier_settings")
+    .select("supplier_account_id, supplier_name")
+    .ilike("supplier_name", name);
+  if (dupCheckErr) {
+    return NextResponse.json({ error: "dup_check_failed", message: dupCheckErr.message }, { status: 500 });
+  }
+  if (existingByName && existingByName.length > 0) {
+    return NextResponse.json({
+      error: "duplicate_name",
+      message: `A supplier named "${existingByName[0].supplier_name}" already exists. Open Settings → Suppliers and edit that row instead.`,
+    }, { status: 409 });
+  }
   const { error } = await sb
     .from("supplier_settings")
     .insert({

@@ -801,9 +801,10 @@ export default async function RepDetailPage({
             </ScorecardCard>
 
             {/* KPI 7 — Production Quality
-                Full-width per Maloney FPRC PDF page 2. Gets the whole row so
-                the 4-stat layout breathes. Reviews graceful with 0/0. */}
-            <div className="lg:col-span-3">
+                Full-width per Maloney FPRC PDF page 2. Spans the full row at
+                both tablet (sm/md = 2-col grid) and desktop (lg = 3-col grid)
+                so the 4-stat layout breathes. */}
+            <div className="col-span-2 lg:col-span-3">
             <ScorecardCard
               title="Production Quality"
               kpiTag="KPI 7"
@@ -851,9 +852,9 @@ export default async function RepDetailPage({
             </div>
 
             {/* KPI 8 — Money Flow
-                Spans 2 cols of the outer 3-col grid so the 4 stats have room
-                to breathe instead of crashing into each other. Matches the
-                Maloney FPRC page-2 layout (KPI 8 wider, KPI 9 narrower). */}
+                Half row at sm/md (sits next to KPI 9 with 2x2 inner), 2/3 row
+                at lg+ (3-col grid → 4-col inner row). Matches Maloney FPRC
+                page-2 layout (KPI 8 wider than KPI 9 on desktop). */}
             <div className="lg:col-span-2">
             <ScorecardCard
               title="Money Flow"
@@ -1792,12 +1793,28 @@ function RevenueYoyChart({ data }: {
           })}
         </svg>
       </div>
-      {/* Month labels */}
-      <div className="flex justify-between mt-1 pl-7 pr-1 text-[9px] text-ppp-charcoal-500">
+      {/* Month labels — every-other on mobile (sm:hidden vs hidden sm:flex)
+          so 12 labels don't overlap below 480px. Tablet+ shows all 12. */}
+      <div className="flex justify-between mt-1 pl-7 pr-1 text-[9px] text-ppp-charcoal-500 sm:hidden">
+        {data.map((d, i) => (
+          <div key={i} className="flex flex-col items-center" style={{ width: `${barGroupW}%` }}>
+            {i % 2 === 0 ? (
+              <>
+                <span>{d.monthShort}</span>
+                {(d.monthShort === "Jan" || i === 0) && (
+                  <span className="text-ppp-charcoal-400">{d.yearLabel}</span>
+                )}
+              </>
+            ) : (
+              <span aria-hidden>·</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="hidden sm:flex justify-between mt-1 pl-7 pr-1 text-[9px] text-ppp-charcoal-500">
         {data.map((d, i) => (
           <div key={i} className="flex flex-col items-center" style={{ width: `${barGroupW}%` }}>
             <span>{d.monthShort}</span>
-            {/* Show year label only on Jan + first bucket — reduces visual noise */}
             {(d.monthShort === "Jan" || i === 0) && (
               <span className="text-ppp-charcoal-400">{d.yearLabel}</span>
             )}
