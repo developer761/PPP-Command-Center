@@ -210,7 +210,7 @@ export async function GET() {
       label: "Paint coverage settings (migration 013)",
       status: "ok",
       group: "platform",
-      message: "paint_coverage_config table exists — admin can tune the gallon calculator from /dashboard/settings/coverage without a deploy.",
+      message: "paint_coverage_config table exists — drives the per-color gallon preview workers see on Materials. (Admin tuning UI retired 2026-06-10; constants now live in code defaults.)",
     });
   } catch (err) {
     checks.push({
