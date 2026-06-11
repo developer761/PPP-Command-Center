@@ -68,11 +68,16 @@ export type RepScorecard = {
     marketing: { won: number; total: number; pct: number | null };
   };
 
-  // KPI 3b — Sales Mix (self-gen $ share, won + CloseDate in period)
+  // KPI 4B — Sales Mix (self-gen $ share, won + CloseDate in period)
+  // Per Katie 2026-06-10: now compares Self-Gen share vs goal (User.Self_Gen_Sales_Goal_Percent__c).
   salesMix: {
     selfGenDollars: number;
     marketingDollars: number;
     selfGenSharePct: number | null;
+    /** Per-rep target (0-100). null when not configured on the User record. */
+    goalPct: number | null;
+    /** Actual − goal in percentage points; positive = ahead, negative = behind. */
+    vsGoal: number | null;
   };
 
   // KPI 4 — Pricing Discipline (completed WOs, attendance-logged subset)
@@ -90,11 +95,13 @@ export type RepScorecard = {
     completenessPct: number | null;         // logged / completed
   };
 
-  // KPI 5 — Appointments Activity (Opp.AppointmentDate__c in period)
+  // KPI 2 — Appointments Activity (Opp.AppointmentDate__c in period)
+  // Per Katie 2026-06-10: raw cancelled count surfaced next to %.
   appointments: {
     scheduled: number;                      // total opps with AppointmentDate in period
     run: number;                            // scheduled AND not cancelled
     estimatesSentPct: number | null;        // of run, % with Estimate_Sent__c
+    cancelledCount: number;                 // raw count of cancelled appts in period
     cancelledPct: number | null;            // of scheduled, % cancelled
     /** Avg days from appointmentDate → dateEstimateSent for appts that got
      *  an estimate. Lower is better — slow estimates kill conversion. */
@@ -126,10 +133,18 @@ export type RepScorecard = {
   };
 
   // KPI 8 — Money Flow (Transaction__c, Date__c in period)
+  // Per Katie 2026-06-10: record counts surfaced alongside $ figures, plus
+  // Balance Owed (SUM(WO.BalanceOwed__c) on completed WOs in period).
   moneyFlow: {
     moneyCollected: number;                 // SUM Payment_In
+    moneyCollectedCount: number;            // # of Payment_In transactions
     laborPaidOut: number;                   // SUM Payment_Out + PayeeType=Labor_Company
+    laborPaidOutCount: number;              // # of labor payouts
     purchases: number;                      // SUM Purchase
+    purchasesCount: number;                 // # of purchases
+    /** SUM(WO.BalanceOwed__c) on completed WOs (EndDate in period). */
+    balanceOwed: number;
+    balanceOwedCount: number;               // # of completed WOs contributing to balanceOwed
   };
 
   // KPI 9 — Commissions
@@ -526,14 +541,37 @@ function deriveRepScorecardInner(
 
   /* ─ KPI 8 ─ Money Flow ─ */
   let moneyCollected = 0;
+  let moneyCollectedCount = 0;
   let laborPaidOut = 0;
+  let laborPaidOutCount = 0;
   let purchases = 0;
+  let purchasesCount = 0;
   for (const t of snapshot.transactions) {
     if (t.workOrderOwnerId !== repId) continue;
     if (!inRange(t.date, start, end)) continue;
-    if (t.recordType === "Payment_In") moneyCollected += t.amount;
-    else if (t.recordType === "Payment_Out" && t.payeeType === "Labor_Company") laborPaidOut += t.amount;
-    else if (t.recordType === "Purchase") purchases += t.amount;
+    if (t.recordType === "Payment_In") {
+      moneyCollected += t.amount;
+      moneyCollectedCount += 1;
+    } else if (t.recordType === "Payment_Out" && t.payeeType === "Labor_Company") {
+      laborPaidOut += t.amount;
+      laborPaidOutCount += 1;
+    } else if (t.recordType === "Purchase") {
+      purchases += t.amount;
+      purchasesCount += 1;
+    }
+  }
+  // Balance owed — SUM(WO.BalanceOwed__c) over completed WOs in period. Mirrors
+  // KPI 7's completion window so the figure aligns with "jobs completed" above.
+  let balanceOwed = 0;
+  let balanceOwedCount = 0;
+  for (const w of snapshot.workOrders) {
+    if (w.ownerId !== repId) continue;
+    const s = (w.status ?? "").toLowerCase();
+    if (s !== "closed" && s !== "complete paid in full" && s !== "complete balance owed") continue;
+    if (!inRange(woPeriodAnchor(w), start, end)) continue;
+    if (typeof w.balanceOwed !== "number" || w.balanceOwed === 0) continue;
+    balanceOwed += w.balanceOwed;
+    balanceOwedCount += 1;
   }
 
   /* ─ KPI 9 ─ Commissions ─ (CFY-to-date, NOT the single quarter) ─ */
@@ -596,11 +634,21 @@ function deriveRepScorecardInner(
       marketing: { won: mktWon, total: mktTotal, pct: safePct(mktWon, mktTotal) },
     },
 
-    salesMix: {
-      selfGenDollars: selfDollars,
-      marketingDollars: mktDollars,
-      selfGenSharePct: safePct(selfDollars, totalMixDollars),
-    },
+    salesMix: (() => {
+      const sharePct = safePct(selfDollars, totalMixDollars);
+      // Goal is stored 0-100 OR 0-1 depending on PPP's SF field config. Detect
+      // and normalize: any value < 1 is treated as a fraction (× 100).
+      const goalRaw = rep.selfGenSalesGoalPercent;
+      const goalPct = goalRaw === null ? null : (goalRaw < 1 ? goalRaw * 100 : goalRaw);
+      const vsGoal = sharePct !== null && goalPct !== null ? sharePct - goalPct : null;
+      return {
+        selfGenDollars: selfDollars,
+        marketingDollars: mktDollars,
+        selfGenSharePct: sharePct,
+        goalPct,
+        vsGoal,
+      };
+    })(),
 
     pricing: {
       revPerLaborDayProjected,
@@ -619,6 +667,7 @@ function deriveRepScorecardInner(
       scheduled,
       run,
       estimatesSentPct: safePct(runWithEstimate, run),
+      cancelledCount: cancelled,
       cancelledPct: safePct(cancelled, scheduled),
       avgDaysToEstimate,
       slowEstimatePct,
@@ -642,8 +691,13 @@ function deriveRepScorecardInner(
 
     moneyFlow: {
       moneyCollected,
+      moneyCollectedCount,
       laborPaidOut,
+      laborPaidOutCount,
       purchases,
+      purchasesCount,
+      balanceOwed,
+      balanceOwedCount,
     },
 
     commissions: {

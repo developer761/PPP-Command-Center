@@ -343,6 +343,10 @@ export type SnapshotRep = {
   /** Per-rep gross-margin target (e.g. 0.45 = 45%). PPP sets this on the User
    *  record. null when not configured for this user. */
   gmGoalPercent: number | null;
+  /** Self-gen sales-mix target (e.g. 0.40 = 40% of won sales should come
+   *  from rep's own pipeline rather than marketing-sourced leads). Katie
+   *  2026-06-10 — mirrors Maloney FPRC scorecard. null when not configured. */
+  selfGenSalesGoalPercent: number | null;
   /** Quarterly draw — base commission cap per fiscal quarter. null when
    *  not configured (most reps don't have this populated). */
   quarterlyDraw: number | null;
@@ -738,6 +742,7 @@ type SfUserRow = {
   // Custom rep-performance fields — read-conditional. SF will silently omit
   // these if FLS isn't granted to the OAuth user. Falls through to null.
   Gross_Margin_Goal_Percent__c?: number | null;
+  Self_Gen_Sales_Goal_Percent__c?: number | null;
   Quarterly_Draw__c?: number | null;
 };
 
@@ -927,7 +932,7 @@ export async function loadSalesforceSnapshot(
     // ANY error so a missing field doesn't break the whole snapshot.
     const usersPromise: Promise<{ records: SfUserRow[] }> = (async () => {
       const baseFields = "Id, Name, FirstName, LastName, Email, IsActive, CreatedDate, UserType, Profile.Name, UserRole.Name, Department";
-      const richFields = `${baseFields}, Gross_Margin_Goal_Percent__c, Quarterly_Draw__c`;
+      const richFields = `${baseFields}, Gross_Margin_Goal_Percent__c, Self_Gen_Sales_Goal_Percent__c, Quarterly_Draw__c`;
       try {
         return await conn.query<SfUserRow>(`
           SELECT ${richFields}
@@ -1442,6 +1447,9 @@ export async function loadSalesforceSnapshot(
           isFieldStandard,
           gmGoalPercent: typeof u.Gross_Margin_Goal_Percent__c === "number"
             ? (u.Gross_Margin_Goal_Percent__c as number)
+            : null,
+          selfGenSalesGoalPercent: typeof u.Self_Gen_Sales_Goal_Percent__c === "number"
+            ? (u.Self_Gen_Sales_Goal_Percent__c as number)
             : null,
           quarterlyDraw: typeof u.Quarterly_Draw__c === "number"
             ? (u.Quarterly_Draw__c as number)
