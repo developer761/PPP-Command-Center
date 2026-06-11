@@ -30,22 +30,40 @@ export type MaterialType = {
   category: MaterialTypeCategory;
 };
 
+// Katie's expanded list shipped 2026-06-10 ("Products Short List
+// (categorized).xlsx"). Three groups: Primer, Interior, Exterior. Source
+// order preserved so the dropdown matches her spreadsheet for handoff /
+// training. Sherwin Williams entries kept (SW is in PPP's vendor list
+// even though Katie's primary supplier is BM) until Katie sends an SW
+// breakdown; mark them "any" since the SW grades are dual-use.
 export const MATERIAL_TYPES: ReadonlyArray<MaterialType> = [
-  // Benjamin Moore — Interior
-  { value: "Ultra Spec Interior", group: "Benjamin Moore — Interior", category: "interior" },
-  { value: "Regal Select Interior", group: "Benjamin Moore — Interior", category: "interior" },
-  { value: "Aura Interior", group: "Benjamin Moore — Interior", category: "interior" },
+  // Benjamin Moore — Primer (universal unless explicitly exterior)
+  { value: "Fresh Start Latex 046", group: "Benjamin Moore — Primer", category: "any" },
+  { value: "Fresh Start Oil 094", group: "Benjamin Moore — Primer", category: "any" },
+  { value: "Ultra Spec Exterior Primer", group: "Benjamin Moore — Primer", category: "exterior" },
+  { value: "Coverstain Primer", group: "Benjamin Moore — Primer", category: "any" },
+  { value: "Stix Primer", group: "Benjamin Moore — Primer", category: "any" },
+  // Benjamin Moore — Interior (finish-specific per Katie's spreadsheet)
+  { value: "Ultra Spec Interior Flat", group: "Benjamin Moore — Interior", category: "interior" },
+  { value: "Ultra Spec Interior Eggshell", group: "Benjamin Moore — Interior", category: "interior" },
+  { value: "Ultra Spec Interior Semi Gloss", group: "Benjamin Moore — Interior", category: "interior" },
+  { value: "Regal Select Flat", group: "Benjamin Moore — Interior", category: "interior" },
+  { value: "Regal Select Matte", group: "Benjamin Moore — Interior", category: "interior" },
+  { value: "Regal Select Eggshell", group: "Benjamin Moore — Interior", category: "interior" },
+  { value: "Regal Select Semi Gloss", group: "Benjamin Moore — Interior", category: "interior" },
+  { value: "Aura Bath & Spa Matte", group: "Benjamin Moore — Interior", category: "interior" },
   // Benjamin Moore — Exterior
-  { value: "Ultra Spec Exterior", group: "Benjamin Moore — Exterior", category: "exterior" },
-  { value: "Regal Select Exterior", group: "Benjamin Moore — Exterior", category: "exterior" },
-  { value: "Aura Exterior", group: "Benjamin Moore — Exterior", category: "exterior" },
-  // Sherwin Williams — currently the available SW products are dual-use,
-  // but Katie's expanded list may split them. Mark as "any" for now and
-  // re-tag on a per-product basis when she sends the fuller list.
+  { value: "Ultra Spec Exterior Low Sheen", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "Ultra Spec Exterior Satin", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "Ultra Spec Exterior Soft Gloss", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "Mooreglo", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "Mooregard", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "Moore Life", group: "Benjamin Moore — Exterior", category: "exterior" },
+  // Sherwin Williams — kept until Katie sends an SW finish breakdown
   { value: "SW Emerald", group: "Sherwin Williams", category: "any" },
   { value: "SW Duration", group: "Sherwin Williams", category: "any" },
   { value: "SW Super Paint", group: "Sherwin Williams", category: "any" },
-  // Other — always available so the form is never empty for an unusual job.
+  // Other — keep so the form is never empty for an unusual job.
   { value: "Other", group: "Other", category: "any" },
 ];
 

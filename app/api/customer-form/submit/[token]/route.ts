@@ -409,7 +409,8 @@ export async function POST(
   let materialTypeDropped = false;
   if (customerMaterialType) {
     if (!VALID_MATERIAL_TYPES.has(customerMaterialType)) {
-      // Value isn't in our 10-item allowlist. Two real reasons this happens:
+      // Value isn't in our allowlist (~24 items as of Katie's 2026-06-10
+      // expansion). Two real reasons this happens:
       //   (a) Tampered/stale client — picklist changed since the form loaded.
       //   (b) Legacy SF value — admin set MaterialType__c to "Aura ULTRA" or
       //       some retired picklist value before our allowlist existed, the
