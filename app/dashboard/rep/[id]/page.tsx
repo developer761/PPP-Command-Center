@@ -526,14 +526,6 @@ export default async function RepDetailPage({
                   <div className="text-[10px] text-ppp-charcoal-500">Cutoff {scorecard.pipeline.cutoffDate}</div>
                 </div>
               </div>
-              {scorecard.pipeline.scopedToLast12Months && (
-                <p
-                  className="mt-2 text-[10px] text-ppp-charcoal-500 italic"
-                  title="Snapshot Opp query is windowed to the last 365 days. PPP's 3-4 week sales cycle means opps open >12 months are overwhelmingly abandoned deals. Widen the snapshot to expose true all-time pipeline."
-                >
-                  Snapshot scope: last 12 months only
-                </p>
-              )}
             </ScorecardCard>
 
             {/* KPI 4A — Close Rate
@@ -652,7 +644,7 @@ export default async function RepDetailPage({
                       <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Materials %</div>
                       <div className={[
                         "font-condensed text-xl sm:text-2xl font-bold",
-                        scorecard.pricing.materialsPct === null ? "text-ppp-charcoal-200" :
+                        scorecard.pricing.materialsPct === null ? "text-ppp-charcoal-400" :
                         scorecard.pricing.materialsPct <= 15 ? "text-ppp-green-700" :
                         scorecard.pricing.materialsPct <= 25 ? "text-ppp-navy" :
                         "text-ppp-orange-700",
@@ -763,16 +755,18 @@ export default async function RepDetailPage({
             </ScorecardCard>
 
             {/* KPI 7 — Production Quality
-                Maloney FPRC: 4-stat row Comp/Sold | Change Orders | Reviews | Complaints. */}
+                Full-width per Maloney FPRC PDF page 2. Gets the whole row so
+                the 4-stat layout breathes. Reviews graceful with 0/0. */}
+            <div className="lg:col-span-3">
             <ScorecardCard
               title="Production Quality"
               kpiTag="KPI 7"
               tooltip="Completed: Opp Close CFY · WO End PFQ. Sold: KPI1 won set. Reviews / Complaints: PFQ."
             >
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Comp / Sold</div>
-                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">
+                  <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-navy">
                     {scorecard.production.jobsCompleted} / {scorecard.production.oppsWon}
                   </div>
                   <div className="text-[10px] text-ppp-charcoal-500">
@@ -781,22 +775,26 @@ export default async function RepDetailPage({
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Change Orders</div>
-                  <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy" title={`$${Math.round(scorecard.production.changeOrders).toLocaleString()}`}>
+                  <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-navy" title={`$${Math.round(scorecard.production.changeOrders).toLocaleString()}`}>
                     ${Math.round(scorecard.production.changeOrders).toLocaleString()}
                   </div>
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Reviews</div>
-                  <div className="font-condensed text-xl sm:text-2xl font-bold">
-                    <span className="text-ppp-green-700">+{scorecard.production.goodReviews}</span>
-                    <span className="text-ppp-charcoal-400 mx-1">/</span>
-                    <span className={scorecard.production.badReviews > 0 ? "text-ppp-orange-700" : "text-ppp-charcoal-300"}>-{scorecard.production.badReviews}</span>
-                  </div>
+                  {scorecard.production.goodReviews === 0 && scorecard.production.badReviews === 0 ? (
+                    <div className="font-condensed text-2xl sm:text-3xl font-bold text-ppp-charcoal-300">—</div>
+                  ) : (
+                    <div className="font-condensed text-2xl sm:text-3xl font-bold">
+                      <span className="text-ppp-green-700">+{scorecard.production.goodReviews}</span>
+                      <span className="text-ppp-charcoal-400 mx-1">/</span>
+                      <span className={scorecard.production.badReviews > 0 ? "text-ppp-orange-700" : "text-ppp-charcoal-300"}>-{scorecard.production.badReviews}</span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Complaints</div>
                   <div className={[
-                    "font-condensed text-xl sm:text-2xl font-bold",
+                    "font-condensed text-2xl sm:text-3xl font-bold",
                     scorecard.production.complaints > 0 ? "text-ppp-orange-700" : "text-ppp-navy",
                   ].join(" ")}>
                     {scorecard.production.complaints}
@@ -804,10 +802,13 @@ export default async function RepDetailPage({
                 </div>
               </div>
             </ScorecardCard>
+            </div>
 
             {/* KPI 8 — Money Flow
-                Maloney FPRC: 4-stat grid Money Collected | Labor Paid Out |
-                Total Purchases | Balance Owed. Each shows $ + record count. */}
+                Spans 2 cols of the outer 3-col grid so the 4 stats have room
+                to breathe instead of crashing into each other. Matches the
+                Maloney FPRC page-2 layout (KPI 8 wider, KPI 9 narrower). */}
+            <div className="lg:col-span-2">
             <ScorecardCard
               title="Money Flow"
               kpiTag="KPI 8"
@@ -837,6 +838,7 @@ export default async function RepDetailPage({
                 />
               </div>
             </ScorecardCard>
+            </div>
 
             {/* KPI 9 — Commissions
                 Maloney FPRC: 3-stat row Draw Received | Earned | Overpaid box.
@@ -873,46 +875,52 @@ export default async function RepDetailPage({
                   const qtrAmt = scorecard.commissions.drawQuarterly;
                   const qInP = scorecard.commissions.quartersInPeriod;
                   return (
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Draw Received</div>
-                        <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy" title={`$${Math.round(draw).toLocaleString()}`}>
-                          {fmtCommissionDollars(draw)}
-                        </div>
-                        {qtrAmt !== null && qInP !== null && (
-                          <div className="text-[10px] text-ppp-charcoal-500">
-                            ${Math.round(qtrAmt).toLocaleString()}/qtr × {qInP} (CFY to date)
+                    // Stacked vertical layout — KPI 9 lives in 1 col of the
+                    // outer 3-col grid, no horizontal room for 3 sub-stats.
+                    // Stacking gives every number room to render in full.
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Draw Received</div>
+                          <div className="font-condensed text-xl font-bold text-ppp-navy" title={`$${Math.round(draw).toLocaleString()}`}>
+                            {fmtCommissionDollars(draw)}
                           </div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Commissions Earned</div>
-                        <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy" title={`$${Math.round(earned).toLocaleString()}`}>
-                          {fmtCommissionDollars(earned)}
+                          {qtrAmt !== null && qInP !== null && (
+                            <div className="text-[10px] text-ppp-charcoal-500 leading-tight">
+                              ${Math.round(qtrAmt).toLocaleString()}/qtr × {qInP}
+                            </div>
+                          )}
                         </div>
-                        <div className="text-[10px] text-ppp-charcoal-500">
-                          {scorecard.commissions.payoutCount} Sales/Draw payouts
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">Earned</div>
+                          <div className="font-condensed text-xl font-bold text-ppp-navy" title={`$${Math.round(earned).toLocaleString()}`}>
+                            {fmtCommissionDollars(earned)}
+                          </div>
+                          <div className="text-[10px] text-ppp-charcoal-500 leading-tight">
+                            {scorecard.commissions.payoutCount} payouts
+                          </div>
                         </div>
                       </div>
                       <div className={[
-                        "rounded-lg px-2.5 py-2",
+                        "rounded-lg px-3 py-2",
                         overpaid ? "bg-ppp-orange-50 border border-ppp-orange-100" : "bg-ppp-green-50 border border-ppp-green-100",
                       ].join(" ")}>
-                        <div className={[
-                          "text-[10px] uppercase tracking-wide font-semibold leading-tight",
-                          overpaid ? "text-ppp-orange-700" : "text-ppp-green-700",
-                        ].join(" ")}>
-                          {overpaid ? "Overpaid (Draw > Earned)" : "Net Earned"}
+                        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                          <span className={[
+                            "text-[10px] uppercase tracking-wide font-semibold",
+                            overpaid ? "text-ppp-orange-700" : "text-ppp-green-700",
+                          ].join(" ")}>
+                            {overpaid ? "Overpaid (Draw > Earned)" : "Net Earned"}
+                          </span>
+                          <span className={[
+                            "font-condensed text-xl font-bold whitespace-nowrap",
+                            overpaid ? "text-ppp-orange-700" : "text-ppp-green-700",
+                          ].join(" ")} title={`$${Math.round(diff).toLocaleString()}`}>
+                            {diff >= 0 ? "+" : "-"}${Math.abs(Math.round(diff)).toLocaleString()}
+                          </span>
                         </div>
                         <div className={[
-                          "font-condensed text-xl sm:text-2xl font-bold",
-                          overpaid ? "text-ppp-orange-700" : "text-ppp-green-700",
-                        ].join(" ")} title={`$${Math.round(diff).toLocaleString()}`}>
-                          {/* Signed display per PDF — e.g. -$1,030 when overpaid. */}
-                          {diff >= 0 ? "+" : "-"}${Math.abs(Math.round(diff)).toLocaleString()}
-                        </div>
-                        <div className={[
-                          "text-[10px]",
+                          "text-[10px] mt-0.5",
                           overpaid ? "text-ppp-orange-700" : "text-ppp-green-700",
                         ].join(" ")}>
                           Earned − Draw
@@ -1764,13 +1772,20 @@ function FlowStat({ label, amount, countLabel, warnIfNonZero = false }: {
 }) {
   const fullDollar = `$${Math.round(amount).toLocaleString()}`;
   const color = warnIfNonZero && amount > 0 ? "text-ppp-orange-700" : "text-ppp-navy";
+  // Rounded $K display for big amounts (≥ $100K) so the cell doesn't blow
+  // out when KPI 8 lives in a narrow 4-col grid. Full $ stays in the tooltip.
+  const display = amount === 0
+    ? "$0"
+    : Math.abs(amount) >= 100_000
+      ? `$${Math.round(amount / 1000).toLocaleString()}K`
+      : fullDollar;
   return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500">{label}</div>
-      <div className={`font-condensed text-xl sm:text-2xl font-bold ${color}`} title={fullDollar}>
-        {amount === 0 ? "$0" : fullDollar}
+    <div className="min-w-0">
+      <div className="text-[10px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 leading-tight">{label}</div>
+      <div className={`font-condensed text-xl sm:text-2xl font-bold ${color} truncate`} title={fullDollar}>
+        {display}
       </div>
-      <div className="text-[10px] text-ppp-charcoal-500">{countLabel}</div>
+      <div className="text-[10px] text-ppp-charcoal-500 leading-tight">{countLabel}</div>
     </div>
   );
 }

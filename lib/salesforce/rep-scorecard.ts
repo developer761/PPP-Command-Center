@@ -716,9 +716,16 @@ function deriveRepScorecardInner(
   }
   // Draw Received = quarterly draw × fiscal-quarter index, CFY-to-date (Q1→×1 … Q4→×4).
   // Falls back to prorated when caller passed a raw range (no fiscal anchor).
+  // Quarters covered by the running draw total:
+  //  - Specific-quarter period (PFQ/CFQ) → just that quarter's index (1-4)
+  //  - Full FY in the past (PFY) → 4 (rep collected all 4 quarterly draws)
+  //  - Current FY (CFY) → the current fiscal quarter (1-4, capped)
+  //  - Arbitrary date range → null (caller will prorate by days)
   const quartersInPeriod = q !== null
     ? q
-    : (fy !== null ? Math.max(1, Math.min(4, currentFiscalQuarter())) : null);
+    : (fy !== null
+        ? (fy < currentFY() ? 4 : Math.max(1, Math.min(4, currentFiscalQuarter())))
+        : null);
   const drawReceived = rep.quarterlyDraw !== null
     ? (quartersInPeriod !== null
         ? rep.quarterlyDraw * quartersInPeriod
