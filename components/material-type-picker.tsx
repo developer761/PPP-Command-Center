@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MATERIAL_TYPES, filterMaterialTypesForWorkOrder, type MaterialType } from "@/lib/customer-form/material-types";
 
 /**
@@ -64,7 +65,27 @@ export default function MaterialTypePicker({
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  // Portal target + position state — solves the "dropdown clipped by modal
+  // overflow" bug reported by Katie 2026-06-10. The picker is used inside
+  // supplier-order-modal, whose scroll container clipped the absolute
+  // dropdown so users couldn't reach the bottom items. Portaling to body
+  // with fixed positioning anchored to the trigger's bounding rect frees it
+  // from any ancestor's overflow/transform clip.
+  const [mounted, setMounted] = useState(false);
+  const [pos, setPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+    openUp: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Visible options after the WO-context filter + the search query.
   const visibleGroups = useMemo(() => {
@@ -131,12 +152,17 @@ export default function MaterialTypePicker({
   };
 
   // Close on outside click + Esc. Same pattern as the existing color picker.
+  // Note: the popover is portaled to <body>, so rootRef.contains() can't see
+  // it. Check both the trigger root AND the popover node before closing.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
       const root = rootRef.current;
-      if (!root) return;
-      if (!root.contains(e.target as Node)) setOpen(false);
+      const pop = popoverRef.current;
+      const target = e.target as Node;
+      if (root && root.contains(target)) return;
+      if (pop && pop.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -148,6 +174,48 @@ export default function MaterialTypePicker({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // Compute popover position from the trigger's bounding rect. Re-run on
+  // open + scroll + resize so the popover stays glued to the trigger even
+  // when the supplier-order-modal's scroll container moves. Smart-flip
+  // upward when the trigger is close to the viewport bottom — keeps the
+  // full list reachable + scrollable inside the modal.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const compute = () => {
+      const btn = triggerRef.current;
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const vh = window.innerHeight;
+      const vw = window.innerWidth;
+      const gap = 4;
+      // Prefer down; flip up if there's not enough room below.
+      const desiredMax = Math.min(420, Math.floor(vh * 0.6));
+      const spaceBelow = vh - r.bottom - gap - 8;
+      const spaceAbove = r.top - gap - 8;
+      const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(180, Math.min(desiredMax, openUp ? spaceAbove : spaceBelow));
+      // Width: compact triggers want a wider menu so 100-item product list
+      // doesn't truncate; non-compact matches trigger width.
+      const minW = compact ? 280 : r.width;
+      const width = Math.min(Math.max(minW, r.width), vw - 16);
+      let left = r.left;
+      if (left + width > vw - 8) left = Math.max(8, vw - width - 8);
+      const top = openUp ? r.top - gap - maxHeight : r.bottom + gap;
+      setPos({ top, left, width, maxHeight, openUp });
+    };
+    compute();
+    // Recompute on scroll (capture = true catches all ancestors) + resize.
+    window.addEventListener("scroll", compute, true);
+    window.addEventListener("resize", compute);
+    return () => {
+      window.removeEventListener("scroll", compute, true);
+      window.removeEventListener("resize", compute);
+    };
+  }, [open, compact]);
 
   // Auto-focus the search input on open — the whole point of the search bar
   // is to type immediately rather than scrolling 100 items.
@@ -169,6 +237,7 @@ export default function MaterialTypePicker({
   return (
     <div ref={rootRef} className="relative inline-block w-full">
       <button
+        ref={triggerRef}
         id={id}
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -200,15 +269,24 @@ export default function MaterialTypePicker({
         </svg>
       </button>
 
-      {open && (
+      {open && mounted && pos && createPortal(
         <div
+          ref={popoverRef}
           role="listbox"
+          // Fixed + portaled so the dropdown escapes any ancestor's overflow
+          // clip (was getting cut off inside supplier-order-modal's scroll
+          // container, leaving the bottom of the list unreachable).
+          style={{
+            position: "fixed",
+            top: pos.top,
+            left: pos.left,
+            width: pos.width,
+            maxHeight: pos.maxHeight,
+            zIndex: 9999,
+          }}
           className={[
-            "absolute left-0 right-0 mt-1 z-40 bg-white border border-ppp-charcoal-100 rounded-lg shadow-xl shadow-ppp-charcoal/15",
-            // Sized for ~100 products without scrolling the page. Internal
-            // scroll keeps the search bar visible.
-            "max-h-[60vh] flex flex-col overflow-hidden",
-            compact ? "min-w-[260px] sm:min-w-[280px]" : "min-w-full",
+            "bg-white border border-ppp-charcoal-100 rounded-lg shadow-xl shadow-ppp-charcoal/15",
+            "flex flex-col overflow-hidden",
           ].join(" ")}
         >
           <div className="p-2 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/60">
@@ -309,7 +387,8 @@ export default function MaterialTypePicker({
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
