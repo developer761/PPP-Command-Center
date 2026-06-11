@@ -989,8 +989,12 @@ export default function SupplierOrderModal({
                     )}
                   </Section>
 
-                  {/* Extras dropdown */}
-                  <Section title={`Extras (${extras.size} selected)`}>
+                  {/* Extras dropdown — Katie's 20-item product list seeded via
+                      migration 017. Search bar at top, categorized + sorted by
+                      sort_order (Tape → Drop Cloths → Caulk → Patching → Trays
+                      → Rollers). Each row has explicit +/- buttons (Karan
+                      2026-06-10) matching the per-color pattern. */}
+                  <Section title={`Extras (${extras.size > 0 ? `${extras.size} selected` : "none selected"})`}>
                     <input
                       type="search"
                       inputMode="search"
@@ -999,50 +1003,68 @@ export default function SupplierOrderModal({
                       spellCheck={false}
                       value={extrasSearch}
                       onChange={(e) => setExtrasSearch(e.target.value)}
-                      placeholder="Search rollers / brushes / tape / …"
+                      placeholder="Search tape / caulk / rollers / …"
                       className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue mb-3"
                     />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto">
                       {filteredCatalog.map((c) => {
                         const selected = extras.get(c.id);
                         return (
-                          <label
+                          <div
                             key={c.id}
                             className={[
-                              "flex items-center gap-2 px-2.5 py-1.5 rounded border text-xs cursor-pointer transition-colors",
+                              "flex items-center gap-2 px-2.5 py-1.5 rounded border text-xs transition-colors",
                               selected
                                 ? "bg-ppp-blue-50 border-ppp-blue-100"
                                 : "bg-white border-ppp-charcoal-100 hover:bg-ppp-charcoal-50",
                             ].join(" ")}
                           >
-                            <input
-                              type="checkbox"
-                              checked={!!selected}
-                              onChange={() => toggleExtra(c)}
-                              className="shrink-0"
-                            />
-                            <span className="flex-1 truncate">{c.name}</span>
-                            {selected ? (
+                            <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
                               <input
-                                type="number"
-                                inputMode="numeric"
-                                min={1}
-                                value={selected.qty}
-                                onChange={(e) => updateExtraQty(c.id, Number(e.target.value))}
-                                onClick={(e) => e.stopPropagation()}
-                                onKeyDown={(e) => e.stopPropagation()}
-                                // text-base on mobile to avoid iOS zoom-on-focus.
-                                // py-2 on mobile for proper tap target (matches the
-                                // py-2.5 sm:py-2 used on other modal inputs);
-                                // sm:py-0.5 keeps desktop tight.
-                                className="w-16 shrink-0 px-2 py-2 sm:py-0.5 text-base sm:text-xs text-right border border-ppp-blue-100 rounded font-mono"
+                                type="checkbox"
+                                checked={!!selected}
+                                onChange={() => toggleExtra(c)}
+                                className="shrink-0"
                               />
+                              <span className="flex-1 truncate">{c.name}</span>
+                            </label>
+                            {selected ? (
+                              <div className="shrink-0 flex items-center gap-1">
+                                {/* +/- buttons. Mirrors the per-color qty
+                                    pattern above. Cap 1-99 (qty=1 sane min,
+                                    99 catches typo runaways). 44px mobile
+                                    tap target; 28px on desktop. */}
+                                <button
+                                  type="button"
+                                  aria-label={`Decrease ${c.name} by one`}
+                                  disabled={selected.qty <= 1}
+                                  onClick={() => updateExtraQty(c.id, selected.qty - 1)}
+                                  className="h-11 w-11 sm:h-7 sm:w-7 rounded border border-ppp-blue-100 bg-white text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-50 disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none touch-manipulation"
+                                >
+                                  −
+                                </button>
+                                <span
+                                  className="font-mono font-semibold text-xs min-w-[2.5rem] text-center whitespace-nowrap text-ppp-charcoal"
+                                  title={`${selected.qty} ${c.unit}`}
+                                >
+                                  {selected.qty}
+                                </span>
+                                <button
+                                  type="button"
+                                  aria-label={`Increase ${c.name} by one`}
+                                  disabled={selected.qty >= 99}
+                                  onClick={() => updateExtraQty(c.id, selected.qty + 1)}
+                                  className="h-11 w-11 sm:h-7 sm:w-7 rounded border border-ppp-blue-100 bg-white text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-50 disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-base leading-none touch-manipulation"
+                                >
+                                  +
+                                </button>
+                              </div>
                             ) : (
                               <span className="text-[10px] text-ppp-charcoal-500 shrink-0">
                                 ×{c.default_qty} {c.unit}
                               </span>
                             )}
-                          </label>
+                          </div>
                         );
                       })}
                       {filteredCatalog.length === 0 && (
