@@ -533,37 +533,46 @@ export async function POST(
   const notesOnly = !!(body.globalNotes && body.globalNotes.trim().length > 0);
   const hasMeaningfulSubmission = attempts.length > 0 || notesOnly;
   const writebackHappened = decision.shouldWrite || notesOnly;
-  if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission && writebackHappened) {
-    // notesOnly = notes were the only meaningful content (no per-room color
-    // writes fired). Drives notification copy so admin doesn't expect color
-    // data in SF when only project-description text arrived.
-    const notifyNotesOnly = attempts.length === 0 && notesOnly;
-    // writebackSkipped = the SF writeback gate BLOCKED the write even though
-    // there were attempts queued (test_only + not on allowlist, or mode=off).
-    // Tells the notification to add a clarifier so admin knows to manually
-    // reconcile via Mail Hub instead of assuming SF is current. Only set
-    // when there WAS something to write — pure notes-only paths don't
-    // count as "skipped" since there's nothing to write either way.
-    const writebackSkipped = attempts.length > 0 && !decision.shouldWrite;
-    notifySenderOnSubmit({
-      adminUserId: status.token.created_by_user_id,
-      customerName: status.token.customer_name,
-      workOrderNumber: fresh.workOrderNumber,
-      workOrderId: status.token.work_order_id,
-      isReedit,
-      lineItemCount: body.lineItems.length,
-      orderAlreadyPlaced,
-      notesOnly: notifyNotesOnly,
-      writebackSkipped,
-    }).catch((err) => {
-      console.warn(`[customer-form] sender notification failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
-    });
+  // notesOnly = notes were the only meaningful content (no per-room color
+  // writes fired). Drives notification copy so admin doesn't expect color
+  // data in SF when only project-description text arrived.
+  const notifyNotesOnly = attempts.length === 0 && notesOnly;
+  // writebackSkipped = the SF writeback gate BLOCKED the write even though
+  // there were attempts queued (test_only + not on allowlist, or mode=off).
+  // Tells the notification to add a clarifier so admin knows to manually
+  // reconcile via Mail Hub instead of assuming SF is current. Only set
+  // when there WAS something to write — pure notes-only paths don't
+  // count as "skipped" since there's nothing to write either way.
+  const writebackSkipped = attempts.length > 0 && !decision.shouldWrite;
 
-    // In-app notification bell (Katie + Alex 2026-06-12): light up the bell
-    // for the WO sender + every admin. Sender always; admins as a fanout so
-    // someone is watching even if the sender is OOO. Workers only see rows
-    // they were inserted as recipient on, so a worker's bell never reveals
-    // another rep's customer.
+  if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission) {
+    // EMAIL — conservative gate: only fire when SF was actually updated.
+    // The email copy says "submitted" which implies SF state; firing on a
+    // writeback-skipped path would mislead admin to expect data in SF that
+    // isn't there. The bell below has no such promise so it fires regardless.
+    if (writebackHappened) {
+      notifySenderOnSubmit({
+        adminUserId: status.token.created_by_user_id,
+        customerName: status.token.customer_name,
+        workOrderNumber: fresh.workOrderNumber,
+        workOrderId: status.token.work_order_id,
+        isReedit,
+        lineItemCount: body.lineItems.length,
+        orderAlreadyPlaced,
+        notesOnly: notifyNotesOnly,
+        writebackSkipped,
+      }).catch((err) => {
+        console.warn(`[customer-form] sender notification failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
+      });
+    }
+
+    // IN-APP BELL (Katie + Alex 2026-06-12): light up the bell for the WO
+    // sender + every admin. Fires for EVERY meaningful submission — including
+    // writeback-skipped paths — because Katie wants admin to see every form
+    // come in. The insert helper adds a "saved in Command Center only" hint
+    // when writebackSkipped so admin knows what to expect. Workers only see
+    // rows they were inserted as recipient on, so a worker's bell never
+    // reveals another rep's customer.
     insertCustomerFormSubmittedNotification({
       senderUserId: status.token.created_by_user_id,
       workOrderId: status.token.work_order_id,
@@ -572,6 +581,7 @@ export async function POST(
       isReedit,
       lineItemCount: body.lineItems.length,
       notesOnly: notifyNotesOnly,
+      writebackSkipped,
     }).catch((err) => {
       console.warn(`[customer-form] bell insert failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
     });

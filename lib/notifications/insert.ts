@@ -36,6 +36,10 @@ export type CustomerFormSubmittedInput = {
   /** True when notes were the only meaningful content (exterior WOs etc).
    *  Drives the bell copy so admin knows what to expect when they click. */
   notesOnly: boolean;
+  /** True when SF writeback was gated off (test_only + WO not on allowlist,
+   *  or mode=off). Adds a clarifier to the body so admin knows the data is
+   *  in Command Center only, not in Salesforce yet. */
+  writebackSkipped?: boolean;
 };
 
 function adminClient() {
@@ -88,9 +92,15 @@ export async function insertCustomerFormSubmittedNotification(
     const title = input.notesOnly
       ? `${who} submitted notes on ${woLabel}`
       : `${who} ${verb} ${woLabel}`;
-    const body = input.notesOnly
+    const baseBody = input.notesOnly
       ? "Project notes were submitted — no per-room color picks."
       : `${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"} of color picks ready to review.`;
+    // Writeback-skipped clarifier: admin sees the submission landed in
+    // Command Center but Salesforce wasn't updated (test_only allowlist
+    // gate, or mode=off). Without this, admin would assume SF is current.
+    const body = input.writebackSkipped
+      ? `${baseBody} (Saved in Command Center — Salesforce writeback gated for this WO.)`
+      : baseBody;
     // The materials WO drawer is where admin acts on a submission.
     const link = `/dashboard/materials?wo=${encodeURIComponent(input.workOrderId)}`;
 

@@ -51,8 +51,11 @@ export async function PATCH(
 
   if (error) {
     console.warn("[notifications PATCH read]", error.message);
-    return NextResponse.json({ error: "update_failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "update_failed" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

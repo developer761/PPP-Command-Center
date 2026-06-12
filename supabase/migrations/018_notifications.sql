@@ -17,8 +17,9 @@ CREATE TABLE IF NOT EXISTS notifications (
 
   -- The Supabase auth user who should see this row. Scoping is enforced
   -- here: a worker's GET filters by recipient_user_id = themselves, so they
-  -- physically cannot read another rep's notifications.
-  recipient_user_id UUID NOT NULL,
+  -- physically cannot read another rep's notifications. ON DELETE CASCADE
+  -- so a deactivated user doesn't leave orphan rows.
+  recipient_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
 
   -- Event kind. Today: 'customer_form_submitted'. Forward-compat for future
   -- bells (supplier email bounced, materials order placed, etc.) without
@@ -51,3 +52,21 @@ CREATE INDEX IF NOT EXISTS notifications_recipient_created_idx
 CREATE INDEX IF NOT EXISTS notifications_recipient_unread_idx
   ON notifications (recipient_user_id)
   WHERE read_at IS NULL;
+
+-- Belt-and-braces: if an earlier copy of this migration was pasted before
+-- the ON DELETE CASCADE FK was added, the table exists without the
+-- constraint and CREATE TABLE IF NOT EXISTS won't fix it. This DO block
+-- adds the FK only when missing — safe to re-run forever.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+     WHERE table_name = 'notifications'
+       AND constraint_type = 'FOREIGN KEY'
+       AND constraint_name = 'notifications_recipient_user_id_fkey'
+  ) THEN
+    ALTER TABLE notifications
+      ADD CONSTRAINT notifications_recipient_user_id_fkey
+      FOREIGN KEY (recipient_user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+  END IF;
+END $$;
