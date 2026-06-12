@@ -1345,20 +1345,48 @@ export async function loadSalesforceSnapshot(
         const records: Array<Record<string, unknown>> = [];
         const batchCount = Math.ceil(woIds.length / WOLI_BATCH_SIZE);
         console.log(`[SF] WOLI fetch starting — ${woIds.length} WO ids in ${batchCount} batch(es) of ${WOLI_BATCH_SIZE}`);
+
+        // PERF (2026-06-11): batches now run in parallel with a 6-wide
+        // concurrency window. The previous serial `for await` loop was the
+        // single dominant cost on cold snapshot loads — PPP has ~1k-3k active
+        // WOs ÷ 200/batch = 5-15 sequential round-trips, ~500ms each, = up to
+        // 7-8s of pure batch-wait. Parallelizing collapses that to (batches ÷
+        // 6) × 500ms ≈ 1-2s, a 5-6s win on cold materials / rep page loads.
+        //
+        // Why 6 not 25 (SF's per-session concurrent query cap): leave headroom
+        // for the other parallel snapshot queries (Account / Quote / Quota /
+        // Review / Case / etc.) which may still be in flight when WOLI starts.
+        // We've seen no rate-limit errors in production at this concurrency.
+        const WOLI_CONCURRENCY = 6;
+        const batches: string[][] = [];
         for (let i = 0; i < woIds.length; i += WOLI_BATCH_SIZE) {
-          const batch = woIds.slice(i, i + WOLI_BATCH_SIZE);
+          batches.push(woIds.slice(i, i + WOLI_BATCH_SIZE));
+        }
+        const fetchOneBatch = async (batch: string[]): Promise<Array<Record<string, unknown>>> => {
+          const out: Array<Record<string, unknown>> = [];
           const inClause = batch.map((id) => `'${id}'`).join(",");
           let result = await conn.query<Record<string, unknown>>(
             `SELECT ${fields.join(", ")} FROM WorkOrderLineItem WHERE WorkOrderId IN (${inClause})`
           );
-          records.push(...result.records);
+          out.push(...result.records);
           while (!result.done && result.nextRecordsUrl) {
+            // queryMore returns the next page on the SAME cursor — safe to run
+            // alongside other batches' cursors (each is independent).
             result = await conn.queryMore<Record<string, unknown>>(result.nextRecordsUrl);
-            records.push(...result.records);
+            out.push(...result.records);
           }
-          const batchNum = Math.floor(i / WOLI_BATCH_SIZE) + 1;
-          if (batchNum % 5 === 0 || batchNum === batchCount) {
-            console.log(`[SF] WOLI batch ${batchNum}/${batchCount}: total ${records.length} rows (${Date.now() - t0}ms)`);
+          return out;
+        };
+        // Step through the batches in waves of WOLI_CONCURRENCY. After each
+        // wave, log progress so a stuck wave is obvious in the Vercel logs.
+        let completedBatches = 0;
+        for (let waveStart = 0; waveStart < batches.length; waveStart += WOLI_CONCURRENCY) {
+          const wave = batches.slice(waveStart, waveStart + WOLI_CONCURRENCY);
+          const results = await Promise.all(wave.map(fetchOneBatch));
+          for (const r of results) records.push(...r);
+          completedBatches += wave.length;
+          if (completedBatches === batchCount || waveStart === 0) {
+            console.log(`[SF] WOLI ${completedBatches}/${batchCount} batches: ${records.length} rows (${Date.now() - t0}ms)`);
           }
         }
         console.log(`[SF] WOLI DONE — ${records.length} rows in ${Date.now() - t0}ms`);
