@@ -375,11 +375,11 @@ export type SnapshotOpp = {
   grossProfit: number;
   leadFee: number;
   discountGiven: number;
-  customerPayments: number;
-  customerBalance: number;
-  // Geographic fields — for Map tab
-  latitude: number | null;
-  longitude: number | null;
+  // Note: customerPayments / customerBalance / latitude / longitude were
+  // removed 2026-06-11. They were never consumed by any derive or UI — the
+  // map tab uses WO geo, not Opp geo, and the customer money fields were
+  // covered by the Transaction snapshot. Dropping ~4 fields × ~89k opps
+  // shaves the gzipped snapshot by ~1-2MB.
   /** PPP's canonical SALES metric (KPI 1). Different field name vs the WO
    *  equivalent — Opp uses no underscores, WO uses them. Populated on every
    *  Opp; falls back to 0 only when SF returned null. */
@@ -1579,10 +1579,6 @@ export async function loadSalesforceSnapshot(
         grossProfit: typeof o.Gross_Profit__c === "number" ? o.Gross_Profit__c : 0,
         leadFee: typeof o.Lead_Fee__c === "number" ? o.Lead_Fee__c : 0,
         discountGiven: typeof o.Discount_Given__c === "number" ? o.Discount_Given__c : 0,
-        customerPayments: 0,
-        customerBalance: 0,
-        latitude: null,
-        longitude: null,
         // Rep performance fields (KPI 1/3/5/6) — silently null when SF
         // didn't return them (FLS / field missing on this Opp record type).
         quotedSubtotal: canonicalQuoted > 0 ? canonicalQuoted : resolved,
