@@ -601,7 +601,14 @@ function formatOrderSummaryBlock(
     // Prefix the per-line material type when the job is mixed; suppress when
     // every line already shares the header value (no value in repeating it).
     const matPrefix = !sharedMaterial && mt ? `[${mt}] ` : "";
-    if (e.buckets > 0 || e.cans > 0) {
+    // Manual-entry colors (no sqft on any contributing room) and zero-bucket
+    // estimates both render as a placeholder so the supplier reads a clean
+    // "___" instead of a numeric "0 gal" / "manual entry required" string.
+    // Belt-and-braces: even if a future estimate-gallons path ever produces
+    // manualOnly=true with non-zero buckets/cans, the supplier email stays
+    // honest because manualOnly is checked explicitly here.
+    const isManualPlaceholder = e.manualOnly || (e.buckets === 0 && e.cans === 0);
+    if (!isManualPlaceholder) {
       lines.push(`  ${matPrefix}${formatOrderQuantity(e)} — ${e.colorName}${code}${finish}${where}`);
     } else {
       lines.push(`  ${matPrefix}___ — ${e.colorName}${code}${finish}${where} (PPP to confirm quantity)`);
