@@ -125,7 +125,7 @@ The goal isn't the change — it's seeing the build pipeline, the lint, the PR r
 
 ## 6. Who to ask when you're stuck
 
-- **Karan Malhotra** (lead dev) — bkflowconsulting@gmail.com / 347-476-6555
+- **Karan Malhotra** (lead dev) — malhotrak038@gmail.com / 347-476-6555
 - **Katie** (PPP project owner) — for product/business questions
 - **Alex** (PPP exec) — for strategic / ops questions
 

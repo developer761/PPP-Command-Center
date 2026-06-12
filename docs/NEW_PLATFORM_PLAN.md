@@ -27,7 +27,7 @@ This changes most of what we built for Command Center. We don't reuse `lib/sales
 Same domain. Same login. On sign-in the user lands on a **platform picker** (or, for users with access to only one platform, auto-routes to that one). The picker is also a persistent switcher in the topbar so an admin can hop between them.
 
 ```
-gobkflow.com (or pppoms.com or whatever)
+[PPP Command Center domain] (final domain TBD)
 ├── /                       — marketing landing (existing)
 ├── /sign-in                — Supabase OAuth (existing)
 ├── /choose-platform        — NEW: picker after sign-in
@@ -125,7 +125,7 @@ Each phase is a build slice with its own schema, surfaces, and edges. Phase numb
 - `/dashboard/commercial/opportunities/[id]` — workspace with tabs: Info / Team / Plans+Specs / Site Photos / Notes+Emails / Tasks / Status Timeline
 - Status pipeline enforcement: Lead → Qualified → Site Visit Required → Site Visit Complete → Plans/Specs Received → Estimating → Internal Review → Proposal Submitted → Follow Up → Negotiation → Verbal Award → Contract Review → Awarded / Lost / No Bid
 - Bid intake (TWO inbound paths from Karan's notes):
-  - **Email** — inbound webhook (Resend + a sub-address like `bids@gobkflow.com`); parser extracts sender, subject, attachments → creates an Opportunity in `Lead` status with the email body in notes + attachments saved
+  - **Email** — inbound webhook (Resend + a sub-address like `bids@[PPP domain]`); parser extracts sender, subject, attachments → creates an Opportunity in `Lead` status with the email body in notes + attachments saved
   - **Online form** — public form (like the customer color form pattern), tokenless or behind a per-prospect link; submission lands as an Opportunity in `Lead`
 
 **Edges:**
@@ -429,12 +429,12 @@ Phase 8 is pulled up so PPP can start invoicing commercial work immediately once
 ## 8. Open questions for Alex (before we start Phase 0)
 
 1. **Platform name.** "New Platform" is a placeholder. PPP Commercial OS? Commercial Workbench? Bidsuite?
-2. **Domain.** Same `gobkflow.com` with `/dashboard/commercial`? Or separate subdomain `commercial.gobkflow.com`?
+2. **Domain.** Same domain as Command Center with `/dashboard/commercial`? Or separate subdomain `commercial.[PPP domain]`?
 3. **The 2 SF commercial users — which 2?** They get instant New Platform access on day one.
 4. **Legacy SF data import.** Worth doing a one-shot import of existing commercial Accounts + Opportunities? If yes, how far back?
 5. **Invoice numbering format.** `PPP-COM-2026-001`? Continue an existing series?
 6. **Retainage % default.** 5% or 10% standard?
-7. **Bidding inbound email.** Set up `bids@gobkflow.com` or use a sub-address on an existing inbox?
+7. **Bidding inbound email.** Set up a `bids@[PPP domain]` inbox or use a sub-address on an existing PPP inbox?
 8. **Online bid submission form.** Should be tokened per-prospect (like the customer color form) or open-public?
 9. **Field users on mobile — what phones?** iPhone-only or mixed? (Affects camera + offline logic.)
 10. **First MVP cutline.** If we needed to ship something in 2 weeks instead of 5, the cut would be: Phases 0 + 1 + 2 (account → opp → "awarded") + Phase 8 (invoicing). Then Phases 3-7 + 9 follow. Is that the right cut?
