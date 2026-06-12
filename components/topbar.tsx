@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import GlobalSearch from "@/components/global-search";
+import NotificationBell from "@/components/notification-bell";
 import UserMenu from "@/components/user-menu";
 import ViewSwitcher from "@/components/view-switcher";
 
@@ -157,6 +158,8 @@ export default function Topbar({
             <span className="text-[11px] font-medium text-ppp-green-700 whitespace-nowrap">Sync</span>
           </button>
         </form>
+
+        <NotificationBell />
 
         <UserMenu
           name={user.fullName}

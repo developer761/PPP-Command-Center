@@ -5,6 +5,7 @@ import { writeSfBatch, type SfWriteAttempt } from "@/lib/salesforce/writeback";
 import { decideWriteback } from "@/lib/customer-form/writeback-mode";
 import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
+import { insertCustomerFormSubmittedNotification } from "@/lib/notifications/insert";
 import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
 
 /**
@@ -556,6 +557,23 @@ export async function POST(
       writebackSkipped,
     }).catch((err) => {
       console.warn(`[customer-form] sender notification failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
+    });
+
+    // In-app notification bell (Katie + Alex 2026-06-12): light up the bell
+    // for the WO sender + every admin. Sender always; admins as a fanout so
+    // someone is watching even if the sender is OOO. Workers only see rows
+    // they were inserted as recipient on, so a worker's bell never reveals
+    // another rep's customer.
+    insertCustomerFormSubmittedNotification({
+      senderUserId: status.token.created_by_user_id,
+      workOrderId: status.token.work_order_id,
+      workOrderNumber: fresh.workOrderNumber,
+      customerName: status.token.customer_name,
+      isReedit,
+      lineItemCount: body.lineItems.length,
+      notesOnly: notifyNotesOnly,
+    }).catch((err) => {
+      console.warn(`[customer-form] bell insert failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
     });
   }
 
