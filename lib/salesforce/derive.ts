@@ -287,34 +287,37 @@ function deriveRepsForPeriodInner(
     if (!w.opportunityId) continue;
     if (isRealSaleWO(w)) oppsWithRealSaleSet.add(w.opportunityId);
   }
+  // PERF 2026-06-11: fused close-rate + open-pipeline into one pass over
+  // snapshot.opportunities (~89k rows). Previously two separate iterations.
+  // Each opp is read once + mapped to the appropriate bucket(s):
+  //   - period-scoped (createdDate in window) → closed/won counters
+  //   - currently-open (isClosed=false) with no real WO yet → pipeline $
+  // Both buckets live on the same byOwner row so no extra writes.
   for (const o of snapshot.opportunities) {
     if (!o.ownerId) continue;
-    if (!isInRange(o.createdDate, periodStart, periodEnd)) continue;
-    const a = byOwner.get(o.ownerId) ?? initStats();
-    a.closed += 1; // denominator: "opps created in this period"
-    if (oppsWithRealSaleSet.has(o.id)) a.won += 1; // numerator: "opps that became real jobs"
-    byOwner.set(o.ownerId, a);
+    let a: ReturnType<typeof initStats> | null = null;
+
+    // (1) Close-rate cohort — opps created in this period.
+    if (isInRange(o.createdDate, periodStart, periodEnd)) {
+      a = byOwner.get(o.ownerId) ?? initStats();
+      a.closed += 1; // denominator: "opps created in this period"
+      if (oppsWithRealSaleSet.has(o.id)) a.won += 1; // numerator: "real jobs"
+    }
+
+    // (2) Open pipeline — currently-open opps without a real (non-estimate)
+    // WO yet. An Opp with only an Estimate WO attached is still pipeline.
+    if (!o.isClosed && o.amount > 0 && !oppsWithRealSaleSet.has(o.id)) {
+      if (a === null) a = byOwner.get(o.ownerId) ?? initStats();
+      a.openPipeline += o.amount;
+    }
+
+    if (a !== null) byOwner.set(o.ownerId, a);
   }
 
   // total = opps the rep worked in period (= same as a.closed from above
   // since "Opp created in period" is the conversion denominator).
-  // Activity counts are kept separate in case we want appts/quotes
-  // proxies later; for now total = closed.
   for (const stats of byOwner.values()) {
     stats.total = stats.closed;
-  }
-
-  // Open pipeline = currently-open opps without a real (non-estimate) WO yet.
-  // Uses the same isRealSaleWO filter as the close-rate calc — an Opp with
-  // only an Estimate WO attached is STILL "in pipeline" (no real job yet).
-  // Reuses oppsWithRealSaleSet from the close-rate computation above.
-  for (const o of snapshot.opportunities) {
-    if (o.isClosed) continue;
-    if (oppsWithRealSaleSet.has(o.id)) continue;
-    if (o.amount <= 0) continue;
-    const a = byOwner.get(o.ownerId) ?? initStats();
-    a.openPipeline += o.amount;
-    byOwner.set(o.ownerId, a);
   }
 
   const cards: Rep[] = snapshot.reps.map((u) => {

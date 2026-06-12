@@ -4,7 +4,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { COVERAGE_CONFIG } from "@/lib/supplier-order/estimate-gallons";
-import { mergeCoverageConfig, isValidCoverageValue, STRICT_POSITIVE_KEYS, MAX_COVERAGE_VALUES } from "@/lib/supplier-order/coverage-config";
+import { mergeCoverageConfig, isValidCoverageValue, STRICT_POSITIVE_KEYS, MAX_COVERAGE_VALUES, invalidateCoverageConfigCache } from "@/lib/supplier-order/coverage-config";
 
 /**
  * Paint-coverage config admin endpoint (Settings → Coverage).
@@ -103,6 +103,10 @@ export async function PUT(request: Request) {
   } catch (err) {
     return NextResponse.json({ error: "save_failed", message: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
+
+  // Bust the module-scope cache so loadCoverageConfig() re-reads on its
+  // next call instead of returning the stale value for up to 5 minutes.
+  invalidateCoverageConfigCache();
 
   return NextResponse.json({ ok: true, override: clean, effective: mergeCoverageConfig(clean) });
 }
