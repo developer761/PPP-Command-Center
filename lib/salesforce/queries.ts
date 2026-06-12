@@ -336,6 +336,11 @@ export type SnapshotRep = {
   roleName: string | null;
   department: string | null;
   createdDate: string; // ISO
+  /** Real hire date — pulled from SFDC_Staff__c.Hire_Date__c via the
+   *  User_Name_Lookup__c link (Katie 2026-06-11). Prefer this over
+   *  createdDate when computing tenure; falls back to createdDate when
+   *  the rep has no Staff record. ISO date string or null. */
+  hireDate: string | null;
   /** True when Profile.Name ends with "Standard.Field" — PPP's canonical
    *  field-rep universe (per BUSINESS_RULES.md). Manager-level + admin users
    *  are excluded. Used by deriveRepScorecard + team-average denominators. */
@@ -930,6 +935,43 @@ export async function loadSalesforceSnapshot(
     // FLS-restricted in PPP's prod; if the OAuth user can't read them, the
     // query fails. We try the rich SELECT first, fall back to baseline on
     // ANY error so a missing field doesn't break the whole snapshot.
+    // Staff records — drive the real "hire date" displayed on the rep header.
+    // Katie 2026-06-11: tenure was using User.CreatedDate which reflects when
+    // the SF User row was imported, not when the rep actually started. The
+    // canonical hire date lives on a custom SFDC_Staff__c object linked to
+    // User via User_Name_Lookup__c. Build a Map<userId, hireDate> so the rep
+    // parse can prefer the real date and fall back to CreatedDate when no
+    // Staff record exists. The object is custom and may not be readable by
+    // every OAuth scope — wrap in try/catch so a missing object doesn't
+    // break the whole snapshot load.
+    type SfStaffRow = { Id: string; User_Name_Lookup__c: string | null; Hire_Date__c: string | null };
+    const staffPromise: Promise<Map<string, string>> = (async () => {
+      try {
+        const res = await conn.query<SfStaffRow>(
+          `SELECT Id, User_Name_Lookup__c, Hire_Date__c
+             FROM SFDC_Staff__c
+            WHERE User_Name_Lookup__c != null AND Hire_Date__c != null
+            LIMIT 2000`
+        );
+        const m = new Map<string, string>();
+        for (const r of res.records) {
+          if (!r.User_Name_Lookup__c || !r.Hire_Date__c) continue;
+          // Keep the EARLIEST Hire_Date__c per user — if there are multiple
+          // Staff records (re-hire, multiple roles) the original hire date
+          // wins for the tenure display.
+          const existing = m.get(r.User_Name_Lookup__c);
+          if (!existing || r.Hire_Date__c < existing) {
+            m.set(r.User_Name_Lookup__c, r.Hire_Date__c);
+          }
+        }
+        return m;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[SF] SFDC_Staff__c query failed — falling back to User.CreatedDate for tenure: ${msg}`);
+        return new Map<string, string>();
+      }
+    })();
+
     const usersPromise: Promise<{ records: SfUserRow[] }> = (async () => {
       const baseFields = "Id, Name, FirstName, LastName, Email, IsActive, CreatedDate, UserType, Profile.Name, UserRole.Name, Department";
       const richFields = `${baseFields}, Gross_Margin_Goal_Percent__c, Self_Gen_Sales_Goal_Percent__c, Quarterly_Draw__c`;
@@ -1420,7 +1462,7 @@ export async function loadSalesforceSnapshot(
       }
     })();
 
-    const usersResult = await usersPromise;
+    const [usersResult, staffHireDates] = await Promise.all([usersPromise, staffPromise]);
 
     const reps: SnapshotRep[] = usersResult.records
       .filter((u) => u.UserType === "Standard" || u.UserType === "PowerPartner" || u.UserType === null)
@@ -1444,6 +1486,7 @@ export async function loadSalesforceSnapshot(
           roleName: u.UserRole?.Name ?? null,
           department: u.Department,
           createdDate: u.CreatedDate,
+          hireDate: staffHireDates.get(u.Id) ?? null,
           isFieldStandard,
           gmGoalPercent: typeof u.Gross_Margin_Goal_Percent__c === "number"
             ? (u.Gross_Margin_Goal_Percent__c as number)

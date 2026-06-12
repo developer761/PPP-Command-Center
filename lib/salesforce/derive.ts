@@ -339,7 +339,11 @@ function deriveRepsForPeriodInner(
       daysAvgClose,
       appointmentsHeld: a.total, // approximation: opp-count proxy for activity
       quotesSent: a.total,
-      startedAt: u.createdDate.split("T")[0],
+      // Real hire date from SFDC_Staff__c.Hire_Date__c when PPP has a Staff
+      // record for this user (Katie 2026-06-11). Falls back to User.CreatedDate
+      // (when SF User was imported) — that's the legacy behavior and stays as
+      // a safety net so a missing Staff record never breaks the rep header.
+      startedAt: (u.hireDate ?? u.createdDate).split("T")[0],
       isFieldStandard: u.isFieldStandard,
     };
   });
