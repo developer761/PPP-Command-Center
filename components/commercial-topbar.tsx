@@ -4,7 +4,7 @@ import NotificationBell from "@/components/notification-bell";
 import UserMenu from "@/components/user-menu";
 
 /**
- * Minimal topbar for `/dashboard/commercial/*`.
+ * Minimal topbar for `/commercial/*`.
  *
  * Phase 0 ships with just brand + greeting + bell + user. Search + view-as
  * are intentionally NOT here — they're SF-snapshot-dependent surfaces from

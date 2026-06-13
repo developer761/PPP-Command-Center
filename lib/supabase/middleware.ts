@@ -38,9 +38,13 @@ export async function updateSession(request: NextRequest) {
   const url = request.nextUrl;
   const path = url.pathname;
 
-  // Protect /dashboard/* and /api/v1/* — require auth + correct domain
+  // Protect /dashboard/* (Command Center), /commercial/* (New Platform),
+  // /choose-platform, and /api/v1/* — require auth + correct domain
   const isProtected =
-    path.startsWith("/dashboard") || path.startsWith("/api/v1");
+    path.startsWith("/dashboard") ||
+    path.startsWith("/commercial") ||
+    path.startsWith("/choose-platform") ||
+    path.startsWith("/api/v1");
 
   if (isProtected) {
     if (!user) {

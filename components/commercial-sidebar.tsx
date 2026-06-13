@@ -34,30 +34,30 @@ const navSections: NavSection[] = [
   {
     heading: "Overview",
     items: [
-      { label: "Dashboard", href: "/dashboard/commercial", icon: <IconHome /> },
+      { label: "Dashboard", href: "/commercial", icon: <IconHome /> },
     ],
   },
   {
     heading: "Pipeline",
     items: [
-      { label: "Accounts", href: "/dashboard/commercial/accounts", phase: 1, disabled: true, icon: <IconBuilding /> },
-      { label: "Opportunities", href: "/dashboard/commercial/opportunities", phase: 2, disabled: true, icon: <IconTarget /> },
-      { label: "Estimates", href: "/dashboard/commercial/estimates", phase: 3, disabled: true, icon: <IconCalc /> },
+      { label: "Accounts", href: "/commercial/accounts", phase: 1, disabled: true, icon: <IconBuilding /> },
+      { label: "Opportunities", href: "/commercial/opportunities", phase: 2, disabled: true, icon: <IconTarget /> },
+      { label: "Estimates", href: "/commercial/estimates", phase: 3, disabled: true, icon: <IconCalc /> },
     ],
   },
   {
     heading: "Projects",
     items: [
-      { label: "Projects", href: "/dashboard/commercial/projects", phase: 5, disabled: true, icon: <IconHardHat /> },
-      { label: "Change Orders", href: "/dashboard/commercial/change-orders", phase: 7, disabled: true, icon: <IconChangeOrder /> },
-      { label: "Closeout", href: "/dashboard/commercial/closeout", phase: 9, disabled: true, icon: <IconCheckSquare /> },
+      { label: "Projects", href: "/commercial/projects", phase: 5, disabled: true, icon: <IconHardHat /> },
+      { label: "Change Orders", href: "/commercial/change-orders", phase: 7, disabled: true, icon: <IconChangeOrder /> },
+      { label: "Closeout", href: "/commercial/closeout", phase: 9, disabled: true, icon: <IconCheckSquare /> },
     ],
   },
   {
     heading: "Financials",
     items: [
-      { label: "Billing", href: "/dashboard/commercial/billing", phase: 8, disabled: true, icon: <IconDollar /> },
-      { label: "Reports", href: "/dashboard/commercial/reports", disabled: true, icon: <IconChart /> },
+      { label: "Billing", href: "/commercial/billing", phase: 8, disabled: true, icon: <IconDollar /> },
+      { label: "Reports", href: "/commercial/reports", disabled: true, icon: <IconChart /> },
     ],
   },
 ];
@@ -75,7 +75,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
   return (
     <aside className="w-64 lg:w-64 h-full bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
       <div className="px-6 py-5 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
-        <Link href="/dashboard/commercial" className="block" onClick={onNavigate}>
+        <Link href="/commercial" className="block" onClick={onNavigate}>
           <Image
             src="/brand/logo.svg"
             alt="Precision Painting Plus"
@@ -110,8 +110,8 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             <ul className="space-y-0.5">
               {section.items.map((item) => {
                 const active =
-                  item.href === "/dashboard/commercial"
-                    ? pathname === "/dashboard/commercial"
+                  item.href === "/commercial"
+                    ? pathname === "/commercial"
                     : pathname.startsWith(item.href);
                 const baseClasses = "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors";
 

@@ -104,6 +104,15 @@ export default async function DashboardLayout({
   // (don't show what they can't use).
   const access = platformAccess(profile);
 
+  // Cross-platform access gate: a user with ONLY New Platform access who
+  // manually types /dashboard or follows a stale link is bounced to their
+  // actual platform. A user with neither is sent through the picker (which
+  // also bounces them out — the no-access page).
+  if (!access.hasCommandCenter) {
+    if (access.hasNewPlatform) redirect("/commercial");
+    redirect("/choose-platform");
+  }
+
   return (
     <DashboardChrome
       user={{

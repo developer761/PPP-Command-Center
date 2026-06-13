@@ -5,7 +5,7 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import CommercialChrome from "@/components/commercial-chrome";
 
 /**
- * /dashboard/commercial — New Platform layout.
+ * /commercial — New Platform layout.
  *
  * Gated end-to-end:
  *   - No session → /

@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const target = body.platform === "command_center" ? "/dashboard" : "/dashboard/commercial";
+  const target = body.platform === "command_center" ? "/dashboard" : "/commercial";
   const res = NextResponse.json({ ok: true, redirect: target });
   res.cookies.set(PLATFORM_COOKIE, body.platform, {
     path: "/",

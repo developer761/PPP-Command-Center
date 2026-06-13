@@ -12,7 +12,7 @@ import PlatformPicker from "./platform-picker";
  *   - No session → /sign-in
  *   - Has neither access flag → /no-access (informational, not built yet — falls back to / for now)
  *   - Has only Command Center → redirect to /dashboard
- *   - Has only New Platform → redirect to /dashboard/commercial
+ *   - Has only New Platform → redirect to /commercial
  *   - Has BOTH → render the picker
  *   - Has BOTH and a saved cookie pointing to an accessible platform → redirect there
  *
@@ -39,7 +39,7 @@ export default async function ChoosePlatformPage() {
 
   if (!access.hasBoth) {
     if (access.hasCommandCenter) redirect("/dashboard");
-    redirect("/dashboard/commercial");
+    redirect("/commercial");
   }
 
   // Has both — check the cookie for sticky preference.
@@ -47,7 +47,7 @@ export default async function ChoosePlatformPage() {
   const lastChoice = cookieStore.get(PLATFORM_COOKIE)?.value;
   if (isPlatform(lastChoice)) {
     if (lastChoice === "command_center") redirect("/dashboard");
-    redirect("/dashboard/commercial");
+    redirect("/commercial");
   }
 
   return <PlatformPicker email={user.email ?? ""} />;

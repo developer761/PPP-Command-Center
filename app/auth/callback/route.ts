@@ -26,9 +26,14 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
 
   // Sanitize the `next` redirect — only allow same-origin relative paths.
-  const rawNext = searchParams.get("next") ?? "/dashboard";
+  // Default landing is the platform picker, NOT /dashboard. The picker
+  // auto-redirects single-access users to their only platform, so users
+  // with only Command Center never see it (lands on /dashboard immediately
+  // anyway). Multi-access users see the picker on fresh sign-in, then
+  // sticky-cookie thereafter.
+  const rawNext = searchParams.get("next") ?? "/choose-platform";
   const next =
-    rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/dashboard";
+    rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/choose-platform";
 
   if (!code) {
     return NextResponse.redirect(`${origin}/?error=no_code`);

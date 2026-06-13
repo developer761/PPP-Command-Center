@@ -6,7 +6,7 @@ import CommercialSidebar from "@/components/commercial-sidebar";
 import CommercialTopbar from "@/components/commercial-topbar";
 
 /**
- * Chrome wrapper for `/dashboard/commercial/*` — sibling to dashboard-chrome.tsx.
+ * Chrome wrapper for `/commercial/*` — sibling to dashboard-chrome.tsx.
  *
  * Distinct from the Command Center chrome on purpose (platform separation):
  * different sidebar, different topbar variant, no SF ViewerProvider (the

@@ -1,5 +1,5 @@
 /**
- * `/dashboard/commercial` — New Platform landing.
+ * `/commercial` — New Platform landing.
  *
  * Phase 0 placeholder. As phases ship, this page evolves into the
  * executive dashboard (sales / operations / financial / workforce /
