@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>PPP New Platform · Detailed Build Plan</title>
+<title>PPP New Platform · Plan for Alex &amp; Katie</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   :root {
@@ -10,7 +10,6 @@
     --blue-light: #3B82F6;
     --blue-50: #EFF6FF;
     --blue-100: #DBEAFE;
-    --blue-700: #1D4ED8;
     --emerald: #047857;
     --emerald-50: #ECFDF5;
     --emerald-100: #D1FAE5;
@@ -19,16 +18,12 @@
     --amber-100: #FEF3C7;
     --rose: #BE123C;
     --rose-50: #FFF1F2;
-    --rose-100: #FFE4E6;
     --purple: #6D28D9;
     --purple-50: #F5F3FF;
-    --purple-100: #EDE9FE;
     --teal: #0F766E;
     --teal-50: #F0FDFA;
-    --teal-100: #CCFBF1;
     --indigo: #4338CA;
     --indigo-50: #EEF2FF;
-    --indigo-100: #E0E7FF;
     --gold: #92400E;
     --gold-50: #FFFBEB;
     --red: #B91C1C;
@@ -48,10 +43,9 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--charcoal);
     background: var(--charcoal-50);
-    -webkit-font-smoothing: antialiased;
-    line-height: 1.55;
+    line-height: 1.6;
   }
-  .page { max-width: 1100px; margin: 0 auto; padding: 28px 32px 60px; background: var(--white); }
+  .page { max-width: 980px; margin: 0 auto; padding: 28px 32px 60px; background: var(--white); }
   .cover {
     background: linear-gradient(135deg, #0E1A3F 0%, var(--blue) 50%, var(--blue-light) 100%);
     color: white;
@@ -59,105 +53,83 @@
     margin: -28px -32px 36px;
     border-radius: 0 0 16px 16px;
   }
-  .cover .label { font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; opacity: 0.7; }
-  .cover h1 { margin: 8px 0 6px 0; font-size: 32px; font-weight: 800; letter-spacing: -0.6px; }
-  .cover .subtitle { font-size: 15px; opacity: 0.85; max-width: 720px; }
-  .cover .meta { display: flex; gap: 24px; margin-top: 24px; font-size: 12px; opacity: 0.75; flex-wrap: wrap; }
-  .cover .meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .cover .label { font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; opacity: 0.75; }
+  .cover h1 { margin: 8px 0 8px 0; font-size: 34px; font-weight: 800; letter-spacing: -0.6px; }
+  .cover .subtitle { font-size: 16px; opacity: 0.9; max-width: 720px; line-height: 1.55; }
+  .cover .meta { display: flex; gap: 24px; margin-top: 24px; font-size: 13px; opacity: 0.8; flex-wrap: wrap; }
   h2 {
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 800;
-    margin: 44px 0 8px 0;
+    margin: 48px 0 10px 0;
     letter-spacing: -0.3px;
     color: var(--charcoal);
     border-bottom: 3px solid var(--blue);
-    padding-bottom: 6px;
+    padding-bottom: 8px;
   }
   h2 .num {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px; height: 28px;
+    width: 30px; height: 30px;
     border-radius: 6px;
     background: var(--blue);
     color: white;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 800;
     margin-right: 12px;
     vertical-align: middle;
   }
-  h3 {
-    font-size: 16px;
-    font-weight: 700;
-    margin: 28px 0 6px 0;
-    color: var(--charcoal);
-    letter-spacing: -0.1px;
-  }
-  h4 {
-    font-size: 13px;
-    font-weight: 700;
-    margin: 18px 0 4px 0;
-    color: var(--charcoal-700);
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-  }
-  p { font-size: 14px; color: var(--charcoal-700); margin: 8px 0; }
-  .lead { font-size: 15px; color: var(--charcoal); }
-  ul, ol { padding-left: 22px; margin: 8px 0; }
-  li { font-size: 14px; color: var(--charcoal-700); margin-bottom: 4px; line-height: 1.55; }
-  code { background: var(--charcoal-100); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; color: var(--charcoal); }
+  h3 { font-size: 17px; font-weight: 700; margin: 24px 0 8px 0; }
+  h4 { font-size: 13.5px; font-weight: 700; margin: 18px 0 4px 0; color: var(--charcoal-700); text-transform: uppercase; letter-spacing: 0.4px; }
+  p { font-size: 15px; color: var(--charcoal-700); margin: 10px 0; }
+  .lead { font-size: 16px; color: var(--charcoal); line-height: 1.65; }
+  ul, ol { padding-left: 24px; margin: 10px 0; }
+  li { font-size: 15px; color: var(--charcoal-700); margin-bottom: 6px; }
+  li b { color: var(--charcoal); }
   .pill {
     display: inline-block;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.8px;
     text-transform: uppercase;
-    padding: 3px 8px;
+    padding: 3px 9px;
     border-radius: 4px;
     border: 1px solid;
   }
-  .pill.blue { color: var(--blue-700); background: var(--blue-50); border-color: var(--blue-100); }
+  .pill.blue { color: var(--blue); background: var(--blue-50); border-color: var(--blue-100); }
   .pill.emerald { color: var(--emerald); background: var(--emerald-50); border-color: var(--emerald-100); }
   .pill.amber { color: var(--amber); background: var(--amber-50); border-color: var(--amber-100); }
-  .pill.rose { color: var(--rose); background: var(--rose-50); border-color: var(--rose-100); }
-  .pill.purple { color: var(--purple); background: var(--purple-50); border-color: var(--purple-100); }
-  .pill.teal { color: var(--teal); background: var(--teal-50); border-color: var(--teal-100); }
-  .pill.indigo { color: var(--indigo); background: var(--indigo-50); border-color: var(--indigo-100); }
-  .pill.gold { color: var(--gold); background: var(--gold-50); border-color: var(--amber-100); }
-  .pill.red { color: var(--red); background: var(--red-50); border-color: #FECACA; }
+  .pill.rose { color: var(--rose); background: var(--rose-50); border-color: #FFE4E6; }
   .pill.gray { color: var(--charcoal-500); background: var(--charcoal-100); border-color: var(--charcoal-300); }
   .phase-card {
     border-radius: 12px;
     border: 1px solid var(--charcoal-100);
     background: var(--white);
-    padding: 22px 24px;
-    margin: 20px 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    padding: 24px 28px;
+    margin: 22px 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
   }
-  .phase-card.blue { border-left: 5px solid var(--blue); }
-  .phase-card.emerald { border-left: 5px solid var(--emerald); }
-  .phase-card.purple { border-left: 5px solid var(--purple); }
-  .phase-card.amber { border-left: 5px solid var(--amber); }
-  .phase-card.teal { border-left: 5px solid var(--teal); }
-  .phase-card.indigo { border-left: 5px solid var(--indigo); }
-  .phase-card.rose { border-left: 5px solid var(--rose); }
-  .phase-card.gold { border-left: 5px solid var(--gold); }
-  .phase-card.red { border-left: 5px solid var(--red); }
+  .phase-card.blue { border-left: 6px solid var(--blue); }
+  .phase-card.emerald { border-left: 6px solid var(--emerald); }
+  .phase-card.purple { border-left: 6px solid var(--purple); }
+  .phase-card.amber { border-left: 6px solid var(--amber); }
+  .phase-card.teal { border-left: 6px solid var(--teal); }
+  .phase-card.indigo { border-left: 6px solid var(--indigo); }
+  .phase-card.rose { border-left: 6px solid var(--rose); }
+  .phase-card.gold { border-left: 6px solid var(--gold); }
+  .phase-card.red { border-left: 6px solid var(--red); }
   .phase-head {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-    margin-bottom: 12px;
-    padding-bottom: 12px;
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
     border-bottom: 1px dashed var(--charcoal-100);
   }
   .phase-head .badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px; height: 36px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px;
     border-radius: 50%;
     color: white;
-    font-size: 16px;
-    font-weight: 800;
+    font-size: 18px; font-weight: 800;
     flex-shrink: 0;
   }
   .phase-card.blue .phase-head .badge { background: var(--blue); }
@@ -169,49 +141,26 @@
   .phase-card.rose .phase-head .badge { background: var(--rose); }
   .phase-card.gold .phase-head .badge { background: var(--gold); }
   .phase-card.red .phase-head .badge { background: var(--red); }
-  .phase-head h3 { margin: 0; font-size: 18px; flex: 1; }
-  .phase-head .meta { font-size: 12px; color: var(--charcoal-500); }
-  .page-block {
+  .phase-head h3 { margin: 0; font-size: 20px; flex: 1; }
+  .screen {
     background: var(--charcoal-50);
     border-radius: 8px;
-    padding: 14px 16px;
+    padding: 16px 20px;
     margin: 12px 0;
   }
-  .page-block h4 { margin: 0 0 6px 0; font-size: 13px; color: var(--charcoal); display: flex; align-items: center; gap: 8px; }
-  .page-block .url { background: var(--white); border: 1px solid var(--charcoal-100); color: var(--charcoal-700); padding: 2px 8px; border-radius: 4px; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; font-weight: 400; letter-spacing: 0; text-transform: none; }
-  .page-block .persona { font-size: 11px; font-weight: 600; color: var(--charcoal-500); text-transform: uppercase; letter-spacing: 0.6px; }
-  .field-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 6px 14px;
-    font-size: 12.5px;
-    color: var(--charcoal-700);
-    margin: 6px 0 4px 12px;
-  }
-  .field-grid .field {
-    display: flex;
-    flex-direction: column;
-    padding: 4px 0;
-  }
-  .field-grid .field b {
-    font-size: 12px;
-    color: var(--charcoal);
-    font-weight: 600;
-  }
-  .field-grid .field span {
-    font-size: 11px;
-    color: var(--charcoal-500);
-    margin-top: 1px;
-  }
+  .screen .screen-title { font-weight: 700; font-size: 15px; color: var(--charcoal); margin-bottom: 4px; }
+  .screen .screen-sub { font-size: 12.5px; color: var(--charcoal-500); margin-bottom: 8px; }
+  .screen ul { margin: 4px 0; }
+  .screen li { font-size: 14px; }
   table {
     width: 100%;
     border-collapse: collapse;
-    margin: 12px 0;
-    font-size: 13px;
+    margin: 14px 0;
+    font-size: 14px;
   }
   th, td {
     text-align: left;
-    padding: 8px 10px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--charcoal-100);
     vertical-align: top;
   }
@@ -223,39 +172,55 @@
     background: var(--charcoal-50);
     font-weight: 700;
   }
-  td.tight { width: 1%; white-space: nowrap; }
   .callout {
     background: var(--blue-50);
     border-left: 4px solid var(--blue);
     border-radius: 6px;
-    padding: 12px 16px;
-    margin: 14px 0;
-    font-size: 13.5px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 15px;
     color: var(--charcoal);
   }
   .callout.warn { background: var(--amber-50); border-color: var(--amber); }
-  .callout.danger { background: var(--rose-50); border-color: var(--rose); }
   .callout.green { background: var(--emerald-50); border-color: var(--emerald); }
+  .callout.gold { background: var(--gold-50); border-color: var(--gold); }
   .callout b { color: var(--charcoal); }
   .toc {
     background: var(--charcoal-50);
     border-radius: 8px;
-    padding: 14px 18px;
-    margin-bottom: 26px;
-    font-size: 13px;
+    padding: 16px 22px;
+    margin-bottom: 28px;
   }
-  .toc h3 { margin: 0 0 6px 0; font-size: 12px; color: var(--charcoal-500); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
-  .toc ol { padding-left: 0; list-style: none; margin: 6px 0 0 0; }
-  .toc ol li { padding: 4px 0; border-bottom: 1px dotted var(--charcoal-100); font-size: 13.5px; color: var(--charcoal); }
-  .toc ol li b { display: inline-block; width: 24px; color: var(--charcoal-500); font-weight: 700; }
-  .footnote { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--charcoal-100); font-size: 11.5px; color: var(--charcoal-500); text-align: center; }
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .toc h3 { margin: 0 0 8px 0; font-size: 12px; color: var(--charcoal-500); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+  .toc ol { padding-left: 0; list-style: none; margin: 0; }
+  .toc ol li { padding: 5px 0; border-bottom: 1px dotted var(--charcoal-100); font-size: 14px; color: var(--charcoal); }
+  .toc ol li b { display: inline-block; width: 28px; color: var(--charcoal-500); font-weight: 700; }
+  .footnote { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--charcoal-100); font-size: 12px; color: var(--charcoal-500); text-align: center; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .workflow-step {
+    background: var(--white);
+    border: 2px solid var(--blue-100);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin: 10px 0;
+    display: flex; gap: 14px; align-items: flex-start;
+  }
+  .workflow-step .num-badge {
+    background: var(--blue);
+    color: white;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800;
+  }
+  .workflow-step .step-body { flex: 1; }
+  .workflow-step .step-body b { display: block; font-size: 14.5px; margin-bottom: 3px; color: var(--charcoal); }
+  .workflow-step .step-body span { font-size: 13.5px; color: var(--charcoal-700); }
   @media print {
     body { background: white; }
     .page { padding: 0 24px; }
-    .phase-card { break-inside: avoid; box-shadow: none; }
-    .page-block { break-inside: avoid; }
-    .callout { break-inside: avoid; }
+    .phase-card, .screen, .callout, .workflow-step { break-inside: avoid; box-shadow: none; }
   }
 </style>
 </head>
@@ -263,370 +228,252 @@
 <div class="page">
 
   <div class="cover">
-    <div class="label">For Alex Z &amp; Katie Batilla · Detailed Plan</div>
+    <div class="label">For Alex Z + Katie Batilla</div>
     <h1>PPP New Platform</h1>
-    <div class="subtitle">Page-by-page build plan for the operating system: every screen, every field, every user, every notification. Coexists with Command Center under one login at <b>hub.precisionpaintingplus.net</b>.</div>
+    <div class="subtitle">A second app inside the same hub. From the day you win a bid through invoicing the last dollar — one place, plain English. This is the walkthrough.</div>
     <div class="meta">
       <span>📅 June 12, 2026</span>
-      <span>📐 Drafted by Karan</span>
-      <span>📄 v1 · revisions in repo: <code>docs/NEW_PLATFORM_PLAN.md</code></span>
+      <span>📐 Karan</span>
+      <span>🔗 hub.precisionpaintingplus.net</span>
     </div>
   </div>
 
   <div class="toc">
     <h3>What's inside</h3>
     <ol>
-      <li><b>1</b> The 60-second TL;DR</li>
-      <li><b>2</b> How it lives alongside Command Center</li>
-      <li><b>3</b> Who uses it (personas)</li>
-      <li><b>4</b> Roles &amp; permissions matrix</li>
-      <li><b>5</b> Phase-by-phase pages — what each screen does</li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 1 · Account Management</li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 2 · Opportunity (Preconstruction)</li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 3 · Estimating &amp; Proposal</li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 4 · Contract Award</li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 5 · Project Setup</li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 6 · Project Execution</li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 7 · Change Management</li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 8 · Billing &amp; Financials <span class="pill amber" style="font-size:8.5px;">priority</span></li>
-      <li>&nbsp;&nbsp;&nbsp;&nbsp;Phase 9 · Closeout</li>
-      <li><b>6</b> Executive dashboards &amp; reports</li>
-      <li><b>7</b> Mobile-first surfaces (field workflow)</li>
-      <li><b>8</b> Notification matrix — who pings what when</li>
-      <li><b>9</b> Document storage</li>
-      <li><b>10</b> Audit trail</li>
-      <li><b>11</b> Build timeline + cost</li>
-      <li><b>12</b> Open questions to lock in</li>
+      <li><b>1</b> The 30-second pitch</li>
+      <li><b>2</b> How the two apps coexist</li>
+      <li><b>3</b> A typical project, end to end</li>
+      <li><b>4</b> Who uses it &amp; what they can do</li>
+      <li><b>5</b> The 9 sections — walked through one by one</li>
+      <li><b>6</b> The dashboards</li>
+      <li><b>7</b> What works on a phone (field crew)</li>
+      <li><b>8</b> What gets a notification</li>
+      <li><b>9</b> Documents &amp; record-keeping</li>
+      <li><b>10</b> What we need answers on before we start</li>
     </ol>
   </div>
 
-  <!-- §1 TL;DR -->
-  <h2><span class="num">1</span>The 60-second TL;DR</h2>
-  <p class="lead">PPP is getting a second operating platform, built from scratch, living at the same hub URL as the existing Command Center. Where the Command Center mirrors Salesforce, the New Platform <b>is</b> the system of record. Every account, bid, project, invoice, change order, daily report, and closeout document lives in Postgres — owned by the app, not synced from somewhere else.</p>
-  <ul>
-    <li><b>Same login.</b> One sign-in at <code>hub.precisionpaintingplus.net</code> → picker → either platform.</li>
-    <li><b>One sidebar switcher</b> at the bottom of each platform's nav for users with access to both.</li>
-    <li><b>Nine phases</b> from your operating-system diagram, each its own build slice with schema, screens, and notifications.</li>
-    <li><b>Postgres-native means edits land instantly</b>, no 30-min SF sync delay, and we don't depend on SF schema for new fields.</li>
-    <li><b>Strict backend separation</b> — code, database tables, sidebars, notifications, and invoices are all on parallel tracks. The two platforms cannot interfere with each other.</li>
-    <li><b>Phase 0 (foundation, login picker, RBAC, audit log) is shipped.</b> Phase 1 (Account Management) starts next.</li>
-  </ul>
+  <!-- §1 -->
+  <h2><span class="num">1</span>The 30-second pitch</h2>
+  <p class="lead">PPP gets a second app inside the same hub. The existing Command Center stays exactly as it is — same login, same screens, same routine. The New Platform lives next to it as a separate space for commercial projects.</p>
+  <p class="lead">In the New Platform, PPP runs everything from the moment a bid comes in to the moment the last invoice is paid: accounts, contacts, bids, estimates, proposals, contracts, projects, daily reports, change orders, invoices, payments, and closeout. Nothing is pulled from Salesforce — every record lives directly in this app, so edits land instantly and there's no syncing delay.</p>
+  <p class="lead">When an admin signs in at <b>hub.precisionpaintingplus.net</b>, they pick which app to open. Once inside, a small "Switch to ___" button at the bottom of the sidebar lets them hop between the two anytime. Anyone without access to both apps just goes straight to the one they have — no extra clicks.</p>
 
-  <!-- §2 How it coexists -->
-  <h2><span class="num">2</span>How it lives alongside Command Center</h2>
-  <p>Both platforms share one URL, one login, and a thin shell layer. Everything else is parallel.</p>
-
+  <!-- §2 -->
+  <h2><span class="num">2</span>How the two apps coexist</h2>
+  <p>One login. Two separate apps. Each has its own sidebar, screens, and data. Nothing inside one app affects the other.</p>
   <table>
-    <tr>
-      <th>Layer</th>
-      <th>Command Center</th>
-      <th>New Platform</th>
-    </tr>
-    <tr>
-      <td><b>What it's for</b></td>
-      <td>Sales workflow, customer color forms, materials ordering, scorecards, Mail Hub</td>
-      <td>Bidding + project lifecycle (estimate → contract → execute → close)</td>
-    </tr>
-    <tr>
-      <td><b>Source of truth</b></td>
-      <td>Salesforce (read every 30 min, narrow writeback for colors)</td>
-      <td>Postgres (every write IS the truth)</td>
-    </tr>
-    <tr>
-      <td><b>URL</b></td>
-      <td><code>hub.precisionpaintingplus.net/dashboard</code></td>
-      <td><code>hub.precisionpaintingplus.net/commercial</code></td>
-    </tr>
-    <tr>
-      <td><b>Data tables</b></td>
-      <td>existing (no prefix)</td>
-      <td>all prefixed <code>commercial_*</code></td>
-    </tr>
-    <tr>
-      <td><b>Backend code</b></td>
-      <td><code>lib/salesforce/*</code></td>
-      <td><code>lib/commercial/*</code></td>
-    </tr>
-    <tr>
-      <td><b>Sidebar</b></td>
-      <td>Sales / Finance &amp; Ops / Operations / Admin</td>
-      <td>Overview / Pipeline / Projects / Financials</td>
-    </tr>
-    <tr>
-      <td><b>Invoice hours go to</b></td>
-      <td><code>PPP_Invoice_&lt;month&gt;.md</code> (Katie)</td>
-      <td><code>Alex_Platform_Invoice_&lt;month&gt;.md</code> (Alex)</td>
-    </tr>
+    <tr><th></th><th>Command Center</th><th>New Platform</th></tr>
+    <tr><td><b>What it's for</b></td><td>Residential side (existing workflow — color forms, materials, scorecards)</td><td>Commercial projects — bids through invoicing</td></tr>
+    <tr><td><b>Where data lives</b></td><td>Salesforce</td><td>This app directly</td></tr>
+    <tr><td><b>Sidebar</b></td><td>Sales / Finance / Operations / Admin</td><td>Overview / Pipeline / Projects / Financials</td></tr>
+    <tr><td><b>Used by</b></td><td>Reps, Katie, Alex, office staff</td><td>Estimators, project managers, supers, foremen, office staff, Alex</td></tr>
+    <tr><td><b>Status</b></td><td><span class="pill emerald">Live</span></td><td><span class="pill amber">Foundation built, building features next</span></td></tr>
   </table>
 
-  <h4>The thin shared layer (only these touch both)</h4>
-  <ul>
-    <li><b>Auth</b> — Supabase + Google SSO + the <code>profiles</code> table with per-platform access flags.</li>
-    <li><b>Shell components</b> — topbar primitives, sidebar primitives, user menu.</li>
-    <li><b>Notification bell</b> — one component, but notification kinds are platform-prefixed (<code>cc.*</code> vs <code>np.*</code>).</li>
-    <li><b>Document storage</b> — Supabase Storage (separate buckets per platform).</li>
-    <li><b>Resend</b> (transactional email) — shared client, different templates.</li>
-    <li><b>Mobile design tokens</b> — 44px tap targets, safe-area-inset, color palette.</li>
-  </ul>
+  <div class="callout">
+    <b>What this means in practice:</b> Katie can keep doing residential work without ever seeing the commercial side. An estimator can do their bids without seeing residential. Alex sees both. Nobody gets cluttered with screens they don't need.
+  </div>
 
-  <div class="callout"><b>Cross-imports are banned.</b> A linter rule + a <code>lib/commercial/README.md</code> codify that <code>lib/salesforce/*</code> and <code>lib/commercial/*</code> never import from each other. The audit on the day Phase 0 shipped confirmed zero violations.</div>
+  <!-- §3 WORKFLOW -->
+  <h2><span class="num">3</span>A typical commercial project, end to end</h2>
+  <p>The walk-through of what a single job looks like inside the app, from the very first email to the final paid invoice.</p>
 
-  <!-- §3 Personas -->
-  <h2><span class="num">3</span>Who uses it (personas)</h2>
+  <div class="workflow-step">
+    <div class="num-badge">1</div>
+    <div class="step-body">
+      <b>A bid request comes in</b>
+      <span>An owner or GC emails or submits a form. The app creates an "Opportunity" automatically. If the sender is someone PPP knows, it links to their Account. If not, it flags the opp for the estimator to link manually.</span>
+    </div>
+  </div>
+  <div class="workflow-step">
+    <div class="num-badge">2</div>
+    <div class="step-body">
+      <b>Estimator reviews plans, builds a number</b>
+      <span>Plans, specs, and any RFP get uploaded to the opportunity. Estimator fills in the labor, materials, equipment, and subcontractor numbers. The app totals everything and shows margin.</span>
+    </div>
+  </div>
+  <div class="workflow-step">
+    <div class="num-badge">3</div>
+    <div class="step-body">
+      <b>Proposal goes out</b>
+      <span>The estimator builds the proposal inside the app, hits send. PPP staff can see if/when the client opened it. Revisions get tracked (Rev 1, Rev 2…) so we always know what version was sent.</span>
+    </div>
+  </div>
+  <div class="workflow-step">
+    <div class="num-badge">4</div>
+    <div class="step-body">
+      <b>Bid is won — manually mark "Awarded"</b>
+      <span>The estimator clicks "Awarded" on the opportunity. <b>This is the step where Alex or Katie manually adds the project to the platform to start working on it.</b> The app creates a project record from the awarded opportunity.</span>
+    </div>
+  </div>
+  <div class="workflow-step">
+    <div class="num-badge">5</div>
+    <div class="step-body">
+      <b>Project team gets assigned</b>
+      <span>Multiple project managers can be added. Different people on different projects. A PM might be on three jobs, a super on two, a foreman on one. There's no limit — assign whoever needs to see this job.</span>
+    </div>
+  </div>
+  <div class="workflow-step">
+    <div class="num-badge">6</div>
+    <div class="step-body">
+      <b>Work starts — invoice as you go</b>
+      <span>Field crew submits daily reports from their phones (works offline if no signal). The PM tracks labor, materials, equipment, subs, schedule, punch items. <b>Office staff send invoices as work progresses — multiple invoices per job, each for a specific dollar amount, manually set whenever they choose.</b></span>
+    </div>
+  </div>
+  <div class="workflow-step">
+    <div class="num-badge">7</div>
+    <div class="step-body">
+      <b>Payments come in — mark each one</b>
+      <span>When a check or wire arrives, office staff opens the invoice and marks it paid (full or partial). The amount and date are saved. The system tracks the running balance per invoice and per project.</span>
+    </div>
+  </div>
+  <div class="workflow-step">
+    <div class="num-badge">8</div>
+    <div class="step-body">
+      <b>Change orders happen — logged separately</b>
+      <span>Owner adds scope mid-job. PM creates a change order, attaches the signed CO PDF, sets the dollar amount + schedule impact. Once approved, it adds to the project's revised contract value and shows up as a line on the next invoice.</span>
+    </div>
+  </div>
+  <div class="workflow-step">
+    <div class="num-badge">9</div>
+    <div class="step-body">
+      <b>Job wraps — closeout docs uploaded</b>
+      <span>Punchlist gets closed out. Warranty paperwork, certificates, lessons learned. Retainage gets released as the final invoice. Project closes.</span>
+    </div>
+  </div>
+
+  <!-- §4 PERSONAS -->
+  <h2><span class="num">4</span>Who uses it &amp; what they can do</h2>
   <table>
-    <tr>
-      <th>Role</th>
-      <th>Sees</th>
-      <th>Does</th>
-      <th>Mostly on</th>
-    </tr>
-    <tr>
-      <td><b>Admin</b><br/><span class="pill purple">karan, alex, katie</span></td>
-      <td>Everything across every project</td>
-      <td>Configure settings, grant access, view reports, fix data</td>
-      <td>Desktop</td>
-    </tr>
-    <tr>
-      <td><b>Estimator</b></td>
-      <td>Their bids end-to-end</td>
-      <td>Build estimates, draft proposals, manage RFIs, mark Bid Outcome</td>
-      <td>Desktop</td>
-    </tr>
-    <tr>
-      <td><b>Project Manager (PM)</b></td>
-      <td>Projects assigned to them</td>
-      <td>Schedule + CO + budget vs actual + subcontractors + client comms</td>
-      <td>Desktop + tablet</td>
-    </tr>
-    <tr>
-      <td><b>Superintendent</b></td>
-      <td>Projects they're on</td>
-      <td>Quality, punchlist, daily report review, schedule</td>
-      <td>Tablet + phone</td>
-    </tr>
-    <tr>
-      <td><b>Foreman</b></td>
-      <td>Projects + crews they lead</td>
-      <td>Daily reports, photos, hours logged, punch closure</td>
-      <td>Phone (offline-tolerant)</td>
-    </tr>
-    <tr>
-      <td><b>Office</b></td>
-      <td>All projects, financials</td>
-      <td>Invoicing, AP/AR, COI tracking, certified payroll</td>
-      <td>Desktop</td>
-    </tr>
-    <tr>
-      <td><b>Field crew</b></td>
-      <td>Projects they're on, read-only mostly</td>
-      <td>Look up specs, mark punch items complete, log time</td>
-      <td>Phone (offline-tolerant)</td>
-    </tr>
+    <tr><th>Role</th><th>What they see</th><th>What they can do</th></tr>
+    <tr><td><b>Admin</b><br/><span class="pill blue">Alex, Katie, Karan</span></td><td>Everything</td><td>Manage settings, grant access, approve change orders, see all financials</td></tr>
+    <tr><td><b>Estimator</b></td><td>Their bids</td><td>Build estimates, send proposals, mark won/lost, handle RFIs</td></tr>
+    <tr><td><b>Project Manager</b></td><td>Their projects</td><td>Schedule, change orders, daily report review, budget vs actual, sub invoices</td></tr>
+    <tr><td><b>Superintendent</b></td><td>Their projects</td><td>Quality, punchlist, daily reports, schedule</td></tr>
+    <tr><td><b>Foreman</b></td><td>Their projects (mostly phone)</td><td>Submit daily reports, upload photos, close punch items</td></tr>
+    <tr><td><b>Office staff</b></td><td>All projects, financials</td><td>Send invoices, mark payments, track AR, COI paperwork</td></tr>
+    <tr><td><b>Field crew</b></td><td>Read-only access to their jobs</td><td>Look up specs, see schedule, mark punch items done</td></tr>
   </table>
-
-  <!-- §4 Permissions matrix -->
-  <h2><span class="num">4</span>Roles &amp; permissions matrix</h2>
-  <p>Each role's access scope. PPP can mix roles per user (a PM can also be Office); permissions stack.</p>
-  <table>
-    <tr><th></th><th>Admin</th><th>Estimator</th><th>PM</th><th>Super</th><th>Foreman</th><th>Office</th><th>Field</th></tr>
-    <tr><td>Create Account</td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-    <tr><td>Create Opportunity</td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-    <tr><td>Edit Estimate</td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>Approve Proposal</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>Activate Project</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-    <tr><td>Edit Project Team</td><td>✅</td><td>—</td><td>own</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>Submit Daily Report</td><td>✅</td><td>—</td><td>own</td><td>own</td><td>own</td><td>—</td><td>own</td></tr>
-    <tr><td>Approve Daily Report</td><td>✅</td><td>—</td><td>own</td><td>own</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>Approve Sub Invoice</td><td>✅</td><td>—</td><td>own</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>Create CO</td><td>✅</td><td>—</td><td>own</td><td>own</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>Approve CO</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>Create Invoice</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-    <tr><td>Mark Invoice Paid</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-    <tr><td>Close Project</td><td>✅</td><td>—</td><td>own</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>View Financials</td><td>✅</td><td>own</td><td>own</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-    <tr><td>Edit Settings</td><td>✅</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-  </table>
-  <p style="font-size:12px;color:var(--charcoal-500);"><i>"own" = only on records where the user is on the project team. Server-enforced — checked in <code>lib/commercial/rbac.ts</code>.</i></p>
+  <p style="font-size:13.5px;color:var(--charcoal-500);"><i>One person can have multiple roles (a PM can also be Office; an admin is also an estimator). Access stacks.</i></p>
 
   <!-- §5 PHASES -->
-  <h2><span class="num">5</span>Phase-by-phase pages</h2>
-  <p>Every page is a sketch of what the user sees, with the underlying fields. Field names in <code>monospace</code> map to DB columns. Persona pill shows who lands there most. URLs are illustrative.</p>
+  <h2><span class="num">5</span>The 9 sections — walked through one by one</h2>
+  <p>The app is built in 9 sections that match the operating system diagram. Each section is a screen you'd click into.</p>
 
   <!-- PHASE 1 -->
   <div class="phase-card blue">
     <div class="phase-head">
       <div class="badge">1</div>
-      <h3>Account Management</h3>
-      <span class="pill blue">2–3 build days</span>
-      <span class="meta">Companies, contacts, compliance docs, performance history</span>
+      <h3>Accounts (the companies PPP works with)</h3>
     </div>
 
-    <p>The "who we work with" layer. Every commercial project starts on an Account. Same company can have many projects across the years — Account is the long-lived identity, projects flow off it.</p>
+    <p>The companies PPP bids to or works for. Same company can have many projects over the years — the Account is the long-lived identity, projects flow off it.</p>
 
-    <div class="page-block">
-      <h4>📋 Accounts list <span class="url">/commercial/accounts</span> <span class="persona">admin · estimator · office</span></h4>
-      <p>Sortable + filterable table of every company PPP works with.</p>
-      <div class="field-grid">
-        <div class="field"><b>Company name</b><span>account_name</span></div>
-        <div class="field"><b>Rating</b><span>A / B / C</span></div>
-        <div class="field"><b>Industry</b><span>industry_type</span></div>
-        <div class="field"><b>Compliance status</b><span>green / yellow / red</span></div>
-        <div class="field"><b>Lifetime revenue</b><span>computed</span></div>
-        <div class="field"><b># open opps</b><span>computed</span></div>
-        <div class="field"><b># active projects</b><span>computed</span></div>
-        <div class="field"><b>Last activity</b><span>computed</span></div>
-      </div>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Top right: <b>+ New Account</b> button. Filter chips: Rating · Compliance · Industry · Active only.</p>
+    <div class="screen">
+      <div class="screen-title">📋 Accounts list</div>
+      <div class="screen-sub">The full directory. Filter by rating, compliance status, or industry.</div>
+      <ul>
+        <li>Company name + rating (A / B / C)</li>
+        <li>Lifetime revenue + number of active projects</li>
+        <li>When PPP last talked to them</li>
+        <li>"New Account" button top-right</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>🏢 Account detail · Info tab <span class="url">/commercial/accounts/[id]</span> <span class="persona">admin · estimator · office</span></h4>
-      <p>The header always shows: company name, A/B/C rating chip, lifetime revenue, # projects, compliance status dot.</p>
-      <h4>Account info</h4>
-      <div class="field-grid">
-        <div class="field"><b>Company name</b><span>required</span></div>
-        <div class="field"><b>DBA</b><span>optional</span></div>
-        <div class="field"><b>Industry</b><span>picklist</span></div>
-        <div class="field"><b>Address(es)</b><span>billing + site</span></div>
-        <div class="field"><b>Phone</b><span>main + AP</span></div>
-        <div class="field"><b>Website</b><span>optional</span></div>
-        <div class="field"><b>Account rating</b><span>A / B / C</span></div>
-        <div class="field"><b>Vendor compliance status</b></div>
-        <div class="field"><b>Prequalification status</b></div>
-        <div class="field"><b>Insurance requirements</b><span>min limits</span></div>
-        <div class="field"><b>Tax exempt</b><span>boolean + cert #</span></div>
-        <div class="field"><b>Notes</b><span>internal-only</span></div>
-      </div>
+    <div class="screen">
+      <div class="screen-title">🏢 Account detail — Info</div>
+      <ul>
+        <li>Company name, DBA, industry, address(es), phone, website</li>
+        <li>Rating, prequalification status, vendor compliance status</li>
+        <li>Insurance requirements (minimum coverage limits)</li>
+        <li>Tax exempt? (yes/no plus certificate number)</li>
+        <li>Internal notes</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>📎 Account detail · Documents tab <span class="persona">admin · office</span></h4>
-      <p>Upload, version, expire-track. Drag-drop multi-file upload.</p>
-      <div class="field-grid">
-        <div class="field"><b>COI</b><span>insurance cert, expires_at</span></div>
-        <div class="field"><b>W-9</b><span>tax form</span></div>
-        <div class="field"><b>Master agreement</b><span>signed, expires_at</span></div>
-        <div class="field"><b>Vendor onboarding pkg</b><span>received</span></div>
-        <div class="field"><b>Safety requirements</b><span>per project type</span></div>
-        <div class="field"><b>Other</b><span>misc</span></div>
-      </div>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Each row shows: file name, version, uploaded by, uploaded date, expiration. Red highlight at <code>expires_at &lt; today + 30 days</code>. Click row → preview + download (signed URL, 1h TTL).</p>
+    <div class="screen">
+      <div class="screen-title">📎 Account detail — Documents</div>
+      <div class="screen-sub">Drag-and-drop upload. Files versioned automatically. Expiration dates tracked.</div>
+      <ul>
+        <li>Certificates of insurance, W-9, master agreements, vendor onboarding, safety paperwork</li>
+        <li>Each file shows: name, uploaded by, date, expiration</li>
+        <li>Red highlight when expiring within 30 days</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>👤 Account detail · Contacts tab <span class="persona">admin · estimator · pm · office</span></h4>
-      <p>Contacts with multi-role support — same person can be Decision Maker + Billing Contact on the same account.</p>
-      <table style="margin-top:6px;">
-        <tr><th>Name</th><th>Email</th><th>Phone</th><th>Title</th><th>Role(s)</th><th>Default contact for</th></tr>
-        <tr><td>Sarah Lee</td><td>sl@x.com</td><td>(631)…</td><td>VP Facilities</td><td><span class="pill blue">Decision Maker</span> <span class="pill amber">Billing</span></td><td>Bid · Award · Invoice</td></tr>
-        <tr><td>Mike Chen</td><td>mc@x.com</td><td>(917)…</td><td>Property Mgr</td><td><span class="pill teal">Site Contact</span></td><td>Field access</td></tr>
-      </table>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Role enum: Decision Maker · Estimator · PM · Superintendent · AP · Billing · Site · Other.</p>
+    <div class="screen">
+      <div class="screen-title">👤 Account detail — Contacts</div>
+      <div class="screen-sub">Contacts can have multiple roles. The same person can be Decision Maker AND Billing Contact for one account.</div>
+      <ul>
+        <li>Name, email, phone, title</li>
+        <li>Role tags: Decision Maker · PM · Billing · AP · Site contact · Other</li>
+        <li>"Default contact for" lets you set who gets the bid email, who gets the invoice</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>📊 Account detail · Performance tab <span class="persona">admin · estimator</span></h4>
-      <p>Lifetime relationship view — see if this account is worth more attention.</p>
-      <div class="field-grid">
-        <div class="field"><b>Bids submitted</b><span>count + $ value</span></div>
-        <div class="field"><b>Awards</b><span>count + win rate</span></div>
-        <div class="field"><b>Revenue (lifetime)</b><span>sum of project contracts</span></div>
-        <div class="field"><b>Average GP%</b><span>across closed projects</span></div>
-        <div class="field"><b>Avg payment days</b><span>net invoice → paid</span></div>
-        <div class="field"><b>Open A/R</b><span>unpaid invoices</span></div>
-        <div class="field"><b>Last bid</b><span>date</span></div>
-        <div class="field"><b>Active projects</b><span>count + $ value</span></div>
-      </div>
+    <div class="screen">
+      <div class="screen-title">📊 Account detail — Performance</div>
+      <div class="screen-sub">The lifetime view of this account.</div>
+      <ul>
+        <li>Bids submitted, awards, win rate</li>
+        <li>Lifetime revenue, average gross profit %</li>
+        <li>Average payment days (helpful when deciding to bid again)</li>
+        <li>Open A/R total + active projects</li>
+      </ul>
     </div>
-
-    <h4>Edge cases handled</h4>
-    <ul>
-      <li>Same company twice (two DBAs) → both Accounts allowed, UI shows DBA + city to disambiguate.</li>
-      <li>COI expiration → blocks Phase 5 project activation; alert at T-30/14/7/1 days.</li>
-      <li>Account marked inactive → existing projects keep working, new opps blocked.</li>
-      <li>Delete only when zero projects; otherwise soft-delete.</li>
-    </ul>
   </div>
 
   <!-- PHASE 2 -->
   <div class="phase-card emerald">
     <div class="phase-head">
       <div class="badge">2</div>
-      <h3>Opportunity (Preconstruction)</h3>
-      <span class="pill emerald">3–4 build days</span>
-      <span class="meta">Bid pipeline, plans/specs intake, RFIs, win/loss tracking</span>
+      <h3>Opportunities (the bids)</h3>
     </div>
 
-    <p>From "heard about a job" to "awarded or lost." The 12-status pipeline from your diagram lives here. Two inbound paths — email and online form — both land as new opps automatically.</p>
+    <p>Every bid PPP works on, from "we just got asked" through "we won it" or "we lost it." The pipeline is 12 stages laid out visually so the team always knows where each bid stands.</p>
 
-    <div class="page-block">
-      <h4>📋 Opportunity Kanban <span class="url">/commercial/opportunities</span> <span class="persona">estimator · admin</span></h4>
-      <p>Default view: 12-column board grouped by status. Each card shows opp name, account, salesperson, $ value, due date, last activity. Drag a card between columns to change status (server-enforced — invalid jumps blocked).</p>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Toggle to <b>Table view</b> for batch filtering by salesperson, status, due date, due-this-week, overdue.</p>
+    <div class="screen">
+      <div class="screen-title">📋 Pipeline board</div>
+      <div class="screen-sub">Visual columns for each stage. Drag a bid between columns to move it through.</div>
+      <ul>
+        <li>Stages: Lead → Qualified → Site Visit → Plans Received → Estimating → Internal Review → Proposal Sent → Follow-up → Negotiation → Verbal Award → Contract Review → Won / Lost / No Bid</li>
+        <li>Each card shows: name, account, value, due date, salesperson</li>
+        <li>Can also flip to a table view for sorting + bulk actions</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>🎯 Opportunity detail · Info <span class="url">/commercial/opportunities/[id]</span> <span class="persona">estimator · admin</span></h4>
-      <div class="field-grid">
-        <div class="field"><b>Opportunity name</b><span>required</span></div>
-        <div class="field"><b>Account</b><span>FK, autocomplete</span></div>
-        <div class="field"><b>Project / property address</b></div>
-        <div class="field"><b>Opportunity type</b><span>new construction · repaint · maintenance · other</span></div>
-        <div class="field"><b>Estimated $ value</b></div>
-        <div class="field"><b>Estimated start date</b></div>
-        <div class="field"><b>Estimated end date</b></div>
-        <div class="field"><b>Due date (proposal)</b></div>
-        <div class="field"><b>Salesperson</b><span>FK user</span></div>
-        <div class="field"><b>Source</b><span>email / form / referral / repeat</span></div>
-        <div class="field"><b>Current status</b><span>enum (12 values)</span></div>
-        <div class="field"><b>Lost reason</b><span>conditional</span></div>
-      </div>
+    <div class="screen">
+      <div class="screen-title">🎯 Opportunity detail — Info</div>
+      <ul>
+        <li>Opportunity name, account, project address</li>
+        <li>Type (new build / repaint / maintenance), estimated value, due date</li>
+        <li>Salesperson</li>
+        <li>Where it came from (email / online form / referral / repeat client)</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>👥 Opportunity detail · Team tab <span class="persona">estimator · admin</span></h4>
-      <p>Contacts attached to THIS bid (often different from the Account's default contacts — e.g. a different PM on this site).</p>
-      <p>Role enum: Decision Maker · PM Contact · Super Contact · Billing Contact · Site Contact.</p>
+    <div class="screen">
+      <div class="screen-title">👥 Opportunity team</div>
+      <div class="screen-sub">The contacts for THIS bid (often different from the account's default contacts — different PM, different decision-maker, etc.).</div>
     </div>
 
-    <div class="page-block">
-      <h4>📐 Opportunity detail · Plans &amp; Specs tab <span class="persona">estimator</span></h4>
-      <p>Drag-drop large PDFs (20-100MB). Chunked upload with progress bar. Files versioned per drop. Cards show file name, size, uploaded by, date, page count.</p>
-      <p>Subsections: <b>Architectural plans</b> · <b>Specifications</b> · <b>Addenda</b> · <b>RFP / ITB</b> · <b>Site photos</b> (GPS-stamped).</p>
+    <div class="screen">
+      <div class="screen-title">📐 Plans &amp; Specs</div>
+      <div class="screen-sub">Drag-and-drop the architectural PDFs, specs, addenda, site photos. Big files (20-100MB) supported with upload progress.</div>
     </div>
 
-    <div class="page-block">
-      <h4>📓 Opportunity detail · Notes &amp; Emails <span class="persona">estimator · admin</span></h4>
-      <p>Free-text notes + inbound email thread (parsed bids → match this opp → render the conversation here). Outbound emails from the app go back through the same thread.</p>
+    <div class="screen">
+      <div class="screen-title">📓 Notes &amp; Emails</div>
+      <div class="screen-sub">Free-text notes. Inbound bid emails automatically thread here. Outbound emails from the app go through too — full conversation in one place.</div>
     </div>
 
-    <div class="page-block">
-      <h4>✅ Opportunity detail · Tasks <span class="persona">estimator</span></h4>
-      <p>Internal todos (site visit, follow up with client, send revised proposal). Each: <code>title</code>, <code>assigned_to</code>, <code>due_at</code>, <code>status</code>.</p>
-    </div>
-
-    <div class="page-block">
-      <h4>🕓 Opportunity detail · Status Timeline <span class="persona">estimator · admin</span></h4>
-      <p>Read-only audit. Every status change with old → new + who + when. Shows decay metrics: "in this status for 8 days" red badge at >7 days.</p>
-    </div>
-
-    <h4>The 12 statuses (DAG — server-enforced transitions)</h4>
-    <p style="font-size:13px;">Lead → Qualified → Site Visit Required → Site Visit Complete → Plans/Specs Received → Estimating → Internal Review → Proposal Submitted → Follow Up → Negotiation → Verbal Award → Contract Review → <b>Awarded</b> | <b>Lost</b> | <b>No Bid</b></p>
-
-    <h4>Inbound bid paths</h4>
+    <h4>How bids come in</h4>
     <ul>
-      <li><b>Email</b> — <code>bids@[PPP domain]</code> inbox. Inbound webhook parses sender + subject + body + attachments → opens a new opp in "Lead" status. Auto-links to Account if the sender's domain matches.</li>
-      <li><b>Online form</b> — public token-gated form. PPP sends a link to a known prospect; submission lands as an opp + attaches the prospect's contact info.</li>
-      <li><b>Manual</b> — estimator types it in (referral, phone call, repeat client).</li>
-    </ul>
-
-    <h4>Edge cases handled</h4>
-    <ul>
-      <li>Inbound from unknown sender → opp created with placeholder Account + "needs linking" flag.</li>
-      <li>"Awarded" status flip auto-creates a <code>commercial_projects</code> row (Phase 5).</li>
-      <li>"Lost" requires <code>lost_reason</code> + <code>lost_to</code> (for win/loss reporting).</li>
-      <li>Estimator scope — by default only their own opps; admin sees all.</li>
-      <li>Salesperson reassignment audit-logged + bell-notified.</li>
+      <li><b>Email</b> — Set up a special inbox (like <code>bids@</code>); anything sent there auto-creates an opportunity.</li>
+      <li><b>Online form</b> — PPP sends a prospect a link, they fill it out, an opp is created.</li>
+      <li><b>Manual</b> — Estimator types it in (referral, phone call, repeat client).</li>
     </ul>
   </div>
 
@@ -634,76 +481,48 @@
   <div class="phase-card purple">
     <div class="phase-head">
       <div class="badge">3</div>
-      <h3>Estimating &amp; Proposal Workspace</h3>
-      <span class="pill purple">3–4 build days</span>
-      <span class="meta">Bid number-crunching + proposal builder + RFIs + outcome</span>
+      <h3>Estimating &amp; Proposals</h3>
     </div>
 
-    <p>Where the estimator does the actual work. Bid qualification checklist on the side; estimate workbench in the middle; proposal builder + version diff for sending.</p>
+    <p>Where the estimator actually builds the number and crafts the proposal that goes to the client.</p>
 
-    <div class="page-block">
-      <h4>✓ Bid qualification checklist <span class="url">/commercial/opportunities/[id]/qualification</span> <span class="persona">estimator</span></h4>
+    <div class="screen">
+      <div class="screen-title">✓ Bid qualification checklist</div>
       <ul>
-        <li>Plans received</li>
-        <li>Specs received</li>
-        <li>Site visit complete</li>
-        <li>Scope reviewed</li>
-        <li>Schedule reviewed</li>
-        <li>Labor strategy set</li>
-        <li>Material strategy set</li>
+        <li>Plans received · Specs received · Site visit complete · Scope reviewed · Schedule reviewed · Labor strategy set · Material strategy set</li>
+        <li>Not blocking — yellow badge "5 of 7 done" stays visible at the top</li>
       </ul>
-      <p>Not blocking — yellow badge in the page header "5 of 7 complete" so estimator can submit a proposal even mid-checklist.</p>
     </div>
 
-    <div class="page-block">
-      <h4>🧮 Estimate workbench <span class="url">/commercial/opportunities/[id]/estimate</span> <span class="persona">estimator</span></h4>
-      <p>Four collapsible sections. Each is a table with line items + sub-totals. The header always shows running total.</p>
-
-      <h4>Labor</h4>
-      <div class="field-grid">
-        <div class="field"><b>Trade / crew</b></div>
-        <div class="field"><b>Hours</b></div>
-        <div class="field"><b>Rate / hour</b></div>
-        <div class="field"><b>Cost</b><span>= hours × rate</span></div>
-      </div>
-      <h4>Materials</h4>
-      <div class="field-grid">
-        <div class="field"><b>Item</b></div>
-        <div class="field"><b>Qty + unit</b></div>
-        <div class="field"><b>Unit cost</b></div>
-        <div class="field"><b>Markup %</b></div>
-        <div class="field"><b>Cost</b><span>computed</span></div>
-      </div>
-      <h4>Equipment</h4>
-      <div class="field-grid">
-        <div class="field"><b>Item</b><span>e.g. lift, scaffold</span></div>
-        <div class="field"><b>Rental days</b></div>
-        <div class="field"><b>Daily rate</b></div>
-        <div class="field"><b>Cost</b><span>computed</span></div>
-      </div>
-      <h4>Subcontractors</h4>
-      <div class="field-grid">
-        <div class="field"><b>Sub name</b></div>
-        <div class="field"><b>Scope</b></div>
-        <div class="field"><b>Lump sum or unit</b></div>
-        <div class="field"><b>Cost</b></div>
-      </div>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Bottom of page: total cost · target margin % · target sell price · margin $.</p>
+    <div class="screen">
+      <div class="screen-title">🧮 The estimate workbench</div>
+      <div class="screen-sub">Four collapsible sections; the header shows the running total.</div>
+      <ul>
+        <li><b>Labor</b> — trade/crew, hours, rate, cost</li>
+        <li><b>Materials</b> — item, quantity, unit cost, markup, cost</li>
+        <li><b>Equipment</b> — lifts, scaffolds, etc. — rental days, daily rate, cost</li>
+        <li><b>Subcontractors</b> — sub name, scope, lump sum or unit</li>
+      </ul>
+      <p>Bottom shows: total cost · target margin % · sell price · margin in dollars.</p>
     </div>
 
-    <div class="page-block">
-      <h4>📝 Proposal builder <span class="url">/commercial/opportunities/[id]/proposal</span> <span class="persona">estimator · admin (sign)</span></h4>
-      <p>Structured proposal — scope included (bulleted list) + scope excluded (bulleted list) + assumptions + addenda + total $ + payment terms + validity period. Auto-versioned (Rev 1, Rev 2, Rev 3...). PDF generated server-side; sent via Resend with a tracked open link.</p>
+    <div class="screen">
+      <div class="screen-title">📝 Proposal builder</div>
+      <ul>
+        <li>Scope included (bulleted list) · Scope excluded · Assumptions · Addenda · Total $ · Payment terms · Validity period</li>
+        <li>Auto-versioned (Rev 1, Rev 2…) — every save snapshots the prior version so you can diff</li>
+        <li>PDF generated by the app, sent through email with delivery + open tracking</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>❓ RFIs tab <span class="persona">estimator</span></h4>
-      <p>Questions back to the client mid-bid. Each: <code>question</code> · <code>asked_at</code> · <code>response</code> · <code>response_at</code>. Open >5 business days → yellow warn badge.</p>
+    <div class="screen">
+      <div class="screen-title">❓ RFIs</div>
+      <div class="screen-sub">Questions back to the client mid-bid. Each one shows: question, when asked, response, when answered. Open more than 5 business days → yellow warning.</div>
     </div>
 
-    <div class="page-block">
-      <h4>🏁 Bid outcome action <span class="persona">estimator · admin</span></h4>
-      <p>Three buttons at the top of the page: <b>Awarded</b> · <b>Lost</b> · <b>No Bid / On Hold</b>. Awarded → flips opp status + auto-creates a project shell. Lost → requires <code>lost_reason</code> picklist (Price · Competition · Timing · Scope mismatch · No award) + optional <code>lost_to</code>.</p>
+    <div class="screen">
+      <div class="screen-title">🏁 Bid outcome</div>
+      <div class="screen-sub">Three buttons at the top: <b>Awarded</b> · <b>Lost</b> · <b>No Bid / On Hold</b>. Clicking "Awarded" creates a project record automatically. "Lost" asks why (price / competition / timing / scope / other).</div>
     </div>
   </div>
 
@@ -711,45 +530,29 @@
   <div class="phase-card amber">
     <div class="phase-head">
       <div class="badge">4</div>
-      <h3>Contract Award / Preconstruction</h3>
-      <span class="pill amber">1–2 build days</span>
-      <span class="meta">Contract entry, submittals plan, procurement, requirements</span>
+      <h3>Contract Award</h3>
     </div>
 
-    <div class="page-block">
-      <h4>📃 Contract entry <span class="url">/commercial/opportunities/[id]/contract</span> <span class="persona">admin · office</span></h4>
-      <div class="field-grid">
-        <div class="field"><b>Contract value</b></div>
-        <div class="field"><b>Retainage %</b><span>default 5%, override per contract</span></div>
-        <div class="field"><b>Payment terms</b><span>net 30 / 45 / progress / other</span></div>
-        <div class="field"><b>Signed date</b></div>
-        <div class="field"><b>Contract PDF</b><span>upload</span></div>
-        <div class="field"><b>Bonding required</b><span>boolean + amount</span></div>
-        <div class="field"><b>Certified payroll</b><span>required?</span></div>
-      </div>
-    </div>
+    <p>The brief stop between "we won" and "the project is set up to actually start." Contract value, retainage %, payment terms, plus what needs to be in place before the project can go active.</p>
 
-    <div class="page-block">
-      <h4>📦 Submittals planning <span class="persona">pm · admin</span></h4>
-      <p>List of things to submit later (product data, samples, finish schedules) with lead times. Each row: <code>item</code> · <code>type</code> · <code>lead_time_days</code> · <code>responsible</code>.</p>
-    </div>
-
-    <div class="page-block">
-      <h4>🛒 Procurement planning <span class="persona">pm · admin</span></h4>
-      <p>Big-ticket material orders + equipment rentals planned for execution. Each: <code>item</code> · <code>qty</code> · <code>vendor</code> · <code>order_by_date</code>.</p>
-    </div>
-
-    <div class="page-block">
-      <h4>🛡️ Requirements checklist <span class="persona">admin · office</span></h4>
+    <div class="screen">
+      <div class="screen-title">📃 Contract details</div>
       <ul>
-        <li>Insurance certificates</li>
-        <li>Bonding</li>
-        <li>Safety plans</li>
-        <li>Permits</li>
-        <li>Certified payroll setup</li>
-        <li>Other compliance</li>
+        <li>Contract value, retainage % (default 5%, override per contract)</li>
+        <li>Payment terms (net 30 / net 45 / progress / other)</li>
+        <li>Signed date + PDF of signed contract</li>
+        <li>Bonding required? + amount</li>
+        <li>Certified payroll required?</li>
       </ul>
-      <p>Each item: <code>status</code> (not started / in progress / complete) · <code>responsible</code> · <code>due_at</code> · <code>doc_uploaded</code>. Gates Phase 5 activation.</p>
+    </div>
+
+    <div class="screen">
+      <div class="screen-title">🛡️ Pre-construction requirements</div>
+      <div class="screen-sub">Checklist that must be green before the project can become active.</div>
+      <ul>
+        <li>Insurance certificates · Bonding · Safety plans · Permits · Certified payroll setup · Other compliance</li>
+        <li>Each row shows status (not started / in progress / complete), who's responsible, due date, doc uploaded</li>
+      </ul>
     </div>
   </div>
 
@@ -758,184 +561,141 @@
     <div class="phase-head">
       <div class="badge">5</div>
       <h3>Project Setup</h3>
-      <span class="pill teal">2 build days</span>
-      <span class="meta">Awarded opp becomes the operational project</span>
     </div>
 
-    <p>The transition. Everything from here forward attaches to a Project, not an Opportunity.</p>
+    <p>The awarded bid becomes the operational project. Everything from this point onward attaches to the project record.</p>
 
-    <div class="page-block">
-      <h4>📋 Projects list <span class="url">/commercial/projects</span> <span class="persona">admin · pm · office</span></h4>
-      <p>Card grid. Each card: project name, contract value, % complete, days remaining, status pill, owner PM.</p>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Filter: my projects · active · on hold · in setup · in closeout · all.</p>
+    <div class="screen">
+      <div class="screen-title">📋 Projects list</div>
+      <div class="screen-sub">All current projects in a card grid. Each card shows project name, contract value, % complete, days remaining, status, owner PM.</div>
     </div>
 
-    <div class="page-block">
-      <h4>🏗️ Project detail <span class="url">/commercial/projects/[id]</span> <span class="persona">all</span></h4>
-      <p>The hub for every project. Top bar: project name, contract value chip, status pill, % complete, days remaining, # punch items open.</p>
-      <h4>Project info section</h4>
-      <div class="field-grid">
-        <div class="field"><b>Project name</b></div>
-        <div class="field"><b>Account</b><span>FK</span></div>
-        <div class="field"><b>Address</b></div>
-        <div class="field"><b>Contract value</b></div>
-        <div class="field"><b>Start date</b></div>
-        <div class="field"><b>Substantial completion target</b></div>
-        <div class="field"><b>Status</b><span>setup → active → closeout → closed</span></div>
-        <div class="field"><b>Revised contract</b><span>contract + approved COs</span></div>
-        <div class="field"><b>Forecast GP $</b><span>live computed</span></div>
-      </div>
+    <div class="screen">
+      <div class="screen-title">🏗️ Project detail — header</div>
+      <div class="screen-sub">Always visible at the top: project name, contract value, status, % complete, days remaining, open punch count.</div>
+      <ul>
+        <li>Project name, account, address</li>
+        <li>Contract value (with revised total after change orders)</li>
+        <li>Start date, target completion date</li>
+        <li>Live forecast gross profit $</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>👥 Project team <span class="persona">admin · pm</span></h4>
-      <p>Multi-PM supported (Karan's explicit ask). Add/remove team members with their role on this project. Each: <code>user</code> · <code>role</code> (PM / Super / Foreman / Safety) · <code>added_at</code>.</p>
+    <div class="screen">
+      <div class="screen-title">👥 Project team</div>
+      <div class="screen-sub"><b>Multiple project managers supported — add as many as you need.</b> Different people on different projects. A PM can be on multiple jobs; a super can be assigned to two projects at once.</div>
+      <ul>
+        <li>Add team member, pick their role on this project (PM / Super / Foreman / Safety contact)</li>
+        <li>Remove anyone, anytime (except the last PM — must reassign first)</li>
+        <li>Each role can have multiple people (e.g. two co-PMs on a big job)</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>📑 Project documents <span class="persona">admin · pm · office</span></h4>
-      <p>Sections: <b>Signed contract</b> · <b>SOW</b> · <b>General conditions</b> · <b>Insurance certs</b> · <b>Permits</b> · <b>Other</b>.</p>
+    <div class="screen">
+      <div class="screen-title">📑 Project documents</div>
+      <div class="screen-sub">Signed contract · SOW · General conditions · Insurance certs · Permits · Other. All versioned.</div>
     </div>
 
-    <div class="page-block">
-      <h4>📤 Submittals <span class="persona">pm · admin</span></h4>
-      <p>From the Phase 4 plan, but now with statuses. Each submittal flows: <b>Drafted → Submitted → Reviewed → Approved/Rejected</b>. Reject path lands back on Drafted with reviewer notes.</p>
+    <div class="screen">
+      <div class="screen-title">📤 Submittals</div>
+      <div class="screen-sub">Product data, samples, finish schedules. Each one flows: Drafted → Submitted → Reviewed → Approved or Rejected (with notes back).</div>
     </div>
-
-    <div class="page-block">
-      <h4>🛡️ Requirements (live) <span class="persona">pm · office</span></h4>
-      <p>Same shape as the Phase 4 checklist but now tracking ACTIVE compliance. Insurance cert expiring in 30 days → red flag in project header. Permit expired → blocks daily reports.</p>
-    </div>
-
-    <h4>Edge cases handled</h4>
-    <ul>
-      <li>Project can't go from "setup" → "active" until requirements all green.</li>
-      <li>Removing the only PM → blocked, must reassign first.</li>
-      <li>Permit expiry → notification at T-30 / 14 / 7 / 1 days to the PM.</li>
-    </ul>
   </div>
 
   <!-- PHASE 6 -->
   <div class="phase-card indigo">
     <div class="phase-head">
       <div class="badge">6</div>
-      <h3>Project Execution</h3>
-      <span class="pill indigo">4–5 build days · heaviest phase</span>
-      <span class="meta">Day-to-day project tracking — daily reports, labor, materials, quality, schedule</span>
+      <h3>Project Execution (day-to-day)</h3>
     </div>
 
-    <div class="page-block">
-      <h4>📱 Daily report form (mobile-first) <span class="url">/commercial/projects/[id]/daily/[date]</span> <span class="persona">foreman · pm</span></h4>
-      <p>Single-column iPhone-optimized form. Submitted at end of each work day.</p>
-      <div class="field-grid">
-        <div class="field"><b>Report date</b><span>auto-today</span></div>
-        <div class="field"><b>Weather</b><span>picklist + temp</span></div>
-        <div class="field"><b>Crew on site</b><span>multi-select from team</span></div>
-        <div class="field"><b>Trades present</b><span>e.g. painters, prep, drywall</span></div>
-        <div class="field"><b>Hours worked / person</b></div>
-        <div class="field"><b>Work performed</b><span>free text + categories</span></div>
-        <div class="field"><b>Production units</b><span>e.g. sq ft painted</span></div>
-        <div class="field"><b>Delays</b><span>weather · materials · client · other</span></div>
-        <div class="field"><b>Safety incidents</b><span>conditional flag</span></div>
-        <div class="field"><b>Notes</b></div>
-        <div class="field"><b>Photos</b><span>upload from camera</span></div>
-      </div>
-      <p style="font-size:12.5px;color:var(--charcoal-500);"><b>Offline-tolerant:</b> if signal drops, the form saves locally (IndexedDB) and syncs when back online. Banner shows "X reports queued."</p>
+    <p>Day-to-day project tracking. This is where the field team lives. Most of these screens are designed for phone-first use.</p>
+
+    <div class="screen">
+      <div class="screen-title">📱 Daily report (phone-first)</div>
+      <div class="screen-sub">Foreman opens this on their iPhone at the end of the day. Single column, big tap targets, works without signal — syncs when back online.</div>
+      <ul>
+        <li>Date, weather, crew on site (multi-select from team)</li>
+        <li>Trades present, hours worked per person</li>
+        <li>Work performed (free text + categories)</li>
+        <li>Production units (sq ft painted, rooms done, etc.)</li>
+        <li>Delays (weather / materials / client / other)</li>
+        <li>Safety incidents (flag)</li>
+        <li>Photos straight from camera</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>⚒️ Labor management <span class="persona">pm · admin · office</span></h4>
-      <p>Budget vs actual hours, by crew + by trade. Table view + bar chart. Variance &gt;10% → flag.</p>
+    <div class="screen">
+      <div class="screen-title">⚒️ Labor management</div>
+      <div class="screen-sub">Budget hours vs actual hours, by crew and by trade. Variance &gt;10% → flag.</div>
     </div>
 
-    <div class="page-block">
-      <h4>🪣 Material management <span class="persona">pm · admin · office</span></h4>
-      <div class="field-grid">
-        <div class="field"><b>Item</b></div>
-        <div class="field"><b>Budget qty</b></div>
-        <div class="field"><b>Purchased</b></div>
-        <div class="field"><b>Installed</b></div>
-        <div class="field"><b>Remaining</b></div>
-        <div class="field"><b>Variance $</b></div>
-      </div>
+    <div class="screen">
+      <div class="screen-title">🪣 Material management</div>
+      <div class="screen-sub">For each material: budget quantity · purchased · installed · remaining · variance $. Alert when remaining drops below 10%.</div>
     </div>
 
-    <div class="page-block">
-      <h4>🚜 Equipment management <span class="persona">pm · admin</span></h4>
-      <p>Per-equipment row: budget rental days · actual days · daily rate · cost. Auto-flag double-booked equipment across projects.</p>
+    <div class="screen">
+      <div class="screen-title">🚜 Equipment management</div>
+      <div class="screen-sub">Per-equipment rental tracking. Budget days vs actual. Auto-flag double-booked equipment across projects.</div>
     </div>
 
-    <div class="page-block">
-      <h4>🧱 Subcontractor management <span class="persona">pm · admin · office</span></h4>
-      <p>Sub roster + their contract values + their invoices. Sub invoice flow: <b>Received → Reviewed → Approved → Paid</b>. Approval bell to PM + Office. Invoice > sub contract → warning, requires admin override.</p>
+    <div class="screen">
+      <div class="screen-title">🧱 Subcontractor management</div>
+      <div class="screen-sub">List of subs on the job + their contract values + their invoices.</div>
+      <ul>
+        <li>Sub invoice flow: Received → Reviewed → Approved → Paid</li>
+        <li>When a sub invoice arrives, PM gets a notification</li>
+        <li>Invoice exceeds sub contract → warning, requires admin override</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>🔍 Quality + inspections <span class="persona">super · pm</span></h4>
-      <p>Inspection log per project. Each: <code>date</code> · <code>inspector</code> · <code>findings</code> · <code>photos</code>. Finding flagged "deficiency" → auto-creates a punch item.</p>
+    <div class="screen">
+      <div class="screen-title">🔍 Quality + Inspections</div>
+      <div class="screen-sub">Site inspection log. Findings can become punch items automatically.</div>
     </div>
 
-    <div class="page-block">
-      <h4>✅ Punchlist <span class="persona">super · foreman · pm</span></h4>
-      <p>Two parallel lists: <b>Internal punch</b> (PPP self-find) + <b>Client punch</b> (client-find). Each item: <code>description</code> · <code>location</code> · <code>assigned_to</code> · <code>status</code> (open / in progress / closed) · <code>photos</code>.</p>
-      <p>Mobile-friendly — foreman closes items in the field with a tap + photo.</p>
+    <div class="screen">
+      <div class="screen-title">✅ Punchlist</div>
+      <div class="screen-sub">Two parallel lists: internal (PPP self-finds) and client (client finds). Each item gets a description, location, assignee, status, photos.</div>
+      <p>Foreman closes items in the field with a tap + photo proof.</p>
     </div>
 
-    <div class="page-block">
-      <h4>💬 Communications log <span class="persona">pm · admin</span></h4>
-      <p>Meeting minutes, client emails, phone-call summaries, decisions. Searchable, tagged. Action items become tasks.</p>
+    <div class="screen">
+      <div class="screen-title">💬 Communications log</div>
+      <div class="screen-sub">Meeting minutes, client emails, phone-call summaries, decisions. Searchable + tagged. Action items become tasks.</div>
     </div>
 
-    <div class="page-block">
-      <h4>📅 Schedule + milestones <span class="persona">pm · super</span></h4>
-      <p>Gantt-lite view. Baseline schedule vs current schedule. Milestones (mobilize, frame, paint, punch, complete) with target + actual. Slip detection: any milestone &gt;7 days late → "delayed" status + bell.</p>
+    <div class="screen">
+      <div class="screen-title">📅 Schedule + milestones</div>
+      <div class="screen-sub">Baseline schedule vs current schedule. Milestones (mobilize, frame, paint, punch, complete) with target + actual dates. Slip detection: any milestone more than 7 days late → "delayed" status + notification to PM.</div>
     </div>
-
-    <h4>Mobile-critical edges</h4>
-    <ul>
-      <li>iPhone Safari first-class; Android second tier.</li>
-      <li>Camera permission denied → fall back to file picker.</li>
-      <li>Photo &gt;10MB → client-side compress before upload.</li>
-      <li>Chunked upload with resume on network drop.</li>
-      <li>Offline queue persists across app restarts (IndexedDB + Service Worker).</li>
-    </ul>
   </div>
 
   <!-- PHASE 7 -->
   <div class="phase-card rose">
     <div class="phase-head">
       <div class="badge">7</div>
-      <h3>Change Management</h3>
-      <span class="pill rose">2 build days</span>
-      <span class="meta">Owner-requested + field-directive + scope-revision change orders</span>
+      <h3>Change Orders</h3>
     </div>
 
-    <div class="page-block">
-      <h4>📋 Change orders list <span class="url">/commercial/projects/[id]/cos</span> <span class="persona">pm · admin · office</span></h4>
-      <p>Project-scoped CO board grouped by status: <b>Draft → Submitted → Pending → Approved | Rejected → Invoiced</b>.</p>
-      <p>Header chips: # approved $ · # pending $ · revised contract $.</p>
+    <p>Owner-requested changes, field directives, and scope revisions. Each one logged separately so the math always works out at the end.</p>
+
+    <div class="screen">
+      <div class="screen-title">📋 Change orders list</div>
+      <div class="screen-sub">Per-project board grouped by status: Draft → Submitted → Pending → Approved or Rejected → Invoiced.</div>
+      <p>Header shows: approved $ total · pending $ total · revised contract total.</p>
     </div>
 
-    <div class="page-block">
-      <h4>📝 CO detail <span class="persona">pm · admin (approval)</span></h4>
-      <div class="field-grid">
-        <div class="field"><b>CO #</b><span>auto-numbered per project</span></div>
-        <div class="field"><b>Type</b><span>owner_request · field_directive · scope_revision</span></div>
-        <div class="field"><b>Title</b></div>
-        <div class="field"><b>Description</b><span>scope of change</span></div>
-        <div class="field"><b>Amount $</b><span>can be negative (deductive)</span></div>
-        <div class="field"><b>Submitted at</b></div>
-        <div class="field"><b>Approved at + by</b></div>
-        <div class="field"><b>Signed CO PDF</b><span>upload</span></div>
-      </div>
-      <h4>Impact tracking</h4>
-      <div class="field-grid">
-        <div class="field"><b>Labor impact</b><span>hours + cost</span></div>
-        <div class="field"><b>Material impact</b><span>cost</span></div>
-        <div class="field"><b>Equipment impact</b><span>cost</span></div>
-        <div class="field"><b>Schedule impact</b><span>days</span></div>
-      </div>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Approved CO auto-updates the project's revised contract value + completion date.</p>
+    <div class="screen">
+      <div class="screen-title">📝 Change order detail</div>
+      <ul>
+        <li>CO # (auto-numbered per project), type (owner request / field directive / scope revision)</li>
+        <li>Title, description, amount $ (can be negative for deductive COs)</li>
+        <li>Signed CO PDF upload</li>
+        <li>Impact tracking: labor hours, material $, equipment $, schedule days</li>
+      </ul>
+      <p>Approved → automatically adds to revised contract + completion date.</p>
     </div>
   </div>
 
@@ -943,71 +703,71 @@
   <div class="phase-card gold">
     <div class="phase-head">
       <div class="badge">8</div>
-      <h3>Billing &amp; Financials <span class="pill amber" style="font-size:9px;margin-left:4px;">Karan priority — pulled forward</span></h3>
-      <span class="pill gold">3–4 build days</span>
-      <span class="meta">Multi-invoice progress billing, paid filter, retainage, job cost summary</span>
+      <h3>Billing &amp; Invoices</h3>
     </div>
 
-    <p>Direct ask from Karan: "Multiple invoice need a start date and end date or all and a button to see weather it was paid or not and some projects might have multiple invoices with a certain amount so give us the ability to do so." Phase 8 is pulled up before Phase 6 so PPP can invoice commercial work the moment a contract is signed, even before execution tracking lands.</p>
+    <p class="lead">This is the most important section for the day-to-day. The workflow PPP wants:</p>
 
-    <div class="page-block">
-      <h4>💵 Project billing tab <span class="url">/commercial/projects/[id]/billing</span> <span class="persona">office · admin · pm</span></h4>
-      <p>Top bar: contract $ · approved COs $ · billed-to-date $ · paid $ · open A/R $ · forecast GP $.</p>
-      <h4>Invoice list</h4>
+    <div class="callout gold">
+      <b>How invoicing works on the platform:</b><br/>
+      ① <b>Multiple invoices per job.</b> When PPP wins a bid and starts working, they invoice as they go. Each invoice covers a specific period (start date + end date) for a specific dollar amount that office staff sets manually.<br/><br/>
+      ② <b>Mark payments manually.</b> When a check or wire arrives, office staff opens the invoice and enters how much was paid and when. Full or partial — both work. Multiple partial payments on one invoice are fine.<br/><br/>
+      ③ <b>Automatic reminders.</b> If an invoice is past due, or only partially paid after 15 days, the app emails the client a reminder automatically. No one has to remember to chase it.
+    </div>
+
+    <div class="screen">
+      <div class="screen-title">💵 Project billing tab</div>
+      <div class="screen-sub">All invoices for ONE project in one place.</div>
+      <p><b>Top of page:</b> Contract $ · approved change orders $ · billed-to-date $ · paid $ · open balance $ · forecast gross profit $.</p>
+      <p><b>Invoice list:</b> filter by All · Paid · Unpaid · Past Due · Draft. Filter by date range too. Each row shows invoice #, period, amount, status, sent date, due date, paid date.</p>
+    </div>
+
+    <div class="screen">
+      <div class="screen-title">📄 Create a new invoice</div>
+      <div class="screen-sub">Office staff fills this out manually anytime they want to bill.</div>
+      <ul>
+        <li>Period start date and end date</li>
+        <li>Amount (set manually for this billing period)</li>
+        <li>Optional: line items (progress, materials, retainage held, approved CO, etc.)</li>
+        <li>Net terms (defaults from contract, override if needed)</li>
+        <li>"Save as Draft" or "Send" — sent invoices email the client a PDF</li>
+      </ul>
+    </div>
+
+    <div class="screen">
+      <div class="screen-title">💳 Record a payment</div>
+      <div class="screen-sub">When money comes in, office staff opens the invoice and enters the payment.</div>
+      <ul>
+        <li>Amount paid (can be partial)</li>
+        <li>Date received</li>
+        <li>Payment method (check / ACH / wire)</li>
+        <li>Reference number (check # or wire confirmation)</li>
+      </ul>
+      <p>Multiple payments per invoice supported — the running balance updates automatically. Invoice status flips to "Partially Paid" or "Paid" as the balance hits the total.</p>
+    </div>
+
+    <div class="screen">
+      <div class="screen-title">⏰ Automatic reminders</div>
+      <div class="screen-sub">No one has to chase invoices manually.</div>
+      <ul>
+        <li>Invoice <b>past due</b> by 15 days → automatic email to the client</li>
+        <li>Invoice <b>partially paid</b> with a remaining balance for 15 days → automatic email to the client</li>
+        <li>Office staff gets a notification (bell) too so they know the reminder went out</li>
+        <li>Karan/Alex/PM see a "past due" total at the top of the project header</li>
+      </ul>
+    </div>
+
+    <div class="screen">
+      <div class="screen-title">💰 Job cost summary card</div>
+      <div class="screen-sub">Always visible on the project page. The "are we making money" check.</div>
       <table style="margin-top:6px;">
-        <tr><th>#</th><th>Period</th><th>Amount</th><th>Status</th><th>Sent</th><th>Due</th><th>Paid</th><th></th></tr>
-        <tr><td>PPP-COM-2026-001</td><td>Jun 1 – Jun 30</td><td>$48,250</td><td><span class="pill emerald">Paid</span></td><td>Jul 1</td><td>Jul 31</td><td>Jul 18</td><td>📄</td></tr>
-        <tr><td>PPP-COM-2026-002</td><td>Jul 1 – Jul 31</td><td>$52,400</td><td><span class="pill amber">Sent</span></td><td>Aug 1</td><td>Aug 31</td><td>—</td><td>📄</td></tr>
-        <tr><td>PPP-COM-2026-003</td><td>Aug 1 – Aug 14</td><td>$28,100</td><td><span class="pill gray">Draft</span></td><td>—</td><td>—</td><td>—</td><td>📄</td></tr>
-      </table>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Filter chips: <b>All · Paid · Unpaid · Past Due · Draft</b>. Date filter: start date / end date range. Sort by period · amount · due date.</p>
-    </div>
-
-    <div class="page-block">
-      <h4>📄 Invoice detail <span class="persona">office · admin</span></h4>
-      <div class="field-grid">
-        <div class="field"><b>Invoice number</b><span>PPP-COM-YYYY-###</span></div>
-        <div class="field"><b>Period start</b></div>
-        <div class="field"><b>Period end</b></div>
-        <div class="field"><b>Sent at</b></div>
-        <div class="field"><b>Due at</b><span>auto from net days</span></div>
-        <div class="field"><b>Status</b><span>draft · sent · paid · partial · void</span></div>
-        <div class="field"><b>Total amount</b></div>
-        <div class="field"><b>Paid amount</b><span>can sum multiple payments</span></div>
-      </div>
-      <h4>Line items</h4>
-      <table>
-        <tr><th>Type</th><th>Description</th><th>Amount</th></tr>
-        <tr><td>Progress</td><td>Mobilization + 20% complete</td><td>$25,000</td></tr>
-        <tr><td>Materials</td><td>Stocked paint + prep</td><td>$18,250</td></tr>
-        <tr><td>Retainage held</td><td>10%</td><td>−$4,325</td></tr>
-        <tr><td>Approved CO</td><td>CO #1 partial</td><td>$9,325</td></tr>
-      </table>
-      <h4>Payments</h4>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Multiple partial payments supported. Each: <code>amount</code> · <code>method</code> (check / ACH / wire) · <code>paid_at</code> · <code>reference</code> (check #).</p>
-    </div>
-
-    <div class="page-block">
-      <h4>💰 Job cost summary card <span class="persona">pm · office · admin</span></h4>
-      <table>
         <tr><th></th><th>Labor</th><th>Material</th><th>Equipment</th><th>Sub</th><th>Total</th></tr>
         <tr><td><b>Budget</b></td><td>$80k</td><td>$45k</td><td>$12k</td><td>$30k</td><td>$167k</td></tr>
         <tr><td><b>Actual</b></td><td>$62k</td><td>$38k</td><td>$11k</td><td>$24k</td><td>$135k</td></tr>
-        <tr><td><b>Variance</b></td><td>+$18k</td><td>+$7k</td><td>+$1k</td><td>+$6k</td><td>+$32k</td></tr>
+        <tr><td><b>Forecast GP</b></td><td colspan="5"><b>$32k under budget</b></td></tr>
       </table>
-      <p style="font-size:12.5px;color:var(--charcoal-500);">Forecast GP $ live-updates from this card as actuals come in.</p>
+      <p style="font-size:13.5px;color:var(--charcoal-500);">Forecast GP turns red the moment actuals exceed budget. Alex gets a notification.</p>
     </div>
-
-    <h4>Edge cases handled</h4>
-    <ul>
-      <li><b>Multi-invoice per project with start/end + paid filter</b> — direct ask, built in.</li>
-      <li>Partial payments sum to invoice total; can't exceed it.</li>
-      <li>Void on a paid invoice → requires reason + admin role; writes a reversal entry, doesn't delete.</li>
-      <li>Retainage released only after punchlist complete.</li>
-      <li>Tax exempt accounts skip tax line.</li>
-      <li>Forecast GP negative → red alert on project header + bell to Karan + PM.</li>
-      <li>Invoice number generation per fiscal year sequence.</li>
-    </ul>
   </div>
 
   <!-- PHASE 9 -->
@@ -1015,195 +775,132 @@
     <div class="phase-head">
       <div class="badge">9</div>
       <h3>Closeout</h3>
-      <span class="pill red">2 build days</span>
-      <span class="meta">Punchlist completion, warranty docs, lessons learned</span>
     </div>
 
-    <div class="page-block">
-      <h4>✅ Closeout dashboard <span class="url">/commercial/projects/[id]/closeout</span> <span class="persona">pm · admin</span></h4>
-      <p>One-page summary: # open internal punch · # open client punch · # closeout docs uploaded · lessons learned filed · retainage release status.</p>
+    <p>The job is done — punchlist closed, paperwork uploaded, lessons learned filed. Retainage gets released as the final invoice.</p>
+
+    <div class="screen">
+      <div class="screen-title">✅ Closeout dashboard</div>
+      <ul>
+        <li>Open internal punch items · Open client punch items</li>
+        <li>Closeout docs uploaded (count)</li>
+        <li>Lessons learned filed? (yes/no)</li>
+        <li>Retainage release status</li>
+      </ul>
     </div>
 
-    <div class="page-block">
-      <h4>📑 Closeout documents <span class="persona">pm · office</span></h4>
+    <div class="screen">
+      <div class="screen-title">📑 Closeout documents</div>
       <ul>
         <li>Warranty documents (per manufacturer)</li>
         <li>Certificates of completion</li>
-        <li>Commissioning reports</li>
-        <li>Test &amp; inspection reports</li>
+        <li>Commissioning + test/inspection reports</li>
         <li>As-built drawings</li>
         <li>O&amp;M manuals</li>
       </ul>
     </div>
 
-    <div class="page-block">
-      <h4>📚 Lessons learned <span class="persona">pm</span></h4>
-      <p>Required form before project can flip to <b>Closed</b>. Fields: <code>project_review</code> · <code>what_went_well</code> · <code>what_to_improve</code> · <code>future_action_items</code> · <code>recommendation_for_repeat</code>.</p>
+    <div class="screen">
+      <div class="screen-title">📚 Lessons learned</div>
+      <div class="screen-sub">Required before the project can be marked "Closed."</div>
+      <ul>
+        <li>Project review · What went well · What to improve · Future action items · Recommend repeat?</li>
+      </ul>
     </div>
   </div>
 
   <!-- §6 DASHBOARDS -->
-  <h2><span class="num">6</span>Executive dashboards &amp; reports</h2>
-  <p>Five dashboards land after Phase 9 once there's data flowing across all 9 phases. Each is cross-project.</p>
+  <h2><span class="num">6</span>The dashboards</h2>
+  <p>Five always-on dashboards for the leadership team. Each pulls from across every project.</p>
 
   <div class="two-col">
-    <div class="phase-card blue" style="margin: 8px 0;">
-      <h3 style="margin: 0 0 6px 0; font-size: 15px;">📈 Sales Dashboard</h3>
-      <ul style="margin: 4px 0;">
-        <li>Bid volume (count + $)</li>
-        <li>Win rate</li>
-        <li>Forecast revenue (next 90 days)</li>
-        <li>Pipeline value by status</li>
-        <li>Hit rate by salesperson</li>
-      </ul>
+    <div class="phase-card blue" style="margin: 8px 0; padding: 16px 20px;">
+      <h3 style="margin: 0 0 6px 0; font-size: 16px;">📈 Sales</h3>
+      <p style="font-size:14px;">Bid volume · win rate · pipeline value by stage · forecast revenue (next 90 days) · hit rate by salesperson.</p>
     </div>
-
-    <div class="phase-card emerald" style="margin: 8px 0;">
-      <h3 style="margin: 0 0 6px 0; font-size: 15px;">⚙️ Operations Dashboard</h3>
-      <ul style="margin: 4px 0;">
-        <li>Active projects count</li>
-        <li>Delays (count + days)</li>
-        <li>Labor utilization</li>
-        <li>Schedule status (on / at risk / late)</li>
-      </ul>
+    <div class="phase-card emerald" style="margin: 8px 0; padding: 16px 20px;">
+      <h3 style="margin: 0 0 6px 0; font-size: 16px;">⚙️ Operations</h3>
+      <p style="font-size:14px;">Active projects · delays (count + days) · labor utilization · schedule status (on track / at risk / late).</p>
     </div>
-
-    <div class="phase-card gold" style="margin: 8px 0;">
-      <h3 style="margin: 0 0 6px 0; font-size: 15px;">💰 Financial Dashboard</h3>
-      <ul style="margin: 4px 0;">
-        <li>Revenue (MTD / QTD / YTD)</li>
-        <li>Gross profit</li>
-        <li>Job costs vs budget</li>
-        <li>AR aging (0-30 / 31-60 / 61-90 / 90+)</li>
-      </ul>
+    <div class="phase-card gold" style="margin: 8px 0; padding: 16px 20px;">
+      <h3 style="margin: 0 0 6px 0; font-size: 16px;">💰 Financial</h3>
+      <p style="font-size:14px;">Revenue · gross profit · job costs vs budget · AR aging (0-30 / 31-60 / 61-90 / 90+ days).</p>
     </div>
-
-    <div class="phase-card teal" style="margin: 8px 0;">
-      <h3 style="margin: 0 0 6px 0; font-size: 15px;">👷 Workforce Dashboard</h3>
-      <ul style="margin: 4px 0;">
-        <li>Crew availability + scheduled hours</li>
-        <li>Labor forecast (8 weeks out)</li>
-        <li>Productivity metrics</li>
-        <li>Safety metrics + incident log</li>
-      </ul>
+    <div class="phase-card teal" style="margin: 8px 0; padding: 16px 20px;">
+      <h3 style="margin: 0 0 6px 0; font-size: 16px;">👷 Workforce</h3>
+      <p style="font-size:14px;">Crew availability · labor forecast (8 weeks out) · productivity · safety incidents.</p>
     </div>
   </div>
-
-  <div class="phase-card purple">
-    <h3 style="margin: 0 0 6px 0; font-size: 15px;">🏆 Company Scorecard</h3>
-    <p>Single-page exec view: sales · revenue · gross profit · safety · client satisfaction. Monthly snapshot with YoY comparison.</p>
+  <div class="phase-card purple" style="margin-top: 14px;">
+    <h3 style="margin: 0 0 6px 0; font-size: 16px;">🏆 Company Scorecard</h3>
+    <p>Single-page executive view: sales · revenue · gross profit · safety · client satisfaction. Monthly with year-over-year compare.</p>
   </div>
 
   <!-- §7 MOBILE -->
-  <h2><span class="num">7</span>Mobile-first surfaces (field workflow)</h2>
-  <p>Field users (foremen, super, field crew) work primarily on iPhones in dusty / wet / sunny conditions. The following surfaces are <b>mobile-perfect first</b>; desktop is a bonus.</p>
-
+  <h2><span class="num">7</span>What works on a phone (field crew)</h2>
+  <p>Field users (foremen, superintendent, field crew) live on iPhones in dusty, wet, sunny conditions. These screens are designed phone-first.</p>
   <table>
-    <tr><th>Surface</th><th>Why mobile-first</th><th>Special handling</th></tr>
-    <tr><td>Daily report submit</td><td>Foreman at end of day on site</td><td>Single column, big buttons, offline queue</td></tr>
-    <tr><td>Photo upload</td><td>Camera in hand</td><td>Chunked, compressed, resumable</td></tr>
-    <tr><td>Punch item close</td><td>Walking the site</td><td>Tap to close + photo proof</td></tr>
-    <tr><td>Material usage log</td><td>Storeroom + on truck</td><td>Barcode scan (Phase 6.5)</td></tr>
-    <tr><td>Schedule look-ahead</td><td>Quick reference</td><td>2-week swipe view</td></tr>
-    <tr><td>Site contact lookup</td><td>"Who do I call?"</td><td>Call/text from contact card</td></tr>
+    <tr><th>Screen</th><th>Why it's on a phone</th><th>What's special</th></tr>
+    <tr><td>Daily report</td><td>Foreman submits at end of day, on site</td><td>Works without signal — saves locally + syncs later</td></tr>
+    <tr><td>Photo upload</td><td>Camera in hand</td><td>Resumes if signal drops mid-upload</td></tr>
+    <tr><td>Punchlist close-out</td><td>Walking the site</td><td>Tap to close, snap a photo for proof</td></tr>
+    <tr><td>Schedule look-ahead</td><td>Quick reference between jobs</td><td>2-week swipe view</td></tr>
+    <tr><td>Site contact lookup</td><td>"Who do I call right now?"</td><td>Tap to call or text from the contact card</td></tr>
   </table>
-
-  <p>Desktop-only surfaces (estimator workbench, financial dashboards, invoice editor) stay desktop because they need a keyboard + large screen.</p>
+  <p>Desktop-only screens (estimator workbench, financial dashboards, invoice editor) stay on desktop — they need a keyboard.</p>
 
   <!-- §8 NOTIFICATIONS -->
-  <h2><span class="num">8</span>Notification matrix — who gets pinged when</h2>
-  <p>Reuses the existing notification bell from Command Center, but kinds are namespaced <code>np.*</code> so they sort separately. Bell shows the count + opens a dropdown.</p>
+  <h2><span class="num">8</span>What gets a notification</h2>
+  <p>The bell in the top-right of every page. Click it to see what needs attention. Same bell as Command Center.</p>
   <table>
-    <tr><th>Event</th><th>Notification kind</th><th>Sender</th><th>Recipients</th></tr>
-    <tr><td>Bid received via email</td><td><code>np.bid_received</code></td><td>system</td><td>Estimators + admin</td></tr>
-    <tr><td>Bid received via online form</td><td><code>np.bid_received</code></td><td>system</td><td>Estimators + admin</td></tr>
-    <tr><td>RFI &gt;5 business days open</td><td><code>np.rfi_overdue</code></td><td>system</td><td>Estimator + admin</td></tr>
-    <tr><td>Opportunity won</td><td><code>np.opp_awarded</code></td><td>system</td><td>Whole team + Alex</td></tr>
-    <tr><td>Contract signed</td><td><code>np.contract_signed</code></td><td>admin</td><td>PM + office</td></tr>
-    <tr><td>Permit expiring &lt;30 days</td><td><code>np.permit_expiring</code></td><td>system</td><td>PM</td></tr>
-    <tr><td>Insurance cert expiring</td><td><code>np.coi_expiring</code></td><td>system</td><td>Office + PM</td></tr>
-    <tr><td>Daily report submitted</td><td><code>np.daily_report</code></td><td>foreman</td><td>PM + super</td></tr>
-    <tr><td>Daily report missing</td><td><code>np.daily_report_late</code></td><td>system</td><td>PM</td></tr>
-    <tr><td>Safety incident logged</td><td><code>np.safety_incident</code></td><td>foreman</td><td>PM + admin + Alex</td></tr>
-    <tr><td>Sub invoice for approval</td><td><code>np.sub_invoice</code></td><td>office</td><td>PM</td></tr>
-    <tr><td>CO submitted</td><td><code>np.co_submitted</code></td><td>PM</td><td>Admin (approver)</td></tr>
-    <tr><td>CO approved/rejected</td><td><code>np.co_decided</code></td><td>admin</td><td>PM + estimator + office</td></tr>
-    <tr><td>Invoice sent</td><td><code>np.invoice_sent</code></td><td>office</td><td>PM + admin</td></tr>
-    <tr><td>Invoice paid</td><td><code>np.invoice_paid</code></td><td>office</td><td>PM + admin</td></tr>
-    <tr><td>Invoice past due</td><td><code>np.invoice_overdue</code></td><td>system</td><td>Office + admin</td></tr>
-    <tr><td>Punch item assigned to me</td><td><code>np.punch_assigned</code></td><td>super</td><td>Foreman / field</td></tr>
-    <tr><td>Forecast GP negative</td><td><code>np.gp_negative</code></td><td>system</td><td>PM + admin + Alex</td></tr>
-    <tr><td>Project ready for closeout</td><td><code>np.ready_to_close</code></td><td>PM</td><td>Admin</td></tr>
+    <tr><th>When this happens</th><th>Who gets pinged</th></tr>
+    <tr><td>Bid request comes in (email or form)</td><td>Estimators + admin</td></tr>
+    <tr><td>RFI open more than 5 business days</td><td>Estimator + admin</td></tr>
+    <tr><td>Bid won</td><td>Whole team + Alex</td></tr>
+    <tr><td>Contract signed</td><td>PM + office</td></tr>
+    <tr><td>Permit expiring (30 days out)</td><td>PM</td></tr>
+    <tr><td>Insurance cert expiring</td><td>Office + PM</td></tr>
+    <tr><td>Daily report submitted</td><td>PM + super</td></tr>
+    <tr><td>Daily report missing for today</td><td>PM</td></tr>
+    <tr><td>Safety incident logged</td><td>PM + admin + Alex</td></tr>
+    <tr><td>Sub invoice waiting for approval</td><td>PM</td></tr>
+    <tr><td>Change order submitted</td><td>Admin (approver)</td></tr>
+    <tr><td>Change order approved or rejected</td><td>PM + estimator + office</td></tr>
+    <tr><td>Invoice sent</td><td>PM + admin</td></tr>
+    <tr><td>Invoice paid (full or partial)</td><td>PM + admin + office</td></tr>
+    <tr><td>Invoice past due (auto reminder sent)</td><td>Office + admin</td></tr>
+    <tr><td>Punch item assigned to me</td><td>Whoever it's assigned to</td></tr>
+    <tr><td>Forecast gross profit turning negative</td><td>PM + admin + Alex</td></tr>
+    <tr><td>Project ready for closeout</td><td>Admin</td></tr>
   </table>
-  <p style="font-size:12.5px;color:var(--charcoal-500);">User can mute kinds in their profile. Critical kinds (safety, GP negative) can't be muted by non-admins.</p>
 
-  <!-- §9 DOCUMENT STORAGE -->
-  <h2><span class="num">9</span>Document storage</h2>
-  <p>Supabase Storage. Separate buckets per platform so a leak in one can't expose the other.</p>
+  <!-- §9 DOCS -->
+  <h2><span class="num">9</span>Documents &amp; record-keeping</h2>
   <ul>
-    <li><b>Bucket name:</b> <code>commercial-documents</code></li>
-    <li><b>Path scheme:</b> <code>/{account_id}/{project_id?}/{category}/{filename}</code></li>
-    <li><b>Access:</b> signed URLs only, 1-hour TTL.</li>
-    <li><b>Versioning:</b> immutable storage keys; new uploads bump <code>version_n</code> in the row.</li>
-    <li><b>Retention:</b> 7 years (construction industry norm), longer for warranty docs.</li>
-    <li><b>Upload size:</b> chunked, supports up to 500MB per file (large architectural PDFs).</li>
-    <li><b>Compression:</b> images server-side resize to a 2K thumbnail + keep original.</li>
-    <li><b>Search:</b> filename + category + uploaded-by; full-text on extracted PDF text (Phase 6.5).</li>
+    <li><b>Every document uploaded is saved permanently.</b> Plans, specs, contracts, COIs, COs, invoices, photos — all attached to the right account or project.</li>
+    <li><b>Files are versioned.</b> Replace a COI with a new one — the old version is still there, just archived.</li>
+    <li><b>Files are kept for 7 years</b> (construction industry standard; longer for warranty docs).</li>
+    <li><b>Every change is tracked.</b> Who edited what record, when, what was changed. Helpful for audits and for sorting out "wait, who changed that?"</li>
+    <li><b>Downloads are private.</b> Each download link expires after 1 hour so old emailed links can't be reused.</li>
   </ul>
 
-  <!-- §10 AUDIT TRAIL -->
-  <h2><span class="num">10</span>Audit trail</h2>
-  <p>Every write to a <code>commercial_*</code> table logs a row to <code>commercial_audit_log</code>:</p>
-  <div class="field-grid">
-    <div class="field"><b>table_name</b><span>which table</span></div>
-    <div class="field"><b>row_id</b><span>which row</span></div>
-    <div class="field"><b>action</b><span>insert / update / delete</span></div>
-    <div class="field"><b>before_json</b><span>state before update</span></div>
-    <div class="field"><b>after_json</b><span>state after</span></div>
-    <div class="field"><b>user_id</b><span>who did it</span></div>
-    <div class="field"><b>at</b><span>when</span></div>
-  </div>
-  <p>Indexed by <code>(table_name, row_id, at DESC)</code> for "show me this record's history" queries. Compliance + debugging.</p>
-
-  <!-- §11 TIMELINE -->
-  <h2><span class="num">11</span>Build timeline + cost</h2>
-  <table>
-    <tr><th>Phase</th><th>Days</th><th>$ at $50/h × 8h/d</th><th>Cumulative</th></tr>
-    <tr><td><b>Phase 0</b> · Foundation</td><td><span class="pill emerald">SHIPPED</span></td><td>$1,200</td><td>$1,200</td></tr>
-    <tr><td>Phase 1 · Account Management</td><td>2–3</td><td>$800–1,200</td><td>~$2,400</td></tr>
-    <tr><td>Phase 2 · Opportunity</td><td>3–4</td><td>$1,200–1,600</td><td>~$4,000</td></tr>
-    <tr><td>Phase 3 · Estimating &amp; Proposal</td><td>3–4</td><td>$1,200–1,600</td><td>~$5,600</td></tr>
-    <tr><td>Phase 4 · Contract Award</td><td>1–2</td><td>$400–800</td><td>~$6,400</td></tr>
-    <tr><td>Phase 5 · Project Setup</td><td>2</td><td>$800</td><td>~$7,200</td></tr>
-    <tr><td><b>Phase 8</b> · Billing &amp; Financials <span class="pill amber" style="font-size:9px;">priority pull-up</span></td><td>3–4</td><td>$1,200–1,600</td><td>~$8,800</td></tr>
-    <tr><td>Phase 6 · Project Execution <span class="pill indigo" style="font-size:9px;">heaviest</span></td><td>4–5</td><td>$1,600–2,000</td><td>~$10,800</td></tr>
-    <tr><td>Phase 7 · Change Management</td><td>2</td><td>$800</td><td>~$11,600</td></tr>
-    <tr><td>Phase 9 · Closeout</td><td>2</td><td>$800</td><td>~$12,400</td></tr>
-    <tr><td>Executive dashboards</td><td>3</td><td>$1,200</td><td>~$13,600</td></tr>
-  </table>
-  <p style="font-size:13px;"><b>Total range:</b> 26–34 build days · ~$10,500–13,600 at $50/h × 8h/d. Bills to <code>Alex_Platform_Invoice_&lt;month&gt;.md</code> monthly, issued the 5th of the following month, Net 10. Same cadence + format as the existing PPP invoice.</p>
-
-  <div class="callout"><b>MVP cutline if we need to compress to 2 weeks:</b> Phase 0 (done) + Phase 1 + Phase 2 + Phase 8 = the moment-of-truth thread: account → bid → award → invoice. Phases 3–7 + 9 follow once revenue is flowing. Total MVP: ~$5,000–6,000.</div>
-
-  <!-- §12 OPEN QUESTIONS -->
-  <h2><span class="num">12</span>Open questions to lock in before Phase 1</h2>
+  <!-- §10 OPEN QUESTIONS -->
+  <h2><span class="num">10</span>What we need answers on before we start</h2>
   <ol>
-    <li><b>Final platform name?</b> "New Platform" is the working name. Want something specific? (Commercial Workbench · BidSuite · PPP OS · …)</li>
-    <li><b>The 2 SF commercial users today — who are they?</b> They get day-one access.</li>
-    <li><b>Should we one-shot import legacy commercial Accounts from Salesforce?</b> Or start fresh? If import, how far back?</li>
-    <li><b>Invoice numbering format?</b> Proposing <code>PPP-COM-2026-001</code>. Keep, change, continue an existing series?</li>
-    <li><b>Default retainage %?</b> Proposing 5%, overridable per contract. Yes / no / different default?</li>
-    <li><b>Inbound bid email address?</b> Set up <code>bids@</code> or use an existing inbox with a sub-address?</li>
-    <li><b>Online bid submission form — open or tokened?</b> Tokened means each prospect gets a unique link. Open is faster but lets anyone submit.</li>
-    <li><b>Field users — iPhone only or Android too?</b> Affects offline strategy + camera fallback.</li>
-    <li><b>Project-level access for PMs — multi-PM as the default?</b> Yes per Karan's notes, just confirming.</li>
-    <li><b>Sub-invoice approval flow — who's the approver?</b> PM only, or PM + Office?</li>
-    <li><b>Certified payroll requirement — which projects?</b> Trigger flags per project (gov't / prevailing wage / etc.) or per account?</li>
-    <li><b>Closeout retention period — confirm 7 years?</b> Standard for construction; want longer?</li>
+    <li><b>Final platform name?</b> "New Platform" is the working name. Want something specific?</li>
+    <li><b>Who are the people on the commercial side today?</b> They get day-one access.</li>
+    <li><b>Default retainage %?</b> Proposing 5%. Change per contract is allowed.</li>
+    <li><b>Bid email inbox?</b> Set up something like <code>bids@</code>, or use an existing inbox?</li>
+    <li><b>Online bid submission form — open or by-invitation?</b> Open lets anyone submit. By-invitation means PPP sends a link to a specific prospect.</li>
+    <li><b>Reminder timing — 15 days is the default for past-due / partially-paid. Is that right?</b></li>
+    <li><b>How many reminder emails before PPP picks up the phone?</b> One every 15 days? Stop after 2-3?</li>
+    <li><b>Field users — iPhone only, or Android too?</b></li>
+    <li><b>Approving sub invoices — PM only, or PM + Office both?</b></li>
+    <li><b>Certified payroll requirement — flag per project, or per account?</b></li>
   </ol>
 
   <div class="footnote">
-    PPP New Platform · Detailed Build Plan · v1 · June 12, 2026 · Drafted by Karan for Alex Z + Katie Batilla. Plan doc: <code>docs/NEW_PLATFORM_PLAN.md</code> in the repo. Live phase tracker: <code>docs/NEW_PLATFORM_ARCHITECTURE.html</code>.
+    PPP New Platform · Plan for Alex Z + Katie Batilla · June 12, 2026 · v2 (simplified)
   </div>
 
 </div>
