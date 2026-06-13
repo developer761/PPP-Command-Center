@@ -25,9 +25,11 @@ export default async function LoginLanding({
   const sp = await searchParams;
   const errorMessage = sp.error ? ERROR_COPY[sp.error] ?? null : null;
   // Only honor same-origin relative paths to defeat open-redirect attempts.
-  const rawRedirect = sp.redirectTo || "/dashboard";
+  // Default destination is /choose-platform so multi-platform users see the
+  // picker. The picker page auto-routes single-access users immediately.
+  const rawRedirect = sp.redirectTo || "/choose-platform";
   const redirectTo =
-    rawRedirect.startsWith("/") && !rawRedirect.startsWith("//") ? rawRedirect : "/dashboard";
+    rawRedirect.startsWith("/") && !rawRedirect.startsWith("//") ? rawRedirect : "/choose-platform";
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 relative overflow-hidden">

@@ -7,7 +7,12 @@ type Props = {
   redirectTo?: string;
 };
 
-export default function SignInButton({ redirectTo = "/dashboard" }: Props) {
+// Default destination changed 2026-06-12 from /dashboard → /choose-platform
+// so multi-platform users see the picker. Single-access users auto-skip the
+// picker (the page redirects them to their only platform), so this doesn't
+// add friction for anyone — it just unblocks multi-platform users who
+// previously got auto-routed to Command Center.
+export default function SignInButton({ redirectTo = "/choose-platform" }: Props) {
   const [pending, setPending] = useState(false);
 
   const onClick = async () => {
