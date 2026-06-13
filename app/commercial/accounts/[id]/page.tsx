@@ -1,11 +1,21 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
+import {
+  listAccountContacts,
+  addContactToAccount,
+  detachContactFromAccount,
+  CONTACT_ROLES,
+  roleLabel,
+  type ContactRole,
+  type CommercialContact,
+} from "@/lib/commercial/accounts/contacts";
 
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string }>;
-type SP = Promise<{ tab?: string }>;
+type SP = Promise<{ tab?: string; error?: string }>;
 
 const TABS = [
   { key: "info", label: "Info" },
@@ -86,7 +96,7 @@ export default async function CommercialAccountDetailPage({
       {/* Tab content */}
       {tab === "info" && <InfoTab account={account} />}
       {tab === "documents" && <ComingSoonTab label="Documents" phase="next" />}
-      {tab === "contacts" && <ComingSoonTab label="Contacts" phase="next" />}
+      {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
     </div>
   );
@@ -163,6 +173,230 @@ function InfoTab({ account }: { account: CommercialAccount }) {
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{account.notes}</p>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ───────────────────── Contacts tab ─────────────────────
+
+async function addContactAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const account_id = String(formData.get("account_id") ?? "");
+  const full_name = String(formData.get("full_name") ?? "");
+  const role = String(formData.get("role") ?? "other") as ContactRole;
+  const email = (formData.get("email") as string) || null;
+  const phone = (formData.get("phone") as string) || null;
+  const title = (formData.get("title") as string) || null;
+  const notes = (formData.get("notes") as string) || null;
+
+  const result = await addContactToAccount({
+    account_id,
+    full_name,
+    role,
+    email,
+    phone,
+    title,
+    notes,
+    created_by_user_id: user.id,
+  });
+
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=contacts&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/accounts/${account_id}?tab=contacts`);
+}
+
+async function detachContactAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const account_id = String(formData.get("account_id") ?? "");
+  const account_contact_id = String(formData.get("account_contact_id") ?? "");
+  await detachContactFromAccount(account_contact_id, user.id);
+  redirect(`/commercial/accounts/${account_id}?tab=contacts`);
+}
+
+async function ContactsTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
+  const contacts = await listAccountContacts(accountId);
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+      {/* Add-contact form */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add contact</h2>
+        <form action={addContactAction} className="space-y-3">
+          <input type="hidden" name="account_id" value={accountId} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <ContactInput id="full_name" label="Name *" required />
+            <ContactInput id="title" label="Title" placeholder="VP Facilities, Property Mgr…" />
+            <ContactInput id="email" label="Email" type="email" />
+            <ContactInput id="phone" label="Phone" type="tel" />
+          </div>
+          <div>
+            <label htmlFor="role" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              Role
+            </label>
+            <select
+              id="role"
+              name="role"
+              defaultValue="decision_maker"
+              className="w-full sm:w-auto px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white"
+            >
+              {CONTACT_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {roleLabel(r)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="contact_notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              Notes
+            </label>
+            <input
+              id="contact_notes"
+              name="notes"
+              type="text"
+              placeholder="Optional"
+              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700"
+            >
+              Add contact
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* Existing contacts */}
+      {contacts.length === 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+          No contacts attached yet.
+        </div>
+      ) : (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100">
+            <h2 className="text-sm font-semibold text-ppp-charcoal">
+              {contacts.length} contact{contacts.length === 1 ? "" : "s"}
+            </h2>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {contacts.map(({ contact, attachments }) => (
+              <li key={contact.id} className="px-4 py-4">
+                <ContactRow
+                  contact={contact}
+                  attachments={attachments}
+                  accountId={accountId}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContactRow({
+  contact,
+  attachments,
+  accountId,
+}: {
+  contact: CommercialContact;
+  attachments: Array<{
+    account_contact_id: string;
+    role: ContactRole;
+    is_default_for: string | null;
+    notes: string | null;
+  }>;
+  accountId: string;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-ppp-charcoal text-sm">{contact.full_name}</div>
+        {contact.title && (
+          <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{contact.title}</div>
+        )}
+        <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+          {contact.email && (
+            <a href={`mailto:${contact.email}`} className="text-emerald-700 hover:text-emerald-800 break-all">
+              {contact.email}
+            </a>
+          )}
+          {contact.phone && (
+            <a href={`tel:${contact.phone}`} className="text-ppp-charcoal-700 hover:text-ppp-charcoal">
+              {contact.phone}
+            </a>
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {attachments.map((a) => (
+            <span
+              key={a.account_contact_id}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200"
+              title={a.notes ?? undefined}
+            >
+              {roleLabel(a.role)}
+              <form action={detachContactAction} className="inline">
+                <input type="hidden" name="account_id" value={accountId} />
+                <input type="hidden" name="account_contact_id" value={a.account_contact_id} />
+                <button
+                  type="submit"
+                  aria-label={`Remove ${roleLabel(a.role)} role`}
+                  className="-mr-1 ml-0.5 px-1 text-emerald-700/60 hover:text-emerald-900"
+                >
+                  ✕
+                </button>
+              </form>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContactInput({
+  id,
+  label,
+  type = "text",
+  required = false,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  type?: string;
+  required?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+        {label}
+      </label>
+      <input
+        id={id}
+        name={id}
+        type={type}
+        required={required}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+      />
     </div>
   );
 }
