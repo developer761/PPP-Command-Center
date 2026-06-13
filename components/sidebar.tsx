@@ -164,6 +164,16 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
         )}
       </div>
 
+      {/* TOP switcher — right below the brand block, above nav. Pinned high
+          so it's always visible without scrolling past nav items. Visible
+          only to multi-platform users; identical block at the bottom for
+          users who scroll past their nav. */}
+      {showSwitcher && (
+        <div className="px-3 pt-3 pb-1 border-b border-ppp-charcoal-100">
+          <PlatformSwitcher current="command_center" />
+        </div>
+      )}
+
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {visibleSections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-6" : ""}>

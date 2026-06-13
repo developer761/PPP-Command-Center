@@ -71,6 +71,21 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 }
 
 /**
+ * True if the email should be auto-granted New Platform access on first
+ * sign-in. Today: same set as the admin bootstrap list — every canonical
+ * PPP admin gets both platforms. When PPP staff outside the admin tier
+ * need New Platform access, admin grants per-user (future /admin/users
+ * page); this function only handles the always-on bootstrap accounts.
+ *
+ * Same list as isAdminEmail() — keeps things simple while there's only
+ * one tier of "should auto-flag." A subset list will be added if we ever
+ * need admin-without-NP or NP-without-admin combinations.
+ */
+export function isInitialNewPlatformEmail(email: string | null | undefined): boolean {
+  return isAdminEmail(email);
+}
+
+/**
  * PPP-domain check — accepts both .net and .com workspaces, plus any email in
  * the admin allow-list (catches Karan's gmail).
  */

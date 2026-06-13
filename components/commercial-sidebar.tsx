@@ -101,6 +101,14 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
         )}
       </div>
 
+      {/* TOP switcher — symmetric with Command Center sidebar. Always
+          visible without scrolling. Multi-platform users only. */}
+      {showSwitcher && (
+        <div className="px-3 pt-3 pb-1 border-b border-ppp-charcoal-100">
+          <PlatformSwitcher current="new_platform" />
+        </div>
+      )}
+
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {navSections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-6" : ""}>

@@ -83,13 +83,24 @@ export async function upsertProfile(input: {
   sf_user_name: string | null;
   is_admin: boolean;
   is_active: boolean;
+  /** Phase 0 New Platform — when true on first upsert, the row is created
+   *  with has_new_platform_access=true so the user sees the picker
+   *  immediately instead of needing an admin to flip the flag after sign-in.
+   *  When the row already exists, this flag does NOT downgrade an existing
+   *  TRUE → FALSE (we only fire FALSE→TRUE). Safe for repeat sign-ins. */
+  initial_new_platform_access?: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = adminClient();
   const { error } = await sb
     .from("profiles")
     .upsert(
       {
-        ...input,
+        user_id: input.user_id,
+        email: input.email,
+        sf_user_id: input.sf_user_id,
+        sf_user_name: input.sf_user_name,
+        is_admin: input.is_admin,
+        is_active: input.is_active,
         last_login_at: new Date().toISOString(),
       },
       { onConflict: "user_id" }
@@ -98,6 +109,22 @@ export async function upsertProfile(input: {
     console.error("[auth] upsertProfile failed:", error.message);
     return { ok: false, error: error.message };
   }
+
+  // Bootstrap New Platform access for canonical PPP admins. Idempotent:
+  // only sets TRUE; never downgrades. After this fires the user sees the
+  // picker on the next page render. Failure logs + falls through (the
+  // user can still sign in to Command Center as before).
+  if (input.initial_new_platform_access) {
+    const { error: npErr } = await sb
+      .from("profiles")
+      .update({ has_new_platform_access: true })
+      .eq("user_id", input.user_id)
+      .eq("has_new_platform_access", false);
+    if (npErr) {
+      console.warn("[auth] upsertProfile bootstrap NP access failed:", npErr.message);
+    }
+  }
+
   return { ok: true };
 }
 

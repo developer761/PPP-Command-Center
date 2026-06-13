@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isAdminEmail, isAllowedToSignIn, normalizeEmail } from "@/lib/auth/admin";
+import { isAdminEmail, isAllowedToSignIn, isInitialNewPlatformEmail, normalizeEmail } from "@/lib/auth/admin";
+import { PLATFORM_COOKIE } from "@/lib/platform-cookie";
 import { lookupSfUserByEmail } from "@/lib/auth/sf-user-lookup";
 import { upsertProfile } from "@/lib/auth/profile";
 
@@ -74,7 +75,9 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/?error=no_sf_user`);
   }
 
-  // 5. Sync profile row (idempotent upsert keyed on user_id).
+  // 5. Sync profile row (idempotent upsert keyed on user_id). Bootstrap
+  // New Platform access for canonical PPP admins on first sign-in so they
+  // see the picker without anyone running an UPDATE after the fact.
   await upsertProfile({
     user_id: user.id,
     email,
@@ -82,7 +85,15 @@ export async function GET(request: Request) {
     sf_user_name: sfUser?.name ?? null,
     is_admin: isAdmin,
     is_active: sfUser?.isActive ?? true,
+    initial_new_platform_access: isInitialNewPlatformEmail(email),
   });
 
-  return NextResponse.redirect(`${origin}${next}`);
+  // Clear the sticky platform cookie on every fresh auth callback so a
+  // user who previously stuck on Command Center sees the picker on their
+  // next sign-in (multi-access users only — single-access users just get
+  // auto-routed by /choose-platform). Without this, the cookie traps
+  // them on whichever platform they last picked, even months later.
+  const response = NextResponse.redirect(`${origin}${next}`);
+  response.cookies.set(PLATFORM_COOKIE, "", { path: "/", maxAge: 0 });
+  return response;
 }
