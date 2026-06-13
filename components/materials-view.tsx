@@ -54,7 +54,7 @@ import InfoDot from "@/components/info-dot";
 // paint loads ~30-40KB less JS.
 const SupplierPickerModal = dynamic(() => import("@/components/supplier-picker-modal"));
 import { useEscClose } from "@/lib/hooks/use-esc-close";
-import { fmtMoneyK } from "@/lib/format";
+import { fmtMoneyK, fmtScheduleDate } from "@/lib/format";
 import {
   deriveOpenMaterialsWorkOrders,
   getSupplierName,
@@ -933,16 +933,16 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                           {(j.wo.startDate || j.wo.desiredStartDate) && (
                             <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
                               {j.wo.startDate && (
-                                <span title="Scheduled Start Date from Salesforce." className="whitespace-nowrap">
+                                <span title={`Scheduled Start Date from Salesforce: ${j.wo.startDate}`} className="whitespace-nowrap">
                                   <span className="text-ppp-charcoal-400">Start:</span>{" "}
-                                  <span className="font-medium text-ppp-charcoal-700">{j.wo.startDate}</span>
+                                  <span className="font-medium text-ppp-charcoal-700">{fmtScheduleDate(j.wo.startDate)}</span>
                                 </span>
                               )}
                               {j.wo.startDate && j.wo.desiredStartDate && <span aria-hidden className="hidden sm:inline">·</span>}
                               {j.wo.desiredStartDate && (
-                                <span title="Customer-requested Desired Start Date from Salesforce." className="whitespace-nowrap hidden sm:inline">
+                                <span title={`Customer-requested Desired Start Date from Salesforce: ${j.wo.desiredStartDate}`} className="whitespace-nowrap hidden sm:inline">
                                   <span className="text-ppp-charcoal-400">Desired:</span>{" "}
-                                  <span className="font-medium text-ppp-charcoal-700">{j.wo.desiredStartDate}</span>
+                                  <span className="font-medium text-ppp-charcoal-700">{fmtScheduleDate(j.wo.desiredStartDate)}</span>
                                 </span>
                               )}
                             </div>
@@ -1223,27 +1223,47 @@ function JobDetailImpl({
             )}
             <div className="text-xs text-ppp-charcoal-500 mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <span className="font-mono">{job.wo.workOrderNumber ?? job.wo.id.slice(-6)}</span>
-              <span>·</span>
+              <span aria-hidden>·</span>
               <span>{job.wo.status ?? "Open"}</span>
               {job.wo.closeDate && (
                 <>
-                  <span>·</span>
-                  <span>Close {job.wo.closeDate}</span>
+                  <span aria-hidden>·</span>
+                  <span title={`Close date: ${job.wo.closeDate}`}>Close {fmtScheduleDate(job.wo.closeDate)}</span>
                 </>
               )}
               {job.wo.ownerName && (
                 <>
-                  <span>·</span>
+                  <span aria-hidden>·</span>
                   <span>{job.wo.ownerName}</span>
                 </>
               )}
               {job.wo.materialType && (
                 <>
-                  <span>·</span>
+                  <span aria-hidden>·</span>
                   <span className="font-medium text-ppp-charcoal">{job.wo.materialType}</span>
                 </>
               )}
             </div>
+            {/* Schedule row — Start + Desired surfaced as a second labeled
+                line so the close date above doesn't fight for space with
+                the schedule dates. Karan 2026-06-13. */}
+            {(job.wo.startDate || job.wo.desiredStartDate) && (
+              <div className="text-[11px] text-ppp-charcoal-500 mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                {job.wo.startDate && (
+                  <span title={`Scheduled Start Date from Salesforce: ${job.wo.startDate}`}>
+                    <span className="text-ppp-charcoal-400">Start:</span>{" "}
+                    <span className="font-medium text-ppp-charcoal-700">{fmtScheduleDate(job.wo.startDate)}</span>
+                  </span>
+                )}
+                {job.wo.startDate && job.wo.desiredStartDate && <span aria-hidden>·</span>}
+                {job.wo.desiredStartDate && (
+                  <span title={`Customer-requested Desired Start Date from Salesforce: ${job.wo.desiredStartDate}`}>
+                    <span className="text-ppp-charcoal-400">Desired:</span>{" "}
+                    <span className="font-medium text-ppp-charcoal-700">{fmtScheduleDate(job.wo.desiredStartDate)}</span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           {job.wo.amount > 0 && (
             <div className="text-right shrink-0">
@@ -1859,7 +1879,10 @@ function SqftEditor({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="w-24 px-2 py-1 text-sm bg-transparent focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded-md disabled:opacity-50"
+          // 16px font + 44px height on mobile to avoid iOS auto-zoom on
+          // focus + meet HIG tap-target minimum. Smaller on desktop where
+          // the field doesn't need to be a thumb-friendly tap target.
+          className="w-24 px-3 py-2 text-base sm:text-sm min-h-[44px] sm:min-h-0 bg-transparent focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded-md disabled:opacity-50"
           aria-describedby={errorMsg ? `${inputId}-err` : undefined}
           title="Type the room's square footage. Saves to Salesforce on blur (tab away / click out)."
         />
@@ -2049,11 +2072,16 @@ function currentUtcDay(): number {
 }
 
 function formatRelativeCloseDate(iso: string): { label: string; tone: "normal" | "soon" | "urgent" | "overdue" } {
-  // Parse the close date as UTC midnight (Z suffix), matching how SF stores
-  // date-only values. Comparing to UTC-midnight-of-today on both sides means
-  // SSR + hydration always see the same diffDays — no flicker.
-  const target = new Date(iso + "T00:00:00Z").getTime();
-  if (isNaN(target)) return { label: iso, tone: "normal" };
+  // SF can hand us EITHER a date-only string ("2025-06-16") for Date fields
+  // or a full datetime ("2025-06-16T16:00:00.000+0000") for DateTime fields.
+  // The cascade source (startDate / desiredStartDate / closeDate) varies by
+  // WO. Bug 2026-06-13: parseInt of `iso + "T00:00:00Z"` on a datetime input
+  // produced NaN → the raw ISO string fell straight into the UI label
+  // ("2025-06-16T16:00:00.000+0000"). Now we normalize FIRST by stripping
+  // to the YYYY-MM-DD prefix, which works for both shapes.
+  const dateOnly = iso.slice(0, 10);
+  const target = new Date(dateOnly + "T00:00:00Z").getTime();
+  if (isNaN(target)) return { label: dateOnly || iso, tone: "normal" };
   const nowDate = new Date();
   const todayUtcMidnight = Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), nowDate.getUTCDate());
   const diffDays = Math.round((target - todayUtcMidnight) / 86_400_000);

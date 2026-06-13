@@ -46,6 +46,30 @@ export function fmtMonthDay(
 }
 
 /**
+ * "Jun 16, 2025" — short month + day + year. For schedule dates that may
+ * be in past / current / future years. Same null/invalid handling as
+ * `fmtMonthDay`. Salesforce often returns Date and DateTime fields as
+ * ISO strings (e.g. `"2025-06-16"` for a date field or
+ * `"2025-06-16T16:00:00.000+0000"` for a datetime); `new Date(input)`
+ * handles both — and `timeZone: "UTC"` keeps a stored "Jun 16" from
+ * shifting to "Jun 15" when rendered in EST.
+ */
+export function fmtScheduleDate(
+  input: Date | string | number | null | undefined,
+  opts?: { timeZone?: string }
+): string {
+  if (input == null) return "";
+  const d = input instanceof Date ? input : new Date(input);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: opts?.timeZone ?? "UTC",
+  });
+}
+
+/**
  * "Jun 2026" — short month + year. For monthly aggregations / period chips.
  * Same null/invalid handling + timezone semantics as `fmtMonthDay`.
  */
