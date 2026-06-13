@@ -701,7 +701,9 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   // Bigger padding + base font size = prominent. Was a tiny
                   // py-1.5 input that disappeared visually next to the sort
                   // selector above it. Katie called this out 2026-06-12.
-                  className="w-full pl-10 pr-9 py-3 text-base sm:text-sm font-medium border-2 border-ppp-charcoal-100 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue placeholder:text-ppp-charcoal-400"
+                  // Right padding pr-11 reserves 44px for the larger clear
+                  // button below so the X never overlaps the search text.
+                  className="w-full pl-10 pr-11 py-3 text-base sm:text-sm font-medium border-2 border-ppp-charcoal-100 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue placeholder:text-ppp-charcoal-400"
                 />
                 <svg
                   width="16"
@@ -722,7 +724,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm"
+                    // 40×40 — closer to iOS HIG 44px and clears the
+                    // larger input's padding. Audit 2026-06-12 caught the
+                    // prior 32×32 button overlapping the search text on
+                    // narrow viewports.
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm rounded-md hover:bg-ppp-charcoal-50 transition-colors"
                     aria-label="Clear search"
                   >
                     ✕
@@ -842,18 +848,20 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                               Date and Desired Start Date when populated, so
                               office staff can see "scheduled to start X,
                               customer asked for Y." Hidden when neither is
-                              set (fallback to closeDate already shown above). */}
+                              set (fallback to closeDate already shown above).
+                              gap-1.5 + tighter wrapping so 375px viewports
+                              don't break the row mid-label. */}
                           {(j.wo.startDate || j.wo.desiredStartDate) && (
-                            <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                            <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-1.5 gap-y-0.5 flex-wrap">
                               {j.wo.startDate && (
-                                <span title="Scheduled Start Date from Salesforce.">
+                                <span title="Scheduled Start Date from Salesforce." className="whitespace-nowrap">
                                   <span className="text-ppp-charcoal-400">Start:</span>{" "}
                                   <span className="font-medium text-ppp-charcoal-700">{j.wo.startDate}</span>
                                 </span>
                               )}
-                              {j.wo.startDate && j.wo.desiredStartDate && <span>·</span>}
+                              {j.wo.startDate && j.wo.desiredStartDate && <span aria-hidden>·</span>}
                               {j.wo.desiredStartDate && (
-                                <span title="Customer-requested Desired Start Date from Salesforce.">
+                                <span title="Customer-requested Desired Start Date from Salesforce." className="whitespace-nowrap">
                                   <span className="text-ppp-charcoal-400">Desired:</span>{" "}
                                   <span className="font-medium text-ppp-charcoal-700">{j.wo.desiredStartDate}</span>
                                 </span>
