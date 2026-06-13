@@ -11,6 +11,15 @@ import {
   type ContactRole,
   type CommercialContact,
 } from "@/lib/commercial/accounts/contacts";
+import {
+  listAccountTeam,
+  listAssignableStaff,
+  addAssignment,
+  removeAssignment,
+  ASSIGNMENT_ROLES,
+  assignmentRoleLabel,
+  type AssignmentRole,
+} from "@/lib/commercial/accounts/assignments";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +28,9 @@ type SP = Promise<{ tab?: string; error?: string }>;
 
 const TABS = [
   { key: "info", label: "Info" },
-  { key: "documents", label: "Documents" },
+  { key: "team", label: "Team" },
   { key: "contacts", label: "Contacts" },
+  { key: "documents", label: "Documents" },
   { key: "performance", label: "Performance" },
 ] as const;
 
@@ -35,8 +45,9 @@ export default async function CommercialAccountDetailPage({
   const sp = await searchParams;
   const tab = (sp.tab && TABS.some((t) => t.key === sp.tab) ? sp.tab : "info") as
     | "info"
-    | "documents"
+    | "team"
     | "contacts"
+    | "documents"
     | "performance";
 
   const account = await getCommercialAccount(id);
@@ -95,8 +106,9 @@ export default async function CommercialAccountDetailPage({
 
       {/* Tab content */}
       {tab === "info" && <InfoTab account={account} />}
-      {tab === "documents" && <ComingSoonTab label="Documents" phase="next" />}
+      {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
+      {tab === "documents" && <ComingSoonTab label="Documents" phase="next" />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
     </div>
   );
@@ -397,6 +409,238 @@ function ContactInput({
         placeholder={placeholder}
         className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
       />
+    </div>
+  );
+}
+
+// ───────────────────── Team tab ─────────────────────
+
+async function addAssignmentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const account_id = String(formData.get("account_id") ?? "");
+  const user_id = String(formData.get("user_id") ?? "");
+  const role = String(formData.get("role") ?? "other") as AssignmentRole;
+  const is_primary = formData.get("is_primary") === "on";
+  const notes = (formData.get("notes") as string) || null;
+
+  if (!user_id) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent("Pick a PPP staff member.")}`);
+  }
+
+  const result = await addAssignment({
+    account_id,
+    user_id,
+    role,
+    is_primary,
+    notes,
+    assigned_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/accounts/${account_id}?tab=team`);
+}
+
+async function removeAssignmentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const account_id = String(formData.get("account_id") ?? "");
+  const assignment_id = String(formData.get("assignment_id") ?? "");
+  await removeAssignment(assignment_id, user.id);
+  redirect(`/commercial/accounts/${account_id}?tab=team`);
+}
+
+async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
+  const [team, assignableStaff] = await Promise.all([
+    listAccountTeam(accountId),
+    listAssignableStaff(),
+  ]);
+  // Filter the "Assign" dropdown to staff NOT already on the team in some role —
+  // they can still be assigned to a DIFFERENT role via the same form, but a
+  // shorter list is friendlier.
+  const teamUserIds = new Set(team.map((t) => t.user_id));
+  const unassignedStaff = assignableStaff.filter((s) => !teamUserIds.has(s.user_id));
+
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* Add assignment form */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Assign PPP staff</h2>
+        <form action={addAssignmentAction} className="space-y-3">
+          <input type="hidden" name="account_id" value={accountId} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="user_id" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                PPP staff *
+              </label>
+              <select
+                id="user_id"
+                name="user_id"
+                required
+                defaultValue=""
+                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white min-h-[44px] sm:min-h-0"
+              >
+                <option value="" disabled>
+                  Pick someone…
+                </option>
+                {assignableStaff.map((s) => {
+                  const label = s.full_name ? `${s.full_name} (${s.email})` : s.email;
+                  const already = teamUserIds.has(s.user_id);
+                  return (
+                    <option key={s.user_id} value={s.user_id}>
+                      {label}
+                      {already ? "  · already on team" : ""}
+                    </option>
+                  );
+                })}
+              </select>
+              {unassignedStaff.length === 0 && (
+                <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+                  Everyone with Commercial CC access is already on this team. To add
+                  more people, grant access on the admin Users page.
+                </p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="role" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                Role *
+              </label>
+              <select
+                id="role"
+                name="role"
+                defaultValue="sales_rep"
+                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white min-h-[44px] sm:min-h-0"
+              >
+                {ASSIGNMENT_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {assignmentRoleLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-emerald-600/30" />
+            Mark as primary in this role (replaces any current primary)
+          </label>
+          <div>
+            <label htmlFor="team_notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              Notes
+            </label>
+            <input
+              id="team_notes"
+              name="notes"
+              type="text"
+              placeholder="Optional"
+              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700"
+            >
+              Add to team
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* Current team */}
+      {team.length === 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+          No PPP staff assigned yet.
+        </div>
+      ) : (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100">
+            <h2 className="text-sm font-semibold text-ppp-charcoal">
+              {team.length} on team
+            </h2>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {team.map((person) => (
+              <li key={person.user_id} className="px-4 py-4">
+                <TeamRow person={person} accountId={accountId} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeamRow({
+  person,
+  accountId,
+}: {
+  person: {
+    user_id: string;
+    user_email: string;
+    user_full_name: string | null;
+    assignments: Array<{
+      id: string;
+      role: AssignmentRole;
+      is_primary: boolean;
+      notes: string | null;
+      assigned_at: string;
+    }>;
+  };
+  accountId: string;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-ppp-charcoal text-sm">
+          {person.user_full_name ?? person.user_email}
+        </div>
+        {person.user_full_name && (
+          <a href={`mailto:${person.user_email}`} className="text-[11px] text-emerald-700 hover:text-emerald-800 break-all">
+            {person.user_email}
+          </a>
+        )}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {person.assignments.map((a) => (
+            <span
+              key={a.id}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
+                a.is_primary
+                  ? "bg-emerald-600 text-white border-emerald-700"
+                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+              }`}
+              title={a.notes ?? undefined}
+            >
+              {a.is_primary && <span aria-hidden>★</span>}
+              {assignmentRoleLabel(a.role)}
+              <form action={removeAssignmentAction} className="inline">
+                <input type="hidden" name="account_id" value={accountId} />
+                <input type="hidden" name="assignment_id" value={a.id} />
+                <button
+                  type="submit"
+                  aria-label={`Remove ${assignmentRoleLabel(a.role)} role from ${person.user_full_name ?? person.user_email}`}
+                  className={`-mr-1 ml-0.5 px-1 ${a.is_primary ? "text-white/70 hover:text-white" : "text-emerald-700/60 hover:text-emerald-900"}`}
+                >
+                  ✕
+                </button>
+              </form>
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
