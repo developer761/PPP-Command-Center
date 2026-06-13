@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { clearSalesforceCache, loadSalesforceSnapshot } from "@/lib/salesforce/queries";
+import { clearSalesforceCache, loadSalesforceSnapshot, loadMaterialsBundle } from "@/lib/salesforce/queries";
 
 /**
  * Snapshot pre-warm cron.
@@ -85,16 +85,22 @@ export async function GET(request: Request) {
     // Resilience: `allSettled` so a transient failure on one variant
     // doesn't poison the other. Worst case: only one shared cache warms
     // this tick, the other re-tries on the next cron fire 10 min later.
-    const [fullResult, thinResult] = await Promise.allSettled([
+    // Warm full + thin + materials-bundle in parallel. The materials
+    // bundle derives from the thin snapshot internally, so the inner
+    // shared cache write happens once and the bundle build reads it.
+    const [fullResult, thinResult, materialsResult] = await Promise.allSettled([
       loadSalesforceSnapshot(),
       loadSalesforceSnapshot({ thin: true }),
+      loadMaterialsBundle(),
     ]);
 
     const fullOk = fullResult.status === "fulfilled";
     const thinOk = thinResult.status === "fulfilled";
+    const materialsOk = materialsResult.status === "fulfilled";
     const durationMs = Date.now() - startedAt;
     const fullSnapshot = fullOk ? fullResult.value : null;
     const thinSnapshot = thinOk ? thinResult.value : null;
+    const materialsSnapshot = materialsOk ? materialsResult.value : null;
 
     if (!fullOk) {
       console.warn(
@@ -108,12 +114,18 @@ export async function GET(request: Request) {
         thinResult.reason instanceof Error ? thinResult.reason.message : thinResult.reason
       );
     }
+    if (!materialsOk) {
+      console.warn(
+        `[cron/snapshot-warm] materials bundle failed:`,
+        materialsResult.reason instanceof Error ? materialsResult.reason.message : materialsResult.reason
+      );
+    }
     console.log(
-      `[cron/snapshot-warm] done in ${durationMs}ms — full: ${fullOk ? `${fullSnapshot!.workOrders.length} WO, ${fullSnapshot!.opportunities.length} opp` : "FAILED"} · thin: ${thinOk ? `${thinSnapshot!.workOrders.length} WO, ${thinSnapshot!.woLineItems.length} WOLI` : "FAILED"}`
+      `[cron/snapshot-warm] done in ${durationMs}ms — full: ${fullOk ? `${fullSnapshot!.workOrders.length} WO` : "FAIL"} · thin: ${thinOk ? `${thinSnapshot!.workOrders.length} WO` : "FAIL"} · materials: ${materialsOk ? `${materialsSnapshot!.workOrders.length} WO, ${materialsSnapshot!.paintColors.length} color` : "FAIL"}`
     );
 
     return NextResponse.json({
-      ok: fullOk || thinOk,
+      ok: fullOk || thinOk || materialsOk,
       durationMs,
       full: fullSnapshot
         ? {
@@ -132,6 +144,14 @@ export async function GET(request: Request) {
             accounts: thinSnapshot.accounts.length,
             woLineItems: thinSnapshot.woLineItems.length,
             paintColors: thinSnapshot.paintColors.length,
+          }
+        : { failed: true },
+      materials: materialsSnapshot
+        ? {
+            workOrders: materialsSnapshot.workOrders.length,
+            accounts: materialsSnapshot.accounts.length,
+            woLineItems: materialsSnapshot.woLineItems.length,
+            paintColors: materialsSnapshot.paintColors.length,
           }
         : { failed: true },
       fetchedAt: fullSnapshot?.fetchedAt ?? thinSnapshot?.fetchedAt ?? null,

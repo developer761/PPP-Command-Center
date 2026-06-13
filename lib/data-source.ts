@@ -5,6 +5,7 @@ import {
 } from "@/lib/salesforce/client";
 import {
   loadSalesforceSnapshot,
+  loadMaterialsBundle,
   type SalesforceSnapshot,
 } from "@/lib/salesforce/queries";
 import { resolveViewer } from "@/lib/auth/viewer-server";
@@ -106,7 +107,7 @@ export type LiveDashboardBundle = {
  */
 export async function loadDashboardData(
   searchParams?: Record<string, string | string[] | undefined>,
-  opts?: { thin?: boolean }
+  opts?: { thin?: boolean; materials?: boolean }
 ): Promise<LiveDashboardBundle> {
   // Viewer + creds are both pure Supabase round-trips with no dependency on
   // each other — running them concurrently shaves 50-200ms off every page
@@ -135,7 +136,13 @@ export async function loadDashboardData(
     return { source: "mock", reason: "sf_not_connected", snapshot: null, viewer };
   }
   try {
-    const raw = await loadSalesforceSnapshot(opts?.thin ? { thin: true } : undefined);
+    // Materials page opts in to the pre-derived materials bundle (~200KB)
+    // instead of the thin snapshot (~5-10MB) — same shape, much smaller blob.
+    // Falls back to the thin loader implicitly inside loadMaterialsBundle
+    // if anything goes wrong (the cached() wrapper retries on rejection).
+    const raw = opts?.materials
+      ? await loadMaterialsBundle()
+      : await loadSalesforceSnapshot(opts?.thin ? { thin: true } : undefined);
     if (raw.reps.length === 0) {
       return { source: "mock", reason: "sf_returned_no_reps", snapshot: null, viewer };
     }

@@ -54,7 +54,7 @@ const CLOSED_STATUS_TOKENS = [
   "abandoned",  // future
 ] as const;
 
-function isOpenForMaterials(status: string | null): boolean {
+export function isOpenForMaterials(status: string | null): boolean {
   if (!status) return true; // null status — be conservative, include
   const s = status.toLowerCase();
   for (const token of CLOSED_STATUS_TOKENS) {
@@ -78,7 +78,7 @@ const SKIPPED_WORK_TYPE_TOKENS = [
   "consultation",
 ] as const;
 
-function workTypeRequiresMaterials(workTypeName: string | null): boolean {
+export function workTypeRequiresMaterials(workTypeName: string | null): boolean {
   // Treat null/missing WorkType as "needs materials" — better to surface and
   // let the user check than silently hide a job. PPP can correct in SF.
   if (!workTypeName) return true;

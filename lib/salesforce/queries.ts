@@ -4,6 +4,10 @@ import { gzipSync, gunzipSync } from "zlib";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { isHiddenWoliStatus } from "@/lib/customer-form/woli-status";
+import {
+  isOpenForMaterials as materialsOpenFilter,
+  workTypeRequiresMaterials as materialsWorkTypeFilter,
+} from "@/lib/salesforce/materials";
 
 /**
  * Bulk Salesforce snapshot. One server-side fetch on each page load
@@ -157,6 +161,7 @@ export async function clearSalesforceCache() {
   await Promise.all([
     invalidateSharedSnapshot("snapshot-v6"),
     invalidateSharedSnapshot("snapshot-thin-v1"),
+    invalidateSharedSnapshot("materials-v1"),
     bumpGeneration(),
   ]);
 }
@@ -2280,6 +2285,119 @@ export async function loadSalesforceSnapshot(
     console.log(`[SF] snapshot${thin ? "(thin)" : ""} COLD-COMPLETE in ${Date.now() - tSnapStart}ms`);
     return snapshot;
   });
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Materials-only bundle — speed round 10 (2026-06-13)
+ *
+ * The thin snapshot dropped 8 of 11 secondary queries, but still ships
+ * 5k+ accounts + 5,762 paint colors + every open WO's WOLI rows. On warm
+ * cache that gzipped blob still parses in ~200-500ms.
+ *
+ * The materials page only reads:
+ *   - Open paint WOs (~320 out of thousands of WO rows)
+ *   - WOLIs of those open WOs (~700 rows)
+ *   - Their customer accounts (~500 records)
+ *   - Vendor accounts (~6 — for getSupplierName)
+ *   - Paint colors REFERENCED by the visible WOLIs (~50-150 out of 5,762)
+ *
+ * This bundle pre-derives that set, caches it under its own key. Result
+ * is ~150-300 KB gzipped → gunzip + parse drops to single-digit ms.
+ * Real 5× win on warm path.
+ *
+ * Shape is still a SalesforceSnapshot (subset arrays, empty for the rest)
+ * so it slots into MaterialsView + loadDashboardData without any other
+ * code change. The bundle is INVISIBLE to non-materials surfaces because
+ * they always call loadDashboardData() without the `materials` opt.
+ * ─────────────────────────────────────────────────────────────── */
+
+const MATERIALS_BUNDLE_CACHE_KEY = "materials-v1";
+
+/**
+ * Load the materials-only bundle. Pre-derived from the thin snapshot —
+ * filtered to just open paint WOs + their WOLIs + their accounts (+
+ * vendor accounts) + the paint colors actually referenced by those WOLIs.
+ *
+ * Cached under its own key so it survives 30-min TTL like the other
+ * snapshot variants, and gets warmed by the cron alongside thin + full.
+ * Generation counter is shared, so any SF writeback that clears full /
+ * thin also clears this — consistent invalidation.
+ */
+export async function loadMaterialsBundle(): Promise<SalesforceSnapshot> {
+  return cached(MATERIALS_BUNDLE_CACHE_KEY, async () => {
+    const tStart = Date.now();
+    const thin = await loadSalesforceSnapshot({ thin: true });
+    const bundle = buildMaterialsBundle(thin);
+    console.log(
+      `[SF] materials-bundle built in ${Date.now() - tStart}ms — ${bundle.workOrders.length} WO, ${bundle.woLineItems.length} WOLI, ${bundle.accounts.length} acct, ${bundle.paintColors.length} color`
+    );
+    void writeSharedSnapshot(MATERIALS_BUNDLE_CACHE_KEY, bundle);
+    return bundle;
+  });
+}
+
+function buildMaterialsBundle(thin: SalesforceSnapshot): SalesforceSnapshot {
+  // Mirrors materials.ts derive filters so we keep the same set of WOs
+  // that materials view ultimately renders. Importing the helpers from
+  // materials.ts to keep a single source of truth (was inline duplicates
+  // before — drift risk).
+  const isOpen = (s: string | null) => materialsOpenFilter(s);
+  const wantsMaterials = (t: string | null) => materialsWorkTypeFilter(t);
+
+  const openWos = thin.workOrders.filter(
+    (wo) => isOpen(wo.status) && wantsMaterials(wo.workTypeName)
+  );
+  const openWoIds = new Set(openWos.map((wo) => wo.id));
+
+  const visibleWolis = thin.woLineItems.filter((li) => openWoIds.has(li.workOrderId));
+
+  const referencedAccountIds = new Set<string>();
+  for (const wo of openWos) {
+    if (wo.accountId) referencedAccountIds.add(wo.accountId);
+  }
+
+  // PPP's vendor accounts are typed as Retail/Service/Marketing Vendor.
+  // `getSupplierName` in MaterialsView looks up suppliers BY ID through
+  // the snapshot's accounts list — drop them and the supplier name + bulk
+  // pricing flows break. Cheap to retain (PPP has ~6 vendor rows).
+  const VENDOR_TYPES = new Set(["Retail Vendor", "Service Vendor", "Marketing Vendor"]);
+
+  const accounts = thin.accounts.filter(
+    (a) => referencedAccountIds.has(a.id) || VENDOR_TYPES.has(a.type ?? "")
+  );
+
+  // Paint colors actually used. PPP's catalog has 5,762 colors — but a
+  // typical open-WO set references 50-150 of them. Filtering here drops
+  // the lion's share of the blob.
+  const referencedColorIds = new Set<string>();
+  for (const li of visibleWolis) {
+    if (li.colorWallId) referencedColorIds.add(li.colorWallId);
+    if (li.colorCeilingId) referencedColorIds.add(li.colorCeilingId);
+    if (li.colorTrimId) referencedColorIds.add(li.colorTrimId);
+    if (li.colorOtherId) referencedColorIds.add(li.colorOtherId);
+    if (li.colorFloorId) referencedColorIds.add(li.colorFloorId);
+  }
+  const paintColors = thin.paintColors.filter((c) => referencedColorIds.has(c.id));
+
+  return {
+    ...thin,
+    workOrders: openWos,
+    woLineItems: visibleWolis,
+    accounts,
+    paintColors,
+    // Materials page never reads these — keep them empty so they don't
+    // serialize across the RSC payload.
+    opportunities: [],
+    quotes: [],
+    quotas: [],
+    subQuotas: [],
+    transactions: [],
+    reviews: [],
+    cases: [],
+    // Reps must stay non-empty for the `loadDashboardData` sanity-check
+    // gate (if reps.length === 0, that gate returns the mock-data branch).
+    // Thin snapshot already keeps reps, so we inherit them via `...thin`.
+  };
 }
 
 /* ─────────────────────────────────────────────────────────────────

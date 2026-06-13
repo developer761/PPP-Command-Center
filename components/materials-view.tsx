@@ -1805,7 +1805,12 @@ function SqftEditor({
   const persist = useCallback(async () => {
     const trimmed = value.trim();
     if (trimmed === "") {
-      // Empty = "no manual override." Don't touch SF. Just reset visual state.
+      // User cleared the input. Don't write anything to SF, BUT re-sync the
+      // input back to whatever the row's current effective sqft is — without
+      // this, the input shows empty while the gallon estimator + WO chip
+      // continue reading the prior saved value, which looks like a sync bug.
+      // Karan 2026-06-13 edge-case audit.
+      if (initialSqft > 0) setValue(String(initialSqft));
       setStatus("idle");
       setErrorMsg(null);
       return;
