@@ -169,6 +169,64 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     [snapshot]
   );
 
+  // Per-WOLI sqft overrides — Karan 2026-06-13. When SF doesn't have
+  // Sq_Footage__c populated (~77% of PPP's open rooms per the fill-rate
+  // probe), the worker can type the number into a per-room input. We
+  // hold the value in this map for INSTANT UI feedback (chip on WO list
+  // flips off, gallon estimator recomputes live), and fire a background
+  // POST to /api/admin/wo-li/sqft that writes it to Salesforce + clears
+  // the snapshot cache. On the next snapshot reload the raw SF value
+  // matches the override; we could clear the map at that point but
+  // keeping it doesn't hurt because the helper picks whichever is the
+  // truthy non-zero value.
+  const [sqftOverrides, setSqftOverrides] = useState<Map<string, number>>(
+    () => new Map()
+  );
+  const effectiveSqft = useCallback(
+    (woliId: string, rawSqft: number): number => {
+      const override = sqftOverrides.get(woliId);
+      return override !== undefined ? override : rawSqft;
+    },
+    [sqftOverrides]
+  );
+  const handleUpdateSqft = useCallback(
+    async (woliId: string, sqft: number): Promise<{ ok: boolean; error?: string }> => {
+      // Optimistic local update — UI responds instantly.
+      setSqftOverrides((prev) => {
+        const next = new Map(prev);
+        next.set(woliId, sqft);
+        return next;
+      });
+      try {
+        const res = await fetch("/api/admin/wo-li/sqft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ woliId, sqft }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          // Roll back the optimistic update so the user sees the empty
+          // pill again rather than a false-positive saved state.
+          setSqftOverrides((prev) => {
+            const next = new Map(prev);
+            next.delete(woliId);
+            return next;
+          });
+          return { ok: false, error: body.error ?? "save_failed" };
+        }
+        return { ok: true };
+      } catch (err) {
+        setSqftOverrides((prev) => {
+          const next = new Map(prev);
+          next.delete(woliId);
+          return next;
+        });
+        return { ok: false, error: err instanceof Error ? err.message : "network_error" };
+      }
+    },
+    []
+  );
+
   // Pre-computed chip flags per WO. Without this, the render loop runs
   // 2 × .some() per WO on EVERY re-render (sort / search / activeJob
   // change). At 100+ WOs this adds 5-10ms to every keystroke in the
@@ -185,14 +243,19 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
       // and the per-room "⚠ No sq ft" pill. Uses NOT (>0) so null /
       // undefined / NaN / negative all count as missing — same logic
       // the JobDetail callout uses, so they agree row-for-row.
+      // Reads `effectiveSqft` so the chip flips off the instant the
+      // worker types a value into the per-room input on JobDetail,
+      // before the SF round-trip completes.
       const manualQty = j.lineItems.some(
-        (li) => !(li.raw.sqFootage > 0) && !(li.raw.wallSurfaceArea > 0)
+        (li) =>
+          !(effectiveSqft(li.raw.id, li.raw.sqFootage) > 0) &&
+          !(li.raw.wallSurfaceArea > 0)
       );
       const notesOnly = j.lineItems.length === 0;
       m.set(j.wo.id, { manualQty, notesOnly });
     }
     return m;
-  }, [openJobs]);
+  }, [openJobs, effectiveSqft]);
 
   // Karan ask: search for work orders by customer name / WO# / status so
   // admins (who see hundreds of WOs) can find a specific one fast.
@@ -966,6 +1029,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   accountsById={accountsById}
                   accountByName={accountByName}
                   onOpenOrderModal={handleOpenOrderModal}
+                  effectiveSqft={effectiveSqft}
+                  onUpdateSqft={handleUpdateSqft}
                 />
               </div>
             ) : (
@@ -1009,6 +1074,8 @@ function JobDetailImpl({
   accountsById,
   accountByName,
   onOpenOrderModal,
+  effectiveSqft,
+  onUpdateSqft,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   job: OpenWorkOrderForMaterials;
@@ -1024,6 +1091,12 @@ function JobDetailImpl({
    *  true when chosen via the store picker (vs auto-detected), so the builder
    *  includes all the WO's colors on that store's order. */
   onOpenOrderModal: (supplierAccountId: string, supplierName: string, manual?: boolean) => void;
+  /** Returns the override-aware sqft for a WOLI (user-typed value beats SF
+   *  raw). Computed at parent level so it's shared with the WO-list chip. */
+  effectiveSqft: (woliId: string, rawSqft: number) => number;
+  /** Sets the per-room sqft override + fires the SF write-back. Returns
+   *  ok/error for the editor row to surface a toast. */
+  onUpdateSqft: (woliId: string, sqft: number) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [showDraft, setShowDraft] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -1076,7 +1149,9 @@ function JobDetailImpl({
         rooms.push({
           woliId: li.raw.id,
           roomLabel: li.raw.areaLabel ?? "Area",
-          floorAreaSqft: li.raw.sqFootage,
+          // Override-aware: if the worker typed a sqft on JobDetail, the
+          // estimator uses THAT number (not the stale SF zero).
+          floorAreaSqft: effectiveSqft(li.raw.id, li.raw.sqFootage),
           wallSurfaceAreaSqft: li.raw.wallSurfaceArea,
           perimeterLf: li.raw.perimeter,
           heightFt: li.raw.heightFt,
@@ -1093,7 +1168,7 @@ function JobDetailImpl({
       }
     }
     return summarizeOrder(estimateOrderGallons(rooms, coverageConfig));
-  }, [job, coverageConfig]);
+  }, [job, coverageConfig, effectiveSqft]);
 
   return (
     // pb-24 lg:pb-0 reserves space at the bottom for the mobile-only
@@ -1456,25 +1531,37 @@ function JobDetailImpl({
         );
       })()}
 
-      {/* WO-level no-sqft callout — mirrors the strong red banner the
-          supplier-order modal shows once the worker opens it. Surfacing
-          on JobDetail BEFORE drafting means admin sees the gap up-front
-          + understands the per-WOLI "⚠ no sq ft" chips on the Rooms &
-          colors section below. Fires only when EVERY line item is missing
-          sqft (partial case is covered by the per-line chips). */}
+      {/* WO-level no-sqft callout — invites the worker to type sqft per
+          room (the input now lives on every empty row below). Reads
+          effectiveSqft so the banner disappears as soon as the last
+          missing room is filled in. */}
       {(() => {
         const lineItemsWithSqft = job.lineItems.filter(
-          (li) => li.raw.sqFootage > 0 || li.raw.wallSurfaceArea > 0
+          (li) =>
+            effectiveSqft(li.raw.id, li.raw.sqFootage) > 0 ||
+            li.raw.wallSurfaceArea > 0
         );
         const allMissing = job.lineItems.length > 0 && lineItemsWithSqft.length === 0;
-        if (!allMissing) return null;
+        const partialMissing =
+          job.lineItems.length > 0 &&
+          lineItemsWithSqft.length > 0 &&
+          lineItemsWithSqft.length < job.lineItems.length;
+        if (!allMissing && !partialMissing) return null;
+        const missingCount = job.lineItems.length - lineItemsWithSqft.length;
         return (
           <div
-            className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-[12px] text-ppp-orange-700 flex items-start gap-2"
-            title="None of the line items on this WO has square footage in Salesforce. The gallon estimator will return zero — fill in the quantity yourself in the supplier-order modal, or set WOLI sqft in Salesforce and re-open this panel."
+            className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2.5 text-[12px] text-ppp-orange-700 flex items-start gap-2"
+            title="Tap a room below to type its square footage. We save it to Salesforce automatically and the gallon estimator updates right away. If you skip it, the order will use 0 gallons and you'll fill in the quantity yourself before sending."
           >
             <span aria-hidden>⚠</span>
-            <span><strong>No square footage on Salesforce</strong> — manual quantity required for all {job.lineItems.length} line item{job.lineItems.length === 1 ? "" : "s"}. Each room is tagged below.</span>
+            <span>
+              <strong>
+                {allMissing
+                  ? "No square footage on any room yet."
+                  : `Square footage missing on ${missingCount} of ${job.lineItems.length} rooms.`}
+              </strong>{" "}
+              Tap a room below to add sq ft — we save it to Salesforce automatically and the gallon estimator updates instantly. Skip = order ships with manual quantity.
+            </span>
           </div>
         );
       })()}
@@ -1511,7 +1598,12 @@ function JobDetailImpl({
         </div>
         <ul className="divide-y divide-ppp-charcoal-100">
           {job.lineItems.map((li) => (
-            <LineItemRow key={li.raw.id} item={li} />
+            <LineItemRow
+              key={li.raw.id}
+              item={li}
+              effectiveSqftValue={effectiveSqft(li.raw.id, li.raw.sqFootage)}
+              onUpdateSqft={onUpdateSqft}
+            />
           ))}
         </ul>
       </div>
@@ -1561,7 +1653,17 @@ function JobDetailImpl({
 // shallowly without surprises.
 const JobDetail = memo(JobDetailImpl);
 
-function LineItemRow({ item }: { item: ResolvedWoli }) {
+function LineItemRow({
+  item,
+  effectiveSqftValue,
+  onUpdateSqft,
+}: {
+  item: ResolvedWoli;
+  /** Sqft after applying the per-WOLI override (defaults to SF raw). */
+  effectiveSqftValue: number;
+  /** Fires the SF write + updates the parent override map. */
+  onUpdateSqft: (woliId: string, sqft: number) => Promise<{ ok: boolean; error?: string }>;
+}) {
   const surfaces = (item.raw.surfaces ?? "").split(";").filter(Boolean);
   const slots: Array<{ label: string; surface: string; color: SnapshotPaintColor | null; finish: string | null }> = [
     { label: "Walls", surface: "Walls", color: item.wall, finish: item.raw.finishWall },
@@ -1570,6 +1672,8 @@ function LineItemRow({ item }: { item: ResolvedWoli }) {
     { label: "Floor", surface: "Floor", color: item.floor, finish: item.raw.finishFloor },
     { label: "Other", surface: "Other", color: item.other, finish: item.raw.finishOther },
   ].filter((s) => surfaces.includes(s.surface) || s.color);
+
+  const hasEffectiveSqft = effectiveSqftValue > 0;
 
   return (
     <li className="px-5 py-4">
@@ -1582,27 +1686,32 @@ function LineItemRow({ item }: { item: ResolvedWoli }) {
             {item.raw.changeOrderRelated && (
               <Pill tone="orange">Change order</Pill>
             )}
-            {/* Per-room no-sqft tag — promoted from a buried row footer text
-                to a real pill so it lines up with Change Order + matches
-                the "⚠ Manual qty" pill on the WO list. Karan 2026-06-13.
-                Logic mirrors the WO-level callout exactly: NOT (>0) on both
-                fields → catches null/undefined/NaN/negative, not just 0. */}
-            {!(item.raw.sqFootage > 0) && !(item.raw.wallSurfaceArea > 0) && (
-              <Pill tone="orange" title="No square footage on this room in Salesforce. The supplier order will show '___ (PPP to confirm)' — type in the gallons yourself before sending.">
-                ⚠ No sq ft
-              </Pill>
-            )}
           </div>
           <div className="text-[11px] text-ppp-charcoal-500 flex flex-wrap gap-x-2 gap-y-0.5">
             {item.raw.productFamily && <span>{item.raw.productFamily}</span>}
             {item.raw.numCoats > 0 && <span>{item.raw.numCoats}-coat</span>}
             {item.raw.primer && <span>Primer: {item.raw.primer}</span>}
             {item.raw.prepLevel && <span>Prep: {item.raw.prepLevel}</span>}
-            {item.raw.sqFootage > 0 && <span>{item.raw.sqFootage.toLocaleString()} sq ft</span>}
-            {item.raw.wallSurfaceArea > 0 && item.raw.sqFootage === 0 && (
+            {item.raw.wallSurfaceArea > 0 && !hasEffectiveSqft && (
               <span>{item.raw.wallSurfaceArea.toLocaleString()} sq ft wall</span>
             )}
           </div>
+
+          {/* Editable per-room sqft — Karan 2026-06-13. The PPP team rarely
+              fills Sq_Footage__c in Salesforce (~77% of rooms empty per the
+              fill-rate probe). This input lets the worker / admin type the
+              number once: it writes to SF immediately (single source of
+              truth), the gallon estimator recomputes live, and the supplier
+              order will carry the right quantity instead of "___ (PPP to
+              confirm)". Empty / cleared input falls back to the SF raw
+              value. Wall-area-only rows (no floor sqft but have wall area)
+              still get the input so the worker can supplement. */}
+          <SqftEditor
+            woliId={item.raw.id}
+            initialSqft={effectiveSqftValue}
+            rawSqftFromSf={item.raw.sqFootage}
+            onUpdateSqft={onUpdateSqft}
+          />
         </div>
       </div>
 
@@ -1626,6 +1735,163 @@ function LineItemRow({ item }: { item: ResolvedWoli }) {
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * Per-room sqft editor — inline number input. Saves on blur. Optimistic
+ * UI: the value is whatever the user just typed; the parent override map
+ * carries it to the gallon estimator + the WO list chip; the background
+ * fetch writes to Salesforce. On SF write failure we roll back the
+ * override (handled in the parent) and show an error here.
+ *
+ * Edge cases handled:
+ *   - Empty input → treated as "clear my override" — does NOT write 0 to
+ *     SF. SF stays untouched and the value reverts to whatever's in the
+ *     snapshot (typically 0 → manual qty mode).
+ *   - Same value as currently saved → no API call (avoids spamming SF
+ *     with redundant writes when the user tabs through inputs).
+ *   - Non-numeric / negative → reject + revert visually.
+ *   - In-flight save → input is disabled + shows a small spinner; second
+ *     keystroke doesn't kick a parallel save.
+ */
+function SqftEditor({
+  woliId,
+  initialSqft,
+  rawSqftFromSf,
+  onUpdateSqft,
+}: {
+  woliId: string;
+  initialSqft: number;
+  rawSqftFromSf: number;
+  onUpdateSqft: (woliId: string, sqft: number) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [value, setValue] = useState<string>(
+    initialSqft > 0 ? String(initialSqft) : ""
+  );
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Track what was last successfully saved so we can skip no-op submits.
+  const lastSavedRef = useRef<number>(initialSqft);
+
+  // Keep input in sync if the parent override changes from outside (e.g.
+  // snapshot refresh delivers a fresh SF value, parent clears the override).
+  useEffect(() => {
+    setValue(initialSqft > 0 ? String(initialSqft) : "");
+    lastSavedRef.current = initialSqft;
+  }, [initialSqft]);
+
+  const persist = useCallback(async () => {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      // Empty = "no manual override." Don't touch SF. Just reset visual state.
+      setStatus("idle");
+      setErrorMsg(null);
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n < 0 || n > 100000) {
+      setStatus("error");
+      setErrorMsg("Enter a number between 0 and 100,000.");
+      return;
+    }
+    const rounded = Math.round(n);
+    if (rounded === lastSavedRef.current) {
+      // No change — don't burn an SF write.
+      setStatus("idle");
+      return;
+    }
+    setSaving(true);
+    setStatus("idle");
+    setErrorMsg(null);
+    const result = await onUpdateSqft(woliId, rounded);
+    setSaving(false);
+    if (result.ok) {
+      lastSavedRef.current = rounded;
+      setStatus("saved");
+      // Auto-dismiss the "Saved" indicator after a beat.
+      window.setTimeout(() => setStatus("idle"), 1500);
+    } else {
+      setStatus("error");
+      setErrorMsg(result.error ?? "Save failed.");
+    }
+  }, [value, woliId, onUpdateSqft]);
+
+  const inputId = `sqft-${woliId}`;
+  const missing = initialSqft === 0;
+
+  return (
+    <div className="mt-2 flex items-center gap-2 flex-wrap">
+      <label
+        htmlFor={inputId}
+        className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500"
+      >
+        Sq ft
+      </label>
+      <div
+        className={`flex items-center rounded-md border transition-colors ${
+          status === "error"
+            ? "border-red-300 bg-red-50"
+            : missing
+              ? "border-ppp-orange-200 bg-ppp-orange-50/60"
+              : "border-ppp-charcoal-100 bg-white"
+        }`}
+      >
+        <input
+          id={inputId}
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={100000}
+          step={1}
+          value={value}
+          disabled={saving}
+          placeholder={missing ? "Add sq ft" : "—"}
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (status !== "idle") setStatus("idle");
+          }}
+          onBlur={persist}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className="w-24 px-2 py-1 text-sm bg-transparent focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded-md disabled:opacity-50"
+          aria-describedby={errorMsg ? `${inputId}-err` : undefined}
+          title="Type the room's square footage. Saves to Salesforce on blur (tab away / click out)."
+        />
+        {saving && (
+          <span className="px-2 text-[11px] text-ppp-charcoal-500" aria-live="polite">
+            Saving…
+          </span>
+        )}
+        {status === "saved" && !saving && (
+          <span className="px-2 text-[11px] text-ppp-green-700" aria-live="polite">
+            ✓ Saved
+          </span>
+        )}
+      </div>
+      {rawSqftFromSf > 0 && rawSqftFromSf !== initialSqft && (
+        <span
+          className="text-[10px] text-ppp-charcoal-400 italic"
+          title="The value in Salesforce when this page loaded. The estimator uses your typed override."
+        >
+          (SF: {rawSqftFromSf.toLocaleString()})
+        </span>
+      )}
+      {status === "error" && errorMsg && (
+        <span
+          id={`${inputId}-err`}
+          className="text-[11px] text-red-700"
+          role="alert"
+        >
+          {errorMsg}
+        </span>
+      )}
+    </div>
   );
 }
 
