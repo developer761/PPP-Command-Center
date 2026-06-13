@@ -197,6 +197,175 @@
   .toc ol li b { display: inline-block; width: 28px; color: var(--charcoal-500); font-weight: 700; }
   .footnote { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--charcoal-100); font-size: 12px; color: var(--charcoal-500); text-align: center; }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  /* ─── Big overview diagram ─── */
+  .overview-map {
+    background: linear-gradient(180deg, var(--charcoal-50) 0%, var(--white) 60%);
+    border: 1px solid var(--charcoal-100);
+    border-radius: 14px;
+    padding: 28px 24px;
+    margin: 24px 0 36px;
+  }
+  .overview-map .map-title {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--charcoal-500);
+    margin-bottom: 6px;
+  }
+  .overview-map .map-h2 {
+    text-align: center;
+    font-size: 19px;
+    font-weight: 800;
+    color: var(--charcoal);
+    margin: 0 0 22px;
+  }
+  /* Funnel row */
+  .funnel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 0 auto 26px;
+    max-width: 880px;
+  }
+  .funnel .step {
+    background: var(--white);
+    border: 1px solid var(--charcoal-100);
+    border-radius: 8px;
+    padding: 10px 14px;
+    text-align: center;
+    min-width: 130px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .funnel .step .step-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.9px; text-transform: uppercase; color: var(--charcoal-500); }
+  .funnel .step .step-value { font-size: 12.5px; font-weight: 600; color: var(--charcoal); margin-top: 2px; }
+  .funnel .step.hub { background: var(--blue-50); border-color: var(--blue-100); }
+  .funnel .step.picker { background: var(--amber-50); border-color: var(--amber-100); }
+  .funnel .step.cc { background: var(--blue-50); border-color: var(--blue-100); }
+  .funnel .step.np { background: var(--emerald-50); border-color: var(--emerald-100); }
+  .funnel-arrow { font-size: 18px; color: var(--charcoal-300); font-weight: 300; }
+  .funnel-or {
+    display: inline-block;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    color: var(--charcoal-500);
+    background: var(--charcoal-100);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  /* 9-phase pipeline */
+  .pipeline {
+    background: var(--white);
+    border: 1px solid var(--charcoal-100);
+    border-radius: 12px;
+    padding: 20px 18px;
+    margin-bottom: 22px;
+  }
+  .pipeline-label {
+    text-align: center;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--charcoal-500);
+    margin-bottom: 12px;
+  }
+  .pipeline-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 4px;
+  }
+  .pipeline-phase {
+    border-radius: 7px;
+    padding: 10px 6px;
+    text-align: center;
+    color: white;
+    position: relative;
+    min-height: 78px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .pipeline-phase .phase-num {
+    background: rgba(255,255,255,0.25);
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 800;
+    margin: 0 auto 4px;
+  }
+  .pipeline-phase .phase-name {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    line-height: 1.18;
+    margin-bottom: 3px;
+  }
+  .pipeline-phase .phase-sub {
+    font-size: 8.5px;
+    opacity: 0.88;
+    line-height: 1.2;
+  }
+  .pipeline-phase.p1 { background: var(--blue); }
+  .pipeline-phase.p2 { background: var(--emerald); }
+  .pipeline-phase.p3 { background: var(--purple); }
+  .pipeline-phase.p4 { background: var(--amber); }
+  .pipeline-phase.p5 { background: var(--teal); }
+  .pipeline-phase.p6 { background: var(--indigo); }
+  .pipeline-phase.p7 { background: var(--rose); }
+  .pipeline-phase.p8 { background: var(--gold); }
+  .pipeline-phase.p9 { background: var(--red); }
+  .pipeline-flow {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 10.5px;
+    color: var(--charcoal-500);
+    font-style: italic;
+  }
+  /* Underneath layers */
+  .map-layer {
+    background: var(--white);
+    border: 1px solid var(--charcoal-100);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+  }
+  .map-layer .layer-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--charcoal-500);
+    margin-bottom: 6px;
+  }
+  .map-layer .layer-items {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .map-layer .layer-item {
+    background: var(--charcoal-50);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 11.5px;
+    color: var(--charcoal);
+    font-weight: 500;
+    border: 1px solid var(--charcoal-100);
+  }
+  .map-layer.dashboards .layer-item { background: var(--purple-50); border-color: var(--purple); color: var(--purple); font-weight: 600; }
+  .map-layer.bell .layer-item { background: var(--emerald-50); border-color: var(--emerald-100); color: var(--emerald); }
+  .map-layer.docs .layer-item { background: var(--amber-50); border-color: var(--amber-100); color: var(--amber); }
+  .map-layer.mobile .layer-item { background: var(--blue-50); border-color: var(--blue-100); color: var(--blue); }
+  .map-key {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--charcoal-100);
+    text-align: center;
+    font-size: 11px;
+    color: var(--charcoal-500);
+  }
   .workflow-step {
     background: var(--white);
     border: 2px solid var(--blue-100);
@@ -252,6 +421,141 @@
       <li><b>9</b> Documents &amp; record-keeping</li>
       <li><b>10</b> What we need answers on before we start</li>
     </ol>
+  </div>
+
+  <!-- VISUAL MAP -->
+  <div class="overview-map">
+    <div class="map-title">The whole picture, at a glance</div>
+    <h2 class="map-h2" style="margin: 0 0 22px; border: none; padding: 0;">How everything connects</h2>
+
+    <!-- Funnel: hub → sign in → picker → app -->
+    <div class="funnel">
+      <div class="step hub">
+        <div class="step-label">Step 1</div>
+        <div class="step-value">hub.precisionpaintingplus.net</div>
+      </div>
+      <span class="funnel-arrow">→</span>
+      <div class="step">
+        <div class="step-label">Step 2</div>
+        <div class="step-value">Sign in with Google</div>
+      </div>
+      <span class="funnel-arrow">→</span>
+      <div class="step picker">
+        <div class="step-label">Step 3</div>
+        <div class="step-value">Pick an app</div>
+      </div>
+      <span class="funnel-arrow">→</span>
+      <div class="step cc">
+        <div class="step-label">App A</div>
+        <div class="step-value">Command Center</div>
+      </div>
+      <span class="funnel-or">or</span>
+      <div class="step np">
+        <div class="step-label">App B</div>
+        <div class="step-value">New Platform</div>
+      </div>
+    </div>
+
+    <!-- 9-phase pipeline -->
+    <div class="pipeline">
+      <div class="pipeline-label">Inside the New Platform · The 9 sections, flowing left to right</div>
+      <div class="pipeline-grid">
+        <div class="pipeline-phase p1">
+          <span class="phase-num">1</span>
+          <div class="phase-name">Accounts</div>
+          <div class="phase-sub">The companies</div>
+        </div>
+        <div class="pipeline-phase p2">
+          <span class="phase-num">2</span>
+          <div class="phase-name">Opportunities</div>
+          <div class="phase-sub">The bids</div>
+        </div>
+        <div class="pipeline-phase p3">
+          <span class="phase-num">3</span>
+          <div class="phase-name">Estimate &amp; Proposal</div>
+          <div class="phase-sub">The number</div>
+        </div>
+        <div class="pipeline-phase p4">
+          <span class="phase-num">4</span>
+          <div class="phase-name">Contract Award</div>
+          <div class="phase-sub">Bid won</div>
+        </div>
+        <div class="pipeline-phase p5">
+          <span class="phase-num">5</span>
+          <div class="phase-name">Project Setup</div>
+          <div class="phase-sub">Team &amp; docs</div>
+        </div>
+        <div class="pipeline-phase p6">
+          <span class="phase-num">6</span>
+          <div class="phase-name">Execution</div>
+          <div class="phase-sub">Daily work</div>
+        </div>
+        <div class="pipeline-phase p7">
+          <span class="phase-num">7</span>
+          <div class="phase-name">Change Orders</div>
+          <div class="phase-sub">Scope changes</div>
+        </div>
+        <div class="pipeline-phase p8">
+          <span class="phase-num">8</span>
+          <div class="phase-name">Billing</div>
+          <div class="phase-sub">Invoice &amp; payment</div>
+        </div>
+        <div class="pipeline-phase p9">
+          <span class="phase-num">9</span>
+          <div class="phase-name">Closeout</div>
+          <div class="phase-sub">Wrap up</div>
+        </div>
+      </div>
+      <div class="pipeline-flow">↑ data and documents flow forward as the project moves through ↑</div>
+    </div>
+
+    <!-- Underneath layers (always-on across all 9 phases) -->
+    <div class="map-layer dashboards">
+      <div class="layer-label">📊 Always-on dashboards</div>
+      <div class="layer-items">
+        <span class="layer-item">Sales</span>
+        <span class="layer-item">Operations</span>
+        <span class="layer-item">Financial</span>
+        <span class="layer-item">Workforce</span>
+        <span class="layer-item">Company Scorecard</span>
+      </div>
+    </div>
+    <div class="map-layer bell">
+      <div class="layer-label">🔔 Notifications — same bell as Command Center</div>
+      <div class="layer-items">
+        <span class="layer-item">Bid received</span>
+        <span class="layer-item">CO submitted</span>
+        <span class="layer-item">Invoice past due</span>
+        <span class="layer-item">Safety incident</span>
+        <span class="layer-item">Daily report missing</span>
+        <span class="layer-item">+ 14 more events</span>
+      </div>
+    </div>
+    <div class="map-layer mobile">
+      <div class="layer-label">📱 Phone-first surfaces (field crew)</div>
+      <div class="layer-items">
+        <span class="layer-item">Daily reports</span>
+        <span class="layer-item">Photos</span>
+        <span class="layer-item">Punchlist</span>
+        <span class="layer-item">Schedule</span>
+        <span class="layer-item">Site contacts</span>
+      </div>
+    </div>
+    <div class="map-layer docs">
+      <div class="layer-label">📎 Documents &amp; audit trail (every file kept, every change tracked)</div>
+      <div class="layer-items">
+        <span class="layer-item">Plans &amp; specs</span>
+        <span class="layer-item">COIs</span>
+        <span class="layer-item">Contracts</span>
+        <span class="layer-item">Signed COs</span>
+        <span class="layer-item">Invoice PDFs</span>
+        <span class="layer-item">Closeout pack</span>
+      </div>
+    </div>
+
+    <div class="map-key">
+      Each numbered color matches its section later in this document · The two apps share login + bell + design but nothing else
+    </div>
   </div>
 
   <!-- §1 -->
