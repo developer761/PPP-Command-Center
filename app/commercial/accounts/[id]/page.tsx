@@ -462,17 +462,46 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
     listAccountTeam(accountId),
     listAssignableStaff(),
   ]);
-  // Filter the "Assign" dropdown to staff NOT already on the team in some role —
-  // they can still be assigned to a DIFFERENT role via the same form, but a
-  // shorter list is friendlier.
   const teamUserIds = new Set(team.map((t) => t.user_id));
-  const unassignedStaff = assignableStaff.filter((s) => !teamUserIds.has(s.user_id));
+  // Count by role so we can show "1 sales rep · 2 PMs" inline at the top
+  // — gives Alex a one-glance read of the team shape without scanning.
+  // Find which roles have NO primary holder — surface as warnings so the
+  // account doesn't run with "nobody knows who 'THE' sales rep is."
+  const rolesWithPrimary = new Set(
+    team.flatMap((p) => p.assignments.filter((a) => a.is_primary).map((a) => a.role))
+  );
+  const rolesPresent = new Set(
+    team.flatMap((p) => p.assignments.map((a) => a.role))
+  );
+  const rolesMissingPrimary = Array.from(rolesPresent).filter((r) => !rolesWithPrimary.has(r));
+  const noStaffWithAccess = assignableStaff.length === 0;
 
   return (
     <div className="space-y-5">
       {errorMessage && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
           {errorMessage}
+        </div>
+      )}
+
+      {/* Missing-primary warning(s) — surface when someone is on the team in
+          a role but no one holds primary for that role. Drives the "who's
+          THE sales rep?" question up front. */}
+      {rolesMissingPrimary.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          <strong>Heads up:</strong> no primary set for{" "}
+          {rolesMissingPrimary.map((r) => assignmentRoleLabel(r as AssignmentRole)).join(", ")}.
+          Tap a pill in that role and re-add with <em>Mark as primary</em> checked so the
+          Account 360 highlights the right person.
+        </div>
+      )}
+
+      {/* No-access warning — if NO PPP staff have Commercial CC access,
+          the form is unusable. Tell them how to fix it. */}
+      {noStaffWithAccess && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          No PPP staff have Commercial Command Center access yet. Grant access on
+          the admin Users page, then come back to assign people to this account.
         </div>
       )}
 
@@ -507,10 +536,11 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
                   );
                 })}
               </select>
-              {unassignedStaff.length === 0 && (
+              {assignableStaff.length > 0 && assignableStaff.every((s) => teamUserIds.has(s.user_id)) && (
                 <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-                  Everyone with Commercial CC access is already on this team. To add
-                  more people, grant access on the admin Users page.
+                  Everyone with Commercial CC access is already on this team — pick a
+                  different role to add them again, or grant new access on the admin
+                  Users page first.
                 </p>
               )}
             </div>
@@ -544,8 +574,8 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
               id="team_notes"
               name="notes"
               type="text"
-              placeholder="Optional"
-              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+              placeholder="Optional — e.g. 'covering while Macarena is out'"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
             />
           </div>
           <div className="flex justify-end">
@@ -561,8 +591,13 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
 
       {/* Current team */}
       {team.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-          No PPP staff assigned yet.
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+          <div className="text-sm font-medium text-ppp-charcoal">No team yet</div>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto">
+            Add the sales rep, project manager, and anyone else from PPP working on
+            this account. Mark one person primary in each role so the rest of the
+            platform knows who to surface on emails, scheduling, and the Account 360.
+          </p>
         </div>
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -608,13 +643,29 @@ function TeamRow({
         <div className="font-semibold text-ppp-charcoal text-sm">
           {person.user_full_name ?? person.user_email}
         </div>
-        {person.user_full_name && (
-          <a href={`mailto:${person.user_email}`} className="text-[11px] text-emerald-700 hover:text-emerald-800 break-all">
-            {person.user_email}
-          </a>
-        )}
+        <a
+          href={`mailto:${person.user_email}`}
+          className="text-[11px] text-emerald-700 hover:text-emerald-800 break-all"
+        >
+          {person.user_email}
+        </a>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {person.assignments.map((a) => (
+          {person.assignments.map((a) => {
+            const since = (() => {
+              const ms = Date.now() - new Date(a.assigned_at).getTime();
+              const days = Math.floor(ms / 86_400_000);
+              if (days < 1) return "today";
+              if (days === 1) return "yesterday";
+              if (days < 7) return `${days} days ago`;
+              if (days < 30) return `${Math.floor(days / 7)}w ago`;
+              return `${Math.floor(days / 30)}mo ago`;
+            })();
+            const tipBits = [
+              a.is_primary ? "Primary holder of this role" : null,
+              `Assigned ${since}`,
+              a.notes ? `Note: ${a.notes}` : null,
+            ].filter(Boolean);
+            return (
             <span
               key={a.id}
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
@@ -622,7 +673,7 @@ function TeamRow({
                   ? "bg-emerald-600 text-white border-emerald-700"
                   : "bg-emerald-50 text-emerald-700 border-emerald-200"
               }`}
-              title={a.notes ?? undefined}
+              title={tipBits.join("\n")}
             >
               {a.is_primary && <span aria-hidden>★</span>}
               {assignmentRoleLabel(a.role)}
@@ -638,7 +689,8 @@ function TeamRow({
                 </button>
               </form>
             </span>
-          ))}
+          );
+          })}
         </div>
       </div>
     </div>
