@@ -701,13 +701,15 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   // Bigger padding + base font size = prominent. Was a tiny
                   // py-1.5 input that disappeared visually next to the sort
                   // selector above it. Katie called this out 2026-06-12.
-                  // Right padding pr-11 reserves 44px for the larger clear
-                  // button below so the X never overlaps the search text.
-                  className="w-full pl-10 pr-11 py-3 text-base sm:text-sm font-medium border-2 border-ppp-charcoal-100 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue placeholder:text-ppp-charcoal-400"
+                  // Slim look 2026-06-13: dropped border-2 + py-3 + xl
+                  // radius. Still prominent (clear icon, full-width input,
+                  // bigger than the count + sort beneath it) but less
+                  // bulky than v1.
+                  className="w-full pl-9 pr-10 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue placeholder:text-ppp-charcoal-400"
                 />
                 <svg
-                  width="16"
-                  height="16"
+                  width="14"
+                  height="14"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -715,7 +717,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
                 >
                   <circle cx="11" cy="11" r="8" />
                   <path d="m21 21-4.35-4.35" />
@@ -724,11 +726,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    // 40×40 — closer to iOS HIG 44px and clears the
-                    // larger input's padding. Audit 2026-06-12 caught the
-                    // prior 32×32 button overlapping the search text on
-                    // narrow viewports.
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 h-10 w-10 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm rounded-md hover:bg-ppp-charcoal-50 transition-colors"
+                    // Slim button to match slimmer input.
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm rounded hover:bg-ppp-charcoal-50 transition-colors"
                     aria-label="Clear search"
                   >
                     ✕
@@ -1187,24 +1186,20 @@ function JobDetailImpl({
           const partial = paintEstimate.reviewColors > 0 && !noEstimate;
           if (!noEstimate && !partial) return null;
           return (
-            <div className="mt-4 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2.5 flex items-start gap-2.5 text-xs text-ppp-orange-700">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden>
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-              <div className="min-w-0 flex-1 leading-relaxed">
-                <strong className="block text-ppp-orange-800">
+            <div
+              className="mt-3 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2 flex items-start gap-2 text-[12px] text-ppp-orange-700"
+              title={noEstimate
+                ? "You'll need to fill in the gallons yourself when you order materials. The system won't auto-suggest a quantity."
+                : "Some rooms are missing measurements. The unsized ones show \"___ (PPP to confirm)\" in the supplier modal — fill them in before sending."}
+            >
+              <span aria-hidden>⚠</span>
+              <span className="leading-snug">
+                <strong className="text-ppp-orange-800">
                   {noEstimate
-                    ? "No square footage on Salesforce — we can't estimate paint for this job."
-                    : `${paintEstimate.reviewColors} color${paintEstimate.reviewColors === 1 ? "" : "s"} need a manual quantity`}
+                    ? "No square footage on Salesforce — fill in gallons manually."
+                    : `${paintEstimate.reviewColors} color${paintEstimate.reviewColors === 1 ? "" : "s"} need a manual quantity.`}
                 </strong>
-                <span className="text-ppp-orange-700">
-                  {noEstimate
-                    ? "You'll need to fill in the gallons yourself when you order materials. The system won't auto-suggest a quantity."
-                    : "Some rooms are missing measurements. The unsized ones show \"___ (PPP to confirm)\" in the supplier modal — fill them in before sending."}
-                </span>
-              </div>
+              </span>
             </div>
           );
         })()}
@@ -1423,11 +1418,12 @@ function JobDetailImpl({
         const allMissing = job.lineItems.length > 0 && lineItemsWithSqft.length === 0;
         if (!allMissing) return null;
         return (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-sm text-red-700 space-y-1">
-            <div className="font-semibold text-[14px]">🛑 No square footage on Salesforce — manual quantity required</div>
-            <div>
-              None of the {job.lineItems.length} line item{job.lineItems.length === 1 ? "" : "s"} on this work order has square footage in Salesforce. The gallon estimator will return zero — you&apos;ll need to fill in the quantity yourself when you open the supplier-order modal. (Or set the WOLI sqft in Salesforce, refresh, and re-open this panel.)
-            </div>
+          <div
+            className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-[12px] text-ppp-orange-700 flex items-start gap-2"
+            title="None of the line items on this WO has square footage in Salesforce. The gallon estimator will return zero — fill in the quantity yourself in the supplier-order modal, or set WOLI sqft in Salesforce and re-open this panel."
+          >
+            <span aria-hidden>⚠</span>
+            <span><strong>No square footage on Salesforce</strong> — manual quantity required for all {job.lineItems.length} line item{job.lineItems.length === 1 ? "" : "s"}. Each room is tagged below.</span>
           </div>
         );
       })()}
@@ -1485,12 +1481,20 @@ function LineItemRow({ item }: { item: ResolvedWoli }) {
     <li className="px-5 py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-semibold text-ppp-charcoal text-sm">
               {item.raw.areaLabel?.trim() || "Area"}
             </span>
             {item.raw.changeOrderRelated && (
               <Pill tone="orange">Change order</Pill>
+            )}
+            {/* Per-room no-sqft tag — promoted from a buried row footer text
+                to a real pill so it lines up with Change Order + matches
+                the "⚠ Manual qty" pill on the WO list. Karan 2026-06-13. */}
+            {item.raw.sqFootage === 0 && item.raw.wallSurfaceArea === 0 && (
+              <Pill tone="orange" title="No square footage on this room in Salesforce. The supplier order will show '___ (PPP to confirm)' — type in the gallons yourself before sending.">
+                ⚠ No sq ft
+              </Pill>
             )}
           </div>
           <div className="text-[11px] text-ppp-charcoal-500 flex flex-wrap gap-x-2 gap-y-0.5">
@@ -1501,9 +1505,6 @@ function LineItemRow({ item }: { item: ResolvedWoli }) {
             {item.raw.sqFootage > 0 && <span>{item.raw.sqFootage.toLocaleString()} sq ft</span>}
             {item.raw.wallSurfaceArea > 0 && item.raw.sqFootage === 0 && (
               <span>{item.raw.wallSurfaceArea.toLocaleString()} sq ft wall</span>
-            )}
-            {item.raw.sqFootage === 0 && item.raw.wallSurfaceArea === 0 && (
-              <span className="text-ppp-orange-700 font-medium">⚠ no sq ft on Salesforce</span>
             )}
           </div>
         </div>
