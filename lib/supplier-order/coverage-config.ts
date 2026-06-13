@@ -26,15 +26,21 @@ export {
  * STRICT_POSITIVE / MAX_COVERAGE_VALUES bounds — bufferPct allows 0 (no buffer)
  * so it's the one key where 0 is valid.
  *
- * PERF (2026-06-11): wrapped in a module-scope cache (5min TTL). Coverage
- * constants change rarely (admin tunes them maybe once a month). Every
- * supplier-order draft fetch + every materials page load called this →
- * repeated Supabase round-trips for the same data. Cache eliminates them
- * in the hot path. Safe to cache because misses fall through to code
- * defaults which are also static.
+ * PERF (2026-06-11): wrapped in a module-scope cache. Coverage constants
+ * change rarely (admin tunes them maybe once a month). Every supplier-
+ * order draft fetch + every materials page load called this → repeated
+ * Supabase round-trips for the same data. Cache eliminates them in the
+ * hot path. Safe to cache because misses fall through to code defaults
+ * which are also static.
+ *
+ * 2026-06-12 (round 8): TTL extended from 5min → 60min. Admin edits go
+ * through PUT /api/admin/coverage-config which calls
+ * invalidateCoverageConfigCache(), so the cache is fresh on edits within
+ * the same Vercel instance. Across-instance staleness is bounded by the
+ * 60min TTL, fine for a value that changes monthly.
  */
 let cachedConfig: { value: CoverageConfig; expiresAt: number } | null = null;
-const COVERAGE_CACHE_MS = 5 * 60 * 1000;
+const COVERAGE_CACHE_MS = 60 * 60 * 1000;
 
 export async function loadCoverageConfig(): Promise<CoverageConfig> {
   const now = Date.now();
