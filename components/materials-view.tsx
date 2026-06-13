@@ -177,11 +177,17 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   const woChipFlags = useMemo(() => {
     const m = new Map<string, { manualQty: boolean; notesOnly: boolean }>();
     for (const j of openJobs) {
-      const colorsPicked = j.lineItems.some((li) => li.wall || li.ceiling || li.trim || li.floor || li.other);
-      const manualQty = colorsPicked && j.lineItems.some((li) => {
-        const hasColor = !!(li.wall || li.ceiling || li.trim || li.floor || li.other);
-        return hasColor && li.raw.sqFootage === 0 && li.raw.wallSurfaceArea === 0;
-      });
+      // Manual qty flag — Karan 2026-06-13: was gated on colorsPicked,
+      // so WOs without color picks didn't show the pill even though
+      // the underlying data was already broken (no sqft anywhere).
+      // Now fires for ANY WO that has rooms with no measurements,
+      // consistent with the JobDetail callout "for all N line items"
+      // and the per-room "⚠ No sq ft" pill. Uses NOT (>0) so null /
+      // undefined / NaN / negative all count as missing — same logic
+      // the JobDetail callout uses, so they agree row-for-row.
+      const manualQty = j.lineItems.some(
+        (li) => !(li.raw.sqFootage > 0) && !(li.raw.wallSurfaceArea > 0)
+      );
       const notesOnly = j.lineItems.length === 0;
       m.set(j.wo.id, { manualQty, notesOnly });
     }
@@ -900,8 +906,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                               </Pill>
                             )}
                             {woChipFlags.get(j.wo.id)?.notesOnly && (
-                              <Pill tone="orange" title="No rooms broken down in Salesforce. The customer will type their project description in a notes textarea on the form (typical for exterior jobs). You'll get notified when they submit.">
-                                📝 Notes-only
+                              <Pill tone="orange" title="No rooms broken down in Salesforce yet. The customer types their project description on the form (typical for exterior jobs or new WOs the rep hasn't filled in yet). The panel updates within ~30 minutes after the rep adds rooms in Salesforce.">
+                                📝 Customer types notes
                               </Pill>
                             )}
                           </div>
@@ -1443,12 +1449,33 @@ function JobDetailImpl({
         );
       })()}
 
+      {/* Notes-only / no-rooms callout — Karan 2026-06-13: when there are
+          0 line items, the "Rooms & colors / 0 line items" block was
+          confusing because there was no explanation of WHY or what happens
+          next. This banner sits ABOVE the empty rooms block when needed. */}
+      {job.lineItems.length === 0 && (
+        <div
+          className="bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2.5 text-[12px] text-ppp-blue-700 flex items-start gap-2"
+          title="No rooms broken down in Salesforce. Send the customer the color form — they'll describe the project in a free-text notes field instead of room-by-room picks. Typical for exterior jobs or new WOs the rep hasn't filled in yet. When the rep adds rooms in SF, this panel auto-updates within ~30 minutes (or sooner if you click the sync button on the topbar)."
+        >
+          <span aria-hidden>ℹ</span>
+          <span>
+            <strong>No rooms broken down yet.</strong> Common for exterior jobs.
+            Send the color form — the customer types their project description in
+            a free-text notes field. When the rep adds rooms in Salesforce, this
+            panel updates within ~30 minutes.
+          </span>
+        </div>
+      )}
+
       {/* Line items per room */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
           <h4 className="text-sm font-semibold text-ppp-charcoal">Rooms &amp; colors</h4>
           <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-            {job.lineItems.length} line item{job.lineItems.length === 1 ? "" : "s"} on this WO
+            {job.lineItems.length === 0
+              ? "No rooms on this WO — customer will type a project description on the form."
+              : `${job.lineItems.length} line item${job.lineItems.length === 1 ? "" : "s"} on this WO`}
           </p>
         </div>
         <ul className="divide-y divide-ppp-charcoal-100">
