@@ -107,18 +107,35 @@ INSERT INTO public.commercial_settings (key, value, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================
--- 5. Bootstrap Karan's New Platform access
+-- 5. Bootstrap initial admins' New Platform access
 -- ============================================================
--- Karan needs access immediately to build Phase 0 surfaces against his own
--- login. Admin gates everything else. Use the existing invoice contact
--- email as the canonical match (matches the user's profile row).
+-- Karan + the canonical PPP admin accounts get access on day one so they
+-- can test the picker + Phase 0 surfaces. Anyone else gets granted by
+-- admin via the (future) /admin/users page. Cross-domain (.net/.com)
+-- covered because PPP staff sign in via either workspace.
 UPDATE public.profiles
    SET has_new_platform_access = TRUE
- WHERE LOWER(email) = LOWER('malhotrak038@gmail.com');
+ WHERE LOWER(email) IN (
+   LOWER('malhotrak038@gmail.com'),
+   LOWER('developer@precisionpaintingplus.net'),
+   LOWER('developer@precisionpaintingplus.com'),
+   LOWER('katie@precisionpaintingplus.net'),
+   LOWER('katie@precisionpaintingplus.com'),
+   LOWER('alex@precisionpaintingplus.net'),
+   LOWER('alex@precisionpaintingplus.com')
+ );
 
--- Grant Karan the admin commercial role so he's not blocked by future
--- per-role gates inside the New Platform.
+-- Grant the same set the admin commercial role so they're not blocked by
+-- future per-role gates inside the New Platform.
 INSERT INTO public.commercial_user_roles (user_id, role)
 SELECT user_id, 'admin' FROM public.profiles
- WHERE LOWER(email) = LOWER('malhotrak038@gmail.com')
+ WHERE LOWER(email) IN (
+   LOWER('malhotrak038@gmail.com'),
+   LOWER('developer@precisionpaintingplus.net'),
+   LOWER('developer@precisionpaintingplus.com'),
+   LOWER('katie@precisionpaintingplus.net'),
+   LOWER('katie@precisionpaintingplus.com'),
+   LOWER('alex@precisionpaintingplus.net'),
+   LOWER('alex@precisionpaintingplus.com')
+ )
 ON CONFLICT (user_id, role) DO NOTHING;
