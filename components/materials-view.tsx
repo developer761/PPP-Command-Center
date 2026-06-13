@@ -1185,6 +1185,14 @@ function JobDetailImpl({
           const noEstimate = paintEstimate.buckets === 0 && paintEstimate.cans === 0;
           const partial = paintEstimate.reviewColors > 0 && !noEstimate;
           if (!noEstimate && !partial) return null;
+          // 2026-06-13: suppress the noEstimate variant when the WO-level
+          // callout below will say the same thing (allMissing). One canonical
+          // banner per concept. Partial-case ("X colors need a manual qty")
+          // still fires here because the WO-level callout doesn't cover it.
+          const woLevelWillFire =
+            job.lineItems.length > 0 &&
+            job.lineItems.every((li) => !(li.raw.sqFootage > 0) && !(li.raw.wallSurfaceArea > 0));
+          if (noEstimate && woLevelWillFire) return null;
           return (
             <div
               className="mt-3 rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/80 px-3 py-2 flex items-start gap-2 text-[12px] text-ppp-orange-700"
@@ -1490,8 +1498,10 @@ function LineItemRow({ item }: { item: ResolvedWoli }) {
             )}
             {/* Per-room no-sqft tag — promoted from a buried row footer text
                 to a real pill so it lines up with Change Order + matches
-                the "⚠ Manual qty" pill on the WO list. Karan 2026-06-13. */}
-            {item.raw.sqFootage === 0 && item.raw.wallSurfaceArea === 0 && (
+                the "⚠ Manual qty" pill on the WO list. Karan 2026-06-13.
+                Logic mirrors the WO-level callout exactly: NOT (>0) on both
+                fields → catches null/undefined/NaN/negative, not just 0. */}
+            {!(item.raw.sqFootage > 0) && !(item.raw.wallSurfaceArea > 0) && (
               <Pill tone="orange" title="No square footage on this room in Salesforce. The supplier order will show '___ (PPP to confirm)' — type in the gallons yourself before sending.">
                 ⚠ No sq ft
               </Pill>
