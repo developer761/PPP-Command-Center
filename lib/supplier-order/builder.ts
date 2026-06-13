@@ -281,7 +281,11 @@ function computeRequiredByDate(workOrder: SnapshotWorkOrder, override?: string):
   today.setUTCHours(0, 0, 0, 0);
   const threeDaysOut = new Date(today.getTime() + 3 * 86_400_000);
   if (workOrder.closeDate) {
-    const closeDate = new Date(workOrder.closeDate + "T00:00:00Z");
+    // SF closeDate may come back as a Date field ("2025-06-16") or a
+    // DateTime field ("2025-06-16T16:00:00.000+0000") depending on org
+    // schema. Slice to the 10-char date prefix BEFORE appending T00:00:00Z
+    // so the parser always sees a clean date-only ISO. Audit 2026-06-13.
+    const closeDate = new Date(workOrder.closeDate.slice(0, 10) + "T00:00:00Z");
     if (!isNaN(closeDate.getTime()) && closeDate.getTime() > threeDaysOut.getTime()) {
       // WO close date is far enough out — use that minus 3 days.
       const target = new Date(closeDate.getTime() - 3 * 86_400_000);
@@ -684,7 +688,10 @@ function readableDate(iso: string): string {
   // Empty or whitespace input (no date set yet) → "TBD" rather than a blank
   // gap in the email — vendors otherwise wonder if the line broke.
   if (!iso || !iso.trim()) return "TBD — please confirm";
-  const d = new Date(iso + "T00:00:00Z");
+  // Slice to 10-char date prefix BEFORE appending T00:00:00Z so this
+  // works for both date-only ("2025-06-16") and datetime
+  // ("2025-06-16T16:00:00.000+0000") SF field shapes. Audit 2026-06-13.
+  const d = new Date(iso.slice(0, 10) + "T00:00:00Z");
   // Bad date string (typo'd month, garbage from a custom field) — surface
   // "(invalid date)" instead of the raw ISO so a worker proofreading the
   // draft sees something's wrong rather than letting a malformed date ride.

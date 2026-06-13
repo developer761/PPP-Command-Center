@@ -1794,10 +1794,24 @@ function SqftEditor({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // Track what was last successfully saved so we can skip no-op submits.
   const lastSavedRef = useRef<number>(initialSqft);
+  // Track focus so a parent re-render (snapshot refresh, sibling save) that
+  // delivers a fresh `initialSqft` doesn't clobber whatever the user is
+  // currently typing. We only re-sync the displayed value when the input is
+  // NOT focused — a focused input means an active edit-in-progress and the
+  // typed value is more trustworthy than any incoming "fresh" SF value.
+  // Audit 2026-06-13 (edge case: snapshot lands mid-edit).
+  const isFocusedRef = useRef(false);
 
   // Keep input in sync if the parent override changes from outside (e.g.
   // snapshot refresh delivers a fresh SF value, parent clears the override).
   useEffect(() => {
+    if (isFocusedRef.current) {
+      // Don't yank the value out from under an active typing session. Still
+      // update the saved-marker so the post-blur "is this a change?" check
+      // is correct relative to the latest SF value.
+      lastSavedRef.current = initialSqft;
+      return;
+    }
     setValue(initialSqft > 0 ? String(initialSqft) : "");
     lastSavedRef.current = initialSqft;
   }, [initialSqft]);
@@ -1873,11 +1887,15 @@ function SqftEditor({
           value={value}
           disabled={saving}
           placeholder={missing ? "Add sq ft" : "—"}
+          onFocus={() => { isFocusedRef.current = true; }}
           onChange={(e) => {
             setValue(e.target.value);
             if (status !== "idle") setStatus("idle");
           }}
-          onBlur={persist}
+          onBlur={() => {
+            isFocusedRef.current = false;
+            void persist();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
