@@ -81,9 +81,33 @@ export default async function MaterialsOrderingPage({
   const rawWo = sp.wo;
   const initialWoId = typeof rawWo === "string" ? rawWo : Array.isArray(rawWo) ? rawWo[0] : null;
 
+  // SPEED ROUND 9 — RSC payload slim. MaterialsView only reads workOrders,
+  // woLineItems, accounts, paintColors from the snapshot. The thin-mode
+  // bundle still carries opportunities (already filtered to recent), reps,
+  // quotes, transactions, reviews, cases, leadStats — none of which the
+  // materials page consumes. Zero them out before serializing across the
+  // server/client boundary so the RSC payload drops by ~150-300ms of
+  // parse-time + ~1-3MB of JSON-stringify work per page load.
+  const slimBundle: typeof bundle = bundle.snapshot
+    ? {
+        ...bundle,
+        snapshot: {
+          ...bundle.snapshot,
+          opportunities: [],
+          quotes: [],
+          transactions: [],
+          reviews: [],
+          cases: [],
+          quotas: [],
+          subQuotas: [],
+          reps: [],
+        },
+      }
+    : bundle;
+
   return (
     <MaterialsView
-      bundle={bundle}
+      bundle={slimBundle}
       formStatuses={formStatuses}
       woProgress={woProgress}
       initialWoId={initialWoId ?? null}
