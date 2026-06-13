@@ -892,53 +892,13 @@ export default function DashboardView({ bundle, formSummary }: Props) {
         </section>
       )}
 
-      {/* ─── Service line mix + Regional performance ─── */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
-          <h3 className="text-base font-semibold text-ppp-charcoal">Service Line Mix</h3>
-          <p className="text-xs text-ppp-charcoal-500 mt-1 mb-5">
-            Residential vs Commercial share of revenue · {PERIOD_LABELS[period].toLowerCase()}
-          </p>
-
-          {view.serviceLineMix.residential.revenue + view.serviceLineMix.commercial.revenue === 0 ? (
-            <EmptyHint message="No revenue in this filter." />
-          ) : (
-            <>
-              <div className="flex h-3 w-full rounded-full overflow-hidden mb-5">
-                <div
-                  className="bg-ppp-blue transition-[width] duration-500"
-                  style={{ width: `${view.serviceLineMix.residential.pct}%` }}
-                  title={`Residential ${view.serviceLineMix.residential.pct}%`}
-                />
-                <div
-                  className="bg-ppp-orange transition-[width] duration-500"
-                  style={{ width: `${view.serviceLineMix.commercial.pct}%` }}
-                  title={`Commercial ${view.serviceLineMix.commercial.pct}%`}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <MixCard
-                  label="Residential"
-                  revenue={view.serviceLineMix.residential.revenue}
-                  pct={view.serviceLineMix.residential.pct}
-                  reps={view.serviceLineMix.residential.reps}
-                  avgTicket={view.serviceLineMix.residential.avgTicket}
-                  accent="blue"
-                />
-                <MixCard
-                  label="Commercial"
-                  revenue={view.serviceLineMix.commercial.revenue}
-                  pct={view.serviceLineMix.commercial.pct}
-                  reps={view.serviceLineMix.commercial.reps}
-                  avgTicket={view.serviceLineMix.commercial.avgTicket}
-                  accent="orange"
-                />
-              </div>
-            </>
-          )}
-        </div>
-
+      {/* ─── Regional performance ─── */}
+      {/* Service Line Mix card retired 2026-06-12 (Karan): res/comm split
+          isn't tracked in SF yet and was driving noisy heuristic-derived
+          labels everywhere. Removed from dashboard + rep header + leader-
+          board + region text + rep-index search. Will revisit when Katie
+          ships the SF field that authoritatively tracks it. */}
+      <section className="grid grid-cols-1 gap-3 sm:gap-4">
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
           <h3 className="text-base font-semibold text-ppp-charcoal">Regional Performance</h3>
           <p className="text-xs text-ppp-charcoal-500 mt-1 mb-5">
@@ -1221,52 +1181,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
   );
 }
 
-function MixCard({
-  label,
-  revenue,
-  pct,
-  reps,
-  avgTicket,
-  accent,
-}: {
-  label: string;
-  revenue: number;
-  pct: number;
-  reps: number;
-  avgTicket: number;
-  accent: "blue" | "orange";
-}) {
-  const styles = {
-    blue: {
-      border: "border-ppp-blue-100",
-      bg: "bg-ppp-blue-50/40",
-      dot: "bg-ppp-blue",
-      label: "text-ppp-blue-700",
-    },
-    orange: {
-      border: "border-ppp-orange-100",
-      bg: "bg-ppp-orange-50/40",
-      dot: "bg-ppp-orange",
-      label: "text-ppp-orange-700",
-    },
-  }[accent];
-
-  return (
-    <div className={`rounded-lg border ${styles.border} ${styles.bg} p-3 sm:p-4`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`h-2 w-2 rounded-full ${styles.dot}`} />
-        <span className={`font-condensed text-[11px] font-semibold tracking-wide uppercase ${styles.label}`}>
-          {label}
-        </span>
-      </div>
-      <div className="font-condensed text-xl sm:text-2xl font-bold text-ppp-navy">{fmtMoneyK(revenue)}</div>
-      <div className="mt-1 text-[11px] text-ppp-charcoal-500">
-        {pct}% of revenue · {reps} rep{reps === 1 ? "" : "s"}
-        {avgTicket > 0 && ` · avg ${fmtMoneyK(avgTicket)}`}
-      </div>
-    </div>
-  );
-}
+// MixCard helper retired 2026-06-12 with the Service Line Mix card removal.
 
 function EmptyHint({ message }: { message: string }) {
   return (

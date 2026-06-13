@@ -86,7 +86,6 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
             <tr>
               <th className="text-left px-6 py-3">Rep</th>
               <th className="text-left px-6 py-3">Region</th>
-              <th className="text-left px-6 py-3">Line</th>
               {COLUMNS.map((col) => {
                 const active = col.key === sortKey;
                 return (
@@ -128,9 +127,6 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
                   </Link>
                 </td>
                 <td className="px-6 py-3.5 text-ppp-charcoal-500">{r.region}</td>
-                <td className="px-6 py-3.5">
-                  <ServiceLinePill line={r.serviceLine} />
-                </td>
                 <td className={`px-6 py-3.5 text-right ${sortKey === "revenueSold" ? "font-bold text-ppp-charcoal" : "font-semibold text-ppp-charcoal"}`}>
                   {fmtMoneyK(r.revenueSold)}
                 </td>
@@ -204,8 +200,6 @@ export default function Leaderboard({ reps, teamRevenueTotal }: Props) {
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-ppp-charcoal-500">
                     <span>{r.region}</span>
-                    <span>·</span>
-                    <ServiceLinePill line={r.serviceLine} tight />
                   </div>
                   <div className="mt-2 grid grid-cols-4 gap-2 text-center">
                     {COLUMNS.map((col) => (
@@ -244,18 +238,4 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   );
 }
 
-function ServiceLinePill({ line, tight = false }: { line: Rep["serviceLine"]; tight?: boolean }) {
-  return (
-    <span
-      className={[
-        "inline-flex items-center rounded text-[11px] font-medium border",
-        tight ? "px-1.5 py-0" : "px-2 py-0.5",
-        line === "Commercial"
-          ? "text-ppp-orange-700 bg-ppp-orange-50 border-ppp-orange-100"
-          : "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100",
-      ].join(" ")}
-    >
-      {line}
-    </span>
-  );
-}
+// ServiceLinePill retired 2026-06-12 — see derive.ts comment.

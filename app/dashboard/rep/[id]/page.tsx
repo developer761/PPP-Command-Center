@@ -257,18 +257,6 @@ export default async function RepDetailPage({
                 </span>
                 <span className="text-ppp-charcoal-200">·</span>
                 <span
-                  className={[
-                    "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border",
-                    rep.serviceLine === "Commercial"
-                      ? "text-ppp-orange-700 bg-ppp-orange-50 border-ppp-orange-100"
-                      : "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100",
-                  ].join(" ")}
-                  title="Service line — derived from User.UserRole.Name + Profile.Name (heuristic). Katie 2026-06-11: Res/Commercial isn't tracked in SF yet; she's setting up a field on Staff/User. We'll switch to the authoritative read once it's live."
-                >
-                  {rep.serviceLine}
-                </span>
-                <span className="text-ppp-charcoal-200">·</span>
-                <span
                   className="text-ppp-charcoal-500"
                   title="Time since the rep's hire date. Reads SFDC_Staff__c.Hire_Date__c (linked via User_Name_Lookup__c) first; falls back to User.CreatedDate when no Staff record exists."
                 >

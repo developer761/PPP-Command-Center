@@ -390,7 +390,7 @@ function deriveTopPerformerInner(
   return {
     id: winner.id,
     name: winner.name,
-    region: `${winner.region} · ${winner.serviceLine}`,
+    region: winner.region,
     revenue: winner.revenueSold,
     closeRate: winner.closeRate,
   };

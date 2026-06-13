@@ -80,7 +80,7 @@ export default function PlatformPicker({ email }: { email: string }) {
               </div>
               <h2 className="text-lg font-bold text-ppp-charcoal mb-1">Command Center</h2>
               <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
-                Residential sales, customer color forms, materials ordering, Mail Hub, scorecards. Salesforce-mirrored data.
+                Sales, customer color forms, materials ordering, Mail Hub, scorecards. Salesforce-mirrored data.
               </p>
               <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-ppp-blue group-hover:gap-2 transition-all">
                 {busy === "command_center" ? "Loading…" : "Open"}
@@ -116,7 +116,7 @@ export default function PlatformPicker({ email }: { email: string }) {
               </div>
               <h2 className="text-lg font-bold text-ppp-charcoal mb-1">New Platform</h2>
               <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
-                Commercial bidding + project lifecycle (9 phases: account → opportunity → estimating → contract → execution → close).
+                Bidding + project lifecycle (9 phases: account → opportunity → estimating → contract → execution → close).
                 Postgres-native, in early build.
               </p>
               <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 group-hover:gap-2 transition-all">

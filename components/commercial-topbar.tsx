@@ -43,7 +43,7 @@ export default function CommercialTopbar({
             {user.firstName ? `Hi, ${user.firstName}` : "Hi"}
           </h2>
           <p className="text-[10px] sm:text-xs text-ppp-charcoal-500 mt-0.5 truncate">
-            New Platform · Commercial OS
+            New Platform
           </p>
         </div>
       </div>

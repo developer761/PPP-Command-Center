@@ -151,8 +151,7 @@ export default function RepIndexView({ bundle }: Props) {
       list = list.filter(
         (r) =>
           r.name.toLowerCase().includes(searchLower) ||
-          r.region.toLowerCase().includes(searchLower) ||
-          r.serviceLine.toLowerCase().includes(searchLower)
+          r.region.toLowerCase().includes(searchLower)
       );
     }
 

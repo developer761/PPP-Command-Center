@@ -31,7 +31,7 @@ export default function CommercialDashboardPage() {
         </div>
         <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal">New Platform</h1>
         <p className="mt-1 text-sm text-ppp-charcoal-500">
-          Commercial Operating System — from bid intake to closeout, all in one record.
+          From bid intake to closeout, all in one record.
         </p>
       </header>
 
