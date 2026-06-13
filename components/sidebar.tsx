@@ -211,17 +211,20 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
             </ul>
           </div>
         ))}
-      </nav>
 
-      {/* Platform switcher (bottom-left, only when viewer has both platforms).
-          Loaded via the dashboard chrome from the profile; falls back to
-          hidden if the access flag isn't set. Lives just above the version
-          chip so it's reachable from every Command Center page. */}
-      {showSwitcher && (
-        <div className="px-3 pb-3">
-          <PlatformSwitcher current="command_center" />
-        </div>
-      )}
+        {/* Platform switcher — last item inside the nav block, after the
+            Admin section's "Test Color Form" entry. Lives inside the nav
+            so it scrolls naturally with the other items (no more pinned-
+            outside floating; no random "disappearing" on tall sidebars). */}
+        {showSwitcher && (
+          <div className="mt-6 pt-4 border-t border-ppp-charcoal-100">
+            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
+              Platforms
+            </div>
+            <PlatformSwitcher current="command_center" />
+          </div>
+        )}
+      </nav>
 
       <div className="px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
         <div className="font-semibold text-ppp-charcoal">Version {APP_META.version}</div>

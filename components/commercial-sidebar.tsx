@@ -148,13 +148,19 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             </ul>
           </div>
         ))}
-      </nav>
 
-      {showSwitcher && (
-        <div className="px-3 pb-3">
-          <PlatformSwitcher current="new_platform" />
-        </div>
-      )}
+        {/* Platform switcher — same shape + position as the Command Center
+            sidebar: last item inside the nav block so it scrolls with the
+            other items. Visible only to multi-platform users. */}
+        {showSwitcher && (
+          <div className="mt-6 pt-4 border-t border-ppp-charcoal-100">
+            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
+              Platforms
+            </div>
+            <PlatformSwitcher current="new_platform" />
+          </div>
+        )}
+      </nav>
 
       <div className="px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
         <div className="font-semibold text-ppp-charcoal">Phase 0 · Foundation</div>
