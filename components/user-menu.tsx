@@ -34,6 +34,12 @@ export default function UserMenu({ name, email, initial }: Props) {
     setSigningOut(true);
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Clear the platform sticky-cookie too so the next sign-in shows the
+    // picker (multi-access users only). Without this, a user who picked
+    // Command Center months ago keeps being auto-routed even when their
+    // session is fresh. JS can clear it because the cookie was set with
+    // httpOnly:false specifically for this kind of client-side reset.
+    document.cookie = "ppp_last_platform=; path=/; max-age=0; SameSite=Lax";
     window.location.href = "/";
   };
 
