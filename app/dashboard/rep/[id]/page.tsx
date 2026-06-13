@@ -16,6 +16,7 @@ import {
   getRepRecentlySentQuotesFor,
 } from "@/lib/data-source";
 import { deriveRepsForPeriod, deriveRepAccountStats } from "@/lib/salesforce/derive";
+import { getAccountManagerFor, isAccountManager, getTeamFor } from "@/lib/salesforce/account-manager-roster";
 import { deriveRepScorecard, type RepScorecard } from "@/lib/salesforce/rep-scorecard";
 import { fyLabel, resolveScorecardPeriod } from "@/lib/fiscal-year";
 import ScorecardPeriodPicker from "@/components/scorecard-period-picker";
@@ -262,6 +263,31 @@ export default async function RepDetailPage({
                 >
                   {tenure(rep.startedAt)} at PPP
                 </span>
+                {(() => {
+                  // Account Manager pill — Katie 2026-06-12. Shows the AM
+                  // this rep reports to. When the rep IS the AM, shows
+                  // "AM" + their team size. Falls back to nothing when the
+                  // rep isn't on Katie's roster yet (new hires, ops-side).
+                  const isAM = isAccountManager(rep.name);
+                  const am = isAM ? null : getAccountManagerFor(rep.name);
+                  const team = isAM ? getTeamFor(rep.name) : [];
+                  if (!isAM && !am) return null;
+                  return (
+                    <>
+                      <span className="text-ppp-charcoal-200">·</span>
+                      <span
+                        className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100"
+                        title={
+                          isAM
+                            ? `Account Manager · Team: ${team.join(", ")}`
+                            : `Reports to Account Manager ${am}`
+                        }
+                      >
+                        {isAM ? `AM · ${team.length} on team` : `AM: ${am}`}
+                      </span>
+                    </>
+                  );
+                })()}
                 {daysSinceLast !== null && (
                   <>
                     <span className="text-ppp-charcoal-200">·</span>

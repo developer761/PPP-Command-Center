@@ -198,14 +198,18 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // first" so the next-up materials needs surface at the top. (Was "soonest
   // first" but Alex's actual workflow looks at the back end of the schedule
   // because near-term jobs are usually already ordered.)
-  type SortMode = "close-desc" | "close-asc" | "created-desc" | "created-asc";
+  // Katie 2026-06-12: default sort is "smart" — upcoming Start Date first,
+  // falls back to Desired Start Date, then Created Date. So PPP sees the
+  // most actionable WOs at the top regardless of which date is populated.
+  type SortMode = "smart-start" | "close-desc" | "close-asc" | "created-desc" | "created-asc";
   const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
-    { value: "close-desc", label: "Latest job start" },
-    { value: "close-asc", label: "Soonest job start" },
+    { value: "smart-start", label: "Upcoming start (smart)" },
+    { value: "close-desc", label: "Latest close date" },
+    { value: "close-asc", label: "Soonest close date" },
     { value: "created-desc", label: "Newest work order" },
     { value: "created-asc", label: "Oldest work order" },
   ];
-  const [sortMode, setSortMode] = useState<SortMode>("close-desc");
+  const [sortMode, setSortMode] = useState<SortMode>("smart-start");
 
   const visibleJobs = useMemo<OpenWorkOrderForMaterials[]>(() => {
     // Search filter first — typically narrows to a handful of WOs.
@@ -229,6 +233,28 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     // Re-sort based on the worker's choice. WOs without a relevant date go
     // to the end so the meaningful entries always lead the list.
     const sorter = (a: OpenWorkOrderForMaterials, b: OpenWorkOrderForMaterials): number => {
+      if (sortMode === "smart-start") {
+        // Smart cascade: startDate (asc) → desiredStartDate (asc) → createdDate (desc).
+        // Each WO's "effective sort date" = first non-null in that order.
+        // WOs with NO start/desired/created go to the bottom.
+        const aStart = a.wo.startDate || a.wo.desiredStartDate;
+        const bStart = b.wo.startDate || b.wo.desiredStartDate;
+        if (aStart && bStart) {
+          const cmp = aStart.localeCompare(bStart);
+          if (cmp !== 0) return cmp; // upcoming first
+        } else if (aStart) {
+          return -1; // a has a start; b doesn't — a wins
+        } else if (bStart) {
+          return 1;
+        }
+        // Both have no start/desired → fall back to createdDate desc (newest first).
+        const ac = a.wo.createdDate ?? "";
+        const bc = b.wo.createdDate ?? "";
+        if (!ac && !bc) return 0;
+        if (!ac) return 1;
+        if (!bc) return -1;
+        return bc.localeCompare(ac);
+      }
       if (sortMode === "close-asc" || sortMode === "close-desc") {
         const ad = a.wo.closeDate;
         const bd = b.wo.closeDate;
@@ -658,39 +684,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                 scrolls (workers with 100+ WOs were losing their place when
                 scanning down). z-20 + backdrop-blur keeps it readable even
                 when cards animate in below. */}
-            <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/95 backdrop-blur-sm space-y-2.5 sticky top-0 z-20">
-              <div>
-                <div className="flex items-baseline justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-ppp-charcoal">Open work orders</h3>
-                  <span className="text-[10px] text-ppp-charcoal-500 font-mono">
-                    {visibleJobs.length}{searchQuery ? `/${openJobs.length}` : ""}
-                  </span>
-                </div>
-                {/* Sort selector — replaces the fixed "Soonest jobs first" label
-                    so workers + admins can flip the order. Native <select> for
-                    accessibility + zero JS overhead; styled to match the
-                    surrounding chips. */}
-                <div className="mt-1.5 flex items-center gap-1.5">
-                  <label htmlFor="wo-sort" className="text-[11px] text-ppp-charcoal-500">
-                    Sort by:
-                  </label>
-                  <select
-                    id="wo-sort"
-                    value={sortMode}
-                    onChange={(e) => setSortMode(e.target.value as SortMode)}
-                    className="text-[11px] font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors"
-                  >
-                    {SORT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              {/* Search — instant client-side filter. Admins see hundreds
-                  of WOs so this is critical for "find Mrs. Smith fast".
-                  Matches customer name, WO #, status, or room labels. */}
+            <div className="px-5 py-4 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/95 backdrop-blur-sm space-y-3 sticky top-0 z-20">
+              {/* Katie 2026-06-12: list + search more PROMINENT. Reordered
+                  so the search input is the first thing the eye lands on,
+                  with the count + sort below as secondary controls. */}
               <div className="relative">
                 <input
                   type="search"
@@ -701,13 +698,14 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search customer, WO#, room…"
-                  // text-base on mobile prevents iOS Safari auto-zoom-on-focus
-                  // (anything <16px triggers zoom + layout shift on touch).
-                  className="w-full pl-8 pr-3 py-2 sm:py-1.5 text-base sm:text-xs border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+                  // Bigger padding + base font size = prominent. Was a tiny
+                  // py-1.5 input that disappeared visually next to the sort
+                  // selector above it. Katie called this out 2026-06-12.
+                  className="w-full pl-10 pr-9 py-3 text-base sm:text-sm font-medium border-2 border-ppp-charcoal-100 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue placeholder:text-ppp-charcoal-400"
                 />
                 <svg
-                  width="14"
-                  height="14"
+                  width="16"
+                  height="16"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -715,7 +713,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ppp-charcoal-500 pointer-events-none"
                 >
                   <circle cx="11" cy="11" r="8" />
                   <path d="m21 21-4.35-4.35" />
@@ -724,14 +722,39 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    // 32px hit target on mobile so finger taps actually land —
-                    // the bare ✕ glyph was too small to hit on phones.
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm"
                     aria-label="Clear search"
                   >
                     ✕
                   </button>
                 )}
+              </div>
+              {/* Count + sort row — secondary controls under the prominent
+                  search bar. Title chip + sort selector inline. */}
+              <div className="flex items-center justify-between gap-3 flex-wrap text-[11px]">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="font-semibold text-ppp-charcoal">Open work orders</span>
+                  <span className="text-ppp-charcoal-500 font-mono">
+                    {visibleJobs.length}{searchQuery ? `/${openJobs.length}` : ""}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="wo-sort" className="text-ppp-charcoal-500">
+                    Sort by:
+                  </label>
+                  <select
+                    id="wo-sort"
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as SortMode)}
+                    className="font-medium text-ppp-charcoal bg-transparent border-none px-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded cursor-pointer hover:text-ppp-blue transition-colors"
+                  >
+                    {SORT_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
             <ul className="max-h-[640px] overflow-y-auto">
@@ -780,13 +803,20 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                             <span className="font-mono">{j.wo.workOrderNumber ?? j.wo.id.slice(-6)}</span>
                             <span>·</span>
                             <span>{j.wo.status ?? "Open"}</span>
-                            {j.wo.closeDate && (() => {
-                              // Relative close-date display: "in 3d" / "today"
-                              // / "5d overdue" with subtle color escalation
-                              // so workers can scan the list and see urgency
-                              // without doing date math. Raw ISO date is
-                              // preserved in the title for hover-verify.
-                              const r = closeDateLabels.get(j.wo.closeDate) ?? formatRelativeCloseDate(j.wo.closeDate);
+                            {/* Relative-date display — Katie 2026-06-12 wants
+                                the countdown anchored on the actual scheduled
+                                Start Date. Cascade: startDate → desiredStartDate
+                                → closeDate (legacy fallback). Whichever fires
+                                wins; tooltip names which one is shown. */}
+                            {(() => {
+                              const dateUsed = j.wo.startDate || j.wo.desiredStartDate || j.wo.closeDate;
+                              if (!dateUsed) return null;
+                              const sourceLabel = j.wo.startDate
+                                ? "Start date"
+                                : j.wo.desiredStartDate
+                                ? "Desired start"
+                                : "Close date";
+                              const r = closeDateLabels.get(dateUsed) ?? formatRelativeCloseDate(dateUsed);
                               const cls =
                                 r.tone === "overdue"
                                   ? "text-ppp-orange-700 font-semibold"
@@ -800,7 +830,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                                   <span>·</span>
                                   <span
                                     className={cls}
-                                    title={`Scheduled job start: ${j.wo.closeDate}\n\nThe "overdue" / "in Xd" countdown is measured from the scheduled START date — not when the work order was created. So "5d overdue" means the job was supposed to start 5 days ago.`}
+                                    title={`${sourceLabel}: ${dateUsed}\n\nCountdown measured from ${sourceLabel.toLowerCase()}. "5d overdue" means the job was supposed to start 5 days ago.`}
                                   >
                                     {r.label}
                                   </span>
@@ -808,6 +838,28 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                               );
                             })()}
                           </div>
+                          {/* Dates row — Katie 2026-06-12. Show both Start
+                              Date and Desired Start Date when populated, so
+                              office staff can see "scheduled to start X,
+                              customer asked for Y." Hidden when neither is
+                              set (fallback to closeDate already shown above). */}
+                          {(j.wo.startDate || j.wo.desiredStartDate) && (
+                            <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                              {j.wo.startDate && (
+                                <span title="Scheduled Start Date from Salesforce.">
+                                  <span className="text-ppp-charcoal-400">Start:</span>{" "}
+                                  <span className="font-medium text-ppp-charcoal-700">{j.wo.startDate}</span>
+                                </span>
+                              )}
+                              {j.wo.startDate && j.wo.desiredStartDate && <span>·</span>}
+                              {j.wo.desiredStartDate && (
+                                <span title="Customer-requested Desired Start Date from Salesforce.">
+                                  <span className="text-ppp-charcoal-400">Desired:</span>{" "}
+                                  <span className="font-medium text-ppp-charcoal-700">{j.wo.desiredStartDate}</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
                           <div className="mt-1.5 flex items-center gap-2 text-[10px] text-ppp-charcoal-500 flex-wrap">
                             {/* Room count pill — neutral tone for zero-rooms
                                 because the orange "📝 Notes-only" chip below

@@ -892,6 +892,20 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       {/* Submit — allow submit when there ARE line items OR when the
           customer has typed notes (the notes-only path for sparse
           exterior WOs). */}
+      {/* Customer-responsibility disclaimer — Katie 2026-06-12. Renders
+          right before the Submit/Save button so the customer reads it
+          before clicking. Hidden in preview mode (admin testing). */}
+      {!isPreview && (hasLineItems || globalNotes.trim().length > 0) && (
+        <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 text-[11px] sm:text-xs text-ppp-charcoal-700 leading-relaxed">
+          <strong className="text-ppp-charcoal">Please double-check before submitting.</strong>{" "}
+          Your color selections on this form are your responsibility to verify
+          for accuracy. Precision Painting Plus is not liable for incorrectly
+          submitted choices. Once we order paint, custom-mixed colors cannot
+          be returned or refunded — and a color change after the work has
+          begun may require additional labor at your expense.
+        </div>
+      )}
+
       {(hasLineItems || globalNotes.trim().length > 0) && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] sm:text-xs text-ppp-charcoal-500">
@@ -990,16 +1004,72 @@ function LineItemSection({
   const showFamilyCaption = !!rawFamily && !title.toLowerCase().includes(rawFamily.toLowerCase());
   const surfaces = lineItem.surfaces.length > 0 ? lineItem.surfaces : ["Walls"];
 
+  // Katie 2026-06-12: collapse a room after the customer has filled it in.
+  // Long-list WOs (8+ rooms) became overwhelming to scroll. Now the customer
+  // can collapse a finished room down to its header. Auto-collapse triggers
+  // when every surface has a color OR is explicitly skipped — same "done"
+  // signal the progress bar uses. User can override either direction.
+  const filledOrSkipped = surfaces.every((s) => {
+    const p = state.picks[s];
+    return p?.skipped || (!!p?.colorId && !!p?.finish);
+  });
+  // Per-room collapsed state. Default: matches filledOrSkipped at first
+  // render, then driven by user clicks via the toggle in the header.
+  const [collapsed, setCollapsed] = useState(filledOrSkipped);
+  // Auto-collapse the FIRST time the room becomes filled. Doesn't re-collapse
+  // after the user manually expands it — that's tracked via userOverride.
+  const userOverride = useRef(false);
+  useEffect(() => {
+    if (userOverride.current) return;
+    if (filledOrSkipped && !collapsed) setCollapsed(true);
+  }, [filledOrSkipped, collapsed]);
+
+  // Summary for the collapsed header: "3 of 3 colors picked · 1 note".
+  const colorsPicked = surfaces.filter((s) => state.picks[s]?.colorId).length;
+  const skippedCount = surfaces.filter((s) => state.picks[s]?.skipped).length;
+  const notesPresent = state.notes.trim().length > 0;
+  const summary = (() => {
+    const bits: string[] = [];
+    if (colorsPicked > 0) bits.push(`${colorsPicked} of ${surfaces.length} surface${surfaces.length === 1 ? "" : "s"} colored`);
+    if (skippedCount > 0) bits.push(`${skippedCount} skipped`);
+    if (notesPresent) bits.push("notes added");
+    return bits.length > 0 ? bits.join(" · ") : "No picks yet";
+  })();
+
   return (
     <div className="bg-white border border-ppp-charcoal-100 rounded-2xl overflow-hidden">
-      <div className="px-5 sm:px-7 py-4 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40">
+      <button
+        type="button"
+        onClick={() => {
+          userOverride.current = true;
+          setCollapsed((v) => !v);
+        }}
+        aria-expanded={!collapsed}
+        className="w-full text-left px-5 sm:px-7 py-4 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 hover:bg-[var(--color-surface-muted)]/70 active:bg-[var(--color-surface-muted)]/90 transition-colors touch-manipulation"
+      >
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-condensed text-lg sm:text-xl font-bold text-ppp-navy">
+          <h2 className="font-condensed text-lg sm:text-xl font-bold text-ppp-navy flex-1 min-w-0">
             {title}
           </h2>
-          <span className="text-[10px] sm:text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500">
-            Section {index}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] sm:text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500">
+              Section {index}
+            </span>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`text-ppp-charcoal-500 transition-transform ${collapsed ? "" : "rotate-180"}`}
+              aria-hidden
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </div>
         </div>
         <div className="text-[11px] text-ppp-charcoal-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
           {showFamilyCaption && <span>{rawFamily}</span>}
@@ -1010,32 +1080,41 @@ function LineItemSection({
           )}
           <span>{showFamilyCaption || lineItem.numCoats ? "· " : ""}Surfaces: {surfaces.join(", ")}</span>
         </div>
-      </div>
-      <div className="p-5 sm:p-7 space-y-5">
-        {surfaces.map((surface) => (
-          <SurfaceRow
-            key={surface}
-            surface={surface}
-            pick={state.picks[surface] ?? emptyPick()}
-            token={token}
-            canApplyToAll={canApplyToAll}
-            onChange={(patch) => onSurfaceChange(surface, patch)}
-            onApplyToAll={() => onApplyToAll(surface, state.picks[surface] ?? emptyPick())}
-          />
-        ))}
-        <div>
-          <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
-            Notes for this room
-          </label>
-          <textarea
-            value={state.notes}
-            onChange={(e) => onNotesChange(e.target.value)}
-            rows={2}
-            placeholder="Optional — e.g. 'keep accent wall the same' or 'use leftover paint if possible'"
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
-          />
+        {collapsed && (
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-ppp-charcoal-700 bg-white border border-ppp-charcoal-100 rounded px-2 py-1">
+            {filledOrSkipped && <span className="text-ppp-green">✓</span>}
+            <span>{summary}</span>
+            <span className="text-ppp-charcoal-400">· tap to edit</span>
+          </div>
+        )}
+      </button>
+      {!collapsed && (
+        <div className="p-5 sm:p-7 space-y-5">
+          {surfaces.map((surface) => (
+            <SurfaceRow
+              key={surface}
+              surface={surface}
+              pick={state.picks[surface] ?? emptyPick()}
+              token={token}
+              canApplyToAll={canApplyToAll}
+              onChange={(patch) => onSurfaceChange(surface, patch)}
+              onApplyToAll={() => onApplyToAll(surface, state.picks[surface] ?? emptyPick())}
+            />
+          ))}
+          <div>
+            <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
+              Notes for this room
+            </label>
+            <textarea
+              value={state.notes}
+              onChange={(e) => onNotesChange(e.target.value)}
+              rows={2}
+              placeholder="Optional — e.g. 'keep accent wall the same' or 'use leftover paint if possible'"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

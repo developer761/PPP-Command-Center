@@ -504,6 +504,18 @@ export type SnapshotWorkOrder = {
   /** Job completion anchor for KPI 7 (Jobs completed vs sold) + KPI 2 GM.
    *  Often null on open/in-progress WOs. */
   endDate: string | null;
+  /** Scheduled/planned start date — when PPP actually plans to begin the
+   *  job. Katie 2026-06-12 asked the Materials list to sort by this first
+   *  (falls back to desiredStartDate, then createdDate). Probed name:
+   *  `StartDate` (standard FSL) primary; `Date_Estimated_Start__c` and
+   *  `Schedule_Start_Date__c` as PPP custom-field candidates. Null when
+   *  none of those fields exist in PPP's org. */
+  startDate: string | null;
+  /** Customer-requested start date — what the homeowner asked for, may
+   *  differ from PPP's actual schedule. Probed name: `Desired_Start_Date__c`
+   *  primary; `Customer_Requested_Start_Date__c` fallback. Null when not
+   *  present. */
+  desiredStartDate: string | null;
   /** Paint product line picked at WO creation OR overridden by the customer
    *  via the color form. Picklist values mirror MaterialType__c in SF
    *  (Ultra Spec Interior / Regal Select Interior / Aura Interior / ...
@@ -1740,6 +1752,30 @@ export async function loadSalesforceSnapshot(
       const hasSchedNotes = woMeta.fields.some((f) => f.name === "Scheduling_Notes__c");
       const hasReviewNotes = woMeta.fields.some((f) => f.name === "Review_Notes__c");
       const hasBalanceNotes = woMeta.fields.some((f) => f.name === "BalanceOwedNotes__c");
+      // Start date — Katie 2026-06-12 wants Materials list sorted by
+      // scheduled start. Probe in order of likelihood for PPP's org; first
+      // one found wins.
+      const startDateCandidates = [
+        "Date_Estimated_Start__c",
+        "Schedule_Start_Date__c",
+        "Estimated_Start_Date__c",
+        "Start_Date__c",
+        "StartDate",
+      ];
+      const startDateField = startDateCandidates.find((name) =>
+        woMeta.fields.some((f) => f.name === name)
+      );
+      // Desired start date — what the customer asked for, may differ from
+      // what PPP scheduled. Same probe pattern.
+      const desiredStartCandidates = [
+        "Desired_Start_Date__c",
+        "Customer_Requested_Start_Date__c",
+        "Customer_Desired_Start_Date__c",
+        "Requested_Start_Date__c",
+      ];
+      const desiredStartField = desiredStartCandidates.find((name) =>
+        woMeta.fields.some((f) => f.name === name)
+      );
       const woFieldList = [
         "Id",
         woNumberField,
@@ -1753,6 +1789,8 @@ export async function loadSalesforceSnapshot(
         hasSchedNotes ? "Scheduling_Notes__c" : null,
         hasReviewNotes ? "Review_Notes__c" : null,
         hasBalanceNotes ? "BalanceOwedNotes__c" : null,
+        startDateField ?? null,
+        desiredStartField ?? null,
         // Standard SF geocoding fields — 20k+ WOs have these populated
         "Latitude",
         "Longitude",
@@ -1892,6 +1930,24 @@ export async function loadSalesforceSnapshot(
         totalNonBillablePurchases: num("TotalNonBillablePurchases__c"),
         totalChangeOrder: num("TotalChangeOrder__c"),
         endDate: typeof w.EndDate === "string" ? (w.EndDate as string) : null,
+        // Start + desired-start populated from whichever probed candidate
+        // field exists on this org. The probe upstream picked one; the
+        // record carries it under whichever name worked. Scan the same
+        // candidate list here so we don't have to share scope.
+        startDate: (() => {
+          for (const name of ["Date_Estimated_Start__c", "Schedule_Start_Date__c", "Estimated_Start_Date__c", "Start_Date__c", "StartDate"]) {
+            const v = w[name];
+            if (typeof v === "string") return v;
+          }
+          return null;
+        })(),
+        desiredStartDate: (() => {
+          for (const name of ["Desired_Start_Date__c", "Customer_Requested_Start_Date__c", "Customer_Desired_Start_Date__c", "Requested_Start_Date__c"]) {
+            const v = w[name];
+            if (typeof v === "string") return v;
+          }
+          return null;
+        })(),
         materialType: typeof w.MaterialType__c === "string" ? (w.MaterialType__c as string) : null,
         description: typeof w.Description === "string" ? (w.Description as string) : null,
         subject: typeof w.Subject === "string" ? (w.Subject as string) : null,
