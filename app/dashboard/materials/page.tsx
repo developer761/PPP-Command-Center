@@ -30,6 +30,23 @@ export default async function MaterialsOrderingPage({
   const openJobs = bundle.snapshot ? deriveOpenMaterialsWorkOrders(bundle.snapshot) : [];
   const woIds = openJobs.map((j) => j.wo.id);
 
+  // Empty-scope fast path — a worker with no assigned open WOs (or an
+  // admin viewing as such a rep) lands here. Skip both the aux Supabase
+  // round-trip AND the coverage-config query; the "No open paint jobs"
+  // empty state in MaterialsView only needs `bundle`. Saves 50–200ms on
+  // cold loads where there's nothing to populate anyway.
+  if (openJobs.length === 0) {
+    return (
+      <MaterialsView
+        bundle={bundle}
+        formStatuses={[]}
+        woProgress={[]}
+        initialWoId={null}
+        coverageConfig={undefined}
+      />
+    );
+  }
+
   // Pass WO Status + CloseDate to the progress-bar builder so the Job
   // Complete stage advances automatically when the WO is marked
   // "Complete Paid in Full" in Salesforce — no manual admin action needed.

@@ -45,7 +45,7 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageHeader from "@/components/page-header";
 import InfoDot from "@/components/info-dot";
 // PERF: modals only render when admin actively opens them — defer their JS
@@ -118,15 +118,21 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     return m;
   }, [woProgress]);
 
-  // Account lookup by NAME (WO carries accountName, not accountId). Used to
-  // pre-fill customer email + delivery address in the Send Form modal +
-  // Supplier Order modal. Built once per render of the parent.
-  const accountByName = useMemo(() => {
-    const m = new Map<string, SnapshotAccount>();
+  // Account lookups built ONCE per snapshot — name (legacy WOs without
+  // accountId) AND id (modern WOs). JobDetail used to .find() per render,
+  // which was O(N accounts) × every JobDetail rerender; the maps make
+  // both lookups O(1). Built here at the parent so the maps are stable
+  // across JobDetail rerenders (key for the memo'd JobDetail below).
+  const { accountByName, accountsById } = useMemo(() => {
+    const byName = new Map<string, SnapshotAccount>();
+    const byId = new Map<string, SnapshotAccount>();
     if (snapshot?.accounts) {
-      for (const a of snapshot.accounts) m.set(a.name, a);
+      for (const a of snapshot.accounts) {
+        byName.set(a.name, a);
+        byId.set(a.id, a);
+      }
     }
-    return m;
+    return { accountByName: byName, accountsById: byId };
   }, [snapshot]);
 
   // Modal open state — only one supplier order modal at a time.
@@ -290,6 +296,26 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   const activeJob = useMemo(
     () => openJobs.find((j) => j.wo.id === activeWoId) ?? null,
     [openJobs, activeWoId]
+  );
+
+  // Stable open-modal callback. Needed so the memoized JobDetail below
+  // doesn't re-render every time the parent rerenders (search keystroke,
+  // sort change, etc.) — without a stable identity, memo can't compare
+  // props and the entire JobDetail subtree (paint estimate, progress
+  // bar, supplier rows) re-runs on every keystroke at ~100+ WOs.
+  const handleOpenOrderModal = useCallback(
+    (supplierAccountId: string, supplierName: string, manual?: boolean) => {
+      if (!activeJob) return;
+      setOrderModal({
+        workOrderId: activeJob.wo.id,
+        workOrderNumber: activeJob.wo.workOrderNumber,
+        supplierAccountId,
+        supplierName,
+        customerName: activeJob.wo.accountName ?? null,
+        manual: manual ?? false,
+      });
+    },
+    [activeJob]
   );
 
   // Aggregate stats across all open jobs for the top strip
@@ -861,16 +887,9 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   job={activeJob}
                   coverageConfig={coverageConfig}
                   formStatus={formStatusByWO.get(activeJob.wo.id)}
-                  onOpenOrderModal={(supplierAccountId, supplierName, manual) =>
-                    setOrderModal({
-                      workOrderId: activeJob.wo.id,
-                      workOrderNumber: activeJob.wo.workOrderNumber,
-                      supplierAccountId,
-                      supplierName,
-                      customerName: activeJob.wo.accountName ?? null,
-                      manual: manual ?? false,
-                    })
-                  }
+                  accountsById={accountsById}
+                  accountByName={accountByName}
+                  onOpenOrderModal={handleOpenOrderModal}
                 />
               </div>
             ) : (
@@ -906,11 +925,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   );
 }
 
-function JobDetail({
+function JobDetailImpl({
   snapshot,
   job,
   coverageConfig,
   formStatus,
+  accountsById,
+  accountByName,
   onOpenOrderModal,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
@@ -920,6 +941,9 @@ function JobDetail({
    *  expired/none). Drives the "Send Reminder" button — only renderable when
    *  the form is in-flight (sent or opened) AND not yet submitted/expired. */
   formStatus: FormStatus | undefined;
+  /** Parent-built indexes — O(1) account lookups instead of .find() per render. */
+  accountsById: Map<string, SnapshotAccount>;
+  accountByName: Map<string, SnapshotAccount>;
   /** Opens the Supplier Order Modal with a supplier pre-selected. `manual` is
    *  true when chosen via the store picker (vs auto-detected), so the builder
    *  includes all the WO's colors on that store's order. */
@@ -929,14 +953,14 @@ function JobDetail({
   const [showPicker, setShowPicker] = useState(false);
 
   // Pre-fill data for the Send Color Form modal — pull the customer Account
-  // from the snapshot via accountName. Empty when not in snapshot (vendor
-  // WO or stale account) — admin types manually.
+  // from parent-built indexes. Empty when not in snapshot (vendor WO or
+  // stale account) — admin types manually. O(1) via Map vs the prior
+  // O(N accounts) .find() per render.
   const customerAccount = useMemo(() => {
-    // Account.Id match first (reliable), then name as a fallback for legacy WOs.
-    return (job.wo.accountId ? snapshot.accounts.find((a) => a.id === job.wo.accountId) : null)
-      ?? (job.wo.accountName ? snapshot.accounts.find((a) => a.name === job.wo.accountName) : null)
+    return (job.wo.accountId ? accountsById.get(job.wo.accountId) : undefined)
+      ?? (job.wo.accountName ? accountByName.get(job.wo.accountName) : undefined)
       ?? null;
-  }, [job, snapshot]);
+  }, [job, accountsById, accountByName]);
 
   const supplierRows = useMemo(() => {
     return Array.from(job.bySupplier.entries())
@@ -1378,6 +1402,14 @@ function JobDetail({
     </div>
   );
 }
+
+// Memoized export — JobDetail re-renders only when its props change. Parent
+// state changes (search query, sort mode, scroll) no longer trigger a fresh
+// JobDetail render at 100+ WOs. `accountsById` + `accountByName` are stable
+// across snapshot identity (parent useMemo) and `onOpenOrderModal` is stable
+// across activeJob identity (parent useCallback), so memo can compare props
+// shallowly without surprises.
+const JobDetail = memo(JobDetailImpl);
 
 function LineItemRow({ item }: { item: ResolvedWoli }) {
   const surfaces = (item.raw.surfaces ?? "").split(";").filter(Boolean);
