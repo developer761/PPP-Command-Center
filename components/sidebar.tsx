@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { APP_META } from "@/lib/brand";
 import { useViewer } from "@/lib/auth/viewer-context";
+import PlatformSwitcher from "@/components/platform-switcher";
 
 type NavItem = {
   label: string;
@@ -87,9 +88,12 @@ const navSections: NavSection[] = [
 type SidebarProps = {
   /** Called when any nav link is clicked — used by the mobile drawer to auto-close */
   onNavigate?: () => void;
+  /** When true, renders the bottom-left "Switch to New Platform" block.
+   *  Comes from DashboardChrome which reads it off the user's profile. */
+  showSwitcher?: boolean;
 };
 
-export default function Sidebar({ onNavigate }: SidebarProps = {}) {
+export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarProps = {}) {
   const pathname = usePathname();
   const params = useSearchParams();
   const viewer = useViewer();
@@ -208,6 +212,16 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
           </div>
         ))}
       </nav>
+
+      {/* Platform switcher (bottom-left, only when viewer has both platforms).
+          Loaded via the dashboard chrome from the profile; falls back to
+          hidden if the access flag isn't set. Lives just above the version
+          chip so it's reachable from every Command Center page. */}
+      {showSwitcher && (
+        <div className="px-3 pb-3">
+          <PlatformSwitcher current="command_center" />
+        </div>
+      )}
 
       <div className="px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
         <div className="font-semibold text-ppp-charcoal">Version {APP_META.version}</div>

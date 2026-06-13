@@ -63,12 +63,15 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // If a signed-in user hits the login page, send them to the dashboard.
+  // If a signed-in user hits the login page, send them through the picker.
+  // Picker auto-redirects single-access users to their only platform, so a
+  // user who only has Command Center never sees the picker — they land on
+  // /dashboard immediately. The picker is the canonical post-login landing.
   if (path === "/" && user) {
     const email = user.email?.toLowerCase() ?? "";
     if (isAllowedToSignIn(email)) {
       const dashUrl = url.clone();
-      dashUrl.pathname = "/dashboard";
+      dashUrl.pathname = "/choose-platform";
       return NextResponse.redirect(dashUrl);
     }
   }

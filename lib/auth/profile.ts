@@ -17,10 +17,36 @@ export type Profile = {
   sf_user_name: string | null;
   is_admin: boolean;
   is_active: boolean;
+  /** Phase 0 New Platform (migration 019) — per-platform access flags.
+   *  Defaults: Command Center true (everyone keeps prior access), New
+   *  Platform false (admin grants per-user). Default to true/false at
+   *  the application layer when reading legacy rows that pre-date the
+   *  ALTER TABLE so the app doesn't crash on a stale snapshot. */
+  has_command_center_access?: boolean;
+  has_new_platform_access?: boolean;
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+/** Resolve the access flags with safe defaults — used everywhere the rest
+ *  of the app reads them so the migration-031 backfill doesn't NEED to have
+ *  run before the code rolls out. */
+export function platformAccess(profile: Profile | null): {
+  hasCommandCenter: boolean;
+  hasNewPlatform: boolean;
+  hasBoth: boolean;
+  hasNeither: boolean;
+} {
+  const hasCommandCenter = profile?.has_command_center_access ?? true;
+  const hasNewPlatform = profile?.has_new_platform_access ?? false;
+  return {
+    hasCommandCenter,
+    hasNewPlatform,
+    hasBoth: hasCommandCenter && hasNewPlatform,
+    hasNeither: !hasCommandCenter && !hasNewPlatform,
+  };
+}
 
 /** Service-role client — bypasses RLS for the auth callback's profile sync. */
 function adminClient() {

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import DashboardChrome from "@/components/dashboard-chrome";
 import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail, isAllowedToSignIn } from "@/lib/auth/admin";
-import { getProfileByUserId } from "@/lib/auth/profile";
+import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 
 export default async function DashboardLayout({
   children,
@@ -99,6 +99,11 @@ export default async function DashboardLayout({
   // a real admin doesn't lose the View Switcher and re-fetch in a hot loop.
   const isAdmin = profile?.is_admin ?? isAdminEmail(email);
 
+  // Phase 0 New Platform — show the bottom-left sidebar switcher when the
+  // viewer has access to both platforms. Single-access users never see it
+  // (don't show what they can't use).
+  const access = platformAccess(profile);
+
   return (
     <DashboardChrome
       user={{
@@ -112,6 +117,7 @@ export default async function DashboardLayout({
         sfUserId: profile?.sf_user_id ?? null,
         sfUserName: profile?.sf_user_name ?? null,
       }}
+      showPlatformSwitcher={access.hasBoth}
     >
       {children}
     </DashboardChrome>
