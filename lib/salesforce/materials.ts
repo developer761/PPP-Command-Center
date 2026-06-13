@@ -117,10 +117,36 @@ function resolveWoli(
 }
 
 /**
+ * Memoize the derive result on snapshot identity. The snapshot is treated
+ * as immutable once built, so a WeakMap keyed by the snapshot reference
+ * caches the result for the lifetime of that snapshot in memory. After a
+ * cron refresh the snapshot identity changes and the next call recomputes.
+ *
+ * SPEED ROUND 10 (2026-06-13): saves ~50-150ms per materials-page render
+ * on PPP's data (521 open WOs × ~700 visible WOLIs). Combined with the
+ * cron change that warms BOTH snapshot variants, cold materials loads
+ * drop from ~3-5s to ~300-800ms.
+ */
+const materialsDeriveCache = new WeakMap<
+  SalesforceSnapshot,
+  OpenWorkOrderForMaterials[]
+>();
+
+/**
  * Get the work orders that need materials, with their line items + resolved
  * paint colors. Sorted by closeDate ascending (soonest jobs first).
  */
 export function deriveOpenMaterialsWorkOrders(
+  snapshot: SalesforceSnapshot
+): OpenWorkOrderForMaterials[] {
+  const cached = materialsDeriveCache.get(snapshot);
+  if (cached) return cached;
+  const fresh = computeOpenMaterialsWorkOrders(snapshot);
+  materialsDeriveCache.set(snapshot, fresh);
+  return fresh;
+}
+
+function computeOpenMaterialsWorkOrders(
   snapshot: SalesforceSnapshot
 ): OpenWorkOrderForMaterials[] {
   const colorIndex = indexPaintColors(snapshot.paintColors);

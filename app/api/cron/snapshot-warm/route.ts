@@ -69,27 +69,46 @@ export async function GET(request: Request) {
     // path sees the new generation and re-fetches from SF.
     await clearSalesforceCache();
 
-    // Step 2: rebuild the shared snapshot. cached() writes the gzipped row to
-    // Supabase, which all other instances pick up on their next request.
-    const snapshot = await loadSalesforceSnapshot();
+    // Step 2: rebuild BOTH shared snapshots in parallel. cached() writes each
+    // gzipped row to Supabase under its own key, so all other instances pick
+    // them up on their next request.
+    //
+    // SPEED ROUND 10 (2026-06-13): previously only the FULL snapshot was
+    // warmed here. The materials page uses the THIN snapshot (separate
+    // cache key `snapshot-thin-v1`), so cold materials loads happened every
+    // 30 min when the TTL expired even though the cron was firing every
+    // 10 min — the warmth didn't transfer because the keys differ. Warming
+    // both keys keeps materials cold-paths to zero. The two queries share
+    // the Account / WO / WOLI / PaintColor pulls under the hood, so the
+    // wall-clock cost is much closer to 1× than 2×.
+    const [fullSnapshot, thinSnapshot] = await Promise.all([
+      loadSalesforceSnapshot(),
+      loadSalesforceSnapshot({ thin: true }),
+    ]);
 
     const durationMs = Date.now() - startedAt;
     console.log(
-      `[cron/snapshot-warm] ok in ${durationMs}ms — ${snapshot.workOrders.length} WO, ${snapshot.opportunities.length} opp, ${snapshot.accounts.length} acct, ${snapshot.woLineItems.length} WOLI`
+      `[cron/snapshot-warm] ok in ${durationMs}ms — full: ${fullSnapshot.workOrders.length} WO, ${fullSnapshot.opportunities.length} opp · thin: ${thinSnapshot.workOrders.length} WO, ${thinSnapshot.woLineItems.length} WOLI`
     );
     return NextResponse.json({
       ok: true,
       durationMs,
-      counts: {
-        workOrders: snapshot.workOrders.length,
-        opportunities: snapshot.opportunities.length,
-        accounts: snapshot.accounts.length,
-        quotes: snapshot.quotes.length,
-        woLineItems: snapshot.woLineItems.length,
-        reps: snapshot.reps.length,
-        paintColors: snapshot.paintColors.length,
+      full: {
+        workOrders: fullSnapshot.workOrders.length,
+        opportunities: fullSnapshot.opportunities.length,
+        accounts: fullSnapshot.accounts.length,
+        quotes: fullSnapshot.quotes.length,
+        woLineItems: fullSnapshot.woLineItems.length,
+        reps: fullSnapshot.reps.length,
+        paintColors: fullSnapshot.paintColors.length,
       },
-      fetchedAt: snapshot.fetchedAt,
+      thin: {
+        workOrders: thinSnapshot.workOrders.length,
+        accounts: thinSnapshot.accounts.length,
+        woLineItems: thinSnapshot.woLineItems.length,
+        paintColors: thinSnapshot.paintColors.length,
+      },
+      fetchedAt: fullSnapshot.fetchedAt,
     });
   } catch (err) {
     const durationMs = Date.now() - startedAt;
