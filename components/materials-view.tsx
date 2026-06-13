@@ -683,10 +683,14 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         </div>
       )}
 
-      {/* Job list + side panel */}
+      {/* Job list + side panel. Mobile UX (Karan 2026-06-13): when a WO is
+          active, hide the list entirely so the JobDetail goes full-width
+          (no scrolling-past-the-list). The "Back to work orders" button
+          inside JobDetail (line ~930) returns to the list view. Desktop
+          (lg+) always shows both side-by-side. */}
       {openJobs.length > 0 && (
         <section className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-5">
-          <div className="lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden">
+          <div className={`${activeJob ? "hidden lg:block" : ""} lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden`}>
             {/* Sticky header — keeps sort/search visible while the list
                 scrolls (workers with 100+ WOs were losing their place when
                 scanning down). z-20 + backdrop-blur keeps it readable even
@@ -1092,7 +1096,33 @@ function JobDetailImpl({
   }, [job, coverageConfig]);
 
   return (
-    <div className="space-y-4">
+    // pb-24 lg:pb-0 reserves space at the bottom for the mobile-only
+    // sticky action bar (added at the end of this component) so the
+    // closing content isn't hidden behind it.
+    <div className="space-y-4 pb-24 lg:pb-0">
+      {/* Mobile-only quick-nav chips at the top — Karan 2026-06-13.
+          Workers on iPhone need fast access to the rooms list without
+          scrolling past the header + paint estimate + 3-col action
+          toolbar. Tap to smooth-scroll the rooms section into view. */}
+      {job.lineItems.length > 0 && (
+        <a
+          href="#rooms-and-colors"
+          className="lg:hidden flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg bg-ppp-blue-50 border border-ppp-blue-100 text-ppp-blue-700 text-xs font-semibold touch-manipulation"
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById("rooms-and-colors")?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          }}
+        >
+          <span>Jump to {job.lineItems.length} room{job.lineItems.length === 1 ? "" : "s"} &amp; colors</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </a>
+      )}
+
       {/* Header */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -1468,8 +1498,9 @@ function JobDetailImpl({
         </div>
       )}
 
-      {/* Line items per room */}
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      {/* Line items per room — anchored for the mobile "Jump to rooms" link
+          at the top of JobDetail. */}
+      <div id="rooms-and-colors" className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
           <h4 className="text-sm font-semibold text-ppp-charcoal">Rooms &amp; colors</h4>
           <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
@@ -1497,6 +1528,27 @@ function JobDetailImpl({
           }}
         />
       )}
+
+      {/* Mobile-only sticky bottom action bar — Karan 2026-06-13. Primary
+          quick-access "Order materials" button pinned to the bottom of the
+          viewport so workers don't have to scroll past the full action
+          toolbar to reach it. Safe-area-inset-bottom for iPhone notch. */}
+      <div
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-ppp-charcoal-100 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowPicker(true)}
+          className="w-full h-12 rounded-lg bg-ppp-blue text-white font-semibold text-sm hover:bg-ppp-blue-700 active:bg-ppp-blue-800 transition-colors touch-manipulation flex items-center justify-center gap-2 shadow-md shadow-ppp-blue/30"
+          aria-label="Open supplier order picker"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z M3 6h18 M16 10a4 4 0 0 1-8 0" />
+          </svg>
+          Order materials
+        </button>
+      </div>
     </div>
   );
 }
