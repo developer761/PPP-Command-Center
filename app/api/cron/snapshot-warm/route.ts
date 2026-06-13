@@ -81,34 +81,60 @@ export async function GET(request: Request) {
     // both keys keeps materials cold-paths to zero. The two queries share
     // the Account / WO / WOLI / PaintColor pulls under the hood, so the
     // wall-clock cost is much closer to 1× than 2×.
-    const [fullSnapshot, thinSnapshot] = await Promise.all([
+    //
+    // Resilience: `allSettled` so a transient failure on one variant
+    // doesn't poison the other. Worst case: only one shared cache warms
+    // this tick, the other re-tries on the next cron fire 10 min later.
+    const [fullResult, thinResult] = await Promise.allSettled([
       loadSalesforceSnapshot(),
       loadSalesforceSnapshot({ thin: true }),
     ]);
 
+    const fullOk = fullResult.status === "fulfilled";
+    const thinOk = thinResult.status === "fulfilled";
     const durationMs = Date.now() - startedAt;
+    const fullSnapshot = fullOk ? fullResult.value : null;
+    const thinSnapshot = thinOk ? thinResult.value : null;
+
+    if (!fullOk) {
+      console.warn(
+        `[cron/snapshot-warm] full snapshot failed:`,
+        fullResult.reason instanceof Error ? fullResult.reason.message : fullResult.reason
+      );
+    }
+    if (!thinOk) {
+      console.warn(
+        `[cron/snapshot-warm] thin snapshot failed:`,
+        thinResult.reason instanceof Error ? thinResult.reason.message : thinResult.reason
+      );
+    }
     console.log(
-      `[cron/snapshot-warm] ok in ${durationMs}ms — full: ${fullSnapshot.workOrders.length} WO, ${fullSnapshot.opportunities.length} opp · thin: ${thinSnapshot.workOrders.length} WO, ${thinSnapshot.woLineItems.length} WOLI`
+      `[cron/snapshot-warm] done in ${durationMs}ms — full: ${fullOk ? `${fullSnapshot!.workOrders.length} WO, ${fullSnapshot!.opportunities.length} opp` : "FAILED"} · thin: ${thinOk ? `${thinSnapshot!.workOrders.length} WO, ${thinSnapshot!.woLineItems.length} WOLI` : "FAILED"}`
     );
+
     return NextResponse.json({
-      ok: true,
+      ok: fullOk || thinOk,
       durationMs,
-      full: {
-        workOrders: fullSnapshot.workOrders.length,
-        opportunities: fullSnapshot.opportunities.length,
-        accounts: fullSnapshot.accounts.length,
-        quotes: fullSnapshot.quotes.length,
-        woLineItems: fullSnapshot.woLineItems.length,
-        reps: fullSnapshot.reps.length,
-        paintColors: fullSnapshot.paintColors.length,
-      },
-      thin: {
-        workOrders: thinSnapshot.workOrders.length,
-        accounts: thinSnapshot.accounts.length,
-        woLineItems: thinSnapshot.woLineItems.length,
-        paintColors: thinSnapshot.paintColors.length,
-      },
-      fetchedAt: fullSnapshot.fetchedAt,
+      full: fullSnapshot
+        ? {
+            workOrders: fullSnapshot.workOrders.length,
+            opportunities: fullSnapshot.opportunities.length,
+            accounts: fullSnapshot.accounts.length,
+            quotes: fullSnapshot.quotes.length,
+            woLineItems: fullSnapshot.woLineItems.length,
+            reps: fullSnapshot.reps.length,
+            paintColors: fullSnapshot.paintColors.length,
+          }
+        : { failed: true },
+      thin: thinSnapshot
+        ? {
+            workOrders: thinSnapshot.workOrders.length,
+            accounts: thinSnapshot.accounts.length,
+            woLineItems: thinSnapshot.woLineItems.length,
+            paintColors: thinSnapshot.paintColors.length,
+          }
+        : { failed: true },
+      fetchedAt: fullSnapshot?.fetchedAt ?? thinSnapshot?.fetchedAt ?? null,
     });
   } catch (err) {
     const durationMs = Date.now() - startedAt;
