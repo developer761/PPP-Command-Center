@@ -822,17 +822,31 @@ export default function SupplierOrderModal({
                     );
                     return (
                       <>
+                        {/* Consistency 2026-06-13: was red + 🛑 (inconsistent
+                            with the orange + ⚠ used everywhere else). Now
+                            matches WO-list pill ("⚠ Manual qty"), per-room
+                            pill ("⚠ No sq ft"), and JobDetail callout. Same
+                            shape + language across surfaces. */}
                         {manualOnlyEstimates.length > 0 && (
-                          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-xs text-red-700 space-y-1">
-                            <div className="font-semibold text-[13px]">🛑 Manual entry required — no measurements on Salesforce</div>
-                            <div>
-                              {manualOnlyEstimates.length === 1 ? "1 color" : `${manualOnlyEstimates.length} colors`} on this work order have ZERO square footage / wall area / perimeter in SF — we cannot estimate gallons at all. Set the quantity yourself using the +/- buttons above (or fix the WOLI sqft in Salesforce, then re-open this modal).
-                            </div>
+                          <div
+                            className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700 flex items-start gap-2"
+                            title={`${manualOnlyEstimates.length === 1 ? "1 color" : `${manualOnlyEstimates.length} colors`} on this WO have zero square footage, wall area, AND perimeter in Salesforce — we can't estimate gallons. Type in the quantity yourself with the +/- buttons above. (Or fix the WOLI sqft in Salesforce, refresh, and re-open this modal.)`}
+                          >
+                            <span aria-hidden>⚠</span>
+                            <span>
+                              <strong>Manual quantity required</strong> — {manualOnlyEstimates.length === 1 ? "1 color" : `${manualOnlyEstimates.length} colors`} have no measurements in Salesforce. Type in the gallons with the +/- buttons above.
+                            </span>
                           </div>
                         )}
                         {otherZeroEstimates.length > 0 && (
-                          <div className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
-                            <strong>⚠ {otherZeroEstimates.length} color{otherZeroEstimates.length === 1 ? "" : "s"} need a manual quantity</strong> — surface{otherZeroEstimates.length === 1 ? "" : "s"} we can&apos;t size from the data (cabinets, accent walls, etc.). Set the gallons in the email body before sending.
+                          <div
+                            className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 text-xs text-ppp-orange-700 flex items-start gap-2"
+                            title={`${otherZeroEstimates.length === 1 ? "1 color" : `${otherZeroEstimates.length} colors`} cover surfaces the data can't size (cabinets, accent walls, edge strips, etc.). The supplier email will show "___ (PPP to confirm)" for these — type in the gallons before sending.`}
+                          >
+                            <span aria-hidden>⚠</span>
+                            <span>
+                              <strong>Manual quantity required</strong> — {otherZeroEstimates.length === 1 ? "1 color" : `${otherZeroEstimates.length} colors`} (cabinets, accent walls, etc.) we can&apos;t size from the data. Type in the gallons before sending.
+                            </span>
                           </div>
                         )}
                       </>

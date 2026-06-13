@@ -888,7 +888,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                                 pre-computed per-WO in woChipFlags useMemo so
                                 this render loop is a cheap Map lookup. */}
                             {woChipFlags.get(j.wo.id)?.manualQty && (
-                              <Pill tone="orange" title="One or more rooms are missing square footage in Salesforce. The supplier order will show '___ (PPP to confirm)' for those colors — you'll have to type in the gallons before sending.">
+                              <Pill tone="orange" title="One or more rooms are missing square footage in Salesforce. The supplier order will show '___ (PPP to confirm)' for those colors — type in the gallons before sending.">
                                 ⚠ Manual qty
                               </Pill>
                             )}
