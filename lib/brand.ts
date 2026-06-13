@@ -66,7 +66,7 @@ export const PPP_BRAND = {
 } as const;
 
 export const APP_META = {
-  name: "Command Center",
+  name: "PPP Command Center",
   version: "0.2.0",
   environment: "live",
 } as const;

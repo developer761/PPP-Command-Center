@@ -78,7 +78,7 @@ export default function PlatformPicker({ email }: { email: string }) {
                   Live
                 </span>
               </div>
-              <h2 className="text-lg font-bold text-ppp-charcoal mb-1">Command Center</h2>
+              <h2 className="text-lg font-bold text-ppp-charcoal mb-1">PPP Command Center</h2>
               <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
                 Sales, customer color forms, materials ordering, Mail Hub, scorecards. Salesforce-mirrored data.
               </p>

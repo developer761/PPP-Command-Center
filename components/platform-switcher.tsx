@@ -17,8 +17,8 @@ export default function PlatformSwitcher({ current }: { current: Platform }) {
   // user-facing label changes — renamed to "Commercial Command Center"
   // (Karan 2026-06-13) so PPP staff can tell the two platforms apart.
   const target: Platform = current === "command_center" ? "new_platform" : "command_center";
-  const currentLabel = current === "command_center" ? "Command Center" : "Commercial Command Center";
-  const targetLabel = target === "command_center" ? "Command Center" : "Commercial Command Center";
+  const currentLabel = current === "command_center" ? "PPP Command Center" : "Commercial Command Center";
+  const targetLabel = target === "command_center" ? "PPP Command Center" : "Commercial Command Center";
 
   const onClick = async () => {
     if (busy) return;

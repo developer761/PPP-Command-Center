@@ -146,8 +146,8 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
             height={60}
             priority
           />
-          <div className="font-condensed mt-3 text-[11px] font-bold tracking-[0.18em] text-ppp-navy uppercase">
-            Command Center
+          <div className="font-condensed mt-3 text-[10px] font-bold tracking-[0.16em] text-ppp-navy uppercase leading-tight">
+            PPP<br />Command Center
           </div>
         </Link>
         {onNavigate && (
