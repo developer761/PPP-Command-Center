@@ -1731,10 +1731,10 @@ function Pill({ children, tone = "neutral", title }: { children: React.ReactNode
     tone === "orange"
       ? "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100"
       : "bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100";
+  // Readability bump 2026-06-13: 10px → 11px font + px-2 padding so
+  // the pill text is legible at arm's length on iPhone without
+  // squinting. Same shape on desktop.
   return (
-    {/* Readability bump 2026-06-13: 10px → 11px font + px-2 padding so
-        the pill text is legible at arm's length on iPhone without
-        squinting. Same shape on desktop. */}
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${cls}${title ? " cursor-help" : ""}`} title={title}>
       {children}
     </span>
