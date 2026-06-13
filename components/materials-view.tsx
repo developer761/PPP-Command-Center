@@ -193,6 +193,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // Workers usually have <20 WOs so search is less critical for them but
   // the field stays visible for both — same UX everyone.
   const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sort selector — Karan 2026-06-03: default flipped to "latest job start
   // first" so the next-up materials needs surface at the top. (Was "soonest
@@ -690,6 +691,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   with the count + sort below as secondary controls. */}
               <div className="relative">
                 <input
+                  ref={searchInputRef}
                   type="search"
                   inputMode="search"
                   autoCapitalize="none"
@@ -725,8 +727,12 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                 {searchQuery && (
                   <button
                     type="button"
-                    onClick={() => setSearchQuery("")}
-                    // Slim button to match slimmer input.
+                    onClick={() => {
+                      setSearchQuery("");
+                      // Refocus input so the user can immediately type a
+                      // new query without tapping the field again.
+                      searchInputRef.current?.focus();
+                    }}
                     className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-ppp-charcoal-500 hover:text-ppp-charcoal text-sm rounded hover:bg-ppp-charcoal-50 transition-colors"
                     aria-label="Clear search"
                   >
@@ -846,21 +852,22 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                           {/* Dates row — Katie 2026-06-12. Show both Start
                               Date and Desired Start Date when populated, so
                               office staff can see "scheduled to start X,
-                              customer asked for Y." Hidden when neither is
-                              set (fallback to closeDate already shown above).
-                              gap-1.5 + tighter wrapping so 375px viewports
-                              don't break the row mid-label. */}
+                              customer asked for Y." Density audit 2026-06-13:
+                              the Desired date hides on phones (<sm) so the
+                              row stays one line at 375px — the relative
+                              countdown badge above already covers urgency.
+                              Both show again on sm+ where there's room. */}
                           {(j.wo.startDate || j.wo.desiredStartDate) && (
-                            <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-1.5 gap-y-0.5 flex-wrap">
+                            <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
                               {j.wo.startDate && (
                                 <span title="Scheduled Start Date from Salesforce." className="whitespace-nowrap">
                                   <span className="text-ppp-charcoal-400">Start:</span>{" "}
                                   <span className="font-medium text-ppp-charcoal-700">{j.wo.startDate}</span>
                                 </span>
                               )}
-                              {j.wo.startDate && j.wo.desiredStartDate && <span aria-hidden>·</span>}
+                              {j.wo.startDate && j.wo.desiredStartDate && <span aria-hidden className="hidden sm:inline">·</span>}
                               {j.wo.desiredStartDate && (
-                                <span title="Customer-requested Desired Start Date from Salesforce." className="whitespace-nowrap">
+                                <span title="Customer-requested Desired Start Date from Salesforce." className="whitespace-nowrap hidden sm:inline">
                                   <span className="text-ppp-charcoal-400">Desired:</span>{" "}
                                   <span className="font-medium text-ppp-charcoal-700">{j.wo.desiredStartDate}</span>
                                 </span>
@@ -1725,7 +1732,10 @@ function Pill({ children, tone = "neutral", title }: { children: React.ReactNode
       ? "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100"
       : "bg-ppp-charcoal-50 text-ppp-charcoal border-ppp-charcoal-100";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}${title ? " cursor-help" : ""}`} title={title}>
+    {/* Readability bump 2026-06-13: 10px → 11px font + px-2 padding so
+        the pill text is legible at arm's length on iPhone without
+        squinting. Same shape on desktop. */}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${cls}${title ? " cursor-help" : ""}`} title={title}>
       {children}
     </span>
   );

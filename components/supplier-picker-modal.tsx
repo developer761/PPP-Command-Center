@@ -97,7 +97,7 @@ export default function SupplierPickerModal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors flex items-center justify-center touch-manipulation"
+            className="shrink-0 h-11 w-11 sm:h-10 sm:w-10 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors flex items-center justify-center touch-manipulation"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 6l12 12 M18 6l-12 12" />
