@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PPP Platform Architecture — Two Platforms, One Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --ppp-blue: #1E3A8A;
+    --ppp-blue-light: #3B82F6;
+    --ppp-blue-50: #EFF6FF;
+    --ppp-blue-100: #DBEAFE;
+    --ppp-blue-700: #1D4ED8;
+    --ppp-green: #10B981;
+    --ppp-green-50: #ECFDF5;
+    --ppp-green-100: #D1FAE5;
+    --ppp-amber: #F59E0B;
+    --ppp-amber-50: #FFFBEB;
+    --ppp-amber-100: #FEF3C7;
+    --ppp-purple: #7C3AED;
+    --ppp-purple-50: #F5F3FF;
+    --ppp-purple-100: #EDE9FE;
+    --ppp-charcoal: #111827;
+    --ppp-charcoal-500: #6B7280;
+    --ppp-charcoal-300: #D1D5DB;
+    --ppp-charcoal-100: #F3F4F6;
+    --ppp-charcoal-50: #F9FAFB;
+    --ppp-white: #FFFFFF;
+    --ppp-red: #DC2626;
+    --ppp-red-50: #FEF2F2;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ppp-charcoal);
+    background: var(--ppp-charcoal-50);
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 32px;
+    background: var(--ppp-white);
+  }
+  .header {
+    background: linear-gradient(135deg, #0F1F4F 0%, var(--ppp-blue) 100%);
+    color: white;
+    padding: 28px 32px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+  }
+  .header h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+  }
+  .header p {
+    margin: 8px 0 0 0;
+    font-size: 14px;
+    opacity: 0.85;
+  }
+  .header .meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 16px;
+    font-size: 12px;
+    opacity: 0.75;
+  }
+  .header .meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--ppp-charcoal-500);
+    margin: 32px 0 12px 0;
+  }
+  /* Entry funnel */
+  .funnel {
+    background: var(--ppp-white);
+    border: 1px solid var(--ppp-charcoal-100);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .funnel-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .funnel-step {
+    background: var(--ppp-charcoal-50);
+    border: 1px solid var(--ppp-charcoal-100);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    min-width: 180px;
+  }
+  .funnel-step.url {
+    background: var(--ppp-blue-50);
+    border-color: var(--ppp-blue-100);
+  }
+  .funnel-step.picker {
+    background: var(--ppp-amber-50);
+    border-color: var(--ppp-amber-100);
+  }
+  .funnel-step .label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--ppp-charcoal-500);
+  }
+  .funnel-step .value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ppp-charcoal);
+    margin-top: 4px;
+  }
+  .funnel-arrow {
+    font-size: 24px;
+    color: var(--ppp-charcoal-300);
+    font-weight: 300;
+  }
+  /* Two-platform comparison */
+  .platforms {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .platform-card {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--ppp-charcoal-100);
+  }
+  .platform-card.cc {
+    background: var(--ppp-blue-50);
+  }
+  .platform-card.np {
+    background: var(--ppp-green-50);
+  }
+  .platform-head {
+    padding: 18px 20px;
+    color: white;
+  }
+  .platform-card.cc .platform-head {
+    background: var(--ppp-blue);
+  }
+  .platform-card.np .platform-head {
+    background: #047857;
+  }
+  .platform-head h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .platform-head .subtitle {
+    margin: 4px 0 0 0;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  .platform-head .status {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    margin-top: 8px;
+  }
+  .platform-body {
+    padding: 16px 20px;
+  }
+  .platform-body .row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.06);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .platform-body .row:last-child { border-bottom: none; }
+  .platform-body .row .k {
+    font-weight: 600;
+    color: var(--ppp-charcoal-500);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding-top: 2px;
+  }
+  .platform-body .row .v { color: var(--ppp-charcoal); }
+  .platform-body .row .v code {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  /* Switcher detail */
+  .switcher-detail {
+    background: var(--ppp-amber-50);
+    border: 1px solid var(--ppp-amber-100);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+  .switcher-mockup {
+    flex-shrink: 0;
+    width: 220px;
+    background: white;
+    border: 1px solid var(--ppp-charcoal-100);
+    border-radius: 10px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+  .switcher-mockup .topbar-fake {
+    height: 44px;
+    background: var(--ppp-charcoal-50);
+    border-bottom: 1px solid var(--ppp-charcoal-100);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 11px;
+    color: var(--ppp-charcoal-500);
+  }
+  .switcher-mockup .sidebar-fake {
+    height: 240px;
+    background: var(--ppp-charcoal-50);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+  }
+  .switcher-mockup .sidebar-item {
+    height: 28px;
+    background: white;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    border: 1px solid var(--ppp-charcoal-100);
+  }
+  .switcher-mockup .sidebar-spacer { flex: 1; }
+  .switcher-mockup .sidebar-switcher {
+    background: var(--ppp-blue);
+    color: white;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 8px;
+  }
+  .switcher-mockup .sidebar-switcher .small {
+    opacity: 0.7;
+    font-weight: 400;
+    font-size: 10px;
+    margin-top: 2px;
+  }
+  .switcher-text h3 { margin: 0; font-size: 16px; color: var(--ppp-charcoal); }
+  .switcher-text p {
+    margin: 6px 0 0 0;
+    font-size: 13px;
+    color: var(--ppp-charcoal-500);
+    line-height: 1.5;
+  }
+  /* 9-phase pipeline */
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .phase {
+    border-radius: 8px;
+    padding: 10px 8px;
+    background: white;
+    border: 1px solid var(--ppp-charcoal-100);
+    position: relative;
+    min-height: 90px;
+  }
+  .phase .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ppp-blue);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .phase[data-color="blue"] .num { background: var(--ppp-blue); }
+  .phase[data-color="green"] .num { background: #047857; }
+  .phase[data-color="purple"] .num { background: var(--ppp-purple); }
+  .phase[data-color="orange"] .num { background: var(--ppp-amber); }
+  .phase[data-color="teal"] .num { background: #0D9488; }
+  .phase[data-color="indigo"] .num { background: #4F46E5; }
+  .phase[data-color="rose"] .num { background: #E11D48; }
+  .phase[data-color="gold"] .num { background: #B45309; }
+  .phase[data-color="red"] .num { background: var(--ppp-red); }
+  .phase .name {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--ppp-charcoal);
+    line-height: 1.2;
+    margin-bottom: 4px;
+  }
+  .phase .desc {
+    font-size: 9px;
+    color: var(--ppp-charcoal-500);
+    line-height: 1.35;
+  }
+  .pipeline-caption {
+    text-align: center;
+    font-size: 11px;
+    color: var(--ppp-charcoal-500);
+    margin-bottom: 24px;
+    font-style: italic;
+  }
+  /* Separation rules */
+  .separation {
+    background: var(--ppp-red-50);
+    border: 1px solid #FECACA;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .separation h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #991B1B;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .separation .rules {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    font-size: 12px;
+    color: var(--ppp-charcoal);
+  }
+  .separation .rule {
+    background: white;
+    border-radius: 6px;
+    padding: 10px 14px;
+    border-left: 3px solid var(--ppp-red);
+  }
+  .separation .rule strong { color: #991B1B; }
+  /* Shared layer */
+  .shared {
+    background: var(--ppp-purple-50);
+    border: 1px solid var(--ppp-purple-100);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .shared h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #5B21B6;
+  }
+  .shared .items {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    font-size: 12px;
+  }
+  .shared .item {
+    background: white;
+    border-radius: 6px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--ppp-purple);
+  }
+  .shared .item strong { color: var(--ppp-purple); display: block; margin-bottom: 2px; font-size: 11px; }
+  /* Build order */
+  .build-order {
+    background: var(--ppp-green-50);
+    border: 1px solid var(--ppp-green-100);
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .build-order h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #065F46;
+  }
+  .build-order ol {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ppp-charcoal);
+  }
+  .build-order ol li strong { color: #065F46; }
+  .footnote {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--ppp-charcoal-100);
+    font-size: 11px;
+    color: var(--ppp-charcoal-500);
+    text-align: center;
+  }
+  @media print {
+    body { background: white; }
+    .page { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>PPP Platform Architecture — Two Platforms, One Hub</h1>
+    <p>Command Center (residential, Salesforce-mirrored) and New Platform (commercial, Postgres-native) live behind one login, with strict backend separation.</p>
+    <div class="meta">
+      <span>📅 Drafted June 12, 2026</span>
+      <span>👥 For Alex review</span>
+      <span>🔧 Author: Karan</span>
+    </div>
+  </div>
+
+  <!-- ENTRY FUNNEL -->
+  <div class="section-title">1 · How users get in</div>
+  <div class="funnel">
+    <div class="funnel-flow">
+      <div class="funnel-step url">
+        <div class="label">URL</div>
+        <div class="value">hub.precisionpaintingplus.net</div>
+      </div>
+      <span class="funnel-arrow">→</span>
+      <div class="funnel-step">
+        <div class="label">Sign in</div>
+        <div class="value">Google SSO</div>
+      </div>
+      <span class="funnel-arrow">→</span>
+      <div class="funnel-step picker">
+        <div class="label">Platform Picker</div>
+        <div class="value">Command Center · or · New Platform</div>
+      </div>
+      <span class="funnel-arrow">→</span>
+      <div class="funnel-step">
+        <div class="label">Dashboard</div>
+        <div class="value">/dashboard/* · or · /dashboard/commercial/*</div>
+      </div>
+    </div>
+    <p style="text-align:center;font-size:12px;color:var(--ppp-charcoal-500);margin:14px 0 0 0;font-style:italic;">
+      One-platform users skip the picker. Two-platform users pick once per session — a cookie remembers the last choice on return.
+    </p>
+  </div>
+
+  <!-- TWO PLATFORMS SIDE BY SIDE -->
+  <div class="section-title">2 · The two platforms (side-by-side)</div>
+  <div class="platforms">
+
+    <div class="platform-card cc">
+      <div class="platform-head">
+        <h2>① Command Center</h2>
+        <div class="subtitle">Residential workflow · Sales · Customer color forms</div>
+        <span class="status">LIVE · In production</span>
+      </div>
+      <div class="platform-body">
+        <div class="row">
+          <div class="k">Source of truth</div>
+          <div class="v"><strong>Salesforce</strong> — Postgres is a 30-min cache only</div>
+        </div>
+        <div class="row">
+          <div class="k">Data flow</div>
+          <div class="v">Read SF → derive KPIs → narrow writeback (colors, material type)</div>
+        </div>
+        <div class="row">
+          <div class="k">Route tree</div>
+          <div class="v"><code>/dashboard/*</code></div>
+        </div>
+        <div class="row">
+          <div class="k">Code namespace</div>
+          <div class="v"><code>lib/salesforce/*</code> · <code>lib/auth/scope-snapshot.ts</code></div>
+        </div>
+        <div class="row">
+          <div class="k">DB tables</div>
+          <div class="v">Existing — <code>profiles</code>, <code>notifications</code>, <code>supplier_*</code>, etc.</div>
+        </div>
+        <div class="row">
+          <div class="k">Personas</div>
+          <div class="v">Residential reps, admins, materials office</div>
+        </div>
+        <div class="row">
+          <div class="k">Invoice</div>
+          <div class="v"><code>PPP_Invoice_June_2026.md</code> (PPP)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="platform-card np">
+      <div class="platform-head">
+        <h2>② New Platform <span style="opacity:0.6;font-weight:400;font-size:12px;">(name TBD)</span></h2>
+        <div class="subtitle">Commercial workflow · Bidding · Project lifecycle</div>
+        <span class="status">PLANNING · Phase 0 next</span>
+      </div>
+      <div class="platform-body">
+        <div class="row">
+          <div class="k">Source of truth</div>
+          <div class="v"><strong>Postgres</strong> — SF is not in the loop after one-shot legacy import</div>
+        </div>
+        <div class="row">
+          <div class="k">Data flow</div>
+          <div class="v">App writes / reads Postgres directly. KPIs are SQL aggregates.</div>
+        </div>
+        <div class="row">
+          <div class="k">Route tree</div>
+          <div class="v"><code>/dashboard/commercial/*</code></div>
+        </div>
+        <div class="row">
+          <div class="k">Code namespace</div>
+          <div class="v"><code>lib/commercial/*</code> · NEW <code>commercial-sidebar.tsx</code></div>
+        </div>
+        <div class="row">
+          <div class="k">DB tables</div>
+          <div class="v">New — <code>commercial_*</code> prefix (accounts, opportunities, projects, invoices, …)</div>
+        </div>
+        <div class="row">
+          <div class="k">Personas</div>
+          <div class="v">Estimators, PMs, supers, foremen, office, admins</div>
+        </div>
+        <div class="row">
+          <div class="k">Invoice</div>
+          <div class="v"><code>Alex_Platform_Invoice_June_2026.md</code> (Alex)</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SWITCHER DETAIL -->
+  <div class="section-title">3 · How you switch (bottom-left, always there)</div>
+  <div class="switcher-detail">
+    <div class="switcher-mockup">
+      <div class="topbar-fake">↗ Topbar (logo · search · bell · user)</div>
+      <div class="sidebar-fake">
+        <div class="sidebar-item"></div>
+        <div class="sidebar-item"></div>
+        <div class="sidebar-item"></div>
+        <div class="sidebar-item"></div>
+        <div class="sidebar-item"></div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-switcher">
+          ⇄ Switch to New Platform
+          <div class="small">Currently in: Command Center</div>
+        </div>
+      </div>
+    </div>
+    <div class="switcher-text">
+      <h3>Bottom-left sidebar block</h3>
+      <p>Users with access to both platforms see a switcher pinned to the bottom-left of the sidebar — visible from every page. One click toggles between Command Center ↔ New Platform without re-authenticating. The cookie that remembers the picker choice is updated, so a fresh tab opens to the last-used platform.</p>
+      <p style="margin-top:8px;"><strong>Users with access to only one platform</strong> never see the switcher (and don't see the picker on sign-in either). Clean, no noise.</p>
+    </div>
+  </div>
+
+  <!-- 9-PHASE PIPELINE -->
+  <div class="section-title">4 · New Platform · The 9 commercial phases (from Alex's diagram)</div>
+  <div class="pipeline">
+    <div class="phase" data-color="blue">
+      <div class="num">1</div>
+      <div class="name">Account Management</div>
+      <div class="desc">Companies, contacts (multi-role), COI/W9/insurance docs, A/B/C rating, perf dashboard</div>
+    </div>
+    <div class="phase" data-color="green">
+      <div class="num">2</div>
+      <div class="name">Opportunity</div>
+      <div class="desc">Bid pipeline (12 statuses), site visit, plans/specs/RFP, salesperson, inbound bid email + online form</div>
+    </div>
+    <div class="phase" data-color="purple">
+      <div class="num">3</div>
+      <div class="name">Estimating &amp; Proposal</div>
+      <div class="desc">Bid qualification, labor + materials + equipment + sub estimates, revision tracking, RFIs, bid outcome</div>
+    </div>
+    <div class="phase" data-color="orange">
+      <div class="num">4</div>
+      <div class="name">Contract Award</div>
+      <div class="desc">Contract review, payment terms, submittals planning, procurement planning, requirements</div>
+    </div>
+    <div class="phase" data-color="teal">
+      <div class="num">5</div>
+      <div class="name">Project Setup</div>
+      <div class="desc">Project info, team (multi-PM/super/foreman), documents, submittals + requirements approval flow</div>
+    </div>
+    <div class="phase" data-color="indigo">
+      <div class="num">6</div>
+      <div class="name">Project Execution</div>
+      <div class="desc">Daily reports (mobile + offline), labor/material/equipment/sub mgmt, quality, punchlist, schedule</div>
+    </div>
+    <div class="phase" data-color="rose">
+      <div class="num">7</div>
+      <div class="name">Change Management</div>
+      <div class="desc">CO types, draft → submitted → pending → approved/rejected → invoiced, impact $ + labor + schedule</div>
+    </div>
+    <div class="phase" data-color="gold">
+      <div class="num">8</div>
+      <div class="name">Billing &amp; Financials</div>
+      <div class="desc">Multi-invoice per project, start/end dates, paid filter, retainage, job cost summary (LMES budget vs actual)</div>
+    </div>
+    <div class="phase" data-color="red">
+      <div class="num">9</div>
+      <div class="name">Closeout</div>
+      <div class="desc">Internal + client punchlist, warranty + commissioning docs, lessons learned, project archive</div>
+    </div>
+  </div>
+  <div class="pipeline-caption">Each phase is its own build slice (schema + surfaces + edge cases). Phases listed in build order in §7 below.</div>
+
+  <!-- SEPARATION RULES -->
+  <div class="section-title">5 · Strict separation (so the two platforms can't entangle)</div>
+  <div class="separation">
+    <h3>🔒 Hard rules — enforced everywhere</h3>
+    <div class="rules">
+      <div class="rule"><strong>Backend code:</strong> Command Center under <code>lib/salesforce/*</code> + existing libs. New Platform under <code>lib/commercial/*</code>. Zero cross-imports.</div>
+      <div class="rule"><strong>Database:</strong> Command Center keeps its existing tables. New Platform tables all prefix <code>commercial_*</code>. No shared FKs (except <code>profiles.user_id</code> for identity).</div>
+      <div class="rule"><strong>Routes:</strong> Command Center at <code>/dashboard/*</code>; New Platform at <code>/dashboard/commercial/*</code>. Middleware enforces access.</div>
+      <div class="rule"><strong>Sidebar &amp; nav:</strong> Two separate sidebar components. Each platform's nav can't surface the other's pages.</div>
+      <div class="rule"><strong>Notifications:</strong> Reused bell, but notification <code>kind</code> values are platform-prefixed (e.g. <code>cc.customer_form_submitted</code> vs <code>np.bid_received</code>).</div>
+      <div class="rule"><strong>Invoices:</strong> Command Center hours → PPP invoice. New Platform hours → Alex invoice. No mixing.</div>
+      <div class="rule"><strong>Memory / docs:</strong> Separate memory files + separate plan docs. PPP doc names start <code>project_ppp_*</code>; New Platform start <code>project_np_*</code>.</div>
+      <div class="rule"><strong>Audit trail:</strong> Command Center uses existing audit pattern. New Platform has its own <code>commercial_audit_log</code> table covering every <code>commercial_*</code> write.</div>
+    </div>
+  </div>
+
+  <!-- SHARED LAYER -->
+  <div class="section-title">6 · What IS shared (the thin hub layer)</div>
+  <div class="shared">
+    <h3>🔗 Reused across both — the only places they touch</h3>
+    <div class="items">
+      <div class="item"><strong>Auth</strong>Supabase Google SSO + <code>profiles</code> table. Two new flags: <code>has_command_center_access</code>, <code>has_new_platform_access</code>.</div>
+      <div class="item"><strong>Shell</strong>Topbar + sidebar layout primitives. Each platform supplies its own sidebar items.</div>
+      <div class="item"><strong>Notification bell</strong>One bell component. Each platform pushes its own kinds; both render in the same dropdown when user has both.</div>
+      <div class="item"><strong>Mobile tokens</strong>iOS HIG 44px taps, safe-area-inset, font scale, blue+emerald palette.</div>
+      <div class="item"><strong>Document storage</strong>Supabase Storage. Separate buckets (<code>ppp-documents</code>, <code>commercial-documents</code>) but same upload/signed-URL pattern.</div>
+      <div class="item"><strong>PDF + email</strong>Same Resend account + PDF tooling. Templates per-platform.</div>
+      <div class="item"><strong>Search</strong>Two separate global-search indexes. Picker shows only what the viewer can access.</div>
+      <div class="item"><strong>Customer-form pattern</strong>Reused for Command Center color forms AND New Platform public bid submission. Token-gated, mobile-first.</div>
+    </div>
+  </div>
+
+  <!-- BUILD ORDER -->
+  <div class="section-title">7 · Build order (next 5–6 weeks)</div>
+  <div class="build-order">
+    <h3>📋 Phase by phase — what ships when</h3>
+    <ol>
+      <li><strong>Now (Command Center):</strong> Materials ordering page speed pass — completes the residential side polish. <em>(bills to PPP invoice)</em></li>
+      <li><strong>Phase 0 — Foundation (1–2 days):</strong> Platform picker, RBAC fork, bottom-left switcher, shared shell wiring, <code>commercial_*</code> table conventions, <code>commercial_audit_log</code>. <em>Blocks everything else.</em></li>
+      <li><strong>Phase 1 — Account Management (2–3 days):</strong> Commercial accounts + contacts + documents + perf dashboard.</li>
+      <li><strong>Phase 2 — Opportunity (3–4 days):</strong> Bid pipeline, plans/specs, inbound email parser, online bid submission form.</li>
+      <li><strong>Phase 3 — Estimating &amp; Proposal (3–4 days):</strong> Estimate workbench, proposal versions, RFIs, bid outcome.</li>
+      <li><strong>Phase 4 — Contract Award (1–2 days):</strong> Contract entry, submittals planning, procurement, requirements.</li>
+      <li><strong>Phase 5 — Project Setup (2 days):</strong> Project record, team picker (multi-PM), documents, submittals approval flow.</li>
+      <li><strong>Phase 8 — Billing &amp; Financials (3–4 days) ⬆️ PULLED UP:</strong> Multi-invoice with start/end + paid filter (Karan's explicit ask). Lets PPP invoice commercial work the moment a contract is signed.</li>
+      <li><strong>Phase 6 — Project Execution (4–5 days):</strong> Daily reports (mobile + offline), labor/material/equipment/sub, quality, punchlist, schedule. Heaviest.</li>
+      <li><strong>Phase 7 — Change Management (2 days):</strong> CO pipeline, impact tracking, contract revision rollup.</li>
+      <li><strong>Phase 9 — Closeout (2 days):</strong> Punchlists, warranty docs, lessons learned.</li>
+      <li><strong>Executive Dashboards (3 days):</strong> Sales / Operations / Financial / Workforce / Company Scorecard.</li>
+    </ol>
+    <p style="font-size:12px;color:var(--ppp-charcoal-500);margin:14px 0 0 0;">
+      <strong>Total:</strong> ~26–34 build-days for full scope. MVP cutline (Phases 0+1+2+8) ships in ~2 weeks if we need to compress.
+    </p>
+  </div>
+
+  <div class="footnote">
+    PPP Platform Architecture · Prepared for Alex review · June 12, 2026 · Plan doc: <code>docs/NEW_PLATFORM_PLAN.md</code> in the Command Center repo
+  </div>
+
+</div>
+</body>
+</html>
