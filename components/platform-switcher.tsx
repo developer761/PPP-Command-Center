@@ -13,9 +13,12 @@ import { PLATFORM_SET_ROUTE, type Platform } from "@/lib/platform-cookie";
  */
 export default function PlatformSwitcher({ current }: { current: Platform }) {
   const [busy, setBusy] = useState(false);
+  // Internal slug stays `new_platform` (DB column + cookie value); only
+  // user-facing label changes — renamed to "Commercial Command Center"
+  // (Karan 2026-06-13) so PPP staff can tell the two platforms apart.
   const target: Platform = current === "command_center" ? "new_platform" : "command_center";
-  const currentLabel = current === "command_center" ? "Command Center" : "New Platform";
-  const targetLabel = target === "command_center" ? "Command Center" : "New Platform";
+  const currentLabel = current === "command_center" ? "Command Center" : "Commercial Command Center";
+  const targetLabel = target === "command_center" ? "Command Center" : "Commercial Command Center";
 
   const onClick = async () => {
     if (busy) return;

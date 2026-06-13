@@ -83,8 +83,8 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             height={60}
             priority
           />
-          <div className="font-condensed mt-3 text-[11px] font-bold tracking-[0.18em] uppercase text-emerald-700">
-            New Platform
+          <div className="font-condensed mt-3 text-[10px] font-bold tracking-[0.16em] uppercase text-emerald-700 leading-tight">
+            Commercial<br />Command Center
           </div>
         </Link>
         {onNavigate && (

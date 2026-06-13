@@ -114,7 +114,7 @@ export default function PlatformPicker({ email }: { email: string }) {
                   Phase 0
                 </span>
               </div>
-              <h2 className="text-lg font-bold text-ppp-charcoal mb-1">New Platform</h2>
+              <h2 className="text-lg font-bold text-ppp-charcoal mb-1">Commercial Command Center</h2>
               <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
                 Bidding + project lifecycle (9 phases: account → opportunity → estimating → contract → execution → close).
                 Postgres-native, in early build.
