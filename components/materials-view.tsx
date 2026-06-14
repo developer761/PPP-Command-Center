@@ -887,7 +887,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
             ) : (
               <Virtuoso
                 data={visibleJobs}
-                style={{ height: 640 }}
+                // Adaptive container height: caps at 640px (matches the prior
+                // max-h-[640px] for long lists) but shrinks to roughly fit
+                // shorter lists so workers with 3 WOs don't see a 640px
+                // mostly-empty white box. Estimate 120px per row — slightly
+                // high on average so short lists don't end up with an
+                // internal scrollbar.
+                style={{ height: Math.min(640, Math.max(visibleJobs.length, 1) * 120 + 8) }}
                 components={VIRTUOSO_COMPONENTS}
                 /* `computeItemKey` keeps React keys stable across sort/filter
                  * changes — without it, Virtuoso would key by index and
