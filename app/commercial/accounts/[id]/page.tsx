@@ -20,6 +20,15 @@ import {
   assignmentRoleLabel,
   type AssignmentRole,
 } from "@/lib/commercial/accounts/assignments";
+import {
+  listAccountDocuments,
+  archiveDocument,
+  documentCategoryLabel,
+  expiryStatus,
+  type DocumentCategory,
+  type CommercialAccountDocument,
+} from "@/lib/commercial/accounts/documents";
+import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
 
 export const dynamic = "force-dynamic";
 
@@ -108,7 +117,7 @@ export default async function CommercialAccountDetailPage({
       {tab === "info" && <InfoTab account={account} />}
       {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
-      {tab === "documents" && <ComingSoonTab label="Documents" phase="next" />}
+      {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
     </div>
   );
@@ -589,6 +598,36 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
         </form>
       </section>
 
+      {/* Symbol key — Karan 2026-06-14: every banner / pill icon explained
+          inline so Alex never has to ask "what does ★ mean?" Stays compact;
+          tooltips carry the long form for each. */}
+      <details className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden group" open={team.length === 0}>
+        <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between">
+          <span>What do the symbols mean?</span>
+          <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+        </summary>
+        <ul className="px-4 py-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700 space-y-1.5">
+          <li>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-600 text-white border-emerald-700 mr-1">
+              ★ Sales Rep
+            </span>
+            Primary holder of this role — the &ldquo;THE&rdquo; person platform-wide. One per (account, role).
+          </li>
+          <li>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200 mr-1">
+              Sales Rep
+            </span>
+            Standard role assignment without primary status — supports the primary or covers when they&apos;re out.
+          </li>
+          <li className="text-amber-800">
+            <strong>⚠️ Amber banner</strong> · a role has people but nobody marked primary. Re-add someone in that role with &ldquo;Mark as primary&rdquo; checked.
+          </li>
+          <li className="text-rose-700">
+            <strong>🚫 Rose banner</strong> · no PPP staff have Commercial Command Center access yet. Grant on the admin Users page.
+          </li>
+        </ul>
+      </details>
+
       {/* Current team */}
       {team.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
@@ -693,6 +732,243 @@ function TeamRow({
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ───────────────────── Documents tab ─────────────────────
+
+async function archiveDocumentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const account_id = String(formData.get("account_id") ?? "");
+  const document_id = String(formData.get("document_id") ?? "");
+  const result = await archiveDocument(document_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=documents&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/accounts/${account_id}?tab=documents`);
+}
+
+async function DocumentsTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
+  const grouped = await listAccountDocuments(accountId);
+  const hasAnyDocs = grouped.some((g) => g.active || g.history.length > 0);
+
+  // Pre-compute expiry summary so the heads-up banner can fire when needed.
+  const expiringSoon = grouped
+    .map((g) => ({ category: g.category, doc: g.active }))
+    .filter((g) => g.doc && expiryStatus(g.doc.expires_at).status === "soon");
+  const expired = grouped
+    .map((g) => ({ category: g.category, doc: g.active }))
+    .filter((g) => g.doc && expiryStatus(g.doc.expires_at).status === "expired");
+
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      {expired.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          <strong>⏰ Expired:</strong>{" "}
+          {expired.map((e) => documentCategoryLabel(e.category)).join(", ")}. Upload a new version to clear.
+        </div>
+      )}
+      {expiringSoon.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          <strong>⚠️ Expiring soon:</strong>{" "}
+          {expiringSoon.map((e) => documentCategoryLabel(e.category)).join(", ")}. PPP will be blocked from working
+          if these lapse on a covered contract.
+        </div>
+      )}
+
+      {/* Upload form — client-side multipart POST to the API route. Server
+          actions can't currently accept binary File payloads cleanly, so
+          we use a small client form that posts via fetch + reloads on
+          success. */}
+      <CommercialDocumentUploadForm accountId={accountId} />
+
+      {/* Symbol key — what every badge means */}
+      <details className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden group">
+        <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between">
+          <span>What do the badges mean?</span>
+          <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+        </summary>
+        <ul className="px-4 py-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700 space-y-1.5">
+          <li>
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200 mr-1">
+              v3
+            </span>
+            Active version. Highest version number wins. Older versions stack into &ldquo;History&rdquo;.
+          </li>
+          <li>
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-100 text-emerald-800 border-emerald-200 mr-1">
+              ✓ Valid 6mo
+            </span>
+            Document is in good standing &mdash; expires more than 30 days out (or never).
+          </li>
+          <li className="text-amber-800">
+            <strong>⚠️ Expires in N days</strong> &middot; within 30 days. Plan a renewal now.
+          </li>
+          <li className="text-rose-700">
+            <strong>⏰ Expired N days ago</strong> &middot; document is past its expiry date. Upload a new version.
+          </li>
+          <li className="text-ppp-charcoal-500">
+            <strong>Archived</strong> &middot; superseded by a newer version. Still downloadable for history.
+          </li>
+        </ul>
+      </details>
+
+      {/* Per-category cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {grouped.map((g) => (
+          <DocumentCategoryCard key={g.category} group={g} accountId={accountId} />
+        ))}
+      </div>
+
+      {!hasAnyDocs && (
+        <p className="text-center text-[12px] text-ppp-charcoal-500 italic">
+          No documents uploaded yet. Start with the COI &mdash; that&apos;s the one PPP needs first.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DocumentCategoryCard({
+  group,
+  accountId,
+}: {
+  group: { category: DocumentCategory; active: CommercialAccountDocument | null; history: CommercialAccountDocument[] };
+  accountId: string;
+}) {
+  const { category, active, history } = group;
+  return (
+    <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
+        <h3 className="text-sm font-bold text-ppp-charcoal">{documentCategoryLabel(category)}</h3>
+      </div>
+      {active ? (
+        <DocumentRow doc={active} accountId={accountId} isActive />
+      ) : (
+        <div className="px-4 py-5 text-center text-[12px] text-ppp-charcoal-500">
+          No active document. Upload one above.
+        </div>
+      )}
+      {history.length > 0 && (
+        <details className="border-t border-ppp-charcoal-100">
+          <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none">
+            History ({history.length})
+          </summary>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {history.map((h) => (
+              <li key={h.id}>
+                <DocumentRow doc={h} accountId={accountId} isActive={false} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
+
+function DocumentRow({
+  doc,
+  accountId,
+  isActive,
+}: {
+  doc: CommercialAccountDocument;
+  accountId: string;
+  isActive: boolean;
+}) {
+  const exp = expiryStatus(doc.expires_at);
+  const expBadge = (() => {
+    if (exp.status === "expired") {
+      const n = Math.abs(exp.daysUntil ?? 0);
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-rose-50 text-rose-700 border-rose-200">
+          ⏰ Expired {n}d ago
+        </span>
+      );
+    }
+    if (exp.status === "soon") {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 text-amber-800 border-amber-200">
+          ⚠️ Expires in {exp.daysUntil}d
+        </span>
+      );
+    }
+    if (doc.expires_at) {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+          ✓ Valid
+        </span>
+      );
+    }
+    return null;
+  })();
+
+  const sizeLabel = (() => {
+    if (!doc.size_bytes) return null;
+    const kb = doc.size_bytes / 1024;
+    if (kb < 1024) return `${Math.round(kb)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
+  })();
+
+  return (
+    <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+            v{doc.version}
+          </span>
+          {expBadge}
+          {!isActive && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-100">
+              Archived
+            </span>
+          )}
+        </div>
+        <a
+          href={`/api/commercial/accounts/${accountId}/documents/${doc.id}/download`}
+          className="text-sm font-medium text-emerald-700 hover:text-emerald-800 break-all"
+        >
+          {doc.file_name}
+        </a>
+        <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
+          {sizeLabel && <span>{sizeLabel}</span>}
+          {sizeLabel && <span aria-hidden>·</span>}
+          <span>Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}</span>
+          {doc.expires_at && (
+            <>
+              <span aria-hidden>·</span>
+              <span>Expires {new Date(doc.expires_at).toLocaleDateString()}</span>
+            </>
+          )}
+        </div>
+        {doc.notes && (
+          <p className="text-[11px] text-ppp-charcoal-600 italic mt-1">{doc.notes}</p>
+        )}
+      </div>
+      {isActive && !doc.archived && (
+        <form action={archiveDocumentAction} className="shrink-0">
+          <input type="hidden" name="account_id" value={accountId} />
+          <input type="hidden" name="document_id" value={doc.id} />
+          <button
+            type="submit"
+            className="px-3 py-1.5 text-[12px] font-medium text-ppp-charcoal-700 border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50 min-h-[36px]"
+            title="Archive without replacement. File stays downloadable in History."
+          >
+            Archive
+          </button>
+        </form>
+      )}
     </div>
   );
 }
