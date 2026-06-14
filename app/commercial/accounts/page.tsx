@@ -4,6 +4,12 @@ import {
   listCommercialAccountIndustries,
   type CommercialAccount,
 } from "@/lib/commercial/accounts/db";
+import {
+  listAccountOverviews,
+  relativeActivity,
+  activityTone,
+  type AccountOverview,
+} from "@/lib/commercial/accounts/overview";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +40,10 @@ export default async function CommercialAccountsPage({
     listCommercialAccounts({ search, rating, compliance, industry }),
     listCommercialAccountIndustries(),
   ]);
+  // Bulk-fetch the Account 360 overview rows so each list row can show
+  // its 1-line snippet (contacts / team / docs / last activity) without
+  // an N+1 round-trip. Missing rows fall back to placeholders in the UI.
+  const overviewsById = await listAccountOverviews(accounts.map((a) => a.id));
 
   return (
     <div className="space-y-6">
@@ -162,7 +172,7 @@ export default async function CommercialAccountsPage({
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {accounts.map((a) => (
-              <AccountRow key={a.id} account={a} />
+              <AccountRow key={a.id} account={a} overview={overviewsById.get(a.id) ?? null} />
             ))}
           </ul>
         </div>
@@ -171,8 +181,18 @@ export default async function CommercialAccountsPage({
   );
 }
 
-function AccountRow({ account }: { account: CommercialAccount }) {
+function AccountRow({ account, overview }: { account: CommercialAccount; overview: AccountOverview | null }) {
   const cityState = [account.billing_city, account.billing_state].filter(Boolean).join(", ");
+  const activity = overview ? relativeActivity(overview.last_activity_at) : null;
+  const tone = overview ? activityTone(overview.last_activity_at) : null;
+  const activityCls =
+    tone === "ok"
+      ? "text-emerald-700"
+      : tone === "stale"
+      ? "text-amber-700"
+      : tone === "cold"
+      ? "text-rose-700"
+      : "text-ppp-charcoal-500";
   return (
     <li>
       <Link
@@ -204,6 +224,33 @@ function AccountRow({ account }: { account: CommercialAccount }) {
                 </>
               )}
             </div>
+            {overview && (
+              <div className="text-[11px] mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap text-ppp-charcoal-500">
+                <span>
+                  <strong className="text-ppp-charcoal">{overview.contact_count}</strong> contact{overview.contact_count === 1 ? "" : "s"}
+                </span>
+                <span aria-hidden>·</span>
+                <span>
+                  <strong className="text-ppp-charcoal">{overview.ppp_team_count}</strong> on team
+                </span>
+                <span aria-hidden>·</span>
+                <span>
+                  <strong className="text-ppp-charcoal">{overview.active_document_count}</strong> doc{overview.active_document_count === 1 ? "" : "s"}
+                  {overview.expired_document_count > 0 && (
+                    <span className="text-rose-700"> ({overview.expired_document_count} expired)</span>
+                  )}
+                  {overview.expired_document_count === 0 && overview.expiring_soon_document_count > 0 && (
+                    <span className="text-amber-700"> ({overview.expiring_soon_document_count} expiring)</span>
+                  )}
+                </span>
+                {activity && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span className={activityCls}>Active {activity}</span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 shrink-0 mt-0.5" aria-hidden>
             <path d="M9 18l6-6-6-6" />

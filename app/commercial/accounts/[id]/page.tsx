@@ -29,6 +29,12 @@ import {
   type CommercialAccountDocument,
 } from "@/lib/commercial/accounts/documents";
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
+import {
+  getAccountOverview,
+  relativeActivity,
+  activityTone,
+  type AccountOverview,
+} from "@/lib/commercial/accounts/overview";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +68,11 @@ export default async function CommercialAccountDetailPage({
   const account = await getCommercialAccount(id);
   if (!account) notFound();
 
+  // Account 360 overview — counts pulled from the Postgres view in one
+  // round-trip. Falls back to nulls if the view migration hasn't been
+  // pasted yet (graceful degradation; the KPI strip just hides).
+  const overview = await getAccountOverview(account.id);
+
   return (
     <div className="space-y-5">
       <header>
@@ -89,6 +100,13 @@ export default async function CommercialAccountDetailPage({
           </div>
         </div>
       </header>
+
+      {/* Account 360 KPI strip — Karan 2026-06-14. One-glance summary of
+          every count + last-activity tone. Blue tiles = live counts (Phase
+          1). Grey tiles = "coming with Phase N" placeholders for the bid /
+          invoiced / paid / balance numbers that fill in when later phases
+          ship. The strip never changes shape — the data just gets richer. */}
+      <AccountOverviewStrip overview={overview} />
 
       {/* Tab bar */}
       <nav className="border-b border-ppp-charcoal-100">
@@ -1030,6 +1048,155 @@ function Field({
         <span className="text-ppp-charcoal-300 italic text-[12px]">not set</span>
       )}
     </div>
+  );
+}
+
+// ───────────────────── Account 360 strip ─────────────────────
+
+function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }) {
+  // Graceful no-op if the view migration hasn't been applied yet. The page
+  // still renders — the strip just hides until 024 is pasted.
+  if (!overview) return null;
+
+  const activity = relativeActivity(overview.last_activity_at);
+  const tone = activityTone(overview.last_activity_at);
+  const activityClass =
+    tone === "ok"
+      ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+      : tone === "stale"
+      ? "text-amber-700 bg-amber-50 border-amber-200"
+      : "text-rose-700 bg-rose-50 border-rose-200";
+
+  // Document health pip — green if no expired & no expiring-soon, amber
+  // if expiring-soon, rose if any expired.
+  const docHealth =
+    overview.expired_document_count > 0
+      ? { label: `${overview.expired_document_count} expired`, cls: "text-rose-700" }
+      : overview.expiring_soon_document_count > 0
+      ? { label: `${overview.expiring_soon_document_count} expiring`, cls: "text-amber-700" }
+      : overview.active_document_count > 0
+      ? { label: "all current", cls: "text-emerald-700" }
+      : { label: "none on file", cls: "text-ppp-charcoal-500" };
+
+  return (
+    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h2 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+          Account 360
+        </h2>
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${activityClass}`}
+          title={`Most recent activity on this account (contact added, doc uploaded, team change). Last touched: ${overview.last_activity_at}`}
+        >
+          Activity: {activity}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <KpiTile
+          tone="live"
+          num={overview.contact_count}
+          label="Contacts"
+          href={`#contacts`}
+        />
+        <KpiTile
+          tone="live"
+          num={overview.ppp_team_count}
+          label="PPP team"
+        />
+        <KpiTile
+          tone="live"
+          num={overview.active_document_count}
+          label="Documents"
+          sub={docHealth.label}
+          subCls={docHealth.cls}
+        />
+        <KpiTile
+          tone="placeholder"
+          label="Total bid"
+          placeholder="Phase 2"
+        />
+        <KpiTile
+          tone="placeholder"
+          label="Invoiced"
+          placeholder="Phase 8"
+        />
+        <KpiTile
+          tone="placeholder"
+          label="Paid"
+          placeholder="Phase 8"
+        />
+        <KpiTile
+          tone="placeholder"
+          label="Balance"
+          placeholder="Phase 8"
+        />
+        <KpiTile
+          tone="placeholder"
+          label="Open opps"
+          placeholder="Phase 2"
+        />
+      </div>
+    </section>
+  );
+}
+
+function KpiTile({
+  tone,
+  num,
+  label,
+  sub,
+  subCls,
+  placeholder,
+  href,
+}: {
+  tone: "live" | "placeholder";
+  num?: number | null;
+  label: string;
+  sub?: string;
+  subCls?: string;
+  placeholder?: string;
+  href?: string;
+}) {
+  const content = (
+    <>
+      <div className="flex items-baseline justify-between gap-1">
+        {tone === "live" ? (
+          <span className="text-xl sm:text-2xl font-bold text-ppp-charcoal leading-none">
+            {(num ?? 0).toLocaleString()}
+          </span>
+        ) : (
+          <span className="text-[11px] font-medium text-ppp-charcoal-400 italic">
+            Coming with {placeholder}
+          </span>
+        )}
+      </div>
+      <div className="mt-1.5 flex items-baseline justify-between gap-1">
+        <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+          {label}
+        </span>
+        {sub && (
+          <span className={`text-[10px] sm:text-[11px] font-medium ${subCls ?? "text-ppp-charcoal-500"}`}>
+            {sub}
+          </span>
+        )}
+      </div>
+    </>
+  );
+
+  const cls =
+    tone === "live"
+      ? "bg-emerald-50/50 border-emerald-200"
+      : "bg-ppp-charcoal-50/50 border-ppp-charcoal-100";
+
+  return href ? (
+    <a
+      href={href}
+      className={`block rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 transition-colors hover:bg-emerald-50 ${cls}`}
+    >
+      {content}
+    </a>
+  ) : (
+    <div className={`rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 ${cls}`}>{content}</div>
   );
 }
 
