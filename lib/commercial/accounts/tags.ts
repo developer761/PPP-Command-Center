@@ -100,7 +100,9 @@ export async function listAllDistinctTags(): Promise<string[]> {
 
 /** Attach a tag to an account. Returns the new junction row id.
  *  Idempotent: if the same tag (case-insensitively) already attached,
- *  returns a friendly error rather than a constraint violation. */
+ *  returns a friendly error rather than a constraint violation.
+ *  Refuses to attach to a soft-deleted account — otherwise a restored
+ *  account would come back with phantom tags. */
 export async function addAccountTag(
   accountId: string,
   rawTag: string,
@@ -113,6 +115,16 @@ export async function addAccountTag(
   }
 
   const sb = commercialDb();
+  // Guard against tagging a soft-deleted account.
+  const { data: account } = await sb
+    .from("commercial_accounts")
+    .select("id, deleted_at")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (!account || account.deleted_at) {
+    return { ok: false, error: "Account not found." };
+  }
+
   const { data, error } = await sb
     .from("commercial_account_tags")
     .insert({
@@ -135,8 +147,11 @@ export async function addAccountTag(
 }
 
 /** Remove a tag from an account by id. Hard delete on the junction;
- *  audit log captures the before snapshot. */
+ *  audit log captures the before snapshot. Requires the caller to pass
+ *  the expected account_id — guards against a stray tag UUID from one
+ *  account being used to delete on another (IDOR). */
 export async function removeAccountTag(
+  accountId: string,
   tagId: string,
   removedByUserId?: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -145,13 +160,15 @@ export async function removeAccountTag(
     .from("commercial_account_tags")
     .select("*")
     .eq("id", tagId)
+    .eq("account_id", accountId)
     .maybeSingle();
   if (!before) return { ok: false, error: "Tag not found." };
 
   const { error } = await sb
     .from("commercial_account_tags")
     .delete()
-    .eq("id", tagId);
+    .eq("id", tagId)
+    .eq("account_id", accountId);
   if (error) return { ok: false, error: error.message };
 
   await logDelete("commercial_account_tags", tagId, before, removedByUserId);

@@ -65,6 +65,8 @@ export default async function CommercialAccountDetailPage({
   searchParams: SP;
 }) {
   const { id } = await params;
+  // UUID gate — refuse garbage path segments before they reach the DB.
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const sp = await searchParams;
   const tab = (sp.tab && TABS.some((t) => t.key === sp.tab) ? sp.tab : "info") as
     | "info"
@@ -182,7 +184,9 @@ async function removeTagAction(formData: FormData) {
   if (!user) redirect("/");
   const account_id = String(formData.get("account_id") ?? "");
   const tag_id = String(formData.get("tag_id") ?? "");
-  await removeAccountTag(tag_id, user.id);
+  // The lib verifies (tag_id, account_id) pairing so a stray tag UUID
+  // from another account can't be deleted from this one.
+  await removeAccountTag(account_id, tag_id, user.id);
   redirect(`/commercial/accounts/${account_id}?tab=info`);
 }
 
@@ -248,7 +252,7 @@ function TagsCard({
                 <button
                   type="submit"
                   aria-label={`Remove ${t.tag}`}
-                  className="-mr-1 ml-0.5 px-1 text-emerald-700/60 hover:text-emerald-900"
+                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[32px] min-w-[32px] inline-flex items-center justify-center text-emerald-700/60 hover:text-emerald-900 touch-manipulation"
                 >
                   ✕
                 </button>
