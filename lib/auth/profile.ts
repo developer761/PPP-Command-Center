@@ -58,18 +58,46 @@ function adminClient() {
 }
 
 /** Read a profile by Supabase user id. Returns null if not yet synced. */
+/** Module-scope profile cache. Every page render calls getProfileByUserId
+ *  (auth gates, view-as resolution, etc.) — those reads were all hitting
+ *  Supabase (~50-100ms each). The profile changes rarely (admin grants
+ *  access, user updates last-login timestamp), so a 30-second TTL is a
+ *  big win with negligible staleness.
+ *
+ *  Karan 2026-06-14 speed pass. Invalidate on upsertProfile so a fresh
+ *  login + role change is seen immediately on next page hit. */
+type ProfileCacheEntry = { promise: Promise<Profile | null>; expiresAt: number };
+const profileCache = new Map<string, ProfileCacheEntry>();
+const PROFILE_CACHE_TTL_MS = 30_000;
+
+function invalidateProfileCache(userId: string): void {
+  profileCache.delete(userId);
+}
+
 export async function getProfileByUserId(userId: string): Promise<Profile | null> {
-  const sb = adminClient();
-  const { data, error } = await sb
-    .from("profiles")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) {
-    console.error("[auth] getProfile failed:", error.message);
-    return null;
-  }
-  return data as Profile | null;
+  const now = Date.now();
+  const hit = profileCache.get(userId);
+  if (hit && hit.expiresAt > now) return hit.promise;
+  const promise = (async () => {
+    const sb = adminClient();
+    const { data, error } = await sb
+      .from("profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) {
+      console.error("[auth] getProfile failed:", error.message);
+      return null;
+    }
+    return data as Profile | null;
+  })();
+  profileCache.set(userId, { promise, expiresAt: now + PROFILE_CACHE_TTL_MS });
+  // If the fetch rejects, drop the cache entry so the next call retries
+  // instead of returning the same rejection for 30 seconds.
+  promise.catch(() => {
+    if (profileCache.get(userId)?.promise === promise) profileCache.delete(userId);
+  });
+  return promise;
 }
 
 /**
@@ -110,6 +138,10 @@ export async function upsertProfile(input: {
     return { ok: false, error: error.message };
   }
 
+  // Speed pass: invalidate the cached profile so the next getProfileByUserId
+  // call sees the fresh row (last_login_at, possibly is_admin change, etc.).
+  invalidateProfileCache(input.user_id);
+
   // Bootstrap New Platform access for canonical PPP admins. Idempotent:
   // only sets TRUE; never downgrades. After this fires the user sees the
   // picker on the next page render. Failure logs + falls through (the
@@ -123,6 +155,8 @@ export async function upsertProfile(input: {
     if (npErr) {
       console.warn("[auth] upsertProfile bootstrap NP access failed:", npErr.message);
     }
+    // Second cache invalidation in case the bootstrap UPDATE landed.
+    invalidateProfileCache(input.user_id);
   }
 
   return { ok: true };

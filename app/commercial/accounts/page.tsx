@@ -82,7 +82,7 @@ export default async function CommercialAccountsPage({
             type="search"
             defaultValue={search ?? ""}
             placeholder="Company name or DBA"
-            className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
           />
         </div>
         <div>
@@ -93,7 +93,7 @@ export default async function CommercialAccountsPage({
             id="rating"
             name="rating"
             defaultValue={rating ?? ""}
-            className="px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+            className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
           >
             <option value="">Any</option>
             <option value="A">A</option>
@@ -109,7 +109,7 @@ export default async function CommercialAccountsPage({
             id="compliance"
             name="compliance"
             defaultValue={compliance ?? ""}
-            className="px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+            className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
           >
             <option value="">Any</option>
             <option value="green">Green</option>
@@ -127,7 +127,7 @@ export default async function CommercialAccountsPage({
               id="industry"
               name="industry"
               defaultValue={industry ?? ""}
-              className="px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+              className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
             >
               <option value="">Any</option>
               {industries.map((ind) => (
