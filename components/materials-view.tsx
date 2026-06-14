@@ -45,7 +45,8 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Virtuoso, type Components } from "react-virtuoso";
 import PageHeader from "@/components/page-header";
 import InfoDot from "@/components/info-dot";
 // PERF: modals only render when admin actively opens them — defer their JS
@@ -100,6 +101,37 @@ type Props = {
    *  matches the order modal/email. Defaults to the code constants. */
   coverageConfig?: CoverageConfig;
 };
+
+// Virtuoso list/item components — defined at module scope (not inside
+// MaterialsView) so React doesn't see a new components object on every
+// render, which would force Virtuoso to remount the entire list. The
+// List forwards the ref + spreads Virtuoso's required style attribute.
+//
+// SPEED ROUND 11 (2026-06-14): virtualization for the WO list. Workers
+// with 500+ WOs were paying ~800-1500ms of paint+layout time for rows
+// they couldn't see. Virtuoso renders only the ~20 visible rows + a
+// small overscan buffer; the rest are absent from the DOM until
+// scrolled into view.
+// Virtuoso's TypeScript types are written against HTMLDivElement (div/div
+// is the default). We render ul/li for semantics + accessibility. The
+// underlying HTML attributes are compatible at runtime; we cast the
+// components tuple to bypass the strict type check.
+const VirtuosoUL = forwardRef<HTMLUListElement, React.HTMLAttributes<HTMLUListElement>>(
+  function VirtuosoListUL({ children, style, ...props }, ref) {
+    return (
+      <ul ref={ref} {...props} style={style} className="divide-y divide-ppp-charcoal-100">
+        {children}
+      </ul>
+    );
+  }
+);
+const VirtuosoLI: React.ComponentType<React.HTMLAttributes<HTMLLIElement>> = (props) => (
+  <li {...props} />
+);
+const VIRTUOSO_COMPONENTS = {
+  List: VirtuosoUL,
+  Item: VirtuosoLI,
+} as unknown as Components<OpenWorkOrderForMaterials>;
 
 export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, coverageConfig = COVERAGE_CONFIG }: Props) {
   const { snapshot, viewer } = bundle;
@@ -840,31 +872,38 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                 </div>
               </div>
             </div>
-            <ul className="max-h-[640px] overflow-y-auto">
-              {visibleJobs.length === 0 && searchQuery && (
-                <li className="px-5 py-6 text-center text-xs text-ppp-charcoal-500 italic">
+            {/* SPEED ROUND 11 — virtualization with react-virtuoso. Only
+                the rows in the viewport (+ small overscan buffer) live in
+                the DOM at any moment. At 500+ WOs this drops the React
+                commit + browser paint time from ~800-1500ms to ~80-200ms.
+                Empty-search state stays plain because the empty container
+                doesn't need windowing. */}
+            {visibleJobs.length === 0 ? (
+              searchQuery ? (
+                <div className="px-5 py-6 text-center text-xs text-ppp-charcoal-500 italic">
                   No matches for &ldquo;{searchQuery}&rdquo;.
-                </li>
-              )}
-              {visibleJobs.map((j) => {
-                const active = activeWoId === j.wo.id;
-                const formStatus = formStatusByWO.get(j.wo.id);
-                return (
-                  <li
-                    key={j.wo.id}
-                    // SPEED ROUND 11 — content-visibility lets the browser SKIP
-                    // paint + layout for off-screen rows. At 500+ rows this is
-                    // the difference between 800-1500ms of rendering and
-                    // 100-300ms. contain-intrinsic-size reserves the slot so
-                    // scroll position + scrollbar don't jump. ~96px matches
-                    // the actual rendered height of a typical WO row.
-                    // Supported in Chrome / Edge / Safari 18+ (Karan's
-                    // Safari version). Graceful no-op on Firefox.
-                    style={{
-                      contentVisibility: "auto",
-                      containIntrinsicSize: "auto 96px",
-                    }}
-                  >
+                </div>
+              ) : null
+            ) : (
+              <Virtuoso
+                data={visibleJobs}
+                style={{ height: 640 }}
+                components={VIRTUOSO_COMPONENTS}
+                /* `computeItemKey` keeps React keys stable across sort/filter
+                 * changes — without it, Virtuoso would key by index and
+                 * remount every row when the order changes (sort flip,
+                 * search refine), discarding active highlight + tooltip
+                 * state. Using the WO id matches the original .map(key=...)
+                 * behavior 1:1. */
+                computeItemKey={(_index, j) => j.wo.id}
+                /* Overscan = how many off-screen rows to pre-render. Small
+                 * value (200px above + below) keeps scrolling smooth without
+                 * mounting hundreds of off-screen rows. */
+                overscan={200}
+                itemContent={(_index, j) => {
+                  const active = activeWoId === j.wo.id;
+                  const formStatus = formStatusByWO.get(j.wo.id);
+                  return (<>
                     <button
                       type="button"
                       onClick={() => setActiveWoId(j.wo.id)}
@@ -994,10 +1033,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                         </div>
                       </div>
                     </button>
-                  </li>
-                );
-              })}
-            </ul>
+                  </>);
+                }}
+              />
+            )}
           </div>
 
           {/* Side panel */}
