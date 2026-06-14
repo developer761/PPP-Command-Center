@@ -264,22 +264,21 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Sort selector — Karan 2026-06-03: default flipped to "latest job start
-  // first" so the next-up materials needs surface at the top. (Was "soonest
-  // first" but Alex's actual workflow looks at the back end of the schedule
-  // because near-term jobs are usually already ordered.)
-  // Katie 2026-06-12: default sort is "smart" — upcoming Start Date first,
-  // falls back to Desired Start Date, then Created Date. So PPP sees the
-  // most actionable WOs at the top regardless of which date is populated.
-  type SortMode = "smart-start" | "close-desc" | "close-asc" | "created-desc" | "created-asc";
+  // Sort selector — Karan 2026-06-14: default is "Latest close date" so the
+  // newest WOs always surface first. The smart-start cascade and other modes
+  // stay available in the dropdown for power users who want a different view.
+  // History: Katie 2026-06-12 had asked for "smart-start" (upcoming Start
+  // Date first) as default, but Karan overrode 2026-06-14 — newest-first is
+  // the workflow he wants. Keeping smart-start as a one-click option.
+  type SortMode = "close-desc" | "smart-start" | "close-asc" | "created-desc" | "created-asc";
   const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
-    { value: "smart-start", label: "Upcoming start (smart)" },
     { value: "close-desc", label: "Latest close date" },
+    { value: "smart-start", label: "Upcoming start (smart)" },
     { value: "close-asc", label: "Soonest close date" },
     { value: "created-desc", label: "Newest work order" },
     { value: "created-asc", label: "Oldest work order" },
   ];
-  const [sortMode, setSortMode] = useState<SortMode>("smart-start");
+  const [sortMode, setSortMode] = useState<SortMode>("close-desc");
 
   const visibleJobs = useMemo<OpenWorkOrderForMaterials[]>(() => {
     // Search filter first — typically narrows to a handful of WOs.

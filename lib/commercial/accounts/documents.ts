@@ -197,6 +197,39 @@ export async function uploadDocument(
     return { ok: false, error: `Storage upload failed: ${upload.error.message}` };
   }
 
+  // Archive the prior active doc FIRST so the partial unique index
+  // (migration 023: at most one non-archived row per (account, category))
+  // doesn't block our insert. Audit 2026-06-14: previously we inserted
+  // first and archived after — that worked for sequential uploads but a
+  // concurrent second upload would race for the same prior row and end
+  // up with two non-archived rows for the same category. Doing it in
+  // this order means: a concurrent second upload sees prior already
+  // archived → still inserts → both succeed cleanly with distinct
+  // version numbers and the index never fires.
+  if (priorRow) {
+    const archivedAt = new Date().toISOString();
+    const { data: archived } = await sb
+      .from("commercial_account_documents")
+      .update({
+        archived: true,
+        archived_at: archivedAt,
+        archived_by_user_id: input.uploaded_by_user_id,
+      })
+      .eq("id", priorRow.id)
+      .eq("archived", false) // race guard — only archive if still active
+      .select("*")
+      .maybeSingle();
+    if (archived) {
+      await logUpdate(
+        "commercial_account_documents",
+        priorRow.id,
+        priorRow,
+        archived,
+        input.uploaded_by_user_id
+      );
+    }
+  }
+
   // Insert the metadata row. If this fails, try to clean up the storage
   // upload so we don't leak orphan files.
   const { data: inserted, error: insertErr } = await sb
@@ -220,37 +253,20 @@ export async function uploadDocument(
   if (insertErr) {
     // Best-effort cleanup. Don't bubble the cleanup error to the caller.
     await sb.storage.from(STORAGE_BUCKET).remove([storageKey]).catch(() => undefined);
+    // The partial unique index would fire if another concurrent upload
+    // raced ahead — surface a friendly message instead of a raw constraint
+    // name.
+    if (insertErr.message?.toLowerCase().includes("commercial_account_documents_one_active")) {
+      return {
+        ok: false,
+        error: "Someone else uploaded the same category at the same time — refresh and try again.",
+      };
+    }
     return { ok: false, error: insertErr.message };
   }
 
   const newDoc = inserted as CommercialAccountDocument;
   await logInsert("commercial_account_documents", newDoc.id, newDoc, input.uploaded_by_user_id);
-
-  // Archive the prior active doc (if any). We do this AFTER the new row
-  // is solid so the account always has at least one active doc in this
-  // category if one already existed.
-  if (priorRow) {
-    const archivedAt = new Date().toISOString();
-    const { data: archived } = await sb
-      .from("commercial_account_documents")
-      .update({
-        archived: true,
-        archived_at: archivedAt,
-        archived_by_user_id: input.uploaded_by_user_id,
-      })
-      .eq("id", priorRow.id)
-      .select("*")
-      .single();
-    if (archived) {
-      await logUpdate(
-        "commercial_account_documents",
-        priorRow.id,
-        priorRow,
-        archived,
-        input.uploaded_by_user_id
-      );
-    }
-  }
 
   return { ok: true, document: newDoc };
 }
