@@ -27,6 +27,7 @@ export default async function CommercialAccountsPage({
 }) {
   const sp = await searchParams;
   const search = pickFirst(sp.q);
+  const justDeleted = pickFirst(sp.deleted) === "1";
   const rating = pickFirst(sp.rating) as "A" | "B" | "C" | undefined;
   const compliance = pickFirst(sp.compliance) as
     | "green"
@@ -277,6 +278,12 @@ export default async function CommercialAccountsPage({
           Filter
         </button>
       </form>
+
+      {justDeleted && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+          Account deleted. The record + every contact, document, and team assignment stays in the database — an admin can restore it.
+        </div>
+      )}
 
       {/* Quick-filter chips — Karan 2026-06-14 Batch 5a. One-click toggles
           driven by the URL so reload + bookmark survive. Each chip

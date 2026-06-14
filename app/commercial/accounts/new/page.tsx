@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createCommercialAccount } from "@/lib/commercial/accounts/mutations";
+import { findNearDuplicates } from "@/lib/commercial/accounts/duplicates";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,24 @@ async function createAction(formData: FormData) {
   };
   const company = get("company_name");
   if (!company) redirect("/commercial/accounts/new?error=name_required");
+
+  // Near-duplicate check — fire ONLY when user hasn't already confirmed
+  // they want to create anyway. Surfaces a warning above the form with
+  // links to the existing accounts + a "Create anyway" button.
+  const confirmedDuplicate = formData.get("confirm_duplicate") === "1";
+  if (!confirmedDuplicate) {
+    const duplicates = await findNearDuplicates(company);
+    if (duplicates.length > 0) {
+      const ids = duplicates.map((d) => d.id).join(",");
+      // Re-render the form with a warning. The user's typed name comes
+      // back via the URL so they don't lose it. Other fields are lost —
+      // acceptable since the duplicate check happens on submit and PPP
+      // staff will rarely hit this path twice.
+      redirect(
+        `/commercial/accounts/new?duplicate=${encodeURIComponent(ids)}&typed_name=${encodeURIComponent(company)}`
+      );
+    }
+  }
 
   const result = await createCommercialAccount({
     company_name: company,
@@ -69,10 +88,24 @@ async function createAction(formData: FormData) {
 export default async function NewCommercialAccountPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; duplicate?: string; typed_name?: string }>;
 }) {
   const sp = await searchParams;
   const errorMsg = sp.error;
+  const duplicateIds = sp.duplicate?.split(",").filter(Boolean) ?? [];
+  const typedName = sp.typed_name ?? "";
+
+  // Hydrate the duplicate-candidate previews if we're showing the warning.
+  let duplicateCandidates: Array<{ id: string; company_name: string; industry: string | null }> = [];
+  if (duplicateIds.length > 0) {
+    const { commercialDb } = await import("@/lib/commercial/db");
+    const { data } = await commercialDb()
+      .from("commercial_accounts")
+      .select("id, company_name, industry")
+      .in("id", duplicateIds)
+      .is("deleted_at", null);
+    duplicateCandidates = (data ?? []) as typeof duplicateCandidates;
+  }
 
   return (
     <div className="space-y-6">
@@ -97,9 +130,36 @@ export default async function NewCommercialAccountPage({
         </div>
       )}
 
+      {duplicateCandidates.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5 space-y-3">
+          <div className="text-sm font-semibold text-amber-800">
+            ⚠️ Possible duplicate{duplicateCandidates.length > 1 ? "s" : ""} found
+          </div>
+          <p className="text-[12px] text-amber-800/90 leading-relaxed">
+            We already have account{duplicateCandidates.length > 1 ? "s" : ""} on file with a similar name. Open the existing one if it&apos;s the same company — otherwise click <strong>Create anyway</strong> at the bottom of the form to proceed.
+          </p>
+          <ul className="space-y-1.5">
+            {duplicateCandidates.map((d) => (
+              <li key={d.id}>
+                <Link
+                  href={`/commercial/accounts/${d.id}`}
+                  className="inline-flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-800 font-medium"
+                >
+                  → {d.company_name}
+                  {d.industry && <span className="text-[11px] text-ppp-charcoal-500">({d.industry})</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <form action={createAction} className="space-y-5 max-w-2xl">
+        {/* Pass-through flag so a second submit after the warning skips
+            the duplicate check. */}
+        {duplicateCandidates.length > 0 && <input type="hidden" name="confirm_duplicate" value="1" />}
         <Section title="Identity">
-          <Field id="company_name" label="Company name *" required />
+          <Field id="company_name" label="Company name *" required defaultValue={typedName} />
           <Field id="dba" label="DBA (doing business as)" />
           <Field id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" />
           <SelectField id="rating" label="Rating" options={[["", "—"], ["A", "A"], ["B", "B"], ["C", "C"]]} />
@@ -208,12 +268,14 @@ function Field({
   type = "text",
   required = false,
   placeholder,
+  defaultValue,
 }: {
   id: string;
   label: string;
   type?: string;
   required?: boolean;
   placeholder?: string;
+  defaultValue?: string;
 }) {
   return (
     <div>
@@ -226,6 +288,7 @@ function Field({
         type={type}
         required={required}
         placeholder={placeholder}
+        defaultValue={defaultValue}
         className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
       />
     </div>
