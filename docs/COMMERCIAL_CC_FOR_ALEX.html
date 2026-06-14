@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Commercial Command Center — built for PPP</title>
+<style>
+  /* ============ Print + reading-friendly defaults ============ */
+  @page { size: Letter; margin: 0.6in; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #f5f6f8;
+    color: #0a0e17;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body { padding: 32px 16px 64px; }
+  .page {
+    max-width: 880px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 56px 64px;
+    border-radius: 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.04), 0 24px 60px rgba(0,0,0,.07);
+  }
+  @media print {
+    body { padding: 0; background: #fff; }
+    .page { box-shadow: none; border-radius: 0; padding: 0; max-width: none; }
+    .page-break { page-break-before: always; }
+    h2, h3 { page-break-after: avoid; }
+    .phase, .kpi, .row { page-break-inside: avoid; }
+  }
+
+  /* ============ Typography ============ */
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 4px; letter-spacing: -0.02em; }
+  h2 { font-size: 20px; line-height: 1.2; margin: 36px 0 12px; letter-spacing: -0.01em; }
+  h3 { font-size: 16px; line-height: 1.25; margin: 20px 0 8px; }
+  p  { margin: 0 0 12px; }
+  small, .meta { font-size: 12px; color: #5b6470; }
+  strong { color: #0a0e17; }
+  em { font-style: normal; background: #fff7d6; padding: 0 4px; border-radius: 3px; }
+  .muted { color: #5b6470; }
+
+  /* ============ Brand bar ============ */
+  .brand {
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 3px solid #2563eb;
+    padding-bottom: 16px; margin-bottom: 24px;
+  }
+  .brand .name { font-weight: 800; letter-spacing: -0.01em; color: #2563eb; font-size: 14px; text-transform: uppercase; }
+  .brand .right { font-size: 12px; color: #5b6470; text-align: right; }
+  .hero {
+    background: linear-gradient(180deg, #f7fafc 0%, #eef4ff 100%);
+    border: 1px solid #dde7fb;
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin: 24px 0;
+  }
+  .hero .tag { display: inline-block; background: #2563eb; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; }
+  .hero p { font-size: 17px; line-height: 1.5; margin: 12px 0 0; color: #0a0e17; }
+
+  /* ============ The 9-phase visual ring ============ */
+  .lifecycle {
+    border: 1px dashed #c5cbd6;
+    border-radius: 12px;
+    padding: 24px 20px;
+    margin: 16px 0 32px;
+    background: #fbfcfd;
+  }
+  .lifecycle-title { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #5b6470; text-align: center; margin: 0 0 16px; }
+  .lifecycle-flow {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .step {
+    background: #fff;
+    border: 1px solid #e3e7ee;
+    border-radius: 10px;
+    padding: 12px;
+    position: relative;
+    min-height: 90px;
+  }
+  .step .num { position: absolute; top: -10px; left: 10px; background: #2563eb; color: #fff; border-radius: 999px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; box-shadow: 0 2px 5px rgba(37,99,235,.3); }
+  .step h4 { margin: 8px 0 4px; font-size: 13px; font-weight: 700; color: #0a0e17; }
+  .step p { margin: 0; font-size: 12px; color: #5b6470; line-height: 1.4; }
+  .step.dashboards { background: #fef9e8; border-color: #f5e29c; grid-column: 1 / -1; }
+  .step.dashboards h4 { color: #8a5b00; }
+  .step.dashboards .num { background: #c08800; box-shadow: 0 2px 5px rgba(192,136,0,.3); }
+
+  /* ============ Phase detail blocks ============ */
+  .phase {
+    border: 1px solid #e3e7ee;
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin: 14px 0;
+    background: #fff;
+  }
+  .phase .head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .phase .num-pill { background: #0a0e17; color: #fff; border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; }
+  .phase h3 { margin: 0; font-size: 17px; }
+  .phase .one-liner { color: #5b6470; font-size: 13px; margin: 0; }
+  .phase .alex-gets { background: #f5f8ff; border-left: 3px solid #2563eb; padding: 12px 14px; margin-top: 12px; border-radius: 0 6px 6px 0; }
+  .phase .alex-gets .label { display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #2563eb; margin-bottom: 6px; }
+  .phase ul { margin: 0; padding-left: 18px; }
+  .phase li { margin: 3px 0; font-size: 13px; }
+
+  .status {
+    display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .status.shipping { background: #e8f7e8; color: #1f7a1f; border: 1px solid #b8e2b8; }
+  .status.next   { background: #fff4d4; color: #8a5b00; border: 1px solid #f5d987; }
+  .status.queued { background: #f1f3f7; color: #5b6470; border: 1px solid #d8dde7; }
+  .status.mvp    { background: #fde2e8; color: #a01c3d; border: 1px solid #f7b4c4; }
+
+  /* ============ Build-order strip ============ */
+  .build-order {
+    background: #f7fafc;
+    border: 1px solid #dde7fb;
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin: 16px 0;
+  }
+  .build-order h3 { margin-top: 0; }
+  .order-list { display: grid; gap: 8px; }
+  .order-list .row { display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; background: #fff; border: 1px solid #e3e7ee; border-radius: 8px; }
+  .order-list .order-num { background: #2563eb; color: #fff; border-radius: 6px; padding: 4px 0; text-align: center; font-weight: 800; font-size: 12px; }
+  .order-list .label { font-weight: 600; font-size: 14px; }
+  .order-list .what { font-size: 12px; color: #5b6470; }
+
+  /* ============ Cross-cutting tiles ============ */
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
+  .tile { background: #fff; border: 1px solid #e3e7ee; border-radius: 10px; padding: 14px; }
+  .tile .label { display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #5b6470; margin-bottom: 4px; }
+  .tile h4 { margin: 0 0 4px; font-size: 14px; }
+  .tile p { font-size: 12px; color: #5b6470; margin: 0; }
+
+  /* ============ KPI grid (Account 360 preview) ============ */
+  .account-360 {
+    background: #fff;
+    border: 1px solid #e3e7ee;
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin: 14px 0;
+  }
+  .account-360 .title { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+  .account-360 .title .company { font-weight: 800; font-size: 16px; color: #0a0e17; }
+  .account-360 .title .meta { font-size: 11px; color: #5b6470; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .kpi { background: #f7fafc; border: 1px solid #dde7fb; border-radius: 8px; padding: 12px 10px; text-align: center; }
+  .kpi .num { display: block; font-size: 20px; font-weight: 800; color: #2563eb; line-height: 1; }
+  .kpi .lbl { display: block; font-size: 10px; font-weight: 700; color: #5b6470; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+  .kpi.muted-kpi .num { color: #5b6470; }
+
+  /* ============ Footer / CTA ============ */
+  .footer { margin-top: 36px; padding-top: 16px; border-top: 1px solid #e3e7ee; font-size: 11px; color: #5b6470; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .legend { background: #f7fafc; border: 1px solid #dde7fb; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #5b6470; margin-top: 14px; }
+  .legend strong { color: #0a0e17; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============ Brand bar ============ -->
+  <div class="brand">
+    <div class="name">PPP · Commercial Command Center</div>
+    <div class="right">
+      Plan for Alex<br/>
+      <small>Prepared June 14, 2026 by Karan</small>
+    </div>
+  </div>
+
+  <!-- ============ HERO ============ -->
+  <h1>One system to run every commercial job, end to end.</h1>
+  <div class="hero">
+    <span class="tag">The pitch in one paragraph</span>
+    <p>
+      Today PPP's commercial side lives in email threads, spreadsheets, and PDFs. The
+      <strong>Commercial Command Center</strong> pulls all of it into one place — from the moment a
+      lead comes in to the day the final invoice is paid. Same login as the existing PPP Command Center;
+      both platforms behind one door. Built specifically for PPP — every screen designed around how
+      Alex's team actually works.
+    </p>
+  </div>
+
+  <!-- ============ The 9-phase visual ============ -->
+  <h2>What it covers — the full job lifecycle</h2>
+  <p class="muted">
+    Nine connected phases. Each phase is its own build slice we ship, test, and turn on without breaking the others.
+  </p>
+
+  <div class="lifecycle">
+    <div class="lifecycle-title">From bid to paid · 9 phases</div>
+    <div class="lifecycle-flow">
+      <div class="step"><span class="num">1</span><h4>Accounts</h4><p>Companies PPP works with. Contacts, your team, documents (COI/W-9/MSA), expiry alerts.</p></div>
+      <div class="step"><span class="num">2</span><h4>Opportunity</h4><p>Pipeline of deals. Lead → Walkthrough → Estimating → Proposed → Won/Lost.</p></div>
+      <div class="step"><span class="num">3</span><h4>Estimating</h4><p>Build a bid by area + sqft + finish + materials. Generate the proposal PDF.</p></div>
+      <div class="step"><span class="num">4</span><h4>Contract</h4><p>Award the deal, attach the signed contract + insurance binders.</p></div>
+      <div class="step"><span class="num">5</span><h4>Project Setup</h4><p>Multi-PM team, crew assignments, kickoff checklist, budget freeze.</p></div>
+      <div class="step"><span class="num">6</span><h4>Execution</h4><p>Mobile-first daily reports. Photos, hours, materials, weather, punchlist.</p></div>
+      <div class="step"><span class="num">7</span><h4>Change Orders</h4><p>CO pipeline with impact tracking. Margin on COs visible separately.</p></div>
+      <div class="step"><span class="num">8</span><h4>Billing</h4><p>Progress invoicing (AIA), payments received, retainage, AR aging.</p></div>
+      <div class="step"><span class="num">9</span><h4>Closeout</h4><p>Punchlist sign-off, warranty docs, final lien releases, project archive.</p></div>
+      <div class="step dashboards"><span class="num">+</span><h4>Executive dashboards</h4><p>Pipeline value, win rate, backlog, profit margin, AR aging, top accounts — across all phases.</p></div>
+    </div>
+  </div>
+
+  <!-- ============ ACCOUNT 360 PREVIEW ============ -->
+  <h2>What an Account looks like — the 360° view</h2>
+  <p>
+    Every commercial customer gets a record. The page answers <em>"how's this account going?"</em> at a glance.
+    Numbers update automatically as later phases land.
+  </p>
+
+  <div class="account-360">
+    <div class="title">
+      <div class="company">ABC Property Management LLC</div>
+      <div class="meta">B-rated · Hospitality · Active 2 years</div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi"><span class="num">7</span><span class="lbl">Contacts</span></div>
+      <div class="kpi"><span class="num">4</span><span class="lbl">PPP Team</span></div>
+      <div class="kpi"><span class="num">5</span><span class="lbl">Documents</span></div>
+      <div class="kpi"><span class="num">2 days</span><span class="lbl">Last Activity</span></div>
+      <div class="kpi muted-kpi"><span class="num">$240K</span><span class="lbl">Total Bid (Phase 2)</span></div>
+      <div class="kpi muted-kpi"><span class="num">$180K</span><span class="lbl">Invoiced (Phase 8)</span></div>
+      <div class="kpi muted-kpi"><span class="num">$120K</span><span class="lbl">Paid (Phase 8)</span></div>
+      <div class="kpi muted-kpi"><span class="num">$60K</span><span class="lbl">Balance Owed</span></div>
+    </div>
+    <div class="legend">
+      <strong>Blue numbers</strong> = live today (Phase 1). <strong>Grey numbers</strong> = ready to fill in when Phase 2 (Opportunity) and Phase 8 (Billing) ship. The page never changes shape — the data just gets richer over time.
+    </div>
+  </div>
+
+  <!-- ============ Phase-by-phase: what Alex gets ============ -->
+  <h2>What Alex gets, phase by phase</h2>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 1</span><h3>Account Management</h3><span class="status shipping">Shipping now</span></div>
+    <p class="one-liner">The customer directory + every detail PPP needs to do business with them.</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>One record per commercial company — billing address, AP contact, industry, rating</li>
+        <li>Contacts list with roles (Decision Maker, PM, Billing, Site, etc.)</li>
+        <li>Which PPP staff are assigned, with primary holder flags</li>
+        <li>Documents on file — COI, W-9, MSA, prequal — with expiry alerts <em>before</em> they lapse</li>
+        <li>One-glance Account 360 showing every count + last activity</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 2</span><h3>Opportunity (Preconstruction)</h3><span class="status next">Next</span><span class="status mvp">MVP path</span></div>
+    <p class="one-liner">The deal pipeline. From first email to "we won it."</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>Kanban pipeline: Lead → Qualified → Walkthrough → Estimating → Proposed → Won/Lost</li>
+        <li>Forward an RFP email to a special address → auto-creates the opportunity</li>
+        <li>Walkthrough notes + geo-tagged photos from the field</li>
+        <li>RFI tracker (questions to GC/architect during bid)</li>
+        <li>Win/loss reasons + "lost to" competitor field for analysis</li>
+        <li>Auto-reminders when a bid is pending too long</li>
+        <li>Sales pipeline $$ value rolls up to dashboards + Account 360</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 3</span><h3>Estimating &amp; Proposal</h3><span class="status queued">Queued</span></div>
+    <p class="one-liner">Build a bid faster, with less guesswork, and never lose money on it.</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>Line-item bid workbench: area × sqft × finish × paint product × labor × markup</li>
+        <li>Subcontractor sub-bids rolled in (drywall, electrical, sub trades)</li>
+        <li>Multi-revision comparison (v1 vs v2 side-by-side)</li>
+        <li>Estimate library — clone from any past project</li>
+        <li>Cost-per-sqft analytics ("this bid is +12% vs your last 5 hospital projects")</li>
+        <li>One-click proposal PDF builder with cover letter, schedule of values, exclusions</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 4</span><h3>Contract Award</h3><span class="status queued">Queued</span></div>
+    <p class="one-liner">Sign and lock — no more chasing PDFs.</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>Contract upload + Notice to Proceed</li>
+        <li>Insurance binders + bonds attached + verified expiry</li>
+        <li>Schedule of values locked (no edits without a Change Order)</li>
+        <li>Sign-off workflow: PM → ops → Alex with full audit trail</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 5</span><h3>Project Setup</h3><span class="status queued">Queued</span></div>
+    <p class="one-liner">Spin up the project. Everyone knows who's on it.</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>Project record built straight from the won opportunity</li>
+        <li><strong>Multi-PM team</strong> per project (primary + assistant PMs, super, foreman)</li>
+        <li>Crew assignments + skill tags</li>
+        <li>Budget freeze locks the won estimate as the baseline</li>
+        <li>Subcontractor onboarding (their COIs, payment terms)</li>
+        <li>Permits, OSHA, safety docs tracker</li>
+        <li>Mobilization + kickoff checklist</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 6</span><h3>Project Execution</h3><span class="status queued">Queued · heaviest</span></div>
+    <p class="one-liner">The day-to-day. Mobile-first because foremen live on iPhones.</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>Daily reports submitted from the foreman's phone — geo-tagged photos, hours, weather, delays</li>
+        <li>Labor + material consumption logged per area</li>
+        <li>Quality checks + per-area sign-off</li>
+        <li>Punchlist with photos, assignee, due date</li>
+        <li>Schedule view (Gantt or weekly grid)</li>
+        <li>Owner/GC daily report auto-distributed</li>
+        <li>Customer portal (read-only) so the owner can see progress photos</li>
+        <li><strong>Real-time budget vs actual</strong> per project — the "are we making money?" answer</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 7</span><h3>Change Management</h3><span class="status queued">Queued</span></div>
+    <p class="one-liner">Catch every change order. Get paid for every one of them.</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>CO pipeline: Request → Estimate → Customer Approval → Contract Amendment → Execute</li>
+        <li>Impact tracking: budget delta, schedule delta</li>
+        <li>CO log per project with running total</li>
+        <li>Margin on COs reported separately (typically higher than base contract)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 8</span><h3>Billing &amp; Financials</h3><span class="status queued">Queued</span><span class="status mvp">MVP path</span></div>
+    <p class="one-liner">Send invoices, take payments, see your cash position — without leaving the platform.</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>Multi-invoice per project (progress billing — standard for commercial)</li>
+        <li>AIA G702/G703 invoice templates with schedule of values + % complete per line</li>
+        <li>Retainage hold + release (5% default, configurable)</li>
+        <li>Payment recording (full or partial)</li>
+        <li>AR aging by account and by project</li>
+        <li>Auto past-due reminders at 15 days</li>
+        <li>Lien waivers collected on each payment</li>
+        <li>Project P&amp;L: estimate vs actual variance report</li>
+        <li>Numbers flow back to the Account 360 — Alex sees customer balances at a glance</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="head"><span class="num-pill">PHASE 9</span><h3>Closeout</h3><span class="status queued">Queued</span></div>
+    <p class="one-liner">Wrap the job clean. Set up the next one.</p>
+    <div class="alex-gets">
+      <span class="label">Alex gets</span>
+      <ul>
+        <li>Punchlist completion sign-off</li>
+        <li>Warranty docs + as-built drawings upload</li>
+        <li>Final lien releases collected</li>
+        <li>Customer satisfaction survey</li>
+        <li>Project archive (ZIP of every doc, daily report, photo)</li>
+        <li>Final P&amp;L + estimate-vs-actual variance</li>
+        <li>Lessons learned doc → flows back into the estimating library</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ Build order ============ -->
+  <h2>How we ship it — the build order</h2>
+  <p>Each step is a real working feature you can use. Revenue thread first, so you're operating + invoicing through the platform fast.</p>
+
+  <div class="build-order">
+    <h3>Order of phases shipped</h3>
+    <div class="order-list">
+      <div class="row"><div class="order-num">1</div><div><div class="label">Phase 1 — Accounts</div><div class="what">Customer directory + contacts + team + documents + 360 view (in progress now)</div></div><div><span class="status shipping">Shipping</span></div></div>
+      <div class="row"><div class="order-num">2</div><div><div class="label">Phase 2 — Opportunity Pipeline</div><div class="what">Start tracking deals end-to-end</div></div><div><span class="status next">Next</span></div></div>
+      <div class="row"><div class="order-num">3</div><div><div class="label">Phase 8 — Billing (pulled up)</div><div class="what">Invoice work + get paid through the platform. Closes the revenue loop.</div></div><div><span class="status mvp">MVP</span></div></div>
+      <div class="row"><div class="order-num">4</div><div><div class="label">Phase 3 — Estimating</div><div class="what">Win more deals with the bid workbench</div></div><div><span class="status queued">Queued</span></div></div>
+      <div class="row"><div class="order-num">5</div><div><div class="label">Phase 6 — Project Execution</div><div class="what">Operate jobs in the platform; daily reports from the field</div></div><div><span class="status queued">Queued</span></div></div>
+      <div class="row"><div class="order-num">6</div><div><div class="label">Phase 4, 5, 7, 9</div><div class="what">Contract, Project Setup, Change Orders, Closeout fill in around execution</div></div><div><span class="status queued">Queued</span></div></div>
+    </div>
+  </div>
+
+  <p class="muted" style="margin-top: 14px;">
+    The first 3 steps give Alex a <em>revenue-generating thread</em>: Account → Opportunity → Estimate → Contract → Invoice → Paid. That's the minimum that has to work end-to-end before anything else gets built.
+  </p>
+
+  <!-- ============ Cross-cutting ============ -->
+  <h2>What's built into every screen</h2>
+  <div class="tiles">
+    <div class="tile"><span class="label">Mobile</span><h4>Phone-first where it counts</h4><p>Foreman daily reports, walkthrough photos, time entry. Native iPhone keyboard support.</p></div>
+    <div class="tile"><span class="label">Audit trail</span><h4>Every change recorded</h4><p>Who did what, when. Restorable. Required for compliance.</p></div>
+    <div class="tile"><span class="label">Permissions</span><h4>Role-based access</h4><p>Admin sees everything. PMs see their projects. Foremen see their day.</p></div>
+    <div class="tile"><span class="label">Notifications</span><h4>Alerts you actually need</h4><p>Bid due tomorrow, COI expiring, payment received, daily report submitted.</p></div>
+    <div class="tile"><span class="label">Email parser</span><h4>Forward → done</h4><p>Forward an RFP, CO, or RFI to a special address — auto-creates the record.</p></div>
+    <div class="tile"><span class="label">Search</span><h4>Find anything</h4><p>Across accounts, opportunities, projects, invoices. One search bar.</p></div>
+  </div>
+
+  <!-- ============ Where this lives ============ -->
+  <h2>How it fits with the existing PPP Command Center</h2>
+  <p>
+    PPP staff sign in once. The platform picker asks which side they're using —
+    <strong>PPP Command Center</strong> (the existing residential / Salesforce side) or
+    <strong>Commercial Command Center</strong> (this build). Same audit, same notification bell, same brand. Different data, different workflows. Both fully separated in the backend so changes to one can't break the other.
+  </p>
+
+  <div class="lifecycle" style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; padding: 24px; background: #fbfcfd;">
+    <div style="text-align: center;">
+      <div style="font-weight: 800; color: #0a4ed2; font-size: 15px;">PPP Command Center</div>
+      <div style="font-size: 12px; color: #5b6470; margin-top: 4px;">Residential side · Salesforce mirror · Live today</div>
+    </div>
+    <div style="font-size: 24px; color: #2563eb;">↔</div>
+    <div style="text-align: center;">
+      <div style="font-weight: 800; color: #047857; font-size: 15px;">Commercial Command Center</div>
+      <div style="font-size: 12px; color: #5b6470; margin-top: 4px;">Commercial side · Source of truth · In build</div>
+    </div>
+  </div>
+
+  <!-- ============ Footer ============ -->
+  <div class="footer">
+    <div>
+      <strong>Built by Karan</strong> · for Alex &amp; the PPP team<br/>
+      Commercial Command Center · v0.1 · Phase 1 in progress
+    </div>
+    <div style="text-align: right;">
+      Print this page to PDF.<br/>
+      Detailed plan + page-by-page spec available on request.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
