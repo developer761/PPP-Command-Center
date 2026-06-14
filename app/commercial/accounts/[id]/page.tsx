@@ -35,6 +35,14 @@ import {
   activityTone,
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
+import {
+  listAccountTags,
+  listAllDistinctTags,
+  addAccountTag,
+  removeAccountTag,
+  MAX_TAG_LENGTH,
+  type AccountTag,
+} from "@/lib/commercial/accounts/tags";
 
 export const dynamic = "force-dynamic";
 
@@ -144,7 +152,7 @@ export default async function CommercialAccountDetailPage({
       </nav>
 
       {/* Tab content */}
-      {tab === "info" && <InfoTab account={account} />}
+      {tab === "info" && <InfoTab account={account} errorMessage={sp.error} />}
       {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
@@ -153,9 +161,142 @@ export default async function CommercialAccountDetailPage({
   );
 }
 
-function InfoTab({ account }: { account: CommercialAccount }) {
+async function addTagAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const tag = String(formData.get("tag") ?? "");
+  const result = await addAccountTag(account_id, tag, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=info&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/accounts/${account_id}?tab=info`);
+}
+
+async function removeTagAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const tag_id = String(formData.get("tag_id") ?? "");
+  await removeAccountTag(tag_id, user.id);
+  redirect(`/commercial/accounts/${account_id}?tab=info`);
+}
+
+async function InfoTab({ account, errorMessage }: { account: CommercialAccount; errorMessage?: string }) {
+  // Load tags + suggestions in parallel so the Info tab renders in
+  // one round-trip's worth of latency.
+  const [tags, allTags] = await Promise.all([
+    listAccountTags(account.id),
+    listAllDistinctTags(),
+  ]);
+  // Filter suggestions to tags NOT already on this account (case-
+  // insensitive) — saves the picker from showing dupes.
+  const existingLower = new Set(tags.map((t) => t.tag.toLowerCase()));
+  const suggestions = allTags.filter((s) => !existingLower.has(s.toLowerCase()));
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {errorMessage && (
+        <div className="lg:col-span-2 bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+      <TagsCard
+        accountId={account.id}
+        tags={tags}
+        suggestions={suggestions}
+        className="lg:col-span-2"
+      />
+      <InfoCards account={account} />
+    </div>
+  );
+}
+
+function TagsCard({
+  accountId,
+  tags,
+  suggestions,
+  className,
+}: {
+  accountId: string;
+  tags: AccountTag[];
+  suggestions: string[];
+  className?: string;
+}) {
+  return (
+    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+      <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Tags</h2>
+      <p className="text-[11px] text-ppp-charcoal-500 mb-3">
+        Free-form labels — different from Industry. Use them to group accounts (Hospitality, Healthcare,
+        Property Mgmt) and filter the list page.
+      </p>
+      {tags.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {tags.map((t) => (
+            <span
+              key={t.id}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200"
+            >
+              {t.tag}
+              <form action={removeTagAction} className="inline">
+                <input type="hidden" name="account_id" value={accountId} />
+                <input type="hidden" name="tag_id" value={t.id} />
+                <button
+                  type="submit"
+                  aria-label={`Remove ${t.tag}`}
+                  className="-mr-1 ml-0.5 px-1 text-emerald-700/60 hover:text-emerald-900"
+                >
+                  ✕
+                </button>
+              </form>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[12px] text-ppp-charcoal-500 italic mb-3">No tags yet.</p>
+      )}
+      <form action={addTagAction} className="flex flex-col sm:flex-row sm:items-end gap-2">
+        <input type="hidden" name="account_id" value={accountId} />
+        <div className="flex-1">
+          <label htmlFor="new_tag" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            Add tag
+          </label>
+          <input
+            id="new_tag"
+            name="tag"
+            type="text"
+            required
+            maxLength={MAX_TAG_LENGTH}
+            placeholder="e.g. Hospitality"
+            list="tag-suggestions"
+            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+          />
+          {suggestions.length > 0 && (
+            <datalist id="tag-suggestions">
+              {suggestions.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          )}
+        </div>
+        <button
+          type="submit"
+          className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] shrink-0"
+        >
+          Add
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function InfoCards({ account }: { account: CommercialAccount }) {
+  return (
+    <>
       <Card title="Company">
         <Field label="Company name" value={account.company_name} />
         <Field label="DBA" value={account.dba} />
@@ -224,7 +365,7 @@ function InfoTab({ account }: { account: CommercialAccount }) {
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{account.notes}</p>
         </Card>
       )}
-    </div>
+    </>
   );
 }
 

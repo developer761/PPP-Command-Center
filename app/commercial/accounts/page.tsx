@@ -10,6 +10,11 @@ import {
   activityTone,
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
+import {
+  listTagsForAccounts,
+  listAllDistinctTags,
+  type AccountTag,
+} from "@/lib/commercial/accounts/tags";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +41,7 @@ export default async function CommercialAccountsPage({
     | "not_started"
     | undefined;
   const industry = pickFirst(sp.industry);
+  const tagFilter = pickFirst(sp.tag);
   // ─── Batch 5a — new sort + quick-filter chips ───
   // sort: `created_desc` (default) | `created_asc` | `name_asc` | `name_desc`
   //       | `activity_desc` | `activity_asc` | `rating_asc`
@@ -63,7 +69,12 @@ export default async function CommercialAccountsPage({
   // Bulk-fetch the Account 360 overview rows so each list row can show
   // its 1-line snippet (contacts / team / docs / last activity) without
   // an N+1 round-trip. Missing rows fall back to placeholders in the UI.
-  const overviewsById = await listAccountOverviews(accountsRaw.map((a) => a.id));
+  // Same pattern for tags — one bulk query, then O(1) lookup per row.
+  const [overviewsById, tagsByAccount, allTags] = await Promise.all([
+    listAccountOverviews(accountsRaw.map((a) => a.id)),
+    listTagsForAccounts(accountsRaw.map((a) => a.id)),
+    listAllDistinctTags(),
+  ]);
 
   // Apply quick-filter chips post-fetch using the overview data.
   let accounts = accountsRaw.slice();
@@ -86,6 +97,13 @@ export default async function CommercialAccountsPage({
       if (a.vendor_compliance_status === "red") return true;
       const ov = overviewsById.get(a.id);
       return ov ? ov.expired_document_count > 0 : false;
+    });
+  }
+  if (tagFilter) {
+    const lower = tagFilter.toLowerCase();
+    accounts = accounts.filter((a) => {
+      const tags = tagsByAccount.get(a.id) ?? [];
+      return tags.some((t) => t.tag.toLowerCase() === lower);
     });
   }
 
@@ -148,6 +166,7 @@ export default async function CommercialAccountsPage({
   if (rating) baseParams.set("rating", rating);
   if (compliance) baseParams.set("compliance", compliance);
   if (industry) baseParams.set("industry", industry);
+  if (tagFilter) baseParams.set("tag", tagFilter);
   if (sort !== "created_desc") baseParams.set("sort", sort);
   const toggleChipHref = (param: "stale" | "expiring" | "issue", currentlyOn: boolean): string => {
     const p = new URLSearchParams(baseParams);
@@ -159,7 +178,7 @@ export default async function CommercialAccountsPage({
     const qs = p.toString();
     return qs ? `/commercial/accounts?${qs}` : "/commercial/accounts";
   };
-  const anyFilterActive = !!search || !!rating || !!compliance || !!industry || filterStale || filterExpiring || filterIssue;
+  const anyFilterActive = !!search || !!rating || !!compliance || !!industry || !!tagFilter || filterStale || filterExpiring || filterIssue;
 
   return (
     <div className="space-y-6">
@@ -249,6 +268,26 @@ export default async function CommercialAccountsPage({
               {industries.map((ind) => (
                 <option key={ind} value={ind}>
                   {ind}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {allTags.length > 0 && (
+          <div>
+            <label htmlFor="tag" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+              Tag
+            </label>
+            <select
+              id="tag"
+              name="tag"
+              defaultValue={tagFilter ?? ""}
+              className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+            >
+              <option value="">Any</option>
+              {allTags.map((t) => (
+                <option key={t} value={t}>
+                  {t}
                 </option>
               ))}
             </select>
@@ -370,7 +409,12 @@ export default async function CommercialAccountsPage({
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {accounts.map((a) => (
-              <AccountRow key={a.id} account={a} overview={overviewsById.get(a.id) ?? null} />
+              <AccountRow
+                key={a.id}
+                account={a}
+                overview={overviewsById.get(a.id) ?? null}
+                tags={tagsByAccount.get(a.id) ?? []}
+              />
             ))}
           </ul>
         </div>
@@ -415,7 +459,15 @@ function FilterChip({
   );
 }
 
-function AccountRow({ account, overview }: { account: CommercialAccount; overview: AccountOverview | null }) {
+function AccountRow({
+  account,
+  overview,
+  tags,
+}: {
+  account: CommercialAccount;
+  overview: AccountOverview | null;
+  tags: AccountTag[];
+}) {
   const cityState = [account.billing_city, account.billing_state].filter(Boolean).join(", ");
   const activity = overview ? relativeActivity(overview.last_activity_at) : null;
   const tone = overview ? activityTone(overview.last_activity_at) : null;
@@ -427,6 +479,11 @@ function AccountRow({ account, overview }: { account: CommercialAccount; overvie
       : tone === "cold"
       ? "text-rose-700"
       : "text-ppp-charcoal-500";
+  // Show up to 3 tag pills inline; collapse the rest into "+N" so the
+  // row height stays predictable. Tag detail page is the Info tab on the
+  // account itself — pills are read-only here.
+  const visibleTags = tags.slice(0, 3);
+  const extraTagCount = Math.max(0, tags.length - visibleTags.length);
   return (
     <li>
       <Link
@@ -482,6 +539,21 @@ function AccountRow({ account, overview }: { account: CommercialAccount; overvie
                     <span aria-hidden>·</span>
                     <span className={activityCls}>Active {activity}</span>
                   </>
+                )}
+              </div>
+            )}
+            {tags.length > 0 && (
+              <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+                {visibleTags.map((t) => (
+                  <span
+                    key={t.id}
+                    className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-medium"
+                  >
+                    {t.tag}
+                  </span>
+                ))}
+                {extraTagCount > 0 && (
+                  <span className="text-[10px] text-ppp-charcoal-500">+{extraTagCount}</span>
                 )}
               </div>
             )}
