@@ -180,6 +180,19 @@ export default async function CommercialAccountsPage({
   };
   const anyFilterActive = !!search || !!rating || !!compliance || !!industry || !!tagFilter || filterStale || filterExpiring || filterIssue;
 
+  // Export link query string — mirrors the visible list's filters
+  // (DB-side q + rating + compliance + industry). Tag + chip filters
+  // run client-side post-fetch, so they're omitted from the export QS
+  // so the user gets the broader DB list; if Alex wants the tag-filtered
+  // slice he can re-export after un-toggling. Sort doesn't matter for
+  // CSV — Excel re-sorts trivially.
+  const exportParams = new URLSearchParams();
+  if (search) exportParams.set("q", search);
+  if (rating) exportParams.set("rating", rating);
+  if (compliance) exportParams.set("compliance", compliance);
+  if (industry) exportParams.set("industry", industry);
+  const exportQs = exportParams.toString();
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -194,15 +207,33 @@ export default async function CommercialAccountsPage({
             The companies PPP works with. Every commercial project starts on an account.
           </p>
         </div>
-        <Link
-          href="/commercial/accounts/new"
-          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation shadow-sm shadow-emerald-600/30"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 5v14 M5 12h14" />
-          </svg>
-          New account
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Export button — preserves the same q/rating/compliance/
+              industry filters as the visible list, so what you see is
+              what you get in the CSV. Only renders when there's at
+              least one row to export. */}
+          {accounts.length > 0 && (
+            <a
+              href={`/api/commercial/accounts/export${exportQs ? `?${exportQs}` : ""}`}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-semibold hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation min-h-[44px]"
+              title="Download the visible list as CSV"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
+              </svg>
+              Export CSV
+            </a>
+          )}
+          <Link
+            href="/commercial/accounts/new"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation shadow-sm shadow-emerald-600/30 min-h-[44px]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            New account
+          </Link>
+        </div>
       </header>
 
       {/* Filter bar */}
