@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import {
   listCommercialAccounts,
   listCommercialAccountIndustries,
@@ -15,8 +17,71 @@ import {
   listAllDistinctTags,
   type AccountTag,
 } from "@/lib/commercial/accounts/tags";
+import {
+  listAssignableStaff,
+  ASSIGNMENT_ROLES,
+  assignmentRoleLabel,
+  type AssignmentRole,
+} from "@/lib/commercial/accounts/assignments";
+import { bulkTagAccounts, bulkAssignAccounts, BULK_MAX_ACCOUNTS } from "@/lib/commercial/accounts/bulk";
 
 export const dynamic = "force-dynamic";
+
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+
+/** Returns only the entries from formData.getAll("account_id") that look
+ *  like valid UUIDs. Caps the list at BULK_MAX_ACCOUNTS. */
+function pickSelectedAccountIds(formData: FormData): string[] {
+  const raw = formData.getAll("account_id");
+  const out: string[] = [];
+  for (const v of raw) {
+    if (typeof v !== "string") continue;
+    if (!UUID_RE.test(v)) continue;
+    out.push(v);
+    if (out.length >= BULK_MAX_ACCOUNTS) break;
+  }
+  return out;
+}
+
+async function bulkTagAccountsAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const tag = String(formData.get("bulk_tag") ?? "");
+  const selected = pickSelectedAccountIds(formData);
+  if (selected.length === 0) {
+    redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Select at least one account first."));
+  }
+  if (!tag.trim()) {
+    redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Type a tag to apply."));
+  }
+  const res = await bulkTagAccounts(selected, tag, user.id);
+  const msg = `Tagged ${res.succeeded} of ${res.total} accounts${res.failed ? ` (${res.failed} failed)` : ""}.`;
+  redirect("/commercial/accounts?bulk_result=" + encodeURIComponent(msg));
+}
+
+async function bulkAssignAccountsAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const user_id = String(formData.get("bulk_user_id") ?? "");
+  const role = String(formData.get("bulk_role") ?? "") as AssignmentRole;
+  const selected = pickSelectedAccountIds(formData);
+  if (selected.length === 0) {
+    redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Select at least one account first."));
+  }
+  if (!UUID_RE.test(user_id)) {
+    redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Pick a PPP staff member."));
+  }
+  if (!ASSIGNMENT_ROLES.includes(role)) {
+    redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Pick a role."));
+  }
+  const res = await bulkAssignAccounts(selected, { user_id, role }, user.id);
+  const msg = `Assigned ${res.succeeded} of ${res.total} accounts${res.failed ? ` (${res.failed} failed)` : ""}.`;
+  redirect("/commercial/accounts?bulk_result=" + encodeURIComponent(msg));
+}
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
 
@@ -62,10 +127,13 @@ export default async function CommercialAccountsPage({
   const filterExpiring = pickFirst(sp.expiring) === "1"; // any expired or expiring-soon doc
   const filterIssue = pickFirst(sp.issue) === "1";       // compliance status = red OR any expired doc
 
-  const [accountsRaw, industries] = await Promise.all([
+  const [accountsRaw, industries, assignableStaff] = await Promise.all([
     listCommercialAccounts({ search, rating, compliance, industry }),
     listCommercialAccountIndustries(),
+    listAssignableStaff(),
   ]);
+  const bulkResult = pickFirst(sp.bulk_result);
+  const bulkError = pickFirst(sp.bulk_error);
   // Bulk-fetch the Account 360 overview rows so each list row can show
   // its 1-line snippet (contacts / team / docs / last activity) without
   // an N+1 round-trip. Missing rows fall back to placeholders in the UI.
@@ -354,6 +422,16 @@ export default async function CommercialAccountsPage({
           Account deleted. The record + every contact, document, and team assignment stays in the database — an admin can restore it.
         </div>
       )}
+      {bulkResult && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+          {bulkResult}
+        </div>
+      )}
+      {bulkError && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {bulkError}
+        </div>
+      )}
 
       {/* Quick-filter chips — Karan 2026-06-14 Batch 5a. One-click toggles
           driven by the URL so reload + bookmark survive. Each chip
@@ -432,11 +510,89 @@ export default async function CommercialAccountsPage({
           )}
         </div>
       ) : (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
+        <form className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               {accounts.length} account{accounts.length === 1 ? "" : "s"}
             </h2>
+            <span className="text-[11px] text-ppp-charcoal-500">
+              Check rows + use the bulk-action bar to tag or assign in one click.
+            </span>
+          </div>
+          {/* Bulk-action bar — two compact inline forms inside the
+              wrapping list form. Each submit button targets a different
+              server action via formAction. The checked rows from the
+              list propagate as `account_id` form values automatically. */}
+          <div className="bg-ppp-charcoal-50 border-b border-ppp-charcoal-100 px-3 sm:px-4 py-3 flex flex-col lg:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-2 flex-1 min-w-0">
+              <div className="flex-1">
+                <label htmlFor="bulk_tag" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+                  Bulk tag selected
+                </label>
+                <input
+                  id="bulk_tag"
+                  name="bulk_tag"
+                  type="text"
+                  placeholder="e.g. Q3-outreach"
+                  maxLength={50}
+                  className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                />
+              </div>
+              <button
+                type="submit"
+                formAction={bulkTagAccountsAction}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 transition-colors min-h-[44px] touch-manipulation"
+              >
+                Apply tag
+              </button>
+            </div>
+            {assignableStaff.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-end gap-2 flex-1 min-w-0">
+                <div className="flex-1">
+                  <label htmlFor="bulk_user_id" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+                    Bulk assign staff
+                  </label>
+                  <select
+                    id="bulk_user_id"
+                    name="bulk_user_id"
+                    defaultValue=""
+                    className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                  >
+                    <option value="">Pick staff</option>
+                    {assignableStaff.map((p) => (
+                      <option key={p.user_id} value={p.user_id}>
+                        {p.full_name ?? p.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="bulk_role" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+                    Role
+                  </label>
+                  <select
+                    id="bulk_role"
+                    name="bulk_role"
+                    defaultValue=""
+                    className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                  >
+                    <option value="">Pick role</option>
+                    {ASSIGNMENT_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {assignmentRoleLabel(r)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  formAction={bulkAssignAccountsAction}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 transition-colors min-h-[44px] touch-manipulation"
+                >
+                  Assign
+                </button>
+              </div>
+            )}
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {accounts.map((a) => (
@@ -448,7 +604,7 @@ export default async function CommercialAccountsPage({
               />
             ))}
           </ul>
-        </div>
+        </form>
       )}
     </div>
   );
@@ -516,10 +672,24 @@ function AccountRow({
   const visibleTags = tags.slice(0, 3);
   const extraTagCount = Math.max(0, tags.length - visibleTags.length);
   return (
-    <li>
+    <li className="flex items-start gap-2 hover:bg-emerald-50/40 transition-colors">
+      {/* Checkbox sits OUTSIDE the Link so clicking it doesn't navigate.
+          Touch-manipulation keeps the iOS tap responsive. The label
+          wraps both checkbox + the row content for big-tap-target
+          friendliness — clicking anywhere along the left margin
+          toggles selection. */}
+      <label className="pl-3 sm:pl-4 pt-5 cursor-pointer touch-manipulation">
+        <input
+          type="checkbox"
+          name="account_id"
+          value={account.id}
+          aria-label={`Select ${account.company_name} for bulk actions`}
+          className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40 cursor-pointer"
+        />
+      </label>
       <Link
         href={`/commercial/accounts/${account.id}`}
-        className="block px-4 py-4 hover:bg-emerald-50/40 transition-colors touch-manipulation"
+        className="flex-1 block pr-4 sm:pr-4 py-4 touch-manipulation"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
