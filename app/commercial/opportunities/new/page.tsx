@@ -34,24 +34,37 @@ async function createAction(formData: FormData) {
   }
 
   const statusRaw = String(formData.get("status") ?? "inquiry");
-  const status = (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
-    ? (statusRaw as OpportunityStatus)
-    : "inquiry";
+  if (statusRaw && !(OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)) {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Invalid status."));
+  }
+  const status = (statusRaw || "inquiry") as OpportunityStatus;
   const sourceRaw = String(formData.get("source") ?? "");
-  const source = (OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)
-    ? (sourceRaw as OpportunitySource)
-    : null;
+  if (sourceRaw && !(OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)) {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Invalid source."));
+  }
+  const source = sourceRaw ? (sourceRaw as OpportunitySource) : null;
 
-  const lowDollars = String(formData.get("bid_low") ?? "").trim();
-  const highDollars = String(formData.get("bid_high") ?? "").trim();
-  const bid_value_low_cents = lowDollars ? Math.round(parseFloat(lowDollars) * 100) : null;
-  const bid_value_high_cents = highDollars ? Math.round(parseFloat(highDollars) * 100) : null;
-  if (bid_value_low_cents !== null && !Number.isFinite(bid_value_low_cents)) {
-    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Bid low must be a number."));
+  // Bid parsing — strip commas + $ + whitespace so "$50,000" / "50,000" /
+  // "50000.00" all parse correctly. parseFloat alone truncates at the
+  // first comma (turning "999,999" into 999 silently).
+  const parseDollars = (raw: string): number | null | "invalid" => {
+    const cleaned = raw.trim().replace(/[$,\s]/g, "");
+    if (cleaned === "") return null;
+    if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return "invalid";
+    const n = parseFloat(cleaned);
+    if (!Number.isFinite(n) || n < 0) return "invalid";
+    return Math.round(n * 100);
+  };
+  const lowParsed = parseDollars(String(formData.get("bid_low") ?? ""));
+  const highParsed = parseDollars(String(formData.get("bid_high") ?? ""));
+  if (lowParsed === "invalid") {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Bid low must be a non-negative dollar amount."));
   }
-  if (bid_value_high_cents !== null && !Number.isFinite(bid_value_high_cents)) {
-    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Bid high must be a number."));
+  if (highParsed === "invalid") {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Bid high must be a non-negative dollar amount."));
   }
+  const bid_value_low_cents = lowParsed as number | null;
+  const bid_value_high_cents = highParsed as number | null;
 
   const proposal_due_at = (formData.get("proposal_due_at") as string) || null;
   const description = (formData.get("description") as string)?.trim() || null;
@@ -261,7 +274,8 @@ export default async function NewOpportunityPage({
           </Link>
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+            disabled={accounts.length === 0}
+            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation disabled:bg-ppp-charcoal-300 disabled:cursor-not-allowed disabled:shadow-none"
           >
             Create opportunity
           </button>

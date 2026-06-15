@@ -8,9 +8,9 @@ import {
   type CommercialOpportunity,
   type OpportunityStatus,
 } from "@/lib/commercial/opportunities/db";
-import { listCommercialAccounts, type CommercialAccount } from "@/lib/commercial/accounts/db";
+import { listCommercialAccounts, type CommercialAccount, type CommercialAccountRating, type CommercialPrequalStatus } from "@/lib/commercial/accounts/db";
 import { pickFirst } from "@/lib/commercial/form-utils";
-import { OPEN_OPP_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { OPEN_OPP_STATUSES, DEFAULT_PROBABILITY_BY_STATUS } from "@/lib/commercial/opportunities/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -242,6 +242,15 @@ function OpportunityRow({
   account: CommercialAccount | null;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
+  // Decision countdown — color-coded so Alex's eye catches urgency on
+  // a Friday scan. Reuses the same green/amber/rose language as the
+  // accounts list activity tones.
+  const dueChip = decisionChip(opportunity.proposal_due_at);
+  // Probability override badge — shows a quiet "custom" indicator when
+  // the user set probability away from the status default. Signals
+  // "this is a gut call, not the system default" — useful intel.
+  const defaultProb = DEFAULT_PROBABILITY_BY_STATUS[opportunity.status] ?? null;
+  const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
   return (
     <li>
       <Link
@@ -255,23 +264,25 @@ function OpportunityRow({
                 {opportunity.title}
               </span>
               <StatusPill status={opportunity.status} />
+              {dueChip && <DueChip {...dueChip} />}
             </div>
             <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
               {account && (
                 <span className="text-ppp-charcoal-700">{account.company_name}</span>
+              )}
+              {account?.rating && <RatingPill rating={account.rating} />}
+              {account?.prequalification_status && (
+                <PrequalPill status={account.prequalification_status} />
               )}
               <span aria-hidden>·</span>
               <span>
                 <strong className="text-ppp-charcoal">{bid}</strong> bid
               </span>
               <span aria-hidden>·</span>
-              <span>{opportunity.probability_pct}% confident</span>
-              {opportunity.proposal_due_at && (
-                <>
-                  <span aria-hidden>·</span>
-                  <span>Due {opportunity.proposal_due_at.slice(0, 10)}</span>
-                </>
-              )}
+              <span title={probOverridden ? `Default ${defaultProb}% for ${opportunityStatusLabel(opportunity.status)} — overridden` : undefined}>
+                {opportunity.probability_pct}% confident
+                {probOverridden && <span className="ml-0.5 text-amber-700" aria-label="Probability overridden from status default">*</span>}
+              </span>
             </div>
           </div>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 shrink-0 mt-0.5" aria-hidden>
@@ -280,6 +291,66 @@ function OpportunityRow({
         </div>
       </Link>
     </li>
+  );
+}
+
+/** Decision-date chip — turns the bare ISO date into a glanceable
+ *  urgency signal. Past-due → rose, ≤ 7d → amber, > 7d → emerald. */
+function decisionChip(iso: string | null): { label: string; tone: "ok" | "soon" | "overdue" } | null {
+  if (!iso) return null;
+  const target = new Date(iso.slice(0, 10) + "T00:00:00").getTime();
+  if (!Number.isFinite(target)) return null;
+  const days = Math.ceil((target - Date.now()) / 86_400_000);
+  if (days < 0) return { label: `${Math.abs(days)}d overdue`, tone: "overdue" };
+  if (days === 0) return { label: "Due today", tone: "soon" };
+  if (days === 1) return { label: "Due tomorrow", tone: "soon" };
+  if (days <= 7) return { label: `Due in ${days}d`, tone: "soon" };
+  return { label: `Due in ${days}d`, tone: "ok" };
+}
+
+function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdue" }) {
+  const cls =
+    tone === "overdue"
+      ? "bg-rose-50 text-rose-700 border-rose-200"
+      : tone === "soon"
+      ? "bg-amber-50 text-amber-800 border-amber-200"
+      : "bg-emerald-50 text-emerald-700 border-emerald-200";
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+function RatingPill({ rating }: { rating: CommercialAccountRating }) {
+  const cls =
+    rating === "A"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : rating === "B"
+      ? "bg-blue-50 text-blue-700 border-blue-200"
+      : "bg-amber-50 text-amber-700 border-amber-200";
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-bold border ${cls}`}>
+      {rating}
+    </span>
+  );
+}
+
+function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
+  // Compliance signal inline on the opp row — Alex spots "C-rated +
+  // prequal rejected" instantly so he doesn't burn a Friday on a deal
+  // that can't legally close.
+  const map = {
+    not_started: { label: "Prequal: —", cls: "bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-100" },
+    pending: { label: "Prequal: pending", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+    approved: { label: "Prequal: ✓", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+    rejected: { label: "Prequal: ✗", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+  }[status];
+  if (!map) return null;
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${map.cls}`}>
+      {map.label}
+    </span>
   );
 }
 

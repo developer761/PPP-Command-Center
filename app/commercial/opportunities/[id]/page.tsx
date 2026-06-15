@@ -55,7 +55,7 @@ export default async function OpportunityDetailPage({
       <header>
         <Link
           href="/commercial/opportunities"
-          className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800"
+          className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800 min-h-[44px] touch-manipulation -ml-1 px-1"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M19 12H5 M12 19l-7-7 7-7" />
@@ -97,6 +97,7 @@ export default async function OpportunityDetailPage({
         <KpiTile
           label="Weighted"
           value={formatCentsCompact(weightedPipelineCents(opp))}
+          tooltip={weightedTooltip(opp)}
         />
         <KpiTile
           label="Decision in"
@@ -113,7 +114,7 @@ export default async function OpportunityDetailPage({
               <li key={t.key}>
                 <Link
                   href={`/commercial/opportunities/${opp.id}?tab=${t.key}`}
-                  className={`inline-block px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap ${
+                  className={`inline-flex items-center px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
                       ? "border-emerald-600 text-ppp-charcoal"
                       : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-100"
@@ -253,17 +254,42 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
-function KpiTile({ label, value }: { label: string; value: string }) {
+function KpiTile({
+  label,
+  value,
+  tooltip,
+}: {
+  label: string;
+  value: string;
+  tooltip?: string;
+}) {
   return (
-    <div className="border border-ppp-charcoal-100 rounded-lg px-3 py-2.5 bg-white">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+    <div
+      className="border border-ppp-charcoal-100 rounded-lg px-3 py-3 bg-white min-h-[64px] flex flex-col justify-center"
+      title={tooltip}
+    >
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 flex items-center gap-1">
         {label}
+        {tooltip && <span className="text-ppp-charcoal-400 cursor-help" aria-label="More info">ⓘ</span>}
       </div>
       <div className="text-base sm:text-lg font-bold text-ppp-charcoal mt-1 truncate">
         {value}
       </div>
     </div>
   );
+}
+
+/** Weighted tooltip — turns the bare $ value into a one-line data
+ *  story Alex can quote. "$12.5k = 25% × $50k midpoint" tells him at
+ *  a glance whether the weighted number is "confident" or "we're
+ *  hedging." */
+function weightedTooltip(opp: CommercialOpportunity): string {
+  const low = opp.bid_value_low_cents ?? 0;
+  const high = opp.bid_value_high_cents ?? 0;
+  if (low === 0 && high === 0) return "No bid value set yet.";
+  const mid = (low + (high || low)) / 2;
+  const midDollars = (mid / 100).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return `${opp.probability_pct}% probability × $${midDollars} midpoint bid.`;
 }
 
 function StatusPill({ status }: { status: OpportunityStatus }) {
