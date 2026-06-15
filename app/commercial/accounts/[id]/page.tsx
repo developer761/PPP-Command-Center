@@ -6,6 +6,9 @@ import {
   listAccountContacts,
   addContactToAccount,
   detachContactFromAccount,
+  getPrimaryContact,
+  setPrimaryContact,
+  touchContact,
   CONTACT_ROLES,
   roleLabel,
   type ContactRole,
@@ -25,8 +28,10 @@ import {
   archiveDocument,
   documentCategoryLabel,
   expiryStatus,
+  buildComplianceChecklist,
   type DocumentCategory,
   type CommercialAccountDocument,
+  type ComplianceItem,
 } from "@/lib/commercial/accounts/documents";
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
 import {
@@ -86,7 +91,12 @@ export default async function CommercialAccountDetailPage({
   // Account 360 overview — counts pulled from the Postgres view in one
   // round-trip. Falls back to nulls if the view migration hasn't been
   // pasted yet (graceful degradation; the KPI strip just hides).
-  const overview = await getAccountOverview(account.id);
+  // Primary contact loads in parallel so the header can show the
+  // quick-email button without an extra round-trip.
+  const [overview, primary] = await Promise.all([
+    getAccountOverview(account.id),
+    getPrimaryContact(account.id),
+  ]);
 
   return (
     <div className="space-y-5">
@@ -112,6 +122,26 @@ export default async function CommercialAccountDetailPage({
                 </Pill>
               )}
             </div>
+            {primary && (
+              <div className="mt-2.5 flex items-center gap-2 flex-wrap text-[12px]">
+                <span className="inline-flex items-center gap-1 text-amber-700">
+                  <span aria-hidden>★</span>
+                  <span className="font-semibold text-ppp-charcoal">{primary.contact.full_name}</span>
+                  <span className="text-ppp-charcoal-500">· {roleLabel(primary.role)}</span>
+                </span>
+                {primary.contact.email && (
+                  <a
+                    href={`mailto:${primary.contact.email}`}
+                    className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" />
+                    </svg>
+                    Email
+                  </a>
+                )}
+              </div>
+            )}
           </div>
           {/* Edit button — Karan 2026-06-14 Batch 5b. Lives in the header so
               it's always reachable from any tab. Mobile: full-width button
@@ -200,16 +230,20 @@ async function removeTagAction(formData: FormData) {
 }
 
 async function InfoTab({ account, errorMessage }: { account: CommercialAccount; errorMessage?: string }) {
-  // Load tags + suggestions in parallel so the Info tab renders in
-  // one round-trip's worth of latency.
-  const [tags, allTags] = await Promise.all([
+  // Load tags + suggestions + compliance checklist in parallel so the
+  // Info tab renders in one round-trip's worth of latency.
+  const [tags, allTags, docGroups] = await Promise.all([
     listAccountTags(account.id),
     listAllDistinctTags(),
+    listAccountDocuments(account.id),
   ]);
   // Filter suggestions to tags NOT already on this account (case-
   // insensitive) — saves the picker from showing dupes.
   const existingLower = new Set(tags.map((t) => t.tag.toLowerCase()));
   const suggestions = allTags.filter((s) => !existingLower.has(s.toLowerCase()));
+  // Derive the per-category compliance health from active documents.
+  // Drives the checklist card + the Key Dates panel below.
+  const compliance = buildComplianceChecklist(docGroups);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -224,8 +258,165 @@ async function InfoTab({ account, errorMessage }: { account: CommercialAccount; 
         suggestions={suggestions}
         className="lg:col-span-2"
       />
+      <ComplianceChecklistCard
+        accountId={account.id}
+        items={compliance}
+        className="lg:col-span-1"
+      />
+      <KeyDatesCard
+        items={compliance}
+        className="lg:col-span-1"
+      />
       <InfoCards account={account} />
     </div>
+  );
+}
+
+function ComplianceChecklistCard({
+  accountId,
+  items,
+  className,
+}: {
+  accountId: string;
+  items: ComplianceItem[];
+  className?: string;
+}) {
+  const missing = items.filter((i) => i.health === "missing").length;
+  const expired = items.filter((i) => i.health === "expired").length;
+  const soon = items.filter((i) => i.health === "soon").length;
+  const allGood = missing === 0 && expired === 0 && soon === 0;
+  return (
+    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+      <div className="flex items-start justify-between mb-3 gap-2">
+        <div>
+          <h2 className="text-sm font-bold text-ppp-charcoal">Compliance checklist</h2>
+          <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+            What PPP needs on file to do business with this account.
+          </p>
+        </div>
+        <Link
+          href={`/commercial/accounts/${accountId}?tab=documents`}
+          className="text-[12px] text-emerald-700 hover:text-emerald-800 underline shrink-0"
+        >
+          Documents tab
+        </Link>
+      </div>
+      <ul className="space-y-1.5">
+        {items.map((item) => {
+          const { dot, label, tone } = healthDecoration(item);
+          return (
+            <li key={item.category} className="flex items-center justify-between gap-3 py-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <span aria-hidden className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                <span className="text-[13px] text-ppp-charcoal truncate">{item.label}</span>
+              </div>
+              <span className={`text-[11px] font-medium ${tone} shrink-0`}>{label}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {allGood && (
+        <p className="mt-3 text-[12px] text-emerald-700">All required docs on file and valid.</p>
+      )}
+      {!allGood && (
+        <p className="mt-3 text-[12px] text-ppp-charcoal-500">
+          {missing > 0 && <span className="text-rose-700">{missing} missing</span>}
+          {missing > 0 && (expired > 0 || soon > 0) && <span> · </span>}
+          {expired > 0 && <span className="text-rose-700">{expired} expired</span>}
+          {expired > 0 && soon > 0 && <span> · </span>}
+          {soon > 0 && <span className="text-amber-700">{soon} expiring soon</span>}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function healthDecoration(item: ComplianceItem): { dot: string; label: string; tone: string } {
+  switch (item.health) {
+    case "missing":
+      return { dot: "bg-rose-500", label: "Missing", tone: "text-rose-700" };
+    case "expired":
+      return {
+        dot: "bg-rose-500",
+        label: `Expired ${item.days_until !== null ? `${Math.abs(item.days_until)}d ago` : ""}`.trim(),
+        tone: "text-rose-700",
+      };
+    case "soon":
+      return {
+        dot: "bg-amber-500",
+        label: `${item.days_until ?? 0}d left`,
+        tone: "text-amber-700",
+      };
+    case "ok":
+      return {
+        dot: "bg-emerald-500",
+        label: item.expires_at
+          ? `${item.days_until ?? 0}d left`
+          : "On file",
+        tone: "text-emerald-700",
+      };
+  }
+}
+
+function KeyDatesCard({
+  items,
+  className,
+}: {
+  items: ComplianceItem[];
+  className?: string;
+}) {
+  // Show only items that have an actual expires_at (no expiry = no
+  // entry in this card). Sort by soonest first — what's most urgent
+  // bubbles to the top. If nothing has a date, the card shows an
+  // invitational empty state pointing at the Documents tab.
+  const dated = items
+    .filter((i) => !!i.expires_at)
+    .sort((a, b) => {
+      const at = new Date(a.expires_at ?? 0).getTime();
+      const bt = new Date(b.expires_at ?? 0).getTime();
+      return at - bt;
+    });
+  return (
+    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+      <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Key dates</h2>
+      <p className="text-[11px] text-ppp-charcoal-500 mb-3">
+        Upcoming compliance deadlines, soonest first.
+      </p>
+      {dated.length === 0 ? (
+        <p className="text-[12px] text-ppp-charcoal-500 italic">
+          No expiry dates on file. Set one when you upload a COI or insurance cert from the Documents tab.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {dated.map((item) => {
+            const dt = item.expires_at ? new Date(item.expires_at) : null;
+            const display = dt
+              ? dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+              : "—";
+            const { tone } = healthDecoration(item);
+            const inDays =
+              item.days_until !== null && item.days_until !== undefined
+                ? item.days_until < 0
+                  ? `${Math.abs(item.days_until)}d ago`
+                  : item.days_until === 0
+                  ? "today"
+                  : `in ${item.days_until}d`
+                : "";
+            return (
+              <li key={item.category} className="flex items-center justify-between gap-3 py-1">
+                <div className="min-w-0">
+                  <div className="text-[13px] text-ppp-charcoal truncate">{item.label}</div>
+                  <div className={`text-[11px] ${tone}`}>
+                    {display}
+                    {inDays && <span className="text-ppp-charcoal-500"> · {inDays}</span>}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -416,6 +607,38 @@ async function addContactAction(formData: FormData) {
   redirect(`/commercial/accounts/${account_id}?tab=contacts`);
 }
 
+async function setPrimaryContactAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const account_contact_id = String(formData.get("account_contact_id") ?? "");
+  const make_primary = String(formData.get("make_primary") ?? "true") === "true";
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(account_contact_id)) {
+    redirect("/commercial/accounts");
+  }
+  const result = await setPrimaryContact(account_id, account_contact_id, make_primary, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=contacts&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/accounts/${account_id}?tab=contacts`);
+}
+
+async function touchContactAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const account_contact_id = String(formData.get("account_contact_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(account_contact_id)) {
+    redirect("/commercial/accounts");
+  }
+  await touchContact(account_id, account_contact_id, user.id);
+  redirect(`/commercial/accounts/${account_id}?tab=contacts`);
+}
+
 async function detachContactAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -531,13 +754,33 @@ function ContactRow({
     role: ContactRole;
     is_default_for: string | null;
     notes: string | null;
+    is_primary: boolean;
+    last_contacted_at: string | null;
   }>;
   accountId: string;
 }) {
+  const primaryAttachment = attachments.find((a) => a.is_primary);
+  // "Last touched" surfaces the most recent timestamp across this
+  // person's role attachments. We mark a contact "touched" when anyone
+  // on the PPP side records an interaction — drives the per-contact
+  // freshness badge so Alex can spot relationships going cold.
+  const lastTouchedAt = attachments
+    .map((a) => a.last_contacted_at)
+    .filter((x): x is string => !!x)
+    .sort()
+    .pop();
+  const touchedDisplay = lastTouchedAt ? relativeTouch(lastTouchedAt) : null;
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div className="min-w-0 flex-1">
-        <div className="font-semibold text-ppp-charcoal text-sm">{contact.full_name}</div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-ppp-charcoal text-sm">{contact.full_name}</span>
+          {primaryAttachment && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+              <span aria-hidden>★</span> Primary
+            </span>
+          )}
+        </div>
         {contact.title && (
           <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{contact.title}</div>
         )}
@@ -551,6 +794,9 @@ function ContactRow({
             <a href={`tel:${contact.phone}`} className="text-ppp-charcoal-700 hover:text-ppp-charcoal">
               {contact.phone}
             </a>
+          )}
+          {touchedDisplay && (
+            <span className="text-ppp-charcoal-500">Last touched {touchedDisplay}</span>
           )}
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -575,9 +821,53 @@ function ContactRow({
             </span>
           ))}
         </div>
+        {/* Quick actions: mark/unmark primary + log a touchpoint. Tied
+            to ONE attachment row each (the primary toggle picks the
+            first attachment by default so a one-role contact star is
+            unambiguous; the touch action records on the same row). */}
+        {attachments.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <form action={setPrimaryContactAction} className="inline">
+              <input type="hidden" name="account_id" value={accountId} />
+              <input type="hidden" name="account_contact_id" value={attachments[0].account_contact_id} />
+              <input type="hidden" name="make_primary" value={primaryAttachment ? "false" : "true"} />
+              <button
+                type="submit"
+                className="text-[11px] text-ppp-charcoal-500 hover:text-amber-700 underline underline-offset-2 touch-manipulation min-h-[32px] inline-flex items-center"
+              >
+                {primaryAttachment ? "Unstar primary" : "Mark as primary"}
+              </button>
+            </form>
+            <form action={touchContactAction} className="inline">
+              <input type="hidden" name="account_id" value={accountId} />
+              <input type="hidden" name="account_contact_id" value={attachments[0].account_contact_id} />
+              <button
+                type="submit"
+                className="text-[11px] text-ppp-charcoal-500 hover:text-emerald-700 underline underline-offset-2 touch-manipulation min-h-[32px] inline-flex items-center"
+                title="Record that you just emailed or called this contact"
+              >
+                I just touched base
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+/** Compact relative-time label for "last touched X ago" on contacts.
+ *  Keeps the badge to one line on mobile. */
+function relativeTouch(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  const days = Math.floor(ms / 86_400_000);
+  if (days < 1) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }
 
 function ContactInput({

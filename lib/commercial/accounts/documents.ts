@@ -357,3 +357,71 @@ export function expiryStatus(expiresAt: string | null): {
   if (days <= 30) return { status: "soon", daysUntil: days };
   return { status: "ok", daysUntil: days };
 }
+
+/**
+ * Per-category compliance check. Drives the "Compliance" checklist
+ * card on the Info tab — at-a-glance "what's missing, what's about to
+ * expire, what's good." Categories with no required expiry (W-9, MSA,
+ * Vendor App, Safety, Other) are "ok" if any active doc exists; the
+ * expiry pill only kicks in when expires_at is populated.
+ *
+ * `health` semantics:
+ *   missing — no active doc in this category
+ *   expired — active doc has expires_at in the past
+ *   soon    — active doc expires within 30 days
+ *   ok      — active doc, no expiry concern
+ */
+export type ComplianceHealth = "missing" | "expired" | "soon" | "ok";
+
+export type ComplianceItem = {
+  category: DocumentCategory;
+  label: string;
+  health: ComplianceHealth;
+  active_document_id: string | null;
+  expires_at: string | null;
+  days_until: number | null;
+};
+
+/** Required categories for "compliant" state. `other` is excluded —
+ *  it's a catch-all bucket, not a compliance gate. */
+export const REQUIRED_DOCUMENT_CATEGORIES: ReadonlyArray<DocumentCategory> = [
+  "coi",
+  "w9",
+  "master_agreement",
+  "vendor_onboarding",
+  "safety",
+];
+
+export function buildComplianceChecklist(
+  groups: Array<{
+    category: DocumentCategory;
+    active: CommercialAccountDocument | null;
+    history: CommercialAccountDocument[];
+  }>
+): ComplianceItem[] {
+  return REQUIRED_DOCUMENT_CATEGORIES.map((category) => {
+    const group = groups.find((g) => g.category === category);
+    const active = group?.active ?? null;
+    if (!active) {
+      return {
+        category,
+        label: documentCategoryLabel(category),
+        health: "missing" as ComplianceHealth,
+        active_document_id: null,
+        expires_at: null,
+        days_until: null,
+      };
+    }
+    const exp = expiryStatus(active.expires_at);
+    const health: ComplianceHealth =
+      exp.status === "expired" ? "expired" : exp.status === "soon" ? "soon" : "ok";
+    return {
+      category,
+      label: documentCategoryLabel(category),
+      health,
+      active_document_id: active.id,
+      expires_at: active.expires_at,
+      days_until: exp.daysUntil,
+    };
+  });
+}
