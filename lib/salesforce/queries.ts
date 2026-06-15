@@ -66,7 +66,13 @@ const cache: Map<string, CacheEntry<unknown>> =
 
 // Cross-instance generation cache (per-server-instance memo of the global
 // generation counter). Throttled fetches keep Postgres load trivial.
-const GEN_REFRESH_MIN_INTERVAL_MS = 5_000;
+// Bumped 5s→60s 2026-06-15 speed pass — the generation only changes on
+// writebacks (invoiceWritebacks/clearSalesforceCache) which both bump
+// in-memory directly. Throttling longer means warm instances skip a
+// Supabase round-trip on every page render; the cost is up to 60s of
+// stale cross-instance cache after a writeback, which is fine because
+// every writeback path also invalidates the affected snapshot keys.
+const GEN_REFRESH_MIN_INTERVAL_MS = 60_000;
 let cachedGeneration = 0;
 let lastGenFetchAt = 0;
 

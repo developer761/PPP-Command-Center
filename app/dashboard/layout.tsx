@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import DashboardChrome from "@/components/dashboard-chrome";
-import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail, isAllowedToSignIn } from "@/lib/auth/admin";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
+import { getCurrentUser } from "@/lib/auth/session";
 
 export default async function DashboardLayout({
   children,
@@ -14,10 +14,10 @@ export default async function DashboardLayout({
   // the entire SF snapshot was fetched — 10-15s on cold cache. Now the
   // search bar lazy-fetches its index from /api/search/index on first
   // focus, so the chrome renders instantly.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Per-request cached — same call inside resolveViewer (via the page)
+  // hits the same React-cache entry, so JWT only verifies once per
+  // request instead of once per layout + once per page.
+  const user = await getCurrentUser();
 
   // Middleware should have caught this already; this is defense-in-depth.
   if (!user || !isAllowedToSignIn(user.email)) {

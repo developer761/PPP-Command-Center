@@ -1,8 +1,8 @@
 import "server-only";
 
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getProfileByUserId, logViewAs } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
+import { getCurrentUser } from "@/lib/auth/session";
 import type { Viewer, ViewerScope } from "@/lib/auth/viewer";
 
 /**
@@ -19,8 +19,9 @@ export async function resolveViewer(
   searchParams: Record<string, string | string[] | undefined>,
   requestMeta?: { path?: string; userAgent?: string; ipAddress?: string }
 ): Promise<Viewer | null> {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // Per-request cached — same call inside the dashboard layout shares
+  // this React-cache entry, so the JWT only verifies once per request.
+  const user = await getCurrentUser();
   if (!user) return null;
 
   const profile = await getProfileByUserId(user.id);
