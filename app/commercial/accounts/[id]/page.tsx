@@ -380,7 +380,8 @@ function KeyDatesCard({
     <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
       <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Key dates</h2>
       <p className="text-[11px] text-ppp-charcoal-500 mb-3">
-        Upcoming compliance deadlines, soonest first.
+        Compliance deadlines, most urgent first. Past-due items stay
+        on the list until the doc is replaced.
       </p>
       {dated.length === 0 ? (
         <p className="text-[12px] text-ppp-charcoal-500 italic">
@@ -635,7 +636,10 @@ async function touchContactAction(formData: FormData) {
   if (!UUID_RE.test(account_id) || !UUID_RE.test(account_contact_id)) {
     redirect("/commercial/accounts");
   }
-  await touchContact(account_id, account_contact_id, user.id);
+  const result = await touchContact(account_id, account_contact_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=contacts&error=${encodeURIComponent(result.error)}`);
+  }
   redirect(`/commercial/accounts/${account_id}?tab=contacts`);
 }
 

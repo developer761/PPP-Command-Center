@@ -152,11 +152,15 @@ export async function getPrimaryContact(accountId: string): Promise<
   { contact: CommercialContact; account_contact_id: string; role: ContactRole } | null
 > {
   const sb = commercialDb();
+  // Filter soft-deleted contacts at the join level for explicitness —
+  // we also re-check `contact.deleted_at` below as a belt-and-braces
+  // guard in case the join shape changes upstream.
   const { data } = await sb
     .from("commercial_account_contacts")
-    .select("id, role, contact:commercial_contacts(*)")
+    .select("id, role, contact:commercial_contacts!inner(*)")
     .eq("account_id", accountId)
     .eq("is_primary", true)
+    .is("contact.deleted_at", null)
     .maybeSingle();
   if (!data) return null;
   type Row = {
