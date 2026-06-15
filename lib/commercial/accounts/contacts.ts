@@ -172,6 +172,17 @@ export async function addContactToAccount(input: AddContactInput): Promise<
   if (!input.full_name?.trim()) return { ok: false, error: "Name is required." };
   const sb = commercialDb();
 
+  // Guard against attaching to a soft-deleted account — otherwise a
+  // restored account would resurrect with phantom contacts.
+  const { data: account } = await sb
+    .from("commercial_accounts")
+    .select("id, deleted_at")
+    .eq("id", input.account_id)
+    .maybeSingle();
+  if (!account || account.deleted_at) {
+    return { ok: false, error: "Account not found." };
+  }
+
   let contactId: string | null = null;
 
   if (input.email?.trim()) {

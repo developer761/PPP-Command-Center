@@ -166,6 +166,18 @@ export async function uploadDocument(
 
   const sb = commercialDb();
 
+  // Defense in depth: even though the POST API route already gates this,
+  // the lib helper must refuse uploads to a missing or soft-deleted
+  // account so callers (now or future) can't bypass the check.
+  const { data: account } = await sb
+    .from("commercial_accounts")
+    .select("id, deleted_at")
+    .eq("id", input.account_id)
+    .maybeSingle();
+  if (!account || account.deleted_at) {
+    return { ok: false, error: "Account not found." };
+  }
+
   // Look up the current active row in this category — we'll archive it
   // AFTER the storage + insert succeed so a partial upload doesn't strand
   // the account without an active doc.

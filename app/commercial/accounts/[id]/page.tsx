@@ -46,6 +46,11 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/** Cheap UUID sanity check used by every server action that pulls an
+ *  id out of formData. We don't trust the client to send a real UUID —
+ *  malformed values must fail fast, not propagate to Postgres. */
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+
 type PP = Promise<{ id: string }>;
 type SP = Promise<{ tab?: string; error?: string }>;
 
@@ -169,6 +174,7 @@ async function addTagAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   const tag = String(formData.get("tag") ?? "");
   const result = await addAccountTag(account_id, tag, user.id);
   if (!result.ok) {
@@ -184,6 +190,9 @@ async function removeTagAction(formData: FormData) {
   if (!user) redirect("/");
   const account_id = String(formData.get("account_id") ?? "");
   const tag_id = String(formData.get("tag_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(tag_id)) {
+    redirect("/commercial/accounts");
+  }
   // The lib verifies (tag_id, account_id) pairing so a stray tag UUID
   // from another account can't be deleted from this one.
   await removeAccountTag(account_id, tag_id, user.id);
@@ -382,6 +391,7 @@ async function addContactAction(formData: FormData) {
   if (!user) redirect("/");
 
   const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   const full_name = String(formData.get("full_name") ?? "");
   const role = String(formData.get("role") ?? "other") as ContactRole;
   const email = (formData.get("email") as string) || null;
@@ -414,6 +424,9 @@ async function detachContactAction(formData: FormData) {
 
   const account_id = String(formData.get("account_id") ?? "");
   const account_contact_id = String(formData.get("account_contact_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(account_contact_id)) {
+    redirect("/commercial/accounts");
+  }
   await detachContactFromAccount(account_contact_id, user.id);
   redirect(`/commercial/accounts/${account_id}?tab=contacts`);
 }
@@ -607,6 +620,10 @@ async function addAssignmentAction(formData: FormData) {
 
   const account_id = String(formData.get("account_id") ?? "");
   const user_id = String(formData.get("user_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  if (user_id && !UUID_RE.test(user_id)) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent("Invalid staff selection.")}`);
+  }
   const role = String(formData.get("role") ?? "other") as AssignmentRole;
   const is_primary = formData.get("is_primary") === "on";
   const notes = (formData.get("notes") as string) || null;
@@ -637,6 +654,9 @@ async function removeAssignmentAction(formData: FormData) {
 
   const account_id = String(formData.get("account_id") ?? "");
   const assignment_id = String(formData.get("assignment_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(assignment_id)) {
+    redirect("/commercial/accounts");
+  }
   await removeAssignment(assignment_id, user.id);
   redirect(`/commercial/accounts/${account_id}?tab=team`);
 }
@@ -921,6 +941,9 @@ async function archiveDocumentAction(formData: FormData) {
 
   const account_id = String(formData.get("account_id") ?? "");
   const document_id = String(formData.get("document_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(document_id)) {
+    redirect("/commercial/accounts");
+  }
   const result = await archiveDocument(document_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/accounts/${account_id}?tab=documents&error=${encodeURIComponent(result.error)}`);
