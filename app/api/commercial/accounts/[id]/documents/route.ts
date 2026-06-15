@@ -7,6 +7,7 @@ import {
   type DocumentCategory,
   DOCUMENT_CATEGORIES,
 } from "@/lib/commercial/accounts/documents";
+import { commercialDb } from "@/lib/commercial/db";
 
 /**
  * POST /api/commercial/accounts/[id]/documents
@@ -38,6 +39,27 @@ export async function POST(
     const { id: accountId } = await params;
     if (!accountId || !/^[0-9a-f-]{36}$/i.test(accountId)) {
       return NextResponse.json({ error: "invalid_account_id" }, { status: 400 });
+    }
+
+    // Gate on Commercial CC access — a Command Center-only user with a
+    // valid session must not be able to upload commercial docs.
+    const sb = commercialDb();
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("has_new_platform_access")
+      .eq("user_id", data.user.id)
+      .maybeSingle();
+    if (!profile?.has_new_platform_access) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    // Refuse uploads to a missing or soft-deleted account.
+    const { data: account } = await sb
+      .from("commercial_accounts")
+      .select("id, deleted_at")
+      .eq("id", accountId)
+      .maybeSingle();
+    if (!account || account.deleted_at) {
+      return NextResponse.json({ error: "account_not_found" }, { status: 404 });
     }
 
     const formData = await request.formData();

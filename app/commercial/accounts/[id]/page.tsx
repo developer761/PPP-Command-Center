@@ -464,13 +464,13 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
               name="notes"
               type="text"
               placeholder="Optional"
-              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
             />
           </div>
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
             >
               Add contact
             </button>
@@ -481,7 +481,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
       {/* Existing contacts */}
       {contacts.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-          No contacts attached yet.
+          No contacts yet. Add the decision-maker, estimator, PM, or anyone else from the customer side.
         </div>
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -554,7 +554,7 @@ function ContactRow({
                 <button
                   type="submit"
                   aria-label={`Remove ${roleLabel(a.role)} role`}
-                  className="-mr-1 ml-0.5 px-1 text-emerald-700/60 hover:text-emerald-900"
+                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[32px] min-w-[32px] inline-flex items-center justify-center text-emerald-700/80 hover:text-emerald-900 touch-manipulation"
                 >
                   ✕
                 </button>
@@ -591,7 +591,7 @@ function ContactInput({
         type={type}
         required={required}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600"
+        className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
       />
     </div>
   );
@@ -765,7 +765,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
             >
               Add to team
             </button>
@@ -897,7 +897,7 @@ function TeamRow({
                 <button
                   type="submit"
                   aria-label={`Remove ${assignmentRoleLabel(a.role)} role from ${person.user_full_name ?? person.user_email}`}
-                  className={`-mr-1 ml-0.5 px-1 ${a.is_primary ? "text-white/70 hover:text-white" : "text-emerald-700/60 hover:text-emerald-900"}`}
+                  className={`-mr-1 ml-0.5 px-2 py-1 min-h-[32px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-emerald-700/80 hover:text-emerald-900"}`}
                 >
                   ✕
                 </button>
@@ -1137,7 +1137,7 @@ function DocumentRow({
           <input type="hidden" name="document_id" value={doc.id} />
           <button
             type="submit"
-            className="px-3 py-1.5 text-[12px] font-medium text-ppp-charcoal-700 border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50 min-h-[36px]"
+            className="px-3 py-1.5 text-[12px] font-medium text-ppp-charcoal-700 border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
             title="Archive without replacement. File stays downloadable in History."
           >
             Archive
@@ -1348,7 +1348,7 @@ function KpiTile({
   return href ? (
     <a
       href={href}
-      className={`block rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 transition-colors hover:bg-emerald-50 ${cls}`}
+      className={`block rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 transition-colors hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-600/40 touch-manipulation ${cls}`}
     >
       {content}
     </a>

@@ -31,11 +31,25 @@ export async function GET(
   }
 
   const { id: accountId, docId } = await params;
+  if (!accountId || !/^[0-9a-f-]{36}$/i.test(accountId)) {
+    return NextResponse.json({ error: "invalid_account_id" }, { status: 400 });
+  }
   if (!docId || !/^[0-9a-f-]{36}$/i.test(docId)) {
     return NextResponse.json({ error: "invalid_doc_id" }, { status: 400 });
   }
 
   const sb = commercialDb();
+
+  // Gate on Commercial CC access — a Command Center-only user with a
+  // valid session must not be able to download commercial documents.
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("has_new_platform_access")
+    .eq("user_id", auth.user.id)
+    .maybeSingle();
+  if (!profile?.has_new_platform_access) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const { data: doc } = await sb
     .from("commercial_account_documents")
     .select("storage_key, account_id")

@@ -190,6 +190,17 @@ export async function addAssignment(
 ): Promise<{ ok: true; assignment_id: string } | { ok: false; error: string }> {
   const sb = commercialDb();
 
+  // Guard: refuse to assign to a missing or soft-deleted account so a
+  // restored account never resurrects with phantom team members.
+  const { data: account } = await sb
+    .from("commercial_accounts")
+    .select("id, deleted_at")
+    .eq("id", input.account_id)
+    .maybeSingle();
+  if (!account || account.deleted_at) {
+    return { ok: false, error: "Account not found." };
+  }
+
   // Look for an existing row (active OR previously removed).
   const { data: existing } = await sb
     .from("commercial_account_assignments")
@@ -206,7 +217,7 @@ export async function addAssignment(
     }
     // Restore: clear removed_at + reset is_primary if requested.
     if (input.is_primary) {
-      await demoteCurrentPrimary(input.account_id, input.role);
+      await demoteCurrentPrimary(input.account_id, input.role, input.assigned_by_user_id ?? null);
     }
     const { data: restored, error: restoreErr } = await sb
       .from("commercial_account_assignments")
@@ -234,7 +245,7 @@ export async function addAssignment(
 
   // Fresh row. Demote any existing primary in this (account, role) first.
   if (input.is_primary) {
-    await demoteCurrentPrimary(input.account_id, input.role);
+    await demoteCurrentPrimary(input.account_id, input.role, input.assigned_by_user_id ?? null);
   }
 
   const { data: inserted, error: insertErr } = await sb
@@ -306,17 +317,39 @@ export async function removeAssignment(
   return { ok: true };
 }
 
-/** Clears `is_primary` on whoever currently holds it for (account, role). */
+/** Clears `is_primary` on whoever currently holds it for (account, role).
+ *  Audit-logs the demote so the trail shows WHO was demoted when a new
+ *  primary took over. */
 async function demoteCurrentPrimary(
   account_id: string,
-  role: AssignmentRole
+  role: AssignmentRole,
+  actingUserId: string | null
 ): Promise<void> {
   const sb = commercialDb();
-  await sb
+  const { data: before } = await sb
     .from("commercial_account_assignments")
-    .update({ is_primary: false })
+    .select("*")
     .eq("account_id", account_id)
     .eq("role", role)
     .eq("is_primary", true)
-    .is("removed_at", null);
+    .is("removed_at", null)
+    .maybeSingle();
+  if (!before) return;
+
+  const beforeRow = before as { id: string };
+  const { data: after } = await sb
+    .from("commercial_account_assignments")
+    .update({ is_primary: false })
+    .eq("id", beforeRow.id)
+    .select("*")
+    .single();
+  if (!after) return;
+
+  await logUpdate(
+    "commercial_account_assignments",
+    beforeRow.id,
+    before,
+    after,
+    actingUserId
+  );
 }
