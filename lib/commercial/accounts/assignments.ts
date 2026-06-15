@@ -201,6 +201,24 @@ export async function addAssignment(
     return { ok: false, error: "Account not found." };
   }
 
+  // Guard: refuse to assign a deactivated user (they were active when
+  // the page loaded but got deactivated before submit). listAssignableStaff
+  // already filters them out of the picker, but we belt-and-braces here.
+  const { data: assignee } = await sb
+    .from("profiles")
+    .select("user_id, is_active, has_new_platform_access")
+    .eq("user_id", input.user_id)
+    .maybeSingle();
+  if (!assignee) {
+    return { ok: false, error: "Staff member not found." };
+  }
+  if (assignee.is_active === false) {
+    return { ok: false, error: "Can't assign an inactive staff member." };
+  }
+  if (!assignee.has_new_platform_access) {
+    return { ok: false, error: "Staff member doesn't have Commercial CC access." };
+  }
+
   // Look for an existing row (active OR previously removed).
   const { data: existing } = await sb
     .from("commercial_account_assignments")

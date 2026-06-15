@@ -24,6 +24,11 @@ import {
   type AssignmentRole,
 } from "@/lib/commercial/accounts/assignments";
 import { bulkTagAccounts, bulkAssignAccounts, BULK_MAX_ACCOUNTS } from "@/lib/commercial/accounts/bulk";
+import {
+  MS_PER_DAY,
+  ACTIVITY_STALE_DAYS,
+  RECENT_WINDOW_DAYS,
+} from "@/lib/commercial/accounts/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -123,7 +128,7 @@ export default async function CommercialAccountsPage({
   const sort = (SORT_OPTIONS.some((o) => o.value === sortRaw) ? sortRaw : "created_desc") as
     (typeof SORT_OPTIONS)[number]["value"];
   // Quick-filter chips. URL truthy="1" so a click toggles on/off cleanly.
-  const filterStale = pickFirst(sp.stale) === "1";       // last activity > 60 days
+  const filterStale = pickFirst(sp.stale) === "1";       // last activity > ACTIVITY_STALE_DAYS
   const filterExpiring = pickFirst(sp.expiring) === "1"; // any expired or expiring-soon doc
   const filterIssue = pickFirst(sp.issue) === "1";       // compliance status = red OR any expired doc
 
@@ -150,8 +155,8 @@ export default async function CommercialAccountsPage({
     accounts = accounts.filter((a) => {
       const ov = overviewsById.get(a.id);
       if (!ov) return false;
-      const days = Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / 86_400_000);
-      return Number.isFinite(days) && days > 60;
+      const days = Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / MS_PER_DAY);
+      return Number.isFinite(days) && days > ACTIVITY_STALE_DAYS;
     });
   }
   if (filterExpiring) {
@@ -212,12 +217,11 @@ export default async function CommercialAccountsPage({
   // "Recently active" section — top 3 accounts touched in the last 7
   // days. Sorted by most recent activity. Hidden when there are no
   // recent accounts so the section never shows up empty.
-  const RECENT_WINDOW_DAYS = 7;
   const recentlyActive = accountsRaw
     .map((a) => ({ account: a, ov: overviewsById.get(a.id) }))
     .filter(({ ov }) => {
       if (!ov) return false;
-      const days = Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / 86_400_000);
+      const days = Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / MS_PER_DAY);
       return Number.isFinite(days) && days <= RECENT_WINDOW_DAYS;
     })
     .sort((x, y) => {
@@ -411,7 +415,7 @@ export default async function CommercialAccountsPage({
         </div>
         <button
           type="submit"
-          className="px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 transition-colors touch-manipulation"
+          className="px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 transition-colors touch-manipulation min-h-[44px]"
         >
           Filter
         </button>
@@ -423,13 +427,27 @@ export default async function CommercialAccountsPage({
         </div>
       )}
       {bulkResult && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
-          {bulkResult}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700 flex items-start justify-between gap-3">
+          <span>{bulkResult}</span>
+          <Link
+            href="/commercial/accounts"
+            className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+            aria-label="Dismiss banner"
+          >
+            Dismiss
+          </Link>
         </div>
       )}
       {bulkError && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {bulkError}
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700 flex items-start justify-between gap-3">
+          <span>{bulkError}</span>
+          <Link
+            href="/commercial/accounts"
+            className="text-[12px] text-rose-700 hover:text-rose-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+            aria-label="Dismiss banner"
+          >
+            Dismiss
+          </Link>
         </div>
       )}
 
@@ -468,7 +486,7 @@ export default async function CommercialAccountsPage({
           <ul className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {recentlyActive.map(({ account, ov }) => {
               const days = ov
-                ? Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / 86_400_000)
+                ? Math.floor((Date.now() - new Date(ov.last_activity_at).getTime()) / MS_PER_DAY)
                 : null;
               const label =
                 days === null ? "—" : days === 0 ? "today" : days === 1 ? "yesterday" : `${days}d ago`;
@@ -476,7 +494,7 @@ export default async function CommercialAccountsPage({
                 <li key={account.id}>
                   <Link
                     href={`/commercial/accounts/${account.id}`}
-                    className="block bg-white border border-emerald-100 rounded-lg px-3 py-2.5 hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors touch-manipulation"
+                    className="block bg-white border border-emerald-100 rounded-lg px-3 py-2.5 hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors touch-manipulation min-h-[44px]"
                   >
                     <div className="text-sm font-semibold text-ppp-charcoal truncate">
                       {account.company_name}
@@ -556,6 +574,7 @@ export default async function CommercialAccountsPage({
                     id="bulk_user_id"
                     name="bulk_user_id"
                     defaultValue=""
+                    required
                     className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
                   >
                     <option value="">Pick staff</option>
@@ -574,6 +593,7 @@ export default async function CommercialAccountsPage({
                     id="bulk_role"
                     name="bulk_role"
                     defaultValue=""
+                    required
                     className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
                   >
                     <option value="">Pick role</option>

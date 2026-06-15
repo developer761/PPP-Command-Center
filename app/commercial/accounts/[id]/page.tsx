@@ -837,7 +837,7 @@ function ContactRow({
               <input type="hidden" name="make_primary" value={primaryAttachment ? "false" : "true"} />
               <button
                 type="submit"
-                className="text-[11px] text-ppp-charcoal-500 hover:text-amber-700 underline underline-offset-2 touch-manipulation min-h-[32px] inline-flex items-center"
+                className="text-[11px] text-ppp-charcoal-500 hover:text-amber-700 underline underline-offset-2 touch-manipulation min-h-[44px] px-1 inline-flex items-center"
               >
                 {primaryAttachment ? "Unstar primary" : "Mark as primary"}
               </button>
@@ -847,7 +847,7 @@ function ContactRow({
               <input type="hidden" name="account_contact_id" value={attachments[0].account_contact_id} />
               <button
                 type="submit"
-                className="text-[11px] text-ppp-charcoal-500 hover:text-emerald-700 underline underline-offset-2 touch-manipulation min-h-[32px] inline-flex items-center"
+                className="text-[11px] text-ppp-charcoal-500 hover:text-emerald-700 underline underline-offset-2 touch-manipulation min-h-[44px] px-1 inline-flex items-center"
                 title="Record that you just emailed or called this contact"
               >
                 I just touched base
@@ -1091,7 +1091,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           inline so Alex never has to ask "what does ★ mean?" Stays compact;
           tooltips carry the long form for each. */}
       <details className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden group" open={team.length === 0}>
-        <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between">
+        <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
           <span>What do the symbols mean?</span>
           <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
         </summary>
@@ -1287,7 +1287,7 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
 
       {/* Symbol key — what every badge means */}
       <details className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden group">
-        <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between">
+        <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
           <span>What do the badges mean?</span>
           <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
         </summary>
@@ -1354,7 +1354,7 @@ function DocumentCategoryCard({
       )}
       {history.length > 0 && (
         <details className="border-t border-ppp-charcoal-100">
-          <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none">
+          <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none min-h-[44px] touch-manipulation flex items-center">
             History ({history.length})
           </summary>
           <ul className="divide-y divide-ppp-charcoal-100">

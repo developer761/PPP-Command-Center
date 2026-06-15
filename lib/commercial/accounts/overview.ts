@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { MS_PER_DAY, ACTIVITY_FRESH_DAYS, ACTIVITY_STALE_DAYS } from "./constants";
 
 /**
  * Account 360 overview — aggregated counts per Account, read straight
@@ -76,12 +77,19 @@ export async function listAccountOverviews(
   return out;
 }
 
+/** Days between a past ISO timestamp and now. Returns null when the
+ *  input is missing, malformed, or in the future (clock skew guard). */
+export function daysSinceIso(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  return Math.floor(ms / MS_PER_DAY);
+}
+
 /** Format `last_activity_at` into a friendly relative string. */
 export function relativeActivity(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  const days = Math.floor(ms / 86_400_000);
+  const days = daysSinceIso(iso);
+  if (days === null) return "—";
   if (days < 1) return "today";
   if (days === 1) return "yesterday";
   if (days < 7) return `${days}d ago`;
@@ -93,10 +101,9 @@ export function relativeActivity(iso: string | null | undefined): string {
 /** Color tone for the activity badge — green if fresh, amber if stale,
  *  rose if cold. Matches the rest of the platform's color language. */
 export function activityTone(iso: string | null | undefined): "ok" | "stale" | "cold" {
-  if (!iso) return "cold";
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (!Number.isFinite(days)) return "cold";
-  if (days <= 14) return "ok";
-  if (days <= 60) return "stale";
+  const days = daysSinceIso(iso);
+  if (days === null) return "cold";
+  if (days <= ACTIVITY_FRESH_DAYS) return "ok";
+  if (days <= ACTIVITY_STALE_DAYS) return "stale";
   return "cold";
 }

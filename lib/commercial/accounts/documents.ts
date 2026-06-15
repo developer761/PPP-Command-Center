@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { MS_PER_DAY, EXPIRY_WARNING_DAYS } from "./constants";
 
 /**
  * Commercial Account documents — metadata in Postgres, files in Supabase
@@ -352,9 +353,9 @@ export function expiryStatus(expiresAt: string | null): {
   if (!expiresAt) return { status: "ok", daysUntil: null };
   const ms = new Date(expiresAt).getTime() - Date.now();
   if (!Number.isFinite(ms)) return { status: "ok", daysUntil: null };
-  const days = Math.ceil(ms / 86_400_000);
+  const days = Math.ceil(ms / MS_PER_DAY);
   if (days < 0) return { status: "expired", daysUntil: days };
-  if (days <= 30) return { status: "soon", daysUntil: days };
+  if (days <= EXPIRY_WARNING_DAYS) return { status: "soon", daysUntil: days };
   return { status: "ok", daysUntil: days };
 }
 
