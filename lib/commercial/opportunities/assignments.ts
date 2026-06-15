@@ -156,10 +156,41 @@ export async function addOpportunityAssignment(
     .maybeSingle();
 
   if (existing) {
-    const e = existing as { id: string; removed_at: string | null };
+    const e = existing as { id: string; removed_at: string | null; is_primary: boolean };
     if (!e.removed_at) {
+      // Active row — usually a no-op error, but allow ONE thing through:
+      // promoting a current-secondary to primary. Alex re-submits the
+      // same person + role with the primary checkbox flipped on. Without
+      // this branch he'd have to remove + re-add, which is silly.
+      if (input.is_primary && !e.is_primary) {
+        await demoteCurrentPrimary(
+          input.opportunity_id,
+          input.role,
+          input.assigned_by_user_id ?? null
+        );
+        const { data: promoted, error: promoteErr } = await sb
+          .from("commercial_opportunity_assignments")
+          .update({
+            is_primary: true,
+            notes: input.notes?.trim() || null,
+            assigned_by_user_id: input.assigned_by_user_id ?? null,
+          })
+          .eq("id", e.id)
+          .select("*")
+          .single();
+        if (promoteErr) return { ok: false, error: promoteErr.message };
+        await logUpdate(
+          "commercial_opportunity_assignments",
+          e.id,
+          existing,
+          promoted,
+          input.assigned_by_user_id
+        );
+        return { ok: true, assignment_id: e.id };
+      }
       return { ok: false, error: "This person is already on this opp in that role." };
     }
+    // Restore path — previously removed. Bring back online.
     if (input.is_primary) {
       await demoteCurrentPrimary(
         input.opportunity_id,

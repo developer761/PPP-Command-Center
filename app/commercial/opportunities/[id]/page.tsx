@@ -919,7 +919,7 @@ function TaskList({
                   <button
                     type="submit"
                     aria-label={t.completed_at ? `Reopen ${t.title}` : `Complete ${t.title}`}
-                    className={`w-5 h-5 rounded border-2 inline-flex items-center justify-center touch-manipulation min-h-[28px] min-w-[28px] ${
+                    className={`rounded border-2 inline-flex items-center justify-center touch-manipulation min-h-[36px] min-w-[36px] text-base ${
                       t.completed_at
                         ? "bg-emerald-600 border-emerald-600 text-white"
                         : "border-ppp-charcoal-300 hover:border-emerald-500"

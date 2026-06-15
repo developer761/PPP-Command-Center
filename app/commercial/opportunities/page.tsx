@@ -494,7 +494,7 @@ function OpportunityRow({
                 touchpoint, primary lead initials. Each only renders
                 when the data warrants it. */}
             {(daysInStatus !== null || taskStats || lastNote || primaryLead) && (
-              <div className="text-[11px] mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+              <div className="text-[11px] mt-1 flex items-center gap-x-2 gap-y-1 flex-wrap">
                 {daysInStatus !== null && (
                   <span
                     className={
