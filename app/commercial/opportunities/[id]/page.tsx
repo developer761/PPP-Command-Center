@@ -306,6 +306,11 @@ function ChangeStatusCard({
   // who picks 'lost' from the dropdown sees the required fields
   // without an extra page nav. Native HTML required attr enforces it
   // for the lost case (we mirror server-side validation in the lib).
+  // Pre-compute the warn-transition list for the current status so we
+  // can surface them up-front in a "Heads-up" block (the per-option
+  // "(unusual)" suffix already labels them in the dropdown, but the
+  // up-front block makes the warning visible BEFORE the user picks).
+  const warnNext = nextStatuses.filter((s) => shouldWarnTransition(opp.status, s));
   return (
     <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
@@ -317,6 +322,19 @@ function ChangeStatusCard({
           </p>
         </div>
       </div>
+      {warnNext.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-[12px] text-amber-800">
+          <strong>Heads up</strong> — these transitions are valid but unusual:
+          {" "}
+          {warnNext.map((s, i) => (
+            <span key={s}>
+              <em>{opportunityStatusLabel(opp.status)} → {opportunityStatusLabel(s)}</em>
+              {i < warnNext.length - 1 ? ", " : ""}
+            </span>
+          ))}
+          . Double-check before submitting.
+        </div>
+      )}
       {nextStatuses.length === 0 ? (
         <p className="text-[12px] text-ppp-charcoal-500 italic">
           This status has no outbound transitions. Move to <em>reopened</em> first to re-engage.
@@ -342,7 +360,7 @@ function ChangeStatusCard({
                 {nextStatuses.map((s) => (
                   <option key={s} value={s}>
                     {opportunityStatusLabel(s)}
-                    {shouldWarnTransition(opp.status, s) ? " (warn)" : ""}
+                    {shouldWarnTransition(opp.status, s) ? " — unusual" : ""}
                   </option>
                 ))}
               </select>
