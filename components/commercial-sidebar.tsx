@@ -41,7 +41,7 @@ const navSections: NavSection[] = [
     heading: "Pipeline",
     items: [
       { label: "Accounts", href: "/commercial/accounts", icon: <IconBuilding /> },
-      { label: "Opportunities", href: "/commercial/opportunities", phase: 2, disabled: true, icon: <IconTarget /> },
+      { label: "Opportunities", href: "/commercial/opportunities", icon: <IconTarget /> },
       { label: "Estimates", href: "/commercial/estimates", phase: 3, disabled: true, icon: <IconCalc /> },
     ],
   },

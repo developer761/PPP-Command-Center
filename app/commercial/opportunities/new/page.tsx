@@ -1,0 +1,272 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import {
+  OPPORTUNITY_STATUSES,
+  OPPORTUNITY_SOURCES,
+  opportunityStatusLabel,
+  opportunitySourceLabel,
+  type OpportunityStatus,
+  type OpportunitySource,
+} from "@/lib/commercial/opportunities/db";
+import { createCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
+import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
+import { UUID_RE } from "@/lib/commercial/uuid";
+import { pickFirst } from "@/lib/commercial/form-utils";
+
+export const dynamic = "force-dynamic";
+
+type SP = Promise<Record<string, string | string[] | undefined>>;
+
+async function createAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(account_id)) {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Pick an account."));
+  }
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Title is required."));
+  }
+
+  const statusRaw = String(formData.get("status") ?? "inquiry");
+  const status = (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
+    ? (statusRaw as OpportunityStatus)
+    : "inquiry";
+  const sourceRaw = String(formData.get("source") ?? "");
+  const source = (OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)
+    ? (sourceRaw as OpportunitySource)
+    : null;
+
+  const lowDollars = String(formData.get("bid_low") ?? "").trim();
+  const highDollars = String(formData.get("bid_high") ?? "").trim();
+  const bid_value_low_cents = lowDollars ? Math.round(parseFloat(lowDollars) * 100) : null;
+  const bid_value_high_cents = highDollars ? Math.round(parseFloat(highDollars) * 100) : null;
+  if (bid_value_low_cents !== null && !Number.isFinite(bid_value_low_cents)) {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Bid low must be a number."));
+  }
+  if (bid_value_high_cents !== null && !Number.isFinite(bid_value_high_cents)) {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent("Bid high must be a number."));
+  }
+
+  const proposal_due_at = (formData.get("proposal_due_at") as string) || null;
+  const description = (formData.get("description") as string)?.trim() || null;
+
+  const result = await createCommercialOpportunity({
+    account_id,
+    title,
+    status,
+    source,
+    bid_value_low_cents,
+    bid_value_high_cents,
+    proposal_due_at,
+    description,
+    created_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect("/commercial/opportunities/new?error=" + encodeURIComponent(result.error));
+  }
+  redirect("/commercial/opportunities?created=1");
+}
+
+export default async function NewOpportunityPage({
+  searchParams,
+}: {
+  searchParams: SP;
+}) {
+  const sp = await searchParams;
+  const errorMessage = pickFirst(sp.error);
+  // Allow ?account=<uuid> deep-link to pre-pick the account (e.g. from
+  // a future "New opportunity" button on the Account detail page).
+  const presetAccount = pickFirst(sp.account);
+  const accounts = await listCommercialAccounts();
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <header>
+        <Link
+          href="/commercial/opportunities"
+          className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M19 12H5 M12 19l-7-7 7-7" />
+          </svg>
+          All opportunities
+        </Link>
+        <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal mt-2">
+          New opportunity
+        </h1>
+        <p className="text-sm text-ppp-charcoal-500 mt-1">
+          Log a commercial bid. Primary contact auto-pulls from the account&apos;s starred contact.
+        </p>
+      </header>
+
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      <form action={createAction} className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 space-y-4">
+        <div>
+          <label htmlFor="account_id" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            Account <span className="text-rose-700">*</span>
+          </label>
+          <select
+            id="account_id"
+            name="account_id"
+            required
+            defaultValue={presetAccount ?? ""}
+            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+          >
+            <option value="">Pick an account</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.company_name}
+              </option>
+            ))}
+          </select>
+          {accounts.length === 0 && (
+            <p className="text-[12px] text-amber-700 mt-1">
+              No accounts yet.{" "}
+              <Link href="/commercial/accounts/new" className="underline">
+                Create an account first
+              </Link>
+              .
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="title" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            Title <span className="text-rose-700">*</span>
+          </label>
+          <input
+            id="title"
+            name="title"
+            type="text"
+            required
+            maxLength={200}
+            placeholder="e.g. Lobby + Halls Repaint Q3"
+            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="status" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              Status
+            </label>
+            <select
+              id="status"
+              name="status"
+              defaultValue="inquiry"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+            >
+              {OPPORTUNITY_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {opportunityStatusLabel(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="source" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              Source
+            </label>
+            <select
+              id="source"
+              name="source"
+              defaultValue=""
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+            >
+              <option value="">—</option>
+              {OPPORTUNITY_SOURCES.map((s) => (
+                <option key={s} value={s}>
+                  {opportunitySourceLabel(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="bid_low" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              Bid low ($)
+            </label>
+            <input
+              id="bid_low"
+              name="bid_low"
+              type="number"
+              inputMode="decimal"
+              step="100"
+              min="0"
+              placeholder="e.g. 25000"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            />
+          </div>
+          <div>
+            <label htmlFor="bid_high" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              Bid high ($)
+            </label>
+            <input
+              id="bid_high"
+              name="bid_high"
+              type="number"
+              inputMode="decimal"
+              step="100"
+              min="0"
+              placeholder="e.g. 35000"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="proposal_due_at" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            Proposal due
+          </label>
+          <input
+            id="proposal_due_at"
+            name="proposal_due_at"
+            type="date"
+            className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="description" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            Description / scope summary
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            rows={4}
+            placeholder="Optional. Quick scope notes — full RFP attaches in Batch 4."
+            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y"
+          />
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 pt-2">
+          <Link
+            href="/commercial/opportunities"
+            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+          >
+            Create opportunity
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
