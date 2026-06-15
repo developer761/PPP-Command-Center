@@ -225,6 +225,38 @@ export type OpportunityStatusLogRow = {
   loss_reason: OpportunityLossReason | null;
 };
 
+/** Bulk: most-recent status-change timestamp per opp (the time the opp
+ *  ENTERED its current status). Lets the list page show "5d in
+ *  estimating" without N+1. Empty Map if migration 029 hasn't run. */
+export async function listCurrentStatusEnteredAtByOpp(
+  opportunity_ids: string[]
+): Promise<Map<string, string>> {
+  if (opportunity_ids.length === 0) return new Map();
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_opportunity_status_log")
+    .select("opportunity_id, to_status, changed_at")
+    .in("opportunity_id", opportunity_ids)
+    .order("changed_at", { ascending: false });
+  if (error) {
+    console.warn(
+      "[commercial/opportunities/status] listCurrentStatusEnteredAtByOpp:",
+      error.message
+    );
+    return new Map();
+  }
+  // Take the most recent entry per opp — that's when its current
+  // status was entered.
+  const out = new Map<string, string>();
+  for (const r of (data ?? []) as Array<{
+    opportunity_id: string;
+    changed_at: string;
+  }>) {
+    if (!out.has(r.opportunity_id)) out.set(r.opportunity_id, r.changed_at);
+  }
+  return out;
+}
+
 export async function listOpportunityStatusLog(
   opportunity_id: string
 ): Promise<OpportunityStatusLogRow[]> {

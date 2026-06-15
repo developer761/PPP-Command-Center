@@ -22,6 +22,30 @@ import {
   changeOpportunityStatus,
   shouldWarnTransition,
 } from "@/lib/commercial/opportunities/status";
+import {
+  listOpportunityTeam,
+  addOpportunityAssignment,
+  removeOpportunityAssignment,
+  OPPORTUNITY_ASSIGNMENT_ROLES,
+  opportunityAssignmentRoleLabel,
+  type OpportunityAssignmentRole,
+} from "@/lib/commercial/opportunities/assignments";
+import {
+  listOpportunityTasks,
+  createOpportunityTask,
+  completeOpportunityTask,
+  uncompleteOpportunityTask,
+  deleteOpportunityTask,
+  type OpportunityTask,
+} from "@/lib/commercial/opportunities/tasks";
+import {
+  listOpportunityNotes,
+  addOpportunityNote,
+  editOpportunityNote,
+  deleteOpportunityNote,
+  type OpportunityNoteWithAuthor,
+} from "@/lib/commercial/opportunities/notes";
+import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +80,166 @@ async function changeStatusAction(formData: FormData) {
     redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent(result.error));
   }
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
+// ────────────── Team tab actions ──────────────
+
+async function addTeamAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const user_id = String(formData.get("user_id") ?? "");
+  const role = String(formData.get("role") ?? "") as OpportunityAssignmentRole;
+  const is_primary = formData.get("is_primary") === "on";
+  const notes = (formData.get("notes") as string)?.trim() || null;
+  if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
+  if (!UUID_RE.test(user_id)) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a staff member.")}`);
+  }
+  if (!(OPPORTUNITY_ASSIGNMENT_ROLES as readonly string[]).includes(role)) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a role.")}`);
+  }
+  const result = await addOpportunityAssignment({
+    opportunity_id,
+    user_id,
+    role,
+    is_primary,
+    notes,
+    assigned_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
+}
+
+async function removeTeamAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const assignment_id = String(formData.get("assignment_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(assignment_id)) {
+    redirect("/commercial/opportunities");
+  }
+  await removeOpportunityAssignment(opportunity_id, assignment_id, user.id);
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
+}
+
+// ────────────── Tasks tab actions ──────────────
+
+async function addTaskAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
+  const title = String(formData.get("title") ?? "");
+  const due_at = (formData.get("due_at") as string) || null;
+  const assigned_user_id_raw = String(formData.get("assigned_user_id") ?? "");
+  const assigned_user_id =
+    assigned_user_id_raw && UUID_RE.test(assigned_user_id_raw) ? assigned_user_id_raw : null;
+  const result = await createOpportunityTask({
+    opportunity_id,
+    title,
+    due_at,
+    assigned_user_id,
+    created_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks`);
+}
+
+async function toggleTaskAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const task_id = String(formData.get("task_id") ?? "");
+  const make_complete = String(formData.get("make_complete") ?? "true") === "true";
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(task_id)) {
+    redirect("/commercial/opportunities");
+  }
+  if (make_complete) {
+    await completeOpportunityTask(opportunity_id, task_id, user.id);
+  } else {
+    await uncompleteOpportunityTask(opportunity_id, task_id, user.id);
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks`);
+}
+
+async function deleteTaskAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const task_id = String(formData.get("task_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(task_id)) {
+    redirect("/commercial/opportunities");
+  }
+  await deleteOpportunityTask(opportunity_id, task_id, user.id);
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks`);
+}
+
+// ────────────── Notes tab actions ──────────────
+
+async function addNoteAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
+  const body = String(formData.get("body") ?? "");
+  const result = await addOpportunityNote({
+    opportunity_id,
+    body,
+    author_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
+}
+
+async function editNoteAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const note_id = String(formData.get("note_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(note_id)) {
+    redirect("/commercial/opportunities");
+  }
+  const body = String(formData.get("body") ?? "");
+  const result = await editOpportunityNote(opportunity_id, note_id, body, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
+}
+
+async function deleteNoteAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const note_id = String(formData.get("note_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(note_id)) {
+    redirect("/commercial/opportunities");
+  }
+  await deleteOpportunityNote(opportunity_id, note_id, user.id);
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
 }
 
 const TABS = [
@@ -176,7 +360,12 @@ export default async function OpportunityDetailPage({
           preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
         />
       )}
-      {tab !== "info" && <ComingSoonTab label={TABS.find((t) => t.key === tab)?.label ?? tab} />}
+      {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {(tab === "plans" || tab === "timeline") && (
+        <ComingSoonTab label={TABS.find((t) => t.key === tab)?.label ?? tab} />
+      )}
     </div>
   );
 }
@@ -413,6 +602,496 @@ function ChangeStatusCard({
         </form>
       )}
     </section>
+  );
+}
+
+// ─────────────── Team tab ───────────────
+
+async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+  const [team, staff] = await Promise.all([
+    listOpportunityTeam(oppId),
+    listAssignableStaff(),
+  ]);
+  // Detect "filled role with no primary holder" so we can amber-banner
+  // the user — same pattern as the accounts Team tab.
+  const rolesPresent = new Set<OpportunityAssignmentRole>();
+  const rolesWithPrimary = new Set<OpportunityAssignmentRole>();
+  for (const person of team) {
+    for (const a of person.assignments) {
+      rolesPresent.add(a.role);
+      if (a.is_primary) rolesWithPrimary.add(a.role);
+    }
+  }
+  const missingPrimaryRoles = Array.from(rolesPresent).filter((r) => !rolesWithPrimary.has(r));
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+      {missingPrimaryRoles.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          <strong>Heads up</strong> — no primary set for:{" "}
+          {missingPrimaryRoles.map((r) => opportunityAssignmentRoleLabel(r)).join(", ")}.
+        </div>
+      )}
+      {staff.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          No PPP staff have Commercial CC access yet. Grant access on the admin Users page first.
+        </div>
+      )}
+
+      {/* Add assignment form */}
+      {staff.length > 0 && (
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+          <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add to team</h2>
+          <form action={addTeamAction} className="space-y-3">
+            <input type="hidden" name="opportunity_id" value={oppId} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="team_user" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                  Staff member <span className="text-rose-700">*</span>
+                </label>
+                <select
+                  id="team_user"
+                  name="user_id"
+                  required
+                  defaultValue=""
+                  className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                >
+                  <option value="">Pick someone</option>
+                  {staff.map((s) => (
+                    <option key={s.user_id} value={s.user_id}>
+                      {s.full_name ?? s.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="team_role" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                  Role <span className="text-rose-700">*</span>
+                </label>
+                <select
+                  id="team_role"
+                  name="role"
+                  required
+                  defaultValue=""
+                  className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                >
+                  <option value="">Pick a role</option>
+                  {OPPORTUNITY_ASSIGNMENT_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {opportunityAssignmentRoleLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input id="team_primary" name="is_primary" type="checkbox" className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40" />
+              <label htmlFor="team_primary" className="text-[12px] text-ppp-charcoal-700">
+                Mark as primary in this role
+              </label>
+            </div>
+            <div>
+              <label htmlFor="team_notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                Notes
+              </label>
+              <input
+                id="team_notes"
+                name="notes"
+                type="text"
+                placeholder="Optional — e.g. covering for Sarah"
+                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+              >
+                Add to team
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {/* Current team */}
+      {team.length === 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+          No team assigned yet. Add the sales rep, estimator, PM, and anyone else from PPP working this deal.
+        </div>
+      ) : (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100">
+            <h2 className="text-sm font-semibold text-ppp-charcoal">
+              {team.length} on team
+            </h2>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {team.map((person) => (
+              <li key={person.user_id} className="px-4 py-4">
+                <div className="font-semibold text-ppp-charcoal text-sm">
+                  {person.user_full_name ?? person.user_email}
+                </div>
+                {person.user_full_name && (
+                  <a href={`mailto:${person.user_email}`} className="text-[12px] text-emerald-700 hover:text-emerald-800 underline">
+                    {person.user_email}
+                  </a>
+                )}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {person.assignments.map((a) => (
+                    <span
+                      key={a.id}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
+                        a.is_primary
+                          ? "bg-emerald-600 text-white border-emerald-700"
+                          : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      }`}
+                      title={a.notes ?? undefined}
+                    >
+                      {a.is_primary && <span aria-hidden>★</span>}
+                      {opportunityAssignmentRoleLabel(a.role)}
+                      <form action={removeTeamAction} className="inline">
+                        <input type="hidden" name="opportunity_id" value={oppId} />
+                        <input type="hidden" name="assignment_id" value={a.id} />
+                        <button
+                          type="submit"
+                          aria-label={`Remove ${opportunityAssignmentRoleLabel(a.role)} role`}
+                          className={`-mr-1 ml-0.5 px-2 py-1 min-h-[32px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-emerald-700/80 hover:text-emerald-900"}`}
+                        >
+                          ✕
+                        </button>
+                      </form>
+                    </span>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────── Tasks tab ───────────────
+
+async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+  const [tasks, staff] = await Promise.all([
+    listOpportunityTasks(oppId),
+    listAssignableStaff(),
+  ]);
+  const open = tasks.filter((t) => !t.completed_at);
+  const closed = tasks.filter((t) => !!t.completed_at);
+  const staffById = new Map(staff.map((s) => [s.user_id, s]));
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add task</h2>
+        <form action={addTaskAction} className="space-y-3">
+          <input type="hidden" name="opportunity_id" value={oppId} />
+          <div>
+            <label htmlFor="task_title" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              Title <span className="text-rose-700">*</span>
+            </label>
+            <input
+              id="task_title"
+              name="title"
+              type="text"
+              required
+              maxLength={200}
+              placeholder="e.g. Site walk Tuesday + send sub bids"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="task_due" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                Due date
+              </label>
+              <input
+                id="task_due"
+                name="due_at"
+                type="date"
+                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              />
+            </div>
+            <div>
+              <label htmlFor="task_assignee" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                Assignee
+              </label>
+              <select
+                id="task_assignee"
+                name="assigned_user_id"
+                defaultValue=""
+                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+              >
+                <option value="">Unassigned</option>
+                {staff.map((s) => (
+                  <option key={s.user_id} value={s.user_id}>
+                    {s.full_name ?? s.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+            >
+              Add task
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <TaskList
+        label={`Open · ${open.length}`}
+        tasks={open}
+        oppId={oppId}
+        staffById={staffById}
+        today={today}
+        emptyCopy="No open tasks. Add the next step above."
+      />
+      {closed.length > 0 && (
+        <TaskList
+          label={`Completed · ${closed.length}`}
+          tasks={closed}
+          oppId={oppId}
+          staffById={staffById}
+          today={today}
+          emptyCopy=""
+          dim
+        />
+      )}
+    </div>
+  );
+}
+
+function TaskList({
+  label,
+  tasks,
+  oppId,
+  staffById,
+  today,
+  emptyCopy,
+  dim,
+}: {
+  label: string;
+  tasks: OpportunityTask[];
+  oppId: string;
+  staffById: Map<string, { user_id: string; email: string; full_name: string | null }>;
+  today: string;
+  emptyCopy: string;
+  dim?: boolean;
+}) {
+  return (
+    <div className={`bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden ${dim ? "opacity-80" : ""}`}>
+      <div className="px-4 py-3 border-b border-ppp-charcoal-100">
+        <h2 className="text-sm font-semibold text-ppp-charcoal">{label}</h2>
+      </div>
+      {tasks.length === 0 ? (
+        <div className="p-6 text-center text-sm text-ppp-charcoal-500">{emptyCopy}</div>
+      ) : (
+        <ul className="divide-y divide-ppp-charcoal-100">
+          {tasks.map((t) => {
+            const assignee = t.assigned_user_id ? staffById.get(t.assigned_user_id) : null;
+            const overdue =
+              !t.completed_at && t.due_at && t.due_at.slice(0, 10) < today;
+            const dueChip = !t.completed_at && t.due_at ? dueLabel(t.due_at) : null;
+            return (
+              <li key={t.id} className="px-4 py-3 flex items-start gap-3">
+                <form action={toggleTaskAction} className="pt-1">
+                  <input type="hidden" name="opportunity_id" value={oppId} />
+                  <input type="hidden" name="task_id" value={t.id} />
+                  <input type="hidden" name="make_complete" value={t.completed_at ? "false" : "true"} />
+                  <button
+                    type="submit"
+                    aria-label={t.completed_at ? `Reopen ${t.title}` : `Complete ${t.title}`}
+                    className={`w-5 h-5 rounded border-2 inline-flex items-center justify-center touch-manipulation min-h-[28px] min-w-[28px] ${
+                      t.completed_at
+                        ? "bg-emerald-600 border-emerald-600 text-white"
+                        : "border-ppp-charcoal-300 hover:border-emerald-500"
+                    }`}
+                  >
+                    {t.completed_at ? "✓" : ""}
+                  </button>
+                </form>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm ${t.completed_at ? "line-through text-ppp-charcoal-500" : "text-ppp-charcoal"}`}>
+                    {t.title}
+                  </div>
+                  <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                    {dueChip && (
+                      <span className={overdue ? "text-rose-700 font-semibold" : t.due_at && t.due_at.slice(0, 10) <= addDaysISO(today, 7) ? "text-amber-700" : "text-ppp-charcoal-500"}>
+                        {dueChip}
+                      </span>
+                    )}
+                    {assignee && (
+                      <span>
+                        Assigned: <strong>{assignee.full_name ?? assignee.email}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <form action={deleteTaskAction} className="shrink-0">
+                  <input type="hidden" name="opportunity_id" value={oppId} />
+                  <input type="hidden" name="task_id" value={t.id} />
+                  <button
+                    type="submit"
+                    aria-label={`Delete ${t.title}`}
+                    title="Delete task"
+                    className="px-2 py-1 text-[11px] text-ppp-charcoal-500 hover:text-rose-700 min-h-[32px] inline-flex items-center touch-manipulation"
+                  >
+                    Delete
+                  </button>
+                </form>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function dueLabel(iso: string): string {
+  const target = new Date(iso.slice(0, 10) + "T00:00:00").getTime();
+  if (!Number.isFinite(target)) return "—";
+  const days = Math.ceil((target - Date.now()) / 86_400_000);
+  if (days < 0) return `Overdue ${Math.abs(days)}d`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  return `Due in ${days}d`;
+}
+
+function addDaysISO(base: string, days: number): string {
+  const d = new Date(base.slice(0, 10) + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// ─────────────── Notes tab ───────────────
+
+async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+  const notes = await listOpportunityNotes(oppId);
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add note</h2>
+        <form action={addNoteAction} className="space-y-3">
+          <input type="hidden" name="opportunity_id" value={oppId} />
+          <textarea
+            id="note_body"
+            name="body"
+            required
+            rows={3}
+            placeholder="Called Sarah, asking $5k off, will get back to me tomorrow."
+            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y min-h-[88px]"
+          />
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+            >
+              Add note
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {notes.length === 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+          No notes yet. The timeline starts with whatever you log first.
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {notes.map((n) => (
+            <NoteCard key={n.id} note={n} oppId={oppId} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: string }) {
+  const author = note.author_full_name ?? note.author_email ?? "Unknown";
+  const edited = note.updated_at && note.updated_at !== note.created_at;
+  return (
+    <li className="bg-white border border-ppp-charcoal-100 rounded-xl p-4">
+      <div className="flex items-baseline justify-between gap-3 mb-2 flex-wrap">
+        <span className="text-sm font-semibold text-ppp-charcoal">{author}</span>
+        <span className="text-[11px] text-ppp-charcoal-500">
+          {new Date(note.created_at).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+          {edited && " · edited"}
+        </span>
+      </div>
+      <details className="group">
+        <summary className="list-none cursor-pointer">
+          <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{note.body}</p>
+          <span className="text-[11px] text-emerald-700 underline mt-2 inline-flex items-center gap-1 min-h-[32px] touch-manipulation">
+            Edit / Delete
+          </span>
+        </summary>
+        <div className="mt-3 space-y-3">
+          <form action={editNoteAction} className="space-y-2">
+            <input type="hidden" name="opportunity_id" value={oppId} />
+            <input type="hidden" name="note_id" value={note.id} />
+            <textarea
+              name="body"
+              required
+              rows={3}
+              defaultValue={note.body}
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y min-h-[88px]"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="submit"
+                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-ppp-charcoal text-white text-[12px] font-semibold hover:bg-ppp-charcoal-700 min-h-[36px] touch-manipulation"
+              >
+                Save edit
+              </button>
+            </div>
+          </form>
+          <form action={deleteNoteAction}>
+            <input type="hidden" name="opportunity_id" value={oppId} />
+            <input type="hidden" name="note_id" value={note.id} />
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[32px] inline-flex items-center touch-manipulation"
+              >
+                Delete note
+              </button>
+            </div>
+          </form>
+        </div>
+      </details>
+    </li>
   );
 }
 

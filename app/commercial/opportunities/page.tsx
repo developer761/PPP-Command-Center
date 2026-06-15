@@ -25,7 +25,11 @@ import {
 import {
   allowedNextStatuses,
   changeOpportunityStatus,
+  listCurrentStatusEnteredAtByOpp,
 } from "@/lib/commercial/opportunities/status";
+import { listPrimaryLeadByOpp, opportunityAssignmentRoleLabel } from "@/lib/commercial/opportunities/assignments";
+import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
+import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -98,6 +102,17 @@ export default async function CommercialOpportunitiesPage({
     listCommercialAccounts(),
   ]);
   const accountById = new Map<string, CommercialAccount>(accounts.map((a) => [a.id, a]));
+
+  // Row-augmentation bulk fetches — all in one parallel Promise.all so
+  // the row's signal-rich badges (days-in-status, overdue tasks count,
+  // last-note-at, primary lead) cost one round-trip each, not N+1.
+  const oppIds = oppsRaw.map((o) => o.id);
+  const [statusEnteredAtMap, taskStatsMap, lastNoteMap, primaryLeadMap] = await Promise.all([
+    listCurrentStatusEnteredAtByOpp(oppIds),
+    listOpenTaskStatsByOpp(oppIds),
+    listLastNoteByOpp(oppIds),
+    listPrimaryLeadByOpp(oppIds),
+  ]);
 
   // Apply chip filters post-fetch.
   let opps = oppsRaw;
@@ -322,6 +337,10 @@ export default async function CommercialOpportunitiesPage({
                 key={o.id}
                 opportunity={o}
                 account={accountById.get(o.account_id) ?? null}
+                statusEnteredAt={statusEnteredAtMap.get(o.id) ?? null}
+                taskStats={taskStatsMap.get(o.id) ?? null}
+                lastNote={lastNoteMap.get(o.id) ?? null}
+                primaryLead={primaryLeadMap.get(o.id) ?? null}
               />
             ))}
           </ul>
@@ -402,15 +421,29 @@ function FilterChip({
 function OpportunityRow({
   opportunity,
   account,
+  statusEnteredAt,
+  taskStats,
+  lastNote,
+  primaryLead,
 }: {
   opportunity: CommercialOpportunity;
   account: CommercialAccount | null;
+  statusEnteredAt: string | null;
+  taskStats: { open: number; overdue: number; due_soon: number } | null;
+  lastNote: { created_at: string; author_label: string | null } | null;
+  primaryLead: { user_email: string; user_full_name: string | null; role: import("@/lib/commercial/opportunities/assignments").OpportunityAssignmentRole } | null;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
   // Decision countdown — color-coded so Alex's eye catches urgency on
   // a Friday scan. Reuses the same green/amber/rose language as the
   // accounts list activity tones.
   const dueChip = decisionChip(opportunity.proposal_due_at);
+  // Days-in-current-status — from the status_log "entered at" lookup.
+  // Tones: <7 muted / 7-14 amber / >14 rose. Surfaces "stuck deals"
+  // at a glance without opening detail.
+  const daysInStatus = statusEnteredAt
+    ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
+    : null;
   // Probability override badge — shows a quiet "custom" indicator when
   // the user set probability away from the status default. Signals
   // "this is a gut call, not the system default" — useful intel.
@@ -455,6 +488,69 @@ function OpportunityRow({
                 {probOverridden && <span className="ml-0.5 text-amber-700" aria-label="Probability overridden from status default">*</span>}
               </span>
             </div>
+            {/* Signal row — secondary glance band. Shows up to 4 quick
+                cues so Alex can scan the list without opening detail:
+                days-in-status, overdue/due-soon task chips, last-note
+                touchpoint, primary lead initials. Each only renders
+                when the data warrants it. */}
+            {(daysInStatus !== null || taskStats || lastNote || primaryLead) && (
+              <div className="text-[11px] mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+                {daysInStatus !== null && (
+                  <span
+                    className={
+                      daysInStatus > 14
+                        ? "text-rose-700"
+                        : daysInStatus > 7
+                        ? "text-amber-700"
+                        : "text-ppp-charcoal-500"
+                    }
+                    title={`Entered ${opportunityStatusLabel(opportunity.status)} ${daysInStatus}d ago`}
+                  >
+                    {daysInStatus}d in {opportunityStatusLabel(opportunity.status).toLowerCase()}
+                  </span>
+                )}
+                {taskStats && taskStats.open > 0 && (
+                  <>
+                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                    <span
+                      className={
+                        taskStats.overdue > 0
+                          ? "text-rose-700 font-medium"
+                          : taskStats.due_soon > 0
+                          ? "text-amber-700"
+                          : "text-ppp-charcoal-500"
+                      }
+                      title={`${taskStats.open} open · ${taskStats.overdue} overdue · ${taskStats.due_soon} due in 7d`}
+                    >
+                      {taskStats.overdue > 0
+                        ? `${taskStats.overdue} overdue task${taskStats.overdue === 1 ? "" : "s"}`
+                        : `${taskStats.open} open task${taskStats.open === 1 ? "" : "s"}`}
+                    </span>
+                  </>
+                )}
+                {lastNote && (
+                  <>
+                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                    <span className="text-ppp-charcoal-500" title={new Date(lastNote.created_at).toLocaleString()}>
+                      Last note {relativeAgo(lastNote.created_at)}
+                      {lastNote.author_label ? ` by ${lastNote.author_label}` : ""}
+                    </span>
+                  </>
+                )}
+                {primaryLead && (
+                  <>
+                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                    <span
+                      className="inline-flex items-center gap-1 text-emerald-700"
+                      title={`${opportunityAssignmentRoleLabel(primaryLead.role)}: ${primaryLead.user_full_name ?? primaryLead.user_email}`}
+                    >
+                      <span aria-hidden>★</span>
+                      {(primaryLead.user_full_name ?? primaryLead.user_email).split(" ")[0]}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 shrink-0 mt-0.5" aria-hidden>
             <path d="M9 18l6-6-6-6" />
@@ -512,6 +608,21 @@ function OpportunityRow({
       )}
     </li>
   );
+}
+
+/** Compact "3d ago" / "yesterday" / "today" relative-time for the
+ *  list-row last-note signal. Future timestamps (clock skew) collapse
+ *  to "just now" rather than render confusingly. */
+function relativeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  const days = Math.floor(ms / MS_PER_DAY);
+  if (days < 1) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }
 
 /** Decision-date chip — turns the bare ISO date into a glanceable
