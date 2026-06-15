@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 import {
   getCommercialOpportunity,
   opportunityStatusLabel,
@@ -7,17 +8,55 @@ import {
   opportunityLossReasonLabel,
   formatBidRange,
   weightedPipelineCents,
+  OPPORTUNITY_STATUSES,
+  OPPORTUNITY_LOSS_REASONS,
   type CommercialOpportunity,
   type OpportunityStatus,
+  type OpportunityLossReason,
 } from "@/lib/commercial/opportunities/db";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
+import {
+  allowedNextStatuses,
+  changeOpportunityStatus,
+  shouldWarnTransition,
+} from "@/lib/commercial/opportunities/status";
 
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string }>;
-type SP = Promise<{ tab?: string; error?: string }>;
+type SP = Promise<{ tab?: string; error?: string; action?: string; to?: string; status_ok?: string }>;
+
+async function changeStatusAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const to_status = String(formData.get("to_status") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
+    redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent("Invalid status."));
+  }
+  const lossReasonRaw = String(formData.get("loss_reason") ?? "").trim();
+  const noteRaw = String(formData.get("note") ?? "").trim();
+  const loss_reason =
+    lossReasonRaw && (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(lossReasonRaw)
+      ? (lossReasonRaw as OpportunityLossReason)
+      : null;
+  const result = await changeOpportunityStatus({
+    opp_id,
+    to_status: to_status as OpportunityStatus,
+    acting_user_id: user.id,
+    note: noteRaw || null,
+    loss_reason,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent(result.error));
+  }
+  redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
 
 const TABS = [
   { key: "info", label: "Info" },
@@ -128,7 +167,15 @@ export default async function OpportunityDetailPage({
         </ul>
       </nav>
 
-      {tab === "info" && <InfoTab opp={opp} account={account} errorMessage={pickFirst(sp.error)} />}
+      {tab === "info" && (
+        <InfoTab
+          opp={opp}
+          account={account}
+          errorMessage={pickFirst(sp.error)}
+          statusOk={pickFirst(sp.status_ok) === "1"}
+          preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
+        />
+      )}
       {tab !== "info" && <ComingSoonTab label={TABS.find((t) => t.key === tab)?.label ?? tab} />}
     </div>
   );
@@ -138,11 +185,20 @@ function InfoTab({
   opp,
   account,
   errorMessage,
+  statusOk,
+  preselectTo,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
   errorMessage?: string;
+  statusOk?: boolean;
+  preselectTo?: OpportunityStatus;
 }) {
+  // Filter the DAG-allowed next statuses by what we actually want to
+  // expose in this surface. Detail page allows ALL valid transitions,
+  // including terminal ones (won/lost/no_bid) because we have room for
+  // the loss-reason picker. List-page quick-flip hides terminals.
+  const nextStatuses = allowedNextStatuses(opp.status);
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {errorMessage && (
@@ -150,6 +206,23 @@ function InfoTab({
           {errorMessage}
         </div>
       )}
+      {statusOk && (
+        <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700 flex items-start justify-between gap-3">
+          <span>Status updated to <strong>{opportunityStatusLabel(opp.status)}</strong>.</span>
+          <Link
+            href={`/commercial/opportunities/${opp.id}`}
+            className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      <ChangeStatusCard
+        opp={opp}
+        nextStatuses={nextStatuses}
+        preselectTo={preselectTo}
+        className="lg:col-span-2"
+      />
       <Card title="Deal">
         <Field label="Title" value={opp.title} />
         <Field label="Status" value={opportunityStatusLabel(opp.status)} />
@@ -208,6 +281,120 @@ function InfoTab({
         </Card>
       )}
     </div>
+  );
+}
+
+function ChangeStatusCard({
+  opp,
+  nextStatuses,
+  preselectTo,
+  className,
+}: {
+  opp: CommercialOpportunity;
+  nextStatuses: ReadonlyArray<OpportunityStatus>;
+  preselectTo?: OpportunityStatus;
+  className?: string;
+}) {
+  // Render the pre-selected status (from list-page quick-flip's
+  // "open detail to reopen" handoff, e.g. ?to=lost) as the default
+  // so the user lands on the right form without re-picking. Only
+  // honor preselectTo if it's actually a valid next status.
+  const defaultTo =
+    preselectTo && nextStatuses.includes(preselectTo) ? preselectTo : "";
+  // The picker tracks state in URL, but the actual form is server-
+  // action driven. We render the loss-reason picker ALWAYS so a user
+  // who picks 'lost' from the dropdown sees the required fields
+  // without an extra page nav. Native HTML required attr enforces it
+  // for the lost case (we mirror server-side validation in the lib).
+  return (
+    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+      <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
+        <div>
+          <h2 className="text-sm font-bold text-ppp-charcoal">Change status</h2>
+          <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+            Currently <strong>{opportunityStatusLabel(opp.status)}</strong>. Pick the next state.
+            Lost requires a reason + note.
+          </p>
+        </div>
+      </div>
+      {nextStatuses.length === 0 ? (
+        <p className="text-[12px] text-ppp-charcoal-500 italic">
+          This status has no outbound transitions. Move to <em>reopened</em> first to re-engage.
+        </p>
+      ) : (
+        <form action={changeStatusAction} className="space-y-3">
+          <input type="hidden" name="opp_id" value={opp.id} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-1">
+              <label htmlFor="to_status" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                Next status <span className="text-rose-700">*</span>
+              </label>
+              <select
+                id="to_status"
+                name="to_status"
+                required
+                defaultValue={defaultTo}
+                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+              >
+                <option value="" disabled>
+                  Pick a status
+                </option>
+                {nextStatuses.map((s) => (
+                  <option key={s} value={s}>
+                    {opportunityStatusLabel(s)}
+                    {shouldWarnTransition(opp.status, s) ? " (warn)" : ""}
+                  </option>
+                ))}
+              </select>
+              {defaultTo && shouldWarnTransition(opp.status, defaultTo) && (
+                <p className="text-[11px] text-amber-700 mt-1">
+                  Unusual transition — double-check this is intentional.
+                </p>
+              )}
+            </div>
+            <div className="sm:col-span-1">
+              <label htmlFor="loss_reason" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                Loss reason (if lost)
+              </label>
+              <select
+                id="loss_reason"
+                name="loss_reason"
+                defaultValue=""
+                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+              >
+                <option value="">—</option>
+                {OPPORTUNITY_LOSS_REASONS.map((r) => (
+                  <option key={r} value={r}>
+                    {opportunityLossReasonLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-1">
+              <label htmlFor="note" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                Note (required if lost)
+              </label>
+              <input
+                id="note"
+                name="note"
+                type="text"
+                placeholder="One-line context"
+                maxLength={500}
+                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] touch-manipulation"
+            >
+              Apply status change
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 

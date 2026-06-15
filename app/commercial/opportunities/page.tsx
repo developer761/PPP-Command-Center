@@ -1,16 +1,60 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import {
   listCommercialOpportunities,
   OPPORTUNITY_STATUSES,
+  OPPORTUNITY_SOURCES,
   opportunityStatusLabel,
+  opportunitySourceLabel,
   formatBidRange,
   weightedPipelineCents,
   type CommercialOpportunity,
   type OpportunityStatus,
+  type OpportunitySource,
 } from "@/lib/commercial/opportunities/db";
 import { listCommercialAccounts, type CommercialAccount, type CommercialAccountRating, type CommercialPrequalStatus } from "@/lib/commercial/accounts/db";
 import { pickFirst } from "@/lib/commercial/form-utils";
-import { OPEN_OPP_STATUSES, DEFAULT_PROBABILITY_BY_STATUS } from "@/lib/commercial/opportunities/constants";
+import { UUID_RE } from "@/lib/commercial/uuid";
+import {
+  OPEN_OPP_STATUSES,
+  DEFAULT_PROBABILITY_BY_STATUS,
+  STALE_OPP_DAYS,
+  QUICK_FLIP_BLOCKED_STATUSES,
+} from "@/lib/commercial/opportunities/constants";
+import {
+  allowedNextStatuses,
+  changeOpportunityStatus,
+} from "@/lib/commercial/opportunities/status";
+
+const MS_PER_DAY = 86_400_000;
+
+async function quickFlipStatusAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const to_status = String(formData.get("to_status") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
+    redirect("/commercial/opportunities?status_error=" + encodeURIComponent("Invalid status."));
+  }
+  // Block terminal statuses from list-page quick-flip — they need extra
+  // fields (loss reason, etc.) and live on the detail page.
+  if (QUICK_FLIP_BLOCKED_STATUSES.has(to_status)) {
+    redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
+  }
+  const result = await changeOpportunityStatus({
+    opp_id,
+    to_status: to_status as OpportunityStatus,
+    acting_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect("/commercial/opportunities?status_error=" + encodeURIComponent(result.error));
+  }
+  redirect("/commercial/opportunities?status_ok=1");
+}
 
 export const dynamic = "force-dynamic";
 
@@ -28,15 +72,45 @@ export default async function CommercialOpportunitiesPage({
     ? (statusFilter as OpportunityStatus)
     : undefined;
   const created = pickFirst(sp.created) === "1";
+  const statusOk = pickFirst(sp.status_ok) === "1";
+  const statusError = pickFirst(sp.status_error);
+
+  // Chip filters (client-side post-fetch — no DB index help needed):
+  //   ?stale=1            — only open opps not updated in STALE_OPP_DAYS
+  //   ?sources=email,phone — multi-select source filter (comma-joined)
+  const staleFilter = pickFirst(sp.stale) === "1";
+  const sourcesRaw = pickFirst(sp.sources);
+  const sourceSet: Set<OpportunitySource> = new Set();
+  if (sourcesRaw) {
+    for (const s of sourcesRaw.split(",")) {
+      const t = s.trim();
+      if ((OPPORTUNITY_SOURCES as readonly string[]).includes(t)) {
+        sourceSet.add(t as OpportunitySource);
+      }
+    }
+  }
 
   // Load opps + accounts in parallel so we can show the account name
   // per row without an N+1 join. PPP's commercial book is small enough
   // (~50 accounts) that this is one round-trip not many.
-  const [opps, accounts] = await Promise.all([
+  const [oppsRaw, accounts] = await Promise.all([
     listCommercialOpportunities({ search, status: validStatus }),
     listCommercialAccounts(),
   ]);
   const accountById = new Map<string, CommercialAccount>(accounts.map((a) => [a.id, a]));
+
+  // Apply chip filters post-fetch.
+  let opps = oppsRaw;
+  if (staleFilter) {
+    opps = opps.filter((o) => {
+      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
+      const days = Math.floor((Date.now() - new Date(o.updated_at).getTime()) / MS_PER_DAY);
+      return Number.isFinite(days) && days >= STALE_OPP_DAYS;
+    });
+  }
+  if (sourceSet.size > 0) {
+    opps = opps.filter((o) => o.source && sourceSet.has(o.source));
+  }
 
   // Pipeline summary tile values — computed across the visible (filtered)
   // open opps so the number on the page matches what's listed below.
@@ -45,12 +119,31 @@ export default async function CommercialOpportunitiesPage({
   const totalBidLowCents = openOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
   const totalBidHighCents = openOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
 
-  // URL state preservation for chip toggles.
+  // URL state preservation for chip toggles. Stale + sources collapse
+  // into the URL so reload + bookmark survive.
   const baseParams = new URLSearchParams();
   if (search) baseParams.set("q", search);
   if (validStatus) baseParams.set("status", validStatus);
+  if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
+  const toggleStaleHref = (() => {
+    const p = new URLSearchParams(baseParams);
+    if (!staleFilter) p.set("stale", "1");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  })();
+  const toggleSourceHref = (src: OpportunitySource) => {
+    const p = new URLSearchParams(baseParams);
+    const next = new Set(sourceSet);
+    if (next.has(src)) next.delete(src);
+    else next.add(src);
+    if (next.size > 0) p.set("sources", Array.from(next).join(","));
+    else p.delete("sources");
+    if (staleFilter) p.set("stale", "1");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  };
 
-  const anyFilterActive = !!search || !!validStatus;
+  const anyFilterActive = !!search || !!validStatus || staleFilter || sourceSet.size > 0;
 
   return (
     <div className="space-y-6">
@@ -153,6 +246,48 @@ export default async function CommercialOpportunitiesPage({
           Opportunity created.
         </div>
       )}
+      {statusOk && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700 flex items-start justify-between gap-3">
+          <span>Status updated.</span>
+          <Link
+            href="/commercial/opportunities"
+            className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      {statusError && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700 flex items-start justify-between gap-3">
+          <span>{statusError}</span>
+          <Link
+            href="/commercial/opportunities"
+            className="text-[12px] text-rose-700 hover:text-rose-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+
+      {/* Chip cluster — quick toggles for stale + source. Sits below the
+          filter form so the heavy filters live in one place and the
+          glanceable ones live in another. Matches the accounts list
+          pattern. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterChip href={toggleStaleHref} active={staleFilter} tone="cold">
+          Stale &gt; {STALE_OPP_DAYS}d
+        </FilterChip>
+        {OPPORTUNITY_SOURCES.map((s) => (
+          <FilterChip
+            key={s}
+            href={toggleSourceHref(s)}
+            active={sourceSet.has(s)}
+            tone="neutral"
+          >
+            {opportunitySourceLabel(s)}
+          </FilterChip>
+        ))}
+      </div>
 
       {/* List */}
       {opps.length === 0 ? (
@@ -234,6 +369,36 @@ function SummaryTile({
   );
 }
 
+function FilterChip({
+  href,
+  active,
+  tone,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  tone: "neutral" | "cold";
+  children: React.ReactNode;
+}) {
+  const inactiveCls =
+    "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50";
+  const activeCls =
+    tone === "cold"
+      ? "bg-ppp-charcoal-100 border-ppp-charcoal-300 text-ppp-charcoal-700"
+      : "bg-emerald-100 border-emerald-300 text-emerald-800";
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium transition-colors touch-manipulation min-h-[36px] ${
+        active ? activeCls : inactiveCls
+      }`}
+    >
+      {active && <span aria-hidden>✓</span>}
+      {children}
+    </Link>
+  );
+}
+
 function OpportunityRow({
   opportunity,
   account,
@@ -251,8 +416,14 @@ function OpportunityRow({
   // "this is a gut call, not the system default" — useful intel.
   const defaultProb = DEFAULT_PROBABILITY_BY_STATUS[opportunity.status] ?? null;
   const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
+  // Quick-flip dropdown options — only DAG-valid next statuses, and
+  // we hide terminal states (won/lost/no_bid) because they need extra
+  // fields and live on the detail page.
+  const nextStatuses = allowedNextStatuses(opportunity.status).filter(
+    (s) => !QUICK_FLIP_BLOCKED_STATUSES.has(s)
+  );
   return (
-    <li>
+    <li className="relative">
       <Link
         href={`/commercial/opportunities/${opportunity.id}`}
         className="block px-4 py-4 hover:bg-emerald-50/40 transition-colors touch-manipulation"
@@ -290,6 +461,55 @@ function OpportunityRow({
           </svg>
         </div>
       </Link>
+      {/* Quick status-flip — lives OUTSIDE the row Link so the select
+          + submit don't trigger navigation. Native <select> renders
+          the iOS picker on phones (familiar) and a standard dropdown
+          on desktop. The submit button is small + adjacent so a single
+          tap → pick → tap commits the change. Hidden when nothing's a
+          valid next status (terminal-from won/lost/no_bid render the
+          "open detail to reopen" hint instead). */}
+      {nextStatuses.length > 0 ? (
+        <form
+          action={quickFlipStatusAction}
+          className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap"
+        >
+          <input type="hidden" name="opp_id" value={opportunity.id} />
+          <label htmlFor={`flip-${opportunity.id}`} className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
+            Quick flip
+          </label>
+          <select
+            id={`flip-${opportunity.id}`}
+            name="to_status"
+            defaultValue=""
+            required
+            className="px-2 py-1 text-base sm:text-sm border border-ppp-charcoal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[36px] bg-white"
+          >
+            <option value="" disabled>
+              Next status…
+            </option>
+            {nextStatuses.map((s) => (
+              <option key={s} value={s}>
+                → {opportunityStatusLabel(s)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            className="px-3 py-1 rounded-md bg-ppp-charcoal text-white text-[12px] font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[36px] touch-manipulation"
+          >
+            Apply
+          </button>
+        </form>
+      ) : (
+        <p className="px-4 pb-3 -mt-1 text-[11px] text-ppp-charcoal-500">
+          <Link
+            href={`/commercial/opportunities/${opportunity.id}?tab=info`}
+            className="underline hover:text-ppp-charcoal-700"
+          >
+            Open to change status
+          </Link>
+        </p>
+      )}
     </li>
   );
 }

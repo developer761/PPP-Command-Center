@@ -97,6 +97,31 @@ export async function createCommercialOpportunity(
   if (error) return { ok: false, error: error.message };
   const opp = data as CommercialOpportunity;
   await logInsert("commercial_opportunities", opp.id, opp, input.created_by_user_id);
+
+  // Log the initial status as the first row in the opp's status_log
+  // (from_status=NULL) so the Timeline tab in later batches has a
+  // complete history with no gap at creation.
+  const { data: logRow } = await sb
+    .from("commercial_opportunity_status_log")
+    .insert({
+      opportunity_id: opp.id,
+      from_status: null,
+      to_status: status,
+      changed_by_user_id: input.created_by_user_id ?? null,
+      note: null,
+      loss_reason: null,
+    })
+    .select("*")
+    .maybeSingle();
+  if (logRow) {
+    await logInsert(
+      "commercial_opportunity_status_log",
+      (logRow as { id: string }).id,
+      logRow,
+      input.created_by_user_id
+    );
+  }
+
   return { ok: true, opportunity: opp };
 }
 
