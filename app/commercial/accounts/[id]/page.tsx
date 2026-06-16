@@ -155,9 +155,12 @@ export default async function CommercialAccountDetailPage({
         </div>
       )}
       {teamSkippedMsg && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-          <strong>Heads up:</strong> some team rows didn&apos;t go through — {teamSkippedMsg}.
-          Add them manually from the Team tab below.
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
+          <span aria-hidden>⚠</span>
+          <span>
+            Some team members couldn&apos;t be added — {teamSkippedMsg}. Try again from
+            the Team tab below.
+          </span>
         </div>
       )}
       <header>
@@ -1194,7 +1197,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
       )}
 
       {/* Add assignment form */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section id="assign-ppp-staff" className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 scroll-mt-24">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Assign PPP staff</h2>
         <form action={addAssignmentAction} className="space-y-3">
           <input type="hidden" name="account_id" value={accountId} />
@@ -1318,6 +1321,15 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             this account. Mark one person primary in each role so the rest of the
             platform knows who to surface on emails, scheduling, and the Account 360.
           </p>
+          <a
+            href="#assign-ppp-staff"
+            className="inline-flex items-center gap-1.5 mt-4 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            Add a team member
+          </a>
         </div>
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">

@@ -204,8 +204,9 @@ export default function CommercialAddressFields({
             value={stateVal}
             // Hard-clamp to 2 chars in JS too — `maxLength` only blocks
             // additional typing, but a fast paste or autocomplete could
-            // slip a 3-char value through before re-render.
-            onChange={(e) => setStateVal(e.target.value.slice(0, 2).toUpperCase())}
+            // slip a 3-char value through before re-render. Trim FIRST
+            // so a paste like "  CA  " becomes "CA", not "  ".
+            onChange={(e) => setStateVal(e.target.value.trim().slice(0, 2).toUpperCase())}
             maxLength={2}
             className={INPUT_CLS}
           />

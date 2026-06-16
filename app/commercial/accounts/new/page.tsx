@@ -132,7 +132,15 @@ async function createAction(formData: FormData) {
   const params = new URLSearchParams();
   if (teamAddedCount > 0) params.set("team_added", String(teamAddedCount));
   if (teamSkipReasons.length > 0) {
-    params.set("team_skipped", teamSkipReasons.slice(0, 3).join(" · "));
+    // Defense-in-depth: even though React auto-escapes JSX text children,
+    // strip HTML-meaningful chars + control bytes + clamp length BEFORE
+    // the message lands in a query string. Keeps the URL clean + future-
+    // proofs against any downstream consumer that doesn't auto-escape.
+    const sanitized = teamSkipReasons
+      .map((s) => s.replace(/[<>"'`]/g, "").replace(/[\x00-\x1f]/g, " ").slice(0, 120))
+      .slice(0, 3)
+      .join(" · ");
+    params.set("team_skipped", sanitized);
   }
   const qs = params.toString();
   redirect(`/commercial/accounts/${newAccountId}${qs ? `?${qs}` : ""}`);

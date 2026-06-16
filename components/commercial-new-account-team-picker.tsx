@@ -36,6 +36,10 @@ import {
 
 type StaffOption = { user_id: string; email: string; full_name: string | null };
 
+// Mirrors the server-side cap in app/commercial/accounts/new/page.tsx
+// createAction. Keep these in sync — bump both if Alex ever needs more.
+const MAX_TEAM_ROWS = 20;
+
 export default function CommercialNewAccountTeamPicker({
   assignableStaff,
 }: {
@@ -46,6 +50,7 @@ export default function CommercialNewAccountTeamPicker({
   const [nextId, setNextId] = useState(1);
 
   const addRow = () => {
+    if (rows.length >= MAX_TEAM_ROWS) return;
     setRows((r) => [...r, { id: nextId, user_id: "", role: "sales_rep", is_primary: false }]);
     setNextId((n) => n + 1);
   };
@@ -53,11 +58,14 @@ export default function CommercialNewAccountTeamPicker({
   const updateRow = (id: number, patch: Partial<Row>) =>
     setRows((r) => r.map((row) => (row.id === id ? { ...row, ...patch } : row)));
 
-  // Track which user_ids are already picked so the dropdown can dim them
-  // — same person can't be on the team twice in the same role. The lib's
-  // unique constraint covers same-role-twice; primary toggling can still
-  // happen on the Team tab after create.
-  const pickedUserIds = new Set(rows.map((r) => r.user_id).filter(Boolean));
+  // Track which (user, role) pairs are already picked. The lib's unique
+  // constraint is on (account_id, user_id, role) — so Alice CAN be on the
+  // team as both Sales Rep AND Project Manager. The picker should only
+  // dim her out for the role(s) she's already been added to, not block
+  // her entirely. Primary toggling can still happen on the Team tab.
+  const pickedKeys = new Set(
+    rows.map((r) => (r.user_id ? `${r.user_id}__${r.role}` : "")).filter(Boolean)
+  );
 
   if (assignableStaff.length === 0) {
     return (
@@ -107,11 +115,15 @@ export default function CommercialNewAccountTeamPicker({
                 </option>
                 {assignableStaff.map((s) => {
                   const label = s.full_name ? `${s.full_name} (${s.email})` : s.email;
-                  const taken = pickedUserIds.has(s.user_id) && s.user_id !== row.user_id;
+                  // Dim only if this exact (user, role) pair is already
+                  // claimed by a DIFFERENT row. Same user in a different
+                  // role is allowed.
+                  const taken =
+                    pickedKeys.has(`${s.user_id}__${row.role}`) && s.user_id !== row.user_id;
                   return (
                     <option key={s.user_id} value={s.user_id} disabled={taken}>
                       {label}
-                      {taken ? " — already on the team" : ""}
+                      {taken ? ` — already on the team as ${assignmentRoleLabel(row.role)}` : ""}
                     </option>
                   );
                 })}
@@ -165,13 +177,19 @@ export default function CommercialNewAccountTeamPicker({
       <button
         type="button"
         onClick={addRow}
-        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border-2 border-dashed border-emerald-300 bg-emerald-50/40 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400 min-h-[44px] touch-manipulation transition-colors"
+        disabled={rows.length >= MAX_TEAM_ROWS}
+        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border-2 border-dashed border-emerald-300 bg-emerald-50/40 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400 min-h-[44px] touch-manipulation transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-50/40 disabled:hover:border-emerald-300"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M12 5v14 M5 12h14" />
         </svg>
         {rows.length === 0 ? "Add a team member" : "Add another team member"}
       </button>
+      {rows.length >= MAX_TEAM_ROWS && (
+        <p className="text-[11px] text-amber-700 mt-1">
+          Hit the {MAX_TEAM_ROWS}-person cap. Add the rest from the Team tab after this account is created.
+        </p>
+      )}
     </div>
   );
 }
