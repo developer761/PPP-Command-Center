@@ -47,13 +47,19 @@ const HEADERS = [
 
 function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return "\"\"";
-  const s =
+  const raw =
     typeof value === "string"
       ? value
       : typeof value === "number" || typeof value === "boolean"
       ? String(value)
       : JSON.stringify(value);
-  // Double the inner quotes; wrap the whole value.
+  // OWASP CSV-injection defense: a value starting with `= + - @ \t \r`
+  // is treated as a formula by Excel / LibreOffice / Sheets. A company
+  // named "=cmd|'/c calc'!A1" or notes pasted from Excel would otherwise
+  // execute when the user opens the CSV. Prefixing with a single quote
+  // neutralizes it — Excel renders literal text without firing the
+  // formula engine. Mirrors the same fix in opportunities/export.ts.
+  const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${s.replace(/"/g, '""')}"`;
 }
 

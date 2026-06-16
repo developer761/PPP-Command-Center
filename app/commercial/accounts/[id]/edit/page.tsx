@@ -160,7 +160,7 @@ export default async function EditCommercialAccountPage({
 
         <Section title="Billing address">
           <EditField id="billing_street" label="Street" defaultValue={account.billing_street ?? ""} />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <EditField id="billing_city" label="City" defaultValue={account.billing_city ?? ""} />
             <EditField id="billing_state" label="State" defaultValue={account.billing_state ?? ""} />
             <EditField id="billing_zip" label="ZIP" defaultValue={account.billing_zip ?? ""} />
@@ -169,7 +169,7 @@ export default async function EditCommercialAccountPage({
 
         <Section title="Primary site address (if different)">
           <EditField id="site_street" label="Street" defaultValue={account.site_street ?? ""} />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <EditField id="site_city" label="City" defaultValue={account.site_city ?? ""} />
             <EditField id="site_state" label="State" defaultValue={account.site_state ?? ""} />
             <EditField id="site_zip" label="ZIP" defaultValue={account.site_zip ?? ""} />

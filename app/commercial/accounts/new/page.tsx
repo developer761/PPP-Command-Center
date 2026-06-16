@@ -167,7 +167,7 @@ export default async function NewCommercialAccountPage({
 
         <Section title="Billing address">
           <Field id="billing_street" label="Street" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field id="billing_city" label="City" />
             <Field id="billing_state" label="State" />
             <Field id="billing_zip" label="ZIP" />
@@ -176,7 +176,7 @@ export default async function NewCommercialAccountPage({
 
         <Section title="Primary site address (if different)">
           <Field id="site_street" label="Street" />
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field id="site_city" label="City" />
             <Field id="site_state" label="State" />
             <Field id="site_zip" label="ZIP" />

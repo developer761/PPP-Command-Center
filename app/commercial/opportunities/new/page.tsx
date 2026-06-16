@@ -68,6 +68,11 @@ async function createAction(formData: FormData) {
 
   const proposal_due_at = (formData.get("proposal_due_at") as string) || null;
   const description = (formData.get("description") as string)?.trim() || null;
+  // If the user landed here from an Account's Opportunities tab via the
+  // `?account=<uuid>` deep link, return them to that tab after create.
+  // Otherwise default to the global pipeline. Hidden input passes the
+  // origin context through the form submission.
+  const returnTo = String(formData.get("return_to") ?? "").trim();
 
   const result = await createCommercialOpportunity({
     account_id,
@@ -82,6 +87,9 @@ async function createAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect("/commercial/opportunities/new?error=" + encodeURIComponent(result.error));
+  }
+  if (returnTo === "account" && UUID_RE.test(account_id)) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&created=1`);
   }
   redirect("/commercial/opportunities?created=1");
 }
@@ -125,6 +133,10 @@ export default async function NewOpportunityPage({
       )}
 
       <form action={createAction} className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 space-y-4">
+        {/* Stamp the return path when the user landed here from an
+            Account's Opportunities tab so we drop them back there after
+            the create instead of into the global pipeline. */}
+        {presetAccount && <input type="hidden" name="return_to" value="account" />}
         <div>
           <label htmlFor="account_id" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
             Account <span className="text-rose-700">*</span>

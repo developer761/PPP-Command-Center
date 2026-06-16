@@ -164,6 +164,16 @@ export async function editOpportunityNote(
     .is("deleted_at", null)
     .maybeSingle();
   if (!before) return { ok: false, error: "Note not found." };
+  // Author-only gate: any CC user could otherwise rewrite anyone else's
+  // note. The UI hides the edit link for non-authors but a hand-crafted
+  // POST would bypass that. Server-side enforcement closes the loop.
+  if (
+    acting_user_id &&
+    (before as { author_user_id: string | null }).author_user_id &&
+    (before as { author_user_id: string }).author_user_id !== acting_user_id
+  ) {
+    return { ok: false, error: "Only the note's author can edit it." };
+  }
   const { data: after, error } = await sb
     .from("commercial_opportunity_notes")
     .update({ body: trimmed })

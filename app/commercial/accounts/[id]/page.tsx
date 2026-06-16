@@ -1876,17 +1876,19 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           tone="live"
           num={overview.contact_count}
           label="Contacts"
-          href={`#contacts`}
+          href={`?tab=contacts`}
         />
         <KpiTile
           tone="live"
           num={overview.ppp_team_count}
           label="PPP team"
+          href={`?tab=team`}
         />
         <KpiTile
           tone="live"
           num={overview.active_document_count}
           label="Documents"
+          href={`?tab=documents`}
           sub={docHealth.label}
           subCls={docHealth.cls}
         />
@@ -1894,6 +1896,7 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           tone="live"
           num={overview.open_opps_count ?? 0}
           label="Open opps"
+          href={`?tab=opportunities`}
           sub={totalBidLabel !== "—" ? totalBidLabel : undefined}
           subCls="text-ppp-charcoal-500"
         />
@@ -1916,6 +1919,7 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           tone="live"
           num={(overview.won_opps_count ?? 0) + (overview.lost_opps_count ?? 0)}
           label="Decided bids"
+          href={`?tab=opportunities`}
           sub={renderWinRateSub(overview)}
           subCls="text-ppp-charcoal-500"
         />

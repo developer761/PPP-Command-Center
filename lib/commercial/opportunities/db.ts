@@ -178,11 +178,26 @@ export function formatBidRange(low: number | null, high: number | null): string 
 }
 
 /** Weighted pipeline value for one opp: midpoint × probability. Returns
- *  cents (BIGINT-safe in JS since we cap well under MAX_SAFE_INTEGER). */
+ *  cents (BIGINT-safe in JS since we cap well under MAX_SAFE_INTEGER).
+ *
+ *  Edge cases:
+ *    - both null → 0 (no bid yet, contributes nothing to pipeline)
+ *    - both set  → midpoint × prob
+ *    - low only  → low × prob (treat as point estimate)
+ *    - high only → high × prob (treat as point estimate, NOT high/2)
+ *
+ *  The earlier implementation collapsed low=null into 0 then computed
+ *  (0 + high) / 2 = high/2, which silently halved the pipeline value of
+ *  any opp where only an upper bound was entered. Now uses null checks
+ *  so the "point estimate" cases preserve their full weight.
+ */
 export function weightedPipelineCents(opp: CommercialOpportunity): number {
-  const low = opp.bid_value_low_cents ?? 0;
-  const high = opp.bid_value_high_cents ?? 0;
-  if (low === 0 && high === 0) return 0;
-  const mid = (low + (high || low)) / 2;
+  const low = opp.bid_value_low_cents;
+  const high = opp.bid_value_high_cents;
+  if ((low === null || low === undefined) && (high === null || high === undefined)) return 0;
+  const mid =
+    low !== null && low !== undefined && high !== null && high !== undefined
+      ? (low + high) / 2
+      : (low ?? high) ?? 0;
   return Math.round((mid * opp.probability_pct) / 100);
 }

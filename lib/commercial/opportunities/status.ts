@@ -106,15 +106,30 @@ export async function changeOpportunityStatus(
     };
   }
 
-  // Loss-reason enforcement when transitioning TO lost.
+  // Loss-reason enforcement when transitioning TO a closed-without-win
+  // state. Both `lost` and `no_bid` are terminal exits where Alex needs
+  // to record WHY — for pipeline analysis (which reasons recur) and
+  // CYA against future "you should've gone after this one" questions.
+  // Reason enum is shared (price/scope/timing/etc.); semantics differ
+  // only in label.
   let lossReason: OpportunityLossReason | null = null;
   let lossNote: string | null = null;
-  if (input.to_status === "lost") {
+  if (input.to_status === "lost" || input.to_status === "no_bid") {
     if (!input.loss_reason || !OPPORTUNITY_LOSS_REASONS.includes(input.loss_reason)) {
-      return { ok: false, error: "Pick a loss reason to mark this lost." };
+      return {
+        ok: false,
+        error: input.to_status === "no_bid"
+          ? "Pick a reason for declining to bid."
+          : "Pick a loss reason to mark this lost.",
+      };
     }
     if (!input.note || !input.note.trim()) {
-      return { ok: false, error: "Add a short note explaining why this was lost." };
+      return {
+        ok: false,
+        error: input.to_status === "no_bid"
+          ? "Add a short note explaining why we passed on this."
+          : "Add a short note explaining why this was lost.",
+      };
     }
     lossReason = input.loss_reason;
     lossNote = input.note.trim();
@@ -154,10 +169,10 @@ export async function changeOpportunityStatus(
     updated_by_user_id: input.acting_user_id ?? null,
   };
   if (nextDecidedAt !== undefined) patch.decided_at = nextDecidedAt;
-  if (input.to_status === "lost") {
+  if (input.to_status === "lost" || input.to_status === "no_bid") {
     patch.loss_reason = lossReason;
     patch.loss_notes = lossNote;
-  } else if (beforeRow.status === "lost") {
+  } else if (beforeRow.status === "lost" || beforeRow.status === "no_bid") {
     patch.loss_reason = null;
     patch.loss_notes = null;
   }
