@@ -201,7 +201,7 @@ export default async function NewOpportunityPage({
           </div>
           <div>
             <label htmlFor="source" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
-              Source
+              How did this come in?
             </label>
             <select
               id="source"
@@ -209,13 +209,16 @@ export default async function NewOpportunityPage({
               defaultValue=""
               className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
             >
-              <option value="">—</option>
+              <option value="">Pick a source…</option>
               {OPPORTUNITY_SOURCES.map((s) => (
                 <option key={s} value={s}>
                   {opportunitySourceLabel(s)}
                 </option>
               ))}
             </select>
+            <p className="text-[10px] text-ppp-charcoal-400 mt-1">
+              Used to filter the pipeline later by lead channel.
+            </p>
           </div>
         </div>
 

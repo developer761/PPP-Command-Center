@@ -83,6 +83,7 @@ export default async function CommercialOpportunitiesPage({
   const created = pickFirst(sp.created) === "1";
   const statusOk = pickFirst(sp.status_ok) === "1";
   const statusError = pickFirst(sp.status_error);
+  const deletedTitle = pickFirst(sp.deleted);
 
   // Chip filters (client-side post-fetch — no DB index help needed):
   //   ?stale=1            — only open opps not updated in STALE_OPP_DAYS
@@ -97,8 +98,11 @@ export default async function CommercialOpportunitiesPage({
   // Alex's preferred sales-pipeline view; list is better for scan +
   // filter + CSV export workflows. URL state survives so a bookmark of
   // "?view=kanban" deep-links to the board.
+  // Default to kanban (Alex's preferred view); `?view=list` is the
+  // explicit opt-out. Treat anything else as kanban so a bookmark like
+  // /commercial/opportunities just goes straight to the board.
   const viewRaw = pickFirst(sp.view);
-  const viewMode: "list" | "kanban" = viewRaw === "kanban" ? "kanban" : "list";
+  const viewMode: "list" | "kanban" = viewRaw === "list" ? "list" : "kanban";
 
   // Sort dropdown — Alex's Friday workflow needs the right lens at the
   // right time. recent = "what's been touched" (default), oldest = "what's
@@ -218,12 +222,13 @@ export default async function CommercialOpportunitiesPage({
   if (validStatus) baseParams.set("status", validStatus);
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
-  if (viewMode === "kanban") baseParams.set("view", "kanban");
+  // Kanban is now the default — only list mode needs the URL param.
+  if (viewMode === "list") baseParams.set("view", "list");
 
   // View toggle hrefs preserve the rest of the filter context.
   const viewToggleHref = (target: "list" | "kanban") => {
     const p = new URLSearchParams(baseParams);
-    if (target === "kanban") p.set("view", "kanban");
+    if (target === "list") p.set("view", "list");
     else p.delete("view");
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
@@ -279,15 +284,20 @@ export default async function CommercialOpportunitiesPage({
     .map((s) => ({ status: s, count: openOpps.filter((o) => o.status === s).length }))
     .filter((r) => r.count > 0);
 
-  // Build a "go to this status" href that preserves the other active
-  // chips (sources, hot, stale) so drilling into estimating doesn't
-  // wipe the user's other filter context.
+  // Toggle: tapping a status pill drills in OR clears the filter if
+  // that status is already active. Other chips (sources, hot, stale)
+  // preserved either way so drilling in/out doesn't wipe context.
   const statusDrillHref = (s: OpportunityStatus) => {
     const p = new URLSearchParams(baseParams);
-    p.set("status", s);
+    if (validStatus === s) {
+      p.delete("status"); // tap the active pill again to clear
+    } else {
+      p.set("status", s);
+    }
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
-    return `/commercial/opportunities?${p.toString()}`;
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
 
   return (
@@ -367,50 +377,49 @@ export default async function CommercialOpportunitiesPage({
         />
       </section>
 
-      {/* Filter bar */}
-      <form className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4 flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-[180px]">
-          <label htmlFor="q" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
-            Search
-          </label>
+      {/* Search bar — replaces the old "Search field + Status dropdown
+          + Filter button" trio Karan flagged as ugly. Status filtering
+          now happens via the "Open by status" snapshot pills below
+          (which are also the kanban column headers). One clean search
+          input, magnifying-glass icon, auto-submit on Enter, and a
+          single inline "Clear" chip when any filter is active. */}
+      <form className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"
+            aria-hidden
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
           <input
             id="q"
             name="q"
             type="search"
             defaultValue={search ?? ""}
-            placeholder="Title"
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            placeholder="Search opportunities by title…"
+            className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] shadow-sm"
           />
         </div>
-        <div>
-          <label htmlFor="status" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
-            Status
-          </label>
-          <select
-            id="status"
-            name="status"
-            defaultValue={validStatus ?? ""}
-            className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
-          >
-            <option value="">Any</option>
-            {OPPORTUNITY_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {opportunityStatusLabel(s)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          type="submit"
-          className="px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 transition-colors touch-manipulation min-h-[44px]"
-        >
-          Filter
-        </button>
+        {/* Hidden status + view fields preserve them through search submit
+            so picking a search doesn't reset status filtering. */}
+        {validStatus && <input type="hidden" name="status" value={validStatus} />}
+        {viewMode === "list" && <input type="hidden" name="view" value="list" />}
+        {hotFilter && <input type="hidden" name="hot" value="1" />}
+        {staleFilter && <input type="hidden" name="stale" value="1" />}
+        {sourceSet.size > 0 && (
+          <input type="hidden" name="sources" value={Array.from(sourceSet).join(",")} />
+        )}
+        {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
         {anyFilterActive && (
           <Link
-            href="/commercial/opportunities"
-            className="text-[12px] text-emerald-700 hover:text-emerald-800 underline ml-1 min-h-[44px] inline-flex items-center"
+            href={viewMode === "kanban" ? "/commercial/opportunities" : "/commercial/opportunities?view=list"}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-ppp-charcoal-50 border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-medium hover:bg-ppp-charcoal-100 min-h-[44px] touch-manipulation shrink-0"
           >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M18 6L6 18 M6 6l12 12" />
+            </svg>
             Clear filters
           </Link>
         )}
@@ -419,6 +428,19 @@ export default async function CommercialOpportunitiesPage({
       {created && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
           Opportunity created.
+        </div>
+      )}
+      {deletedTitle && (
+        <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-3 text-sm text-ppp-charcoal-700 flex items-start justify-between gap-3">
+          <span>
+            Deleted <strong className="text-ppp-charcoal">{deletedTitle}</strong>. The record is soft-deleted — an admin can restore it.
+          </span>
+          <Link
+            href="/commercial/opportunities"
+            className="text-[12px] text-ppp-charcoal-600 hover:text-ppp-charcoal-800 underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
         </div>
       )}
       {statusOk && (
@@ -451,9 +473,11 @@ export default async function CommercialOpportunitiesPage({
           estimating with the other filter chips preserved. */}
       {statusSnapshot.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
-            Open by status
-            <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal"> · tap to drill in</span>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5 flex items-center justify-between">
+            <span>Open by status</span>
+            <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal text-[10px]">
+              {validStatus ? "Tap active pill to clear" : "Tap to filter"}
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
             {statusSnapshot.map((r) => {
@@ -464,14 +488,16 @@ export default async function CommercialOpportunitiesPage({
                   href={statusDrillHref(r.status)}
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[36px] touch-manipulation transition-colors ${
                     isActive
-                      ? "bg-emerald-100 border-emerald-300 text-emerald-800"
+                      ? "bg-emerald-600 border-emerald-700 text-white"
                       : "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                   }`}
+                  title={isActive ? `Showing only ${opportunityStatusLabel(r.status)} — tap to clear` : `Filter to ${opportunityStatusLabel(r.status)}`}
                 >
                   <span>{opportunityStatusLabel(r.status)}</span>
-                  <strong className={isActive ? "text-emerald-900" : "text-ppp-charcoal"}>
+                  <strong className={isActive ? "text-white" : "text-ppp-charcoal"}>
                     {r.count}
                   </strong>
+                  {isActive && <span aria-hidden className="text-white">×</span>}
                 </Link>
               );
             })}

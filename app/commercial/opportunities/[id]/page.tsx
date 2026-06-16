@@ -16,6 +16,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
 import { softDeleteCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
+import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import {
@@ -94,11 +95,11 @@ async function changeStatusAction(formData: FormData) {
 }
 
 /**
- * Soft-delete an opportunity. Two-step confirm via the URL flag so a
- * stray click can't trash the record. After delete, lands on the
- * parent account's Opportunities tab if we know it, else the global
- * pipeline. The record stays in the database — admins can restore via
- * a direct row update (no UI for restore yet).
+ * Soft-delete an opportunity. Always lands on the global pipeline with
+ * a `deleted=<title>` banner — that's a known-good page regardless of
+ * the parent account's state. (The earlier "redirect to parent account
+ * tab" path was hitting a 404 in some flows.) revalidatePath on the
+ * destination so the deleted row is gone from the list immediately.
  */
 async function softDeleteOpportunityAction(formData: FormData) {
   "use server";
@@ -106,16 +107,25 @@ async function softDeleteOpportunityAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   const opp_id = String(formData.get("opp_id") ?? "");
-  const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  // Resolve the title BEFORE deleting so we can pass it to the banner.
+  const sb = commercialDb();
+  const { data: pre } = await sb
+    .from("commercial_opportunities")
+    .select("title, account_id")
+    .eq("id", opp_id)
+    .maybeSingle();
+  const title = ((pre as { title?: string } | null)?.title || "Opportunity");
   const result = await softDeleteCommercialOpportunity(opp_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`);
   }
-  if (UUID_RE.test(account_id)) {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities&deleted=1`);
+  // Refresh both surfaces so the row disappears immediately.
+  revalidatePath("/commercial/opportunities");
+  if (pre && (pre as { account_id?: string }).account_id) {
+    revalidatePath(`/commercial/accounts/${(pre as { account_id: string }).account_id}`);
   }
-  redirect("/commercial/opportunities?deleted=1");
+  redirect(`/commercial/opportunities?deleted=${encodeURIComponent(title)}`);
 }
 
 // ────────────── Team tab actions ──────────────
@@ -530,19 +540,19 @@ function InfoTab({
         </Card>
       )}
 
-      {/* Danger zone — soft-delete the opportunity. Two-step confirm via
-          a URL flag so a stray click can't trash the record. Stays at
-          the bottom of the Info tab so it's not the first thing the
-          user sees. Record stays in the DB (soft delete via deleted_at)
-          so admins can restore via a direct row update if needed. */}
-      <div className="lg:col-span-2 mt-4 pt-4 border-t border-ppp-charcoal-100">
+      {/* Danger zone — soft-delete the opportunity. The confirm panel
+          uses an HTML anchor (#danger-zone) so clicking "Delete" jumps
+          to this section instead of bouncing the user to the top of
+          the page on URL change. Record stays in the DB via deleted_at
+          so admins can restore. */}
+      <div id="danger-zone" className="lg:col-span-2 mt-4 pt-4 border-t border-ppp-charcoal-100 scroll-mt-24">
         {!confirmDelete ? (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-[12px] text-ppp-charcoal-500">
               Wrong account? Duplicate? Delete this opportunity.
             </div>
             <Link
-              href={`/commercial/opportunities/${opp.id}?tab=info&confirm_delete=1`}
+              href={`/commercial/opportunities/${opp.id}?tab=info&confirm_delete=1#danger-zone`}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
             >
               Delete opportunity
