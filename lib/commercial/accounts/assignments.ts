@@ -15,28 +15,17 @@ import { sendEmail } from "@/lib/email/resend";
  * detail page → Team tab uses these helpers.
  */
 
-export const ASSIGNMENT_ROLES = [
-  "sales_rep",
-  "account_manager",
-  "primary_pm",
-  "superintendent",
-  "foreman",
-  "billing_contact",
-  "other",
-] as const;
-export type AssignmentRole = (typeof ASSIGNMENT_ROLES)[number];
-
-export function assignmentRoleLabel(role: AssignmentRole): string {
-  return {
-    sales_rep: "Sales Rep",
-    account_manager: "Account Manager",
-    primary_pm: "Project Manager",
-    superintendent: "Superintendent",
-    foreman: "Foreman",
-    billing_contact: "Billing Contact",
-    other: "Other",
-  }[role];
-}
+// Import for internal use + re-export for downstream callers. The
+// role enum + label live in assignment-roles.ts (no server-only) so
+// client components can import them without pulling this DB-side
+// module into the browser bundle. New client code should import
+// directly from "@/lib/commercial/accounts/assignment-roles".
+import {
+  ASSIGNMENT_ROLES,
+  assignmentRoleLabel,
+  type AssignmentRole,
+} from "./assignment-roles";
+export { ASSIGNMENT_ROLES, assignmentRoleLabel, type AssignmentRole };
 
 export type AssignedStaff = {
   id: string;            // commercial_account_assignments.id (the junction row)

@@ -6,7 +6,7 @@ import {
   ASSIGNMENT_ROLES,
   assignmentRoleLabel,
   type AssignmentRole,
-} from "@/lib/commercial/accounts/assignments";
+} from "@/lib/commercial/accounts/assignment-roles";
 
 /**
  * Team-on-create picker for the new-account form.
