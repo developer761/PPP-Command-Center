@@ -34,6 +34,7 @@ import { listPrimaryLeadByOpp, opportunityAssignmentRoleLabel } from "@/lib/comm
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
+import CommercialOpportunitiesSortPicker from "@/components/commercial-opportunities-sort-picker";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -91,6 +92,24 @@ export default async function CommercialOpportunitiesPage({
   const staleFilter = pickFirst(sp.stale) === "1";
   const hotFilter = pickFirst(sp.hot) === "1";
   const sourcesRaw = pickFirst(sp.sources);
+
+  // Sort dropdown — Alex's Friday workflow needs the right lens at the
+  // right time. recent = "what's been touched" (default), oldest = "what's
+  // stuck", bid_high / bid_low = "biggest first / smallest first" for
+  // pricing conversations, due_soon = "next-week urgency."
+  const SORT_OPTIONS = [
+    { key: "recent", label: "Most recently updated" },
+    { key: "oldest", label: "Oldest / stuck deals" },
+    { key: "bid_high", label: "Highest bid first" },
+    { key: "due_soon", label: "Proposal due soonest" },
+    { key: "probability_high", label: "Most likely to win" },
+  ] as const;
+  type SortKey = (typeof SORT_OPTIONS)[number]["key"];
+  const sortRaw = pickFirst(sp.sort);
+  const sortKey: SortKey =
+    sortRaw && SORT_OPTIONS.some((o) => o.key === sortRaw)
+      ? (sortRaw as SortKey)
+      : "recent";
   const sourceSet: Set<OpportunitySource> = new Set();
   if (sourcesRaw) {
     for (const s of sourcesRaw.split(",")) {
@@ -149,6 +168,35 @@ export default async function CommercialOpportunitiesPage({
     opps = opps.filter((o) => o.source && sourceSet.has(o.source));
   }
 
+  // Apply sort after all filters so the ordering reflects exactly what
+  // Alex is looking at. Stable secondary key on updated_at so ties land
+  // in a predictable order (newest-touched-wins-tie).
+  const stableTie = (a: CommercialOpportunity, b: CommercialOpportunity) =>
+    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  opps = [...opps].sort((a, b) => {
+    if (sortKey === "oldest") {
+      return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+    }
+    if (sortKey === "bid_high") {
+      const diff = (b.bid_value_high_cents ?? -1) - (a.bid_value_high_cents ?? -1);
+      return diff !== 0 ? diff : stableTie(a, b);
+    }
+    if (sortKey === "due_soon") {
+      // Opps with NO proposal_due_at go to the bottom so the soonest
+      // due rises to the top.
+      const av = a.proposal_due_at ? new Date(a.proposal_due_at).getTime() : Infinity;
+      const bv = b.proposal_due_at ? new Date(b.proposal_due_at).getTime() : Infinity;
+      const diff = av - bv;
+      return diff !== 0 ? diff : stableTie(a, b);
+    }
+    if (sortKey === "probability_high") {
+      const diff = (b.probability_pct ?? 0) - (a.probability_pct ?? 0);
+      return diff !== 0 ? diff : stableTie(a, b);
+    }
+    // "recent" default — already returned newest-first by listCommercialOpportunities.
+    return stableTie(a, b);
+  });
+
   // Pipeline summary tile values — computed across the visible (filtered)
   // open opps so the number on the page matches what's listed below.
   const openOpps = opps.filter((o) => (OPEN_OPP_STATUSES as readonly string[]).includes(o.status));
@@ -162,6 +210,7 @@ export default async function CommercialOpportunitiesPage({
   if (search) baseParams.set("q", search);
   if (validStatus) baseParams.set("status", validStatus);
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
+  if (sortKey !== "recent") baseParams.set("sort", sortKey);
   const toggleStaleHref = (() => {
     const p = new URLSearchParams(baseParams);
     if (!staleFilter) p.set("stale", "1");
@@ -190,10 +239,12 @@ export default async function CommercialOpportunitiesPage({
   };
 
   // The CSV export endpoint takes the exact same params the page does
-  // so the download is "what the user sees, as a spreadsheet".
+  // (including sort) so the download is "what the user sees, as a
+  // spreadsheet" — row order included.
   const exportParams = new URLSearchParams(baseParams);
   if (staleFilter) exportParams.set("stale", "1");
   if (hotFilter) exportParams.set("hot", "1");
+  // `sort` is already in baseParams when not the default.
   const exportHref = `/api/commercial/opportunities/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
 
   const anyFilterActive =
@@ -402,16 +453,25 @@ export default async function CommercialOpportunitiesPage({
             </FilterChip>
           ))}
         </div>
-        <a
-          href={exportHref}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation shrink-0"
-          title="Download the current filter view as a CSV"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
-          </svg>
-          Export CSV
-        </a>
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
+          {/* Sort picker — preserves the current URL filters by reading
+              useSearchParams + overriding only the `sort` key. Auto-
+              submits on change, no separate Apply button. */}
+          <CommercialOpportunitiesSortPicker
+            options={SORT_OPTIONS}
+            value={sortKey}
+          />
+          <a
+            href={exportHref}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation shrink-0"
+            title="Download the current filter view as a CSV"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
+            </svg>
+            Export CSV
+          </a>
+        </div>
       </div>
 
       {/* List */}
