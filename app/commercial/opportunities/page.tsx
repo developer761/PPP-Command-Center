@@ -200,12 +200,25 @@ export default async function CommercialOpportunitiesPage({
     !!search || !!validStatus || staleFilter || hotFilter || sourceSet.size > 0;
 
   // Status snapshot — open-opp count per status, for the inline "where
-  // is the pipeline stuck?" pill row above the chip cluster.
+  // is the pipeline stuck?" pill row above the chip cluster. Each pill
+  // is clickable: tapping "Estimating 7" deep-links to the same view
+  // pre-filtered to estimating, so the card doubles as a drill-down.
   const statusSnapshot: Array<{ status: OpportunityStatus; count: number }> = (
     OPEN_OPP_STATUSES as readonly OpportunityStatus[]
   )
     .map((s) => ({ status: s, count: openOpps.filter((o) => o.status === s).length }))
     .filter((r) => r.count > 0);
+
+  // Build a "go to this status" href that preserves the other active
+  // chips (sources, hot, stale) so drilling into estimating doesn't
+  // wipe the user's other filter context.
+  const statusDrillHref = (s: OpportunityStatus) => {
+    const p = new URLSearchParams(baseParams);
+    p.set("status", s);
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    return `/commercial/opportunities?${p.toString()}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -333,19 +346,35 @@ export default async function CommercialOpportunitiesPage({
 
       {/* Status snapshot — open opps grouped by status. Shows the
           pipeline shape at a glance: where are deals sitting? where's
-          the bottleneck? Hidden when no open opps. */}
+          the bottleneck? Hidden when no open opps. Each pill is a
+          tappable drill-down — "Estimating 7" → list filtered to
+          estimating with the other filter chips preserved. */}
       {statusSnapshot.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
             Open by status
+            <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal"> · tap to drill in</span>
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px]">
-            {statusSnapshot.map((r) => (
-              <span key={r.status} className="inline-flex items-center gap-1.5">
-                <span className="text-ppp-charcoal-500">{opportunityStatusLabel(r.status)}</span>
-                <strong className="text-ppp-charcoal">{r.count}</strong>
-              </span>
-            ))}
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            {statusSnapshot.map((r) => {
+              const isActive = validStatus === r.status;
+              return (
+                <Link
+                  key={r.status}
+                  href={statusDrillHref(r.status)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[36px] touch-manipulation transition-colors ${
+                    isActive
+                      ? "bg-emerald-100 border-emerald-300 text-emerald-800"
+                      : "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                  }`}
+                >
+                  <span>{opportunityStatusLabel(r.status)}</span>
+                  <strong className={isActive ? "text-emerald-900" : "text-ppp-charcoal"}>
+                    {r.count}
+                  </strong>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}

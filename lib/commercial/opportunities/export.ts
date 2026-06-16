@@ -53,12 +53,18 @@ const HEADERS = [
 
 function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return "\"\"";
-  const s =
+  const raw =
     typeof value === "string"
       ? value
       : typeof value === "number" || typeof value === "boolean"
       ? String(value)
       : JSON.stringify(value);
+  // OWASP CSV-injection defense: a value starting with `= + - @ \t \r`
+  // is treated as a formula by Excel / LibreOffice / Sheets. An opp
+  // titled "=cmd|'/c calc'!A1" would execute when the user opens the
+  // CSV. Prefixing with a single quote neutralizes it: Excel renders
+  // the literal text without firing the formula engine.
+  const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${s.replace(/"/g, '""')}"`;
 }
 
@@ -111,7 +117,10 @@ export async function exportOpportunitiesCsv(
         : sb
             .from("commercial_accounts")
             .select("id, company_name")
-            .in("id", accountIds),
+            .in("id", accountIds)
+            // Don't print a deleted account's name in the CSV — opps on a
+            // soft-deleted account would otherwise leak the stale label.
+            .is("deleted_at", null),
     ]);
 
   const accountNameById = new Map<string, string>();
