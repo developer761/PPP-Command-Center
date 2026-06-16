@@ -38,8 +38,24 @@ import {
   getAccountOverview,
   relativeActivity,
   activityTone,
+  winRate,
+  formatBidCents,
+  daysSinceIso,
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
+import {
+  listCommercialOpportunities,
+  opportunityStatusLabel,
+  formatBidRange,
+  type CommercialOpportunity,
+  type OpportunityStatus,
+} from "@/lib/commercial/opportunities/db";
+import { listCurrentStatusEnteredAtByOpp } from "@/lib/commercial/opportunities/status";
+import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
+import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
+import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments";
+import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
+import { OPEN_OPP_STATUSES, TERMINAL_STATUSES, STALE_OPP_DAYS } from "@/lib/commercial/opportunities/constants";
 import {
   listAccountTags,
   listAllDistinctTags,
@@ -63,6 +79,7 @@ const TABS = [
   { key: "info", label: "Info" },
   { key: "team", label: "Team" },
   { key: "contacts", label: "Contacts" },
+  { key: "opportunities", label: "Opportunities" },
   { key: "documents", label: "Documents" },
   { key: "performance", label: "Performance" },
 ] as const;
@@ -82,6 +99,7 @@ export default async function CommercialAccountDetailPage({
     | "info"
     | "team"
     | "contacts"
+    | "opportunities"
     | "documents"
     | "performance";
 
@@ -192,6 +210,7 @@ export default async function CommercialAccountDetailPage({
       {tab === "info" && <InfoTab account={account} errorMessage={sp.error} />}
       {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
+      {tab === "opportunities" && <OpportunitiesTab accountId={account.id} overview={overview} />}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
     </div>
@@ -1245,6 +1264,249 @@ async function archiveDocumentAction(formData: FormData) {
   redirect(`/commercial/accounts/${account_id}?tab=documents`);
 }
 
+/**
+ * Account-side Opportunities tab. Every bid PPP has ever pitched this
+ * customer — open at the top in a "Open · N" section, decided history
+ * below in a "Decided · N" section if any exist.
+ *
+ * Bulk-fetches all 5 row-signal Maps in parallel so the tab renders in
+ * one round-trip regardless of opp count (same pattern as the global
+ * /commercial/opportunities list page).
+ *
+ * Empty state surfaces a + New Opportunity CTA deep-linked to the new
+ * form with the account pre-selected (`?account=<uuid>`).
+ */
+async function OpportunitiesTab({
+  accountId,
+  overview,
+}: {
+  accountId: string;
+  overview: AccountOverview | null;
+}) {
+  const all = await listCommercialOpportunities({ accountId });
+  const ids = all.map((o) => o.id);
+
+  // Bulk-fetch every row signal in parallel — keeps the tab a single
+  // batch query regardless of opp count.
+  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap] = await Promise.all([
+    listCurrentStatusEnteredAtByOpp(ids),
+    listOpenTaskStatsByOpp(ids),
+    listLastNoteByOpp(ids),
+    listPrimaryLeadByOpp(ids),
+    listAttachmentCountByOpp(ids),
+  ]);
+
+  const open = all.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
+  const decided = all.filter((o) => TERMINAL_STATUSES.has(o.status));
+
+  // Empty state — first opp on a new account. Deep-link pre-fills the
+  // account picker on the new-opp form (already supported in Batch 1).
+  if (all.length === 0) {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+        <div className="text-sm font-semibold text-ppp-charcoal mb-1">
+          No opportunities yet
+        </div>
+        <p className="text-sm text-ppp-charcoal-500 mb-4">
+          Start a bid for this customer.
+        </p>
+        <Link
+          href={`/commercial/opportunities/new?account=${accountId}`}
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+        >
+          + New opportunity
+        </Link>
+      </div>
+    );
+  }
+
+  // Bid-history footer line — "Last bid 21d ago · 5 won · 2 lost" — gives
+  // Alex an at-a-glance momentum read at the top of the tab.
+  const daysSinceLast = daysSinceIso(overview?.last_opp_activity_at);
+  const wonCount = overview?.won_opps_count ?? 0;
+  const lostCount = overview?.lost_opps_count ?? 0;
+  const isStale = daysSinceLast !== null && daysSinceLast > STALE_OPP_DAYS * 4; // 56+ days = noticeably cool
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-[12px] text-ppp-charcoal-700 flex items-center gap-x-3 gap-y-1 flex-wrap">
+          {daysSinceLast !== null && (
+            <span className={isStale ? "text-rose-700 font-medium" : "text-ppp-charcoal-700"}>
+              Last opp activity: {daysSinceLast === 0 ? "today" : daysSinceLast === 1 ? "yesterday" : `${daysSinceLast}d ago`}
+              {isStale && " (cooling)"}
+            </span>
+          )}
+          {(wonCount > 0 || lostCount > 0) && (
+            <>
+              <span aria-hidden className="text-ppp-charcoal-300">·</span>
+              <span className="text-ppp-charcoal-500">
+                {wonCount} won · {lostCount} lost
+              </span>
+            </>
+          )}
+        </div>
+        <Link
+          href={`/commercial/opportunities/new?account=${accountId}`}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 min-h-[40px] touch-manipulation shrink-0"
+        >
+          + New opportunity
+        </Link>
+      </div>
+
+      {open.length > 0 && (
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ppp-charcoal">
+              Open · {open.length}
+            </h2>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {open.map((opp) => (
+              <AccountOpportunityRow
+                key={opp.id}
+                opp={opp}
+                statusEnteredAt={statusEnteredMap.get(opp.id) ?? null}
+                taskStats={taskStatsMap.get(opp.id) ?? null}
+                lastNote={lastNoteMap.get(opp.id) ?? null}
+                primaryLead={primaryLeadMap.get(opp.id) ?? null}
+                fileCount={attachmentMap.get(opp.id) ?? 0}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {decided.length > 0 && (
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ppp-charcoal-700">
+              Decided · {decided.length}
+            </h2>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {decided.map((opp) => (
+              <AccountOpportunityRow
+                key={opp.id}
+                opp={opp}
+                statusEnteredAt={statusEnteredMap.get(opp.id) ?? null}
+                taskStats={taskStatsMap.get(opp.id) ?? null}
+                lastNote={lastNoteMap.get(opp.id) ?? null}
+                primaryLead={primaryLeadMap.get(opp.id) ?? null}
+                fileCount={attachmentMap.get(opp.id) ?? 0}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Account-context opp row. Trims the global pipeline row's signals down
+ * since we're already filtered to one account: skip the account name +
+ * source columns; keep status / bid / probability / days-in-status /
+ * primary lead / task chip / file count / last note.
+ */
+function AccountOpportunityRow({
+  opp,
+  statusEnteredAt,
+  taskStats,
+  lastNote,
+  primaryLead,
+  fileCount,
+}: {
+  opp: CommercialOpportunity;
+  statusEnteredAt: string | null;
+  taskStats: { open: number; overdue: number; due_soon: number } | null;
+  lastNote: { created_at: string; author_label: string | null } | null;
+  primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
+  fileCount: number;
+}) {
+  const statusInfo = statusPillTone(opp.status);
+  const daysInStatus = daysSinceIso(statusEnteredAt);
+  const daysTone =
+    daysInStatus === null
+      ? "text-ppp-charcoal-500"
+      : daysInStatus > 14
+      ? "text-rose-700"
+      : daysInStatus > 7
+      ? "text-amber-700"
+      : "text-emerald-700";
+  // First name from "Sarah Connor" → "Sarah". Falls back to the local
+  // part of the email when no full name is set.
+  const leadLabel = primaryLead
+    ? (primaryLead.user_full_name?.split(" ")[0] ?? primaryLead.user_email.split("@")[0])
+    : null;
+  return (
+    <li>
+      <Link
+        href={`/commercial/opportunities/${opp.id}`}
+        className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px] touch-manipulation"
+      >
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="text-sm font-semibold text-ppp-charcoal break-words">
+                {opp.title || "(untitled)"}
+              </span>
+              <span
+                className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${statusInfo.cls}`}
+              >
+                {opportunityStatusLabel(opp.status)}
+              </span>
+            </div>
+            <div className="text-[12px] text-ppp-charcoal-600 flex items-center gap-x-3 gap-y-1 flex-wrap">
+              <span className="font-medium text-ppp-charcoal-800">
+                {formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
+              </span>
+              <span className="text-ppp-charcoal-500">
+                {opp.probability_pct}% likely
+              </span>
+              {daysInStatus !== null && (
+                <span className={daysTone}>
+                  {daysInStatus === 0 ? "just entered" : `${daysInStatus}d in status`}
+                </span>
+              )}
+              {leadLabel && (
+                <span className="text-ppp-charcoal-700">
+                  <span aria-hidden>★</span> {leadLabel}
+                </span>
+              )}
+              {taskStats && (taskStats.open > 0 || taskStats.overdue > 0) && (
+                <span className={taskStats.overdue > 0 ? "text-rose-700" : "text-ppp-charcoal-700"}>
+                  {taskStats.overdue > 0 ? `${taskStats.overdue} overdue` : `${taskStats.open} open`}
+                </span>
+              )}
+              {fileCount > 0 && (
+                <span className="text-ppp-charcoal-500" aria-label={`${fileCount} files`}>
+                  📎 {fileCount}
+                </span>
+              )}
+              {lastNote && (
+                <span className="text-ppp-charcoal-500 truncate max-w-[180px]">
+                  📝 {relativeActivity(lastNote.created_at)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </Link>
+    </li>
+  );
+}
+
+/** Status pill color tone — mirrors the global pipeline page. */
+function statusPillTone(status: OpportunityStatus): { cls: string } {
+  if (status === "won") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+  if (status === "lost" || status === "no_bid") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
+  if (status === "on_hold") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
+  if (status === "negotiating" || status === "proposal_sent") return { cls: "bg-blue-50 text-blue-800 border-blue-200" };
+  if (status === "reopened") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
+  return { cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100" };
+}
+
 async function DocumentsTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
   const grouped = await listAccountDocuments(accountId);
   const hasAnyDocs = grouped.some((g) => g.active || g.history.length > 0);
@@ -1552,18 +1814,40 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
       ? { label: "all current", cls: "text-emerald-700" }
       : { label: "none on file", cls: "text-ppp-charcoal-500" };
 
+  // Repeat customer badge — won at least one bid = relationship has real
+  // history. Helps Alex tell apart cold leads from accounts that already
+  // trust PPP. Surfaced next to the activity pill.
+  const isRepeat = (overview.won_opps_count ?? 0) > 0;
+
+  // Total bid sub-label: range when low+high differ, single value when
+  // matched, "—" when no opps. formatBidCents handles all three cases.
+  const totalBidLabel = formatBidCents(
+    overview.total_active_bid_low_cents,
+    overview.total_active_bid_high_cents
+  );
+
   return (
     <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-2 mb-3">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <h2 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
           Account 360
         </h2>
-        <span
-          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${activityClass}`}
-          title={`Most recent activity on this account (contact added, doc uploaded, team change). Last touched: ${overview.last_activity_at}`}
-        >
-          Activity: {activity}
-        </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {isRepeat && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 text-amber-800 border-amber-200"
+              title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account — repeat customer.`}
+            >
+              <span aria-hidden>★</span> Repeat customer
+            </span>
+          )}
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${activityClass}`}
+            title={`Most recent activity on this account (contact added, doc uploaded, team change, opp updated). Last touched: ${overview.last_activity_at}`}
+          >
+            Activity: {activity}
+          </span>
+        </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         <KpiTile
@@ -1585,9 +1869,11 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           subCls={docHealth.cls}
         />
         <KpiTile
-          tone="placeholder"
-          label="Total bid"
-          placeholder="Phase 2"
+          tone="live"
+          num={overview.open_opps_count ?? 0}
+          label="Open opps"
+          sub={totalBidLabel !== "—" ? totalBidLabel : undefined}
+          subCls="text-ppp-charcoal-500"
         />
         <KpiTile
           tone="placeholder"
@@ -1605,13 +1891,25 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           placeholder="Phase 8"
         />
         <KpiTile
-          tone="placeholder"
-          label="Open opps"
-          placeholder="Phase 2"
+          tone="live"
+          num={(overview.won_opps_count ?? 0) + (overview.lost_opps_count ?? 0)}
+          label="Decided bids"
+          sub={renderWinRateSub(overview)}
+          subCls="text-ppp-charcoal-500"
         />
       </div>
     </section>
   );
+}
+
+/** "67% win · ~32d to close" subtitle when there's history; "" when none. */
+function renderWinRateSub(overview: AccountOverview): string | undefined {
+  const rate = winRate(overview);
+  const avg = overview.avg_days_to_close;
+  if (rate === null && (avg === null || avg === undefined)) return undefined;
+  const rateText = rate === null ? null : `${Math.round(rate * 100)}% win`;
+  const avgText = avg === null || avg === undefined ? null : `~${Math.round(avg)}d close`;
+  return [rateText, avgText].filter(Boolean).join(" · ");
 }
 
 function KpiTile({

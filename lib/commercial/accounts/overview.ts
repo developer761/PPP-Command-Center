@@ -27,11 +27,18 @@ export type AccountOverview = {
   expiring_soon_document_count: number;
   document_count_total: number;
   last_activity_at: string; // ISO timestamp
-  // ── Future-phase columns (NULL until Phase 2 + Phase 8 ship). Typed
-  //    optional so the same shape works both before and after each phase
-  //    lands. UI checks for non-null before rendering the KPI tile.
-  opportunities_count?: number | null;
-  total_bid?: number | null;
+  // ── Phase 2 Batch 5: opportunity rollups (migration 033). NULL when
+  //    no opps exist for the account. Tiles render "0" or "—" by
+  //    checking for null vs 0 explicitly.
+  open_opps_count?: number | null;
+  total_active_bid_low_cents?: number | null;
+  total_active_bid_high_cents?: number | null;
+  won_opps_count?: number | null;
+  lost_opps_count?: number | null;
+  last_opp_activity_at?: string | null;
+  avg_days_to_close?: number | null;
+  // ── Future-phase columns (Phase 8 Billing). Typed optional so the
+  //    same shape works before and after each phase lands.
   total_invoiced?: number | null;
   total_paid?: number | null;
   balance_owed?: number | null;
@@ -106,4 +113,48 @@ export function activityTone(iso: string | null | undefined): "ok" | "stale" | "
   if (days <= ACTIVITY_FRESH_DAYS) return "ok";
   if (days <= ACTIVITY_STALE_DAYS) return "stale";
   return "cold";
+}
+
+/**
+ * Win rate as a fraction 0-1. NULL when no opps have been decided yet
+ * (won + lost both 0) — the UI should render "—" rather than "0%" in
+ * that case so we don't shame a customer with zero history.
+ */
+export function winRate(overview: AccountOverview | null | undefined): number | null {
+  if (!overview) return null;
+  const won = overview.won_opps_count ?? 0;
+  const lost = overview.lost_opps_count ?? 0;
+  const total = won + lost;
+  if (total === 0) return null;
+  return won / total;
+}
+
+/** Format cents → dollar shorthand. 50_000_00 → "$50k", 1_250_000_00 → "$1.25M". */
+function formatCentsShort(cents: number): string {
+  const dollars = cents / 100;
+  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(dollars >= 10_000_000 ? 0 : 2)}M`;
+  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}k`;
+  return `$${Math.round(dollars)}`;
+}
+
+/**
+ * Format a bid range in cents → display string. Mirrors formatBidRange
+ * in opportunities/db.ts but takes pre-summed totals for the Account
+ * scorecard (rather than per-opp low/high).
+ *
+ *   ($50k, $75k)  →  "$50k–$75k"
+ *   ($50k, $50k)  →  "$50k"
+ *   (null, $75k)  →  "≤ $75k"
+ *   ($50k, null)  →  "$50k+"
+ *   (null, null)  →  "—"
+ */
+export function formatBidCents(
+  low: number | null | undefined,
+  high: number | null | undefined
+): string {
+  if ((low === null || low === undefined) && (high === null || high === undefined)) return "—";
+  if (low === null || low === undefined) return `≤ ${formatCentsShort(high!)}`;
+  if (high === null || high === undefined) return `${formatCentsShort(low)}+`;
+  if (low === high) return formatCentsShort(low);
+  return `${formatCentsShort(low)}–${formatCentsShort(high)}`;
 }
