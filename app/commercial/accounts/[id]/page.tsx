@@ -68,6 +68,10 @@ import {
   QUICK_FLIP_BLOCKED_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import {
+  getAccountRecentActivity,
+  describeActivity,
+} from "@/lib/commercial/accounts/recent-activity";
+import {
   listAccountTags,
   listAllDistinctTags,
   addAccountTag,
@@ -308,12 +312,14 @@ async function removeTagAction(formData: FormData) {
 }
 
 async function InfoTab({ account, errorMessage }: { account: CommercialAccount; errorMessage?: string }) {
-  // Load tags + suggestions + compliance checklist in parallel so the
-  // Info tab renders in one round-trip's worth of latency.
-  const [tags, allTags, docGroups] = await Promise.all([
+  // Load tags + suggestions + compliance checklist + recent activity
+  // in parallel so the Info tab renders in one round-trip's worth of
+  // latency. Recent Activity pulls from opp status_log + notes + tasks.
+  const [tags, allTags, docGroups, activity] = await Promise.all([
     listAccountTags(account.id),
     listAllDistinctTags(),
     listAccountDocuments(account.id),
+    getAccountRecentActivity(account.id, 10),
   ]);
   // Filter suggestions to tags NOT already on this account (case-
   // insensitive) — saves the picker from showing dupes.
@@ -336,6 +342,10 @@ async function InfoTab({ account, errorMessage }: { account: CommercialAccount; 
         suggestions={suggestions}
         className="lg:col-span-2"
       />
+      <RecentActivityCard
+        entries={activity}
+        className="lg:col-span-2"
+      />
       <ComplianceChecklistCard
         accountId={account.id}
         items={compliance}
@@ -347,6 +357,81 @@ async function InfoTab({ account, errorMessage }: { account: CommercialAccount; 
       />
       <InfoCards account={account} />
     </div>
+  );
+}
+
+/** Recent Activity card — chronological feed of opp events for this
+ *  account. Quiet when the account has no opps or no events yet. */
+function RecentActivityCard({
+  entries,
+  className,
+}: {
+  entries: import("@/lib/commercial/accounts/recent-activity").AccountActivityEntry[];
+  className?: string;
+}) {
+  if (entries.length === 0) {
+    // Hide entirely on quiet accounts — better than rendering a blank
+    // card. The Opportunities tab + KPI strip already communicate
+    // "nothing happening here."
+    return null;
+  }
+  return (
+    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden ${className ?? ""}`}>
+      <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ppp-charcoal">Recent activity</h2>
+        <span className="text-[11px] text-ppp-charcoal-500">
+          Across {entries.length === 1 ? "this opportunity" : "this account's opportunities"}
+        </span>
+      </div>
+      <ol className="divide-y divide-ppp-charcoal-100">
+        {entries.map((entry) => {
+          const when = new Date(entry.occurred_at);
+          const iconCls =
+            entry.kind === "status_change"
+              ? "bg-blue-100 text-blue-700"
+              : entry.kind === "task_completed"
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-ppp-charcoal-100 text-ppp-charcoal-700";
+          const icon =
+            entry.kind === "status_change" ? "→" : entry.kind === "task_completed" ? "✓" : "📝";
+          return (
+            <li key={entry.id} className="px-4 py-3 flex items-start gap-3">
+              <span
+                className={`flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full text-[12px] font-semibold ${iconCls}`}
+                aria-hidden
+              >
+                {icon}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-ppp-charcoal flex items-baseline gap-2 flex-wrap">
+                  <span className="font-medium">{describeActivity(entry)}</span>
+                  <span className="text-ppp-charcoal-400">on</span>
+                  <Link
+                    href={`/commercial/opportunities/${entry.opportunity_id}`}
+                    className="text-emerald-700 hover:text-emerald-800 underline break-words"
+                  >
+                    {entry.opportunity_title || "(untitled)"}
+                  </Link>
+                </div>
+                {entry.excerpt && (
+                  <p className="text-[12px] text-ppp-charcoal-700 mt-1 leading-relaxed">
+                    {entry.excerpt}
+                  </p>
+                )}
+                <div
+                  className="text-[11px] text-ppp-charcoal-500 mt-1"
+                  title={when.toISOString()}
+                >
+                  {when.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  {" · "}
+                  {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 
