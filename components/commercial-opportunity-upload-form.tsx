@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { LABEL_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 
 /**
  * Plans & Specs upload form for the Commercial CC Opportunity detail
@@ -171,7 +172,7 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
         </div>
 
         <div>
-          <label htmlFor="notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+          <label htmlFor="notes" className={LABEL_CLS}>
             Notes
           </label>
           <textarea
@@ -180,7 +181,7 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
             rows={2}
             maxLength={500}
             placeholder="Optional — e.g. 'Final proposal v3 from customer'"
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y min-h-[60px]"
+            className={`${TEXTAREA_CLS} min-h-[60px]`}
           />
         </div>
 

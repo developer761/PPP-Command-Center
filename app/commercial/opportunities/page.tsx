@@ -822,7 +822,7 @@ function KanbanCard({
             name="to_status"
             defaultValue=""
             required
-            className="flex-1 px-2 py-1 text-base sm:text-[11px] border border-ppp-charcoal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[36px] bg-white"
+            className="flex-1 px-2 py-1.5 text-base sm:text-[11px] border border-ppp-charcoal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-[36px] bg-white"
             aria-label={`Move ${opp.title}`}
           >
             <option value="" disabled>Move to…</option>
@@ -832,7 +832,7 @@ function KanbanCard({
           </select>
           <button
             type="submit"
-            className="px-2 py-1 text-[11px] font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 min-h-[36px] touch-manipulation"
+            className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             Go
           </button>

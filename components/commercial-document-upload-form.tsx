@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 const CATEGORIES = [
   { value: "coi", label: "Certificate of Insurance (COI)" },
@@ -160,7 +161,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label htmlFor="category" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="category" className={LABEL_CLS}>
               Category *
             </label>
             <select
@@ -168,7 +169,8 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
               name="category"
               defaultValue="coi"
               required
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white min-h-[44px] sm:min-h-0"
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
             >
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -178,20 +180,20 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
             </select>
           </div>
           <div>
-            <label htmlFor="expires_at" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="expires_at" className={LABEL_CLS}>
               Expires
             </label>
             <input
               id="expires_at"
               name="expires_at"
               type="date"
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              className={INPUT_CLS}
             />
           </div>
         </div>
 
         <div>
-          <label htmlFor="notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+          <label htmlFor="notes" className={LABEL_CLS}>
             Notes
           </label>
           <input
@@ -199,7 +201,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
             name="notes"
             type="text"
             placeholder="Optional — e.g. 'renewed 2026-06-14, $2M aggregate'"
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            className={INPUT_CLS}
           />
         </div>
 

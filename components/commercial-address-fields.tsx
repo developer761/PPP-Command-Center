@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 /**
  * Address fields with Google Places Autocomplete. Drop-in replacement
@@ -146,16 +147,10 @@ export default function CommercialAddressFields({
     // garbage-collected when the input unmounts.
   }, [scriptStatus]);
 
-  const inputCls =
-    "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0";
-
   return (
     <>
       <div>
-        <label
-          htmlFor={`${prefix}_street`}
-          className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1"
-        >
+        <label htmlFor={`${prefix}_street`} className={LABEL_CLS}>
           Street
           {scriptStatus === "ready" && (
             <span className="ml-1.5 text-[10px] font-normal text-emerald-700 normal-case tracking-normal">
@@ -172,15 +167,12 @@ export default function CommercialAddressFields({
           onChange={(e) => setStreet(e.target.value)}
           placeholder={scriptStatus === "ready" ? "Start typing an address…" : ""}
           autoComplete="off"
-          className={inputCls}
+          className={INPUT_CLS}
         />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label
-            htmlFor={`${prefix}_city`}
-            className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1"
-          >
+          <label htmlFor={`${prefix}_city`} className={LABEL_CLS}>
             City
           </label>
           <input
@@ -189,14 +181,11 @@ export default function CommercialAddressFields({
             type="text"
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            className={inputCls}
+            className={INPUT_CLS}
           />
         </div>
         <div>
-          <label
-            htmlFor={`${prefix}_state`}
-            className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1"
-          >
+          <label htmlFor={`${prefix}_state`} className={LABEL_CLS}>
             State
           </label>
           <input
@@ -209,14 +198,11 @@ export default function CommercialAddressFields({
             // slip a 3-char value through before re-render.
             onChange={(e) => setStateVal(e.target.value.slice(0, 2).toUpperCase())}
             maxLength={2}
-            className={inputCls}
+            className={INPUT_CLS}
           />
         </div>
         <div>
-          <label
-            htmlFor={`${prefix}_zip`}
-            className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1"
-          >
+          <label htmlFor={`${prefix}_zip`} className={LABEL_CLS}>
             ZIP
           </label>
           <input
@@ -226,7 +212,7 @@ export default function CommercialAddressFields({
             value={zip}
             onChange={(e) => setZip(e.target.value)}
             maxLength={10}
-            className={inputCls}
+            className={INPUT_CLS}
           />
         </div>
       </div>

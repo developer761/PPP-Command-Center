@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { sendEmail } from "@/lib/email/resend";
 
 /**
  * PPP staff assignments per opportunity (migration 030).
@@ -186,6 +187,18 @@ export async function addOpportunityAssignment(
           promoted,
           input.assigned_by_user_id
         );
+        // Heads-up on promotion — they're now the buck-stops-here person.
+        void notifyAssignment(
+          e.id,
+          input.opportunity_id,
+          input.user_id,
+          input.role,
+          true,
+          input.assigned_by_user_id ?? null,
+          "promoted"
+        ).catch((err) => {
+          console.warn(`[commercial/opportunities/assignments] notify-on-promote failed:`, err);
+        });
         return { ok: true, assignment_id: e.id };
       }
       return { ok: false, error: "This person is already on this opp in that role." };
@@ -219,6 +232,17 @@ export async function addOpportunityAssignment(
       restored,
       input.assigned_by_user_id
     );
+    void notifyAssignment(
+      e.id,
+      input.opportunity_id,
+      input.user_id,
+      input.role,
+      input.is_primary ?? false,
+      input.assigned_by_user_id ?? null,
+      "restored"
+    ).catch((err) => {
+      console.warn(`[commercial/opportunities/assignments] notify-on-restore failed:`, err);
+    });
     return { ok: true, assignment_id: e.id };
   }
 
@@ -255,7 +279,132 @@ export async function addOpportunityAssignment(
     inserted,
     input.assigned_by_user_id
   );
+  // Fire-and-forget — never block the assignment write on a Resend hiccup.
+  void notifyAssignment(
+    row.id,
+    input.opportunity_id,
+    input.user_id,
+    input.role,
+    input.is_primary ?? false,
+    input.assigned_by_user_id ?? null,
+    "assigned"
+  ).catch((err) => {
+    console.warn(`[commercial/opportunities/assignments] notify-on-assign failed:`, err);
+  });
   return { ok: true, assignment_id: row.id };
+}
+
+/**
+ * Email the assignee with a short heads-up + link to the opp detail page.
+ * Fire-and-forget — never blocks the assignment write. Mirrors the accounts
+ * `notifyAssignment` shape; opp version pulls the opp title (and parent
+ * account name for context) instead of a single account name.
+ */
+async function notifyAssignment(
+  assignment_id: string,
+  opportunity_id: string,
+  user_id: string,
+  role: OpportunityAssignmentRole,
+  is_primary: boolean,
+  assigned_by_user_id: string | null,
+  action: "assigned" | "promoted" | "restored"
+): Promise<void> {
+  const sb = commercialDb();
+  const [oppRes, userRes, byRes] = await Promise.all([
+    sb
+      .from("commercial_opportunities")
+      .select("title, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)")
+      .eq("id", opportunity_id)
+      .maybeSingle(),
+    sb.from("profiles").select("email, sf_user_name").eq("user_id", user_id).maybeSingle(),
+    assigned_by_user_id
+      ? sb.from("profiles").select("sf_user_name, email").eq("user_id", assigned_by_user_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  type OppRow = {
+    title?: string;
+    account?: { company_name?: string } | Array<{ company_name?: string }> | null;
+  };
+  const oppData = oppRes.data as OppRow | null;
+  const oppTitle = oppData?.title ?? "an opportunity";
+  const accountName = Array.isArray(oppData?.account)
+    ? oppData.account[0]?.company_name
+    : oppData?.account?.company_name;
+  const assigneeEmail = (userRes.data as { email?: string } | null)?.email;
+  if (!assigneeEmail) {
+    console.warn(`[commercial/opportunities/assignments] no email on user ${user_id} — skipping notify`);
+    return;
+  }
+  const assignerName =
+    (byRes.data as { sf_user_name?: string; email?: string } | null)?.sf_user_name ||
+    (byRes.data as { sf_user_name?: string; email?: string } | null)?.email ||
+    "PPP admin";
+  const roleLabel = opportunityAssignmentRoleLabel(role);
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const oppUrl = `${baseUrl}/commercial/opportunities/${opportunity_id}`;
+  const verbLine =
+    action === "promoted"
+      ? `${assignerName} promoted you to PRIMARY ${roleLabel} on this opportunity.`
+      : action === "restored"
+        ? `${assignerName} added you back to this opportunity as ${roleLabel}.`
+        : `${assignerName} assigned you to this opportunity as ${roleLabel}.`;
+  const verbLineHtml =
+    action === "promoted"
+      ? `<strong>${escape(assignerName)}</strong> promoted you to <strong>PRIMARY ${escape(roleLabel)}</strong> on this opportunity.`
+      : action === "restored"
+        ? `<strong>${escape(assignerName)}</strong> added you <strong>back</strong> to this opportunity as <strong>${escape(roleLabel)}</strong>.`
+        : `<strong>${escape(assignerName)}</strong> assigned you to this opportunity as <strong>${escape(roleLabel)}</strong>.`;
+  const primaryNote =
+    is_primary && action !== "promoted"
+      ? `\n\nYou're set as the PRIMARY ${roleLabel.toLowerCase()} on this opp — first stop for ${roleLabel.toLowerCase()} questions.`
+      : "";
+  const accountLine = accountName ? `\n\nAccount: ${accountName}` : "";
+  const text = [
+    `Hi,`,
+    ``,
+    `${verbLine}${primaryNote}`,
+    ``,
+    `Opportunity: ${oppTitle}${accountLine}`,
+    ``,
+    `View the opp: ${oppUrl}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p>${verbLineHtml}${is_primary && action !== "promoted" ? `<br><br>You're set as the <strong>PRIMARY ${escape(roleLabel.toLowerCase())}</strong> on this opp — first stop for ${escape(roleLabel.toLowerCase())} questions.` : ""}</p>
+  <p style="margin:18px 0;color:#444;"><strong>Opportunity:</strong> ${escape(oppTitle)}${accountName ? `<br><strong>Account:</strong> ${escape(accountName)}` : ""}</p>
+  <p style="margin:24px 0;"><a href="${oppUrl}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">View the opportunity →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+  const subjectVerb =
+    action === "promoted"
+      ? `Promoted to primary ${roleLabel}`
+      : action === "restored"
+        ? `Re-added to ${oppTitle}`
+        : `You've been assigned to ${oppTitle}`;
+  const result = await sendEmail({
+    to: assigneeEmail,
+    subject: `${subjectVerb} (${roleLabel})`,
+    text,
+    html,
+    tags: [
+      { name: "kind", value: "commercial_opportunity_assignment" },
+      { name: "assignment_id", value: assignment_id },
+      { name: "action", value: action },
+    ],
+  });
+  if (!result.ok) {
+    console.warn(`[commercial/opportunities/assignments] notify send failed:`, result.error);
+  }
+}
+
+function escape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 export async function removeOpportunityAssignment(
