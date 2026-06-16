@@ -430,10 +430,10 @@ export default async function CommercialOpportunitiesPage({
         </div>
       )}
 
-      {/* Chip cluster — quick toggles + CSV export. Heavy filters (search
-          + status) live in the form above; glanceable boolean chips live
-          here. CSV button takes the same params so the download is
-          "what the user sees, as a spreadsheet." */}
+      {/* Glanceable filters — Hot + Stale only by default. Source filters
+          are tucked behind a "more" collapse: sources are properties of
+          how a deal came in (set at create time, useful for quarterly
+          analytics), not what Alex wants to scan by daily. */}
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <FilterChip href={toggleHotHref} active={hotFilter} tone="hot">
@@ -442,16 +442,30 @@ export default async function CommercialOpportunitiesPage({
           <FilterChip href={toggleStaleHref} active={staleFilter} tone="cold">
             Stale &gt; {STALE_OPP_DAYS}d
           </FilterChip>
-          {OPPORTUNITY_SOURCES.map((s) => (
-            <FilterChip
-              key={s}
-              href={toggleSourceHref(s)}
-              active={sourceSet.has(s)}
-              tone="neutral"
-            >
-              {opportunitySourceLabel(s)}
-            </FilterChip>
-          ))}
+          <details className="inline-block group">
+            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 transition-colors touch-manipulation min-h-[36px]">
+              {sourceSet.size > 0 ? (
+                <>
+                  <span aria-hidden>✓</span>
+                  By source · {sourceSet.size}
+                </>
+              ) : (
+                <>By source <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform inline-block">▾</span></>
+              )}
+            </summary>
+            <div className="absolute mt-2 z-10 bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg p-2 flex flex-wrap gap-1.5 max-w-sm">
+              {OPPORTUNITY_SOURCES.map((s) => (
+                <FilterChip
+                  key={s}
+                  href={toggleSourceHref(s)}
+                  active={sourceSet.has(s)}
+                  tone="neutral"
+                >
+                  {opportunitySourceLabel(s)}
+                </FilterChip>
+              ))}
+            </div>
+          </details>
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           {/* Sort picker — preserves the current URL filters by reading

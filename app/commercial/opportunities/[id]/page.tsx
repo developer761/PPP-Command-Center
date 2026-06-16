@@ -15,6 +15,7 @@ import {
   type OpportunityLossReason,
 } from "@/lib/commercial/opportunities/db";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
+import { softDeleteCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import {
@@ -60,7 +61,7 @@ import CommercialOpportunityUploadForm from "@/components/commercial-opportunity
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string }>;
-type SP = Promise<{ tab?: string; error?: string; action?: string; to?: string; status_ok?: string }>;
+type SP = Promise<{ tab?: string; error?: string; action?: string; to?: string; status_ok?: string; confirm_delete?: string }>;
 
 async function changeStatusAction(formData: FormData) {
   "use server";
@@ -90,6 +91,31 @@ async function changeStatusAction(formData: FormData) {
     redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent(result.error));
   }
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
+/**
+ * Soft-delete an opportunity. Two-step confirm via the URL flag so a
+ * stray click can't trash the record. After delete, lands on the
+ * parent account's Opportunities tab if we know it, else the global
+ * pipeline. The record stays in the database — admins can restore via
+ * a direct row update (no UI for restore yet).
+ */
+async function softDeleteOpportunityAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const result = await softDeleteCommercialOpportunity(opp_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`);
+  }
+  if (UUID_RE.test(account_id)) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&deleted=1`);
+  }
+  redirect("/commercial/opportunities?deleted=1");
 }
 
 // ────────────── Team tab actions ──────────────
@@ -390,6 +416,7 @@ export default async function OpportunityDetailPage({
           errorMessage={pickFirst(sp.error)}
           statusOk={pickFirst(sp.status_ok) === "1"}
           preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
+          confirmDelete={pickFirst(sp.confirm_delete) === "1"}
         />
       )}
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
@@ -407,12 +434,14 @@ function InfoTab({
   errorMessage,
   statusOk,
   preselectTo,
+  confirmDelete,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
   errorMessage?: string;
   statusOk?: boolean;
   preselectTo?: OpportunityStatus;
+  confirmDelete?: boolean;
 }) {
   // Filter the DAG-allowed next statuses by what we actually want to
   // expose in this surface. Detail page allows ALL valid transitions,
@@ -500,6 +529,54 @@ function InfoTab({
           </p>
         </Card>
       )}
+
+      {/* Danger zone — soft-delete the opportunity. Two-step confirm via
+          a URL flag so a stray click can't trash the record. Stays at
+          the bottom of the Info tab so it's not the first thing the
+          user sees. Record stays in the DB (soft delete via deleted_at)
+          so admins can restore via a direct row update if needed. */}
+      <div className="lg:col-span-2 mt-4 pt-4 border-t border-ppp-charcoal-100">
+        {!confirmDelete ? (
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-[12px] text-ppp-charcoal-500">
+              Wrong account? Duplicate? Delete this opportunity.
+            </div>
+            <Link
+              href={`/commercial/opportunities/${opp.id}?tab=info&confirm_delete=1`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
+            >
+              Delete opportunity
+            </Link>
+          </div>
+        ) : (
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+            <div className="text-sm font-semibold text-rose-800 mb-1">
+              Delete {opp.title || "this opportunity"}?
+            </div>
+            <p className="text-[13px] text-rose-700 mb-3 leading-relaxed">
+              All notes, tasks, attachments, and team assignments tied to this opportunity will hide from list pages. The record stays in the database — an admin can restore it later from the audit log if needed.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <form action={softDeleteOpportunityAction}>
+                <input type="hidden" name="opp_id" value={opp.id} />
+                <input type="hidden" name="account_id" value={opp.account_id} />
+                <button
+                  type="submit"
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 min-h-[44px] touch-manipulation"
+                >
+                  Yes, delete it
+                </button>
+              </form>
+              <Link
+                href={`/commercial/opportunities/${opp.id}?tab=info`}
+                className="inline-flex items-center px-4 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-sm font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+              >
+                Cancel
+              </Link>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -532,13 +609,15 @@ function ChangeStatusCard({
   // up-front block makes the warning visible BEFORE the user picks).
   const warnNext = nextStatuses.filter((s) => shouldWarnTransition(opp.status, s));
   return (
-    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+    <section className={`bg-white border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
         <div>
-          <h2 className="text-sm font-bold text-ppp-charcoal">Change status</h2>
-          <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-            Currently <strong>{opportunityStatusLabel(opp.status)}</strong>. Pick the next state.
-            Lost requires a reason + note.
+          <h2 className="text-base font-bold text-ppp-charcoal flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[14px]" aria-hidden>→</span>
+            Move this deal forward
+          </h2>
+          <p className="text-[12px] text-ppp-charcoal-600 mt-1">
+            Currently <strong className="text-ppp-charcoal">{opportunityStatusLabel(opp.status)}</strong>. Pick the next state — closed states (Won / Lost / No-bid) need a short note.
           </p>
         </div>
       </div>
@@ -625,9 +704,9 @@ function ChangeStatusCard({
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
             >
-              Apply status change
+              Move forward →
             </button>
           </div>
         </form>
