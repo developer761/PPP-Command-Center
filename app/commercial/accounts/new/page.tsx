@@ -3,8 +3,17 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createCommercialAccount } from "@/lib/commercial/accounts/mutations";
 import { findNearDuplicates } from "@/lib/commercial/accounts/duplicates";
+import {
+  addAssignment,
+  listAssignableStaff,
+  ASSIGNMENT_ROLES,
+  type AssignmentRole,
+} from "@/lib/commercial/accounts/assignments";
 import CommercialAddressFields from "@/components/commercial-address-fields";
+import CommercialNewAccountTeamPicker from "@/components/commercial-new-account-team-picker";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+
+const VALID_ROLES = new Set<AssignmentRole>(ASSIGNMENT_ROLES);
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +93,49 @@ async function createAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/accounts/new?error=${encodeURIComponent(result.error)}`);
   }
-  redirect(`/commercial/accounts/${result.account.id}`);
+  const newAccountId = result.account.id;
+
+  // Process team rows from the picker — each row writes an assignment +
+  // fires the team-assignment email (fire-and-forget via the existing
+  // notifyAssignment pipeline in lib/commercial/accounts/assignments.ts).
+  // Failures don't roll back the account create — Karan would rather
+  // land the account + see a partial-team warning than lose the typed
+  // company details. Skipped rows surface in the redirect query string.
+  const teamCount = Math.max(0, Math.min(20, Number(formData.get("team_count") ?? 0) || 0));
+  let teamAddedCount = 0;
+  const teamSkipReasons: string[] = [];
+  for (let i = 0; i < teamCount; i++) {
+    const member_user_id = String(formData.get(`team_user_id_${i}`) ?? "").trim();
+    const role_raw = String(formData.get(`team_role_${i}`) ?? "").trim();
+    const is_primary = formData.get(`team_is_primary_${i}`) === "1";
+    if (!member_user_id) continue;
+    const role = role_raw as AssignmentRole;
+    if (!VALID_ROLES.has(role)) {
+      teamSkipReasons.push(`row ${i + 1}: invalid role`);
+      continue;
+    }
+    const addResult = await addAssignment({
+      account_id: newAccountId,
+      user_id: member_user_id,
+      role,
+      is_primary,
+      notes: null,
+      assigned_by_user_id: user.id,
+    });
+    if (addResult.ok) {
+      teamAddedCount += 1;
+    } else {
+      teamSkipReasons.push(`row ${i + 1}: ${addResult.error}`);
+    }
+  }
+
+  const params = new URLSearchParams();
+  if (teamAddedCount > 0) params.set("team_added", String(teamAddedCount));
+  if (teamSkipReasons.length > 0) {
+    params.set("team_skipped", teamSkipReasons.slice(0, 3).join(" · "));
+  }
+  const qs = params.toString();
+  redirect(`/commercial/accounts/${newAccountId}${qs ? `?${qs}` : ""}`);
 }
 
 export default async function NewCommercialAccountPage({
@@ -108,6 +159,10 @@ export default async function NewCommercialAccountPage({
       .is("deleted_at", null);
     duplicateCandidates = (data ?? []) as typeof duplicateCandidates;
   }
+
+  // Assignable PPP staff for the team-on-create picker — same filter as
+  // the Team tab on the detail page (has_new_platform_access + active).
+  const assignableStaff = await listAssignableStaff();
 
   return (
     <div className="space-y-6">
@@ -214,6 +269,15 @@ export default async function NewCommercialAccountPage({
             Tax exempt
           </label>
           <Field id="tax_exempt_cert_number" label="Tax exempt certificate #" />
+        </Section>
+
+        <Section title="Team">
+          <p className="text-[12px] text-ppp-charcoal-500 -mt-1 leading-relaxed">
+            Pick the PPP staff who&apos;ll manage this account. They&apos;ll get an
+            email with a link as soon as the account is created. You can adjust
+            roles + primaries later from the Team tab.
+          </p>
+          <CommercialNewAccountTeamPicker assignableStaff={assignableStaff} />
         </Section>
 
         <Section title="Notes">

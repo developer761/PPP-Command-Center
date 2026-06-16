@@ -89,7 +89,12 @@ export const dynamic = "force-dynamic";
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 type PP = Promise<{ id: string }>;
-type SP = Promise<{ tab?: string; error?: string }>;
+type SP = Promise<{
+  tab?: string;
+  error?: string;
+  team_added?: string;
+  team_skipped?: string;
+}>;
 
 const TABS = [
   { key: "info", label: "Info" },
@@ -132,8 +137,29 @@ export default async function CommercialAccountDetailPage({
     getPrimaryContact(account.id),
   ]);
 
+  const teamAddedCount = sp.team_added ? Number(sp.team_added) : 0;
+  const teamSkippedMsg = sp.team_skipped ?? null;
+
   return (
     <div className="space-y-5">
+      {/* Toast surface from the new-account team-on-create flow. Fades
+          out via reload (no client component needed — the user navigating
+          away clears the query string naturally). */}
+      {teamAddedCount > 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+          <span aria-hidden>✓</span>
+          <span>
+            Added {teamAddedCount} team member{teamAddedCount === 1 ? "" : "s"}.
+            They&apos;ve been emailed a link to this account.
+          </span>
+        </div>
+      )}
+      {teamSkippedMsg && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          <strong>Heads up:</strong> some team rows didn&apos;t go through — {teamSkippedMsg}.
+          Add them manually from the Team tab below.
+        </div>
+      )}
       <header>
         <Link href="/commercial/accounts" className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
