@@ -35,6 +35,7 @@ import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 import CommercialOpportunitiesSortPicker from "@/components/commercial-opportunities-sort-picker";
+import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -666,7 +667,11 @@ function KanbanBoard({
     }
   }
   return (
+    <KanbanDnDProvider>
     <div className="space-y-3">
+      <div className="text-[11px] text-ppp-charcoal-500 px-1">
+        💡 Drag a card to a different column to move the deal forward. Terminal states (Won/Lost/No-bid) open the detail page so you can record a reason.
+      </div>
       <div className="overflow-x-auto -mx-2 px-2 pb-2">
         <div className="flex gap-3 min-w-max">
           {KANBAN_COLUMNS.map((status) => {
@@ -676,10 +681,8 @@ function KanbanBoard({
               0
             );
             return (
-              <div
-                key={status}
-                className="w-72 sm:w-80 shrink-0 bg-ppp-charcoal-50/60 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col"
-              >
+              <KanbanDnDColumn key={status} status={status}>
+              <div className="w-72 sm:w-80 shrink-0 bg-ppp-charcoal-50/60 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full">
                 <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-white">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[12px] font-semibold text-ppp-charcoal">
@@ -695,26 +698,28 @@ function KanbanBoard({
                     </div>
                   )}
                 </div>
-                <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh]">
+                <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px]">
                   {colOpps.length === 0 ? (
                     <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
-                      No deals here
+                      Drop a deal here
                     </li>
                   ) : (
                     colOpps.map((opp) => (
-                      <KanbanCard
-                        key={opp.id}
-                        opp={opp}
-                        account={accountById.get(opp.account_id) ?? null}
-                        statusEnteredAt={statusEnteredAtMap.get(opp.id) ?? null}
-                        taskStats={taskStatsMap.get(opp.id) ?? null}
-                        primaryLead={primaryLeadMap.get(opp.id) ?? null}
-                        fileCount={fileCountMap.get(opp.id) ?? 0}
-                      />
+                      <KanbanDnDCard key={opp.id} oppId={opp.id}>
+                        <KanbanCard
+                          opp={opp}
+                          account={accountById.get(opp.account_id) ?? null}
+                          statusEnteredAt={statusEnteredAtMap.get(opp.id) ?? null}
+                          taskStats={taskStatsMap.get(opp.id) ?? null}
+                          primaryLead={primaryLeadMap.get(opp.id) ?? null}
+                          fileCount={fileCountMap.get(opp.id) ?? 0}
+                        />
+                      </KanbanDnDCard>
                     ))
                   )}
                 </ul>
               </div>
+              </KanbanDnDColumn>
             );
           })}
         </div>
@@ -743,6 +748,7 @@ function KanbanBoard({
         </details>
       )}
     </div>
+    </KanbanDnDProvider>
   );
 }
 
