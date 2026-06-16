@@ -18,11 +18,12 @@ ALTER TABLE public.commercial_opportunities
   ADD COLUMN IF NOT EXISTS property_state  TEXT,
   ADD COLUMN IF NOT EXISTS property_zip    TEXT;
 
-COMMENT ON COLUMN public.commercial_opportunities.property_street IS
-  'Per-opp project address. NULL means "same as parent account site/billing address" — UI shows the account fallback in that case. Lets a single property-mgmt account own bids at distinct physical sites.';
+-- NOTE on semantics: NULL on any property_* column means "fall back to
+-- the parent account site/billing address" — UI reads both and prefers
+-- the opp-level value when present. Lets a single property-mgmt account
+-- own bids at distinct physical sites without forcing duplicate accounts.
 
--- Helpful partial index for the rare "show me opps in NYC" filter Alex
--- mentioned. Tiny — most opps will have NULL property_city in v1.
+-- Partial index for the rare "show me opps in NYC" filter.
 CREATE INDEX IF NOT EXISTS idx_commercial_opportunities_property_city
   ON public.commercial_opportunities (property_city)
   WHERE property_city IS NOT NULL AND deleted_at IS NULL;
