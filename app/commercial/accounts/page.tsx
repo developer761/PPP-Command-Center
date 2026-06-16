@@ -14,6 +14,7 @@ import {
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import CommercialAccountsSearchAutocomplete from "@/components/commercial-accounts-search-autocomplete";
 import {
   listTagsForAccounts,
   listAllDistinctTags,
@@ -320,24 +321,7 @@ export default async function CommercialAccountsPage({
           <label htmlFor="q" className={LABEL_CLS}>
             Search
           </label>
-          <div className="relative">
-            <svg
-              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"
-              aria-hidden
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-            <input
-              id="q"
-              name="q"
-              type="search"
-              defaultValue={search ?? ""}
-              placeholder="Company name or DBA"
-              className={INPUT_CLS + " pl-10"}
-            />
-          </div>
+          <CommercialAccountsSearchAutocomplete defaultValue={search ?? ""} />
         </div>
         <div>
           <label htmlFor="rating" className={LABEL_CLS}>
@@ -472,27 +456,33 @@ export default async function CommercialAccountsPage({
         </div>
       )}
 
-      {/* Quick-filter chips — Karan 2026-06-14 Batch 5a. One-click toggles
-          driven by the URL so reload + bookmark survive. Each chip
-          preserves the others' state when toggled. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterChip href={toggleChipHref("stale", filterStale)} active={filterStale} tone="cold">
-          Stale &gt; 60 days
-        </FilterChip>
-        <FilterChip href={toggleChipHref("expiring", filterExpiring)} active={filterExpiring} tone="amber">
-          Has expiring docs
-        </FilterChip>
-        <FilterChip href={toggleChipHref("issue", filterIssue)} active={filterIssue} tone="rose">
-          Compliance issue
-        </FilterChip>
-        {anyFilterActive && (
-          <Link
-            href="/commercial/accounts"
-            className="text-[11px] text-emerald-700 hover:text-emerald-800 underline ml-1"
-          >
-            Clear all filters
-          </Link>
-        )}
+      {/* Quick-filter chips — Karan 2026-06-16 wanted these in a clearly
+          labeled, visually-separated row so they don't get lost next to
+          the main filter form. One-click toggles driven by the URL so
+          reload + bookmark survive. */}
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 sm:px-5 sm:py-3.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 shrink-0">
+            Quick filters
+          </span>
+          <FilterChip href={toggleChipHref("stale", filterStale)} active={filterStale} tone="cold">
+            Stale &gt; 60 days
+          </FilterChip>
+          <FilterChip href={toggleChipHref("expiring", filterExpiring)} active={filterExpiring} tone="amber">
+            Has expiring docs
+          </FilterChip>
+          <FilterChip href={toggleChipHref("issue", filterIssue)} active={filterIssue} tone="rose">
+            Compliance issue
+          </FilterChip>
+          {anyFilterActive && (
+            <Link
+              href="/commercial/accounts"
+              className="text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 underline ml-auto"
+            >
+              Clear all filters
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Recently active — only show when no filters narrowing the list

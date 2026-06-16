@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
 import { sendEmail } from "@/lib/email/resend";
+import { insertCommercialTeamAssignedNotification } from "@/lib/notifications/insert";
 
 /**
  * PPP staff assignments per commercial Account.
@@ -380,6 +381,22 @@ async function notifyAssignment(
   if (!result.ok) {
     console.warn(`[commercial/assignments] notify send failed:`, result.error);
   }
+
+  // In-app bell row — fires regardless of email outcome so the assignee
+  // gets the red dot next time they open the Command Center, even if the
+  // email bounces or Resend is mid-outage. Fire-and-forget.
+  void insertCommercialTeamAssignedNotification({
+    surface: "account",
+    parentId: account_id,
+    parentName: accountName,
+    recipientUserId: user_id,
+    roleLabel,
+    isPrimary: is_primary,
+    action: "assigned",
+    assignerName,
+  }).catch((err) => {
+    console.warn(`[commercial/assignments] bell insert failed:`, err);
+  });
 }
 
 function escape(s: string): string {

@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
 import { sendEmail } from "@/lib/email/resend";
+import { insertCommercialTeamAssignedNotification } from "@/lib/notifications/insert";
 
 /**
  * PPP staff assignments per opportunity (migration 030).
@@ -400,6 +401,22 @@ async function notifyAssignment(
   if (!result.ok) {
     console.warn(`[commercial/opportunities/assignments] notify send failed:`, result.error);
   }
+
+  // In-app bell row — fire-and-forget. Survives email outages so the
+  // assignee still sees a red dot the next time they open the platform.
+  void insertCommercialTeamAssignedNotification({
+    surface: "opportunity",
+    parentId: opportunity_id,
+    parentName: oppTitle,
+    secondaryName: accountName ?? null,
+    recipientUserId: user_id,
+    roleLabel,
+    isPrimary: is_primary,
+    action,
+    assignerName,
+  }).catch((err) => {
+    console.warn(`[commercial/opportunities/assignments] bell insert failed:`, err);
+  });
 }
 
 function escape(s: string): string {

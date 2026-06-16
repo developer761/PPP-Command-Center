@@ -104,16 +104,63 @@ async function createAction(formData: FormData) {
   const teamCount = Math.max(0, Math.min(20, Number(formData.get("team_count") ?? 0) || 0));
   let teamAddedCount = 0;
   const teamSkipReasons: string[] = [];
+  // Lazy-imported for the email-mode lookup path.
+  const { commercialDb } = await import("@/lib/commercial/db");
   for (let i = 0; i < teamCount; i++) {
-    const member_user_id = String(formData.get(`team_user_id_${i}`) ?? "").trim();
+    const mode = String(formData.get(`team_mode_${i}`) ?? "user").trim();
     const role_raw = String(formData.get(`team_role_${i}`) ?? "").trim();
     const is_primary = formData.get(`team_is_primary_${i}`) === "1";
-    if (!member_user_id) continue;
     const role = role_raw as AssignmentRole;
     if (!VALID_ROLES.has(role)) {
       teamSkipReasons.push(`row ${i + 1}: invalid role`);
       continue;
     }
+
+    let member_user_id = "";
+
+    if (mode === "email") {
+      // Email-mode lookup. Trim + lowercase for case-insensitive match.
+      const rawEmail = String(formData.get(`team_email_${i}`) ?? "").trim();
+      if (!rawEmail) continue;
+      const email = rawEmail.toLowerCase();
+      const sb = commercialDb();
+      const { data: profile } = await sb
+        .from("profiles")
+        .select("user_id, is_active, has_new_platform_access")
+        .ilike("email", email)
+        .maybeSingle();
+      if (!profile) {
+        teamSkipReasons.push(
+          `${rawEmail}: no account yet — they need to sign in once first`
+        );
+        continue;
+      }
+      const p = profile as { user_id: string; is_active: boolean | null; has_new_platform_access: boolean | null };
+      if (p.is_active === false) {
+        teamSkipReasons.push(`${rawEmail}: account is inactive`);
+        continue;
+      }
+      // Auto-grant Commercial CC access on the email-add path. Admin
+      // explicitly said "add this person to the team" — that intent
+      // overrides the access flag. They'll show in the dropdown for
+      // every future picker without admin going to /admin/users.
+      if (!p.has_new_platform_access) {
+        const { error: grantErr } = await sb
+          .from("profiles")
+          .update({ has_new_platform_access: true })
+          .eq("user_id", p.user_id);
+        if (grantErr) {
+          teamSkipReasons.push(`${rawEmail}: couldn't grant access (${grantErr.message})`);
+          continue;
+        }
+      }
+      member_user_id = p.user_id;
+    } else {
+      // Default user-dropdown mode.
+      member_user_id = String(formData.get(`team_user_id_${i}`) ?? "").trim();
+      if (!member_user_id) continue;
+    }
+
     const addResult = await addAssignment({
       account_id: newAccountId,
       user_id: member_user_id,

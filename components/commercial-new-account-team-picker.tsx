@@ -45,13 +45,26 @@ export default function CommercialNewAccountTeamPicker({
 }: {
   assignableStaff: StaffOption[];
 }) {
-  type Row = { id: number; user_id: string; role: AssignmentRole; is_primary: boolean };
+  type Row = {
+    id: number;
+    /** "user" = pick from the staff dropdown (existing flow).
+     *  "email" = type a custom email — server looks them up by email
+     *  and auto-grants Commercial CC access if their profile exists. */
+    mode: "user" | "email";
+    user_id: string;
+    email: string;
+    role: AssignmentRole;
+    is_primary: boolean;
+  };
   const [rows, setRows] = useState<Row[]>([]);
   const [nextId, setNextId] = useState(1);
 
   const addRow = () => {
     if (rows.length >= MAX_TEAM_ROWS) return;
-    setRows((r) => [...r, { id: nextId, user_id: "", role: "sales_rep", is_primary: false }]);
+    setRows((r) => [
+      ...r,
+      { id: nextId, mode: "user", user_id: "", email: "", role: "sales_rep", is_primary: false },
+    ]);
     setNextId((n) => n + 1);
   };
   const removeRow = (id: number) => setRows((r) => r.filter((row) => row.id !== id));
@@ -67,15 +80,6 @@ export default function CommercialNewAccountTeamPicker({
     rows.map((r) => (r.user_id ? `${r.user_id}__${r.role}` : "")).filter(Boolean)
   );
 
-  if (assignableStaff.length === 0) {
-    return (
-      <div className="text-[12px] text-ppp-charcoal-500 italic">
-        No PPP staff have Commercial Command Center access yet. Add team members from
-        the Team tab once an admin grants access on the Users page.
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
       <input type="hidden" name="team_count" value={rows.length} />
@@ -88,19 +92,25 @@ export default function CommercialNewAccountTeamPicker({
       ) : null}
 
       {rows.map((row, idx) => {
-        const pickedStaff = row.user_id
-          ? assignableStaff.find((s) => s.user_id === row.user_id)
-          : null;
-        const displayName = pickedStaff
-          ? pickedStaff.full_name || pickedStaff.email
-          : null;
+        const pickedStaff =
+          row.mode === "user" && row.user_id
+            ? assignableStaff.find((s) => s.user_id === row.user_id)
+            : null;
+        const displayName =
+          row.mode === "email"
+            ? row.email.trim() || null
+            : pickedStaff
+              ? pickedStaff.full_name || pickedStaff.email
+              : null;
         const initial = displayName ? displayName.trim().charAt(0).toUpperCase() : "?";
         return (
         <div
           key={row.id}
           className="border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4 bg-ppp-charcoal-50/40 space-y-3"
         >
+          <input type="hidden" name={`team_mode_${idx}`} value={row.mode} />
           <input type="hidden" name={`team_user_id_${idx}`} value={row.user_id} />
+          <input type="hidden" name={`team_email_${idx}`} value={row.email} />
           <input type="hidden" name={`team_role_${idx}`} value={row.role} />
           <input
             type="hidden"
@@ -146,32 +156,69 @@ export default function CommercialNewAccountTeamPicker({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className={LABEL_CLS}>PPP Staff *</label>
-              <select
-                value={row.user_id}
-                onChange={(e) => updateRow(row.id, { user_id: e.target.value })}
-                className={SELECT_CLS}
-                style={SELECT_BG_STYLE}
-                aria-label={`Team member ${idx + 1} staff picker`}
-              >
-                <option value="" disabled>
-                  Pick someone…
-                </option>
-                {assignableStaff.map((s) => {
-                  const label = s.full_name ? `${s.full_name} (${s.email})` : s.email;
-                  // Dim only if this exact (user, role) pair is already
-                  // claimed by a DIFFERENT row. Same user in a different
-                  // role is allowed.
-                  const taken =
-                    pickedKeys.has(`${s.user_id}__${row.role}`) && s.user_id !== row.user_id;
-                  return (
-                    <option key={s.user_id} value={s.user_id} disabled={taken}>
-                      {label}
-                      {taken ? ` — already on the team as ${assignmentRoleLabel(row.role)}` : ""}
-                    </option>
-                  );
-                })}
-              </select>
+              <div className="flex items-baseline justify-between gap-2">
+                <label className={LABEL_CLS}>
+                  {row.mode === "email" ? "Email *" : "PPP Staff *"}
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateRow(row.id, {
+                      mode: row.mode === "user" ? "email" : "user",
+                      user_id: "",
+                      email: "",
+                    })
+                  }
+                  className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 underline"
+                >
+                  {row.mode === "user" ? "Or by email →" : "← Pick from list"}
+                </button>
+              </div>
+              {row.mode === "user" ? (
+                <select
+                  value={row.user_id}
+                  onChange={(e) => updateRow(row.id, { user_id: e.target.value })}
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
+                  aria-label={`Team member ${idx + 1} staff picker`}
+                >
+                  <option value="" disabled>
+                    {assignableStaff.length === 0
+                      ? "No staff yet — switch to email mode →"
+                      : "Pick someone…"}
+                  </option>
+                  {assignableStaff.map((s) => {
+                    const label = s.full_name ? `${s.full_name} (${s.email})` : s.email;
+                    // Dim only if this exact (user, role) pair is already
+                    // claimed by a DIFFERENT row. Same user in a different
+                    // role is allowed.
+                    const taken =
+                      pickedKeys.has(`${s.user_id}__${row.role}`) && s.user_id !== row.user_id;
+                    return (
+                      <option key={s.user_id} value={s.user_id} disabled={taken}>
+                        {label}
+                        {taken ? ` — already on the team as ${assignmentRoleLabel(row.role)}` : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : (
+                <input
+                  type="email"
+                  value={row.email}
+                  onChange={(e) => updateRow(row.id, { email: e.target.value })}
+                  placeholder="alex@precisionpaintingplus.com"
+                  autoComplete="off"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
+                  aria-label={`Team member ${idx + 1} email`}
+                />
+              )}
+              {row.mode === "email" && (
+                <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+                  They must have signed in to the platform at least once. We&apos;ll
+                  grant them Commercial CC access automatically.
+                </p>
+              )}
             </div>
             <div>
               <label className={LABEL_CLS}>Role</label>

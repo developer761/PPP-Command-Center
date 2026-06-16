@@ -509,9 +509,15 @@ export default async function CommercialOpportunitiesPage({
       {/* Glanceable filters — Hot + Stale only by default. Source filters
           are tucked behind a "more" collapse: sources are properties of
           how a deal came in (set at create time, useful for quarterly
-          analytics), not what Alex wants to scan by daily. */}
-      <div className="flex flex-wrap items-center gap-2 justify-between">
+          analytics), not what Alex wants to scan by daily.
+          Visual: wrapped in a labeled card (Karan 2026-06-16) so the
+          chips read as their own decision surface instead of floating
+          loose. */}
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 sm:px-5 sm:py-3.5 flex flex-wrap items-center gap-3 justify-between">
         <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 shrink-0">
+            Quick filters
+          </span>
           <FilterChip href={toggleHotHref} active={hotFilter} tone="hot">
             🔥 Hot ($50k+ · &lt;{HOT_DEAL_DECISION_DAYS}d)
           </FilterChip>

@@ -20,7 +20,10 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
  * know the bell exists.
  */
 
-export type NotificationKind = "customer_form_submitted";
+export type NotificationKind =
+  | "customer_form_submitted"
+  | "commercial_account_team_added"
+  | "commercial_opportunity_team_added";
 
 export type CustomerFormSubmittedInput = {
   /** Supabase user id of the rep who originally sent the form. They get a
@@ -123,5 +126,100 @@ export async function insertCustomerFormSubmittedNotification(
     }
   } catch (err) {
     console.warn("[notifications] unexpected insert error:", err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * Bell row for "you've been assigned to an account/opp" — fires on every
+ * successful addAssignment write (account-side AND opp-side). Single
+ * recipient: the staffer who got assigned. Distinct from the email
+ * notification — this is the in-app red dot the next time they open the
+ * Command Center, so they know to look at the new account even if they
+ * miss the email.
+ *
+ * Fire-and-forget: any error logs + swallows. Never breaks the assignment
+ * write.
+ */
+export type CommercialTeamAssignedInput = {
+  /** Surface — drives the bell copy + link */
+  surface: "account" | "opportunity";
+  /** UUID of the account or opp the recipient was added to */
+  parentId: string;
+  /** Display name for the parent (account company_name or opp title) */
+  parentName: string;
+  /** Optional secondary context — account name for an opp assignment */
+  secondaryName?: string | null;
+  /** Supabase user_id of the assignee */
+  recipientUserId: string;
+  /** Role label as the user reads it ("Sales Rep" not "sales_rep") */
+  roleLabel: string;
+  /** True when the assignment is also flagged primary */
+  isPrimary: boolean;
+  /** "assigned" | "promoted" | "restored" — matches the email verb */
+  action: "assigned" | "promoted" | "restored";
+  /** Display name of the user who did the assigning, for the body line */
+  assignerName: string;
+};
+
+export async function insertCommercialTeamAssignedNotification(
+  input: CommercialTeamAssignedInput
+): Promise<void> {
+  try {
+    const sb = adminClient();
+
+    const kind: NotificationKind =
+      input.surface === "account"
+        ? "commercial_account_team_added"
+        : "commercial_opportunity_team_added";
+
+    const verb =
+      input.action === "promoted"
+        ? `promoted you to PRIMARY ${input.roleLabel}`
+        : input.action === "restored"
+          ? `re-added you as ${input.roleLabel}`
+          : `assigned you as ${input.roleLabel}`;
+
+    const primarySuffix =
+      input.isPrimary && input.action !== "promoted"
+        ? " (Primary)"
+        : "";
+
+    const title =
+      input.surface === "account"
+        ? `${input.parentName}${primarySuffix}`
+        : `${input.parentName}${primarySuffix}`;
+    const body =
+      input.surface === "opportunity" && input.secondaryName
+        ? `${input.assignerName} ${verb}. Account: ${input.secondaryName}.`
+        : `${input.assignerName} ${verb}.`;
+    const link =
+      input.surface === "account"
+        ? `/commercial/accounts/${input.parentId}?tab=team`
+        : `/commercial/opportunities/${input.parentId}?tab=team`;
+
+    const row = {
+      recipient_user_id: input.recipientUserId,
+      kind,
+      // WO-specific columns left null; the bell renderer reads title/body/link only
+      work_order_id: null as string | null,
+      work_order_number: null as string | null,
+      customer_name: null as string | null,
+      title,
+      body,
+      link,
+    };
+
+    const { error: insErr } = await sb.from("notifications").insert(row);
+    if (insErr) {
+      console.warn(
+        `[notifications] commercial team-add insert failed for ${input.surface} ${input.parentId.slice(0, 8)}…:`,
+        insErr.message
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[notifications] commercial team-add unexpected error:",
+      err instanceof Error ? err.message : String(err)
+    );
   }
 }
