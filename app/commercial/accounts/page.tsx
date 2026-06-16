@@ -716,13 +716,13 @@ function AccountRow({
   const visibleTags = tags.slice(0, 3);
   const extraTagCount = Math.max(0, tags.length - visibleTags.length);
   return (
-    <li className="flex items-start gap-2 hover:bg-emerald-50/40 transition-colors">
+    <li className="flex items-start gap-2 hover:bg-emerald-50/40 transition-colors group/row">
       {/* Checkbox sits OUTSIDE the Link so clicking it doesn't navigate.
           Touch-manipulation keeps the iOS tap responsive. The label
           wraps both checkbox + the row content for big-tap-target
           friendliness — clicking anywhere along the left margin
           toggles selection. */}
-      <label className="pl-3 sm:pl-4 pt-5 cursor-pointer touch-manipulation">
+      <label className="pl-3 sm:pl-4 pt-4 cursor-pointer touch-manipulation">
         <input
           type="checkbox"
           name="account_id"

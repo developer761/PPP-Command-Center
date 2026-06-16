@@ -2170,20 +2170,24 @@ function KpiTile({
     </>
   );
 
+  // Live tiles get a confident emerald accent + subtle shadow + hover
+  // lift to read as actionable. Placeholders are quieter (lighter
+  // background, dashed border) so the eye doesn't waste time on them
+  // until the future phase lands.
   const cls =
     tone === "live"
-      ? "bg-emerald-50/50 border-emerald-200"
-      : "bg-ppp-charcoal-50/50 border-ppp-charcoal-100";
+      ? "bg-white border-ppp-charcoal-200 shadow-sm"
+      : "bg-ppp-charcoal-50/60 border-ppp-charcoal-200 border-dashed";
 
   return href ? (
     <a
       href={href}
-      className={`block rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 transition-colors hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-600/40 touch-manipulation ${cls}`}
+      className={`block rounded-xl border px-3 py-3 sm:px-4 sm:py-3.5 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-600/40 touch-manipulation ${cls}`}
     >
       {content}
     </a>
   ) : (
-    <div className={`rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 ${cls}`}>{content}</div>
+    <div className={`rounded-xl border px-3 py-3 sm:px-4 sm:py-3.5 ${cls}`}>{content}</div>
   );
 }
 
