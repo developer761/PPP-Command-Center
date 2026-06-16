@@ -47,10 +47,15 @@ import {
   listCommercialOpportunities,
   opportunityStatusLabel,
   formatBidRange,
+  OPPORTUNITY_STATUSES,
   type CommercialOpportunity,
   type OpportunityStatus,
 } from "@/lib/commercial/opportunities/db";
-import { listCurrentStatusEnteredAtByOpp } from "@/lib/commercial/opportunities/status";
+import {
+  listCurrentStatusEnteredAtByOpp,
+  allowedNextStatuses,
+  changeOpportunityStatus,
+} from "@/lib/commercial/opportunities/status";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments";
@@ -60,6 +65,7 @@ import {
   TERMINAL_STATUSES,
   STALE_OPP_DAYS,
   STALE_ACCOUNT_OPP_COOLING_MULTIPLIER,
+  QUICK_FLIP_BLOCKED_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import {
   listAccountTags,
@@ -220,6 +226,40 @@ export default async function CommercialAccountDetailPage({
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
     </div>
   );
+}
+
+/**
+ * Quick-flip an opp's status straight from the account-side
+ * Opportunities tab — Alex sees a bid mid-pipeline, picks the next
+ * status from a dropdown on the row, one tap submits. Same DAG check
+ * as the global page; terminal states (won/lost/no_bid) redirect to
+ * the opp detail so the user can capture the required reason/note.
+ */
+async function quickFlipFromAccountAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const to_status = String(formData.get("to_status") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+  if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Invalid status.")}`);
+  }
+  if (QUICK_FLIP_BLOCKED_STATUSES.has(to_status)) {
+    redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
+  }
+  const result = await changeOpportunityStatus({
+    opp_id,
+    to_status: to_status as OpportunityStatus,
+    acting_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
 }
 
 async function addTagAction(formData: FormData) {
@@ -1388,6 +1428,7 @@ async function OpportunitiesTab({
               <AccountOpportunityRow
                 key={opp.id}
                 opp={opp}
+                accountId={accountId}
                 statusEnteredAt={statusEnteredMap.get(opp.id) ?? null}
                 taskStats={taskStatsMap.get(opp.id) ?? null}
                 lastNote={lastNoteMap.get(opp.id) ?? null}
@@ -1411,6 +1452,7 @@ async function OpportunitiesTab({
               <AccountOpportunityRow
                 key={opp.id}
                 opp={opp}
+                accountId={accountId}
                 statusEnteredAt={statusEnteredMap.get(opp.id) ?? null}
                 taskStats={taskStatsMap.get(opp.id) ?? null}
                 lastNote={lastNoteMap.get(opp.id) ?? null}
@@ -1433,6 +1475,7 @@ async function OpportunitiesTab({
  */
 function AccountOpportunityRow({
   opp,
+  accountId,
   statusEnteredAt,
   taskStats,
   lastNote,
@@ -1440,6 +1483,7 @@ function AccountOpportunityRow({
   fileCount,
 }: {
   opp: CommercialOpportunity;
+  accountId: string;
   statusEnteredAt: string | null;
   taskStats: { open: number; overdue: number; due_soon: number } | null;
   lastNote: { created_at: string; author_label: string | null } | null;
@@ -1461,6 +1505,10 @@ function AccountOpportunityRow({
   const leadLabel = primaryLead
     ? (primaryLead.user_full_name?.split(" ")[0] ?? primaryLead.user_email.split("@")[0])
     : null;
+  // DAG-filtered next statuses for inline quick-flip. Empty list →
+  // dropdown hides (terminal states have no forward motion; reopened
+  // is the only legal exit and that's handled on the detail page).
+  const nextStatuses = allowedNextStatuses(opp.status);
   return (
     <li>
       <Link
@@ -1515,6 +1563,45 @@ function AccountOpportunityRow({
           </div>
         </div>
       </Link>
+      {/* Quick-flip dropdown — DAG-filtered next statuses live on the
+          same row so Alex moves the deal forward without opening
+          detail. Terminal states still route to the detail page since
+          they need loss_reason + note capture. Hidden when no legal
+          next status (terminal opps or reopened-only paths). */}
+      {nextStatuses.length > 0 && (
+        <form
+          action={quickFlipFromAccountAction}
+          className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap"
+        >
+          <input type="hidden" name="account_id" value={accountId} />
+          <input type="hidden" name="opp_id" value={opp.id} />
+          <label htmlFor={`account-flip-${opp.id}`} className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
+            Quick flip
+          </label>
+          <select
+            id={`account-flip-${opp.id}`}
+            name="to_status"
+            defaultValue=""
+            required
+            className="px-2 py-1 text-base sm:text-sm border border-ppp-charcoal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[36px] bg-white"
+          >
+            <option value="" disabled>
+              Next status…
+            </option>
+            {nextStatuses.map((s) => (
+              <option key={s} value={s}>
+                → {opportunityStatusLabel(s)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[36px] touch-manipulation"
+          >
+            Move
+          </button>
+        </form>
+      )}
     </li>
   );
 }
