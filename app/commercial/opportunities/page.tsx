@@ -21,6 +21,9 @@ import {
   DEFAULT_PROBABILITY_BY_STATUS,
   STALE_OPP_DAYS,
   QUICK_FLIP_BLOCKED_STATUSES,
+  HOT_DEAL_BID_CENTS,
+  HOT_DEAL_DECISION_DAYS,
+  HOT_DEAL_ACTIVE_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import {
   allowedNextStatuses,
@@ -82,8 +85,11 @@ export default async function CommercialOpportunitiesPage({
 
   // Chip filters (client-side post-fetch — no DB index help needed):
   //   ?stale=1            — only open opps not updated in STALE_OPP_DAYS
+  //   ?hot=1              — bid_value_high >= $50k AND proposal_due_at <= 14d
+  //                         AND status in HOT_DEAL_ACTIVE_STATUSES
   //   ?sources=email,phone — multi-select source filter (comma-joined)
   const staleFilter = pickFirst(sp.stale) === "1";
+  const hotFilter = pickFirst(sp.hot) === "1";
   const sourcesRaw = pickFirst(sp.sources);
   const sourceSet: Set<OpportunitySource> = new Set();
   if (sourcesRaw) {
@@ -125,6 +131,20 @@ export default async function CommercialOpportunitiesPage({
       return Number.isFinite(days) && days >= STALE_OPP_DAYS;
     });
   }
+  if (hotFilter) {
+    // Hot = the deal we want to win NOW. Big bid + clock running + still
+    // actively in flight. Filter mirrors lib/.../export.ts so the CSV
+    // export of "?hot=1" returns the same rows the user sees.
+    opps = opps.filter((o) => {
+      if (!(HOT_DEAL_ACTIVE_STATUSES as readonly string[]).includes(o.status)) return false;
+      if (!o.bid_value_high_cents || o.bid_value_high_cents < HOT_DEAL_BID_CENTS) return false;
+      if (!o.proposal_due_at) return false;
+      const daysUntilDue = Math.ceil(
+        (new Date(o.proposal_due_at).getTime() - Date.now()) / MS_PER_DAY
+      );
+      return Number.isFinite(daysUntilDue) && daysUntilDue >= 0 && daysUntilDue <= HOT_DEAL_DECISION_DAYS;
+    });
+  }
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => o.source && sourceSet.has(o.source));
   }
@@ -145,6 +165,14 @@ export default async function CommercialOpportunitiesPage({
   const toggleStaleHref = (() => {
     const p = new URLSearchParams(baseParams);
     if (!staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  })();
+  const toggleHotHref = (() => {
+    const p = new URLSearchParams(baseParams);
+    if (!hotFilter) p.set("hot", "1");
+    if (staleFilter) p.set("stale", "1");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   })();
@@ -156,11 +184,28 @@ export default async function CommercialOpportunitiesPage({
     if (next.size > 0) p.set("sources", Array.from(next).join(","));
     else p.delete("sources");
     if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
 
-  const anyFilterActive = !!search || !!validStatus || staleFilter || sourceSet.size > 0;
+  // The CSV export endpoint takes the exact same params the page does
+  // so the download is "what the user sees, as a spreadsheet".
+  const exportParams = new URLSearchParams(baseParams);
+  if (staleFilter) exportParams.set("stale", "1");
+  if (hotFilter) exportParams.set("hot", "1");
+  const exportHref = `/api/commercial/opportunities/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
+
+  const anyFilterActive =
+    !!search || !!validStatus || staleFilter || hotFilter || sourceSet.size > 0;
+
+  // Status snapshot — open-opp count per status, for the inline "where
+  // is the pipeline stuck?" pill row above the chip cluster.
+  const statusSnapshot: Array<{ status: OpportunityStatus; count: number }> = (
+    OPEN_OPP_STATUSES as readonly OpportunityStatus[]
+  )
+    .map((s) => ({ status: s, count: openOpps.filter((o) => o.status === s).length }))
+    .filter((r) => r.count > 0);
 
   return (
     <div className="space-y-6">
@@ -286,24 +331,58 @@ export default async function CommercialOpportunitiesPage({
         </div>
       )}
 
-      {/* Chip cluster — quick toggles for stale + source. Sits below the
-          filter form so the heavy filters live in one place and the
-          glanceable ones live in another. Matches the accounts list
-          pattern. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterChip href={toggleStaleHref} active={staleFilter} tone="cold">
-          Stale &gt; {STALE_OPP_DAYS}d
-        </FilterChip>
-        {OPPORTUNITY_SOURCES.map((s) => (
-          <FilterChip
-            key={s}
-            href={toggleSourceHref(s)}
-            active={sourceSet.has(s)}
-            tone="neutral"
-          >
-            {opportunitySourceLabel(s)}
+      {/* Status snapshot — open opps grouped by status. Shows the
+          pipeline shape at a glance: where are deals sitting? where's
+          the bottleneck? Hidden when no open opps. */}
+      {statusSnapshot.length > 0 && (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
+            Open by status
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px]">
+            {statusSnapshot.map((r) => (
+              <span key={r.status} className="inline-flex items-center gap-1.5">
+                <span className="text-ppp-charcoal-500">{opportunityStatusLabel(r.status)}</span>
+                <strong className="text-ppp-charcoal">{r.count}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Chip cluster — quick toggles + CSV export. Heavy filters (search
+          + status) live in the form above; glanceable boolean chips live
+          here. CSV button takes the same params so the download is
+          "what the user sees, as a spreadsheet." */}
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterChip href={toggleHotHref} active={hotFilter} tone="hot">
+            🔥 Hot ($50k+ · &lt;{HOT_DEAL_DECISION_DAYS}d)
           </FilterChip>
-        ))}
+          <FilterChip href={toggleStaleHref} active={staleFilter} tone="cold">
+            Stale &gt; {STALE_OPP_DAYS}d
+          </FilterChip>
+          {OPPORTUNITY_SOURCES.map((s) => (
+            <FilterChip
+              key={s}
+              href={toggleSourceHref(s)}
+              active={sourceSet.has(s)}
+              tone="neutral"
+            >
+              {opportunitySourceLabel(s)}
+            </FilterChip>
+          ))}
+        </div>
+        <a
+          href={exportHref}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation shrink-0"
+          title="Download the current filter view as a CSV"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
+          </svg>
+          Export CSV
+        </a>
       </div>
 
       {/* List */}
@@ -399,7 +478,7 @@ function FilterChip({
 }: {
   href: string;
   active: boolean;
-  tone: "neutral" | "cold";
+  tone: "neutral" | "cold" | "hot";
   children: React.ReactNode;
 }) {
   const inactiveCls =
@@ -407,6 +486,8 @@ function FilterChip({
   const activeCls =
     tone === "cold"
       ? "bg-ppp-charcoal-100 border-ppp-charcoal-300 text-ppp-charcoal-700"
+      : tone === "hot"
+      ? "bg-rose-100 border-rose-300 text-rose-800"
       : "bg-emerald-100 border-emerald-300 text-emerald-800";
   return (
     <Link
