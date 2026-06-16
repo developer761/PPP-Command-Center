@@ -21,6 +21,7 @@ import {
   allowedNextStatuses,
   changeOpportunityStatus,
   shouldWarnTransition,
+  listOpportunityStatusLog,
 } from "@/lib/commercial/opportunities/status";
 import {
   listOpportunityTeam,
@@ -395,9 +396,7 @@ export default async function OpportunityDetailPage({
       {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "plans" && <PlansTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
-      {tab === "timeline" && (
-        <ComingSoonTab label={TABS.find((t) => t.key === tab)?.label ?? tab} />
-      )}
+      {tab === "timeline" && <TimelineTab oppId={opp.id} />}
     </div>
   );
 }
@@ -1256,6 +1255,89 @@ function AttachmentRow({
         </form>
       )}
     </li>
+  );
+}
+
+/**
+ * Timeline tab — chronological history of every status change on the
+ * opp, sourced from `commercial_opportunity_status_log` (migration 029).
+ * Renders an inverted-time vertical timeline: most recent at top.
+ * Each row shows the from→to transition, the actor's user_id (raw for
+ * now; profile join lands when Recent Activity ships), the timestamp,
+ * the optional explanation note, and loss_reason on lost/no_bid exits.
+ *
+ * Empty state covers freshly-created opps that haven't moved yet.
+ */
+async function TimelineTab({ oppId }: { oppId: string }) {
+  const log = await listOpportunityStatusLog(oppId);
+  if (log.length === 0) {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+        <div className="text-sm font-semibold text-ppp-charcoal mb-1">
+          No status changes yet
+        </div>
+        <p className="text-sm text-ppp-charcoal-500">
+          As this deal moves through the pipeline, every status change shows up here with the date, the person who changed it, and any note they added.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ppp-charcoal">
+          Status history · {log.length}
+        </h2>
+        <span className="text-[11px] text-ppp-charcoal-500">Most recent first</span>
+      </div>
+      <ol className="divide-y divide-ppp-charcoal-100">
+        {log.map((entry) => {
+          const when = new Date(entry.changed_at);
+          const isTerminal = entry.to_status === "won" || entry.to_status === "lost" || entry.to_status === "no_bid";
+          const isWin = entry.to_status === "won";
+          const cls = isWin
+            ? "border-l-emerald-500"
+            : isTerminal
+            ? "border-l-rose-400"
+            : "border-l-ppp-charcoal-200";
+          return (
+            <li key={entry.id} className={`px-4 py-3 border-l-4 ${cls}`}>
+              <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1">
+                <div className="text-sm font-semibold text-ppp-charcoal">
+                  {entry.from_status ? (
+                    <>
+                      {opportunityStatusLabel(entry.from_status)}
+                      <span aria-hidden className="text-ppp-charcoal-400 mx-1.5">→</span>
+                      {opportunityStatusLabel(entry.to_status)}
+                    </>
+                  ) : (
+                    <>Created as {opportunityStatusLabel(entry.to_status)}</>
+                  )}
+                </div>
+                <span
+                  className="text-[12px] text-ppp-charcoal-500"
+                  title={when.toISOString()}
+                >
+                  {when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  {" · "}
+                  {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                </span>
+              </div>
+              {entry.loss_reason && (
+                <div className="text-[12px] text-rose-700 mb-1">
+                  Reason: {opportunityLossReasonLabel(entry.loss_reason)}
+                </div>
+              )}
+              {entry.note && (
+                <p className="text-[13px] text-ppp-charcoal-700 leading-relaxed whitespace-pre-wrap">
+                  {entry.note}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 
