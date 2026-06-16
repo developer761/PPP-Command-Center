@@ -17,6 +17,7 @@ import {
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
 import { softDeleteCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { commercialDb } from "@/lib/commercial/db";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import {
@@ -653,7 +654,7 @@ function ChangeStatusCard({
           <input type="hidden" name="opp_id" value={opp.id} />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-1">
-              <label htmlFor="to_status" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="to_status" className={LABEL_CLS}>
                 Next status <span className="text-rose-700">*</span>
               </label>
               <select
@@ -661,7 +662,8 @@ function ChangeStatusCard({
                 name="to_status"
                 required
                 defaultValue={defaultTo}
-                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                className={SELECT_CLS}
+                style={SELECT_BG_STYLE}
               >
                 <option value="" disabled>
                   Pick a status
@@ -674,20 +676,21 @@ function ChangeStatusCard({
                 ))}
               </select>
               {defaultTo && shouldWarnTransition(opp.status, defaultTo) && (
-                <p className="text-[11px] text-amber-700 mt-1">
+                <p className="text-[11px] text-amber-700 mt-1.5">
                   Unusual transition — double-check this is intentional.
                 </p>
               )}
             </div>
             <div className="sm:col-span-1">
-              <label htmlFor="loss_reason" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="loss_reason" className={LABEL_CLS}>
                 Loss reason (if lost)
               </label>
               <select
                 id="loss_reason"
                 name="loss_reason"
                 defaultValue=""
-                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                className={SELECT_CLS}
+                style={SELECT_BG_STYLE}
               >
                 <option value="">—</option>
                 {OPPORTUNITY_LOSS_REASONS.map((r) => (
@@ -698,7 +701,7 @@ function ChangeStatusCard({
               </select>
             </div>
             <div className="sm:col-span-1">
-              <label htmlFor="note" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="note" className={LABEL_CLS}>
                 Note (required if lost)
               </label>
               <input
@@ -707,7 +710,7 @@ function ChangeStatusCard({
                 type="text"
                 placeholder="One-line context"
                 maxLength={500}
-                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+                className={INPUT_CLS}
               />
             </div>
           </div>

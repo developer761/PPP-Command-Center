@@ -10,6 +10,7 @@ import {
   softDeleteCommercialAccount,
 } from "@/lib/commercial/accounts/mutations";
 import CommercialAddressFields from "@/components/commercial-address-fields";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 export const dynamic = "force-dynamic";
 
@@ -266,7 +267,7 @@ export default async function EditCommercialAccountPage({
             rows={4}
             defaultValue={account.notes ?? ""}
             placeholder="Anything PPP staff should know about this account."
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y"
+            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
           />
         </Section>
 
@@ -358,7 +359,7 @@ function EditField({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+      <label htmlFor={id} className={LABEL_CLS}>
         {label}
       </label>
       <input
@@ -368,7 +369,7 @@ function EditField({
         required={required}
         placeholder={placeholder}
         defaultValue={defaultValue}
-        className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+        className={INPUT_CLS}
       />
     </div>
   );
@@ -387,14 +388,15 @@ function EditSelectField({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+      <label htmlFor={id} className={LABEL_CLS}>
         {label}
       </label>
       <select
         id={id}
         name={id}
         defaultValue={defaultValue}
-        className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white min-h-[44px] sm:min-h-0"
+        className={SELECT_CLS}
+        style={SELECT_BG_STYLE}
       >
         {options.map(([v, l]) => (
           <option key={v} value={v}>
