@@ -13,6 +13,7 @@ import {
   formatBidCents,
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import {
   listTagsForAccounts,
   listAllDistinctTags,
@@ -309,48 +310,64 @@ export default async function CommercialAccountsPage({
         </div>
       </header>
 
-      {/* Filter bar */}
+      {/* Filter bar — clean white card with the same form-control language
+          as the rest of the platform. Search input has a magnifier icon;
+          every select uses the SELECT_CLS pattern (custom chevron, no OS
+          gray). Apply button is emerald to match the primary-action
+          language. */}
       <form className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4 flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-[180px]">
-          <label htmlFor="q" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+        <div className="flex-1 min-w-[200px]">
+          <label htmlFor="q" className={LABEL_CLS}>
             Search
           </label>
-          <input
-            id="q"
-            name="q"
-            type="search"
-            defaultValue={search ?? ""}
-            placeholder="Company name or DBA"
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
-          />
+          <div className="relative">
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"
+              aria-hidden
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              id="q"
+              name="q"
+              type="search"
+              defaultValue={search ?? ""}
+              placeholder="Company name or DBA"
+              className={INPUT_CLS + " pl-10"}
+            />
+          </div>
         </div>
         <div>
-          <label htmlFor="rating" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+          <label htmlFor="rating" className={LABEL_CLS}>
             Rating
           </label>
           <select
             id="rating"
             name="rating"
             defaultValue={rating ?? ""}
-            className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
           >
-            <option value="">Any</option>
+            <option value="">All ratings</option>
             <option value="A">A</option>
             <option value="B">B</option>
             <option value="C">C</option>
           </select>
         </div>
         <div>
-          <label htmlFor="compliance" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+          <label htmlFor="compliance" className={LABEL_CLS}>
             Compliance
           </label>
           <select
             id="compliance"
             name="compliance"
             defaultValue={compliance ?? ""}
-            className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
           >
-            <option value="">Any</option>
+            <option value="">All statuses</option>
             <option value="green">Green</option>
             <option value="yellow">Yellow</option>
             <option value="red">Red</option>
@@ -359,16 +376,17 @@ export default async function CommercialAccountsPage({
         </div>
         {industries.length > 0 && (
           <div>
-            <label htmlFor="industry" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+            <label htmlFor="industry" className={LABEL_CLS}>
               Industry
             </label>
             <select
               id="industry"
               name="industry"
               defaultValue={industry ?? ""}
-              className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
             >
-              <option value="">Any</option>
+              <option value="">All industries</option>
               {industries.map((ind) => (
                 <option key={ind} value={ind}>
                   {ind}
@@ -379,16 +397,17 @@ export default async function CommercialAccountsPage({
         )}
         {allTags.length > 0 && (
           <div>
-            <label htmlFor="tag" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+            <label htmlFor="tag" className={LABEL_CLS}>
               Tag
             </label>
             <select
               id="tag"
               name="tag"
               defaultValue={tagFilter ?? ""}
-              className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
             >
-              <option value="">Any</option>
+              <option value="">All tags</option>
               {allTags.map((t) => (
                 <option key={t} value={t}>
                   {t}
@@ -398,14 +417,15 @@ export default async function CommercialAccountsPage({
           </div>
         )}
         <div>
-          <label htmlFor="sort" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500 mb-1">
+          <label htmlFor="sort" className={LABEL_CLS}>
             Sort by
           </label>
           <select
             id="sort"
             name="sort"
             defaultValue={sort}
-            className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
           >
             {SORT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -416,9 +436,9 @@ export default async function CommercialAccountsPage({
         </div>
         <button
           type="submit"
-          className="px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 transition-colors touch-manipulation min-h-[44px]"
+          className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation shadow-sm shadow-emerald-600/30 min-h-[44px]"
         >
-          Filter
+          Apply filters
         </button>
       </form>
 
@@ -554,7 +574,8 @@ export default async function CommercialAccountsPage({
                   type="text"
                   placeholder="e.g. Q3-outreach"
                   maxLength={50}
-                  className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
                 />
               </div>
               <button
@@ -576,7 +597,8 @@ export default async function CommercialAccountsPage({
                     name="bulk_user_id"
                     defaultValue=""
                     required
-                    className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                    className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
                   >
                     <option value="">Pick staff</option>
                     {assignableStaff.map((p) => (
@@ -595,7 +617,8 @@ export default async function CommercialAccountsPage({
                     name="bulk_role"
                     defaultValue=""
                     required
-                    className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                    className={SELECT_CLS}
+                    style={SELECT_BG_STYLE}
                   >
                     <option value="">Pick role</option>
                     {ASSIGNMENT_ROLES.map((r) => (
