@@ -166,6 +166,10 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
             type="file"
             name="file"
             accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            // capture="environment" — mobile browsers offer the rear
+            // camera so Alex can snap site photos / RFP scans on-site.
+            // Desktop falls through to the standard file picker.
+            capture="environment"
             className="hidden"
             onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
           />

@@ -31,6 +31,13 @@ export type CreateOpportunityInput = {
   proposed_end_at?: string | null;
   proposal_due_at?: string | null;
   primary_contact_id?: string | null;
+  // Per-opp project address (migration 035). NULL means "use the account
+  // site/billing address" — a single property-mgmt account may have us
+  // bidding at multiple physical sites, so the opp gets its own address.
+  property_street?: string | null;
+  property_city?: string | null;
+  property_state?: string | null;
+  property_zip?: string | null;
   created_by_user_id?: string | null;
 };
 
@@ -88,6 +95,10 @@ export async function createCommercialOpportunity(
       proposed_start_at: input.proposed_start_at ?? null,
       proposed_end_at: input.proposed_end_at ?? null,
       proposal_due_at: input.proposal_due_at ?? null,
+      property_street: input.property_street?.trim() || null,
+      property_city: input.property_city?.trim() || null,
+      property_state: input.property_state?.trim() || null,
+      property_zip: input.property_zip?.trim() || null,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
     })

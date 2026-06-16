@@ -503,6 +503,9 @@ function InfoTab({
         <Field label="Proposed start" value={opp.proposed_start_at?.slice(0, 10) ?? "—"} />
         <Field label="Proposed end" value={opp.proposed_end_at?.slice(0, 10) ?? "—"} />
       </Card>
+      <Card title="Property / project address">
+        <OppPropertyAddress opp={opp} account={account} />
+      </Card>
       <Card title="Account">
         {account ? (
           <>
@@ -1463,6 +1466,65 @@ function Card({
       <h2 className="text-sm font-bold text-ppp-charcoal mb-3">{title}</h2>
       <div className="space-y-2">{children}</div>
     </section>
+  );
+}
+
+function OppPropertyAddress({
+  opp,
+  account,
+}: {
+  opp: CommercialOpportunity;
+  account: CommercialAccount | null;
+}) {
+  // Prefer opp-level property address (migration 035). Fall back to the
+  // account's site address (or billing as a last resort) when blank —
+  // most opps will share the account's existing address until Alex
+  // explicitly sets a per-opp value.
+  const hasOpp =
+    Boolean(opp.property_street) ||
+    Boolean(opp.property_city) ||
+    Boolean(opp.property_state) ||
+    Boolean(opp.property_zip);
+
+  if (hasOpp) {
+    const line2 = [opp.property_city, opp.property_state].filter(Boolean).join(", ");
+    const line2Full = [line2, opp.property_zip].filter(Boolean).join(" ");
+    return (
+      <>
+        <Field label="Street" value={opp.property_street ?? "—"} />
+        <Field label="City / State / ZIP" value={line2Full || "—"} />
+        <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+          Per-opp address — overrides the account&apos;s site address for this bid.
+        </p>
+      </>
+    );
+  }
+
+  const acctStreet = account?.site_street || account?.billing_street || null;
+  const acctCity = account?.site_city || account?.billing_city || null;
+  const acctState = account?.site_state || account?.billing_state || null;
+  const acctZip = account?.site_zip || account?.billing_zip || null;
+  const hasFallback = Boolean(acctStreet || acctCity || acctState || acctZip);
+
+  if (!hasFallback) {
+    return (
+      <p className="text-[12px] text-ppp-charcoal-500 italic">
+        No project address set. Add one when editing the opportunity, or set the
+        account&apos;s site address.
+      </p>
+    );
+  }
+  const fallbackLine2 = [acctCity, acctState].filter(Boolean).join(", ");
+  const fallbackLine2Full = [fallbackLine2, acctZip].filter(Boolean).join(" ");
+  return (
+    <>
+      <Field label="Street" value={acctStreet ?? "—"} />
+      <Field label="City / State / ZIP" value={fallbackLine2Full || "—"} />
+      <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+        Pulled from the account&apos;s {account?.site_street ? "site" : "billing"} address.
+        Edit the opp to set a per-bid project address.
+      </p>
+    </>
   );
 }
 

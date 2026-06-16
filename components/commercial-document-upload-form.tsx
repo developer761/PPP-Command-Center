@@ -154,6 +154,11 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
             type="file"
             name="file"
             accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx"
+            // capture="environment" hints mobile browsers to offer the
+            // rear camera as an upload option — Alex can snap a COI or
+            // W-9 on-site without leaving the form. Desktop ignores it
+            // and falls back to the standard file picker.
+            capture="environment"
             className="hidden"
             onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
           />

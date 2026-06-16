@@ -69,6 +69,12 @@ async function createAction(formData: FormData) {
 
   const proposal_due_at = (formData.get("proposal_due_at") as string) || null;
   const description = (formData.get("description") as string)?.trim() || null;
+  // Per-opp project address (migration 035). Trimmed-empty → null so the
+  // detail page falls back to the account site/billing address.
+  const property_street = (formData.get("property_street") as string)?.trim() || null;
+  const property_city = (formData.get("property_city") as string)?.trim() || null;
+  const property_state = (formData.get("property_state") as string)?.trim().slice(0, 2).toUpperCase() || null;
+  const property_zip = (formData.get("property_zip") as string)?.trim() || null;
   // If the user landed here from an Account's Opportunities tab via the
   // `?account=<uuid>` deep link, return them to that tab after create.
   // Otherwise default to the global pipeline. Hidden input passes the
@@ -84,6 +90,10 @@ async function createAction(formData: FormData) {
     bid_value_high_cents,
     proposal_due_at,
     description,
+    property_street,
+    property_city,
+    property_state,
+    property_zip,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -269,6 +279,68 @@ export default async function NewOpportunityPage({
             type="date"
             className={INPUT_CLS}
           />
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-ppp-charcoal-100 bg-ppp-charcoal-50/40 p-3 sm:p-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
+              Property / project address (optional)
+            </h3>
+            <span className="text-[11px] text-ppp-charcoal-500">
+              Leave blank to use the account&apos;s site address
+            </span>
+          </div>
+          <div>
+            <label htmlFor="property_street" className={LABEL_CLS}>
+              Street
+            </label>
+            <input
+              id="property_street"
+              name="property_street"
+              type="text"
+              placeholder="e.g. 456 Park Ave"
+              autoComplete="off"
+              className={INPUT_CLS}
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label htmlFor="property_city" className={LABEL_CLS}>
+                City
+              </label>
+              <input
+                id="property_city"
+                name="property_city"
+                type="text"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label htmlFor="property_state" className={LABEL_CLS}>
+                State
+              </label>
+              <input
+                id="property_state"
+                name="property_state"
+                type="text"
+                maxLength={2}
+                placeholder="NY"
+                className={`${INPUT_CLS} uppercase`}
+              />
+            </div>
+            <div>
+              <label htmlFor="property_zip" className={LABEL_CLS}>
+                ZIP
+              </label>
+              <input
+                id="property_zip"
+                name="property_zip"
+                type="text"
+                maxLength={10}
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
         </div>
 
         <div>

@@ -87,7 +87,15 @@ export default function CommercialNewAccountTeamPicker({
         </p>
       ) : null}
 
-      {rows.map((row, idx) => (
+      {rows.map((row, idx) => {
+        const pickedStaff = row.user_id
+          ? assignableStaff.find((s) => s.user_id === row.user_id)
+          : null;
+        const displayName = pickedStaff
+          ? pickedStaff.full_name || pickedStaff.email
+          : null;
+        const initial = displayName ? displayName.trim().charAt(0).toUpperCase() : "?";
+        return (
         <div
           key={row.id}
           className="border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4 bg-ppp-charcoal-50/40 space-y-3"
@@ -99,6 +107,42 @@ export default function CommercialNewAccountTeamPicker({
             name={`team_is_primary_${idx}`}
             value={row.is_primary ? "1" : "0"}
           />
+
+          {/* Role-tag header strip — shows the picked person + their
+              role as a visible pill (★ when primary). Matches the
+              pattern from the Team tab on the detail page so the
+              picker reads consistent with the live team list. */}
+          {pickedStaff && (
+            <div className="flex items-center gap-2.5 -mt-1">
+              <span
+                className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold shrink-0"
+                aria-hidden
+              >
+                {initial}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-ppp-charcoal truncate">
+                  {displayName}
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  {row.is_primary ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-600 text-white border-emerald-700">
+                      ★ {assignmentRoleLabel(row.role)}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+                      {assignmentRoleLabel(row.role)}
+                    </span>
+                  )}
+                  {pickedStaff.email !== displayName && (
+                    <span className="text-[11px] text-ppp-charcoal-500 truncate">
+                      {pickedStaff.email}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -172,7 +216,8 @@ export default function CommercialNewAccountTeamPicker({
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       <button
         type="button"

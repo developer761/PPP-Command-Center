@@ -146,12 +146,18 @@ export default async function CommercialAccountDetailPage({
           out via reload (no client component needed — the user navigating
           away clears the query string naturally). */}
       {teamAddedCount > 0 && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2 flex-wrap">
           <span aria-hidden>✓</span>
-          <span>
+          <span className="flex-1 min-w-0">
             Added {teamAddedCount} team member{teamAddedCount === 1 ? "" : "s"}.
             They&apos;ve been emailed a link to this account.
           </span>
+          <Link
+            href={`/commercial/accounts/${account.id}?tab=documents`}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-50 min-h-[36px] touch-manipulation shrink-0"
+          >
+            Upload COI / W-9 →
+          </Link>
         </div>
       )}
       {teamSkippedMsg && (

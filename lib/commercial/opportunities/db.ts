@@ -104,6 +104,12 @@ export type CommercialOpportunity = {
   decided_at: string | null;
   loss_reason: OpportunityLossReason | null;
   loss_notes: string | null;
+  // Per-opp project address (migration 035). Null when not set — UI
+  // falls back to the parent account's site/billing address.
+  property_street: string | null;
+  property_city: string | null;
+  property_state: string | null;
+  property_zip: string | null;
   created_at: string;
   updated_at: string;
   created_by_user_id: string | null;
