@@ -10,6 +10,7 @@ import {
   listAccountOverviews,
   relativeActivity,
   activityTone,
+  formatBidCents,
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
 import {
@@ -755,6 +756,32 @@ function AccountRow({
                     <span className="text-amber-700"> ({overview.expiring_soon_document_count} expiring)</span>
                   )}
                 </span>
+                {(overview.open_opps_count ?? 0) > 0 && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span className="text-emerald-700">
+                      <strong>{overview.open_opps_count}</strong> open bid{overview.open_opps_count === 1 ? "" : "s"}
+                      {(() => {
+                        const bidRange = formatBidCents(
+                          overview.total_active_bid_low_cents,
+                          overview.total_active_bid_high_cents
+                        );
+                        return bidRange !== "—" ? ` · ${bidRange}` : "";
+                      })()}
+                    </span>
+                  </>
+                )}
+                {(overview.won_opps_count ?? 0) > 0 && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <span
+                      className="text-amber-800"
+                      title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account.`}
+                    >
+                      <span aria-hidden>★</span> repeat
+                    </span>
+                  </>
+                )}
                 {activity && (
                   <>
                     <span aria-hidden>·</span>

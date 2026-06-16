@@ -55,7 +55,12 @@ import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
-import { OPEN_OPP_STATUSES, TERMINAL_STATUSES, STALE_OPP_DAYS } from "@/lib/commercial/opportunities/constants";
+import {
+  OPEN_OPP_STATUSES,
+  TERMINAL_STATUSES,
+  STALE_OPP_DAYS,
+  STALE_ACCOUNT_OPP_COOLING_MULTIPLIER,
+} from "@/lib/commercial/opportunities/constants";
 import {
   listAccountTags,
   listAllDistinctTags,
@@ -1325,7 +1330,9 @@ async function OpportunitiesTab({
   const daysSinceLast = daysSinceIso(overview?.last_opp_activity_at);
   const wonCount = overview?.won_opps_count ?? 0;
   const lostCount = overview?.lost_opps_count ?? 0;
-  const isStale = daysSinceLast !== null && daysSinceLast > STALE_OPP_DAYS * 4; // 56+ days = noticeably cool
+  const isStale =
+    daysSinceLast !== null &&
+    daysSinceLast > STALE_OPP_DAYS * STALE_ACCOUNT_OPP_COOLING_MULTIPLIER;
 
   return (
     <div className="space-y-5">
@@ -1348,11 +1355,26 @@ async function OpportunitiesTab({
         </div>
         <Link
           href={`/commercial/opportunities/new?account=${accountId}`}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 min-h-[40px] touch-manipulation shrink-0"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation shrink-0"
         >
           + New opportunity
         </Link>
       </div>
+
+      {open.length === 0 && decided.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-[12px] text-blue-800 flex items-center justify-between gap-3 flex-wrap">
+          <span>
+            No active bids right now. Last opp closed
+            {daysSinceLast !== null ? ` ${daysSinceLast}d ago` : ""}.
+          </span>
+          <Link
+            href={`/commercial/opportunities/new?account=${accountId}`}
+            className="font-semibold underline hover:text-blue-900 min-h-[32px] inline-flex items-center"
+          >
+            Start the next bid →
+          </Link>
+        </div>
+      )}
 
       {open.length > 0 && (
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">

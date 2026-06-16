@@ -102,6 +102,17 @@ export const HOT_DEAL_ACTIVE_STATUSES: readonly string[] = [
  *  opps move faster than accounts. */
 export const STALE_OPP_DAYS = 14;
 
+/**
+ * Multiplier on STALE_OPP_DAYS for marking an *account* relationship as
+ * "cooling" — used on the Account-side Opportunities tab header.
+ *
+ * Commercial bid cycles run longer than residential. A specific opp
+ * stale at 14d is one thing; an account where NO opp has moved in
+ * 14 * 4 = 56 days is "the relationship is cooling, reach out." Bumped
+ * to its own constant so Alex can tune without digging into page code.
+ */
+export const STALE_ACCOUNT_OPP_COOLING_MULTIPLIER = 4;
+
 /** Statuses that count as "open" in pipeline reporting + filters.
  *  Excludes terminal states (won, lost, no_bid). reopened is treated
  *  as won-style (terminal) — once you re-engage you transition out. */
