@@ -36,7 +36,14 @@ export default function CommercialOpportunitiesSortPicker({
           const qs = next.toString();
           router.push(qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities");
         }}
-        className="px-2 py-1 text-base sm:text-[12px] border border-ppp-charcoal-200 rounded-lg bg-white text-ppp-charcoal-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-[36px]"
+        className="appearance-none cursor-pointer pl-3 pr-9 py-2 text-base sm:text-[12px] border border-ppp-charcoal-200 rounded-xl bg-white text-ppp-charcoal-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 hover:border-ppp-charcoal-300 min-h-[44px] sm:min-h-[36px] shadow-sm transition-colors bg-no-repeat"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`
+          )}")`,
+          backgroundPosition: "right 0.75rem center",
+          backgroundSize: "12px 12px",
+        }}
       >
         {options.map((opt) => (
           <option key={opt.key} value={opt.key}>

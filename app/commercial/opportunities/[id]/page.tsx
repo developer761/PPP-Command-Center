@@ -773,7 +773,7 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
             <input type="hidden" name="opportunity_id" value={oppId} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor="team_user" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                <label htmlFor="team_user" className={LABEL_CLS}>
                   Staff member <span className="text-rose-700">*</span>
                 </label>
                 <select
@@ -781,7 +781,8 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
                   name="user_id"
                   required
                   defaultValue=""
-                  className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
                 >
                   <option value="">Pick someone</option>
                   {staff.map((s) => (
@@ -792,7 +793,7 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
                 </select>
               </div>
               <div>
-                <label htmlFor="team_role" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                <label htmlFor="team_role" className={LABEL_CLS}>
                   Role <span className="text-rose-700">*</span>
                 </label>
                 <select
@@ -800,7 +801,8 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
                   name="role"
                   required
                   defaultValue=""
-                  className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
                 >
                   <option value="">Pick a role</option>
                   {OPPORTUNITY_ASSIGNMENT_ROLES.map((r) => (
@@ -818,7 +820,7 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
               </label>
             </div>
             <div>
-              <label htmlFor="team_notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="team_notes" className={LABEL_CLS}>
                 Notes
               </label>
               <input
@@ -826,7 +828,7 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
                 name="notes"
                 type="text"
                 placeholder="Optional — e.g. covering for Sarah"
-                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+                className={INPUT_CLS}
               />
             </div>
             <div className="flex justify-end">
@@ -924,7 +926,7 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
         <form action={addTaskAction} className="space-y-3">
           <input type="hidden" name="opportunity_id" value={oppId} />
           <div>
-            <label htmlFor="task_title" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="task_title" className={LABEL_CLS}>
               Title <span className="text-rose-700">*</span>
             </label>
             <input
@@ -934,30 +936,31 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
               required
               maxLength={200}
               placeholder="e.g. Site walk Tuesday + send sub bids"
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              className={INPUT_CLS}
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label htmlFor="task_due" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="task_due" className={LABEL_CLS}>
                 Due date
               </label>
               <input
                 id="task_due"
                 name="due_at"
                 type="date"
-                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+                className={INPUT_CLS}
               />
             </div>
             <div>
-              <label htmlFor="task_assignee" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="task_assignee" className={LABEL_CLS}>
                 Assignee
               </label>
               <select
                 id="task_assignee"
                 name="assigned_user_id"
                 defaultValue=""
-                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+                className={SELECT_CLS}
+                style={SELECT_BG_STYLE}
               >
                 <option value="">Unassigned</option>
                 {staff.map((s) => (
@@ -1127,7 +1130,7 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
             required
             rows={3}
             placeholder="Called Sarah, asking $5k off, will get back to me tomorrow."
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y min-h-[88px]"
+            className={TEXTAREA_CLS + " min-h-[88px]"}
           />
           <div className="flex justify-end">
             <button
@@ -1189,7 +1192,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               required
               rows={3}
               defaultValue={note.body}
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y min-h-[88px]"
+              className={TEXTAREA_CLS + " min-h-[88px]"}
             />
             <div className="flex justify-end gap-2">
               <button
