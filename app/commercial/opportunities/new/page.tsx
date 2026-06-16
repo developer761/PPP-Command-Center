@@ -13,6 +13,7 @@ import { createCommercialOpportunity } from "@/lib/commercial/opportunities/muta
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 export const dynamic = "force-dynamic";
 
@@ -138,36 +139,37 @@ export default async function NewOpportunityPage({
             the create instead of into the global pipeline. */}
         {presetAccount && <input type="hidden" name="return_to" value="account" />}
         <div>
-          <label htmlFor="account_id" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+          <label htmlFor="account_id" className={LABEL_CLS}>
             Account <span className="text-rose-700">*</span>
           </label>
-          <select
-            id="account_id"
-            name="account_id"
-            required
-            defaultValue={presetAccount ?? ""}
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
-          >
-            <option value="">Pick an account</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.company_name}
-              </option>
-            ))}
-          </select>
-          {accounts.length === 0 && (
-            <p className="text-[12px] text-amber-700 mt-1">
-              No accounts yet.{" "}
-              <Link href="/commercial/accounts/new" className="underline">
-                Create an account first
-              </Link>
-              .
-            </p>
+          {accounts.length === 0 ? (
+            <Link
+              href="/commercial/accounts/new"
+              className="block w-full px-3.5 py-3 text-sm text-center bg-amber-50 border-2 border-dashed border-amber-300 text-amber-900 rounded-xl hover:bg-amber-100 hover:border-amber-400 transition-colors min-h-[44px] touch-manipulation"
+            >
+              No accounts yet — <strong className="underline">create your first account</strong> →
+            </Link>
+          ) : (
+            <select
+              id="account_id"
+              name="account_id"
+              required
+              defaultValue={presetAccount ?? ""}
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
+            >
+              <option value="">Pick an account…</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.company_name}
+                </option>
+              ))}
+            </select>
           )}
         </div>
 
         <div>
-          <label htmlFor="title" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+          <label htmlFor="title" className={LABEL_CLS}>
             Title <span className="text-rose-700">*</span>
           </label>
           <input
@@ -177,20 +179,21 @@ export default async function NewOpportunityPage({
             required
             maxLength={200}
             placeholder="e.g. Lobby + Halls Repaint Q3"
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            className={INPUT_CLS}
           />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label htmlFor="status" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="status" className={LABEL_CLS}>
               Status
             </label>
             <select
               id="status"
               name="status"
               defaultValue="inquiry"
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
             >
               {OPPORTUNITY_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -200,14 +203,15 @@ export default async function NewOpportunityPage({
             </select>
           </div>
           <div>
-            <label htmlFor="source" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="source" className={LABEL_CLS}>
               How did this come in?
             </label>
             <select
               id="source"
               name="source"
               defaultValue=""
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0 bg-white"
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
             >
               <option value="">Pick a source…</option>
               {OPPORTUNITY_SOURCES.map((s) => (
@@ -216,7 +220,7 @@ export default async function NewOpportunityPage({
                 </option>
               ))}
             </select>
-            <p className="text-[10px] text-ppp-charcoal-400 mt-1">
+            <p className="text-[10px] text-ppp-charcoal-400 mt-1.5">
               Used to filter the pipeline later by lead channel.
             </p>
           </div>
@@ -224,7 +228,7 @@ export default async function NewOpportunityPage({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label htmlFor="bid_low" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="bid_low" className={LABEL_CLS}>
               Bid low ($)
             </label>
             <input
@@ -235,11 +239,11 @@ export default async function NewOpportunityPage({
               step="100"
               min="0"
               placeholder="e.g. 25000"
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              className={INPUT_CLS}
             />
           </div>
           <div>
-            <label htmlFor="bid_high" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="bid_high" className={LABEL_CLS}>
               Bid high ($)
             </label>
             <input
@@ -250,25 +254,25 @@ export default async function NewOpportunityPage({
               step="100"
               min="0"
               placeholder="e.g. 35000"
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              className={INPUT_CLS}
             />
           </div>
         </div>
 
         <div>
-          <label htmlFor="proposal_due_at" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+          <label htmlFor="proposal_due_at" className={LABEL_CLS}>
             Proposal due
           </label>
           <input
             id="proposal_due_at"
             name="proposal_due_at"
             type="date"
-            className="px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            className={INPUT_CLS}
           />
         </div>
 
         <div>
-          <label htmlFor="description" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+          <label htmlFor="description" className={LABEL_CLS}>
             Description / scope summary
           </label>
           <textarea
@@ -276,7 +280,7 @@ export default async function NewOpportunityPage({
             name="description"
             rows={4}
             placeholder="Optional. Quick scope notes — full RFP attaches in Batch 4."
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y"
+            className={TEXTAREA_CLS}
           />
         </div>
 
