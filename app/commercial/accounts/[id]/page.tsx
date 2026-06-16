@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import {
   listAccountContacts,
   addContactToAccount,
@@ -641,7 +642,7 @@ function TagsCard({
             maxLength={MAX_TAG_LENGTH}
             placeholder="e.g. Hospitality"
             list="tag-suggestions"
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            className={INPUT_CLS}
           />
           {suggestions.length > 0 && (
             <datalist id="tag-suggestions">
@@ -867,7 +868,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
               name="notes"
               type="text"
               placeholder="Optional"
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              className={INPUT_CLS}
             />
           </div>
           <div className="flex justify-end">
@@ -1061,7 +1062,7 @@ function ContactInput({
         type={type}
         required={required}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+        className={INPUT_CLS}
       />
     </div>
   );
@@ -1181,7 +1182,8 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
                 name="user_id"
                 required
                 defaultValue=""
-                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white min-h-[44px] sm:min-h-0"
+                className={SELECT_CLS}
+                style={SELECT_BG_STYLE}
               >
                 <option value="" disabled>
                   Pick someone…
@@ -1213,7 +1215,8 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
                 id="role"
                 name="role"
                 defaultValue="sales_rep"
-                className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white min-h-[44px] sm:min-h-0"
+                className={SELECT_CLS}
+                style={SELECT_BG_STYLE}
               >
                 {ASSIGNMENT_ROLES.map((r) => (
                   <option key={r} value={r}>
@@ -1236,7 +1239,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
               name="notes"
               type="text"
               placeholder="Optional — e.g. 'covering while Macarena is out'"
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+              className={INPUT_CLS}
             />
           </div>
           <div className="flex justify-end">
