@@ -30,6 +30,7 @@ import {
 import { listPrimaryLeadByOpp, opportunityAssignmentRoleLabel } from "@/lib/commercial/opportunities/assignments";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
+import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -107,11 +108,12 @@ export default async function CommercialOpportunitiesPage({
   // the row's signal-rich badges (days-in-status, overdue tasks count,
   // last-note-at, primary lead) cost one round-trip each, not N+1.
   const oppIds = oppsRaw.map((o) => o.id);
-  const [statusEnteredAtMap, taskStatsMap, lastNoteMap, primaryLeadMap] = await Promise.all([
+  const [statusEnteredAtMap, taskStatsMap, lastNoteMap, primaryLeadMap, fileCountMap] = await Promise.all([
     listCurrentStatusEnteredAtByOpp(oppIds),
     listOpenTaskStatsByOpp(oppIds),
     listLastNoteByOpp(oppIds),
     listPrimaryLeadByOpp(oppIds),
+    listAttachmentCountByOpp(oppIds),
   ]);
 
   // Apply chip filters post-fetch.
@@ -341,6 +343,7 @@ export default async function CommercialOpportunitiesPage({
                 taskStats={taskStatsMap.get(o.id) ?? null}
                 lastNote={lastNoteMap.get(o.id) ?? null}
                 primaryLead={primaryLeadMap.get(o.id) ?? null}
+                fileCount={fileCountMap.get(o.id) ?? 0}
               />
             ))}
           </ul>
@@ -425,6 +428,7 @@ function OpportunityRow({
   taskStats,
   lastNote,
   primaryLead,
+  fileCount,
 }: {
   opportunity: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -432,6 +436,7 @@ function OpportunityRow({
   taskStats: { open: number; overdue: number; due_soon: number } | null;
   lastNote: { created_at: string; author_label: string | null } | null;
   primaryLead: { user_email: string; user_full_name: string | null; role: import("@/lib/commercial/opportunities/assignments").OpportunityAssignmentRole } | null;
+  fileCount: number;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
   // Decision countdown — color-coded so Alex's eye catches urgency on
@@ -546,6 +551,14 @@ function OpportunityRow({
                     >
                       <span aria-hidden>★</span>
                       {(primaryLead.user_full_name ?? primaryLead.user_email).split(" ")[0]}
+                    </span>
+                  </>
+                )}
+                {fileCount > 0 && (
+                  <>
+                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                    <span className="text-ppp-charcoal-500" title="Plans & Specs attachments">
+                      📎 {fileCount} {fileCount === 1 ? "file" : "files"}
                     </span>
                   </>
                 )}

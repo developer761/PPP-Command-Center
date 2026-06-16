@@ -45,7 +45,14 @@ import {
   deleteOpportunityNote,
   type OpportunityNoteWithAuthor,
 } from "@/lib/commercial/opportunities/notes";
+import {
+  listOpportunityAttachments,
+  archiveOpportunityAttachment,
+  formatBytes,
+  type OpportunityAttachment,
+} from "@/lib/commercial/opportunities/attachments";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
+import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
 
 export const dynamic = "force-dynamic";
 
@@ -228,6 +235,25 @@ async function editNoteAction(formData: FormData) {
   redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
 }
 
+// ────────────── Plans & Specs tab actions ──────────────
+
+async function archiveAttachmentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const attachment_id = String(formData.get("attachment_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(attachment_id)) {
+    redirect("/commercial/opportunities");
+  }
+  const result = await archiveOpportunityAttachment(opportunity_id, attachment_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=plans&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=plans`);
+}
+
 async function deleteNoteAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -363,7 +389,8 @@ export default async function OpportunityDetailPage({
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
-      {(tab === "plans" || tab === "timeline") && (
+      {tab === "plans" && <PlansTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "timeline" && (
         <ComingSoonTab label={TABS.find((t) => t.key === tab)?.label ?? tab} />
       )}
     </div>
@@ -1091,6 +1118,132 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
           </form>
         </div>
       </details>
+    </li>
+  );
+}
+
+// ─────────────── Plans & Specs tab ───────────────
+
+async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+  const { active, history } = await listOpportunityAttachments(oppId);
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      <CommercialOpportunityUploadForm oppId={oppId} />
+
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ppp-charcoal">
+            Current files · {active.length}
+          </h2>
+          {history.length > 0 && (
+            <span className="text-[11px] text-ppp-charcoal-500">
+              {history.length} archived in history below
+            </span>
+          )}
+        </div>
+        {active.length === 0 ? (
+          <div className="p-8 text-center text-sm text-ppp-charcoal-500">
+            No files yet. Drop the RFP, plan set, spec book, and any proposal versions here.
+          </div>
+        ) : (
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {active.map((a) => (
+              <AttachmentRow key={a.id} attachment={a} oppId={oppId} active />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {history.length > 0 && (
+        <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
+          <summary className="px-4 py-3 cursor-pointer text-[12px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
+            <span>History · {history.length}</span>
+            <span className="text-ppp-charcoal-300 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <ul className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
+            {history.map((a) => (
+              <AttachmentRow key={a.id} attachment={a} oppId={oppId} active={false} />
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function AttachmentRow({
+  attachment,
+  oppId,
+  active,
+}: {
+  attachment: OpportunityAttachment;
+  oppId: string;
+  active: boolean;
+}) {
+  const uploaded = new Date(attachment.uploaded_at).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return (
+    <li className="px-4 py-3 flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href={`/api/commercial/opportunities/${oppId}/attachments/${attachment.id}/download`}
+            className="text-sm font-semibold text-emerald-700 hover:text-emerald-800 underline break-all"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {attachment.file_name}
+          </a>
+          {attachment.version > 1 && (
+            <span className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100">
+              v{attachment.version}
+            </span>
+          )}
+          {!active && (
+            <span className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border bg-amber-50 text-amber-800 border-amber-200">
+              Archived
+            </span>
+          )}
+        </div>
+        <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+          <span>{formatBytes(attachment.size_bytes)}</span>
+          {attachment.mime_type && (
+            <>
+              <span aria-hidden>·</span>
+              <span>{attachment.mime_type.split("/").pop()}</span>
+            </>
+          )}
+          <span aria-hidden>·</span>
+          <span>Uploaded {uploaded}</span>
+        </div>
+        {attachment.notes && (
+          <p className="text-[12px] text-ppp-charcoal-700 mt-1 leading-relaxed">
+            {attachment.notes}
+          </p>
+        )}
+      </div>
+      {active && (
+        <form action={archiveAttachmentAction} className="shrink-0">
+          <input type="hidden" name="opportunity_id" value={oppId} />
+          <input type="hidden" name="attachment_id" value={attachment.id} />
+          <button
+            type="submit"
+            title="Archive without replacement. File stays downloadable in History."
+            className="px-3 py-1.5 text-[12px] font-medium text-ppp-charcoal-700 border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+          >
+            Archive
+          </button>
+        </form>
+      )}
     </li>
   );
 }
