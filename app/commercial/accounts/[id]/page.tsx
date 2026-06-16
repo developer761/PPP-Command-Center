@@ -138,11 +138,25 @@ export default async function CommercialAccountDetailPage({
         </Link>
         <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate">{account.company_name}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate flex items-center gap-2">
+              {account.is_key_relationship && (
+                <span
+                  className="text-amber-500 text-2xl leading-none shrink-0"
+                  title="★ Key Relationship — strategic partnership"
+                  aria-label="Key Relationship"
+                >
+                  ★
+                </span>
+              )}
+              <span className="truncate">{account.company_name}</span>
+            </h1>
             {account.dba && (
               <p className="text-sm text-ppp-charcoal-500 mt-0.5">d/b/a {account.dba}</p>
             )}
             <div className="mt-2 flex items-center gap-2 flex-wrap">
+              {account.is_key_relationship && (
+                <Pill tone="amber">★ Key Relationship</Pill>
+              )}
               {account.rating && <Pill tone={ratingTone(account.rating)}>{account.rating}</Pill>}
               {account.industry && <Pill tone="neutral">{account.industry}</Pill>}
               {account.vendor_compliance_status && (

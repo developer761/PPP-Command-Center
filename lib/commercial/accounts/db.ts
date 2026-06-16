@@ -37,6 +37,10 @@ export type CommercialAccount = {
   tax_exempt: boolean;
   tax_exempt_cert_number: string | null;
   notes: string | null;
+  // Migration 034 — Alex's Key Relationship / strategic-partnership flag.
+  // Surfaces as a ★ badge on every list/card so high-value accounts pop.
+  // Optional in type so code keeps working on a pre-034 row.
+  is_key_relationship?: boolean | null;
   created_at: string;
   updated_at: string;
   created_by_user_id: string | null;

@@ -715,6 +715,15 @@ function AccountRow({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
+              {account.is_key_relationship && (
+                <span
+                  className="inline-flex items-center text-amber-500 text-sm leading-none"
+                  title="★ Key Relationship — strategic partnership"
+                  aria-label="Key Relationship"
+                >
+                  ★
+                </span>
+              )}
               <span className="font-semibold text-ppp-charcoal text-sm">
                 {account.company_name}
               </span>

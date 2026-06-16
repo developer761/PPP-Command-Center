@@ -74,6 +74,7 @@ async function updateAction(formData: FormData) {
       tax_exempt: formData.get("tax_exempt") === "on",
       tax_exempt_cert_number: get("tax_exempt_cert_number"),
       notes: get("notes"),
+      is_key_relationship: formData.get("is_key_relationship") === "on",
     },
     user.id
   );
@@ -222,16 +223,33 @@ export default async function EditCommercialAccountPage({
         </Section>
 
         <Section title="Tax">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm min-h-[44px]">
             <input
               type="checkbox"
               name="tax_exempt"
               defaultChecked={account.tax_exempt}
-              className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-emerald-600/30"
+              className="h-5 w-5 rounded border-ppp-charcoal-300 focus:ring-emerald-600/30"
             />
             Tax exempt
           </label>
           <EditField id="tax_exempt_cert_number" label="Tax exempt certificate #" defaultValue={account.tax_exempt_cert_number ?? ""} />
+        </Section>
+
+        <Section title="Strategic">
+          <label className="flex items-start gap-3 text-sm min-h-[44px] cursor-pointer">
+            <input
+              type="checkbox"
+              name="is_key_relationship"
+              defaultChecked={Boolean(account.is_key_relationship)}
+              className="h-5 w-5 mt-0.5 rounded border-ppp-charcoal-300 focus:ring-emerald-600/30"
+            />
+            <span>
+              <strong>★ Key Relationship</strong>
+              <span className="block text-[12px] text-ppp-charcoal-500 mt-0.5">
+                Strategic partnership: biggest GCs, recurring multi-year customers, decision-makers with personal trust. Surfaces a ★ badge across every list + card so high-value accounts pop on scan.
+              </span>
+            </span>
+          </label>
         </Section>
 
         <Section title="Notes">

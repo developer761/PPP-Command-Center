@@ -33,6 +33,9 @@ export type CreateAccountInput = {
   tax_exempt?: boolean;
   tax_exempt_cert_number?: string | null;
   notes?: string | null;
+  // Migration 034 — Alex's Key Relationship flag. Optional on create
+  // (defaults FALSE in the column), set via Edit on existing accounts.
+  is_key_relationship?: boolean;
   created_by_user_id?: string | null;
 };
 
@@ -68,6 +71,7 @@ export async function createCommercialAccount(
       tax_exempt: input.tax_exempt ?? false,
       tax_exempt_cert_number: input.tax_exempt_cert_number?.trim() || null,
       notes: input.notes?.trim() || null,
+      is_key_relationship: input.is_key_relationship ?? false,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
     })
