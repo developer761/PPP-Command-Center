@@ -162,9 +162,14 @@ export type CommercialTeamAssignedInput = {
 };
 
 export async function insertCommercialTeamAssignedNotification(
-  input: CommercialTeamAssignedInput
+  input: CommercialTeamAssignedInput & { actingUserId?: string | null }
 ): Promise<void> {
   try {
+    // Self-assignment short-circuit — symmetric with the email pipeline
+    // (see notifyAssignment self-skip in lib/commercial/*/assignments.ts).
+    // Alice already knows she added herself; a red dot the next time she
+    // opens the platform tells her nothing new.
+    if (input.actingUserId && input.actingUserId === input.recipientUserId) return;
     const sb = adminClient();
 
     const kind: NotificationKind =

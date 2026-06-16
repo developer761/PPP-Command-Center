@@ -59,6 +59,7 @@ import {
 import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
+import InfoDot from "@/components/info-dot";
 
 export const dynamic = "force-dynamic";
 
@@ -381,19 +382,22 @@ export default async function OpportunityDetailPage({
         <KpiTile
           label="Bid"
           value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
+          tooltip="Low–high range for this opportunity. Pulled from the bid_value_low_cents / bid_value_high_cents fields you set on the new-opp or edit form."
         />
         <KpiTile
           label="Probability"
           value={`${opp.probability_pct}%`}
+          tooltip="Likelihood we win this bid. Defaults from the status (Inquiry 10% → Estimating 50% → Proposal Sent 60% → Negotiating 75% → Won 100%). Override per-opp if you have a stronger read."
         />
         <KpiTile
           label="Weighted"
           value={formatCentsCompact(weightedPipelineCents(opp))}
-          tooltip={weightedTooltip(opp)}
+          tooltip={`Probability × midpoint bid. ${weightedTooltip(opp)} Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing.`}
         />
         <KpiTile
           label="Decision in"
           value={daysUntilDisplay(opp.proposal_due_at)}
+          tooltip="Days until the proposal is due (or how overdue it is). Pulled from proposal_due_at on the new-opp or edit form."
         />
       </section>
 
@@ -486,17 +490,27 @@ function InfoTab({
       <Card title="Deal">
         <Field label="Title" value={opp.title} />
         <Field label="Status" value={opportunityStatusLabel(opp.status)} />
-        <Field label="Source" value={opp.source ? opportunitySourceLabel(opp.source) : "—"} />
-        <Field label="Probability" value={`${opp.probability_pct}%`} />
+        <Field
+          label="Source"
+          value={opp.source ? opportunitySourceLabel(opp.source) : "—"}
+          tooltip="How this opportunity came in — phone, email, web form, plans room, repeat customer, referral, or other. Set once at create time."
+        />
+        <Field
+          label="Probability"
+          value={`${opp.probability_pct}%`}
+          tooltip="Likelihood we win this bid. Defaults from status; override if you have a stronger read."
+        />
       </Card>
       <Card title="Bid + dates">
         <Field
           label="Bid range"
           value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
+          tooltip="Low–high estimate for the project's contract value. If you've quoted a firm number, set low=high."
         />
         <Field
           label="Weighted"
           value={formatCentsCompact(weightedPipelineCents(opp))}
+          tooltip="Probability × midpoint bid. Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing."
         />
         <Field label="Proposal due" value={opp.proposal_due_at?.slice(0, 10) ?? "—"} />
         <Field label="Decided" value={opp.decided_at?.slice(0, 10) ?? "—"} />
@@ -1528,11 +1542,20 @@ function OppPropertyAddress({
   );
 }
 
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
+function Field({
+  label,
+  value,
+  tooltip,
+}: {
+  label: string;
+  value: string | null | undefined;
+  tooltip?: string;
+}) {
   return (
     <div className="flex items-baseline gap-3">
-      <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 shrink-0 w-32">
+      <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 shrink-0 w-32 inline-flex items-center gap-1">
         {label}
+        {tooltip && <InfoDot text={tooltip} />}
       </span>
       <span className="text-sm text-ppp-charcoal-700 min-w-0 break-words">
         {value || "—"}
@@ -1551,13 +1574,10 @@ function KpiTile({
   tooltip?: string;
 }) {
   return (
-    <div
-      className="border border-ppp-charcoal-100 rounded-lg px-3 py-3 bg-white min-h-[64px] flex flex-col justify-center"
-      title={tooltip}
-    >
+    <div className="border border-ppp-charcoal-100 rounded-lg px-3 py-3 bg-white min-h-[64px] flex flex-col justify-center">
       <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 flex items-center gap-1">
-        {label}
-        {tooltip && <span className="text-ppp-charcoal-400 cursor-help" aria-label="More info">ⓘ</span>}
+        <span>{label}</span>
+        {tooltip && <InfoDot text={tooltip} />}
       </div>
       <div className="text-base sm:text-lg font-bold text-ppp-charcoal mt-1 truncate">
         {value}

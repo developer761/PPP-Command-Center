@@ -80,6 +80,7 @@ import {
   MAX_TAG_LENGTH,
   type AccountTag,
 } from "@/lib/commercial/accounts/tags";
+import InfoDot from "@/components/info-dot";
 
 export const dynamic = "force-dynamic";
 
@@ -2132,6 +2133,7 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           href={`?tab=opportunities`}
           sub={totalBidLabel !== "—" ? totalBidLabel : undefined}
           subCls="text-ppp-charcoal-500"
+          tooltip="Live opportunities still in play — anything in Inquiry, Site visit, Estimating, Proposal sent, Negotiating, or On hold. Excludes won, lost, and no-bid."
         />
         <KpiTile
           tone="placeholder"
@@ -2155,6 +2157,7 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           href={`?tab=opportunities`}
           sub={renderWinRateSub(overview)}
           subCls="text-ppp-charcoal-500"
+          tooltip="Opportunities with a final outcome — Won + Lost + No-bid. The sub-text shows win rate (Won ÷ total decided) and average days from create → decided across Won opps."
         />
       </div>
     </section>
@@ -2179,6 +2182,7 @@ function KpiTile({
   subCls,
   placeholder,
   href,
+  tooltip,
 }: {
   tone: "live" | "placeholder";
   num?: number | null;
@@ -2187,6 +2191,7 @@ function KpiTile({
   subCls?: string;
   placeholder?: string;
   href?: string;
+  tooltip?: string;
 }) {
   const content = (
     <>
@@ -2202,8 +2207,9 @@ function KpiTile({
         )}
       </div>
       <div className="mt-1.5 flex items-baseline justify-between gap-1">
-        <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+        <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 inline-flex items-center gap-1">
           {label}
+          {tooltip && <InfoDot text={tooltip} />}
         </span>
         {sub && (
           <span className={`text-[10px] sm:text-[11px] font-medium ${subCls ?? "text-ppp-charcoal-500"}`}>

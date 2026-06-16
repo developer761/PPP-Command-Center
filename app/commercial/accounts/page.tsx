@@ -456,33 +456,28 @@ export default async function CommercialAccountsPage({
         </div>
       )}
 
-      {/* Quick-filter chips — Karan 2026-06-16 wanted these in a clearly
-          labeled, visually-separated row so they don't get lost next to
-          the main filter form. One-click toggles driven by the URL so
-          reload + bookmark survive. */}
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 sm:px-5 sm:py-3.5">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 shrink-0">
-            Quick filters
-          </span>
-          <FilterChip href={toggleChipHref("stale", filterStale)} active={filterStale} tone="cold">
-            Stale &gt; 60 days
-          </FilterChip>
-          <FilterChip href={toggleChipHref("expiring", filterExpiring)} active={filterExpiring} tone="amber">
-            Has expiring docs
-          </FilterChip>
-          <FilterChip href={toggleChipHref("issue", filterIssue)} active={filterIssue} tone="rose">
-            Compliance issue
-          </FilterChip>
-          {anyFilterActive && (
-            <Link
-              href="/commercial/accounts"
-              className="text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 underline ml-auto"
-            >
-              Clear all filters
-            </Link>
-          )}
-        </div>
+      {/* Quick-filter chips — Karan 2026-06-16 round 2: kill the "QUICK
+          FILTERS" card heading so the chips read as inline extensions of
+          the Sort row above. URL-toggle pattern preserved (one-click,
+          bookmark-safe). */}
+      <div className="flex items-center gap-2 flex-wrap -mt-1">
+        <FilterChip href={toggleChipHref("stale", filterStale)} active={filterStale} tone="cold">
+          Stale &gt; 60 days
+        </FilterChip>
+        <FilterChip href={toggleChipHref("expiring", filterExpiring)} active={filterExpiring} tone="amber">
+          Has expiring docs
+        </FilterChip>
+        <FilterChip href={toggleChipHref("issue", filterIssue)} active={filterIssue} tone="rose">
+          Compliance issue
+        </FilterChip>
+        {anyFilterActive && (
+          <Link
+            href="/commercial/accounts"
+            className="text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 underline ml-auto"
+          >
+            Clear all filters
+          </Link>
+        )}
       </div>
 
       {/* Recently active — only show when no filters narrowing the list

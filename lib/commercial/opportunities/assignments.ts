@@ -414,6 +414,7 @@ async function notifyAssignment(
     isPrimary: is_primary,
     action,
     assignerName,
+    actingUserId: assigned_by_user_id,
   }).catch((err) => {
     console.warn(`[commercial/opportunities/assignments] bell insert failed:`, err);
   });
