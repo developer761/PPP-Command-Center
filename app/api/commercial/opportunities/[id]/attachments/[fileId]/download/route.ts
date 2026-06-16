@@ -59,6 +59,18 @@ export async function GET(
     return NextResponse.json({ error: "attachment_opportunity_mismatch" }, { status: 403 });
   }
 
+  // Soft-delete gate: mirror the upload route so files on a deleted opp
+  // can't be downloaded even if someone has a stale link from before the
+  // soft-delete. Admins restoring an opp will get downloads back.
+  const { data: opp } = await sb
+    .from("commercial_opportunities")
+    .select("deleted_at")
+    .eq("id", opportunity_id)
+    .maybeSingle();
+  if (!opp || opp.deleted_at) {
+    return NextResponse.json({ error: "opportunity_not_found" }, { status: 404 });
+  }
+
   const signed = await getOpportunityAttachmentSignedUrl(att.storage_key, 5 * 60);
   if (!signed) {
     return NextResponse.json({ error: "signed_url_failed" }, { status: 500 });

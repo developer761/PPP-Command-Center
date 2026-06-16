@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -27,6 +27,14 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
+
+  // Auto-dismiss success banner after 5s — user scrolling the file list
+  // shouldn't miss the confirmation, but it shouldn't linger forever.
+  useEffect(() => {
+    if (!success) return;
+    const t = setTimeout(() => setSuccess(null), 5000);
+    return () => clearTimeout(t);
+  }, [success]);
 
   const handleFile = (file: File | null) => {
     setError(null);
@@ -130,7 +138,7 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
                   if (fileInputRef.current) fileInputRef.current.value = "";
                   setPickedFile(null);
                 }}
-                className="mt-2 text-[11px] underline text-emerald-700 min-h-[32px] inline-flex items-center"
+                className="mt-2 text-xs underline text-emerald-700 min-h-[44px] inline-flex items-center px-2 touch-manipulation"
               >
                 Pick a different file
               </button>
