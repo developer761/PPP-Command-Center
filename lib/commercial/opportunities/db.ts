@@ -130,10 +130,16 @@ export async function listCommercialOpportunities(
   filters: OpportunitiesListFilters = {}
 ): Promise<CommercialOpportunity[]> {
   const sb = commercialDb();
+  // Inner-join the account so a soft-deleted parent's opps drop out of
+  // the pipeline view (audit fix 2026-06-16 — without this, bulk-deleting
+  // an account leaves its bids orphaned on /commercial/opportunities).
+  // `account:commercial_accounts!inner(deleted_at)` is the Supabase
+  // pattern for "must exist + must match the filter below."
   let q = sb
     .from("commercial_opportunities")
-    .select("*")
-    .is("deleted_at", null);
+    .select("*, account:commercial_accounts!inner(deleted_at)")
+    .is("deleted_at", null)
+    .is("account.deleted_at", null);
 
   if (filters.search) {
     const term = `%${filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
@@ -147,7 +153,11 @@ export async function listCommercialOpportunities(
     console.warn("[commercial/opportunities] list failed:", error.message);
     return [];
   }
-  return (data ?? []) as CommercialOpportunity[];
+  // Strip the join shape — callers want plain CommercialOpportunity[].
+  return (data ?? []).map((r) => {
+    const { account: _unused, ...rest } = r as CommercialOpportunity & { account: unknown };
+    return rest as CommercialOpportunity;
+  });
 }
 
 /** Load a single opportunity by id, filtering soft-deleted. */
