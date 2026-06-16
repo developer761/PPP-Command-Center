@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createCommercialAccount } from "@/lib/commercial/accounts/mutations";
 import { findNearDuplicates } from "@/lib/commercial/accounts/duplicates";
+import CommercialAddressFields from "@/components/commercial-address-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -166,21 +167,11 @@ export default async function NewCommercialAccountPage({
         </Section>
 
         <Section title="Billing address">
-          <Field id="billing_street" label="Street" />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Field id="billing_city" label="City" />
-            <Field id="billing_state" label="State" />
-            <Field id="billing_zip" label="ZIP" />
-          </div>
+          <CommercialAddressFields prefix="billing" />
         </Section>
 
         <Section title="Primary site address (if different)">
-          <Field id="site_street" label="Street" />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Field id="site_city" label="City" />
-            <Field id="site_state" label="State" />
-            <Field id="site_zip" label="ZIP" />
-          </div>
+          <CommercialAddressFields prefix="site" />
         </Section>
 
         <Section title="Contact">

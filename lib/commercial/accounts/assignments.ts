@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { sendEmail } from "@/lib/email/resend";
 
 /**
  * PPP staff assignments per commercial Account.
@@ -293,7 +294,96 @@ export async function addAssignment(
     inserted,
     input.assigned_by_user_id
   );
+  // Fire the welcome email — fully fire-and-forget so a Resend hiccup
+  // can't break the assignment write. Errors land in console for the
+  // admin to investigate.
+  void notifyAssignment(
+    row.id,
+    input.account_id,
+    input.user_id,
+    input.role,
+    input.is_primary ?? false,
+    input.assigned_by_user_id ?? null
+  ).catch((err) => {
+    console.warn(`[commercial/assignments] notify-on-assign failed:`, err);
+  });
   return { ok: true, assignment_id: row.id };
+}
+
+/**
+ * Email the newly-assigned staff member with a short heads-up + a link
+ * to the account. Fire-and-forget — never blocks the assignment write.
+ * Pulls the account name + assignee email + assigner name in three
+ * quick lookups.
+ */
+async function notifyAssignment(
+  assignment_id: string,
+  account_id: string,
+  user_id: string,
+  role: AssignmentRole,
+  is_primary: boolean,
+  assigned_by_user_id: string | null
+): Promise<void> {
+  const sb = commercialDb();
+  const [accRes, userRes, byRes] = await Promise.all([
+    sb.from("commercial_accounts").select("company_name").eq("id", account_id).maybeSingle(),
+    sb.from("profiles").select("email, sf_user_name").eq("user_id", user_id).maybeSingle(),
+    assigned_by_user_id
+      ? sb.from("profiles").select("sf_user_name, email").eq("user_id", assigned_by_user_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const accountName = (accRes.data as { company_name?: string } | null)?.company_name ?? "an account";
+  const assigneeEmail = (userRes.data as { email?: string } | null)?.email;
+  if (!assigneeEmail) {
+    console.warn(`[commercial/assignments] no email on user ${user_id} — skipping notify`);
+    return;
+  }
+  const assignerName =
+    (byRes.data as { sf_user_name?: string; email?: string } | null)?.sf_user_name ||
+    (byRes.data as { sf_user_name?: string; email?: string } | null)?.email ||
+    "PPP admin";
+  const roleLabel = assignmentRoleLabel(role);
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const accountUrl = `${baseUrl}/commercial/accounts/${account_id}`;
+  const primaryNote = is_primary
+    ? `\n\nYou're set as the PRIMARY ${roleLabel.toLowerCase()} on this account — first stop for ${roleLabel.toLowerCase()} questions.`
+    : "";
+  const text = [
+    `Hi,`,
+    ``,
+    `${assignerName} assigned you to ${accountName} as ${roleLabel}.${primaryNote}`,
+    ``,
+    `View the account: ${accountUrl}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(assignerName)}</strong> assigned you to <strong>${escape(accountName)}</strong> as <strong>${escape(roleLabel)}</strong>.${is_primary ? `<br><br>You're set as the <strong>PRIMARY ${escape(roleLabel.toLowerCase())}</strong> on this account — first stop for ${escape(roleLabel.toLowerCase())} questions.` : ""}</p>
+  <p style="margin:24px 0;"><a href="${accountUrl}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">View the account →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+  const result = await sendEmail({
+    to: assigneeEmail,
+    subject: `You've been assigned to ${accountName} (${roleLabel})`,
+    text,
+    html,
+    tags: [
+      { name: "kind", value: "commercial_account_assignment" },
+      { name: "assignment_id", value: assignment_id },
+    ],
+  });
+  if (!result.ok) {
+    console.warn(`[commercial/assignments] notify send failed:`, result.error);
+  }
+}
+
+function escape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**

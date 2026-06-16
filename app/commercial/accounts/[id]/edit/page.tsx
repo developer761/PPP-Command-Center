@@ -9,6 +9,7 @@ import {
   updateCommercialAccount,
   softDeleteCommercialAccount,
 } from "@/lib/commercial/accounts/mutations";
+import CommercialAddressFields from "@/components/commercial-address-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -160,21 +161,27 @@ export default async function EditCommercialAccountPage({
         </Section>
 
         <Section title="Billing address">
-          <EditField id="billing_street" label="Street" defaultValue={account.billing_street ?? ""} />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <EditField id="billing_city" label="City" defaultValue={account.billing_city ?? ""} />
-            <EditField id="billing_state" label="State" defaultValue={account.billing_state ?? ""} />
-            <EditField id="billing_zip" label="ZIP" defaultValue={account.billing_zip ?? ""} />
-          </div>
+          <CommercialAddressFields
+            prefix="billing"
+            defaults={{
+              street: account.billing_street ?? "",
+              city: account.billing_city ?? "",
+              state: account.billing_state ?? "",
+              zip: account.billing_zip ?? "",
+            }}
+          />
         </Section>
 
         <Section title="Primary site address (if different)">
-          <EditField id="site_street" label="Street" defaultValue={account.site_street ?? ""} />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <EditField id="site_city" label="City" defaultValue={account.site_city ?? ""} />
-            <EditField id="site_state" label="State" defaultValue={account.site_state ?? ""} />
-            <EditField id="site_zip" label="ZIP" defaultValue={account.site_zip ?? ""} />
-          </div>
+          <CommercialAddressFields
+            prefix="site"
+            defaults={{
+              street: account.site_street ?? "",
+              city: account.site_city ?? "",
+              state: account.site_state ?? "",
+              zip: account.site_zip ?? "",
+            }}
+          />
         </Section>
 
         <Section title="Contact">
