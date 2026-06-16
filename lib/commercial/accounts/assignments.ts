@@ -259,6 +259,19 @@ export async function addAssignment(
       restored,
       input.assigned_by_user_id
     );
+    // Notify the restored assignee too — they're getting added BACK to
+    // the account, which is just as worth a heads-up as a fresh add.
+    // Symmetric with the insert path below.
+    void notifyAssignment(
+      e.id,
+      input.account_id,
+      input.user_id,
+      input.role,
+      input.is_primary ?? false,
+      input.assigned_by_user_id ?? null
+    ).catch((err) => {
+      console.warn(`[commercial/assignments] notify-on-restore failed:`, err);
+    });
     return { ok: true, assignment_id: e.id };
   }
 

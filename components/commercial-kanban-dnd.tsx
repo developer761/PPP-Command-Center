@@ -24,6 +24,7 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>, oppId: string) => {
+    if (!e.dataTransfer) return;
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", oppId);
     setDragOppId(oppId);
@@ -33,12 +34,15 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (!e.dataTransfer) return;
     e.dataTransfer.dropEffect = "move";
   };
 
   const handleDrop = async (e: DragEvent<HTMLDivElement>, toStatus: string) => {
     e.preventDefault();
-    const oppId = e.dataTransfer.getData("text/plain") || dragOppId;
+    // Some degraded browser states fire drop without a payload — fall
+    // back to the React-state dragOppId so we don't lose the move.
+    const oppId = (e.dataTransfer?.getData("text/plain") ?? "") || dragOppId;
     setDragOppId(null);
     if (!oppId) return;
     try {

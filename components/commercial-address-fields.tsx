@@ -204,7 +204,10 @@ export default function CommercialAddressFields({
             name={`${prefix}_state`}
             type="text"
             value={stateVal}
-            onChange={(e) => setStateVal(e.target.value)}
+            // Hard-clamp to 2 chars in JS too — `maxLength` only blocks
+            // additional typing, but a fast paste or autocomplete could
+            // slip a 3-char value through before re-render.
+            onChange={(e) => setStateVal(e.target.value.slice(0, 2).toUpperCase())}
             maxLength={2}
             className={inputCls}
           />
