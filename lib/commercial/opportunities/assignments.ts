@@ -309,6 +309,9 @@ async function notifyAssignment(
   assigned_by_user_id: string | null,
   action: "assigned" | "promoted" | "restored"
 ): Promise<void> {
+  // Skip the email when a user assigns/promotes themself — Alice already
+  // knows she's now on the deal because she literally just clicked it.
+  if (assigned_by_user_id && assigned_by_user_id === user_id) return;
   const sb = commercialDb();
   const [oppRes, userRes, byRes] = await Promise.all([
     sb
@@ -487,7 +490,7 @@ export async function listPrimaryLeadByOpp(
   const { data, error } = await sb
     .from("commercial_opportunity_assignments")
     .select(
-      "opportunity_id, role, user:profiles!commercial_opportunity_assignments_user_id_fkey(email, sf_user_name)"
+      "opportunity_id, role, user:profiles!commercial_opportunity_assignments_user_id_fkey(email, sf_user_name, is_active)"
     )
     .in("opportunity_id", opportunity_ids)
     .eq("is_primary", true)
@@ -500,8 +503,8 @@ export async function listPrimaryLeadByOpp(
     opportunity_id: string;
     role: OpportunityAssignmentRole;
     user:
-      | { email: string; sf_user_name: string | null }
-      | Array<{ email: string; sf_user_name: string | null }>
+      | { email: string; sf_user_name: string | null; is_active: boolean | null }
+      | Array<{ email: string; sf_user_name: string | null; is_active: boolean | null }>
       | null;
   };
   // Seniority order — same role per opp shouldn't conflict (only one
@@ -517,6 +520,11 @@ export async function listPrimaryLeadByOpp(
   for (const raw of (data ?? []) as unknown as Row[]) {
     const u = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
     if (!u) continue;
+    // Deactivated leads should not surface as the ★ on the list-page row
+    // — a row that says "Primary: <deactivated person>" reads as a stale
+    // signal worse than no lead at all. Team tab on opp detail still
+    // shows them so admin sees the reassign-needed state.
+    if (u.is_active === false) continue;
     const prev = out.get(raw.opportunity_id);
     if (!prev || seniority[raw.role] < seniority[prev.role]) {
       out.set(raw.opportunity_id, {

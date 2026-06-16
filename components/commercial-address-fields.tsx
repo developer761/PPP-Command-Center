@@ -118,31 +118,40 @@ export default function CommercialAddressFields({
       };
     }).google;
     if (!input || !g?.maps?.places) return;
-    const ac = new g.maps.places.Autocomplete(input, {
-      types: ["address"],
-      componentRestrictions: { country: ["us"] },
-    });
-    ac.addListener("place_changed", () => {
-      const place = ac.getPlace();
-      const parts = place.address_components ?? [];
-      let streetNumber = "";
-      let route = "";
-      let cityVal = "";
-      let stateAbbr = "";
-      let zipVal = "";
-      for (const c of parts) {
-        if (c.types.includes("street_number")) streetNumber = c.long_name;
-        if (c.types.includes("route")) route = c.long_name;
-        if (c.types.includes("locality")) cityVal = c.long_name;
-        if (c.types.includes("administrative_area_level_1")) stateAbbr = c.short_name;
-        if (c.types.includes("postal_code")) zipVal = c.long_name;
-      }
-      const combined = [streetNumber, route].filter(Boolean).join(" ");
-      if (combined) setStreet(combined);
-      if (cityVal) setCity(cityVal);
-      if (stateAbbr) setStateVal(stateAbbr);
-      if (zipVal) setZip(zipVal);
-    });
+    // Wrap in try/catch — Autocomplete can throw on quota exceeded,
+    // billing not enabled, or transient script issues. The input still
+    // works as a plain text field; we just lose the autofill dropdown.
+    try {
+      const ac = new g.maps.places.Autocomplete(input, {
+        types: ["address"],
+        componentRestrictions: { country: ["us"] },
+      });
+      ac.addListener("place_changed", () => {
+        const place = ac.getPlace();
+        const parts = place.address_components ?? [];
+        let streetNumber = "";
+        let route = "";
+        let cityVal = "";
+        let stateAbbr = "";
+        let zipVal = "";
+        for (const c of parts) {
+          if (c.types.includes("street_number")) streetNumber = c.long_name;
+          if (c.types.includes("route")) route = c.long_name;
+          if (c.types.includes("locality")) cityVal = c.long_name;
+          if (c.types.includes("administrative_area_level_1")) stateAbbr = c.short_name;
+          if (c.types.includes("postal_code")) zipVal = c.long_name;
+        }
+        const combined = [streetNumber, route].filter(Boolean).join(" ");
+        if (combined) setStreet(combined);
+        if (cityVal) setCity(cityVal);
+        if (stateAbbr) setStateVal(stateAbbr);
+        if (zipVal) setZip(zipVal);
+      });
+    } catch (err) {
+      console.warn("[commercial/address-fields] Autocomplete init failed:", err);
+      // Downgrade the badge so the user knows manual entry is the path.
+      setScriptStatus("no-key");
+    }
     // Cleanup not strictly required — Autocomplete listeners are
     // garbage-collected when the input unmounts.
   }, [scriptStatus]);

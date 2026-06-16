@@ -337,6 +337,8 @@ async function notifyAssignment(
   is_primary: boolean,
   assigned_by_user_id: string | null
 ): Promise<void> {
+  // Skip the email when a user assigns themself — they already know.
+  if (assigned_by_user_id && assigned_by_user_id === user_id) return;
   const sb = commercialDb();
   const [accRes, userRes, byRes] = await Promise.all([
     sb.from("commercial_accounts").select("company_name").eq("id", account_id).maybeSingle(),
