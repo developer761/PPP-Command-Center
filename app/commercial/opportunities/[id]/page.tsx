@@ -48,9 +48,11 @@ import {
 import {
   listOpportunityAttachments,
   archiveOpportunityAttachment,
+  categorizeFilename,
   formatBytes,
   type OpportunityAttachment,
 } from "@/lib/commercial/opportunities/attachments";
+import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
 
@@ -251,6 +253,9 @@ async function archiveAttachmentAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/opportunities/${opportunity_id}?tab=plans&error=${encodeURIComponent(result.error)}`);
   }
+  // Keep the list-page 📎 N files badge in sync — the detail page is
+  // force-dynamic, but the list page can be cached for navigation.
+  revalidatePath("/commercial/opportunities");
   redirect(`/commercial/opportunities/${opportunity_id}?tab=plans`);
 }
 
@@ -1149,7 +1154,7 @@ async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
         </div>
         {active.length === 0 ? (
           <div className="p-8 text-center text-sm text-ppp-charcoal-500">
-            No files yet. Drop the RFP, plan set, spec book, and any proposal versions here.
+            No files yet. Upload the RFP, plan set, spec book, and any proposal versions here.
           </div>
         ) : (
           <ul className="divide-y divide-ppp-charcoal-100">
@@ -1191,18 +1196,24 @@ function AttachmentRow({
     day: "numeric",
     year: "numeric",
   });
+  const category = categorizeFilename(attachment.file_name);
   return (
-    <li className="px-4 py-3 flex items-start justify-between gap-3">
+    <li className="px-4 py-3 flex items-start justify-between gap-4">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <a
             href={`/api/commercial/opportunities/${oppId}/attachments/${attachment.id}/download`}
-            className="text-sm font-semibold text-emerald-700 hover:text-emerald-800 underline break-all"
+            className="text-sm font-semibold text-emerald-700 hover:text-emerald-800 underline break-words py-1 inline-block"
             target="_blank"
             rel="noopener noreferrer"
           >
             {attachment.file_name}
           </a>
+          {category && (
+            <span className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
+              {category}
+            </span>
+          )}
           {attachment.version > 1 && (
             <span className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100">
               v{attachment.version}

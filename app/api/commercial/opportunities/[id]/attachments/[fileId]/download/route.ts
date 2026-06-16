@@ -60,15 +60,23 @@ export async function GET(
   }
 
   // Soft-delete gate: mirror the upload route so files on a deleted opp
-  // can't be downloaded even if someone has a stale link from before the
-  // soft-delete. Admins restoring an opp will get downloads back.
+  // or deleted parent account can't be downloaded even with a stale link.
+  // Admins restoring either will get downloads back automatically.
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("deleted_at")
+    .select("deleted_at, account_id")
     .eq("id", opportunity_id)
     .maybeSingle();
   if (!opp || opp.deleted_at) {
     return NextResponse.json({ error: "opportunity_not_found" }, { status: 404 });
+  }
+  const { data: account } = await sb
+    .from("commercial_accounts")
+    .select("deleted_at")
+    .eq("id", (opp as { account_id: string }).account_id)
+    .maybeSingle();
+  if (!account || account.deleted_at) {
+    return NextResponse.json({ error: "account_not_found" }, { status: 404 });
   }
 
   const signed = await getOpportunityAttachmentSignedUrl(att.storage_key, 5 * 60);

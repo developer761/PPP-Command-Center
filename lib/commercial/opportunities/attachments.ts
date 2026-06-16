@@ -316,3 +316,35 @@ export function formatBytes(n: number | null): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/**
+ * Best-effort filename → category tag. Commercial estimators ship a
+ * handful of canonical doc types per bid (RFP, plan set, spec book,
+ * proposal, change order, submittal). A quick badge by name pattern
+ * helps Alex scan a stack of 20 files without opening each.
+ *
+ * Pattern matches are intentionally loose; if no pattern hits we omit
+ * the tag rather than render "Other" — silence beats noise.
+ */
+export type AttachmentCategory =
+  | "RFP"
+  | "Plans"
+  | "Specs"
+  | "Proposal"
+  | "Change Order"
+  | "Submittal"
+  | "Invoice"
+  | "Contract";
+
+export function categorizeFilename(name: string): AttachmentCategory | null {
+  const lower = name.toLowerCase();
+  if (/\brfp\b|request[\s_-]*for[\s_-]*proposal/.test(lower)) return "RFP";
+  if (/\bsubmittal\b|\bsubmit\b/.test(lower)) return "Submittal";
+  if (/\bchange[\s_-]*order\b|\bco[\s_-]*\d/.test(lower)) return "Change Order";
+  if (/\bcontract\b|\bagreement\b|\bmsa\b/.test(lower)) return "Contract";
+  if (/\binvoice\b|\bbilling\b/.test(lower)) return "Invoice";
+  if (/\bproposal\b|\bbid\b|\bquote\b|\bestimate\b/.test(lower)) return "Proposal";
+  if (/\bspec(s|ifications?|book)?\b|\bsection[\s_-]*\d/.test(lower)) return "Specs";
+  if (/\bplan(s|set)?\b|\bdrawing\b|\barch\b|\bblueprint\b|sheet[\s_-]*[a-z0-9]+/.test(lower)) return "Plans";
+  return null;
+}

@@ -62,7 +62,10 @@ export async function POST(
 
     const formData = await request.formData();
     const file = formData.get("file");
-    const notes = (formData.get("notes") as string) || null;
+    const rawNotes = (formData.get("notes") as string) || null;
+    // Defense in depth: mirror the form's maxLength=500 server-side so
+    // a hand-crafted curl can't dump multi-MB notes into TEXT.
+    const notes = rawNotes ? rawNotes.slice(0, 500) : null;
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "file_required" }, { status: 400 });

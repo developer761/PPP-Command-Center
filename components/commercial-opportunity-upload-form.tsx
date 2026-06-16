@@ -106,7 +106,8 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
           onDrop={(e) => {
             e.preventDefault();
             setDragOver(false);
-            const f = e.dataTransfer.files?.[0];
+            const files = e.dataTransfer.files;
+            const f = files?.[0];
             if (!f) return;
             if (fileInputRef.current) {
               const dt = new DataTransfer();
@@ -114,6 +115,11 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
               fileInputRef.current.files = dt.files;
             }
             handleFile(f);
+            if (files && files.length > 1) {
+              // Quietly inform the user the rest were ignored so they
+              // can retry the others one at a time. Better than silent drop.
+              setSuccess(`Picked "${f.name}". ${files.length - 1} other file${files.length > 2 ? "s" : ""} ignored — upload one at a time.`);
+            }
           }}
           className={`cursor-pointer rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors min-h-[88px] flex flex-col items-center justify-center ${
             dragOver
@@ -146,7 +152,8 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
           ) : (
             <>
               <div className="text-sm font-medium text-ppp-charcoal-700">
-                Drag &amp; drop or tap to pick
+                <span className="sm:hidden">Tap to choose a file</span>
+                <span className="hidden sm:inline">Drag &amp; drop or click to pick</span>
               </div>
               <div className="text-[11px] text-ppp-charcoal-500 mt-1">
                 PDF, image, Word, Excel — max 50 MB
@@ -157,7 +164,7 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
             ref={fileInputRef}
             type="file"
             name="file"
-            accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx"
+            accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="hidden"
             onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
           />
@@ -167,12 +174,13 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
           <label htmlFor="notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
             Notes
           </label>
-          <input
+          <textarea
             id="notes"
             name="notes"
-            type="text"
+            rows={2}
+            maxLength={500}
             placeholder="Optional — e.g. 'Final proposal v3 from customer'"
-            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-0"
+            className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 resize-y min-h-[60px]"
           />
         </div>
 
