@@ -93,6 +93,13 @@ export default async function CommercialOpportunitiesPage({
   const hotFilter = pickFirst(sp.hot) === "1";
   const sourcesRaw = pickFirst(sp.sources);
 
+  // View toggle: classic list (default) vs kanban board. Kanban is
+  // Alex's preferred sales-pipeline view; list is better for scan +
+  // filter + CSV export workflows. URL state survives so a bookmark of
+  // "?view=kanban" deep-links to the board.
+  const viewRaw = pickFirst(sp.view);
+  const viewMode: "list" | "kanban" = viewRaw === "kanban" ? "kanban" : "list";
+
   // Sort dropdown — Alex's Friday workflow needs the right lens at the
   // right time. recent = "what's been touched" (default), oldest = "what's
   // stuck", bid_high / bid_low = "biggest first / smallest first" for
@@ -211,6 +218,18 @@ export default async function CommercialOpportunitiesPage({
   if (validStatus) baseParams.set("status", validStatus);
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
+  if (viewMode === "kanban") baseParams.set("view", "kanban");
+
+  // View toggle hrefs preserve the rest of the filter context.
+  const viewToggleHref = (target: "list" | "kanban") => {
+    const p = new URLSearchParams(baseParams);
+    if (target === "kanban") p.set("view", "kanban");
+    else p.delete("view");
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  };
   const toggleStaleHref = (() => {
     const p = new URLSearchParams(baseParams);
     if (!staleFilter) p.set("stale", "1");
@@ -285,15 +304,45 @@ export default async function CommercialOpportunitiesPage({
             The deal record. From inquiry through won — track every commercial bid.
           </p>
         </div>
-        <Link
-          href="/commercial/opportunities/new"
-          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation shadow-sm shadow-emerald-600/30 min-h-[44px]"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 5v14 M5 12h14" />
-          </svg>
-          New opportunity
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* View toggle — kanban vs list. Sits next to the New CTA so
+              the primary surface choice + the primary action are in
+              the same neighborhood. Active view uses emerald to match
+              the platform's "selected" language. */}
+          <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden">
+            <Link
+              href={viewToggleHref("list")}
+              className={`px-3 py-2 text-[12px] font-medium min-h-[44px] inline-flex items-center touch-manipulation ${
+                viewMode === "list"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+              }`}
+              title="List view — best for scanning + filtering + CSV export"
+            >
+              List
+            </Link>
+            <Link
+              href={viewToggleHref("kanban")}
+              className={`px-3 py-2 text-[12px] font-medium min-h-[44px] inline-flex items-center touch-manipulation border-l border-ppp-charcoal-200 ${
+                viewMode === "kanban"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+              }`}
+              title="Kanban — drag deals through the pipeline (status-by-status)"
+            >
+              Kanban
+            </Link>
+          </div>
+          <Link
+            href="/commercial/opportunities/new"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation shadow-sm shadow-emerald-600/30 min-h-[44px]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            New opportunity
+          </Link>
+        </div>
       </header>
 
       {/* Pipeline summary — single-glance "where do we stand on open deals?" */}
@@ -488,7 +537,8 @@ export default async function CommercialOpportunitiesPage({
         </div>
       </div>
 
-      {/* List */}
+      {/* List or Kanban — driven by ?view=kanban URL param. The empty
+          state is shared (no opps = same message regardless of view). */}
       {opps.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
           <div className="text-sm text-ppp-charcoal-500">
@@ -505,6 +555,15 @@ export default async function CommercialOpportunitiesPage({
             </Link>
           )}
         </div>
+      ) : viewMode === "kanban" ? (
+        <KanbanBoard
+          opps={opps}
+          accountById={accountById}
+          statusEnteredAtMap={statusEnteredAtMap}
+          taskStatsMap={taskStatsMap}
+          primaryLeadMap={primaryLeadMap}
+          fileCountMap={fileCountMap}
+        />
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
@@ -541,6 +600,214 @@ function formatCents(cents: number): string {
   if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
   if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}k`;
   return `$${Math.round(dollars).toLocaleString()}`;
+}
+
+/**
+ * Kanban board view — column per open status, card per opp. Click a
+ * card to open the detail page. Each card has an inline "Next →"
+ * dropdown using the existing quickFlipStatusAction (DAG-filtered) so
+ * Alex moves deals forward without leaving the board.
+ *
+ * Columns scroll horizontally on mobile; vertical scroll within each
+ * column when the stack is taller than the viewport. Terminal opps
+ * (won/lost/no_bid) get their own collapsed footer summary rather than
+ * a column each, since the value of the kanban is the LIVE pipeline.
+ */
+function KanbanBoard({
+  opps,
+  accountById,
+  statusEnteredAtMap,
+  taskStatsMap,
+  primaryLeadMap,
+  fileCountMap,
+}: {
+  opps: CommercialOpportunity[];
+  accountById: Map<string, CommercialAccount>;
+  statusEnteredAtMap: Map<string, string>;
+  taskStatsMap: Map<string, { open: number; overdue: number; due_soon: number }>;
+  primaryLeadMap: Map<string, { user_email: string; user_full_name: string | null; role: string }>;
+  fileCountMap: Map<string, number>;
+}) {
+  const KANBAN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
+  const byStatus = new Map<OpportunityStatus, CommercialOpportunity[]>();
+  for (const s of KANBAN_COLUMNS) byStatus.set(s, []);
+  const closed: CommercialOpportunity[] = [];
+  for (const o of opps) {
+    if (KANBAN_COLUMNS.includes(o.status as OpportunityStatus)) {
+      byStatus.get(o.status as OpportunityStatus)!.push(o);
+    } else {
+      closed.push(o);
+    }
+  }
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto -mx-2 px-2 pb-2">
+        <div className="flex gap-3 min-w-max">
+          {KANBAN_COLUMNS.map((status) => {
+            const colOpps = byStatus.get(status) ?? [];
+            const colTotal = colOpps.reduce(
+              (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
+              0
+            );
+            return (
+              <div
+                key={status}
+                className="w-72 sm:w-80 shrink-0 bg-ppp-charcoal-50/60 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col"
+              >
+                <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-white">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[12px] font-semibold text-ppp-charcoal">
+                      {opportunityStatusLabel(status)}
+                    </span>
+                    <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-700 text-[11px] font-semibold">
+                      {colOpps.length}
+                    </span>
+                  </div>
+                  {colTotal > 0 && (
+                    <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                      {formatCents(colTotal)} top-of-range
+                    </div>
+                  )}
+                </div>
+                <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh]">
+                  {colOpps.length === 0 ? (
+                    <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
+                      No deals here
+                    </li>
+                  ) : (
+                    colOpps.map((opp) => (
+                      <KanbanCard
+                        key={opp.id}
+                        opp={opp}
+                        account={accountById.get(opp.account_id) ?? null}
+                        statusEnteredAt={statusEnteredAtMap.get(opp.id) ?? null}
+                        taskStats={taskStatsMap.get(opp.id) ?? null}
+                        primaryLead={primaryLeadMap.get(opp.id) ?? null}
+                        fileCount={fileCountMap.get(opp.id) ?? 0}
+                      />
+                    ))
+                  )}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {closed.length > 0 && (
+        <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <summary className="px-4 py-2.5 cursor-pointer text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
+            <span>Decided · {closed.length}</span>
+            <span aria-hidden className="text-ppp-charcoal-400">▾</span>
+          </summary>
+          <ul className="divide-y divide-ppp-charcoal-100 px-3 py-2">
+            {closed.map((opp) => (
+              <li key={opp.id} className="py-2">
+                <Link
+                  href={`/commercial/opportunities/${opp.id}`}
+                  className="text-[13px] text-emerald-700 hover:text-emerald-800 underline"
+                >
+                  {opp.title}
+                </Link>
+                <span className="text-[11px] text-ppp-charcoal-500 ml-2">
+                  {opportunityStatusLabel(opp.status)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function KanbanCard({
+  opp,
+  account,
+  statusEnteredAt,
+  taskStats,
+  primaryLead,
+  fileCount,
+}: {
+  opp: CommercialOpportunity;
+  account: CommercialAccount | null;
+  statusEnteredAt: string | null;
+  taskStats: { open: number; overdue: number; due_soon: number } | null;
+  primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
+  fileCount: number;
+}) {
+  const nextStatuses = allowedNextStatuses(opp.status);
+  const days = statusEnteredAt
+    ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
+    : null;
+  const daysTone =
+    days === null
+      ? "text-ppp-charcoal-400"
+      : days > 14
+      ? "text-rose-600"
+      : days > 7
+      ? "text-amber-600"
+      : "text-emerald-600";
+  const leadFirst = primaryLead
+    ? primaryLead.user_full_name?.split(" ")[0] ?? primaryLead.user_email.split("@")[0]
+    : null;
+  return (
+    <li className="bg-white border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 transition-colors">
+      <Link
+        href={`/commercial/opportunities/${opp.id}`}
+        className="block"
+      >
+        <div className="text-[13px] font-semibold text-ppp-charcoal leading-snug mb-1 break-words">
+          {opp.title || "(untitled)"}
+        </div>
+        {account && (
+          <div className="text-[11px] text-ppp-charcoal-500 mb-1.5 truncate">
+            {account.company_name}
+          </div>
+        )}
+        <div className="text-[12px] font-medium text-ppp-charcoal-800">
+          {formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
+        </div>
+        <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+          <span>{opp.probability_pct}%</span>
+          {days !== null && (
+            <span className={daysTone}>· {days}d here</span>
+          )}
+          {leadFirst && (
+            <span>· ★ {leadFirst}</span>
+          )}
+          {taskStats && taskStats.overdue > 0 && (
+            <span className="text-rose-600">· {taskStats.overdue} overdue</span>
+          )}
+          {fileCount > 0 && (
+            <span>· 📎 {fileCount}</span>
+          )}
+        </div>
+      </Link>
+      {nextStatuses.length > 0 && (
+        <form action={quickFlipStatusAction} className="mt-2 pt-2 border-t border-ppp-charcoal-100 flex items-center gap-1.5">
+          <input type="hidden" name="opp_id" value={opp.id} />
+          <select
+            name="to_status"
+            defaultValue=""
+            required
+            className="flex-1 px-2 py-1 text-base sm:text-[11px] border border-ppp-charcoal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[36px] bg-white"
+            aria-label={`Move ${opp.title}`}
+          >
+            <option value="" disabled>Move to…</option>
+            {nextStatuses.map((s) => (
+              <option key={s} value={s}>→ {opportunityStatusLabel(s)}</option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            className="px-2 py-1 text-[11px] font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 min-h-[36px] touch-manipulation"
+          >
+            Go
+          </button>
+        </form>
+      )}
+    </li>
+  );
 }
 
 function SummaryTile({
