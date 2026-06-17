@@ -461,13 +461,28 @@ export default async function CommercialAccountsPage({
           the Sort row above. URL-toggle pattern preserved (one-click,
           bookmark-safe). */}
       <div className="flex items-center gap-2 flex-wrap -mt-1">
-        <FilterChip href={toggleChipHref("stale", filterStale)} active={filterStale} tone="cold">
+        <FilterChip
+          href={toggleChipHref("stale", filterStale)}
+          active={filterStale}
+          tone="cold"
+          title="Accounts that haven't had any update (contact / document / team / opportunity) in more than 60 days. Worth a follow-up call."
+        >
           Stale &gt; 60 days
         </FilterChip>
-        <FilterChip href={toggleChipHref("expiring", filterExpiring)} active={filterExpiring} tone="amber">
+        <FilterChip
+          href={toggleChipHref("expiring", filterExpiring)}
+          active={filterExpiring}
+          tone="amber"
+          title="Accounts with at least one active document (COI / W-9 / vendor form / safety doc) that's set to expire within the next 30 days. Renew before the bid stalls."
+        >
           Has expiring docs
         </FilterChip>
-        <FilterChip href={toggleChipHref("issue", filterIssue)} active={filterIssue} tone="rose">
+        <FilterChip
+          href={toggleChipHref("issue", filterIssue)}
+          active={filterIssue}
+          tone="rose"
+          title="Accounts flagged red on vendor_compliance_status — paperwork is missing or rejected. These can't progress to project setup until fixed."
+        >
           Compliance issue
         </FilterChip>
         {anyFilterActive && (
@@ -644,11 +659,15 @@ function FilterChip({
   active,
   tone,
   children,
+  title,
 }: {
   href: string;
   active: boolean;
   tone: "amber" | "rose" | "cold";
   children: React.ReactNode;
+  /** Native browser tooltip — explains the chip's filter criteria for
+   *  users who don't recognize the abbreviated label. */
+  title?: string;
 }) {
   const inactiveCls =
     "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50";
@@ -665,6 +684,7 @@ function FilterChip({
   return (
     <Link
       href={href}
+      title={title}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium transition-colors touch-manipulation min-h-[36px] ${
         active ? activeCls : inactiveCls
       }`}

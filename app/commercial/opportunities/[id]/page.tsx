@@ -15,7 +15,10 @@ import {
   type OpportunityLossReason,
 } from "@/lib/commercial/opportunities/db";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
-import { softDeleteCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
+import {
+  softDeleteCommercialOpportunity,
+  createCommercialOpportunity,
+} from "@/lib/commercial/opportunities/mutations";
 import { commercialDb } from "@/lib/commercial/db";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -64,7 +67,16 @@ import InfoDot from "@/components/info-dot";
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string }>;
-type SP = Promise<{ tab?: string; error?: string; action?: string; to?: string; status_ok?: string; confirm_delete?: string }>;
+type SP = Promise<{
+  tab?: string;
+  error?: string;
+  action?: string;
+  to?: string;
+  status_ok?: string;
+  confirm_delete?: string;
+  edited?: string;
+  cloned?: string;
+}>;
 
 async function changeStatusAction(formData: FormData) {
   "use server";
@@ -128,6 +140,67 @@ async function softDeleteOpportunityAction(formData: FormData) {
     revalidatePath(`/commercial/accounts/${(pre as { account_id: string }).account_id}`);
   }
   redirect(`/commercial/opportunities?deleted=${encodeURIComponent(title)}`);
+}
+
+/**
+ * Clone an existing opportunity into a new one. Re-bidding the same site
+ * is a common workflow (Alex: "we lost the bid in Q1, they're shopping
+ * again in Q3"); typing the full scope + bid range + property address
+ * from scratch each time is friction.
+ *
+ * Copies: title (prefixed "Copy of "), description, source, bid range,
+ *         property address, proposed start/end (NOT proposal_due_at —
+ *         that's a fresh ask).
+ * Resets: status → inquiry, probability → status default, decided_at →
+ *         null, loss_reason/notes → null, primary_contact_id → re-auto-
+ *         picked from the account.
+ * Skips:  team, tasks, notes, attachments — these are bid-specific.
+ *
+ * Redirects to the new opp's detail page so the user can immediately
+ * tweak the title / bid range / etc.
+ */
+async function cloneOpportunityAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+
+  const sb = commercialDb();
+  const { data: source } = await sb
+    .from("commercial_opportunities")
+    .select("*")
+    .eq("id", opp_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!source) {
+    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent("Source opportunity not found.")}`);
+  }
+  const src = source as CommercialOpportunity;
+
+  const result = await createCommercialOpportunity({
+    account_id: src.account_id,
+    title: `Copy of ${src.title}`.slice(0, 200),
+    description: src.description,
+    source: src.source ?? null,
+    bid_value_low_cents: src.bid_value_low_cents,
+    bid_value_high_cents: src.bid_value_high_cents,
+    // proposal_due_at intentionally NOT cloned — re-bidding gets a fresh deadline.
+    proposed_start_at: src.proposed_start_at,
+    proposed_end_at: src.proposed_end_at,
+    property_street: src.property_street,
+    property_city: src.property_city,
+    property_state: src.property_state,
+    property_zip: src.property_zip,
+    created_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath("/commercial/opportunities");
+  revalidatePath(`/commercial/accounts/${src.account_id}`);
+  redirect(`/commercial/opportunities/${result.opportunity.id}?cloned=1`);
 }
 
 // ────────────── Team tab actions ──────────────
@@ -343,8 +416,26 @@ export default async function OpportunityDetailPage({
   if (!opp) notFound();
   const account = await getCommercialAccount(opp.account_id);
 
+  const editedOk = pickFirst(sp.edited) === "1";
+  const clonedOk = pickFirst(sp.cloned) === "1";
+
   return (
     <div className="space-y-5">
+      {editedOk && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+          <span aria-hidden>✓</span>
+          <span>Changes saved.</span>
+        </div>
+      )}
+      {clonedOk && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+          <span aria-hidden>✓</span>
+          <span>
+            Cloned from another opportunity. Edit the title + bid range now, then
+            update the rest as the bid progresses.
+          </span>
+        </div>
+      )}
       <header>
         <Link
           href="/commercial/opportunities"
@@ -372,6 +463,31 @@ export default async function OpportunityDetailPage({
               <span aria-hidden>·</span>
               <StatusPill status={opp.status} />
             </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <Link
+              href={`/commercial/opportunities/${opp.id}/edit`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+              Edit
+            </Link>
+            <form action={cloneOpportunityAction} className="contents">
+              <input type="hidden" name="opp_id" value={opp.id} />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
+                title="Re-bidding the same site? Clone the opp so you don't retype the scope + bid range."
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                Duplicate
+              </button>
+            </form>
           </div>
         </div>
       </header>

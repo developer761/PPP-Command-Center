@@ -187,6 +187,13 @@ export async function updateCommercialOpportunity(
   if (input.primary_contact_id !== undefined) patch.primary_contact_id = input.primary_contact_id;
   if (input.loss_reason !== undefined) patch.loss_reason = input.loss_reason;
   if (input.loss_notes !== undefined) patch.loss_notes = input.loss_notes;
+  // Per-opp project address (migration 035). Trimmed-empty → null so a
+  // user clearing the override re-falls-back to the account's site
+  // address on the detail-page card.
+  if (input.property_street !== undefined) patch.property_street = input.property_street?.trim() || null;
+  if (input.property_city !== undefined) patch.property_city = input.property_city?.trim() || null;
+  if (input.property_state !== undefined) patch.property_state = input.property_state?.trim().slice(0, 2).toUpperCase() || null;
+  if (input.property_zip !== undefined) patch.property_zip = input.property_zip?.trim() || null;
 
   const { data: after, error } = await sb
     .from("commercial_opportunities")

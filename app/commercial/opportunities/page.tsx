@@ -515,10 +515,20 @@ export default async function CommercialOpportunitiesPage({
           one filter row, not two competing surfaces. */}
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <FilterChip href={toggleHotHref} active={hotFilter} tone="hot">
+          <FilterChip
+            href={toggleHotHref}
+            active={hotFilter}
+            tone="hot"
+            title={`Bid value ≥ $50k AND proposal due within ${HOT_DEAL_DECISION_DAYS} days AND status is still in play (Estimating / Proposal sent / Negotiating). These are the deals to push on this week.`}
+          >
             🔥 Hot ($50k+ · &lt;{HOT_DEAL_DECISION_DAYS}d)
           </FilterChip>
-          <FilterChip href={toggleStaleHref} active={staleFilter} tone="cold">
+          <FilterChip
+            href={toggleStaleHref}
+            active={staleFilter}
+            tone="cold"
+            title={`Open opportunities that haven't had any update (status / note / task / attachment) in more than ${STALE_OPP_DAYS} days. Likely need a follow-up or a status flip to on_hold.`}
+          >
             Stale &gt; {STALE_OPP_DAYS}d
           </FilterChip>
           <details className="inline-block group">
@@ -880,11 +890,16 @@ function FilterChip({
   active,
   tone,
   children,
+  title,
 }: {
   href: string;
   active: boolean;
   tone: "neutral" | "cold" | "hot";
   children: React.ReactNode;
+  /** Native browser tooltip — hover on desktop, long-press on mobile.
+   *  Explains the chip's filter criteria for users who don't recognize
+   *  the abbreviated label. */
+  title?: string;
 }) {
   const inactiveCls =
     "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50";
@@ -897,6 +912,7 @@ function FilterChip({
   return (
     <Link
       href={href}
+      title={title}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium transition-colors touch-manipulation min-h-[36px] ${
         active ? activeCls : inactiveCls
       }`}
