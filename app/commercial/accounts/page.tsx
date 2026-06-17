@@ -456,44 +456,62 @@ export default async function CommercialAccountsPage({
         </div>
       )}
 
-      {/* Quick-filter chips — Karan 2026-06-16 round 2: kill the "QUICK
-          FILTERS" card heading so the chips read as inline extensions of
-          the Sort row above. URL-toggle pattern preserved (one-click,
-          bookmark-safe). */}
-      <div className="flex items-center gap-2 flex-wrap -mt-1">
-        <FilterChip
-          href={toggleChipHref("stale", filterStale)}
-          active={filterStale}
-          tone="cold"
-          title="Accounts that haven't had any update (contact / document / team / opportunity) in more than 60 days. Worth a follow-up call."
-        >
-          Stale &gt; 60 days
-        </FilterChip>
-        <FilterChip
-          href={toggleChipHref("expiring", filterExpiring)}
-          active={filterExpiring}
-          tone="amber"
-          title="Accounts with at least one active document (COI / W-9 / vendor form / safety doc) that's set to expire within the next 30 days. Renew before the bid stalls."
-        >
-          Has expiring docs
-        </FilterChip>
-        <FilterChip
-          href={toggleChipHref("issue", filterIssue)}
-          active={filterIssue}
-          tone="rose"
-          title="Accounts flagged red on vendor_compliance_status — paperwork is missing or rejected. These can't progress to project setup until fixed."
-        >
-          Compliance issue
-        </FilterChip>
-        {anyFilterActive && (
-          <Link
-            href="/commercial/accounts"
-            className="text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 underline ml-auto"
-          >
-            Clear all filters
-          </Link>
-        )}
-      </div>
+      {/* Filter dropdown — Karan 2026-06-16 round 3: chips were still
+          visible as a separate row, which broke the "one filter UI" goal.
+          Now folded into a single <details> button so the surface has
+          ONE filter affordance. URL-toggle pattern preserved (one click,
+          bookmark-safe). Active count surfaces on the button label so
+          user knows state without opening. */}
+      {(() => {
+        const activeChipCount = (filterStale ? 1 : 0) + (filterExpiring ? 1 : 0) + (filterIssue ? 1 : 0);
+        return (
+          <div className="flex items-center gap-2 flex-wrap -mt-1">
+            <details className="relative inline-block group">
+              <summary
+                className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
+                  activeChipCount > 0
+                    ? "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                    : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                }`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+                </svg>
+                <span>Filter{activeChipCount > 0 ? ` · ${activeChipCount}` : ""}</span>
+                <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+              </summary>
+              <div className="absolute mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg p-3 min-w-[280px] space-y-1">
+                <FilterOption
+                  href={toggleChipHref("stale", filterStale)}
+                  active={filterStale}
+                  label="Stale > 60 days"
+                  description="No update (contact / doc / team / opp) in over 60 days. Worth a follow-up call."
+                />
+                <FilterOption
+                  href={toggleChipHref("expiring", filterExpiring)}
+                  active={filterExpiring}
+                  label="Has expiring docs"
+                  description="At least one active doc set to expire in the next 30 days."
+                />
+                <FilterOption
+                  href={toggleChipHref("issue", filterIssue)}
+                  active={filterIssue}
+                  label="Compliance issue"
+                  description="Flagged red on vendor compliance — paperwork missing or rejected."
+                />
+              </div>
+            </details>
+            {anyFilterActive && (
+              <Link
+                href="/commercial/accounts"
+                className="text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 underline ml-auto"
+              >
+                Clear all filters
+              </Link>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Recently active — only show when no filters narrowing the list
           AND there's at least one match in the last 7 days. Gives Alex a
@@ -651,6 +669,55 @@ export default async function CommercialAccountsPage({
         </form>
       )}
     </div>
+  );
+}
+
+/** Filter dropdown row — used inside the Filter <details> popover.
+ *  Click toggles the URL param via `href`. Active rows render an
+ *  emerald check + light-emerald background; the body of the popover
+ *  also gives a one-line plain-English description so Alex sees what
+ *  each filter does without needing the chip tooltip. */
+function FilterOption({
+  href,
+  active,
+  label,
+  description,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex items-start gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
+        active
+          ? "bg-emerald-50 hover:bg-emerald-100"
+          : "hover:bg-ppp-charcoal-50"
+      }`}
+    >
+      <span
+        className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
+          active
+            ? "bg-emerald-600 border-emerald-700 text-white"
+            : "bg-white border-ppp-charcoal-300 text-transparent"
+        }`}
+        aria-hidden
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal"}`}>
+          {label}
+        </div>
+        <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 leading-snug">
+          {description}
+        </p>
+      </div>
+    </Link>
   );
 }
 

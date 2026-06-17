@@ -506,55 +506,60 @@ export default async function CommercialOpportunitiesPage({
         </div>
       )}
 
-      {/* Glanceable filters — Hot + Stale only by default. Source filters
-          are tucked behind a "more" collapse: sources are properties of
-          how a deal came in (set at create time, useful for quarterly
-          analytics), not what Alex wants to scan by daily.
-          Visual (Karan 2026-06-16 round 2): dropped the labeled card —
-          chips sit inline with the sort + export controls so there's
-          one filter row, not two competing surfaces. */}
+      {/* Filter dropdown — Karan 2026-06-16 round 3: collapsed Hot +
+          Stale + By source chips into a single <details> button so the
+          opps surface has ONE filter affordance, matching the accounts
+          page. Active count surfaces on the button label. */}
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <FilterChip
-            href={toggleHotHref}
-            active={hotFilter}
-            tone="hot"
-            title={`Bid value ≥ $50k AND proposal due within ${HOT_DEAL_DECISION_DAYS} days AND status is still in play (Estimating / Proposal sent / Negotiating). These are the deals to push on this week.`}
-          >
-            🔥 Hot ($50k+ · &lt;{HOT_DEAL_DECISION_DAYS}d)
-          </FilterChip>
-          <FilterChip
-            href={toggleStaleHref}
-            active={staleFilter}
-            tone="cold"
-            title={`Open opportunities that haven't had any update (status / note / task / attachment) in more than ${STALE_OPP_DAYS} days. Likely need a follow-up or a status flip to on_hold.`}
-          >
-            Stale &gt; {STALE_OPP_DAYS}d
-          </FilterChip>
-          <details className="inline-block group">
-            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 transition-colors touch-manipulation min-h-[36px]">
-              {sourceSet.size > 0 ? (
-                <>
-                  <span aria-hidden>✓</span>
-                  By source · {sourceSet.size}
-                </>
-              ) : (
-                <>By source <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform inline-block">▾</span></>
-              )}
-            </summary>
-            <div className="absolute mt-2 z-10 bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg p-2 flex flex-wrap gap-1.5 max-w-sm">
-              {OPPORTUNITY_SOURCES.map((s) => (
-                <FilterChip
-                  key={s}
-                  href={toggleSourceHref(s)}
-                  active={sourceSet.has(s)}
-                  tone="neutral"
+          {(() => {
+            const activeFilterCount = (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size;
+            return (
+              <details className="relative inline-block group">
+                <summary
+                  className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
+                    activeFilterCount > 0
+                      ? "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                      : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                  }`}
                 >
-                  {opportunitySourceLabel(s)}
-                </FilterChip>
-              ))}
-            </div>
-          </details>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+                  </svg>
+                  <span>Filter{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</span>
+                  <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+                </summary>
+                <div className="absolute mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg p-3 min-w-[300px] space-y-1 max-h-[70vh] overflow-y-auto">
+                  <FilterOption
+                    href={toggleHotHref}
+                    active={hotFilter}
+                    label={`🔥 Hot ($50k+ · <${HOT_DEAL_DECISION_DAYS}d)`}
+                    description={`Bid ≥ $50k, proposal due within ${HOT_DEAL_DECISION_DAYS} days, still in play. The deals to push on this week.`}
+                  />
+                  <FilterOption
+                    href={toggleStaleHref}
+                    active={staleFilter}
+                    label={`Stale > ${STALE_OPP_DAYS}d`}
+                    description={`Open opps with no update (status / note / task / attachment) in over ${STALE_OPP_DAYS} days. Probably needs a follow-up.`}
+                  />
+                  <div className="border-t border-ppp-charcoal-100 my-2 pt-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
+                      By source
+                    </div>
+                    {OPPORTUNITY_SOURCES.map((s) => (
+                      <FilterOption
+                        key={s}
+                        href={toggleSourceHref(s)}
+                        active={sourceSet.has(s)}
+                        label={opportunitySourceLabel(s)}
+                        description="How this opportunity came in."
+                      />
+                    ))}
+                  </div>
+                </div>
+              </details>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           {/* Sort picker — preserves the current URL filters by reading
@@ -882,6 +887,52 @@ function SummaryTile({
       </div>
       <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sublabel}</div>
     </div>
+  );
+}
+
+/** Filter dropdown row — used inside the Filter <details> popover.
+ *  Mirrors the accounts-page FilterOption shape for visual consistency. */
+function FilterOption({
+  href,
+  active,
+  label,
+  description,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex items-start gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
+        active
+          ? "bg-emerald-50 hover:bg-emerald-100"
+          : "hover:bg-ppp-charcoal-50"
+      }`}
+    >
+      <span
+        className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
+          active
+            ? "bg-emerald-600 border-emerald-700 text-white"
+            : "bg-white border-ppp-charcoal-300 text-transparent"
+        }`}
+        aria-hidden
+      >
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal"}`}>
+          {label}
+        </div>
+        <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 leading-snug">
+          {description}
+        </p>
+      </div>
+    </Link>
   );
 }
 
