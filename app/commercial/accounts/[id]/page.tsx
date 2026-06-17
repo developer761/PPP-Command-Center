@@ -2111,12 +2111,14 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           num={overview.contact_count}
           label="Contacts"
           href={`?tab=contacts`}
+          tooltip="People AT this customer organization (decision makers, PMs, AP contacts, etc.). Distinct from PPP team — those are our internal staff managing the account."
         />
         <KpiTile
           tone="live"
           num={overview.ppp_team_count}
           label="PPP team"
           href={`?tab=team`}
+          tooltip="PPP staff assigned to manage this account — sales rep, account manager, project manager, superintendent, etc. Add or change from the Team tab."
         />
         <KpiTile
           tone="live"
@@ -2125,6 +2127,7 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           href={`?tab=documents`}
           sub={docHealth.label}
           subCls={docHealth.cls}
+          tooltip="Active (non-archived) files attached to this account — COIs, vendor forms, W-9s, safety docs. Subtitle flags expiring or expired insurance so we don't bid with stale paperwork."
         />
         <KpiTile
           tone="live"

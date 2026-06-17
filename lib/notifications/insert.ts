@@ -172,6 +172,17 @@ export async function insertCommercialTeamAssignedNotification(
     if (input.actingUserId && input.actingUserId === input.recipientUserId) return;
     const sb = adminClient();
 
+    // Skip bell row when the recipient has been deactivated since the
+    // page load — there's no value in a notification a deactivated user
+    // can never see. Matches the admin-fanout filter in
+    // insertCustomerFormSubmittedNotification above.
+    const { data: recipient } = await sb
+      .from("profiles")
+      .select("is_active")
+      .eq("user_id", input.recipientUserId)
+      .maybeSingle();
+    if ((recipient as { is_active?: boolean | null } | null)?.is_active === false) return;
+
     const kind: NotificationKind =
       input.surface === "account"
         ? "commercial_account_team_added"

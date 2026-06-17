@@ -220,8 +220,51 @@ export async function addAssignment(
     .maybeSingle();
 
   if (existing) {
-    const e = existing as { id: string; removed_at: string | null };
+    const e = existing as { id: string; removed_at: string | null; is_primary: boolean };
     if (!e.removed_at) {
+      // Active row already on team. Promote-only branch: if the only
+      // change is flipping the primary flag (off→on), allow it via
+      // demote-then-update instead of forcing the admin to remove +
+      // re-add. Matches the opp-side behavior at
+      // lib/commercial/opportunities/assignments.ts:160-204.
+      if (input.is_primary && !e.is_primary) {
+        await demoteCurrentPrimary(
+          input.account_id,
+          input.role,
+          input.assigned_by_user_id ?? null
+        );
+        const { data: promoted, error: promoteErr } = await sb
+          .from("commercial_account_assignments")
+          .update({
+            is_primary: true,
+            notes: input.notes?.trim() || null,
+            assigned_by_user_id: input.assigned_by_user_id ?? null,
+          })
+          .eq("id", e.id)
+          .select("*")
+          .single();
+        if (promoteErr) return { ok: false, error: promoteErr.message };
+        await logUpdate(
+          "commercial_account_assignments",
+          e.id,
+          existing,
+          promoted,
+          input.assigned_by_user_id
+        );
+        // Heads-up email + bell so the assignee knows they're now the
+        // buck-stops-here person on this account.
+        void notifyAssignment(
+          e.id,
+          input.account_id,
+          input.user_id,
+          input.role,
+          true,
+          input.assigned_by_user_id ?? null
+        ).catch((err) => {
+          console.warn(`[commercial/assignments] notify-on-promote failed:`, err);
+        });
+        return { ok: true, assignment_id: e.id };
+      }
       return { ok: false, error: "This person is already assigned in that role." };
     }
     // Restore: clear removed_at + reset is_primary if requested.

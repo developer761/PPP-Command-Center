@@ -512,10 +512,26 @@ function InfoTab({
           value={formatCentsCompact(weightedPipelineCents(opp))}
           tooltip="Probability × midpoint bid. Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing."
         />
-        <Field label="Proposal due" value={opp.proposal_due_at?.slice(0, 10) ?? "—"} />
-        <Field label="Decided" value={opp.decided_at?.slice(0, 10) ?? "—"} />
-        <Field label="Proposed start" value={opp.proposed_start_at?.slice(0, 10) ?? "—"} />
-        <Field label="Proposed end" value={opp.proposed_end_at?.slice(0, 10) ?? "—"} />
+        <Field
+          label="Proposal due"
+          value={opp.proposal_due_at?.slice(0, 10) ?? "—"}
+          tooltip="When the customer is expecting our proposal. Drives the Decision in countdown on the KPI strip + the Hot deals filter when the bid is also $50k+."
+        />
+        <Field
+          label="Decided"
+          value={opp.decided_at?.slice(0, 10) ?? "—"}
+          tooltip="Date the opportunity closed — set automatically when status flips to Won, Lost, or No-bid. Used to compute average days-to-close on the Account 360."
+        />
+        <Field
+          label="Proposed start"
+          value={opp.proposed_start_at?.slice(0, 10) ?? "—"}
+          tooltip="Target kickoff date we're quoting to the customer. Internal estimate — feeds the project setup phase later."
+        />
+        <Field
+          label="Proposed end"
+          value={opp.proposed_end_at?.slice(0, 10) ?? "—"}
+          tooltip="Target completion date we're quoting. Internal estimate — informs scheduling once the bid is won."
+        />
       </Card>
       <Card title="Property / project address">
         <OppPropertyAddress opp={opp} account={account} />

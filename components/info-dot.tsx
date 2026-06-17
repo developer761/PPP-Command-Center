@@ -74,7 +74,16 @@ export default function InfoDot({ text }: { text: string }) {
       <button
         ref={iconRef}
         type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        onClick={(e) => {
+          // stopPropagation + preventDefault: this button is sometimes
+          // nested inside a clickable parent (e.g. KpiTile wrapped in
+          // <a href>). Without preventDefault, some browsers still
+          // fire the parent <a>'s navigation as the default action
+          // when clicking a descendant button. Defensive belt + braces.
+          e.stopPropagation();
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
         onBlur={() => setOpen(false)}
         title={text}
         aria-label={`What this means: ${text}`}

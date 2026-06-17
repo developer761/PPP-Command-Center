@@ -116,6 +116,11 @@ export async function addOpportunityNote(
 ): Promise<{ ok: true; note: OpportunityNote } | { ok: false; error: string }> {
   const body = input.body?.trim() ?? "";
   if (!body) return { ok: false, error: "Note body can't be empty." };
+  // Hard cap so a runaway paste / API misuse can't fill the table.
+  // 5000 chars = ~10 paragraphs, more than any real opp note needs.
+  if (body.length > 5000) {
+    return { ok: false, error: "Note is too long (max 5,000 characters)." };
+  }
 
   const sb = commercialDb();
   const { data: opp } = await sb
@@ -154,6 +159,9 @@ export async function editOpportunityNote(
 ): Promise<{ ok: true; note: OpportunityNote } | { ok: false; error: string }> {
   const trimmed = body?.trim() ?? "";
   if (!trimmed) return { ok: false, error: "Note body can't be empty." };
+  if (trimmed.length > 5000) {
+    return { ok: false, error: "Note is too long (max 5,000 characters)." };
+  }
 
   const sb = commercialDb();
   const { data: before } = await sb
