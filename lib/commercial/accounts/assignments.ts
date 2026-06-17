@@ -259,7 +259,8 @@ export async function addAssignment(
           input.user_id,
           input.role,
           true,
-          input.assigned_by_user_id ?? null
+          input.assigned_by_user_id ?? null,
+          "promoted"
         ).catch((err) => {
           console.warn(`[commercial/assignments] notify-on-promote failed:`, err);
         });
@@ -301,7 +302,8 @@ export async function addAssignment(
       input.user_id,
       input.role,
       input.is_primary ?? false,
-      input.assigned_by_user_id ?? null
+      input.assigned_by_user_id ?? null,
+      "restored"
     ).catch((err) => {
       console.warn(`[commercial/assignments] notify-on-restore failed:`, err);
     });
@@ -368,7 +370,13 @@ async function notifyAssignment(
   user_id: string,
   role: AssignmentRole,
   is_primary: boolean,
-  assigned_by_user_id: string | null
+  assigned_by_user_id: string | null,
+  // "assigned" = fresh add; "promoted" = existing secondary flipped to
+  // primary (the promote-secondary-to-primary branch); "restored" =
+  // re-added after previously removed. Mirrors the opp-side signature.
+  // The bell payload tags this so the bell renderer can differentiate
+  // verbs ("Promoted to PRIMARY Sales Rep" vs "Added as Sales Rep").
+  action: "assigned" | "promoted" | "restored" = "assigned"
 ): Promise<void> {
   // Skip the email when a user assigns themself — they already know.
   if (assigned_by_user_id && assigned_by_user_id === user_id) return;
@@ -435,7 +443,7 @@ async function notifyAssignment(
     recipientUserId: user_id,
     roleLabel,
     isPrimary: is_primary,
-    action: "assigned",
+    action,
     assignerName,
     actingUserId: assigned_by_user_id,
   }).catch((err) => {

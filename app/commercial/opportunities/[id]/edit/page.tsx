@@ -2,12 +2,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
-  OPPORTUNITY_STATUSES,
   OPPORTUNITY_SOURCES,
   opportunityStatusLabel,
   opportunitySourceLabel,
   getCommercialOpportunity,
-  type OpportunityStatus,
   type OpportunitySource,
 } from "@/lib/commercial/opportunities/db";
 import { updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
@@ -49,10 +47,10 @@ async function updateAction(formData: FormData) {
     redirect(`/commercial/opportunities/${id}/edit?error=${encodeURIComponent("Title is required.")}`);
   }
 
-  const statusRaw = String(formData.get("status") ?? "");
-  if (statusRaw && !(OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)) {
-    redirect(`/commercial/opportunities/${id}/edit?error=${encodeURIComponent("Invalid status.")}`);
-  }
+  // Status is intentionally NOT editable from this form — that path
+  // bypassed the DAG + loss-reason capture + status_log entry + decided_at
+  // timestamp. All status changes route through ChangeStatusCard on the
+  // Info tab. See lib/commercial/opportunities/status.changeOpportunityStatus.
   const sourceRaw = String(formData.get("source") ?? "");
   if (sourceRaw && !(OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)) {
     redirect(`/commercial/opportunities/${id}/edit?error=${encodeURIComponent("Invalid source.")}`);
@@ -90,7 +88,7 @@ async function updateAction(formData: FormData) {
     id,
     title,
     description: (formData.get("description") as string)?.trim() || null,
-    status: statusRaw ? (statusRaw as OpportunityStatus) : undefined,
+    // status intentionally omitted — see comment above.
     source: sourceRaw ? (sourceRaw as OpportunitySource) : null,
     bid_value_low_cents: lowParsed as number | null,
     bid_value_high_cents: highParsed as number | null,
@@ -176,47 +174,42 @@ export default async function EditOpportunityPage({
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label htmlFor="status" className={LABEL_CLS}>
-              Status
-            </label>
-            <select
-              id="status"
-              name="status"
-              defaultValue={opp.status}
-              className={SELECT_CLS}
-              style={SELECT_BG_STYLE}
-            >
-              {OPPORTUNITY_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {opportunityStatusLabel(s)}
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-amber-700 mt-1.5">
-              Heads-up: changing status here bypasses the DAG + loss-reason capture. For real status transitions use the Info tab&apos;s Change Status card.
-            </p>
-          </div>
-          <div>
-            <label htmlFor="source" className={LABEL_CLS}>
-              How did this come in?
-            </label>
-            <select
-              id="source"
-              name="source"
-              defaultValue={opp.source ?? ""}
-              className={SELECT_CLS}
-              style={SELECT_BG_STYLE}
-            >
-              <option value="">Pick a source…</option>
-              {OPPORTUNITY_SOURCES.map((s) => (
-                <option key={s} value={s}>
-                  {opportunitySourceLabel(s)}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Status is intentionally NOT in this form — it routes through
+            the Info tab's Change Status card so the DAG, loss_reason
+            capture, decided_at timestamp, and status_log entry all
+            run correctly. Showing the current status as a read-only
+            chip so the user sees context without a misleading editable
+            field. */}
+        <div className="rounded-xl border border-ppp-charcoal-100 bg-ppp-charcoal-50/40 px-3 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-[12px] text-ppp-charcoal-600">
+            Current status: <strong className="text-ppp-charcoal">{opportunityStatusLabel(opp.status)}</strong>
+          </span>
+          <Link
+            href={`/commercial/opportunities/${id}#info`}
+            className="text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 underline"
+          >
+            Change status →
+          </Link>
+        </div>
+
+        <div>
+          <label htmlFor="source" className={LABEL_CLS}>
+            How did this come in?
+          </label>
+          <select
+            id="source"
+            name="source"
+            defaultValue={opp.source ?? ""}
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
+          >
+            <option value="">Pick a source…</option>
+            {OPPORTUNITY_SOURCES.map((s) => (
+              <option key={s} value={s}>
+                {opportunitySourceLabel(s)}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -274,13 +274,13 @@ export default async function EditCommercialAccountPage({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
           <Link
             href={`/commercial/accounts/${account.id}`}
-            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]"
+            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
           >
             Cancel
           </Link>
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 shadow-sm shadow-emerald-600/30 min-h-[44px]"
+            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
           >
             Save changes
           </button>
@@ -300,7 +300,7 @@ export default async function EditCommercialAccountPage({
         {!confirmDelete ? (
           <Link
             href={`/commercial/accounts/${account.id}/edit?confirm_delete=1`}
-            className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-rose-300 text-sm font-semibold text-rose-700 hover:bg-rose-100 min-h-[44px]"
+            className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-rose-300 text-sm font-semibold text-rose-700 hover:bg-rose-100 min-h-[44px] touch-manipulation"
           >
             Delete account
           </Link>
@@ -309,22 +309,25 @@ export default async function EditCommercialAccountPage({
             <p className="text-sm text-ppp-charcoal-700">
               Are you sure you want to delete <strong>{account.company_name}</strong>?
             </p>
+            {/* Cancel on LEFT, destructive action on RIGHT — matches the
+                main Cancel/Save row above so muscle memory is consistent
+                and the destructive button is the deliberate further reach. */}
             <div className="flex flex-col sm:flex-row gap-2">
-              <form action={deleteAction} className="flex-1">
+              <Link
+                href={`/commercial/accounts/${account.id}/edit`}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation sm:order-1"
+              >
+                Cancel
+              </Link>
+              <form action={deleteAction} className="flex-1 sm:order-2">
                 <input type="hidden" name="id" value={account.id} />
                 <button
                   type="submit"
-                  className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 min-h-[44px]"
+                  className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 active:bg-rose-800 min-h-[44px] touch-manipulation"
                 >
                   Yes, delete it
                 </button>
               </form>
-              <Link
-                href={`/commercial/accounts/${account.id}/edit`}
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]"
-              >
-                Cancel
-              </Link>
             </div>
           </div>
         )}
