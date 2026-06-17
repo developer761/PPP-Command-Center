@@ -84,7 +84,10 @@ async function updateAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/accounts/${id}/edit?error=${encodeURIComponent(result.error)}`);
   }
-  redirect(`/commercial/accounts/${id}`);
+  // Symmetric with opp-edit: redirect with ?saved=1 so the detail page
+  // surfaces an emerald "Changes saved." banner. Closes the silent-save
+  // gap the persona walkthrough flagged.
+  redirect(`/commercial/accounts/${id}?saved=1`);
 }
 
 async function deleteAction(formData: FormData) {

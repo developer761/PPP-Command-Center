@@ -95,6 +95,7 @@ type SP = Promise<{
   error?: string;
   team_added?: string;
   team_skipped?: string;
+  saved?: string;
 }>;
 
 const TABS = [
@@ -140,12 +141,19 @@ export default async function CommercialAccountDetailPage({
 
   const teamAddedCount = sp.team_added ? Number(sp.team_added) : 0;
   const teamSkippedMsg = sp.team_skipped ?? null;
+  const savedOk = sp.saved === "1";
 
   return (
     <div className="space-y-5">
       {/* Toast surface from the new-account team-on-create flow. Fades
           out via reload (no client component needed — the user navigating
           away clears the query string naturally). */}
+      {savedOk && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+          <span aria-hidden>✓</span>
+          <span>Changes saved.</span>
+        </div>
+      )}
       {teamAddedCount > 0 && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2 flex-wrap">
           <span aria-hidden>✓</span>
@@ -1342,7 +1350,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
-              {team.length} on team
+              {team.length} team member{team.length === 1 ? "" : "s"}
             </h2>
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">

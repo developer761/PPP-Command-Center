@@ -668,7 +668,9 @@ function InfoTab({
             </p>
           </>
         ) : (
-          <p className="text-sm text-ppp-charcoal-500">Account not found.</p>
+          <p className="text-sm text-ppp-charcoal-500">
+            Account isn&apos;t available — it may have been deleted or you may not have access.
+          </p>
         )}
       </Card>
       <Card title="Loss tracking">
@@ -1001,7 +1003,7 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
-              {team.length} on team
+              {team.length} team member{team.length === 1 ? "" : "s"}
             </h2>
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
@@ -1278,6 +1280,7 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
             name="body"
             required
             rows={3}
+            maxLength={5000}
             placeholder="Called Sarah, asking $5k off, will get back to me tomorrow."
             className={TEXTAREA_CLS + " min-h-[88px]"}
           />
@@ -1340,6 +1343,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               name="body"
               required
               rows={3}
+              maxLength={5000}
               defaultValue={note.body}
               className={TEXTAREA_CLS + " min-h-[88px]"}
             />
@@ -1567,7 +1571,10 @@ async function TimelineTab({ oppId }: { oppId: string }) {
                   {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
                 </span>
               </div>
-              {entry.loss_reason && (
+              {/* Only surface loss_reason on terminal lost/no_bid rows —
+                  if stale data ever set it on a won row, we don't want
+                  the timeline to look like the deal was lost. */}
+              {entry.loss_reason && (entry.to_status === "lost" || entry.to_status === "no_bid") && (
                 <div className="text-[12px] text-rose-700 mb-1">
                   Reason: {opportunityLossReasonLabel(entry.loss_reason)}
                 </div>
