@@ -34,7 +34,9 @@ import { listPrimaryLeadByOpp, opportunityAssignmentRoleLabel } from "@/lib/comm
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
-import CommercialOpportunitiesSortPicker from "@/components/commercial-opportunities-sort-picker";
+// CommercialOpportunitiesSortPicker removed 2026-06-17 — sort merged into
+// the unified Sort & Filter dropdown below. The client component file
+// remains in the repo in case a future surface needs a standalone sort.
 import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
 
 const MS_PER_DAY = 86_400_000;
@@ -259,6 +261,20 @@ export default async function CommercialOpportunitiesPage({
     else p.delete("sources");
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  };
+  // Sort link builder — preserves every other URL param and just flips
+  // the sort key. Drops the param when picking the default.
+  const setSortHref = (newSort: string): string => {
+    const p = new URLSearchParams();
+    if (search) p.set("q", search);
+    if (validStatus) p.set("status", validStatus);
+    if (sourceSet.size > 0) p.set("sources", Array.from(sourceSet).join(","));
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    if (viewMode === "list") p.set("view", "list");
+    if (newSort !== "recent") p.set("sort", newSort);
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -506,55 +522,80 @@ export default async function CommercialOpportunitiesPage({
         </div>
       )}
 
-      {/* Filter dropdown — Karan 2026-06-16 round 3: collapsed Hot +
-          Stale + By source chips into a single <details> button so the
-          opps surface has ONE filter affordance, matching the accounts
-          page. Active count surfaces on the button label. */}
+      {/* Unified Sort & Filter dropdown — Karan 2026-06-16 round 4:
+          merged the separate Sort picker + Filter chips into ONE
+          button so the opps surface matches the accounts page. URL-
+          driven; active count on the label. */}
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="flex flex-wrap items-center gap-2">
           {(() => {
-            const activeFilterCount = (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size;
+            const activeChipCount = (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size;
+            const sortChanged = sortKey !== "recent";
+            const activeCount = activeChipCount + (sortChanged ? 1 : 0);
+            const currentSortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated";
             return (
               <details className="relative inline-block group">
                 <summary
                   className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
-                    activeFilterCount > 0
+                    activeCount > 0
                       ? "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
                       : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                   }`}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+                    <path d="M3 6h18 M7 12h10 M11 18h2" />
                   </svg>
-                  <span>Filter{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</span>
+                  <span>Sort &amp; Filter{activeCount > 0 ? ` · ${activeCount}` : ""}</span>
                   <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
                 </summary>
-                <div className="absolute mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg p-3 min-w-[300px] space-y-1 max-h-[70vh] overflow-y-auto">
-                  <FilterOption
-                    href={toggleHotHref}
-                    active={hotFilter}
-                    label={`🔥 Hot ($50k+ · <${HOT_DEAL_DECISION_DAYS}d)`}
-                    description={`Bid ≥ $50k, proposal due within ${HOT_DEAL_DECISION_DAYS} days, still in play. The deals to push on this week.`}
-                  />
-                  <FilterOption
-                    href={toggleStaleHref}
-                    active={staleFilter}
-                    label={`Stale > ${STALE_OPP_DAYS}d`}
-                    description={`Open opps with no update (status / note / task / attachment) in over ${STALE_OPP_DAYS} days. Probably needs a follow-up.`}
-                  />
+                <div className="absolute mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg p-3 min-w-[320px] max-h-[70vh] overflow-y-auto">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
+                    Sort by — currently: {currentSortLabel}
+                  </div>
+                  <div className="space-y-1">
+                    {SORT_OPTIONS.map((o) => (
+                      <SortOption
+                        key={o.key}
+                        href={setSortHref(o.key)}
+                        active={sortKey === o.key}
+                        label={o.label}
+                      />
+                    ))}
+                  </div>
+                  <div className="border-t border-ppp-charcoal-100 my-2 pt-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
+                      More filters
+                    </div>
+                    <div className="space-y-1">
+                      <FilterOption
+                        href={toggleHotHref}
+                        active={hotFilter}
+                        label={`🔥 Hot ($50k+ · <${HOT_DEAL_DECISION_DAYS}d)`}
+                        description={`Bid ≥ $50k, proposal due within ${HOT_DEAL_DECISION_DAYS} days, still in play.`}
+                      />
+                      <FilterOption
+                        href={toggleStaleHref}
+                        active={staleFilter}
+                        label={`Stale > ${STALE_OPP_DAYS}d`}
+                        description={`Open opps with no update in over ${STALE_OPP_DAYS} days.`}
+                      />
+                    </div>
+                  </div>
                   <div className="border-t border-ppp-charcoal-100 my-2 pt-2">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
                       By source
                     </div>
-                    {OPPORTUNITY_SOURCES.map((s) => (
-                      <FilterOption
-                        key={s}
-                        href={toggleSourceHref(s)}
-                        active={sourceSet.has(s)}
-                        label={opportunitySourceLabel(s)}
-                        description="How this opportunity came in."
-                      />
-                    ))}
+                    <div className="space-y-1">
+                      {OPPORTUNITY_SOURCES.map((s) => (
+                        <FilterOption
+                          key={s}
+                          href={toggleSourceHref(s)}
+                          active={sourceSet.has(s)}
+                          label={opportunitySourceLabel(s)}
+                          description="How this opportunity came in."
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </details>
@@ -562,13 +603,6 @@ export default async function CommercialOpportunitiesPage({
           })()}
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0">
-          {/* Sort picker — preserves the current URL filters by reading
-              useSearchParams + overriding only the `sort` key. Auto-
-              submits on change, no separate Apply button. */}
-          <CommercialOpportunitiesSortPicker
-            options={SORT_OPTIONS}
-            value={sortKey}
-          />
           <a
             href={exportHref}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation shrink-0"
@@ -887,6 +921,44 @@ function SummaryTile({
       </div>
       <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sublabel}</div>
     </div>
+  );
+}
+
+/** Sort dropdown row — radio-style. Mirrors the accounts-page
+ *  SortOption shape for visual consistency. URL link sets the sort
+ *  key + preserves every other filter on the URL. */
+function SortOption({
+  href,
+  active,
+  label,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
+        active
+          ? "bg-emerald-50 hover:bg-emerald-100"
+          : "hover:bg-ppp-charcoal-50"
+      }`}
+    >
+      <span
+        className={`inline-flex items-center justify-center h-4 w-4 rounded-full border shrink-0 ${
+          active
+            ? "border-emerald-600"
+            : "border-ppp-charcoal-300"
+        }`}
+        aria-hidden
+      >
+        {active && <span className="block h-2 w-2 rounded-full bg-emerald-600" />}
+      </span>
+      <span className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal-700"}`}>
+        {label}
+      </span>
+    </Link>
   );
 }
 

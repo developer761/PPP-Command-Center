@@ -253,6 +253,23 @@ export default async function CommercialAccountsPage({
     const qs = p.toString();
     return qs ? `/commercial/accounts?${qs}` : "/commercial/accounts";
   };
+  // Sort link builder — preserves every other URL param (search, rating,
+  // compliance, chip toggles) and just flips the sort key. Drops the
+  // param entirely when picking the default to keep URLs short.
+  const setSortHref = (newSort: string): string => {
+    const p = new URLSearchParams();
+    if (search) p.set("q", search);
+    if (rating) p.set("rating", rating);
+    if (compliance) p.set("compliance", compliance);
+    if (industry) p.set("industry", industry);
+    if (tagFilter) p.set("tag", tagFilter);
+    if (filterStale) p.set("stale", "1");
+    if (filterExpiring) p.set("expiring", "1");
+    if (filterIssue) p.set("issue", "1");
+    if (newSort !== "created_desc") p.set("sort", newSort);
+    const qs = p.toString();
+    return qs ? `/commercial/accounts?${qs}` : "/commercial/accounts";
+  };
   const anyFilterActive = !!search || !!rating || !!compliance || !!industry || !!tagFilter || filterStale || filterExpiring || filterIssue;
 
   // Export link query string — mirrors the visible list's filters
@@ -400,24 +417,13 @@ export default async function CommercialAccountsPage({
             </select>
           </div>
         )}
-        <div>
-          <label htmlFor="sort" className={LABEL_CLS}>
-            Sort by
-          </label>
-          <select
-            id="sort"
-            name="sort"
-            defaultValue={sort}
-            className={SELECT_CLS}
-            style={SELECT_BG_STYLE}
-          >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Sort + the quick-filter toggles moved OUT of this form into a
+            unified Sort & Filter dropdown below (Karan 2026-06-16 round
+            4). Form now only handles the typed/picked fields that need
+            an explicit Apply step. Sort is a URL link (no form needed).
+            Hidden input preserves sort across Apply so toggling Rating
+            with sort=oldest_first still keeps sort=oldest_first. */}
+        {sort !== "created_desc" && <input type="hidden" name="sort" value={sort} />}
         <button
           type="submit"
           className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation shadow-sm shadow-emerald-600/30 min-h-[44px]"
@@ -456,49 +462,71 @@ export default async function CommercialAccountsPage({
         </div>
       )}
 
-      {/* Filter dropdown — Karan 2026-06-16 round 3: chips were still
-          visible as a separate row, which broke the "one filter UI" goal.
-          Now folded into a single <details> button so the surface has
-          ONE filter affordance. URL-toggle pattern preserved (one click,
-          bookmark-safe). Active count surfaces on the button label so
-          user knows state without opening. */}
+      {/* Unified Sort & Filter dropdown — Karan 2026-06-16 round 4:
+          the separate sort SELECT (in the form above) + standalone
+          Filter button got merged into ONE button. Inside: sort
+          options as radio-style links + filter toggles as checkbox-
+          style links. URL-driven, no client JS needed. */}
       {(() => {
         const activeChipCount = (filterStale ? 1 : 0) + (filterExpiring ? 1 : 0) + (filterIssue ? 1 : 0);
+        const sortChanged = sort !== "created_desc";
+        const activeCount = activeChipCount + (sortChanged ? 1 : 0);
+        const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Most recently updated";
         return (
           <div className="flex items-center gap-2 flex-wrap -mt-1">
             <details className="relative inline-block group">
               <summary
                 className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
-                  activeChipCount > 0
+                  activeCount > 0
                     ? "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
                     : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                 }`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+                  <path d="M3 6h18 M7 12h10 M11 18h2" />
                 </svg>
-                <span>Filter{activeChipCount > 0 ? ` · ${activeChipCount}` : ""}</span>
+                <span>Sort &amp; Filter{activeCount > 0 ? ` · ${activeCount}` : ""}</span>
                 <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
               </summary>
-              <div className="absolute mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg p-3 min-w-[280px] space-y-1">
-                <FilterOption
-                  href={toggleChipHref("stale", filterStale)}
-                  active={filterStale}
-                  label="Stale > 60 days"
-                  description="No update (contact / doc / team / opp) in over 60 days. Worth a follow-up call."
-                />
-                <FilterOption
-                  href={toggleChipHref("expiring", filterExpiring)}
-                  active={filterExpiring}
-                  label="Has expiring docs"
-                  description="At least one active doc set to expire in the next 30 days."
-                />
-                <FilterOption
-                  href={toggleChipHref("issue", filterIssue)}
-                  active={filterIssue}
-                  label="Compliance issue"
-                  description="Flagged red on vendor compliance — paperwork missing or rejected."
-                />
+              <div className="absolute mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg p-3 min-w-[320px] max-h-[70vh] overflow-y-auto">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
+                  Sort by — currently: {currentSortLabel}
+                </div>
+                <div className="space-y-1">
+                  {SORT_OPTIONS.map((o) => (
+                    <SortOption
+                      key={o.value}
+                      href={setSortHref(o.value)}
+                      active={sort === o.value}
+                      label={o.label}
+                    />
+                  ))}
+                </div>
+                <div className="border-t border-ppp-charcoal-100 my-2 pt-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
+                    More filters
+                  </div>
+                  <div className="space-y-1">
+                    <FilterOption
+                      href={toggleChipHref("stale", filterStale)}
+                      active={filterStale}
+                      label="Stale > 60 days"
+                      description="No update (contact / doc / team / opp) in over 60 days. Worth a follow-up call."
+                    />
+                    <FilterOption
+                      href={toggleChipHref("expiring", filterExpiring)}
+                      active={filterExpiring}
+                      label="Has expiring docs"
+                      description="At least one active doc set to expire in the next 30 days."
+                    />
+                    <FilterOption
+                      href={toggleChipHref("issue", filterIssue)}
+                      active={filterIssue}
+                      label="Compliance issue"
+                      description="Flagged red on vendor compliance — paperwork missing or rejected."
+                    />
+                  </div>
+                </div>
               </div>
             </details>
             {anyFilterActive && (
@@ -669,6 +697,45 @@ export default async function CommercialAccountsPage({
         </form>
       )}
     </div>
+  );
+}
+
+/** Sort dropdown row — radio-style. Lives next to FilterOption inside
+ *  the unified Sort & Filter popover. Click sets `?sort=value` and
+ *  navigates; the page re-renders with that sort applied. Active row
+ *  highlights with a filled emerald dot. */
+function SortOption({
+  href,
+  active,
+  label,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
+        active
+          ? "bg-emerald-50 hover:bg-emerald-100"
+          : "hover:bg-ppp-charcoal-50"
+      }`}
+    >
+      <span
+        className={`inline-flex items-center justify-center h-4 w-4 rounded-full border shrink-0 ${
+          active
+            ? "border-emerald-600"
+            : "border-ppp-charcoal-300"
+        }`}
+        aria-hidden
+      >
+        {active && <span className="block h-2 w-2 rounded-full bg-emerald-600" />}
+      </span>
+      <span className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal-700"}`}>
+        {label}
+      </span>
+    </Link>
   );
 }
 
