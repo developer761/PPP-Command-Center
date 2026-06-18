@@ -35,7 +35,15 @@ export async function runOverdueTasksReminder(): Promise<Result> {
   const out: Result = { ok: true, found: 0, sent: 0, skipped: 0, errors: [] };
   try {
     const sb = commercialDb();
-    const nowIso = new Date().toISOString();
+    // due_at is a DATE column (per migration 031). Comparing against a
+    // TIMESTAMPTZ "now" promotes DATE → midnight-UTC, which flags a
+    // task due TODAY as overdue starting 00:00 UTC (= 8pm prev-day ET).
+    // Compare as date-only so "overdue" means strictly the deadline
+    // date has already passed. A task due 2026-06-18 becomes overdue
+    // starting on 2026-06-19, regardless of when the cron actually
+    // fires today. Same fix applied to hot-deals-cooling.ts for
+    // proposal_due_at.
+    const todayDateStr = new Date().toISOString().slice(0, 10);
 
     // Pull all overdue, open, assigned tasks + nested opp + nested acct
     // in one query so the cron stays a single DB round-trip on the read
@@ -53,7 +61,7 @@ export async function runOverdueTasksReminder(): Promise<Result> {
       .not("assigned_user_id", "is", null)
       .is("completed_at", null)
       .is("deleted_at", null)
-      .lt("due_at", nowIso)
+      .lt("due_at", todayDateStr)
       .is("opportunity.deleted_at", null)
       .is("opportunity.account.deleted_at", null);
     if (error) {

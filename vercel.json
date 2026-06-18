@@ -7,7 +7,7 @@
     },
     {
       "path": "/api/cron/commercial-daily",
-      "schedule": "0 13 * * *"
+      "schedule": "0 12 * * *"
     }
   ]
 }

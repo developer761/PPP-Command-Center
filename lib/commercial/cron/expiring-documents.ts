@@ -40,11 +40,11 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
     const now = new Date();
     const windowEnd = new Date(now.getTime() + WARN_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-    // Active docs with expires_at in the warning window, joined to the
-    // parent account so we can filter soft-deleted accounts in-query.
-    // Include expires_at >= now so we don't pester about already-expired
-    // docs every day — the document group view already surfaces those
-    // as "expired" badges. This cron is about UPCOMING expiry.
+    // Active docs with expires_at in the warning window OR already
+    // expired. Past-expiry docs still nag (capped by the 30-day dedup)
+    // because that's when the AM most needs the prod to chase a renewal.
+    // The bell/email copy renders "Expired N days ago" so the assignee
+    // knows the difference.
     const { data, error } = await sb
       .from("commercial_account_documents")
       .select(
@@ -53,7 +53,6 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
       )
       .eq("archived", false)
       .not("expires_at", "is", null)
-      .gte("expires_at", now.toISOString())
       .lte("expires_at", windowEnd.toISOString())
       .is("account.deleted_at", null);
     if (error) {
@@ -77,21 +76,34 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
     if (rows.length === 0) return out;
 
     // Bulk-resolve primary recipients per account_id so we don't fire
-    // an N+1 against the assignments table. Pull every active primary
-    // assignment for the set of accounts in one query, then pick the
-    // best recipient per account.
+    // an N+1 against the assignments table. Join profiles + filter for
+    // is_active=true so an inactive primary never becomes the chosen
+    // recipient (audit fix: previously the doc dead-lettered to an
+    // inactive AM and never fell through to a live teammate).
     const accountIds = Array.from(new Set(rows.map((r) => r.account_id)));
     const { data: assignments } = await sb
       .from("commercial_account_assignments")
-      .select("account_id, user_id, role")
+      .select(
+        "account_id, user_id, role, user:profiles!commercial_account_assignments_user_id_fkey(is_active)"
+      )
       .in("account_id", accountIds)
       .eq("is_primary", true)
       .is("removed_at", null);
-    type Assn = { account_id: string; user_id: string; role: string };
-    const byAccount = new Map<string, Assn[]>();
-    for (const a of (assignments ?? []) as Assn[]) {
+    type Assn = {
+      account_id: string;
+      user_id: string;
+      role: string;
+      user:
+        | { is_active: boolean | null }
+        | Array<{ is_active: boolean | null }>
+        | null;
+    };
+    const byAccount = new Map<string, Array<{ user_id: string; role: string }>>();
+    for (const a of (assignments ?? []) as unknown as Assn[]) {
+      const u = Array.isArray(a.user) ? a.user[0] ?? null : a.user;
+      if (u?.is_active === false) continue; // skip deactivated primaries
       const list = byAccount.get(a.account_id) ?? [];
-      list.push(a);
+      list.push({ user_id: a.user_id, role: a.role });
       byAccount.set(a.account_id, list);
     }
 

@@ -11,11 +11,10 @@ import { runHotDealsCoolingReminder } from "@/lib/commercial/cron/hot-deals-cool
  * /api/cron/snapshot-warm). Vercel cron auto-injects this header when
  * the env var is set.
  *
- * Schedule (vercel.json): `0 13 * * *` — 13:00 UTC = 8am US Eastern
- * during DST, 9am Eastern outside DST. Karan picked early morning so
- * reminders land in the inbox before the workday starts, and so all
- * three jobs share a single cron quota slot (Vercel Pro caps at 40
- * crons total).
+ * Schedule (vercel.json): `0 12 * * *` — 12:00 UTC year-round. That's
+ * 8am EDT (summer) / 7am EST (winter) so the reminder lands BEFORE
+ * Alex's first call of the day regardless of DST. All three jobs share
+ * one cron slot (Vercel Pro caps at 40 crons total).
  *
  * Architecture:
  *   - Each job is its own pure function in lib/commercial/cron/.
@@ -23,10 +22,12 @@ import { runHotDealsCoolingReminder } from "@/lib/commercial/cron/hot-deals-cool
  *     via Promise.allSettled → aggregate counts + errors → return JSON.
  *   - `allSettled` so a transient failure on one job doesn't stop the
  *     other two (e.g. document query fails but overdue tasks fire).
- *   - The route always returns 200 if SOME work happened; 500 only on
- *     the auth failure or a total wipe-out. Vercel cron retries on
- *     non-200 — keeping us at 200 prevents double-fire on partial
- *     success.
+ *   - Returns 200 on partial or full success (some sends happened or
+ *     nothing was due). Returns 500 only when ALL THREE jobs reported
+ *     ok:false AND nothing was sent — that's a real outage worth
+ *     paging on. Vercel cron retries non-200 with exponential backoff;
+ *     dedup windows make re-fires safe so a 500 → retry chain
+ *     auto-recovers when the underlying issue clears.
  *
  * Notification dedup is per-job (24h tasks / 30d docs / 7d hot-deals)
  * so re-runs from a Vercel retry or manual hit are safe — the bell
@@ -83,7 +84,7 @@ export async function GET(request: Request) {
   const totalErrors = tasks.errors.length + docs.errors.length + hot.errors.length;
 
   console.log(
-    `[cron/commercial-daily] ${durationMs}ms — found ${totalFound} (tasks=${tasks.found} docs=${docs.found} hot=${hot.found}) · sent ${totalSent} · skipped ${totalSkipped} · errors ${totalErrors}`
+    `[cron/commercial-daily] ${durationMs}ms — found ${totalFound} (tasks=${tasks.found} docs=${docs.found} hot=${hot.found}) · sent ${totalSent} · skipped ${totalSkipped} · errors ${totalErrors} · ok=t/${tasks.ok}/d/${docs.ok}/h/${hot.ok}`
   );
   if (totalErrors > 0) {
     console.warn(
@@ -91,17 +92,31 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    durationMs,
-    summary: {
-      found: totalFound,
-      sent: totalSent,
-      skipped: totalSkipped,
-      errorCount: totalErrors,
+  // Wipe-out detection: every job reported ok=false AND nothing was sent.
+  // That means SELECT failed across the board (e.g. Supabase down) and
+  // not a single notification landed. Worth returning 500 so Vercel cron
+  // retries + so monitoring (Datadog Vercel logs) can page on it. A
+  // partial failure (one job ok=false, others ok=true) stays 200 so a
+  // single Supabase blip on one query doesn't trigger noisy retries that
+  // would re-attempt the already-successful jobs.
+  const totalWipeout = !tasks.ok && !docs.ok && !hot.ok && totalSent === 0;
+  const status = totalWipeout ? 500 : 200;
+
+  return NextResponse.json(
+    {
+      ok: !totalWipeout,
+      degraded: !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok),
+      durationMs,
+      summary: {
+        found: totalFound,
+        sent: totalSent,
+        skipped: totalSkipped,
+        errorCount: totalErrors,
+      },
+      tasks,
+      documents: docs,
+      hotDeals: hot,
     },
-    tasks,
-    documents: docs,
-    hotDeals: hot,
-  });
+    { status }
+  );
 }

@@ -48,9 +48,18 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
     const sb = commercialDb();
     const now = new Date();
     const coolingCutoff = new Date(now.getTime() - COOLING_DAYS * 24 * 60 * 60 * 1000);
-    const decisionWindowEnd = new Date(
+    // proposal_due_at is a DATE column (per migration 028). Compare as
+    // date-only so a 2026-06-18 proposal_due_at vs 2026-06-18 TIMESTAMPTZ
+    // doesn't silently skip "due today" hot deals (the DATE promotes to
+    // midnight UTC). Also: NO lower bound on proposal_due_at — past-due
+    // hot deals are EXACTLY the cohort that needs the nudge, so we want
+    // them included. Upper bound = today + 14 days = "decision is
+    // imminent OR overdue."
+    const decisionWindowEndDateStr = new Date(
       now.getTime() + HOT_DEAL_DECISION_DAYS * 24 * 60 * 60 * 1000
-    );
+    )
+      .toISOString()
+      .slice(0, 10);
 
     // Pull hot+cooling candidates in one query. Active status set, value
     // gate, decision window, staleness gate, and parent-account-alive
@@ -64,8 +73,7 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
       .in("status", HOT_DEAL_ACTIVE_STATUSES as readonly string[])
       .gte("bid_value_high_cents", HOT_DEAL_BID_CENTS)
       .not("proposal_due_at", "is", null)
-      .lte("proposal_due_at", decisionWindowEnd.toISOString())
-      .gte("proposal_due_at", now.toISOString())
+      .lte("proposal_due_at", decisionWindowEndDateStr)
       .lt("updated_at", coolingCutoff.toISOString())
       .is("deleted_at", null)
       .is("account.deleted_at", null);
@@ -88,17 +96,31 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
     out.found = rows.length;
     if (rows.length === 0) return out;
 
-    // Bulk recipient resolution — primaries on each opp.
+    // Bulk recipient resolution — primaries on each opp. Join profiles
+    // + filter is_active so a deactivated primary doesn't dead-letter
+    // the alert. Falls through to the opp's created_by_user_id if there
+    // is no live primary, with the same active check below.
     const oppIds = rows.map((r) => r.id);
     const { data: assignments } = await sb
       .from("commercial_opportunity_assignments")
-      .select("opportunity_id, user_id")
+      .select(
+        "opportunity_id, user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(is_active)"
+      )
       .in("opportunity_id", oppIds)
       .eq("is_primary", true)
       .is("removed_at", null);
-    type Assn = { opportunity_id: string; user_id: string };
+    type Assn = {
+      opportunity_id: string;
+      user_id: string;
+      user:
+        | { is_active: boolean | null }
+        | Array<{ is_active: boolean | null }>
+        | null;
+    };
     const primaryByOpp = new Map<string, string>();
-    for (const a of (assignments ?? []) as Assn[]) {
+    for (const a of (assignments ?? []) as unknown as Assn[]) {
+      const u = Array.isArray(a.user) ? a.user[0] ?? null : a.user;
+      if (u?.is_active === false) continue;
       // First-wins is fine — if there are multiple primaries we pick
       // any (the data shouldn't allow it via unique-partial-index, but
       // even if it did, "alert one" is better than "fan out to many").
@@ -107,8 +129,37 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
       }
     }
 
+    // Pre-fetch is_active for fallback candidates (created_by_user_id)
+    // so we don't end up alerting a long-deactivated rep. One query for
+    // every fallback candidate at once.
+    const fallbackUserIds = Array.from(
+      new Set(
+        rows
+          .filter((r) => !primaryByOpp.has(r.id) && r.created_by_user_id)
+          .map((r) => r.created_by_user_id!)
+      )
+    );
+    const activeFallbacks = new Set<string>();
+    if (fallbackUserIds.length > 0) {
+      const { data: profiles } = await sb
+        .from("profiles")
+        .select("user_id, is_active")
+        .in("user_id", fallbackUserIds);
+      for (const p of (profiles ?? []) as Array<{
+        user_id: string;
+        is_active: boolean | null;
+      }>) {
+        if (p.is_active !== false) activeFallbacks.add(p.user_id);
+      }
+    }
+
     for (const r of rows) {
-      const recipient = primaryByOpp.get(r.id) ?? r.created_by_user_id;
+      const primary = primaryByOpp.get(r.id);
+      const fallback =
+        r.created_by_user_id && activeFallbacks.has(r.created_by_user_id)
+          ? r.created_by_user_id
+          : null;
+      const recipient = primary ?? fallback;
       if (!recipient) {
         out.skipped += 1;
         continue;
