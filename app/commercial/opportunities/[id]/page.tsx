@@ -63,6 +63,7 @@ import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
 import InfoDot from "@/components/info-dot";
+import EmailArchiveTab from "@/components/commercial/email-archive-tab";
 
 export const dynamic = "force-dynamic";
 
@@ -391,6 +392,7 @@ const TABS = [
   { key: "plans", label: "Plans & Specs" },
   { key: "notes", label: "Notes" },
   { key: "tasks", label: "Tasks" },
+  { key: "email", label: "Email" },
   { key: "timeline", label: "Timeline" },
 ] as const;
 
@@ -405,12 +407,7 @@ export default async function OpportunityDetailPage({
   if (!UUID_RE.test(id)) notFound();
   const sp = await searchParams;
   const tab = (sp.tab && TABS.some((t) => t.key === sp.tab) ? sp.tab : "info") as
-    | "info"
-    | "team"
-    | "plans"
-    | "notes"
-    | "tasks"
-    | "timeline";
+    (typeof TABS)[number]["key"];
 
   const opp = await getCommercialOpportunity(id);
   if (!opp) notFound();
@@ -554,6 +551,7 @@ export default async function OpportunityDetailPage({
       {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "plans" && <PlansTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "email" && <EmailArchiveTab kind="opp" sourceId={opp.id} />}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
     </div>
   );

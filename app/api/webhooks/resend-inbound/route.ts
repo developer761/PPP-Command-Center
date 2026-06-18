@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import {
+  processInboundArchive,
+  type InboundPayload as ArchivePayload,
+} from "@/lib/commercial/email-archive/inbound";
 
 /**
  * Resend inbound webhook — receives every email sent to
@@ -141,6 +145,43 @@ export async function POST(request: Request) {
   if (!data) {
     // Resend sends test pings — return 200 so the dashboard shows "verified"
     return NextResponse.json({ ok: true, ignored: "no_data" });
+  }
+
+  // Stage 2 — BCC archive routing. Before the existing customer-form /
+  // supplier-order threading, check whether ANY recipient on this email
+  // matches the commercial archive address shape (HMAC-verified). If yes,
+  // we archive the email against the resolved opp/account and STOP —
+  // archive emails don't belong in inbox_messages. If no, fall through to
+  // the existing handling so customer-form replies + supplier responses
+  // still thread correctly.
+  const archiveResult = await processInboundArchive(data as unknown as ArchivePayload);
+  if (archiveResult.matched.length > 0) {
+    if (!archiveResult.ok) {
+      console.warn(
+        `[resend-inbound] archive errors: ${JSON.stringify(archiveResult.errors)}`
+      );
+    }
+    return NextResponse.json({
+      ok: archiveResult.ok,
+      routed: "commercial_archive",
+      matched: archiveResult.matched.map((m) => ({
+        kind: m.kind,
+        source_id_short: m.source_id.slice(0, 8),
+        archived: m.archived_id !== null,
+      })),
+      skipped: archiveResult.skipped,
+      errors: archiveResult.errors,
+    });
+  }
+  if (archiveResult.skipped.length > 0) {
+    // No matched archive recipients but at least one looked like an
+    // archive address (e.g. HMAC mismatch / source not found). Log it
+    // so we can catch typos / forgery attempts, then fall through to
+    // the existing flow so other recipients on the same email still
+    // route to inbox_messages if they match.
+    console.warn(
+      `[resend-inbound] archive skipped (no match landed): ${JSON.stringify(archiveResult.skipped)}`
+    );
   }
 
   const fromEmail = data.from?.email ?? null;

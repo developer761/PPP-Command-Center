@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import EmailArchiveTab from "@/components/commercial/email-archive-tab";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
@@ -104,6 +105,7 @@ const TABS = [
   { key: "contacts", label: "Contacts" },
   { key: "opportunities", label: "Opportunities" },
   { key: "documents", label: "Documents" },
+  { key: "email", label: "Email" },
   { key: "performance", label: "Performance" },
 ] as const;
 
@@ -119,12 +121,7 @@ export default async function CommercialAccountDetailPage({
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const sp = await searchParams;
   const tab = (sp.tab && TABS.some((t) => t.key === sp.tab) ? sp.tab : "info") as
-    | "info"
-    | "team"
-    | "contacts"
-    | "opportunities"
-    | "documents"
-    | "performance";
+    (typeof TABS)[number]["key"];
 
   const account = await getCommercialAccount(id);
   if (!account) notFound();
@@ -286,6 +283,7 @@ export default async function CommercialAccountDetailPage({
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "opportunities" && <OpportunitiesTab accountId={account.id} overview={overview} />}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
+      {tab === "email" && <EmailArchiveTab kind="acc" sourceId={account.id} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
     </div>
   );
