@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import { resolveViewer } from "@/lib/auth/viewer-server";
 import {
   isArchiveConfigured,
   buildArchiveAddress,
@@ -10,41 +12,36 @@ import {
  * Stage 2 health check — single-shot proof that the BCC archive feature
  * is fully wired up for production:
  *
- *   1. Migration 036 applied (commercial_archived_emails table exists +
- *      has the expected columns)
+ *   1. Migration 036 applied (commercial_archived_emails table exists)
  *   2. Storage bucket commercial-email-attachments exists (private,
  *      ≤25 MB cap)
- *   3. COMMERCIAL_ARCHIVE_HMAC_SECRET env var is set (≥16 chars) and
+ *   3. COMMERCIAL_ARCHIVE_HMAC_SECRET env var is set (≥32 chars) and
  *      the build helper can produce a valid address
  *
- * Admin-only — calls resolveViewer + refuses non-admins. Returns a flat
- * JSON the caller can eyeball or pipe into jq.
+ * Admin-only — uses the same auth pattern as /api/admin/health.
  *
  *   GET /api/admin/stage2-health
  *     → 200 { ok: true, ... } when everything's green
  *     → 200 { ok: false, ... } with per-check diagnostics otherwise
  *     → 401 when not signed in / 403 when not admin
- *
- * Designed to be hit ONCE after deploying Stage 2 + applying the
- * migration + creating the bucket. Safe to keep in the repo permanently
- * as a regression-watch tool.
  */
+
+export const dynamic = "force-dynamic";
 
 const STAGE2_BUCKET = "commercial-email-attachments";
 const STAGE2_MAX_BYTES = 25 * 1024 * 1024;
 
-export async function GET(request: Request) {
-  // resolveViewer expects the parsed searchParams record, not the URL.
-  const url = new URL(request.url);
-  const sp: Record<string, string> = {};
-  url.searchParams.forEach((v, k) => {
-    sp[k] = v;
-  });
-  const viewer = await resolveViewer(sp);
-  if (!viewer) {
+export async function GET() {
+  // ── Auth gate — match the existing /api/admin/health pattern ──
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
-  if (!viewer.isAdmin) {
+  const profile = await getProfileByUserId(auth.user.id);
+  const email = (profile?.email ?? auth.user.email ?? "").toLowerCase();
+  const isAdmin = (profile?.is_admin ?? false) || isAdminEmail(email);
+  if (!isAdmin) {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 
@@ -54,11 +51,7 @@ export async function GET(request: Request) {
     { auth: { persistSession: false, autoRefreshToken: false } }
   );
 
-  // ── 1. Migration 036 — table exists + key columns + dedup index ──
-  // We don't query pg_catalog (some hosted Supabase setups restrict
-  // it from the service role). Instead we issue a HEAD-equivalent
-  // count against the table — if it errors with relation_does_not_exist
-  // (42P01), migration 036 hasn't run.
+  // ── 1. Migration 036 — table exists ──
   let migration: { ok: boolean; detail: string };
   try {
     const { error } = await sb
@@ -67,7 +60,7 @@ export async function GET(request: Request) {
     if (error) {
       migration = {
         ok: false,
-        detail: `query failed: ${error.code ?? "?"} ${error.message}`,
+        detail: `table query failed: ${error.code ?? "?"} ${error.message}`,
       };
     } else {
       migration = { ok: true, detail: "commercial_archived_emails responds to select" };
@@ -80,8 +73,6 @@ export async function GET(request: Request) {
   }
 
   // ── 2. Storage bucket — exists + private + ≤25 MB cap ──
-  // listBuckets requires service-role; we filter by id and inspect public
-  // + file_size_limit attributes. Doesn't read any contents.
   let bucket: {
     ok: boolean;
     exists: boolean;
@@ -102,8 +93,6 @@ export async function GET(request: Request) {
           detail: `bucket "${STAGE2_BUCKET}" not found — create it in Supabase UI`,
         };
       } else {
-        // Supabase storage TypeScript types vary across versions on these
-        // fields. Pull what's there via a narrow cast.
         const b = found as unknown as {
           public?: boolean;
           file_size_limit?: number | null;
