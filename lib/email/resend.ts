@@ -20,7 +20,7 @@ type ResendSendInput = {
   text: string;
   /** HTML body. Optional — Resend handles plain-text if not provided. */
   html?: string;
-  /** From address override. Defaults to RESEND_FROM_ADDRESS. */
+  /** From address override. Defaults to channel-specific env var. */
   from?: string;
   /** Reply-To. Used for vendor emails so vendor replies hit the rep's inbox. */
   replyTo?: string | string[];
@@ -28,6 +28,27 @@ type ResendSendInput = {
   bcc?: string | string[];
   /** Useful for grouping in Resend dashboard + future webhooks. */
   tags?: Array<{ name: string; value: string }>;
+  /**
+   * Sender channel — picks the API key + default From address pair.
+   *
+   * - "customer" (default): customer-facing transactional email
+   *   (color-form invites, supplier orders, vendor notifications).
+   *   Reads RESEND_API_KEY + RESEND_FROM_ADDRESS.
+   *   Today: orders@orders.precisionpaintingplus.net.
+   *
+   * - "commercial": INTERNAL team notifications for the Commercial CC
+   *   (team-add, task-assigned, status-changed, win/loss debrief, etc.).
+   *   Reads COMMERCIAL_RESEND_API_KEY + COMMERCIAL_RESEND_FROM_ADDRESS.
+   *   Falls back to the customer envs if the commercial ones aren't
+   *   set — so existing deploys keep working until Karan finishes the
+   *   commercial subdomain setup. Once the new domain + key are added
+   *   to Vercel, commercial emails automatically separate.
+   *
+   * Why two channels? Deliverability isolation — a customer marking a
+   * team-add email as spam can't tank the customer-form-invite domain
+   * reputation, and vice versa. Suppression lists stay separate.
+   */
+  channel?: "customer" | "commercial";
 };
 
 type ResendSendResult =
@@ -50,10 +71,22 @@ const RESEND_API_URL = "https://api.resend.com/emails";
  * banner to the admin.
  */
 export async function sendEmail(input: ResendSendInput): Promise<ResendSendResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const defaultFrom = process.env.RESEND_FROM_ADDRESS;
+  // Channel routing — picks the right API key + From address.
+  // Commercial path falls back to customer envs if commercial-specific
+  // ones aren't configured yet, so existing deploys keep working until
+  // Karan finishes setting up the commercial subdomain in Resend +
+  // Vercel. Once those land, commercial emails automatically separate.
+  const channel = input.channel ?? "customer";
+  const apiKey =
+    channel === "commercial"
+      ? (process.env.COMMERCIAL_RESEND_API_KEY || process.env.RESEND_API_KEY)
+      : process.env.RESEND_API_KEY;
+  const defaultFrom =
+    channel === "commercial"
+      ? (process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS)
+      : process.env.RESEND_FROM_ADDRESS;
   if (!apiKey) {
-    const msg = "RESEND_API_KEY not set — cannot send email";
+    const msg = `${channel === "commercial" ? "COMMERCIAL_RESEND_API_KEY (or RESEND_API_KEY)" : "RESEND_API_KEY"} not set — cannot send email`;
     if (process.env.NODE_ENV !== "production") throw new Error(msg);
     return { ok: false, error: msg };
   }
@@ -62,9 +95,18 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
     return {
       ok: false,
       error:
-        "No sender — set RESEND_FROM_ADDRESS env var or pass input.from explicitly",
+        channel === "commercial"
+          ? "No sender — set COMMERCIAL_RESEND_FROM_ADDRESS (or RESEND_FROM_ADDRESS) env var or pass input.from explicitly"
+          : "No sender — set RESEND_FROM_ADDRESS env var or pass input.from explicitly",
     };
   }
+
+  // Auto-tag every send with its channel so the Resend dashboard can
+  // filter "commercial only" vs "customer only" without each caller
+  // having to remember to add it. Channel tag is appended to whatever
+  // tags the caller already passed.
+  const channelTag = { name: "channel", value: channel };
+  const finalTags = input.tags ? [...input.tags, channelTag] : [channelTag];
 
   const body = {
     from,
@@ -77,7 +119,7 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
       : {}),
     ...(input.cc ? { cc: Array.isArray(input.cc) ? input.cc : [input.cc] } : {}),
     ...(input.bcc ? { bcc: Array.isArray(input.bcc) ? input.bcc : [input.bcc] } : {}),
-    ...(input.tags ? { tags: input.tags } : {}),
+    tags: finalTags,
   };
 
   try {

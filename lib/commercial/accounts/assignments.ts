@@ -424,6 +424,9 @@ async function notifyAssignment(
     subject: `You've been assigned to ${accountName} (${roleLabel})`,
     text,
     html,
+    // Route through the commercial sender + API key (separate
+    // deliverability reputation from customer-facing emails).
+    channel: "commercial",
     tags: [
       { name: "kind", value: "commercial_account_assignment" },
       { name: "assignment_id", value: assignment_id },

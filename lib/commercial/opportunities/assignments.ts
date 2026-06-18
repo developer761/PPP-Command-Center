@@ -392,6 +392,9 @@ async function notifyAssignment(
     subject: `${subjectVerb} (${roleLabel})`,
     text,
     html,
+    // Commercial channel — separate sender domain + Resend key from
+    // customer-facing email so deliverability reputations stay isolated.
+    channel: "commercial",
     tags: [
       { name: "kind", value: "commercial_opportunity_assignment" },
       { name: "assignment_id", value: assignment_id },
