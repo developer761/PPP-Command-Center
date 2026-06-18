@@ -147,42 +147,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "no_data" });
   }
 
-  // Stage 2 — BCC archive routing. Before the existing customer-form /
-  // supplier-order threading, check whether ANY recipient on this email
-  // matches the commercial archive address shape (HMAC-verified). If yes,
-  // we archive the email against the resolved opp/account and STOP —
-  // archive emails don't belong in inbox_messages. If no, fall through to
-  // the existing handling so customer-form replies + supplier responses
-  // still thread correctly.
+  // Stage 2 — BCC archive routing. Run BEFORE the existing customer-
+  // form/supplier-order threading + log matches. Audit fix 2026-06-18:
+  // do NOT short-circuit on archive match. A real email can legitimately
+  // hit BOTH surfaces (e.g. Alex forwards a supplier reply AND BCCs the
+  // archive). The customer-form / supplier-order threading must still
+  // run so that reply still lands in inbox_messages. Idempotency on
+  // inbox_messages.resend_message_id prevents double-thread; archive
+  // dedup happens via its own UNIQUE on (source_kind, source_id,
+  // message_id).
   const archiveResult = await processInboundArchive(data as unknown as ArchivePayload);
-  if (archiveResult.matched.length > 0) {
-    if (!archiveResult.ok) {
-      console.warn(
-        `[resend-inbound] archive errors: ${JSON.stringify(archiveResult.errors)}`
-      );
-    }
-    return NextResponse.json({
-      ok: archiveResult.ok,
-      routed: "commercial_archive",
-      matched: archiveResult.matched.map((m) => ({
-        kind: m.kind,
-        source_id_short: m.source_id.slice(0, 8),
-        archived: m.archived_id !== null,
-      })),
-      skipped: archiveResult.skipped,
-      errors: archiveResult.errors,
-    });
-  }
-  if (archiveResult.skipped.length > 0) {
-    // No matched archive recipients but at least one looked like an
-    // archive address (e.g. HMAC mismatch / source not found). Log it
-    // so we can catch typos / forgery attempts, then fall through to
-    // the existing flow so other recipients on the same email still
-    // route to inbox_messages if they match.
+  if (!archiveResult.ok && archiveResult.errors.length > 0) {
     console.warn(
-      `[resend-inbound] archive skipped (no match landed): ${JSON.stringify(archiveResult.skipped)}`
+      `[resend-inbound] archive errors: ${JSON.stringify(archiveResult.errors)}`
     );
   }
+  if (archiveResult.skipped.length > 0) {
+    // HMAC mismatch / source not found / etc — log for forensics.
+    console.warn(
+      `[resend-inbound] archive skipped: ${JSON.stringify(archiveResult.skipped)}`
+    );
+  }
+  // Don't return early: continue into the existing customer-form /
+  // supplier threading flow so an email that's BOTH a supplier reply
+  // AND archived still lands in inbox_messages. The two storage paths
+  // are independent on purpose.
 
   const fromEmail = data.from?.email ?? null;
   if (!fromEmail) {
@@ -291,7 +280,27 @@ export async function POST(request: Request) {
     }
   }
 
-  // ── Insert ──
+  // ── Insert into inbox_messages ──
+  // Audit fix 2026-06-18: when the archive already captured this email
+  // (matched > 0) AND threading didn't tie it to a real supplier order or
+  // customer form, skip the unmatched-bucket insert. The archive owns the
+  // record; an extra unmatched row in inbox_messages is just noise that
+  // pollutes the Mail Hub triage queue. Threading matches DO still insert
+  // because the supplier/customer flow needs the row even when the email
+  // was also archived.
+  if (archiveResult.matched.length > 0 && kind === "unmatched") {
+    return NextResponse.json({
+      ok: true,
+      routed: "commercial_archive_only",
+      matched: archiveResult.matched.map((m) => ({
+        kind: m.kind,
+        source_id_short: m.source_id.slice(0, 8),
+        archived: m.archived_id !== null,
+      })),
+      skipped: archiveResult.skipped,
+    });
+  }
+
   const { error: insertErr } = await sb
     .from("inbox_messages")
     .insert({

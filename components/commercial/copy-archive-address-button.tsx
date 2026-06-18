@@ -55,7 +55,7 @@ export default function CopyArchiveAddressButton({
         type="button"
         onClick={onCopy}
         aria-label={`Copy archive address ${address}`}
-        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-semibold hover:bg-ppp-blue-50 hover:border-ppp-blue-200 active:bg-ppp-blue-100 transition-colors touch-manipulation min-h-[44px] shrink-0 max-w-full"
+        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-700 active:bg-ppp-blue-800 transition-colors touch-manipulation min-h-[44px] shrink-0"
       >
         <svg
           width="16"
@@ -78,10 +78,14 @@ export default function CopyArchiveAddressButton({
             </>
           )}
         </svg>
-        <span className="font-mono text-xs sm:text-sm truncate min-w-0">
-          {copied ? "Copied!" : address}
-        </span>
+        <span>{copied ? "Copied!" : "Copy archive address"}</span>
       </button>
+      {/* Address text under the button — readable, selectable, and obvious
+          which opp/account it points to. break-all so the address wraps
+          on mobile instead of pushing horizontal scroll. */}
+      <p className="font-mono text-[11px] sm:text-xs text-ppp-charcoal-600 break-all leading-relaxed">
+        {address}
+      </p>
       {fallback && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs text-amber-900 mb-2">
@@ -92,7 +96,10 @@ export default function CopyArchiveAddressButton({
             readOnly
             value={address}
             onFocus={(e) => e.currentTarget.select()}
-            className="w-full font-mono text-xs px-3 py-2.5 rounded border border-amber-300 bg-white text-ppp-charcoal min-h-[44px]"
+            // text-base (16px) prevents iOS Safari from auto-zooming when
+            // the input receives focus — text-xs would zoom and not zoom
+            // back.
+            className="w-full font-mono text-base px-3 py-2.5 rounded border border-amber-300 bg-white text-ppp-charcoal min-h-[44px]"
           />
         </div>
       )}

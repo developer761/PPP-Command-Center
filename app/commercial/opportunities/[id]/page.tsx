@@ -388,11 +388,17 @@ async function deleteNoteAction(formData: FormData) {
 
 const TABS = [
   { key: "info", label: "Info" },
+  // Email promoted to position 2 (audit fix 2026-06-18): on a 375px
+  // iPhone with 7 tabs in an overflow-x-auto bar, the rightmost tabs
+  // were below the visible fold and Alex never discovered them.
+  // Email is the top-3 daily-use surface once the BCC archive is
+  // adopted; positioning it right after Info makes it visible in the
+  // first 130px of the scroll.
+  { key: "email", label: "Email" },
   { key: "team", label: "Team" },
   { key: "plans", label: "Plans & Specs" },
   { key: "notes", label: "Notes" },
   { key: "tasks", label: "Tasks" },
-  { key: "email", label: "Email" },
   { key: "timeline", label: "Timeline" },
 ] as const;
 

@@ -4,6 +4,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
 import {
   parseArchiveRecipient,
   verifyArchiveHmac,
+  extractEmail,
   type ArchiveKind,
 } from "./address";
 import { resolveSourceShortId } from "./db";
@@ -63,7 +64,9 @@ function adminClient() {
   );
 }
 
-/** Flatten the recipient arrays Resend can return in either shape. */
+/** Flatten the recipient arrays Resend can return in either shape +
+ *  strip display-name + angle-bracket wrappers via extractEmail so
+ *  `"Alex" <a@b>` parses correctly. */
 function recipientEmails(
   list: Array<{ email?: string }> | string[] | undefined
 ): string[] {
@@ -71,7 +74,8 @@ function recipientEmails(
   return list
     .map((r) => (typeof r === "string" ? r : r?.email ?? null))
     .filter((s): s is string => !!s)
-    .map((s) => s.toLowerCase().trim());
+    .map((s) => extractEmail(s))
+    .filter((s) => s.length > 0);
 }
 
 /** Sender on a PPP domain? Used for the classification badge. */

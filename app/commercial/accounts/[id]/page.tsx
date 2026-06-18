@@ -101,11 +101,14 @@ type SP = Promise<{
 
 const TABS = [
   { key: "info", label: "Info" },
+  // Email promoted to position 2 (audit fix 2026-06-18): on 375px the
+  // rightmost tabs were below the fold + Alex wasn't discovering them.
+  // See lib comment in opp detail page for the same rationale.
+  { key: "email", label: "Email" },
   { key: "team", label: "Team" },
   { key: "contacts", label: "Contacts" },
   { key: "opportunities", label: "Opportunities" },
   { key: "documents", label: "Documents" },
-  { key: "email", label: "Email" },
   { key: "performance", label: "Performance" },
 ] as const;
 

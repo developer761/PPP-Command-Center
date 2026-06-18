@@ -142,10 +142,10 @@ function EmailCard({ email }: { email: ArchivedEmail }) {
             <h4 className="text-sm sm:text-base font-semibold text-ppp-charcoal leading-snug break-words">
               {email.subject || "(no subject)"}
             </h4>
-            <p className="mt-1 text-xs text-ppp-charcoal-600 break-all">
+            <p className="mt-1 text-xs text-ppp-charcoal-600 break-words">
               <span className="font-medium">From:</span> {senderLabel}
             </p>
-            <p className="mt-0.5 text-xs text-ppp-charcoal-500 break-all">
+            <p className="mt-0.5 text-xs text-ppp-charcoal-500 break-words">
               <span className="font-medium">To:</span> {recipientsLabel}
             </p>
           </div>
@@ -202,11 +202,18 @@ function EmailCard({ email }: { email: ArchivedEmail }) {
               <summary className="px-3 py-2.5 cursor-pointer touch-manipulation text-xs font-medium text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[44px] flex items-center">
                 Show HTML view (sanitized)
               </summary>
+              {/* overflow-x-auto + image/table max-width guards keep
+                  600px-wide marketing emails from blowing horizontal
+                  scroll on a 375px iPhone. arbitrary-class variants force
+                  inline-styled <img>/<table> elements to respect the
+                  container width. */}
               <div
-                className="px-3 pb-3 pt-1 text-sm bg-white border-t border-ppp-charcoal-100"
+                className="px-3 pb-3 pt-1 text-sm bg-white border-t border-ppp-charcoal-100 overflow-x-auto max-w-full [&_img]:max-w-full [&_img]:h-auto [&_table]:max-w-full"
                 // Server-side sanitization strips script/iframe/style/on-*
-                // handlers + javascript:/data:/vbscript: URLs before storing.
-                // See lib/commercial/email-archive/sanitize.ts.
+                // handlers + javascript:/data:/vbscript: URLs (with HTML-
+                // entity decoding so `java&#x09;script:` is caught too) +
+                // ALL inline `style="…"` attributes before storing. See
+                // lib/commercial/email-archive/sanitize.ts.
                 dangerouslySetInnerHTML={{ __html: email.body_html }}
               />
             </details>
@@ -284,7 +291,7 @@ function ClassificationBadge({
   };
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${styles[value]}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${styles[value]}`}
     >
       {labels[value]}
     </span>

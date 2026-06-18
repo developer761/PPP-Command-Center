@@ -53,6 +53,32 @@ const DANGEROUS_TAGS = [
 
 const DANGEROUS_URL_PROTOCOLS = /^(javascript|data|vbscript|file):/i;
 
+/** Decode HTML entities + strip leading control chars before testing a
+ *  URL against DANGEROUS_URL_PROTOCOLS. Closes the
+ *  `href="java&#x09;script:alert(1)"` bypass — browsers normalize the
+ *  entity-decoded value when parsing the link, but a naive regex on
+ *  the raw attribute would miss it. */
+function normalizeUrlAttr(raw: string): string {
+  return raw
+    // Decode named entities + numeric refs that browsers honor in URL contexts.
+    .replace(/&(?:amp|AMP);/g, "&")
+    .replace(/&(?:colon|COLON);/g, ":")
+    .replace(/&(?:Tab|tab|TAB|NewLine);/g, " ")
+    .replace(/&(?:nbsp|NBSP);/g, " ")
+    .replace(/&#x([0-9a-fA-F]+);?/g, (_m, hex) => {
+      const n = parseInt(hex, 16);
+      return Number.isFinite(n) && n < 0x110000 ? String.fromCodePoint(n) : "";
+    })
+    .replace(/&#([0-9]+);?/g, (_m, dec) => {
+      const n = parseInt(dec, 10);
+      return Number.isFinite(n) && n < 0x110000 ? String.fromCodePoint(n) : "";
+    })
+    // Strip leading whitespace + ASCII control chars that browsers ignore
+    // when resolving the scheme.
+    .replace(/^[\s\x00-\x1f]+/, "")
+    .trim();
+}
+
 /**
  * Strip dangerous content from an HTML email body. Returns the
  * sanitized HTML (still styled, still images, still links) or empty
@@ -87,22 +113,34 @@ export function sanitizeEmailHtml(html: string | null | undefined): string {
   out = out.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, "");
 
   // 3. Neutralize dangerous URL protocols in href + src + xlink:href.
+  //    Entity-decode the value first so `java&#x09;script:` (with embedded
+  //    tab) doesn't slip past the protocol regex — browsers decode entities
+  //    AND normalize whitespace inside the scheme when resolving the link.
   out = out.replace(
     /\s(href|src|xlink:href)\s*=\s*("([^"]*)"|'([^']*)')/gi,
     (_full, attr, _quotedWhole, dqVal, sqVal) => {
-      const val = (dqVal ?? sqVal ?? "").trim();
-      if (DANGEROUS_URL_PROTOCOLS.test(val)) {
+      const raw = (dqVal ?? sqVal ?? "");
+      const normalized = normalizeUrlAttr(raw);
+      if (DANGEROUS_URL_PROTOCOLS.test(normalized)) {
         return ` ${attr}="#"`;
       }
-      // Re-quote in double quotes for consistency
-      return ` ${attr}="${val.replace(/"/g, "&quot;")}"`;
+      // Re-quote the ORIGINAL (un-decoded) value in double quotes so we
+      // preserve display strings that intentionally contain entities.
+      return ` ${attr}="${raw.replace(/"/g, "&quot;")}"`;
     }
   );
 
   // 4. Drop srcset so trackers can't ping via responsive-image vectors.
   out = out.replace(/\ssrcset\s*=\s*("[^"]*"|'[^']*')/gi, "");
 
-  // 5. Drop <a target=...> overrides without rel=noopener — replace
+  // 5. Drop `style="…"` inline attributes — they're the carrier for
+  //    expression(), -moz-binding, and `background:url(javascript:...)`
+  //    style tricks that the protocol filter on href/src doesn't catch.
+  //    Internal-team rendering doesn't need attacker-controlled CSS to
+  //    look "good enough"; this is a clean security/UX trade.
+  out = out.replace(/\sstyle\s*=\s*("[^"]*"|'[^']*')/gi, "");
+
+  // 6. Drop <a target=...> overrides without rel=noopener — replace
   //    blank-target attributes so the team isn't exposed to reverse-
   //    tabnabbing. We don't add rel attributes ourselves — the renderer
   //    can layer that on if it really wants HTML rendering.

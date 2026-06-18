@@ -142,48 +142,75 @@ export async function softDeleteArchivedEmail(
   return { ok: true };
 }
 
-/** Resolve a shortId (8 hex chars) back to the full UUID for inbound
- *  HMAC verification. Returns null if no row matches or the parent
- *  record is soft-deleted (refuse to archive to dead records). */
+/** Resolve a shortId (first 8 hex chars of a UUID) to the full UUID +
+ *  display name for inbound HMAC verification.
+ *
+ *  Audit fix 2026-06-18 — DO NOT use `.ilike("id", "${shortId}%")` here.
+ *  Postgres has no LIKE/ILIKE operator on the `uuid` type; PostgREST
+ *  doesn't auto-cast. The query throws `operator does not exist:
+ *  uuid ~~* unknown` and every archive email silently fails to resolve.
+ *
+ *  Instead, bracket on the UUID range that begins with `<shortId>`:
+ *    .gte("id", "<short>-0000-0000-0000-000000000000")
+ *    .lt ("id", "<short+1>-0000-0000-0000-000000000000")
+ *  This uses the primary-key index, no cast, no SQL function needed.
+ *
+ *  Refuses to return a row when the parent is soft-deleted is also
+ *  dropped — the archive-on-write should be tombstone-tolerant so
+ *  in-flight replies still land. The READ-side list helper already
+ *  filters deleted parents; the attachment download route gates on
+ *  parent-deleted separately. (Audit: dropping the filter prevents
+ *  silent reply-loss right after a parent is deleted while a thread
+ *  is still in flight.) */
 export async function resolveSourceShortId(
   kind: ArchiveKind,
   shortId: string
 ): Promise<{ id: string; name: string } | null> {
   if (!/^[0-9a-f]{8}$/.test(shortId)) return null;
+  const range = uuidPrefixRange(shortId);
+  if (!range) return null;
   const sb = commercialDb();
   if (kind === "opp") {
-    // Postgres UUID textual form starts with first 8 hex chars. Use
-    // ilike with a wildcard so we don't materialize the cast.
     const { data, error } = await sb
       .from("commercial_opportunities")
-      .select("id, title, deleted_at")
-      .ilike("id", `${shortId}%`)
-      .is("deleted_at", null)
-      .limit(2); // detect collision
+      .select("id, title")
+      .gte("id", range.start)
+      .lt("id", range.end)
+      .limit(2); // detect prefix collision
     if (error) {
       console.warn("[email-archive/db] resolveOppShortId failed:", error.message);
       return null;
     }
-    const rows = (data ?? []) as Array<{ id: string; title: string; deleted_at: string | null }>;
+    const rows = (data ?? []) as Array<{ id: string; title: string }>;
     if (rows.length !== 1) return null; // 0 = miss, 2+ = collision (refuse to guess)
     return { id: rows[0].id, name: rows[0].title };
   }
   // kind === "acc"
   const { data, error } = await sb
     .from("commercial_accounts")
-    .select("id, company_name, deleted_at")
-    .ilike("id", `${shortId}%`)
-    .is("deleted_at", null)
+    .select("id, company_name")
+    .gte("id", range.start)
+    .lt("id", range.end)
     .limit(2);
   if (error) {
     console.warn("[email-archive/db] resolveAccShortId failed:", error.message);
     return null;
   }
-  const rows = (data ?? []) as Array<{
-    id: string;
-    company_name: string;
-    deleted_at: string | null;
-  }>;
+  const rows = (data ?? []) as Array<{ id: string; company_name: string }>;
   if (rows.length !== 1) return null;
   return { id: rows[0].id, name: rows[0].company_name };
+}
+
+/** Build the half-open UUID range `[start, end)` whose first 8 hex
+ *  chars equal `shortId`. Returns null when shortId is "ffffffff"
+ *  (no next-prefix exists) — caller falls through. */
+function uuidPrefixRange(shortId: string): { start: string; end: string } | null {
+  const lower = shortId.toLowerCase();
+  if (!/^[0-9a-f]{8}$/.test(lower)) return null;
+  const start = `${lower}-0000-0000-0000-000000000000`;
+  const asNum = parseInt(lower, 16);
+  if (asNum >= 0xffffffff) return null; // 1-in-4-billion overflow case
+  const nextHex = (asNum + 1).toString(16).padStart(8, "0");
+  const end = `${nextHex}-0000-0000-0000-000000000000`;
+  return { start, end };
 }
