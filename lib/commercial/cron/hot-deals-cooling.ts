@@ -27,9 +27,13 @@ import {
  *   - updated_at older than COOLING_DAYS (default 7 days)
  *   - parent account still alive
  *
- * Recipient: any primary assignment on the opp (sales lead or AM).
- * If none, fall back to the opp's created_by_user_id. If both null,
- * skip — no human owns this deal.
+ * Recipient: any ACTIVE primary assignment on the opp (sales lead
+ * or AM). If none, the cron SKIPS the deal rather than falling back
+ * to the opp's created_by_user_id — that fallback caused surprise
+ * notifications to people (e.g. the original creator who handed off
+ * the deal months ago) about an opp they no longer own. Better to
+ * leave a no-primary deal silent + surface it in the "needs an owner"
+ * view at the list-page level (out of scope for Stage 1).
  */
 
 type Result = {
@@ -129,37 +133,13 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
       }
     }
 
-    // Pre-fetch is_active for fallback candidates (created_by_user_id)
-    // so we don't end up alerting a long-deactivated rep. One query for
-    // every fallback candidate at once.
-    const fallbackUserIds = Array.from(
-      new Set(
-        rows
-          .filter((r) => !primaryByOpp.has(r.id) && r.created_by_user_id)
-          .map((r) => r.created_by_user_id!)
-      )
-    );
-    const activeFallbacks = new Set<string>();
-    if (fallbackUserIds.length > 0) {
-      const { data: profiles } = await sb
-        .from("profiles")
-        .select("user_id, is_active")
-        .in("user_id", fallbackUserIds);
-      for (const p of (profiles ?? []) as Array<{
-        user_id: string;
-        is_active: boolean | null;
-      }>) {
-        if (p.is_active !== false) activeFallbacks.add(p.user_id);
-      }
-    }
-
     for (const r of rows) {
-      const primary = primaryByOpp.get(r.id);
-      const fallback =
-        r.created_by_user_id && activeFallbacks.has(r.created_by_user_id)
-          ? r.created_by_user_id
-          : null;
-      const recipient = primary ?? fallback;
+      // Primary-only — created_by_user_id fallback was removed (audit
+      // 2026-06-18) because it surprised the original creator with
+      // alerts about deals they'd already handed off. A no-primary
+      // hot deal silently skips here; surface that gap at the list-page
+      // level instead.
+      const recipient = primaryByOpp.get(r.id);
       if (!recipient) {
         out.skipped += 1;
         continue;

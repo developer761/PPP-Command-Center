@@ -20,10 +20,19 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
  * know the bell exists.
  */
 
+import type { CommercialNotificationKind } from "./commercial-events";
+
+/**
+ * Union of every notification kind the platform writes. Bell renderer is
+ * kind-agnostic but downstream code that filters or routes on kind should
+ * import THIS union, not redeclare it — keeps the source of truth in one
+ * place even as new event kinds land in commercial-events.ts.
+ */
 export type NotificationKind =
   | "customer_form_submitted"
   | "commercial_account_team_added"
-  | "commercial_opportunity_team_added";
+  | "commercial_opportunity_team_added"
+  | CommercialNotificationKind;
 
 export type CustomerFormSubmittedInput = {
   /** Supabase user id of the rep who originally sent the form. They get a

@@ -41,10 +41,20 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
     const windowEnd = new Date(now.getTime() + WARN_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
     // Active docs with expires_at in the warning window OR already
-    // expired. Past-expiry docs still nag (capped by the 30-day dedup)
-    // because that's when the AM most needs the prod to chase a renewal.
-    // The bell/email copy renders "Expired N days ago" so the assignee
-    // knows the difference.
+    // expired (within the last year). Past-expiry docs still nag
+    // (capped by the 30-day dedup) because that's when the AM most
+    // needs the prod to chase a renewal. The bell/email copy renders
+    // "Expired N days ago" so the assignee knows the difference.
+    //
+    // Lower bound `expires_at >= now - 1 year` prevents a flood when
+    // the cron first ships: without it, a stale COI uploaded in 2023
+    // and never refreshed would fire its first-ever reminder on
+    // launch day, then every 30 days thereafter. 1 year covers the
+    // longest realistic renewal cycle on PPP's compliance docs (COIs
+    // renew yearly; W9s less often but those are caught by a
+    // different mental model). Anything older is dead-archive doc
+    // hygiene, not a Stage-1 cron concern.
+    const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
     const { data, error } = await sb
       .from("commercial_account_documents")
       .select(
@@ -53,6 +63,7 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
       )
       .eq("archived", false)
       .not("expires_at", "is", null)
+      .gte("expires_at", oneYearAgo.toISOString())
       .lte("expires_at", windowEnd.toISOString())
       .is("account.deleted_at", null);
     if (error) {

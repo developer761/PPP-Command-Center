@@ -34,8 +34,15 @@ export async function GET() {
   const sb = adminClient();
 
   // Two queries — head:true count for the unread badge (cheap), and the
-  // 20 most recent rows for the dropdown. Both filter on the same indexed
+  // 50 most recent rows for the dropdown. Both filter on the same indexed
   // recipient_user_id so scoping is enforced at the DB.
+  //
+  // Limit bumped 20 → 50 after Stage 1 commercial notifications shipped.
+  // On a busy commercial day with status changes fanning out to 3-5
+  // teammates per opp + task assignments + cron-fired overdue/expiring/
+  // cooling alerts, a 20-row cap pushed customer_form_submitted entries
+  // off the dropdown by lunchtime. 50 covers ~3 weekdays of mixed
+  // commercial + customer-form notification volume for an active team.
   const [{ count, error: cntErr }, { data: items, error: itemsErr }] = await Promise.all([
     sb
       .from("notifications")
@@ -47,7 +54,7 @@ export async function GET() {
       .select("id, kind, work_order_id, work_order_number, customer_name, title, body, link, read_at, created_at")
       .eq("recipient_user_id", user.id)
       .order("created_at", { ascending: false })
-      .limit(20),
+      .limit(50),
   ]);
 
   if (cntErr || itemsErr) {
