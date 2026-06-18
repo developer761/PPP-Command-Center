@@ -149,10 +149,14 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
         Math.floor((now.getTime() - new Date(r.updated_at).getTime()) / (1000 * 60 * 60 * 24))
       );
       try {
+        // (COOLING_DAYS - 1) days × 24h: dedup at exact cadence would
+        // still match the prior fire's row. Trimming gives a safety
+        // margin so the weekly reminder actually releases. (Audit fix
+        // 2026-06-18.)
         const recent = await hasRecentNotification(
           "commercial_hot_deal_cooling",
           r.id,
-          COOLING_DAYS * 24
+          (COOLING_DAYS - 1) * 24
         );
         if (recent) {
           out.skipped += 1;

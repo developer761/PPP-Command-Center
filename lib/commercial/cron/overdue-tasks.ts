@@ -89,10 +89,15 @@ export async function runOverdueTasksReminder(): Promise<Result> {
         continue;
       }
       try {
+        // 23h, not 24h: cron fires daily on a 24h cadence, but a row
+        // inserted at firing time N would still match dedup at firing
+        // time N+24h (gte cutoff = exactly the insert timestamp). 23h
+        // gives a 1-hour safety margin so each daily fire releases the
+        // prior day's dedup. (Audit fix 2026-06-18.)
         const recent = await hasRecentNotification(
           "commercial_task_overdue",
           r.id,
-          24
+          23
         );
         if (recent) {
           out.skipped += 1;

@@ -270,6 +270,18 @@ export async function processInboundArchive(
             sb,
             attachmentsMeta.map((a) => a.storage_key)
           );
+          // IMPORTANT: count the dedup hit as a MATCH (not a skip) so
+          // the webhook caller recognizes the email was already
+          // archived and gates the inbox_messages fallback insert.
+          // Without this, a Resend webhook retry on an already-
+          // archived email falls through to inbox_messages and creates
+          // a stray "unmatched" row that pollutes the Mail Hub. (Audit
+          // fix 2026-06-18.)
+          out.matched.push({
+            kind: match.kind,
+            source_id: match.sourceId,
+            archived_id: null,
+          });
           out.skipped.push({
             recipient: `${match.kind}:${match.sourceId.slice(0, 8)}`,
             reason: "duplicate_dedup",

@@ -133,10 +133,14 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
         continue;
       }
       try {
+        // 29 days, not 30: dedup cutoff at exactly 30d would still match
+        // a row created at the previous fire. Trimming 1 day gives a
+        // safety margin so the monthly reminder actually releases.
+        // (Audit fix 2026-06-18.)
         const recent = await hasRecentNotification(
           "commercial_document_expiring",
           r.id,
-          WARN_WINDOW_DAYS * 24
+          (WARN_WINDOW_DAYS - 1) * 24
         );
         if (recent) {
           out.skipped += 1;
