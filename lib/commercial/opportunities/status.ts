@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logUpdate, logInsert } from "@/lib/commercial/audit-log";
+import { insertCommercialOppStatusChangedNotifications } from "@/lib/notifications/commercial-events";
 import {
   ALLOWED_TRANSITIONS,
   DEFAULT_PROBABILITY_BY_STATUS,
@@ -14,6 +15,7 @@ import {
   type OpportunityStatus,
   type OpportunityLossReason,
   OPPORTUNITY_LOSS_REASONS,
+  opportunityStatusLabel,
 } from "./db";
 
 /**
@@ -223,6 +225,38 @@ export async function changeOpportunityStatus(
     updated,
     input.acting_user_id
   );
+
+  // Fan out a bell + email to every active team member on the opp
+  // (minus the actor). Fire-and-forget — never blocks the status flip.
+  // Helper handles the self-skip + inactive-skip + fanout query.
+  void (async () => {
+    try {
+      let actorName = "PPP admin";
+      if (input.acting_user_id) {
+        const { data: actor } = await sb
+          .from("profiles")
+          .select("sf_user_name, email")
+          .eq("user_id", input.acting_user_id)
+          .maybeSingle();
+        const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
+        actorName = a?.sf_user_name || a?.email || "PPP admin";
+      }
+      await insertCommercialOppStatusChangedNotifications({
+        opportunityId: input.opp_id,
+        oppTitle: updated.title,
+        fromStatusLabel: opportunityStatusLabel(beforeRow.status),
+        toStatusLabel: opportunityStatusLabel(input.to_status),
+        actingUserId: input.acting_user_id,
+        actorName,
+        note: input.note?.trim() || null,
+      });
+    } catch (err) {
+      console.warn(
+        "[status] status_changed notify failed:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  })();
 
   return { ok: true, opportunity: updated };
 }

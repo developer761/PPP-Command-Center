@@ -4,8 +4,8 @@ import { clearSalesforceCache, loadSalesforceSnapshot, loadMaterialsBundle } fro
 /**
  * Snapshot pre-warm cron.
  *
- *   Vercel cron config: lives in the Vercel project UI (no vercel.json in
- *   this repo). Should be set to `*​/10 * * * *` or tighter. The snapshot
+ *   Vercel cron config: lives in vercel.json (alongside the daily
+ *   commercial cron). Schedule `*​/10 * * * *`. The snapshot
  *   has a 30-min TTL, so a 10-min cron gives a 20-min safety margin — even
  *   if one fire fails, the next has 10 min to land before users see cold.
  *

@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
+import { insertCommercialOppNoteAddedNotifications } from "@/lib/notifications/commercial-events";
 
 /**
  * Per-opportunity notes — free-form timeline entries with edit + delete.
@@ -125,7 +126,7 @@ export async function addOpportunityNote(
   const sb = commercialDb();
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
+    .select("id, account_id, title, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
@@ -148,6 +149,41 @@ export async function addOpportunityNote(
   if (error) return { ok: false, error: error.message };
   const note = data as OpportunityNote;
   await logInsert("commercial_opportunity_notes", note.id, note, input.author_user_id);
+
+  // Fan out a bell + email to every active team member on the opp
+  // (minus the author). Fire-and-forget so a notification hiccup never
+  // breaks the note write. Helper does the team query + self-skip.
+  void (async () => {
+    try {
+      let actorName = "PPP admin";
+      if (input.author_user_id) {
+        const { data: actor } = await sb
+          .from("profiles")
+          .select("sf_user_name, email")
+          .eq("user_id", input.author_user_id)
+          .maybeSingle();
+        const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
+        actorName = a?.sf_user_name || a?.email || "PPP admin";
+      }
+      // Body preview: keep notification rows lean — 240 chars covers
+      // a tweet-length note. Helper truncation also prevents a 5000-
+      // char paste from blowing up the email body.
+      const preview = body.length > 240 ? `${body.slice(0, 240).trimEnd()}…` : body;
+      await insertCommercialOppNoteAddedNotifications({
+        opportunityId: input.opportunity_id,
+        noteId: note.id,
+        oppTitle: (opp as { title: string }).title,
+        noteBodyPreview: preview,
+        actingUserId: input.author_user_id ?? null,
+        actorName,
+      });
+    } catch (err) {
+      console.warn(
+        "[notes] note_added notify failed:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  })();
   return { ok: true, note };
 }
 

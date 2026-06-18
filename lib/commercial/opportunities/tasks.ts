@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
+import { insertCommercialTaskAssignedNotification } from "@/lib/notifications/commercial-events";
 
 /**
  * Per-opportunity tasks — to-dos with assignee + due_at + completion
@@ -112,7 +113,7 @@ export async function createOpportunityTask(
   const sb = commercialDb();
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
+    .select("id, account_id, title, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
@@ -155,6 +156,40 @@ export async function createOpportunityTask(
   if (error) return { ok: false, error: error.message };
   const task = data as OpportunityTask;
   await logInsert("commercial_opportunity_tasks", task.id, task, input.created_by_user_id);
+
+  // Heads-up to the assignee — fire-and-forget so a notification
+  // hiccup never breaks the task write. Self-skip + inactive skip are
+  // handled inside the helper. Resolving the assigner name is a single
+  // profiles lookup; if it errors we fall back to "PPP admin" so the
+  // email/bell still goes out.
+  if (task.assigned_user_id) {
+    void (async () => {
+      try {
+        let assignerName = "PPP admin";
+        if (input.created_by_user_id) {
+          const { data: actor } = await sb
+            .from("profiles")
+            .select("sf_user_name, email")
+            .eq("user_id", input.created_by_user_id)
+            .maybeSingle();
+          const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
+          assignerName = a?.sf_user_name || a?.email || "PPP admin";
+        }
+        await insertCommercialTaskAssignedNotification({
+          taskId: task.id,
+          opportunityId: task.opportunity_id,
+          taskTitle: task.title,
+          dueAt: task.due_at,
+          oppTitle: (opp as { title: string }).title,
+          recipientUserId: task.assigned_user_id!,
+          actingUserId: input.created_by_user_id ?? null,
+          assignerName,
+        });
+      } catch (err) {
+        console.warn("[tasks] task_assigned notify failed:", err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }
   return { ok: true, task };
 }
 
