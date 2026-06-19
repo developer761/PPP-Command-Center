@@ -243,18 +243,20 @@ export async function uploadDocument(
     }
   }
 
-  // Annual-renewal default (Stage 3 audit fix): when the admin doesn't
-  // set an explicit expires_at on a renewable compliance doc, default
+  // Annual-renewal default (Stage 3): when expires_at is OMITTED
+  // (property is undefined) on a renewable compliance doc, default
   // to 1 year from upload so the Stage 1 expiring-documents cron
   // catches it naturally. Without this, docs without expires_at
-  // silently never alert.
+  // would never alert. Explicit `null` is RESPECTED so admin can
+  // upload a renewable doc with deliberately-no-expiry (e.g. legacy
+  // archival) by sending null instead of omitting the field. Audit
+  // fix 2026-06-18: previously even an explicit null got overridden
+  // with the default, locking admin out of "no expiry" semantics.
   // Renewable categories: COI (yearly renewal) + W-9 (annual refresh)
-  // + master_agreement (often annual). Other categories (safety,
-  // vendor_onboarding, other) keep the null-expires-at semantics —
-  // they don't have a standard renewal cadence.
+  // + master_agreement (often annual).
   const RENEWABLE_CATEGORIES = new Set(["coi", "w9", "master_agreement"]);
   const computedExpiresAt =
-    input.expires_at !== undefined && input.expires_at !== null
+    input.expires_at !== undefined
       ? input.expires_at
       : RENEWABLE_CATEGORIES.has(input.category)
         ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()

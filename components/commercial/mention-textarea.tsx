@@ -93,11 +93,21 @@ export default function MentionTextarea({
     }
     setFilter(fragment);
     setPopupOpen(true);
-    // Anchor popup to bottom-left of the textarea (good enough +
-    // works on mobile + bullet-proof against viewport overflow).
+    // Popup uses position:fixed so we want VIEWPORT coords directly
+    // from getBoundingClientRect — no scrollY/X adds. Earlier version
+    // mixed document offsets with absolute positioning and the popup
+    // landed hundreds of pixels offscreen when the textarea was
+    // scrolled mid-page. Audit fix 2026-06-18.
     const rect = e.target.getBoundingClientRect();
-    setPopupTop(rect.bottom + window.scrollY);
-    setPopupLeft(rect.left + window.scrollX);
+    // Flip popup ABOVE the textarea when there isn't enough room
+    // below — protects against the iOS soft keyboard covering the
+    // lower 40% of the viewport. Threshold: ~360px of popup space.
+    const POPUP_HEIGHT = 360;
+    const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
+    const spaceBelow = viewportH - rect.bottom;
+    const flipAbove = spaceBelow < POPUP_HEIGHT && rect.top > POPUP_HEIGHT;
+    setPopupTop(flipAbove ? Math.max(8, rect.top - POPUP_HEIGHT - 4) : rect.bottom + 4);
+    setPopupLeft(Math.max(16, Math.min(rect.left, (typeof window !== "undefined" ? window.innerWidth : 1000) - 304)));
   }, []);
 
   const selectCandidate = useCallback(
@@ -172,10 +182,13 @@ export default function MentionTextarea({
         <ul
           role="listbox"
           aria-label="Mention a team member"
-          // Fixed-position popup so it doesn't get clipped by any parent
-          // overflow:hidden. Sits just below the textarea.
-          style={{ top: popupTop, left: popupLeft, position: "absolute" }}
-          className="z-50 mt-1 w-72 max-w-[calc(100vw-32px)] bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg overflow-hidden"
+          // position:fixed pins the popup to viewport coords from
+          // getBoundingClientRect — bullet-proof against parent
+          // overflow:hidden + works correctly mid-page-scroll. Audit
+          // fix 2026-06-18: was "absolute" with document offsets,
+          // which mispositioned the popup once the page was scrolled.
+          style={{ top: popupTop, left: popupLeft, position: "fixed" }}
+          className="z-50 w-72 max-w-[calc(100vw-32px)] bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg overflow-hidden max-h-[360px] overflow-y-auto"
         >
           {filtered.map((c, i) => (
             <li key={c.user_id}>

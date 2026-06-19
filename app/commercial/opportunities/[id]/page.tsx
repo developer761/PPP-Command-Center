@@ -1419,7 +1419,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               <input type="hidden" name="note_id" value={note.id} />
               <button
                 type="submit"
-                className={`inline-flex items-center gap-1.5 text-[11px] underline min-h-[32px] touch-manipulation ${
+                className={`inline-flex items-center gap-1.5 text-[11px] underline min-h-[32px] touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ppp-blue px-1 ${
                   isPinned
                     ? "text-ppp-charcoal-700 hover:text-ppp-charcoal-900"
                     : "text-amber-700 hover:text-amber-900"
@@ -1436,7 +1436,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               <input type="hidden" name="note_id" value={note.id} />
               <button
                 type="submit"
-                className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[32px] inline-flex items-center touch-manipulation"
+                className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[32px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1"
               >
                 Delete note
               </button>
