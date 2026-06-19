@@ -53,6 +53,7 @@ export type CommercialNotificationKind =
   | "commercial_task_overdue"
   | "commercial_opp_status_changed"
   | "commercial_opp_note_added"
+  | "commercial_note_mention"
   | "commercial_document_expiring"
   | "commercial_hot_deal_cooling";
 
@@ -418,7 +419,10 @@ export async function insertCommercialOppStatusChangedNotifications(input: {
 // ════════════════════════════════════════════════════════════════════
 
 /** Fanout helper. Called from lib/commercial/opportunities/notes.ts
- *  on addOpportunityNote success. */
+ *  on addOpportunityNote success. `excludeUserIds` lets the caller
+ *  skip users who already got a more-specific notification (e.g.
+ *  @mention recipients shouldn't also get the generic team-fanout
+ *  one for the same note). */
 export async function insertCommercialOppNoteAddedNotifications(input: {
   opportunityId: string;
   noteId: string;
@@ -428,6 +432,9 @@ export async function insertCommercialOppNoteAddedNotifications(input: {
   noteBodyPreview: string;
   actingUserId: string | null;
   actorName: string;
+  /** User IDs to skip (e.g. recipients who already got the @mention
+   *  variant of this same note). Optional. */
+  excludeUserIds?: string[];
 }): Promise<{ fanout: number }> {
   const sb = adminClient();
   const { data: rows } = await sb
@@ -444,12 +451,14 @@ export async function insertCommercialOppNoteAddedNotifications(input: {
       | Array<{ user_id: string; email: string; is_active: boolean | null }>
       | null;
   };
+  const exclude = new Set(input.excludeUserIds ?? []);
   const recipientIds = new Set<string>();
   for (const raw of (rows ?? []) as unknown as Row[]) {
     const u = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
     if (!u) continue;
     if (u.is_active === false) continue;
     if (input.actingUserId && u.user_id === input.actingUserId) continue;
+    if (exclude.has(u.user_id)) continue;
     recipientIds.add(u.user_id);
   }
   if (recipientIds.size === 0) return { fanout: 0 };
@@ -486,6 +495,73 @@ export async function insertCommercialOppNoteAddedNotifications(input: {
     Array.from(recipientIds).map(async (uid) => {
       const r = await dispatchCommercialNotification({
         kind: "commercial_opp_note_added",
+        recipientUserId: uid,
+        actingUserId: input.actingUserId,
+        sourceId: input.noteId,
+        title,
+        body,
+        link: relativeLink,
+        email: { subject, text, html },
+      });
+      if (r.ok && r.written) fanout += 1;
+    })
+  );
+  return { fanout };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 4b. commercial_note_mention — fired alongside note_added when the
+//      note body @mentions one or more users. Personal-tone copy +
+//      higher-prominence visual (yellow tag color in bell, "tagged"
+//      verb instead of "added"). Caller is responsible for excluding
+//      these recipients from the generic note_added fanout so each
+//      user gets exactly one notification per note.
+// ════════════════════════════════════════════════════════════════════
+
+/** Per-user "you were tagged" helper. Caller passes the deduped set of
+ *  mentioned user_ids. Self-skip is enforced in dispatch. */
+export async function insertCommercialNoteMentionNotifications(input: {
+  opportunityId: string;
+  noteId: string;
+  oppTitle: string;
+  noteBodyPreview: string;
+  actingUserId: string | null;
+  actorName: string;
+  mentionedUserIds: string[];
+}): Promise<{ fanout: number }> {
+  if (input.mentionedUserIds.length === 0) return { fanout: 0 };
+  const safePreview = truncatePreview(input.noteBodyPreview, 240);
+  const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
+  const relativeLink = `/commercial/opportunities/${input.opportunityId}?tab=notes`;
+  const emailLink = appendBase(relativeLink);
+  const title = `${input.actorName} tagged you on ${shortOppTitle}`;
+  const body = safePreview;
+
+  const subject = `${input.actorName} tagged you on ${input.oppTitle}`;
+  const text = [
+    `Hi,`,
+    ``,
+    `${input.actorName} tagged you in a note on ${input.oppTitle}:`,
+    ``,
+    `  ${safePreview}`,
+    ``,
+    `Open the opportunity: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(input.actorName)}</strong> tagged you in a note on <strong>${escape(input.oppTitle)}</strong>:</p>
+  <p style="margin:16px 0;padding:12px 16px;background:#fef9c3;border-left:4px solid #ca8a04;border-radius:8px;color:#333;white-space:pre-wrap;word-break:break-word;">${escape(safePreview)}</p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the opportunity →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  let fanout = 0;
+  await Promise.allSettled(
+    Array.from(new Set(input.mentionedUserIds)).map(async (uid) => {
+      const r = await dispatchCommercialNotification({
+        kind: "commercial_note_mention",
         recipientUserId: uid,
         actingUserId: input.actingUserId,
         sourceId: input.noteId,

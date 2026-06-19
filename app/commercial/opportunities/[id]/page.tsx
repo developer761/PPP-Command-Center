@@ -50,6 +50,7 @@ import {
   addOpportunityNote,
   editOpportunityNote,
   deleteOpportunityNote,
+  togglePinOpportunityNote,
   type OpportunityNoteWithAuthor,
 } from "@/lib/commercial/opportunities/notes";
 import {
@@ -64,6 +65,7 @@ import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
 import InfoDot from "@/components/info-dot";
 import EmailArchiveTab from "@/components/commercial/email-archive-tab";
+import MentionTextarea from "@/components/commercial/mention-textarea";
 
 export const dynamic = "force-dynamic";
 
@@ -326,6 +328,23 @@ async function addNoteAction(formData: FormData) {
     body,
     author_user_id: user.id,
   });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
+}
+
+async function togglePinNoteAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const note_id = String(formData.get("note_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(note_id)) {
+    redirect("/commercial/opportunities");
+  }
+  const result = await togglePinOpportunityNote(opportunity_id, note_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
   }
@@ -1266,7 +1285,21 @@ function addDaysISO(base: string, days: number): string {
 // ─────────────── Notes tab ───────────────
 
 async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
-  const notes = await listOpportunityNotes(oppId);
+  // Stage 3: parallel-fetch notes + mentionable team members so the
+  // @ autocomplete has live candidates without an extra round-trip.
+  // Candidate set is everyone with platform access — broader than just
+  // the opp team so Alex can tag Katie even if she isn't formally
+  // assigned to this opp yet. Server-side mention resolution still
+  // requires the target to be active + have platform access.
+  const [notes, allStaff] = await Promise.all([
+    listOpportunityNotes(oppId),
+    listAssignableStaff(),
+  ]);
+  const mentionCandidates = allStaff.map((s) => ({
+    user_id: s.user_id,
+    email: s.email,
+    full_name: s.full_name,
+  }));
   return (
     <div className="space-y-5">
       {errorMessage && (
@@ -1279,14 +1312,14 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add note</h2>
         <form action={addNoteAction} className="space-y-3">
           <input type="hidden" name="opportunity_id" value={oppId} />
-          <textarea
-            id="note_body"
+          <MentionTextarea
             name="body"
             required
-            rows={3}
             maxLength={5000}
-            placeholder="Called Sarah, asking $5k off, will get back to me tomorrow."
-            className={TEXTAREA_CLS + " min-h-[88px]"}
+            rows={3}
+            placeholder="Called Sarah, asking $5k off. Type @ to tag a teammate."
+            candidates={mentionCandidates}
+            helperText="Tip: type @ to tag a teammate — they'll get a personal notification."
           />
           <div className="flex justify-end">
             <button
@@ -1317,10 +1350,30 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
 function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: string }) {
   const author = note.author_full_name ?? note.author_email ?? "Unknown";
   const edited = note.updated_at && note.updated_at !== note.created_at;
+  const isPinned = note.pinned_at !== null;
   return (
-    <li className="bg-white border border-ppp-charcoal-100 rounded-xl p-4">
+    <li
+      className={`border rounded-xl p-4 ${
+        isPinned
+          ? "bg-amber-50 border-amber-200"
+          : "bg-white border-ppp-charcoal-100"
+      }`}
+    >
       <div className="flex items-baseline justify-between gap-3 mb-2 flex-wrap">
-        <span className="text-sm font-semibold text-ppp-charcoal">{author}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          {isPinned && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-200 text-amber-900 border border-amber-300"
+              title="Pinned to top of the notes list"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M16 4l-4 4-4-4-2 2 4 4-6 6v2h2l6-6 4 4 2-2-4-4 4-4z" />
+              </svg>
+              Pinned
+            </span>
+          )}
+          <span className="text-sm font-semibold text-ppp-charcoal">{author}</span>
+        </div>
         <span className="text-[11px] text-ppp-charcoal-500">
           {new Date(note.created_at).toLocaleString(undefined, {
             month: "short",
@@ -1360,18 +1413,35 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               </button>
             </div>
           </form>
-          <form action={deleteNoteAction}>
-            <input type="hidden" name="opportunity_id" value={oppId} />
-            <input type="hidden" name="note_id" value={note.id} />
-            <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <form action={togglePinNoteAction}>
+              <input type="hidden" name="opportunity_id" value={oppId} />
+              <input type="hidden" name="note_id" value={note.id} />
+              <button
+                type="submit"
+                className={`inline-flex items-center gap-1.5 text-[11px] underline min-h-[32px] touch-manipulation ${
+                  isPinned
+                    ? "text-ppp-charcoal-700 hover:text-ppp-charcoal-900"
+                    : "text-amber-700 hover:text-amber-900"
+                }`}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M16 4l-4 4-4-4-2 2 4 4-6 6v2h2l6-6 4 4 2-2-4-4 4-4z" />
+                </svg>
+                {isPinned ? "Unpin" : "Pin to top"}
+              </button>
+            </form>
+            <form action={deleteNoteAction}>
+              <input type="hidden" name="opportunity_id" value={oppId} />
+              <input type="hidden" name="note_id" value={note.id} />
               <button
                 type="submit"
                 className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[32px] inline-flex items-center touch-manipulation"
               >
                 Delete note
               </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       </details>
     </li>

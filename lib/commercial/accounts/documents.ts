@@ -243,6 +243,23 @@ export async function uploadDocument(
     }
   }
 
+  // Annual-renewal default (Stage 3 audit fix): when the admin doesn't
+  // set an explicit expires_at on a renewable compliance doc, default
+  // to 1 year from upload so the Stage 1 expiring-documents cron
+  // catches it naturally. Without this, docs without expires_at
+  // silently never alert.
+  // Renewable categories: COI (yearly renewal) + W-9 (annual refresh)
+  // + master_agreement (often annual). Other categories (safety,
+  // vendor_onboarding, other) keep the null-expires-at semantics —
+  // they don't have a standard renewal cadence.
+  const RENEWABLE_CATEGORIES = new Set(["coi", "w9", "master_agreement"]);
+  const computedExpiresAt =
+    input.expires_at !== undefined && input.expires_at !== null
+      ? input.expires_at
+      : RENEWABLE_CATEGORIES.has(input.category)
+        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
   // Insert the metadata row. If this fails, try to clean up the storage
   // upload so we don't leak orphan files.
   const { data: inserted, error: insertErr } = await sb
@@ -257,7 +274,7 @@ export async function uploadDocument(
       size_bytes: input.size_bytes,
       mime_type: input.mime_type,
       uploaded_by_user_id: input.uploaded_by_user_id,
-      expires_at: input.expires_at ?? null,
+      expires_at: computedExpiresAt,
       notes: input.notes?.trim() || null,
     })
     .select("*")

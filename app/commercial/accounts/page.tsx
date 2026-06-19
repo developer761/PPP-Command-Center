@@ -896,6 +896,26 @@ function AccountRow({
               {account.vendor_compliance_status && (
                 <CompliancePill status={account.vendor_compliance_status} />
               )}
+              {/* Stage 3: insurance-lapsed badge — at-a-glance flag on the
+                  list so Alex sees who's out of compliance without
+                  opening every account detail. Red for already-expired
+                  docs (urgent); amber for expiring-soon (planning).
+                  Tooltip explains the count. */}
+              {overview && overview.expired_document_count > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-rose-100 text-rose-800 border border-rose-200"
+                  title={`${overview.expired_document_count} expired compliance doc${overview.expired_document_count === 1 ? "" : "s"}`}
+                >
+                  Lapsed
+                </span>
+              ) : overview && overview.expiring_soon_document_count > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-200"
+                  title={`${overview.expiring_soon_document_count} doc${overview.expiring_soon_document_count === 1 ? "" : "s"} expiring within 30 days`}
+                >
+                  Expiring
+                </span>
+              ) : null}
             </div>
             <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
               {account.industry && <span>{account.industry}</span>}
