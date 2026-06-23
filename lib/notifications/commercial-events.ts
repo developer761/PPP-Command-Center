@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/resend";
+import { reportWarn } from "@/lib/observability";
 
 /**
  * Stage 1 — Commercial CC event notifications (Karan 2026-06-18).
@@ -150,9 +151,20 @@ async function dispatchCommercialNotification(input: {
       link: input.link,
     });
     if (insErr) {
-      console.warn(
-        `[commercial-events] bell insert failed (kind=${input.kind}, source=${input.sourceId ?? "null"}): ${insErr.message}`
-      );
+      // Stage 3.5: page Slack — bell insert failure means the user will
+      // NEVER see this notification. Dedup absorbs spam if it's a
+      // sustained outage.
+      reportWarn({
+        key: "bell_insert_failed",
+        message: "Notification bell insert failed",
+        platform: "commercial_cc",
+        context: {
+          kind: input.kind,
+          source_id_short: input.sourceId ? input.sourceId.slice(0, 8) : "null",
+          recipient_id_short: input.recipientUserId.slice(0, 8),
+          db_error: insErr.message?.slice(0, 100),
+        },
+      });
       return { ok: false, error: insErr.message };
     }
     // Email is fire-and-forget — log on failure but don't propagate.
@@ -166,9 +178,23 @@ async function dispatchCommercialNotification(input: {
         tags: [{ name: "kind", value: input.kind }],
       });
       if (!result.ok) {
-        console.warn(
-          `[commercial-events] email queue failed (kind=${input.kind}, source=${input.sourceId ?? "null"}): ${result.error}`
-        );
+        // Stage 3.5: page Slack on email send failures. Bell row still
+        // landed (we already inserted above), but the email channel is
+        // degraded. Dedup absorbs sustained Resend outages.
+        reportWarn({
+          key: "commercial_email_send_failed",
+          message: "Commercial notification email send failed",
+          platform: "commercial_cc",
+          context: {
+            kind: input.kind,
+            source_id_short: input.sourceId ? input.sourceId.slice(0, 8) : "null",
+            resend_error: result.error?.slice(0, 100),
+            http_status:
+              "statusCode" in result && typeof result.statusCode === "number"
+                ? result.statusCode
+                : null,
+          },
+        });
       }
     }
     return { ok: true, written: true };

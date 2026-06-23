@@ -30,7 +30,22 @@ export default async function HealthPage() {
         title="Setup Health"
         subtitle="Quick scan of everything that has to be wired up for the platform to run end to end. Green means good, orange/red means fix it before it costs you an order."
       />
-      <HealthChecksView />
+      <HealthChecksView
+        endpoint="/api/admin/health"
+        groupMeta={{
+          platform: {
+            heading: "Platform setup",
+            subhead:
+              "Environment variables + database migrations the platform needs to run end-to-end.",
+          },
+          data: {
+            heading: "Salesforce data quality",
+            subhead:
+              "PPP-side data that the platform reads — things to fix in Salesforce or in supplier settings.",
+          },
+        }}
+        showSlackTest
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   processInboundArchive,
   type InboundPayload as ArchivePayload,
 } from "@/lib/commercial/email-archive/inbound";
+import { reportError, reportWarn } from "@/lib/observability";
 
 /**
  * Resend inbound webhook — receives every email sent to
@@ -130,7 +131,20 @@ export async function POST(request: Request) {
     headers.get("svix-signature")
   );
   if (!ok) {
-    console.warn("[resend-inbound] signature verification failed");
+    // Stage 3.5: page Slack on signature failures. Dedup absorbs
+    // legitimate retries of a stale-timestamp webhook (single source).
+    // A burst of unique-sig failures = either a Resend rotation we
+    // missed or an attacker probing — both worth knowing about
+    // immediately.
+    reportError({
+      key: "resend_inbound_bad_signature",
+      message: "Resend inbound webhook signature verification failed",
+      platform: "shared",
+      context: {
+        svix_id_present: !!headers.get("svix-id"),
+        svix_ts_present: !!headers.get("svix-timestamp"),
+      },
+    });
     return NextResponse.json({ error: "bad_signature" }, { status: 401 });
   }
 
@@ -167,6 +181,23 @@ export async function POST(request: Request) {
     console.warn(
       `[resend-inbound] archive skipped: ${JSON.stringify(archiveResult.skipped)}`
     );
+    // Stage 3.5: only page Slack on HMAC MISMATCHES (active forgery
+    // attempt or address rotation we missed). source_not_found is a
+    // normal "deleted opp got an email" case — not worth a Slack ping.
+    const hmacMismatches = archiveResult.skipped.filter(
+      (s) => s.reason === "hmac_mismatch"
+    );
+    if (hmacMismatches.length > 0) {
+      reportWarn({
+        key: "archive_hmac_mismatch",
+        message: "Archive HMAC verification failed on inbound email",
+        platform: "commercial_cc",
+        context: {
+          count: hmacMismatches.length,
+          first_recipient_kind: hmacMismatches[0].recipient.split("@")[0]?.slice(0, 30),
+        },
+      });
+    }
   }
   // Don't return early: continue into the existing customer-form /
   // supplier threading flow so an email that's BOTH a supplier reply

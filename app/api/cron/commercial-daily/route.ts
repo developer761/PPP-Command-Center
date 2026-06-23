@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { runOverdueTasksReminder } from "@/lib/commercial/cron/overdue-tasks";
 import { runExpiringDocumentsReminder } from "@/lib/commercial/cron/expiring-documents";
 import { runHotDealsCoolingReminder } from "@/lib/commercial/cron/hot-deals-cooling";
+import { reportError, reportWarn } from "@/lib/observability";
 
 /**
  * Commercial daily cron — fires the three "what's drifting?" reminders.
@@ -95,12 +96,45 @@ export async function GET(request: Request) {
   // Wipe-out detection: every job reported ok=false AND nothing was sent.
   // That means SELECT failed across the board (e.g. Supabase down) and
   // not a single notification landed. Worth returning 500 so Vercel cron
-  // retries + so monitoring (Datadog Vercel logs) can page on it. A
-  // partial failure (one job ok=false, others ok=true) stays 200 so a
-  // single Supabase blip on one query doesn't trigger noisy retries that
-  // would re-attempt the already-successful jobs.
+  // retries + so monitoring can page on it. A partial failure (one job
+  // ok=false, others ok=true) stays 200 so a single Supabase blip on
+  // one query doesn't trigger noisy retries that would re-attempt the
+  // already-successful jobs.
   const totalWipeout = !tasks.ok && !docs.ok && !hot.ok && totalSent === 0;
+  const partialFailure = !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok);
   const status = totalWipeout ? 500 : 200;
+
+  // Stage 3.5: page Slack on real failures. Total wipe-out is critical
+  // (nothing went out today). Partial failure is a warn (most landed).
+  // PII-safe context only: counts + job ok-flags, no opp/account names.
+  if (totalWipeout) {
+    reportError({
+      key: "commercial_daily_total_wipeout",
+      message: "Daily commercial cron: total wipe-out, no notifications sent",
+      platform: "commercial_cc",
+      context: {
+        found: totalFound,
+        errors: totalErrors,
+        tasks_errs: tasks.errors.length,
+        docs_errs: docs.errors.length,
+        hot_errs: hot.errors.length,
+        duration_ms: durationMs,
+      },
+    });
+  } else if (partialFailure) {
+    reportWarn({
+      key: "commercial_daily_partial_failure",
+      message: "Daily commercial cron: one or more jobs degraded",
+      platform: "commercial_cc",
+      context: {
+        sent: totalSent,
+        found: totalFound,
+        tasks_ok: tasks.ok,
+        docs_ok: docs.ok,
+        hot_ok: hot.ok,
+      },
+    });
+  }
 
   return NextResponse.json(
     {
