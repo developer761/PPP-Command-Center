@@ -52,13 +52,20 @@ export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
  * (won/lost/no_bid) exit only to `reopened`.
  */
 export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
-  inquiry: ["site_visit_scheduled", "estimating", "no_bid", "on_hold", "lost"],
-  site_visit_scheduled: ["site_visit_done", "no_bid", "on_hold", "lost"],
-  site_visit_done: ["estimating", "no_bid", "on_hold", "lost"],
-  estimating: ["proposal_sent", "on_hold", "no_bid", "lost"],
-  proposal_sent: ["negotiating", "estimating", "on_hold", "no_bid", "lost"],
+  // All active states can flip to ANY terminal (won/lost/no_bid). A repeat
+  // customer can call mid-estimate and say "we're going with you" — Won
+  // shouldn't require Negotiating first. WARN_TRANSITIONS still flags the
+  // unusual jumps (inquiry → won, etc.) at the UI level so users get a
+  // soft confirmation prompt; the lib accepts the transition.
+  // Karan 2026-06-24: Won was only reachable from Negotiating, breaking
+  // the obvious "I just got the verbal" close path from any earlier state.
+  inquiry: ["site_visit_scheduled", "estimating", "won", "lost", "no_bid", "on_hold"],
+  site_visit_scheduled: ["site_visit_done", "won", "lost", "no_bid", "on_hold"],
+  site_visit_done: ["estimating", "won", "lost", "no_bid", "on_hold"],
+  estimating: ["proposal_sent", "won", "lost", "no_bid", "on_hold"],
+  proposal_sent: ["negotiating", "estimating", "won", "lost", "no_bid", "on_hold"],
   negotiating: ["won", "lost", "no_bid", "on_hold", "estimating"],
-  on_hold: ["estimating", "proposal_sent", "negotiating", "no_bid", "lost"],
+  on_hold: ["estimating", "proposal_sent", "negotiating", "won", "lost", "no_bid"],
   won: ["reopened"],
   lost: ["reopened"],
   no_bid: ["reopened"],
@@ -69,12 +76,22 @@ export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
  *  a "are you sure?" warning at the UI layer. Lib accepts them silently;
  *  the warning is purely UX. Keyed by "from→to". */
 export const WARN_TRANSITIONS: ReadonlySet<string> = new Set([
-  "inquiry→lost",                  // skipping site visit
-  "site_visit_scheduled→lost",     // killing before the visit happens
-  "site_visit_done→lost",          // killing before estimating
-  "proposal_sent→estimating",      // scope change, re-bidding
-  "negotiating→estimating",        // scope exploded
-  "won→reopened",                  // rare — deal came back
+  // Early-kill warnings — flagging the user "are you sure you're killing
+  // this without trying?"
+  "inquiry→lost",
+  "site_visit_scheduled→lost",
+  "site_visit_done→lost",
+  // Early-WIN warnings — verbal-yes mid-funnel is real (repeat customers
+  // call and commit), but flag in case someone misclicks.
+  "inquiry→won",
+  "site_visit_scheduled→won",
+  "site_visit_done→won",
+  "estimating→won",
+  // Scope-change re-bid warnings
+  "proposal_sent→estimating",
+  "negotiating→estimating",
+  // Rare-deal-return warning
+  "won→reopened",
 ]);
 
 /** Statuses that the LIST-PAGE quick-flip dropdown should expose. Terminal
