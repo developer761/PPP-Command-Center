@@ -18,9 +18,16 @@ import { UUID_RE } from "@/lib/commercial/uuid";
  * Body: { to_status: string }
  *
  * Drag-drop endpoint for the kanban. Same DAG check + audit-log as the
- * server-action quickFlip. Terminal states (won/lost/no_bid) are
- * rejected here because they need loss_reason capture — the client
- * should bounce the user to the detail page for those.
+ * server-action quickFlip.
+ *
+ * Won transitions ALWAYS flip immediately — winning a deal is a
+ * celebrated event, shouldn't require paperwork before the status
+ * actually moves. The amber "Debrief needed" banner appears on the
+ * opp page after the flip; user can fill it later.
+ *
+ * Lost / No-bid transitions REQUIRE loss_reason (enforced by
+ * changeOpportunityStatus) — those still bounce to the detail page so
+ * the user can pick the reason inside the structured debrief form.
  *
  * Returns 200 + { ok: true } on success, 4xx + { error } otherwise.
  * Client refreshes the route on success.
@@ -59,9 +66,10 @@ export async function POST(
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     return NextResponse.json({ error: "invalid_status" }, { status: 400 });
   }
-  if (QUICK_FLIP_BLOCKED_STATUSES.has(to_status)) {
-    // Won / Lost / No-bid need loss_reason capture. The client should
-    // detect this and bounce to /commercial/opportunities/[id]?to=...
+  // Lost / No-bid REQUIRE loss_reason — bounce the user to the detail
+  // page where the structured DebriefFields can capture it. Won flips
+  // immediately (no reason required).
+  if (to_status === "lost" || to_status === "no_bid") {
     return NextResponse.json(
       { error: "terminal_status_needs_detail_page", to_status },
       { status: 409 }

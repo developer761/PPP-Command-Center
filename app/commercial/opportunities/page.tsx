@@ -53,9 +53,11 @@ async function quickFlipStatusAction(formData: FormData) {
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     redirect("/commercial/opportunities?status_error=" + encodeURIComponent("Invalid status."));
   }
-  // Block terminal statuses from list-page quick-flip — they need extra
-  // fields (loss reason, etc.) and live on the detail page.
-  if (QUICK_FLIP_BLOCKED_STATUSES.has(to_status)) {
+  // Lost / No-bid require a structured reason — bounce to detail page
+  // where DebriefFields captures it. Won flips immediately (no reason
+  // required); user lands back here with the deal in the Won column +
+  // amber "Debrief needed" banner on the opp page for optional follow-up.
+  if (to_status === "lost" || to_status === "no_bid") {
     redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
   }
   const result = await changeOpportunityStatus({
@@ -65,6 +67,12 @@ async function quickFlipStatusAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect("/commercial/opportunities?status_error=" + encodeURIComponent(result.error));
+  }
+  // For Won transitions, also drop the auto-account-note placeholder
+  // so the account timeline reflects the closure instantly.
+  if (to_status === "won") {
+    const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
+    await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
   }
   redirect("/commercial/opportunities?status_ok=1");
 }

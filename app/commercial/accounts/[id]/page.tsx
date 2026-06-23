@@ -325,7 +325,9 @@ async function quickFlipFromAccountAction(formData: FormData) {
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Invalid status.")}`);
   }
-  if (QUICK_FLIP_BLOCKED_STATUSES.has(to_status)) {
+  // Lost / No-bid need loss_reason capture — bounce to detail page.
+  // Won flips immediately + drops the placeholder auto-note.
+  if (to_status === "lost" || to_status === "no_bid") {
     redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
   }
   const result = await changeOpportunityStatus({
@@ -335,6 +337,10 @@ async function quickFlipFromAccountAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
+  }
+  if (to_status === "won") {
+    const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
+    await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
   }
   redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
 }

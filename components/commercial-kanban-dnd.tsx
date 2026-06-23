@@ -56,14 +56,12 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     setDragOppId(null);
     if (!oppId) return;
 
-    // Terminal transitions need the structured debrief on the detail
-    // page. Paint an instant "Opening debrief…" overlay so the user
-    // sees feedback before the navigation completes (otherwise looks
-    // like nothing happened for 300-800ms during the page-fetch).
-    if (toStatus === "won" || toStatus === "lost" || toStatus === "no_bid") {
+    // Lost / No-bid need loss_reason — bounce to the detail page so
+    // the user can pick a reason via the structured DebriefFields.
+    // Won flips immediately like any other transition; the optional
+    // structured debrief shows up as an amber banner afterwards.
+    if (toStatus === "lost" || toStatus === "no_bid") {
       setNavigating(toStatus);
-      // Use replace + small RAF tick so the navigating overlay paints
-      // before the navigation begins — feels instant.
       requestAnimationFrame(() => {
         window.location.href = `/commercial/opportunities/${oppId}?action=change-status&to=${toStatus}`;
       });

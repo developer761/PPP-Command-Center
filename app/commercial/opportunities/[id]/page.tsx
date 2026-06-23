@@ -98,17 +98,30 @@ async function changeStatusAction(formData: FormData) {
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent("Invalid status."));
   }
-  const lossReasonRaw = String(formData.get("loss_reason") ?? "").trim();
-  const noteRaw = String(formData.get("note") ?? "").trim();
+  // Legacy loss_reason + note form fields were removed 2026-06-24
+  // (Karan: "why are these here if its not in lost section LOSS REASON
+  // IF LOST"). DebriefFields covers terminal transitions structurally:
+  // its debrief_deciding_factor maps 1:1 to OPPORTUNITY_LOSS_REASONS,
+  // and lessons/internal_notes cover the freeform note slot. Non-
+  // terminal transitions just don't need either field.
+  const decidingFactorRaw = String(formData.get("debrief_deciding_factor") ?? "").trim();
+  const lessonsRaw = String(formData.get("debrief_lessons") ?? "").trim();
+  const internalNotesRaw = String(formData.get("debrief_internal_notes") ?? "").trim();
+  // Only set loss_reason for lost/no_bid (won doesn't carry one).
   const loss_reason =
-    lossReasonRaw && (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(lossReasonRaw)
-      ? (lossReasonRaw as OpportunityLossReason)
+    (to_status === "lost" || to_status === "no_bid") &&
+    decidingFactorRaw &&
+    (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(decidingFactorRaw)
+      ? (decidingFactorRaw as OpportunityLossReason)
       : null;
+  // status_log "note" gets the freeform debrief text (lessons preferred,
+  // falls back to internal_notes). Empty otherwise.
+  const noteForStatusLog = lessonsRaw || internalNotesRaw || null;
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: to_status as OpportunityStatus,
     acting_user_id: user.id,
-    note: noteRaw || null,
+    note: noteForStatusLog,
     loss_reason,
   });
   if (!result.ok) {
@@ -1016,43 +1029,13 @@ function ChangeStatusCard({
                 </p>
               )}
             </div>
-            {/* data-form-field tags let DebriefFields hide these
-                automatically when a terminal status is picked — the
-                structured debrief covers loss_reason + note. Keep them
-                rendered so non-terminal transitions still get the
-                lightweight 1-line note path. */}
-            <div className="sm:col-span-1" data-form-field="loss_reason">
-              <label htmlFor="loss_reason" className={LABEL_CLS}>
-                Loss reason (if lost)
-              </label>
-              <select
-                id="loss_reason"
-                name="loss_reason"
-                defaultValue=""
-                className={SELECT_CLS}
-                style={SELECT_BG_STYLE}
-              >
-                <option value="">—</option>
-                {OPPORTUNITY_LOSS_REASONS.map((r) => (
-                  <option key={r} value={r}>
-                    {opportunityLossReasonLabel(r)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="sm:col-span-1" data-form-field="note">
-              <label htmlFor="note" className={LABEL_CLS}>
-                Note (required if lost)
-              </label>
-              <input
-                id="note"
-                name="note"
-                type="text"
-                placeholder="One-line context"
-                maxLength={500}
-                className={INPUT_CLS}
-              />
-            </div>
+            {/* Legacy loss_reason + note fields removed 2026-06-24 —
+                Karan flagged them as confusing on non-terminal transitions
+                ("Loss reason (if lost)" showed when picking Estimating
+                → Proposal Sent, which made no sense). DebriefFields
+                below covers terminal cases structurally + non-terminal
+                doesn't need either. changeStatusAction reads from the
+                debrief_deciding_factor + debrief_lessons fields. */}
           </div>
           {/* Win/Loss Debrief fields — only render when status is terminal.
               Hooks the sibling <select name="to_status"> on the client side

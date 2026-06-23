@@ -74,26 +74,10 @@ export default function DebriefFields(props: Props) {
     return () => select.removeEventListener("change", onChange);
   }, []);
 
-  // When terminal status is picked, hide the legacy loss_reason field +
-  // hide the old note field — the debrief fields below cover both
-  // (deciding_factor maps 1:1 to loss_reason, debrief_lessons is the
-  // structured replacement for the freeform note). Parent CSS class
-  // `data-debrief-active` toggles those siblings via the inline style
-  // tag below.
-  useEffect(() => {
-    const lossReason = document.querySelector<HTMLElement>('[data-form-field="loss_reason"]');
-    const note = document.querySelector<HTMLElement>('[data-form-field="note"]');
-    const els = [lossReason, note].filter(Boolean) as HTMLElement[];
-    if (terminal) {
-      els.forEach((el) => { el.style.display = "none"; });
-    } else {
-      els.forEach((el) => { el.style.display = ""; });
-    }
-    return () => {
-      els.forEach((el) => { el.style.display = ""; });
-    };
-  }, [terminal]);
-
+  // Legacy loss_reason + note fields were removed from the parent form
+  // 2026-06-24 — no DOM siblings to hide anymore. The data-form-field
+  // toggle effect went with them. DebriefFields now just renders (or
+  // doesn't) based on terminal status.
   if (!terminal) return null;
 
   const headerCopy = terminal === "won"
