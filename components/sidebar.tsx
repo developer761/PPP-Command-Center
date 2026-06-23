@@ -49,34 +49,21 @@ const navSections: NavSection[] = [
   {
     heading: "Admin",
     adminOnly: true,
+    // Karan 2026-06-23: Admin used to surface 6 individual tool rows
+    // (Integrations, Customer Copy, Suppliers, Supplier Email Copy,
+    // Setup Health, Test Color Form) — overwhelming + visually noisy.
+    // Collapsed to Integrations (used most) + Settings (hub page that
+    // cards out to the other 5). Nothing was removed; everything is
+    // one extra click. See app/dashboard/settings/page.tsx for the hub.
     items: [
       { label: "Integrations", href: "/dashboard/integrations", icon: <IconPlug />, adminOnly: true },
-      { label: "Customer Copy", href: "/dashboard/settings/templates", icon: <IconPencil />, adminOnly: true },
-      { label: "Suppliers", href: "/dashboard/settings/suppliers", icon: <IconTruck />, adminOnly: true },
-      { label: "Supplier Email Copy", href: "/dashboard/settings/supplier-templates", icon: <IconMail />, adminOnly: true },
-      // Paint Coverage settings retired 2026-06-10 (Karan): worker UI now
-      // defaults to gallons=0 + manual-entry banner when sqft is missing, so
-      // the per-constant tuning page is unused. Underlying coverage-config
-      // lib + DB table stay — still drives the auto-estimate when sqft IS
-      // present, just without an admin-editable knob.
       {
-        label: "Setup Health",
-        href: "/dashboard/settings/health",
+        label: "Settings",
+        href: "/dashboard/settings",
         icon: (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-            <path d="m9 11 3 3L22 4" />
-          </svg>
-        ),
-        adminOnly: true,
-      },
-      {
-        label: "Test Color Form",
-        href: "/dashboard/settings/test-form",
-        icon: (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         ),
         adminOnly: true,
