@@ -1752,16 +1752,20 @@ function AccountOpportunityRow({
             name="to_status"
             defaultValue=""
             required
-            className="px-2 py-1 text-base sm:text-sm border border-ppp-charcoal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[36px] bg-white"
+            className={`${SELECT_CLS} text-[12px] sm:text-sm py-1.5 min-h-[36px]`}
+            style={SELECT_BG_STYLE}
           >
             <option value="" disabled>
               Next status…
             </option>
-            {nextStatuses.map((s) => (
-              <option key={s} value={s}>
-                → {opportunityStatusLabel(s)}
-              </option>
-            ))}
+            {nextStatuses.map((s) => {
+              const isTerminal = s === "won" || s === "lost" || s === "no_bid";
+              return (
+                <option key={s} value={s}>
+                  {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
+                </option>
+              );
+            })}
           </select>
           <button
             type="submit"

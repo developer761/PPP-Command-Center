@@ -38,6 +38,7 @@ import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachm
 // the unified Sort & Filter dropdown below. The client component file
 // remains in the repo in case a future surface needs a standalone sort.
 import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
+import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -914,13 +915,19 @@ function KanbanCard({
             name="to_status"
             defaultValue=""
             required
-            className="flex-1 px-2 py-1.5 text-base sm:text-[11px] border border-ppp-charcoal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] sm:min-h-[36px] bg-white"
+            className={`${SELECT_CLS} flex-1 text-[12px] sm:text-xs py-1.5 min-h-[44px] sm:min-h-[36px]`}
+            style={SELECT_BG_STYLE}
             aria-label={`Move ${opp.title}`}
           >
             <option value="" disabled>Move to…</option>
-            {nextStatuses.map((s) => (
-              <option key={s} value={s}>→ {opportunityStatusLabel(s)}</option>
-            ))}
+            {nextStatuses.map((s) => {
+              const isTerminal = s === "won" || s === "lost" || s === "no_bid";
+              return (
+                <option key={s} value={s}>
+                  {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
+                </option>
+              );
+            })}
           </select>
           <button
             type="submit"
@@ -1119,12 +1126,13 @@ function OpportunityRow({
   // "this is a gut call, not the system default" — useful intel.
   const defaultProb = DEFAULT_PROBABILITY_BY_STATUS[opportunity.status] ?? null;
   const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
-  // Quick-flip dropdown options — only DAG-valid next statuses, and
-  // we hide terminal states (won/lost/no_bid) because they need extra
-  // fields and live on the detail page.
-  const nextStatuses = allowedNextStatuses(opportunity.status).filter(
-    (s) => !QUICK_FLIP_BLOCKED_STATUSES.has(s)
-  );
+  // Quick-flip dropdown options — ALL DAG-valid next statuses, including
+  // terminal won/lost/no_bid. Picking a terminal state triggers a redirect
+  // to the detail page via quickFlipStatusAction's server-side check
+  // (line 57) so the user can fill out the structured debrief. Karan
+  // 2026-06-24: previously hid terminal here — broke the discoverability
+  // of "how do I mark a deal closed" since users only had kanban-drag.
+  const nextStatuses = allowedNextStatuses(opportunity.status);
   return (
     <li className="relative">
       <Link
@@ -1256,16 +1264,20 @@ function OpportunityRow({
             name="to_status"
             defaultValue=""
             required
-            className="px-2 py-1 text-base sm:text-sm border border-ppp-charcoal-100 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[36px] bg-white"
+            className={`${SELECT_CLS} text-[12px] sm:text-sm py-1.5 min-h-[36px]`}
+            style={SELECT_BG_STYLE}
           >
             <option value="" disabled>
               Next status…
             </option>
-            {nextStatuses.map((s) => (
-              <option key={s} value={s}>
-                → {opportunityStatusLabel(s)}
-              </option>
-            ))}
+            {nextStatuses.map((s) => {
+              const isTerminal = s === "won" || s === "lost" || s === "no_bid";
+              return (
+                <option key={s} value={s}>
+                  {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
+                </option>
+              );
+            })}
           </select>
           <button
             type="submit"
