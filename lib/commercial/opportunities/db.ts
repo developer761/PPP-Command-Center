@@ -115,6 +115,10 @@ export type CommercialOpportunity = {
   created_by_user_id: string | null;
   updated_by_user_id: string | null;
   deleted_at: string | null;
+  // Migration 038 — set when the Win/Loss Debrief was completed for the
+  // current closure. NULL on terminal opps means "amber Debrief banner
+  // shows on the opp page." Cleared on reopen.
+  win_loss_debriefed_at: string | null;
 };
 
 export type OpportunitiesListFilters = {

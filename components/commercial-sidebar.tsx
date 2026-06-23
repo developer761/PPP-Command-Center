@@ -57,18 +57,28 @@ const navSections: NavSection[] = [
     heading: "Financials",
     items: [
       { label: "Billing", href: "/commercial/billing", phase: 8, disabled: true, icon: <IconDollar /> },
-      { label: "Reports", href: "/commercial/reports", disabled: true, icon: <IconChart /> },
+    ],
+  },
+  // NEW Reports group — promoted out of "Financials" (win/loss is sales
+  // effectiveness, not financial). First entry = Win/Loss Debrief reports
+  // (Karan 2026-06-24). Future reports (Revenue, Project Margin, Pipeline
+  // Velocity, Salesperson Scorecard) land here as they ship.
+  {
+    heading: "Reports",
+    items: [
+      { label: "Win/Loss", href: "/commercial/reports/win-loss", icon: <IconChart /> },
     ],
   },
   // Settings sits at the bottom of the nav (after the workflow groups).
   // Karan 2026-06-23: moved here from a top-of-sidebar slot next to
   // Dashboard so it doesn't compete with workflow links for attention.
-  // Future settings rows (Team, Notifications, Billing prefs, etc.)
-  // will land alongside Setup Health in this group as they ship.
+  // Karan 2026-06-24: added Competitors (admin-only dictionary for the
+  // Win/Loss Debrief typeahead — merge/retire duplicates).
   {
     heading: "Settings",
     items: [
       { label: "Setup Health", href: "/commercial/settings/health", icon: <IconHeart /> },
+      { label: "Competitors", href: "/commercial/settings/competitors", icon: <IconUsers /> },
     ],
   },
 ];
@@ -249,6 +259,17 @@ function IconChart() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M3 3v18h18 M7 14l4-4 4 4 5-5" />
+    </svg>
+  );
+}
+
+function IconUsers() {
+  // Two-figure silhouette — competitor dictionary (groups of organizations).
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
   );
 }

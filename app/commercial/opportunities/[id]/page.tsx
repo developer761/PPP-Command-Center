@@ -54,6 +54,12 @@ import {
   type OpportunityNoteWithAuthor,
 } from "@/lib/commercial/opportunities/notes";
 import {
+  postPlaceholderAutoNote,
+  writeDebrief,
+  clearDebriefFlagOnReopen,
+} from "@/lib/commercial/win-loss/debrief";
+import DebriefFields from "@/components/commercial/debrief-fields";
+import {
   listOpportunityAttachments,
   archiveOpportunityAttachment,
   categorizeFilename,
@@ -108,6 +114,67 @@ async function changeStatusAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent(result.error));
   }
+
+  // Win/Loss Debrief enrichment — fires when status flipped INTO a terminal
+  // state. Three paths:
+  //   1. User filled debrief fields → writeDebrief (creates row + enriches auto-note + sets flag)
+  //   2. User checked "skip" → postPlaceholderAutoNote (puts placeholder, leaves amber banner)
+  //   3. User didn't see the form (legacy path / API call) → same placeholder
+  // Re-opening (from terminal → non-terminal) clears the debriefed_at flag
+  // so a future re-close requires a new debrief.
+  const isTerminal = to_status === "won" || to_status === "lost" || to_status === "no_bid";
+  if (isTerminal) {
+    const skip = String(formData.get("debrief_skip") ?? "") === "1";
+    const competitor = String(formData.get("debrief_competitor") ?? "").trim();
+    const decidingFactor = String(formData.get("debrief_deciding_factor") ?? "").trim();
+    const lessons = String(formData.get("debrief_lessons") ?? "").trim();
+    const internalNotes = String(formData.get("debrief_internal_notes") ?? "").trim();
+    const hasAnyDebriefField = !skip && (competitor || decidingFactor || lessons || internalNotes);
+
+    if (hasAnyDebriefField) {
+      // Resolve the most recent status_log row for this transition (FK target).
+      const sb2 = commercialDb();
+      const { data: lastLog } = await sb2
+        .from("commercial_opportunity_status_log")
+        .select("id")
+        .eq("opportunity_id", opp_id)
+        .eq("to_status", to_status)
+        .order("changed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const statusLogId = (lastLog as { id: string } | null)?.id ?? null;
+      const debriefResult = await writeDebrief({
+        opportunityId: opp_id,
+        outcome: to_status as "won" | "lost" | "no_bid",
+        competitorName: competitor || null,
+        decidingFactor: decidingFactor || null,
+        lessonsLearned: lessons || null,
+        internalNotes: internalNotes || null,
+        statusLogId,
+        actorUserId: user.id,
+      });
+      if (!debriefResult.ok) {
+        // Status flipped but debrief failed — best-effort placeholder so account timeline isn't lying.
+        await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: to_status as "won" | "lost" | "no_bid", actorUserId: user.id });
+        redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1&debrief_warn=` + encodeURIComponent(debriefResult.error));
+      }
+    } else {
+      // User skipped or didn't fill — drop the minimal placeholder so the
+      // account timeline reflects the closure immediately. Amber banner
+      // will nudge them to come back and fill out the structured debrief.
+      await postPlaceholderAutoNote({
+        opportunityId: opp_id,
+        outcome: to_status as "won" | "lost" | "no_bid",
+        actorUserId: user.id,
+      });
+    }
+  } else {
+    // Non-terminal transition. If the opp WAS terminal (reopen case),
+    // clear the debriefed_at flag so a future re-close requires a fresh
+    // debrief. Idempotent — no-op if flag was already null.
+    await clearDebriefFlagOnReopen(opp_id, user.id);
+  }
+
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
 }
 
@@ -456,6 +523,31 @@ export default async function OpportunityDetailPage({
             Cloned from another opportunity. Edit the title + bid range now, then
             update the rest as the bid progresses.
           </span>
+        </div>
+      )}
+      {/* Amber "Debrief needed" banner — surfaces when an opp is in a
+          terminal state (won/lost/no_bid) but win_loss_debriefed_at is
+          NULL. Quarterly report quality + Alex follow-through depend on
+          this; banner only goes away when the structured debrief lands. */}
+      {(opp.status === "won" || opp.status === "lost" || opp.status === "no_bid") &&
+        !opp.win_loss_debriefed_at && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-700 shrink-0 mt-0.5" aria-hidden>
+              <path d="M12 9v3.5 M12 16h.01 M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            </svg>
+            <div className="text-sm text-amber-900">
+              <strong>Debrief needed.</strong>{" "}
+              This opportunity closed without a Win/Loss Debrief.
+              Capturing competitor + deciding factor feeds the quarterly review and helps Alex pattern-match what&apos;s working.
+            </div>
+          </div>
+          <Link
+            href={`/commercial/opportunities/${opp.id}?tab=info#status-change-form`}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-700 text-white text-[12px] font-semibold hover:bg-amber-800 active:bg-amber-900 min-h-[44px] touch-manipulation shrink-0"
+          >
+            Add debrief
+          </Link>
         </div>
       )}
       <header>
@@ -888,6 +980,11 @@ function ChangeStatusCard({
               />
             </div>
           </div>
+          {/* Win/Loss Debrief fields — only render when status is terminal.
+              Hooks the sibling <select name="to_status"> on the client side
+              and fades in. Submits with the same FormData so changeStatusAction
+              can write the debrief row + auto-note in one transaction. */}
+          <DebriefFields initialStatus={defaultTo ?? undefined} />
           <div className="flex justify-end">
             <button
               type="submit"
