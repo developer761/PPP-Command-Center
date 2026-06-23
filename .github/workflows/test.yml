@@ -1,4 +1,4 @@
- name: Vitest 
+name: Vitest
      
   on:
     push:
@@ -7,9 +7,9 @@
     pull_request:
       branches:
         - main
-
+  
   jobs:
-    test:
+    test: 
       runs-on: ubuntu-latest
       timeout-minutes: 5
       steps: 
@@ -27,4 +27,3 @@
             COMMERCIAL_ARCHIVE_HMAC_SECRET: ci-test-secret-32-chars-1234567890abc
             COMMERCIAL_ARCHIVE_LOCAL: orders
             COMMERCIAL_ARCHIVE_DOMAIN: orders.precisionpaintingplus.net
-  
