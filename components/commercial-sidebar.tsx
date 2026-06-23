@@ -35,6 +35,11 @@ const navSections: NavSection[] = [
     heading: "Overview",
     items: [
       { label: "Dashboard", href: "/commercial", icon: <IconHome /> },
+      // Setup Health right alongside Dashboard for maximum visibility.
+      // Karan 2026-06-23: flattened from a separate "Settings" section
+      // (one-item sections look like noise; this keeps it findable
+      // without a header just for one row).
+      { label: "Setup Health", href: "/commercial/settings/health", icon: <IconHeart /> },
     ],
   },
   {
@@ -58,16 +63,6 @@ const navSections: NavSection[] = [
     items: [
       { label: "Billing", href: "/commercial/billing", phase: 8, disabled: true, icon: <IconDollar /> },
       { label: "Reports", href: "/commercial/reports", disabled: true, icon: <IconChart /> },
-    ],
-  },
-  {
-    heading: "Settings",
-    items: [
-      // Health page is admin-only at the server-side gate; non-admins
-      // still see the link but get redirected to /commercial on visit.
-      // Acceptable trade-off vs. hiding it client-side (would need
-      // viewer prop threading + server roundtrip on every render).
-      { label: "Setup Health", href: "/commercial/settings/health", icon: <IconHeart /> },
     ],
   },
 ];
