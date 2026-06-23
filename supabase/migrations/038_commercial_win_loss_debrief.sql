@@ -204,8 +204,8 @@ ALTER TABLE public.commercial_opportunities
 -- Index for the dashboard "X opps need debrief" widget. Partial: only
 -- terminal-state opps without a debrief.
 CREATE INDEX IF NOT EXISTS commercial_opportunities_needs_debrief_idx
-  ON public.commercial_opportunities (current_status, decided_at DESC)
-  WHERE current_status IN ('won', 'lost', 'no_bid')
+  ON public.commercial_opportunities (status, decided_at DESC)
+  WHERE status IN ('won', 'lost', 'no_bid')
     AND win_loss_debriefed_at IS NULL
     AND deleted_at IS NULL;
 

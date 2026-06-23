@@ -151,7 +151,7 @@ export async function writeDebrief(
   // already been reopened.
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, title, current_status, win_loss_debriefed_at, deleted_at")
+    .select("id, account_id, title, status, win_loss_debriefed_at, deleted_at")
     .eq("id", input.opportunityId)
     .maybeSingle();
   if (!opp || (opp as { deleted_at: string | null }).deleted_at) {
@@ -161,13 +161,13 @@ export async function writeDebrief(
     id: string;
     account_id: string | null;
     title: string;
-    current_status: string;
+    status: string;
     win_loss_debriefed_at: string | null;
   };
-  if (o.current_status !== input.outcome) {
+  if (o.status !== input.outcome) {
     return {
       ok: false,
-      error: `Opportunity is currently "${o.current_status}", not "${input.outcome}". Status may have changed since you opened the debrief.`,
+      error: `Opportunity is currently "${o.status}", not "${input.outcome}". Status may have changed since you opened the debrief.`,
     };
   }
 
@@ -329,17 +329,17 @@ export async function oppNeedsDebrief(opportunityId: string): Promise<boolean> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_opportunities")
-    .select("current_status, win_loss_debriefed_at, deleted_at")
+    .select("status, win_loss_debriefed_at, deleted_at")
     .eq("id", opportunityId)
     .maybeSingle();
   if (!data) return false;
   const o = data as {
-    current_status: string;
+    status: string;
     win_loss_debriefed_at: string | null;
     deleted_at: string | null;
   };
   if (o.deleted_at) return false;
-  if (!["won", "lost", "no_bid"].includes(o.current_status)) return false;
+  if (!["won", "lost", "no_bid"].includes(o.status)) return false;
   return o.win_loss_debriefed_at === null;
 }
 
@@ -349,7 +349,7 @@ export async function countOppsNeedingDebrief(): Promise<number> {
   const { count } = await sb
     .from("commercial_opportunities")
     .select("id", { count: "exact", head: true })
-    .in("current_status", ["won", "lost", "no_bid"])
+    .in("status", ["won", "lost", "no_bid"])
     .is("win_loss_debriefed_at", null)
     .is("deleted_at", null);
   return count ?? 0;
