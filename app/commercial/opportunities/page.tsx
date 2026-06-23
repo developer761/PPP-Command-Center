@@ -489,7 +489,12 @@ export default async function CommercialOpportunitiesPage({
           the bottleneck? Hidden when no open opps. Each pill is a
           tappable drill-down — "Estimating 7" → list filtered to
           estimating with the other filter chips preserved. */}
-      {statusSnapshot.length > 0 && (
+      {/* Hide "Open by status" pill row on KANBAN — the columns ARE the
+          status filter, so the pills are redundant noise. List view still
+          shows them (the list doesn't group by status visually so the
+          chips give the same "where are deals sitting" snapshot Alex
+          uses for triage). Karan flagged the kanban clutter 2026-06-24. */}
+      {viewMode === "list" && statusSnapshot.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5 flex items-center justify-between">
             <span>Open by status</span>
@@ -742,8 +747,9 @@ function KanbanBoard({
   return (
     <KanbanDnDProvider>
     <div className="space-y-3">
-      <div className="text-[11px] text-ppp-charcoal-500 px-1">
-        💡 Drag a card to a different column to move the deal forward. Dragging to <strong>Won / Lost / No-bid</strong> opens a quick debrief so you capture who won + why.
+      <div className="text-[11px] text-ppp-charcoal-500 px-1 flex flex-wrap gap-x-3 gap-y-1">
+        <span>💡 Drag a card between columns to move the deal forward. Dragging to <strong>Won / Lost / No-bid</strong> opens a quick debrief.</span>
+        <span className="text-ppp-charcoal-400">Sort applies within each column.</span>
       </div>
       <div className="overflow-x-auto -mx-2 px-2 pb-2">
         <div className="flex gap-3 min-w-max">

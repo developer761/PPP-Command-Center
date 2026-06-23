@@ -2052,14 +2052,29 @@ async function NotesTab({ accountId }: { accountId: string }) {
             <header className="flex items-start justify-between gap-3 mb-2">
               <div className="flex items-center gap-2 flex-wrap">
                 {isAuto ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <rect x="3" y="11" width="18" height="10" rx="2" />
-                      <circle cx="12" cy="5" r="2" />
-                      <path d="M12 7v4 M8 16h.01 M16 16h.01" />
-                    </svg>
-                    Auto
-                  </span>
+                  <>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <rect x="3" y="11" width="18" height="10" rx="2" />
+                        <circle cx="12" cy="5" r="2" />
+                        <path d="M12 7v4 M8 16h.01 M16 16h.01" />
+                      </svg>
+                      Auto
+                    </span>
+                    {n.source_outcome && (
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          n.source_outcome === "won"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : n.source_outcome === "lost"
+                            ? "bg-rose-100 text-rose-800"
+                            : "bg-ppp-charcoal-100 text-ppp-charcoal-700"
+                        }`}
+                      >
+                        {n.source_outcome === "no_bid" ? "No bid" : n.source_outcome}
+                      </span>
+                    )}
+                  </>
                 ) : (
                   <span className="text-[12px] font-medium text-ppp-charcoal">
                     {n.author_full_name ?? n.author_email ?? "System"}
@@ -2074,7 +2089,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
                   href={`/commercial/opportunities/${n.source_opportunity_id}`}
                   className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800 shrink-0 underline underline-offset-2"
                 >
-                  View opportunity →
+                  {n.source_opportunity_title ?? "View opportunity"} →
                 </Link>
               )}
             </header>
