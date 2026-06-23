@@ -40,11 +40,23 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
 
   const handleDrop = async (e: DragEvent<HTMLDivElement>, toStatus: string) => {
     e.preventDefault();
-    // Some degraded browser states fire drop without a payload — fall
-    // back to the React-state dragOppId so we don't lose the move.
     const oppId = (e.dataTransfer?.getData("text/plain") ?? "") || dragOppId;
+    // CRITICAL: clear drag state IMMEDIATELY so the source card snaps
+    // back to opacity:1 — otherwise the "stuck mid-drag" glitch shows
+    // when we bounce to the detail page for terminal transitions.
     setDragOppId(null);
     if (!oppId) return;
+
+    // Terminal transitions need the structured debrief on the detail
+    // page. Bounce BEFORE the API call so the user sees instant feedback
+    // (no spinner-then-redirect lag). Server still enforces the actual
+    // status flip via the detail-page form submission, so the kanban
+    // doesn't end up in a lying state if the user closes the tab.
+    if (toStatus === "won" || toStatus === "lost" || toStatus === "no_bid") {
+      window.location.href = `/commercial/opportunities/${oppId}?action=change-status&to=${toStatus}`;
+      return;
+    }
+
     try {
       const res = await fetch(`/api/commercial/opportunities/${oppId}/move-status`, {
         method: "POST",
@@ -52,9 +64,9 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ to_status: toStatus }),
       });
       const json = await res.json().catch(() => ({}));
+      // Defensive: server may still 409 for a terminal we didn't catch
+      // above (e.g. future status added). Bounce gracefully.
       if (res.status === 409 && json.error === "terminal_status_needs_detail_page") {
-        // Won / Lost / No-bid need loss_reason — bounce to the detail
-        // page with the preselected target status.
         window.location.href = `/commercial/opportunities/${oppId}?action=change-status&to=${toStatus}`;
         return;
       }

@@ -947,7 +947,12 @@ function ChangeStatusCard({
                 </p>
               )}
             </div>
-            <div className="sm:col-span-1">
+            {/* data-form-field tags let DebriefFields hide these
+                automatically when a terminal status is picked — the
+                structured debrief covers loss_reason + note. Keep them
+                rendered so non-terminal transitions still get the
+                lightweight 1-line note path. */}
+            <div className="sm:col-span-1" data-form-field="loss_reason">
               <label htmlFor="loss_reason" className={LABEL_CLS}>
                 Loss reason (if lost)
               </label>
@@ -966,7 +971,7 @@ function ChangeStatusCard({
                 ))}
               </select>
             </div>
-            <div className="sm:col-span-1">
+            <div className="sm:col-span-1" data-form-field="note">
               <label htmlFor="note" className={LABEL_CLS}>
                 Note (required if lost)
               </label>
@@ -982,10 +987,23 @@ function ChangeStatusCard({
           </div>
           {/* Win/Loss Debrief fields — only render when status is terminal.
               Hooks the sibling <select name="to_status"> on the client side
-              and fades in. Submits with the same FormData so changeStatusAction
-              can write the debrief row + auto-note in one transaction. */}
+              and fades in. Hides the loss_reason + note siblings above (the
+              structured debrief replaces them). */}
           <DebriefFields initialStatus={defaultTo ?? undefined} />
-          <div className="flex justify-end">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+            {/* Secondary action — submits status flip without filling
+                out debrief. Sets a hidden field so changeStatusAction
+                knows to drop the placeholder auto-note + leave the
+                amber "Debrief needed" banner visible. Only relevant
+                for terminal transitions; harmless otherwise. */}
+            <button
+              type="submit"
+              name="debrief_skip"
+              value="1"
+              className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-medium hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 transition-colors min-h-[44px] touch-manipulation"
+            >
+              Save status, debrief later
+            </button>
             <button
               type="submit"
               className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"

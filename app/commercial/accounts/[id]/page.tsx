@@ -105,6 +105,9 @@ const TABS = [
   // rightmost tabs were below the fold + Alex wasn't discovering them.
   // See lib comment in opp detail page for the same rationale.
   { key: "email", label: "Email" },
+  // Notes added 2026-06-24 alongside Win/Loss Debrief feature — auto-debrief
+  // notes land on this account's timeline when a linked opp closes.
+  { key: "notes", label: "Notes" },
   { key: "team", label: "Team" },
   { key: "contacts", label: "Contacts" },
   { key: "opportunities", label: "Opportunities" },
@@ -296,6 +299,7 @@ export default async function CommercialAccountDetailPage({
       {tab === "opportunities" && <OpportunitiesTab accountId={account.id} overview={overview} />}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "email" && <EmailArchiveTab kind="acc" sourceId={account.id} />}
+      {tab === "notes" && <NotesTab accountId={account.id} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
     </div>
   );
@@ -1997,6 +2001,85 @@ function DocumentRow({
           </button>
         </form>
       )}
+    </div>
+  );
+}
+
+/**
+ * Notes tab — surfaces commercial_account_notes for this account.
+ * Two visual treatments:
+ *   - user notes: standard white card with author + timestamp
+ *   - auto_debrief notes: slate-tinted card with [AUTO] badge + "View opportunity" link
+ *
+ * Auto-debrief notes land here automatically when a linked opportunity
+ * is closed (won/lost/no_bid) via the Win/Loss Debrief flow. Two-stage
+ * post: a placeholder lands immediately on status change, enriches
+ * in-place when the structured debrief is submitted.
+ */
+async function NotesTab({ accountId }: { accountId: string }) {
+  const { listAccountNotes } = await import("@/lib/commercial/account-notes");
+  const notes = await listAccountNotes(accountId);
+
+  if (notes.length === 0) {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+        <strong className="block text-ppp-charcoal">No notes yet</strong>
+        <p className="mt-1">
+          When opportunities for this account close (won/lost/no-bid), the
+          debrief auto-posts here. Manual notes coming next.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {notes.map((n) => {
+        const isAuto = n.kind === "auto_debrief";
+        return (
+          <article
+            key={n.id}
+            className={`rounded-xl border p-4 sm:p-5 ${
+              isAuto
+                ? "bg-slate-50/60 border-slate-200"
+                : "bg-white border-ppp-charcoal-100"
+            }`}
+          >
+            <header className="flex items-start justify-between gap-3 mb-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                {isAuto ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <rect x="3" y="11" width="18" height="10" rx="2" />
+                      <circle cx="12" cy="5" r="2" />
+                      <path d="M12 7v4 M8 16h.01 M16 16h.01" />
+                    </svg>
+                    Auto
+                  </span>
+                ) : (
+                  <span className="text-[12px] font-medium text-ppp-charcoal">
+                    {n.author_full_name ?? n.author_email ?? "System"}
+                  </span>
+                )}
+                <time className="text-[11px] text-ppp-charcoal-500">
+                  {new Date(n.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                </time>
+              </div>
+              {isAuto && n.source_opportunity_id && (
+                <Link
+                  href={`/commercial/opportunities/${n.source_opportunity_id}`}
+                  className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800 shrink-0 underline underline-offset-2"
+                >
+                  View opportunity →
+                </Link>
+              )}
+            </header>
+            <p className="text-sm text-ppp-charcoal whitespace-pre-wrap leading-relaxed">
+              {n.body}
+            </p>
+          </article>
+        );
+      })}
     </div>
   );
 }

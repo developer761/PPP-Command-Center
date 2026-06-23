@@ -1,52 +1,58 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  SELECT_CLS,
+  SELECT_BG_STYLE,
+  INPUT_CLS,
+  TEXTAREA_CLS,
+  LABEL_CLS,
+} from "@/lib/commercial/form-classnames";
 
 /**
  * Win/Loss Debrief Fields — reactive add-on to the opp status-change form.
  *
- * Mounted INSIDE the existing form (so it submits with the same FormData).
- * When the parent status dropdown is set to a terminal state (won/lost/no_bid),
- * this component fades in the debrief fields. Otherwise renders nothing
- * (no spacer, no flicker).
+ * Uses the platform's shared SELECT_CLS / INPUT_CLS / TEXTAREA_CLS /
+ * LABEL_CLS classnames so the styling matches every other form on the
+ * Commercial CC (Karan flagged the gray default-select look — never use
+ * raw browser controls here).
  *
- * Wires:
- *   - `name="debrief_competitor"`   — free-text resolved server-side
- *   - `name="debrief_deciding_factor"` — enum value (same as loss_reason)
- *   - `name="debrief_lessons"`      — free text
- *   - `name="debrief_internal_notes"` — free text
- *   - `name="debrief_skip"`         — "1" if user explicitly skipped
+ * The deciding-factor picker is rendered as a button-grid (radio inputs
+ * styled as toggle pills) instead of a dropdown — faster to pick on
+ * mobile + visually clearer than a select for a 7-option choice set.
  *
- * Watches the sibling `<select name="to_status">` for change events so we
- * don't need a context wrapper — keeps the integration into the existing
- * server-component form minimal.
+ * Mount this INSIDE the existing form so it submits with the same
+ * FormData. When the sibling status select is non-terminal we render
+ * nothing (no spacer, no flicker). When terminal, the section fades in
+ * and exposes:
+ *   - debrief_competitor (typeahead, auto-create on save)
+ *   - debrief_deciding_factor (button-grid, required for lost/no_bid)
+ *   - debrief_lessons (textarea, optional but encouraged)
+ *   - debrief_internal_notes (textarea, optional)
  *
- * Mobile-first: full-width inputs, text-base sizing (no iOS auto-zoom),
- * 44px tap targets, sticky button positioning on small screens.
+ * The "skip" path is exposed via a SEPARATE secondary action button
+ * rendered alongside (parent owns the buttons — this component just
+ * sets `debrief_skip="1"` hidden field when the button is clicked).
  */
 
 const TERMINAL_STATUSES = new Set(["won", "lost", "no_bid"]);
 
 type Props = {
-  /** Initial status from URL pre-select (kanban-drag flow). Triggers
-   *  the panel to render expanded on first paint when terminal. */
   initialStatus?: string;
-  /** Optional already-stored values when re-opening the modal to fill out
-   *  a skipped debrief later. */
   initialCompetitor?: string;
   initialDecidingFactor?: string;
   initialLessons?: string;
   initialInternalNotes?: string;
 };
 
-const DECIDING_FACTORS: Array<{ value: string; label: string; hint: string }> = [
-  { value: "price", label: "Price", hint: "Won/lost based on dollars" },
-  { value: "scope", label: "Scope mismatch", hint: "Job didn't fit our wheelhouse" },
-  { value: "timing", label: "Timing", hint: "Schedule didn't align" },
-  { value: "no_decision", label: "No decision made", hint: "Customer never picked anyone" },
-  { value: "awarded_to_competitor", label: "Awarded to competitor", hint: "They picked someone else" },
-  { value: "relationship", label: "Relationship", hint: "Existing relationship was the deciding factor" },
-  { value: "other", label: "Other", hint: "Use lessons field below" },
+const DECIDING_FACTORS: Array<{ value: string; label: string }> = [
+  { value: "price", label: "Price" },
+  { value: "scope", label: "Scope" },
+  { value: "timing", label: "Timing" },
+  { value: "relationship", label: "Relationship" },
+  { value: "awarded_to_competitor", label: "Lost to competitor" },
+  { value: "no_decision", label: "No decision" },
+  { value: "other", label: "Other" },
 ];
 
 export default function DebriefFields(props: Props) {
@@ -56,7 +62,6 @@ export default function DebriefFields(props: Props) {
   );
 
   // Watch the sibling status dropdown without needing a Context provider.
-  // The form is in a server component; we hook directly to the DOM element.
   useEffect(() => {
     const select = document.querySelector<HTMLSelectElement>('select[name="to_status"]');
     if (!select) return;
@@ -65,102 +70,159 @@ export default function DebriefFields(props: Props) {
       setTerminal(TERMINAL_STATUSES.has(v) ? (v as "won" | "lost" | "no_bid") : null);
     };
     select.addEventListener("change", onChange);
-    // Sync once on mount in case the dropdown already has a pre-selected
-    // terminal value from URL params.
     onChange();
     return () => select.removeEventListener("change", onChange);
   }, []);
 
+  // When terminal status is picked, hide the legacy loss_reason field +
+  // hide the old note field — the debrief fields below cover both
+  // (deciding_factor maps 1:1 to loss_reason, debrief_lessons is the
+  // structured replacement for the freeform note). Parent CSS class
+  // `data-debrief-active` toggles those siblings via the inline style
+  // tag below.
+  useEffect(() => {
+    const lossReason = document.querySelector<HTMLElement>('[data-form-field="loss_reason"]');
+    const note = document.querySelector<HTMLElement>('[data-form-field="note"]');
+    const els = [lossReason, note].filter(Boolean) as HTMLElement[];
+    if (terminal) {
+      els.forEach((el) => { el.style.display = "none"; });
+    } else {
+      els.forEach((el) => { el.style.display = ""; });
+    }
+    return () => {
+      els.forEach((el) => { el.style.display = ""; });
+    };
+  }, [terminal]);
+
   if (!terminal) return null;
+
+  const headerCopy = terminal === "won"
+    ? { title: "Win Debrief", sub: "Capture what sealed it." }
+    : terminal === "lost"
+    ? { title: "Loss Debrief", sub: "Capture who won + why. Feeds the quarterly review." }
+    : { title: "No-Bid Debrief", sub: "Why we passed on this one." };
+
+  const factorRequired = terminal !== "won";
 
   return (
     <section
       data-debrief
-      className="mt-4 p-4 rounded-xl border border-emerald-200 bg-emerald-50/40 animate-fade-up"
+      className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/30 overflow-hidden animate-fade-up"
       aria-label="Win/Loss debrief"
     >
-      <header className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <h3 className="text-sm font-semibold text-ppp-charcoal">
-            {terminal === "won" ? "🎉 Win Debrief" : terminal === "lost" ? "Loss Debrief" : "No-Bid Debrief"}
-          </h3>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-            {terminal === "won"
-              ? "Capture what sealed it — feeds the quarterly review."
-              : "Capture who won + why — feeds the quarterly review. You can skip + fill in later."}
-          </p>
-        </div>
+      <header className="px-4 sm:px-5 pt-4 pb-3 border-b border-emerald-100 bg-emerald-50/60">
+        <h3 className="text-sm font-semibold text-ppp-charcoal">
+          {headerCopy.title}
+        </h3>
+        <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+          {headerCopy.sub}
+        </p>
       </header>
 
-      <CompetitorTypeahead
-        outcome={terminal}
-        initialValue={props.initialCompetitor ?? ""}
-      />
-
-      <div className="mt-3">
-        <label htmlFor="debrief_deciding_factor" className="block text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
-          {terminal === "won" ? "What sealed it?" : "Deciding factor"}
-          {terminal !== "won" && <span className="text-rose-700 ml-1">*</span>}
-        </label>
-        <select
-          id="debrief_deciding_factor"
-          name="debrief_deciding_factor"
-          defaultValue={props.initialDecidingFactor ?? ""}
-          required={terminal !== "won"}
-          className="block w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
-        >
-          <option value="">— pick one —</option>
-          {DECIDING_FACTORS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="mt-3">
-        <label htmlFor="debrief_lessons" className="block text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
-          {terminal === "won" ? "What would you do MORE of next time?" : "What would we do differently?"}
-        </label>
-        <textarea
-          id="debrief_lessons"
-          name="debrief_lessons"
-          defaultValue={props.initialLessons ?? ""}
-          rows={3}
-          maxLength={2000}
-          placeholder={
-            terminal === "won"
-              ? "e.g. They valued our portfolio over price — lean harder on portfolio early in pitches."
-              : "e.g. We quoted 6 months but they wanted 4. Stop padding K-12 timelines."
-          }
-          className="block w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      <div className="px-4 sm:px-5 py-4 space-y-4">
+        <CompetitorTypeahead
+          outcome={terminal}
+          initialValue={props.initialCompetitor ?? ""}
         />
-        <p className="text-[10px] text-ppp-charcoal-400 mt-1">
-          This is gold for the quarterly review — even one sentence helps.
-        </p>
-      </div>
 
-      <details className="mt-3">
-        <summary className="cursor-pointer text-[11px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none min-h-[24px] flex items-center">
-          Add internal notes (optional)
-        </summary>
-        <textarea
-          name="debrief_internal_notes"
-          defaultValue={props.initialInternalNotes ?? ""}
-          rows={2}
-          maxLength={2000}
-          placeholder="Anything else not captured above — private to the team."
-          className="mt-2 block w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        />
-      </details>
+        <div>
+          <label className={LABEL_CLS}>
+            {terminal === "won" ? "What sealed it?" : "Deciding factor"}
+            {factorRequired && <span className="text-rose-700 ml-1">*</span>}
+          </label>
+          <FactorButtonGrid
+            initialValue={props.initialDecidingFactor ?? ""}
+            required={factorRequired}
+          />
+        </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <input type="checkbox" id="debrief_skip" name="debrief_skip" value="1" className="h-4 w-4" />
-        <label htmlFor="debrief_skip" className="text-[12px] text-ppp-charcoal-500">
-          Skip the debrief for now — I&apos;ll fill it in later
-        </label>
+        <div>
+          <label htmlFor="debrief_lessons" className={LABEL_CLS}>
+            {terminal === "won" ? "What worked? (optional)" : "What would we do differently? (optional)"}
+          </label>
+          <textarea
+            id="debrief_lessons"
+            name="debrief_lessons"
+            defaultValue={props.initialLessons ?? ""}
+            rows={3}
+            maxLength={2000}
+            placeholder={
+              terminal === "won"
+                ? "e.g. Our portfolio sold them — lean harder on portfolio in pitches."
+                : "e.g. We quoted 6 months but they wanted 4. Stop padding K-12 timelines."
+            }
+            className={`${TEXTAREA_CLS} min-h-[88px]`}
+          />
+        </div>
+
+        <details className="group">
+          <summary className="cursor-pointer text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none min-h-[28px] flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+            Add internal notes
+          </summary>
+          <textarea
+            name="debrief_internal_notes"
+            defaultValue={props.initialInternalNotes ?? ""}
+            rows={2}
+            maxLength={2000}
+            placeholder="Anything else not captured above — private to the team."
+            className={`mt-2 ${TEXTAREA_CLS} min-h-[66px]`}
+          />
+        </details>
       </div>
     </section>
+  );
+}
+
+/** Button-grid replacement for the deciding-factor dropdown.
+ *  Renders one toggle button per factor; the chosen value is written
+ *  into a hidden input the form picks up. Better UX than a select on
+ *  mobile (single tap), better visual hierarchy than radio dots. */
+function FactorButtonGrid({
+  initialValue,
+  required,
+}: {
+  initialValue: string;
+  required: boolean;
+}) {
+  const [picked, setPicked] = useState(initialValue);
+
+  return (
+    <>
+      <input
+        type="hidden"
+        name="debrief_deciding_factor"
+        value={picked}
+        required={required && !picked}
+      />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {DECIDING_FACTORS.map((f) => {
+          const active = picked === f.value;
+          return (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setPicked(active ? "" : f.value)}
+              className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-colors min-h-[44px] touch-manipulation ${
+                active
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-600/20"
+                  : "bg-white text-ppp-charcoal border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+              }`}
+              aria-pressed={active}
+            >
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+      {required && !picked && (
+        <p className="text-[11px] text-ppp-charcoal-400 mt-2">
+          Pick the main deciding factor.
+        </p>
+      )}
+    </>
   );
 }
 
@@ -179,7 +241,6 @@ function CompetitorTypeahead({
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Debounced fetch on query change. Cancels in-flight on rapid typing.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -201,7 +262,6 @@ function CompetitorTypeahead({
     };
   }, [query]);
 
-  // Close dropdown on outside click.
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
@@ -214,7 +274,6 @@ function CompetitorTypeahead({
     }
   }, [open]);
 
-  // Show fuzzy-match suggestion when query is close to but not exactly a known competitor.
   const fuzzyHint = useMemo(() => {
     if (!query.trim()) return null;
     const lower = query.trim().toLowerCase();
@@ -230,11 +289,11 @@ function CompetitorTypeahead({
 
   const label =
     outcome === "won" ? "Who'd we beat? (optional)" : "Who won it?";
-  const required = outcome === "lost"; // lost requires competitor; won + no_bid optional
+  const required = outcome === "lost"; // lost requires; won + no_bid optional
 
   return (
     <div ref={wrapperRef} className="relative">
-      <label htmlFor="debrief_competitor" className="block text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
+      <label htmlFor="debrief_competitor" className={LABEL_CLS}>
         {label}
         {required && <span className="text-rose-700 ml-1">*</span>}
       </label>
@@ -252,13 +311,13 @@ function CompetitorTypeahead({
         required={required}
         autoComplete="off"
         placeholder="Type to search or add a new competitor"
-        className="block w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
+        className={INPUT_CLS}
       />
       {fuzzyHint && !open && (
         <p className="text-[10px] text-amber-700 mt-1">{fuzzyHint}</p>
       )}
       {open && (query.length > 0 || suggestions.length > 0) && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
           {loading && suggestions.length === 0 ? (
             <div className="px-3 py-2 text-[12px] text-ppp-charcoal-500">Searching…</div>
           ) : suggestions.length === 0 ? (
@@ -303,3 +362,7 @@ function CompetitorTypeahead({
     </div>
   );
 }
+
+// Hint for the parent page to consume — kept as a named const so we can
+// import + reuse the value in a kanban-side modal later.
+export { SELECT_CLS, SELECT_BG_STYLE };
