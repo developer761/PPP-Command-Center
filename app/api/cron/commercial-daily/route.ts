@@ -8,9 +8,8 @@ import { reportError, reportWarn } from "@/lib/observability";
 /**
  * Commercial daily cron — fires the three "what's drifting?" reminders.
  *
- * Bearer-token auth via CRON_SECRET (same env var as
- * /api/cron/snapshot-warm). Vercel cron auto-injects this header when
- * the env var is set.
+ * Bearer-token auth via CRON_SECRET. Vercel cron auto-injects this
+ * header when the env var is set.
  *
  * Schedule (vercel.json): `0 12 * * *` — 12:00 UTC year-round. That's
  * 8am EDT (summer) / 7am EST (winter) so the reminder lands BEFORE

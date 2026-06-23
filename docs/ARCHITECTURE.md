@@ -268,9 +268,11 @@ The scoping is done by joining `auth.users.id` → SF user id (via the
 ## Performance notes (the things that aren't obvious)
 
 1. **Snapshot cache is the page-load bottleneck on cold instances.** Warm
-   loads are instant; cold loads hit Salesforce. The pre-warm cron
-   (`/api/cron/snapshot-warm`) fires every 10 min to keep the shared
-   Supabase cache fresh so cold instances skip the live SF query.
+   loads are instant; cold loads hit Salesforce. The snapshot is rebuilt
+   on first request after the in-memory cache TTL expires; the previous
+   `/api/cron/snapshot-warm` was retired 2026-06-23 (Vercel Hobby plan
+   allows only one cron per day so daily commercial reminders take
+   precedence — Pro plan would re-enable a 10-min warm cron).
 2. **Modal lazy-loading** matters. SupplierPickerModal, SupplierOrderModal,
    DraftOrderModal, WoPastOrders are all `next/dynamic` — they only load
    when admin actually opens them. Don't undo this without measuring

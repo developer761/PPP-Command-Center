@@ -117,9 +117,13 @@ The goal isn't the change — it's seeing the build pipeline, the lint, the PR r
 - This forces server-side rendering on every request. The snapshot cache + memoization is what makes this fast.
 - DO NOT remove this — static caching at the page layer would break viewer scoping (admin would see a worker's cached page).
 
-### Cron config lives in the Vercel UI, not in this repo
-- The repo has NO `vercel.json`. Cron jobs are configured in Vercel Project Settings → Cron Jobs.
-- The snapshot pre-warm fires at `/api/cron/snapshot-warm` every 10 minutes.
+### Cron config lives in `vercel.json`
+- Vercel Hobby plan allows ONE cron job per day. Repo currently schedules
+  `/api/cron/commercial-daily` at 12:00 UTC (Karan's commercial reminders).
+- Auth: bearer token from `CRON_SECRET`. Vercel injects it automatically.
+- Snapshot pre-warm (`/api/cron/snapshot-warm`) was retired 2026-06-23 —
+  on Hobby plan we can't fit both, and the commercial daily is higher value.
+  If we move to Pro, re-add `{ path: "/api/cron/snapshot-warm", schedule: "*/10 * * * *" }`.
 
 ---
 

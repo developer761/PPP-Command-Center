@@ -237,7 +237,7 @@ crosses into derive/UI land is camelCase. Don't mix the two in the same scope.
 ## Deployments
 
 - Vercel auto-deploys from `main`. Push = ship.
-- Cron jobs configured in the Vercel project UI (snapshot pre-warm hits `/api/cron/snapshot-warm`).
+- Cron jobs configured in `vercel.json` — currently `/api/cron/commercial-daily` at 12:00 UTC (one daily, Hobby plan limit).
 - Webhook URLs registered in Resend dashboard (delivery events + inbound).
 - Salesforce OAuth refresh token stored in Supabase `sf_credentials` table.
 
