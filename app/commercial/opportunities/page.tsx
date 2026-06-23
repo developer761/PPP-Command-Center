@@ -707,22 +707,42 @@ function KanbanBoard({
   primaryLeadMap: Map<string, { user_email: string; user_full_name: string | null; role: string }>;
   fileCountMap: Map<string, number>;
 }) {
-  const KANBAN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
+  // Open columns (7) + terminal columns (3) = 10. Terminal columns are
+  // drop targets too — that's where the Win/Loss Debrief flow starts
+  // (drag → bounce to detail page with debrief form pre-opened).
+  // Karan 2026-06-24: was just the 7 open columns; users couldn't
+  // drag-to-close because there was no Won/Lost/No-bid target.
+  const OPEN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
+  const TERMINAL_COLUMNS: readonly OpportunityStatus[] = ["won", "lost", "no_bid"];
+  const KANBAN_COLUMNS = [...OPEN_COLUMNS, ...TERMINAL_COLUMNS] as readonly OpportunityStatus[];
+  const TERMINAL_DISPLAY_CAP = 10; // show most-recent N per terminal column; overflow lives in the Decided drawer
+
   const byStatus = new Map<OpportunityStatus, CommercialOpportunity[]>();
   for (const s of KANBAN_COLUMNS) byStatus.set(s, []);
-  const closed: CommercialOpportunity[] = [];
+  const overflowClosed: CommercialOpportunity[] = []; // beyond the per-column cap, listed in the Decided drawer
+  // First bucket all opps by status.
   for (const o of opps) {
     if (KANBAN_COLUMNS.includes(o.status as OpportunityStatus)) {
       byStatus.get(o.status as OpportunityStatus)!.push(o);
-    } else {
-      closed.push(o);
+    }
+  }
+  // Then cap terminal columns + move overflow to the drawer. Sort
+  // terminal columns by decided_at DESC (most recently closed first).
+  for (const s of TERMINAL_COLUMNS) {
+    const list = byStatus.get(s) ?? [];
+    list.sort((a, b) => (b.decided_at ?? "").localeCompare(a.decided_at ?? ""));
+    if (list.length > TERMINAL_DISPLAY_CAP) {
+      const visible = list.slice(0, TERMINAL_DISPLAY_CAP);
+      const overflow = list.slice(TERMINAL_DISPLAY_CAP);
+      byStatus.set(s, visible);
+      overflowClosed.push(...overflow);
     }
   }
   return (
     <KanbanDnDProvider>
     <div className="space-y-3">
       <div className="text-[11px] text-ppp-charcoal-500 px-1">
-        💡 Drag a card to a different column to move the deal forward. Terminal states (Won/Lost/No-bid) open the detail page so you can record a reason.
+        💡 Drag a card to a different column to move the deal forward. Dragging to <strong>Won / Lost / No-bid</strong> opens a quick debrief so you capture who won + why.
       </div>
       <div className="overflow-x-auto -mx-2 px-2 pb-2">
         <div className="flex gap-3 min-w-max">
@@ -732,15 +752,26 @@ function KanbanBoard({
               (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
               0
             );
+            // Distinct visual treatment for the terminal columns — light
+            // tint + colored top border so they read as "settled" vs
+            // "active" pipeline. Won = emerald, Lost = rose, No-bid = slate.
+            const tone =
+              status === "won"
+                ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-50 border-emerald-200" }
+                : status === "lost"
+                ? { col: "bg-rose-50/40 border-rose-200", head: "bg-rose-50 border-rose-200" }
+                : status === "no_bid"
+                ? { col: "bg-slate-50 border-slate-200", head: "bg-slate-100 border-slate-200" }
+                : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
             return (
               <KanbanDnDColumn key={status} status={status}>
-              <div className="w-72 sm:w-80 shrink-0 bg-ppp-charcoal-50/60 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full">
-                <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-white">
+              <div className={`w-72 sm:w-80 shrink-0 border rounded-xl overflow-hidden flex flex-col h-full ${tone.col}`}>
+                <div className={`px-3 py-2 border-b ${tone.head}`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[12px] font-semibold text-ppp-charcoal">
                       {opportunityStatusLabel(status)}
                     </span>
-                    <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-700 text-[11px] font-semibold">
+                    <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white/70 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
                       {colOpps.length}
                     </span>
                   </div>
@@ -753,7 +784,13 @@ function KanbanBoard({
                 <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px]">
                   {colOpps.length === 0 ? (
                     <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
-                      Drop a deal here
+                      {status === "won"
+                        ? "Drag a winning deal here"
+                        : status === "lost"
+                        ? "Drag a lost deal here"
+                        : status === "no_bid"
+                        ? "Deals we passed on"
+                        : "Drop a deal here"}
                     </li>
                   ) : (
                     colOpps.map((opp) => (
@@ -776,14 +813,17 @@ function KanbanBoard({
           })}
         </div>
       </div>
-      {closed.length > 0 && (
+      {/* Overflow drawer — only shows when a terminal column hit the
+          per-column display cap (10). Lets users still reach older
+          decided opps without scrolling forever in a single column. */}
+      {overflowClosed.length > 0 && (
         <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <summary className="px-4 py-2.5 cursor-pointer text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
-            <span>Decided · {closed.length}</span>
+            <span>Older decided deals · {overflowClosed.length}</span>
             <span aria-hidden className="text-ppp-charcoal-400">▾</span>
           </summary>
           <ul className="divide-y divide-ppp-charcoal-100 px-3 py-2">
-            {closed.map((opp) => (
+            {overflowClosed.map((opp) => (
               <li key={opp.id} className="py-2">
                 <Link
                   href={`/commercial/opportunities/${opp.id}`}

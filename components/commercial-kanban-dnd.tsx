@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, type DragEvent, type ReactNode } from "react";
+import { useState, useRef, useTransition, type DragEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -20,8 +20,20 @@ import { useRouter } from "next/navigation";
 export function KanbanDnDProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [dragOppId, setDragOppId] = useState<string | null>(null);
+  // Optimistic UI: tracks the (oppId → newStatus) pair while the server
+  // catches up. The KanbanDnDCard component uses this to render the
+  // card in its NEW column immediately on drop (then snaps back if the
+  // server errors). Eliminates the "card sits in old column for 300ms
+  // until router.refresh()" lag that made the drag feel sluggish.
+  const [optimisticMove, setOptimisticMove] = useState<{ oppId: string; toStatus: string } | null>(null);
+  const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Loading flag specifically for terminal-status nav so we can paint
+  // a "Opening debrief…" toast instantly while the new page loads
+  // (without it the user sees a 300-800ms blank white between the
+  // drop and the detail page paint).
+  const [navigating, setNavigating] = useState<string | null>(null);
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>, oppId: string) => {
     if (!e.dataTransfer) return;
@@ -41,21 +53,28 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
   const handleDrop = async (e: DragEvent<HTMLDivElement>, toStatus: string) => {
     e.preventDefault();
     const oppId = (e.dataTransfer?.getData("text/plain") ?? "") || dragOppId;
-    // CRITICAL: clear drag state IMMEDIATELY so the source card snaps
-    // back to opacity:1 — otherwise the "stuck mid-drag" glitch shows
-    // when we bounce to the detail page for terminal transitions.
     setDragOppId(null);
     if (!oppId) return;
 
     // Terminal transitions need the structured debrief on the detail
-    // page. Bounce BEFORE the API call so the user sees instant feedback
-    // (no spinner-then-redirect lag). Server still enforces the actual
-    // status flip via the detail-page form submission, so the kanban
-    // doesn't end up in a lying state if the user closes the tab.
+    // page. Paint an instant "Opening debrief…" overlay so the user
+    // sees feedback before the navigation completes (otherwise looks
+    // like nothing happened for 300-800ms during the page-fetch).
     if (toStatus === "won" || toStatus === "lost" || toStatus === "no_bid") {
-      window.location.href = `/commercial/opportunities/${oppId}?action=change-status&to=${toStatus}`;
+      setNavigating(toStatus);
+      // Use replace + small RAF tick so the navigating overlay paints
+      // before the navigation begins — feels instant.
+      requestAnimationFrame(() => {
+        window.location.href = `/commercial/opportunities/${oppId}?action=change-status&to=${toStatus}`;
+      });
       return;
     }
+
+    // OPTIMISTIC UI for non-terminal moves — card visually jumps to
+    // the new column IMMEDIATELY. Server call happens in the background;
+    // on error, the optimistic state clears and the refresh snaps the
+    // card back. Eliminates the 200-500ms "card sits stale" lag.
+    setOptimisticMove({ oppId, toStatus });
 
     try {
       const res = await fetch(`/api/commercial/opportunities/${oppId}/move-status`, {
@@ -64,18 +83,31 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ to_status: toStatus }),
       });
       const json = await res.json().catch(() => ({}));
-      // Defensive: server may still 409 for a terminal we didn't catch
-      // above (e.g. future status added). Bounce gracefully.
       if (res.status === 409 && json.error === "terminal_status_needs_detail_page") {
-        window.location.href = `/commercial/opportunities/${oppId}?action=change-status&to=${toStatus}`;
+        // Defensive — server caught a terminal we missed client-side.
+        setOptimisticMove(null);
+        setNavigating(toStatus);
+        requestAnimationFrame(() => {
+          window.location.href = `/commercial/opportunities/${oppId}?action=change-status&to=${toStatus}`;
+        });
         return;
       }
       if (!res.ok || !json.ok) {
+        setOptimisticMove(null); // revert
         flashError(json.error || "Couldn't move that deal.");
         return;
       }
-      router.refresh();
+      // Refresh in a transition so the optimistic card stays in place
+      // until the server-rendered payload arrives — no flash of "old"
+      // state between optimistic clear + refresh paint.
+      startTransition(() => {
+        router.refresh();
+        // Clear optimistic state after the transition kicks off; the
+        // refresh's new HTML will have the card in the right column.
+        setTimeout(() => setOptimisticMove(null), 500);
+      });
     } catch {
+      setOptimisticMove(null);
       flashError("Network error — try again.");
     }
   };
@@ -90,6 +122,7 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     <KanbanDnDContext.Provider
       value={{
         dragOppId,
+        optimisticMove,
         onCardDragStart: handleDragStart,
         onCardDragEnd: handleDragEnd,
         onColumnDragOver: handleDragOver,
@@ -102,6 +135,14 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
             {error}
           </div>
         )}
+        {navigating && (
+          <div className="fixed inset-x-0 top-0 z-50 bg-emerald-600 text-white text-sm font-medium py-2 px-4 text-center shadow-md flex items-center justify-center gap-2 animate-fade-up">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin" aria-hidden>
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            Opening {navigating === "won" ? "Win" : navigating === "lost" ? "Loss" : "No-bid"} debrief…
+          </div>
+        )}
         {children}
       </div>
     </KanbanDnDContext.Provider>
@@ -112,6 +153,7 @@ import { createContext, useContext } from "react";
 
 type Ctx = {
   dragOppId: string | null;
+  optimisticMove: { oppId: string; toStatus: string } | null;
   onCardDragStart: (e: DragEvent<HTMLDivElement>, oppId: string) => void;
   onCardDragEnd: () => void;
   onColumnDragOver: (e: DragEvent<HTMLDivElement>) => void;
