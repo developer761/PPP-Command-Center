@@ -131,8 +131,13 @@ export const STALE_OPP_DAYS = 14;
 export const STALE_ACCOUNT_OPP_COOLING_MULTIPLIER = 4;
 
 /** Statuses that count as "open" in pipeline reporting + filters.
- *  Excludes terminal states (won, lost, no_bid). reopened is treated
- *  as won-style (terminal) — once you re-engage you transition out. */
+ *  Excludes terminal states (won, lost, no_bid).
+ *  Karan 2026-06-24: reopened added — it's a transitional state where
+ *  the user needs to re-route the deal back into the pipeline. Without
+ *  it here, reopened opps disappear from kanban AND list view (filtered
+ *  out everywhere), so users couldn't find their reopened deals.
+ *  Reopened gets its own kanban column with a "needs re-routing" empty
+ *  state so users see them as a queue to clear. */
 export const OPEN_OPP_STATUSES: readonly string[] = [
   "inquiry",
   "site_visit_scheduled",
@@ -141,4 +146,5 @@ export const OPEN_OPP_STATUSES: readonly string[] = [
   "proposal_sent",
   "negotiating",
   "on_hold",
+  "reopened",
 ] as const;

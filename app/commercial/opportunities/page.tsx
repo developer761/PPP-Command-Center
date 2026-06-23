@@ -753,9 +753,10 @@ function KanbanBoard({
               (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
               0
             );
-            // Distinct visual treatment for the terminal columns — light
-            // tint + colored top border so they read as "settled" vs
-            // "active" pipeline. Won = emerald, Lost = rose, No-bid = slate.
+            // Distinct visual treatment by status family — Won/Lost/No-bid
+            // get terminal tints (emerald/rose/slate). Reopened gets a
+            // blue tint to signal "re-engaged — needs re-routing" so it
+            // visually stands out from the regular pipeline.
             const tone =
               status === "won"
                 ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-50 border-emerald-200" }
@@ -763,6 +764,8 @@ function KanbanBoard({
                 ? { col: "bg-rose-50/40 border-rose-200", head: "bg-rose-50 border-rose-200" }
                 : status === "no_bid"
                 ? { col: "bg-slate-50 border-slate-200", head: "bg-slate-100 border-slate-200" }
+                : status === "reopened"
+                ? { col: "bg-blue-50/40 border-blue-200", head: "bg-blue-50 border-blue-200" }
                 : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
             return (
               <KanbanDnDColumn key={status} status={status}>
@@ -791,6 +794,8 @@ function KanbanBoard({
                         ? "Drag a lost deal here"
                         : status === "no_bid"
                         ? "Deals we passed on"
+                        : status === "reopened"
+                        ? "Reopened deals land here — drop them back into the right column"
                         : "Drop a deal here"}
                     </li>
                   ) : (

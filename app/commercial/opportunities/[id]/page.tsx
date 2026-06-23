@@ -154,8 +154,12 @@ async function changeStatusAction(formData: FormData) {
         actorUserId: user.id,
       });
       if (!debriefResult.ok) {
-        // Status flipped but debrief failed — best-effort placeholder so account timeline isn't lying.
-        await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: to_status as "won" | "lost" | "no_bid", actorUserId: user.id });
+        // Status flipped but debrief failed. Don't post a SECOND placeholder
+        // here — writeDebrief's enrichment path already handles missing
+        // placeholders by creating a fresh enriched note. Posting again
+        // here would create a duplicate "[AUTO] Debrief pending" on the
+        // account timeline. Just warn the user; banner will catch the
+        // missing debrief on next visit.
         redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1&debrief_warn=` + encodeURIComponent(debriefResult.error));
       }
     } else {
@@ -674,7 +678,7 @@ export default async function OpportunityDetailPage({
   );
 }
 
-function InfoTab({
+async function InfoTab({
   opp,
   account,
   errorMessage,
@@ -689,6 +693,14 @@ function InfoTab({
   preselectTo?: OpportunityStatus;
   confirmDelete?: boolean;
 }) {
+  // Fetch debriefs when terminal — used by the Win/Loss Debrief card to
+  // display the structured competitor + deciding factor + lessons.
+  // Keeps the rest of the tab synchronous; this is one cheap indexed query.
+  const isTerminal = opp.status === "won" || opp.status === "lost" || opp.status === "no_bid";
+  const debriefs = isTerminal
+    ? await (await import("@/lib/commercial/win-loss/debrief")).listDebriefsForOpp(opp.id)
+    : [];
+  const latestDebrief = debriefs[0] ?? null;
   // Filter the DAG-allowed next statuses by what we actually want to
   // expose in this surface. Detail page allows ALL valid transitions,
   // including terminal ones (won/lost/no_bid) because we have room for
@@ -788,17 +800,74 @@ function InfoTab({
           </p>
         )}
       </Card>
-      <Card title="Loss tracking">
-        <Field
-          label="Loss reason"
-          value={opp.loss_reason ? opportunityLossReasonLabel(opp.loss_reason) : "—"}
-        />
-        {opp.loss_notes && (
-          <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed mt-2">
-            {opp.loss_notes}
-          </p>
-        )}
-      </Card>
+      {/* Win/Loss Debrief card — only shows for terminal opps. Renders
+          the structured debrief (competitor, factor, lessons, internal
+          notes) if one exists, or the legacy loss_reason/loss_notes as
+          a fallback for opps closed before the debrief feature shipped. */}
+      {isTerminal && (
+        <Card title="Win/Loss Debrief">
+          {latestDebrief ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Field
+                  label={opp.status === "won" ? "Beat" : opp.status === "lost" ? "Lost to" : "Competitor"}
+                  value={latestDebrief.competitor_name ?? "—"}
+                />
+                <Field
+                  label={opp.status === "won" ? "What sealed it" : "Deciding factor"}
+                  value={latestDebrief.deciding_factor
+                    ? opportunityLossReasonLabel(latestDebrief.deciding_factor as OpportunityLossReason)
+                    : "—"}
+                />
+              </div>
+              {latestDebrief.lessons_learned && (
+                <div>
+                  <div className={LABEL_CLS}>
+                    {opp.status === "won" ? "What worked" : "What we'd do differently"}
+                  </div>
+                  <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+                    {latestDebrief.lessons_learned}
+                  </p>
+                </div>
+              )}
+              {latestDebrief.internal_notes && (
+                <details>
+                  <summary className="cursor-pointer text-[11px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none">
+                    Internal notes
+                  </summary>
+                  <p className="mt-2 text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+                    {latestDebrief.internal_notes}
+                  </p>
+                </details>
+              )}
+              <div className="text-[11px] text-ppp-charcoal-400 pt-2 border-t border-ppp-charcoal-100">
+                Debriefed {new Date(latestDebrief.debriefed_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+                {debriefs.length > 1 && ` · ${debriefs.length} debriefs total (this is most recent)`}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm">
+              <p className="text-amber-800 mb-2">
+                <strong>No structured debrief yet.</strong> Fill it out in the
+                status-change form below to feed the quarterly Win/Loss report.
+              </p>
+              {opp.loss_reason && (
+                <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
+                  <div className={LABEL_CLS}>Legacy loss reason</div>
+                  <p className="text-sm text-ppp-charcoal-700">
+                    {opportunityLossReasonLabel(opp.loss_reason)}
+                  </p>
+                  {opp.loss_notes && (
+                    <p className="mt-1 text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+                      {opp.loss_notes}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      )}
       {opp.description && (
         <Card title="Description" className="lg:col-span-2">
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
