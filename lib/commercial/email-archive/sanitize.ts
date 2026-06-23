@@ -53,17 +53,20 @@ const DANGEROUS_TAGS = [
 
 const DANGEROUS_URL_PROTOCOLS = /^(javascript|data|vbscript|file):/i;
 
-/** Decode HTML entities + strip leading control chars before testing a
- *  URL against DANGEROUS_URL_PROTOCOLS. Closes the
+/** Decode HTML entities + strip ALL whitespace/control chars within
+ *  the scheme portion of a URL before testing against
+ *  DANGEROUS_URL_PROTOCOLS. Closes the
  *  `href="java&#x09;script:alert(1)"` bypass — browsers normalize the
- *  entity-decoded value when parsing the link, but a naive regex on
- *  the raw attribute would miss it. */
+ *  entity-decoded value AND strip whitespace WITHIN the scheme token
+ *  (not just leading) when parsing the link, so `java\tscript:` is
+ *  treated as `javascript:`. A naive regex on the raw attribute
+ *  would miss either of those steps. */
 function normalizeUrlAttr(raw: string): string {
-  return raw
+  const decoded = raw
     // Decode named entities + numeric refs that browsers honor in URL contexts.
     .replace(/&(?:amp|AMP);/g, "&")
     .replace(/&(?:colon|COLON);/g, ":")
-    .replace(/&(?:Tab|tab|TAB|NewLine);/g, " ")
+    .replace(/&(?:Tab|tab|TAB|NewLine);/g, "\t")
     .replace(/&(?:nbsp|NBSP);/g, " ")
     .replace(/&#x([0-9a-fA-F]+);?/g, (_m, hex) => {
       const n = parseInt(hex, 16);
@@ -73,10 +76,16 @@ function normalizeUrlAttr(raw: string): string {
       const n = parseInt(dec, 10);
       return Number.isFinite(n) && n < 0x110000 ? String.fromCodePoint(n) : "";
     })
-    // Strip leading whitespace + ASCII control chars that browsers ignore
-    // when resolving the scheme.
-    .replace(/^[\s\x00-\x1f]+/, "")
-    .trim();
+    // Strip leading whitespace + ASCII control chars that browsers
+    // ignore when resolving the scheme.
+    .replace(/^[\s\x00-\x1f]+/, "");
+  // Strip ALL whitespace + control chars BEFORE the first `:` so
+  // `java\tscript:` matches `javascript:`. Browsers do the same.
+  const colonIdx = decoded.indexOf(":");
+  if (colonIdx <= 0) return decoded.trim();
+  const scheme = decoded.slice(0, colonIdx).replace(/[\s\x00-\x1f]+/g, "");
+  const rest = decoded.slice(colonIdx);
+  return (scheme + rest).trim();
 }
 
 /**
@@ -116,17 +125,23 @@ export function sanitizeEmailHtml(html: string | null | undefined): string {
   //    Entity-decode the value first so `java&#x09;script:` (with embedded
   //    tab) doesn't slip past the protocol regex — browsers decode entities
   //    AND normalize whitespace inside the scheme when resolving the link.
+  //    Match the attribute anywhere it appears (with or without leading
+  //    whitespace) — earlier regex required `\s` before the attr name,
+  //    which silently missed `<a href=…>` where href is the first attr
+  //    after the tag name (no whitespace before it). Audit fix
+  //    2026-06-22: Vitest caught it. Use a word-boundary `\b` instead so
+  //    we only match a real attribute, not a substring of another word.
   out = out.replace(
-    /\s(href|src|xlink:href)\s*=\s*("([^"]*)"|'([^']*)')/gi,
+    /\b(href|src|xlink:href)\s*=\s*("([^"]*)"|'([^']*)')/gi,
     (_full, attr, _quotedWhole, dqVal, sqVal) => {
       const raw = (dqVal ?? sqVal ?? "");
       const normalized = normalizeUrlAttr(raw);
       if (DANGEROUS_URL_PROTOCOLS.test(normalized)) {
-        return ` ${attr}="#"`;
+        return `${attr}="#"`;
       }
       // Re-quote the ORIGINAL (un-decoded) value in double quotes so we
       // preserve display strings that intentionally contain entities.
-      return ` ${attr}="${raw.replace(/"/g, "&quot;")}"`;
+      return `${attr}="${raw.replace(/"/g, "&quot;")}"`;
     }
   );
 
