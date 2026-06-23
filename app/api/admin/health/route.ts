@@ -420,13 +420,66 @@ export async function GET() {
       });
     }
   } catch (err) {
+    // Supabase PostgrestError objects stringify to "[object Object]"
+    // via the default String() coercion — extract a useful message
+    // via JSON.stringify or .message instead.
+    let detail: string;
+    if (err instanceof Error) {
+      detail = err.message;
+    } else if (err && typeof err === "object" && "message" in err) {
+      detail = String((err as { message: unknown }).message);
+    } else {
+      try {
+        detail = JSON.stringify(err);
+      } catch {
+        detail = "unknown error";
+      }
+    }
     checks.push({
       id: "sf_writeback_customer_form",
       label: "Customer-form Salesforce writeback (last 30d)",
       status: "warn",
       group: "data",
-      message: `Couldn't read sf_writes_audit: ${err instanceof Error ? err.message : String(err)}`,
+      message: `Couldn't read sf_writes_audit: ${detail}`,
+      fix: "Confirm the sf_writes_audit table exists in Supabase (migration 014). If missing, paste supabase/migrations/014_sf_writes_audit.sql.",
     });
+  }
+
+  // ── Stage 3.5: Slack incident webhook (shared infra) ──────────────────
+  // Mirrors the same check the Commercial CC health page does so the PPP
+  // admin sees one source of truth for "are we wired up for alerts?"
+  // No DB query — pure env-var check + URL shape sanity.
+  {
+    const url = process.env.COMMERCIAL_INCIDENT_SLACK_WEBHOOK?.trim();
+    if (!url) {
+      checks.push({
+        id: "slack_alerts",
+        label: "Slack incident alerts (COMMERCIAL_INCIDENT_SLACK_WEBHOOK)",
+        status: "warn",
+        group: "platform",
+        message:
+          "Not set — critical failures (cron wipeouts, webhook auth fails, send failures) only land in Vercel logs. The platform works without it, but you won't get pinged when something breaks.",
+        fix: "Slack → Apps → Incoming Webhooks → create webhook for #ppp-platform-alerts → paste URL as COMMERCIAL_INCIDENT_SLACK_WEBHOOK in Vercel env vars.",
+      });
+    } else if (!url.startsWith("https://hooks.slack.com/")) {
+      checks.push({
+        id: "slack_alerts",
+        label: "Slack incident alerts (COMMERCIAL_INCIDENT_SLACK_WEBHOOK)",
+        status: "warn",
+        group: "platform",
+        message: "Webhook URL is set but doesn't look like a Slack incoming-webhook URL (should start with https://hooks.slack.com/services/...).",
+        fix: "Double-check the URL you pasted into Vercel. Re-copy it from Slack → Apps → Your App → Incoming Webhooks.",
+      });
+    } else {
+      checks.push({
+        id: "slack_alerts",
+        label: "Slack incident alerts (COMMERCIAL_INCIDENT_SLACK_WEBHOOK)",
+        status: "ok",
+        group: "platform",
+        message:
+          "Webhook URL configured — critical failures auto-post to Slack with a 5-min dedup window. Click 'Send test Slack alert' above to verify end-to-end.",
+      });
+    }
   }
 
   // Aggregate summary
