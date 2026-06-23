@@ -114,6 +114,7 @@ export async function postPlaceholderAutoNote(input: {
     body,
     kind: "auto_debrief",
     source_opportunity_id: o.id,
+    source_outcome: input.outcome,
     author_user_id: input.actorUserId,
   });
   if (!result.ok) return result;
@@ -204,14 +205,27 @@ export async function writeDebrief(
     .update({ win_loss_debriefed_at: new Date().toISOString() })
     .eq("id", input.opportunityId);
   if (flagErr) {
-    // Non-fatal: the debrief row exists; the banner will catch up on next
-    // page load via a join query if necessary. Log but don't abort.
+    // Debrief row written but the banner-clear flag failed — surface
+    // the error so the caller can show it. Data is intact; user can
+    // refresh and the next load will re-check the flag. Without this
+    // return, the user got "debrief saved" but the amber banner would
+    // mysteriously persist on the next visit.
     console.warn("[debrief] failed to set win_loss_debriefed_at:", flagErr.message);
+    return {
+      ok: false,
+      error: `Debrief saved but the banner-clear failed (${flagErr.message}). Refresh the page; data is intact.`,
+    };
   }
 
-  // Enrich the auto-note (if a placeholder exists). Best-effort.
+  // Enrich the auto-note (if a placeholder exists). Scope to the
+  // SAME outcome so a reopened-then-re-closed opp's prior-outcome
+  // placeholder doesn't get enriched with new-outcome data (cross-flip
+  // corruption — caught by the audit).
   if (o.account_id) {
-    const placeholderId = await findAutoDebriefNoteForOpp(input.opportunityId);
+    const placeholderId = await findAutoDebriefNoteForOpp(
+      input.opportunityId,
+      input.outcome
+    );
     const competitorLabel = competitorId
       ? input.competitorName?.trim() ?? "(competitor)"
       : null;
@@ -229,13 +243,15 @@ export async function writeDebrief(
     if (placeholderId) {
       await writeAccountNoteEnrichment(placeholderId, enriched, input.actorUserId);
     } else {
-      // No placeholder (maybe the opp closed before this feature shipped,
-      // or the placeholder was deleted). Post the enriched note fresh.
+      // No matching placeholder for THIS outcome (closed pre-feature,
+      // placeholder deleted, or outcome changed mid-flow). Post a
+      // fresh enriched note tagged with the current outcome.
       await addAccountNote({
         account_id: o.account_id,
         body: enriched,
         kind: "auto_debrief",
         source_opportunity_id: input.opportunityId,
+        source_outcome: input.outcome,
         author_user_id: input.actorUserId,
       });
     }

@@ -27,6 +27,7 @@ export type AccountNote = {
   body: string;
   kind: AccountNoteKind;
   source_opportunity_id: string | null;
+  source_outcome: "won" | "lost" | "no_bid" | null;
   author_user_id: string | null;
   pinned_at: string | null;
   mentioned_user_ids: string[];
@@ -47,6 +48,9 @@ export type AddAccountNoteInput = {
   body: string;
   kind?: AccountNoteKind;
   source_opportunity_id?: string | null;
+  /** Required when kind='auto_debrief' — disambiguates placeholders for
+   *  opps that have been reopened-then-re-closed across outcomes. */
+  source_outcome?: "won" | "lost" | "no_bid" | null;
   author_user_id?: string | null;
 };
 
@@ -84,6 +88,7 @@ export async function addAccountNote(
       body,
       kind,
       source_opportunity_id: input.source_opportunity_id ?? null,
+      source_outcome: input.source_outcome ?? null,
       author_user_id: input.author_user_id ?? null,
     })
     .select("*")
@@ -187,19 +192,32 @@ export async function listAccountNotes(
 }
 
 /**
- * Find the auto-debrief placeholder note for a given opp (used by the
- * two-stage enrichment flow). Returns the note id or null.
+ * Find the auto-debrief placeholder note for a given opp + outcome
+ * (used by the two-stage enrichment flow). The outcome filter prevents
+ * cross-flip corruption: if an opp was closed as Lost then reopened
+ * + re-closed as Won, we'd otherwise enrich the LOST placeholder with
+ * WON data via the "most recent" sort. Passing outcome scopes the
+ * lookup to the right placeholder. Returns the note id or null.
+ *
+ * Backwards-compat: if outcome is undefined, falls back to most-recent
+ * across all outcomes (only happens for callers that haven't migrated
+ * to the new signature).
  */
 export async function findAutoDebriefNoteForOpp(
-  opportunityId: string
+  opportunityId: string,
+  outcome?: "won" | "lost" | "no_bid"
 ): Promise<string | null> {
   const sb = commercialDb();
-  const { data } = await sb
+  let query = sb
     .from("commercial_account_notes")
     .select("id")
     .eq("source_opportunity_id", opportunityId)
     .eq("kind", "auto_debrief")
-    .is("deleted_at", null)
+    .is("deleted_at", null);
+  if (outcome) {
+    query = query.eq("source_outcome", outcome);
+  }
+  const { data } = await query
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

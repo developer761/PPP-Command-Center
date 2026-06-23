@@ -90,9 +90,15 @@ export async function getOrCreateCompetitor(
     .select("*")
     .maybeSingle();
   if (error) {
-    // Race with another insert — re-lookup.
-    const after = await findCompetitorByNormalized(normalized);
-    if (after) return { ok: true, competitor: await followMergeChain(after) };
+    // Only treat Postgres UNIQUE violation (23505) as a retryable race.
+    // Anything else (permission denied, schema error, etc) bubbles up
+    // — the old code silently re-selected on ANY error which masked
+    // real bugs as "competitor not found."
+    const isUniqueViolation = error.code === "23505";
+    if (isUniqueViolation) {
+      const after = await findCompetitorByNormalized(normalized);
+      if (after) return { ok: true, competitor: await followMergeChain(after) };
+    }
     return { ok: false, error: error.message };
   }
   if (!inserted) return { ok: false, error: "Failed to create competitor." };
@@ -113,6 +119,15 @@ async function findCompetitorByNormalized(normalized: string): Promise<Competito
 
 async function followMergeChain(start: Competitor, depth = 0): Promise<Competitor> {
   // Bound the loop so a circular merge (operator error) can't hang.
+  // At depth 4 we're already 4 merges deep — warn so an admin can
+  // collapse the chain manually. At depth 6 we stop walking + return
+  // what we have (the deepest in-chain row we've seen so far).
+  if (depth >= 4) {
+    console.warn(
+      `[commercial_competitors] merge chain at depth ${depth} starting from ${start.id} (${start.name}). ` +
+        `Consider collapsing the chain in /commercial/settings/competitors so reports roll up correctly.`
+    );
+  }
   if (depth > 5) return start;
   if (!start.merged_into_competitor_id) return start;
   const sb = commercialDb();

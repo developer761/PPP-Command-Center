@@ -295,14 +295,15 @@ export default async function EditCommercialAccountPage({
           the confirm panel; click 'Yes, delete it' INSIDE the panel to
           actually fire the server action. URL-driven so a fresh load
           resets to the closed state. */}
-      <section className="max-w-2xl border border-rose-200 rounded-xl p-4 sm:p-5 bg-rose-50/40 mt-8">
+      <section id="danger-zone" className="max-w-2xl border border-rose-200 rounded-xl p-4 sm:p-5 bg-rose-50/40 mt-8 scroll-mt-20">
         <h2 className="text-sm font-bold text-rose-700 mb-1">Danger zone</h2>
         <p className="text-[12px] text-ppp-charcoal-700 leading-relaxed mb-3">
           Deleting hides this account from every list, but the record + every contact, document, and team assignment stays in the database. An admin can restore it via direct database access.
         </p>
         {!confirmDelete ? (
           <Link
-            href={`/commercial/accounts/${account.id}/edit?confirm_delete=1`}
+            href={`/commercial/accounts/${account.id}/edit?confirm_delete=1#danger-zone`}
+            scroll={false}
             className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-rose-300 text-sm font-semibold text-rose-700 hover:bg-rose-100 min-h-[44px] touch-manipulation"
           >
             Delete account
@@ -317,7 +318,8 @@ export default async function EditCommercialAccountPage({
                 and the destructive button is the deliberate further reach. */}
             <div className="flex flex-col sm:flex-row gap-2">
               <Link
-                href={`/commercial/accounts/${account.id}/edit`}
+                href={`/commercial/accounts/${account.id}/edit#danger-zone`}
+                scroll={false}
                 className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-semibold text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation sm:order-1"
               >
                 Cancel
