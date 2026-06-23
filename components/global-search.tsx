@@ -10,6 +10,8 @@ type SearchResult = {
   label: string;
   sublabel?: string;
   href: string;
+  /** Extra search terms not shown in the UI (synonyms, abbreviations). */
+  keywords?: string;
 };
 
 type SearchableSnapshot = {
@@ -26,17 +28,36 @@ type SearchableSnapshot = {
   }>;
 };
 
-/** Built-in pages — always searchable. */
+/**
+ * Built-in pages — always searchable.
+ *
+ * `keywords` is hidden search-term enrichment: synonyms / abbreviations /
+ * the words people actually type when looking for something but that
+ * aren't in the visible label. Karan 2026-06-23: searching "cos"
+ * (customer copy abbreviation) returned nothing because Customer Copy
+ * was missing entirely and the keywords field didn't exist. Every admin
+ * tool now indexed + has aliases.
+ */
 const PAGES: SearchResult[] = [
-  { kind: "page", id: "p:overview", label: "Overview", sublabel: "Company dashboard", href: "/dashboard" },
-  { kind: "page", id: "p:rep", label: "Rep Profiles", sublabel: "Per-rep analytics", href: "/dashboard/rep" },
-  { kind: "page", id: "p:customers", label: "Customers", sublabel: "Customer directory + history", href: "/dashboard/customers" },
-  { kind: "page", id: "p:inbox", label: "Mail", sublabel: "Inbox + sent + delivery", href: "/dashboard/inbox" },
-  { kind: "page", id: "p:financials", label: "Financials", sublabel: "AR, GP, discounts, commissions", href: "/dashboard/financials" },
-  { kind: "page", id: "p:operations", label: "Operations", sublabel: "Labor, capacity, materials cost", href: "/dashboard/operations" },
-  { kind: "page", id: "p:map", label: "Map", sublabel: "Geographic heatmap", href: "/dashboard/map" },
-  { kind: "page", id: "p:materials", label: "Materials Ordering", sublabel: "Phase 2", href: "/dashboard/materials" },
-  { kind: "page", id: "p:integrations", label: "Integrations", sublabel: "Admin · Salesforce connection", href: "/dashboard/integrations" },
+  // Sales Analytics
+  { kind: "page", id: "p:overview", label: "Overview", sublabel: "Company dashboard", href: "/dashboard", keywords: "home main dashboard" },
+  { kind: "page", id: "p:rep", label: "Rep Profiles", sublabel: "Per-rep analytics", href: "/dashboard/rep", keywords: "salesperson representative reps people" },
+  { kind: "page", id: "p:map", label: "Map", sublabel: "Geographic heatmap", href: "/dashboard/map", keywords: "geographic territory heatmap" },
+  // Finance & Ops
+  { kind: "page", id: "p:financials", label: "Financials", sublabel: "AR, GP, discounts, commissions", href: "/dashboard/financials", keywords: "money revenue ar gp gross profit discount commission finance" },
+  { kind: "page", id: "p:operations", label: "Operations", sublabel: "Labor, capacity, materials cost", href: "/dashboard/operations", keywords: "labor capacity ops" },
+  // Operations Tools
+  { kind: "page", id: "p:materials", label: "Materials Ordering", sublabel: "Paint + supplier orders", href: "/dashboard/materials", keywords: "paint order supplier color form gallons" },
+  { kind: "page", id: "p:customers", label: "Customers", sublabel: "Customer directory + history", href: "/dashboard/customers", keywords: "customer client account history" },
+  { kind: "page", id: "p:inbox", label: "Mail", sublabel: "Inbox + sent + delivery", href: "/dashboard/inbox", keywords: "email inbox sent reply bounce mail message" },
+  // Admin
+  { kind: "page", id: "p:integrations", label: "Integrations", sublabel: "Admin · Salesforce connection", href: "/dashboard/integrations", keywords: "salesforce sf oauth connect api integration admin" },
+  { kind: "page", id: "p:settings", label: "Settings", sublabel: "Admin · all platform tools", href: "/dashboard/settings", keywords: "admin tools config configuration" },
+  { kind: "page", id: "p:settings-health", label: "Setup Health", sublabel: "Admin · live status of every dependency", href: "/dashboard/settings/health", keywords: "status monitoring slack alerts env vars migrations setup health check vital" },
+  { kind: "page", id: "p:settings-templates", label: "Customer Copy", sublabel: "Admin · customer-facing email + SMS templates", href: "/dashboard/settings/templates", keywords: "customer copy template email sms invite reminder confirmation message cos" },
+  { kind: "page", id: "p:settings-suppliers", label: "Suppliers", sublabel: "Admin · paint suppliers + pickup locations", href: "/dashboard/settings/suppliers", keywords: "supplier vendor paint store aboffs sunbelt benjamin moore bm pickup location" },
+  { kind: "page", id: "p:settings-supplier-templates", label: "Supplier Email Copy", sublabel: "Admin · per-supplier order email templates", href: "/dashboard/settings/supplier-templates", keywords: "supplier email template po purchase order copy" },
+  { kind: "page", id: "p:settings-test-form", label: "Test Color Form", sublabel: "Admin · send yourself a color form to QA", href: "/dashboard/settings/test-form", keywords: "test color form qa preview link" },
 ];
 
 type Props = {
@@ -116,23 +137,26 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
     return {
       reps: (snapshot?.reps ?? []).map((r) => ({
         row: r,
-        hay: `${r.name}${r.email ?? ""}${r.region ?? ""}`.toLowerCase(),
+        hay: `${r.name}${r.email ?? ""}${r.region ?? ""}`.toLowerCase(),
       })),
       accounts: (snapshot?.accounts ?? []).map((a) => ({
         row: a,
-        hay: `${a.name}${a.region ?? ""}`.toLowerCase(),
+        hay: `${a.name}${a.region ?? ""}`.toLowerCase(),
       })),
       workOrders: (snapshot?.workOrders ?? []).map((w) => ({
         row: w,
         // WO number + account name go in the case-insensitive hay; SF Id
         // matching stays separate below because it's case-sensitive on the
         // suffix bits.
-        hay: `${w.workOrderNumber ?? ""}${w.accountName ?? ""}`.toLowerCase(),
+        hay: `${w.workOrderNumber ?? ""}${w.accountName ?? ""}`.toLowerCase(),
         idLower: w.id.toLowerCase(),
       })),
       pages: PAGES.map((p) => ({
         row: p,
-        hay: `${p.label}${p.sublabel ?? ""}`.toLowerCase(),
+        // Include `keywords` (synonyms / abbreviations like "cos" → Customer
+        // Copy, "sf" → Integrations) so users find pages by what they
+        // actually type — not just the visible label.
+        hay: `${p.label}${p.sublabel ?? ""}${p.keywords ?? ""}`.toLowerCase(),
       })),
     };
   }, [snapshot]);
@@ -143,13 +167,15 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
 
     const matches: SearchResult[] = [];
 
-    // Pages (always low limit so they don't crowd out data)
+    // Pages — bumped cap from 3 → 8 (was clipping admin tools out of
+    // the result list once the settings sub-pages got indexed). 8 still
+    // leaves plenty of room in the 18-row overall cap for data hits.
     let pageHitCount = 0;
     for (const { row: p, hay } of index.pages) {
       if (hay.includes(q)) {
         matches.push(p);
         pageHitCount++;
-        if (pageHitCount >= 3) break;
+        if (pageHitCount >= 8) break;
       }
     }
 

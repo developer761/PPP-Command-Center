@@ -33,6 +33,13 @@ const cards: Card[] = [
     icon: <IconHeart />,
   },
   {
+    href: "/dashboard/integrations",
+    label: "Integrations",
+    blurb:
+      "Connect + manage the Salesforce OAuth integration (the live data source). Disconnect or re-auth when a refresh token expires.",
+    icon: <IconPlug />,
+  },
+  {
     href: "/dashboard/settings/templates",
     label: "Customer Copy",
     blurb:
@@ -111,6 +118,13 @@ export default async function SettingsHubPage() {
    sidebar exports them inline (no shared icon module yet). Each is
    18px in the sidebar; bumped to 20 here so the cards read as
    touch-friendly rather than dense. */
+function IconPlug() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9 2v6 M15 2v6 M7 8h10v4a5 5 0 0 1-10 0z M12 17v5" />
+    </svg>
+  );
+}
 function IconHeart() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

@@ -390,11 +390,12 @@ export async function GET() {
     },
     {
       headers: {
-        // Server-side cache — 5 admins each polling every 30s would
-        // otherwise be 10/min on Supabase. Cap at 1 fresh probe per
-        // ~25s so the auto-refresh in the UI stays close to its
-        // intended cadence without thundering.
-        "Cache-Control": "private, max-age=25",
+        // Karan 2026-06-23: dropped from `private, max-age=25` to
+        // `no-store` so that the moment you set an env var in Vercel,
+        // run a migration, or wire Slack, the next page refresh
+        // reflects it. The cache buy was tiny (admin-only endpoint,
+        // low traffic) vs. the cost of "did my fix take?" anxiety.
+        "Cache-Control": "no-store",
       },
     }
   );

@@ -28,6 +28,13 @@ import { isJobComplete } from "@/lib/wo-progress/completion";
  * down the whole page.
  */
 
+// Force fresh evaluation on every request — Karan 2026-06-23: when a user
+// fixes a misconfig (sets a Vercel env var, runs a migration, etc.) the
+// next page load must reflect that. Cached responses would lie. Auth
+// already makes this dynamic in practice; this is the explicit guarantee.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export type HealthStatus = "ok" | "warn" | "fail";
 /** Setup Health groups checks into two buckets in the UI so 8+ checks feel
  *  organized rather than a wall:

@@ -35,11 +35,6 @@ const navSections: NavSection[] = [
     heading: "Overview",
     items: [
       { label: "Dashboard", href: "/commercial", icon: <IconHome /> },
-      // Setup Health right alongside Dashboard for maximum visibility.
-      // Karan 2026-06-23: flattened from a separate "Settings" section
-      // (one-item sections look like noise; this keeps it findable
-      // without a header just for one row).
-      { label: "Setup Health", href: "/commercial/settings/health", icon: <IconHeart /> },
     ],
   },
   {
@@ -63,6 +58,17 @@ const navSections: NavSection[] = [
     items: [
       { label: "Billing", href: "/commercial/billing", phase: 8, disabled: true, icon: <IconDollar /> },
       { label: "Reports", href: "/commercial/reports", disabled: true, icon: <IconChart /> },
+    ],
+  },
+  // Settings sits at the bottom of the nav (after the workflow groups).
+  // Karan 2026-06-23: moved here from a top-of-sidebar slot next to
+  // Dashboard so it doesn't compete with workflow links for attention.
+  // Future settings rows (Team, Notifications, Billing prefs, etc.)
+  // will land alongside Setup Health in this group as they ship.
+  {
+    heading: "Settings",
+    items: [
+      { label: "Setup Health", href: "/commercial/settings/health", icon: <IconHeart /> },
     ],
   },
 ];

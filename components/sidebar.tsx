@@ -49,14 +49,12 @@ const navSections: NavSection[] = [
   {
     heading: "Admin",
     adminOnly: true,
-    // Karan 2026-06-23: Admin used to surface 6 individual tool rows
-    // (Integrations, Customer Copy, Suppliers, Supplier Email Copy,
-    // Setup Health, Test Color Form) — overwhelming + visually noisy.
-    // Collapsed to Integrations (used most) + Settings (hub page that
-    // cards out to the other 5). Nothing was removed; everything is
-    // one extra click. See app/dashboard/settings/page.tsx for the hub.
+    // Karan 2026-06-23: Admin used to surface 6 individual tool rows.
+    // Collapsed to a single Settings hub (Integrations + 5 settings
+    // sub-pages all accessible as cards on /dashboard/settings).
+    // Nothing was removed; one extra click for any admin tool.
+    // See app/dashboard/settings/page.tsx for the hub.
     items: [
-      { label: "Integrations", href: "/dashboard/integrations", icon: <IconPlug />, adminOnly: true },
       {
         label: "Settings",
         href: "/dashboard/settings",
