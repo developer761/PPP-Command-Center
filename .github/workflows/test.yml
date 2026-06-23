@@ -1,0 +1,18 @@
+name: Vitest
+  on:
+    push: { branches: [main] }
+    pull_request: { branches: [main] }
+  jobs:
+    test:
+      runs-on: ubuntu-latest
+      timeout-minutes: 5
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-node@v4
+          with: { node-version: "20", cache: "npm" }
+        - run: npm ci --no-audit --no-fund
+        - run: npm run test
+          env:
+            COMMERCIAL_ARCHIVE_HMAC_SECRET: ci-test-secret-32-chars-1234567890abc
+            COMMERCIAL_ARCHIVE_LOCAL: orders
+            COMMERCIAL_ARCHIVE_DOMAIN: orders.precisionpaintingplus.net
