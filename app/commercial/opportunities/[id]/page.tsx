@@ -2195,12 +2195,13 @@ function KpiTile({
   value: string;
   tooltip?: string;
 }) {
-  // Karan 2026-06-24: added a tinted top-bar + bumped to gradient bg
-  // so the KPI strip pops instead of looking like four white squares.
-  // Emerald top-bar matches the brand accent + signals "live data."
+  // Karan 2026-06-24: tinted top-bar + gradient bg so the KPI strip
+  // pops instead of looking like four white squares. Sky/cyan accent
+  // matches PPP CC's signature blue. Built-in Tailwind palette only —
+  // the earlier ppp-blue-50/40 attempt broke the CSS build silently.
   return (
-    <div className="relative border border-ppp-charcoal-100 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-white to-emerald-50/30 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden">
-      <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-emerald-500 to-sky-500" aria-hidden />
+    <div className="relative border border-ppp-charcoal-100 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-white to-sky-50 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden">
+      <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-sky-500 to-cyan-400" aria-hidden />
       <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 flex items-center gap-1">
         <span>{label}</span>
         {tooltip && <InfoDot text={tooltip} />}
