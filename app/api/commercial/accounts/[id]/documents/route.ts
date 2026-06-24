@@ -65,7 +65,19 @@ export async function POST(
     const formData = await request.formData();
     const file = formData.get("file");
     const categoryRaw = String(formData.get("category") ?? "");
-    const expiresAt = (formData.get("expires_at") as string) || null;
+    // Three states for expires_at:
+    //   - field absent (formData.has === false) → pass undefined to the lib so the
+    //     category default kicks in (1 year for COI/W-9/MSA, null for others)
+    //   - field present + empty string → pass explicit null (user picked "No expiry")
+    //   - field present + non-empty → pass the ISO date string
+    // The previous `|| null` collapsed the first two cases, defeating "Auto" mode.
+    let expiresAt: string | null | undefined;
+    if (!formData.has("expires_at")) {
+      expiresAt = undefined;
+    } else {
+      const raw = String(formData.get("expires_at") ?? "").trim();
+      expiresAt = raw === "" ? null : raw;
+    }
     const notes = (formData.get("notes") as string) || null;
 
     if (!(file instanceof File)) {

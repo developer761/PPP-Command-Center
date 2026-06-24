@@ -339,6 +339,163 @@ export async function archiveDocument(
 }
 
 /**
+ * Restore an archived version as the new active version. Copies the storage
+ * file to a fresh path (so the original archived row still resolves), then
+ * archives the current active row + inserts a new row at version = max+1
+ * pointing at the new storage key.
+ *
+ * Why copy the file instead of reusing the storage key: future hard-delete
+ * of either row would break the other. The storage copy is an O(1) server-
+ * side operation (Supabase Storage `.copy()` — no re-download).
+ *
+ * Returns the new active document on success.
+ */
+export async function restoreDocument(
+  archivedDocumentId: string,
+  restoredByUserId: string
+): Promise<{ ok: true; document: CommercialAccountDocument } | { ok: false; error: string }> {
+  const sb = commercialDb();
+
+  // Load the archived doc we're restoring from.
+  const { data: src } = await sb
+    .from("commercial_account_documents")
+    .select("*")
+    .eq("id", archivedDocumentId)
+    .maybeSingle();
+  if (!src) return { ok: false, error: "Document not found." };
+  const srcRow = src as CommercialAccountDocument;
+  if (!srcRow.archived) {
+    return { ok: false, error: "This version is already active." };
+  }
+
+  // Find the current active so we can archive it (if any). Also use it to
+  // compute next version.
+  const { data: active } = await sb
+    .from("commercial_account_documents")
+    .select("*")
+    .eq("account_id", srcRow.account_id)
+    .eq("category", srcRow.category)
+    .eq("archived", false)
+    .maybeSingle();
+  const activeRow = active as CommercialAccountDocument | null;
+
+  // Compute next version — max across ALL rows in this category (active +
+  // archived), so a restored copy lands above every prior version.
+  const { data: allInCat } = await sb
+    .from("commercial_account_documents")
+    .select("version")
+    .eq("account_id", srcRow.account_id)
+    .eq("category", srcRow.category)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const maxVersion = (allInCat as { version: number } | null)?.version ?? srcRow.version;
+  const nextVersion = maxVersion + 1;
+
+  // Generate new id + storage key + copy the blob.
+  const newDocumentId = globalThis.crypto.randomUUID();
+  const newStorageKey = buildStorageKey(srcRow.account_id, newDocumentId, srcRow.file_name);
+  const copyResult = await sb.storage
+    .from(STORAGE_BUCKET)
+    .copy(srcRow.storage_key, newStorageKey);
+  if (copyResult.error) {
+    return { ok: false, error: `Storage copy failed: ${copyResult.error.message}` };
+  }
+
+  // Archive the current active (if any), guarded by archived=false to keep
+  // concurrent restore attempts race-safe — same pattern as uploadDocument.
+  if (activeRow) {
+    const archivedAt = new Date().toISOString();
+    await sb
+      .from("commercial_account_documents")
+      .update({
+        archived: true,
+        archived_at: archivedAt,
+        archived_by_user_id: restoredByUserId,
+      })
+      .eq("id", activeRow.id)
+      .eq("archived", false);
+  }
+
+  // Insert new active row pointing at the copied blob.
+  const { data: inserted, error: insertErr } = await sb
+    .from("commercial_account_documents")
+    .insert({
+      id: newDocumentId,
+      account_id: srcRow.account_id,
+      category: srcRow.category,
+      file_name: srcRow.file_name,
+      storage_key: newStorageKey,
+      version: nextVersion,
+      size_bytes: srcRow.size_bytes,
+      mime_type: srcRow.mime_type,
+      uploaded_by_user_id: restoredByUserId,
+      expires_at: srcRow.expires_at,
+      notes: `Restored from v${srcRow.version} (uploaded ${srcRow.uploaded_at.slice(0, 10)})${srcRow.notes ? ` · ${srcRow.notes}` : ""}`,
+    })
+    .select("*")
+    .single();
+
+  if (insertErr) {
+    // Best-effort cleanup of the copied blob.
+    await sb.storage.from(STORAGE_BUCKET).remove([newStorageKey]).catch(() => undefined);
+    return { ok: false, error: insertErr.message };
+  }
+  const newDoc = inserted as CommercialAccountDocument;
+  await logInsert("commercial_account_documents", newDoc.id, newDoc, restoredByUserId);
+  return { ok: true, document: newDoc };
+}
+
+/**
+ * Like listAccountDocuments but resolves the uploaded_by + archived_by
+ * user IDs to display names (via the profiles table) for the audit-trail
+ * UI. One extra query — keeps the base listAccountDocuments lean for
+ * callers that don't need names.
+ */
+export async function listAccountDocumentsWithUploaders(accountId: string): Promise<
+  Array<{
+    category: DocumentCategory;
+    active: (CommercialAccountDocument & { uploader_name: string | null; archiver_name: string | null }) | null;
+    history: Array<CommercialAccountDocument & { uploader_name: string | null; archiver_name: string | null }>;
+  }>
+> {
+  const groups = await listAccountDocuments(accountId);
+  // Collect every user id we need to resolve in one round-trip.
+  const userIds = new Set<string>();
+  for (const g of groups) {
+    if (g.active?.uploaded_by_user_id) userIds.add(g.active.uploaded_by_user_id);
+    if (g.active?.archived_by_user_id) userIds.add(g.active.archived_by_user_id);
+    for (const h of g.history) {
+      if (h.uploaded_by_user_id) userIds.add(h.uploaded_by_user_id);
+      if (h.archived_by_user_id) userIds.add(h.archived_by_user_id);
+    }
+  }
+  const nameMap = new Map<string, string>();
+  if (userIds.size > 0) {
+    const sb = commercialDb();
+    const { data: profiles } = await sb
+      .from("profiles")
+      .select("user_id, sf_user_name, email")
+      .in("user_id", Array.from(userIds));
+    for (const p of (profiles ?? []) as Array<{ user_id: string; sf_user_name: string | null; email: string | null }>) {
+      // Prefer human name; fall back to email local-part.
+      const name = p.sf_user_name?.trim() || (p.email?.split("@")[0] ?? null);
+      if (name) nameMap.set(p.user_id, name);
+    }
+  }
+  const enrich = <T extends CommercialAccountDocument>(d: T) => ({
+    ...d,
+    uploader_name: d.uploaded_by_user_id ? (nameMap.get(d.uploaded_by_user_id) ?? null) : null,
+    archiver_name: d.archived_by_user_id ? (nameMap.get(d.archived_by_user_id) ?? null) : null,
+  });
+  return groups.map((g) => ({
+    category: g.category,
+    active: g.active ? enrich(g.active) : null,
+    history: g.history.map(enrich),
+  }));
+}
+
+/**
  * Generate a short-lived signed URL for downloading a document. 5-minute
  * TTL keeps shared links from leaking long-term. Returns null on failure.
  */

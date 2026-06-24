@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
@@ -12,6 +12,23 @@ const CATEGORIES = [
   { value: "safety", label: "Safety / OSHA" },
   { value: "other", label: "Other" },
 ] as const;
+
+/** Mirror of lib/commercial/accounts/documents.ts sanitizeFileName so the
+ *  preview shows EXACTLY what the server will save. Duplicated here
+ *  because importing a server-only lib into a client component throws. */
+function previewSanitized(name: string): string {
+  const base = name.replace(/\\/g, "/").split("/").pop() ?? name;
+  return (
+    base
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 200) || "untitled"
+  );
+}
+
+type ExpiryMode = "auto" | "custom" | "none";
 
 /**
  * Client-side document upload form for the Commercial CC Account
@@ -38,14 +55,49 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
   const [success, setSuccess] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
+  // "auto" = 1yr default for renewable categories (COI / W-9 / MSA).
+  // "custom" = user picks a date below.
+  // "none" = explicit no-expiry (sent as null to the server).
+  const [expiryMode, setExpiryMode] = useState<ExpiryMode>("auto");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
 
   const handleFile = (file: File | null) => {
     setError(null);
     setSuccess(null);
+    // Block obvious bad picks early so the user gets feedback BEFORE
+    // they hit Upload — saves a roundtrip on phones with slow uploads.
+    if (file && file.size === 0) {
+      setError("That file is empty — pick another.");
+      setPickedFile(null);
+      return;
+    }
+    if (file && file.size > 50 * 1024 * 1024) {
+      setError(`That file is ${Math.round(file.size / 1024 / 1024)} MB — max is 50 MB. Try compressing or splitting.`);
+      setPickedFile(null);
+      return;
+    }
     setPickedFile(file);
   };
+
+  // Sanitized preview + HEIC heads-up update reactively when the file changes.
+  const sanitizedPreview = useMemo(() => {
+    if (!pickedFile) return null;
+    const sanitized = previewSanitized(pickedFile.name);
+    const changed = sanitized !== pickedFile.name.toLowerCase();
+    return { sanitized, changed };
+  }, [pickedFile]);
+
+  const heicWarning = useMemo(() => {
+    if (!pickedFile) return null;
+    const isHeic =
+      pickedFile.type === "image/heic" ||
+      pickedFile.name.toLowerCase().endsWith(".heic") ||
+      pickedFile.name.toLowerCase().endsWith(".heif");
+    return isHeic
+      ? "HEIC photos don't open on Windows or older Android — consider converting to JPG in your Photos app first."
+      : null;
+  }, [pickedFile]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -58,6 +110,15 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
       setError("Pick a file first.");
       return;
     }
+    // Translate the expiry mode radio into what the API expects:
+    //   "auto"   → omit expires_at entirely → server applies category default
+    //   "custom" → send the date from the hidden input
+    //   "none"   → send empty string (server treats as explicit null)
+    if (expiryMode === "auto") {
+      data.delete("expires_at");
+    } else if (expiryMode === "none") {
+      data.set("expires_at", "");
+    }
     setBusy(true);
     try {
       const res = await fetch(`/api/commercial/accounts/${accountId}/documents`, {
@@ -66,12 +127,23 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        setError(json.detail ?? json.error ?? "Upload failed.");
+        // Concurrent-upload race — surface a refresh prompt rather than a
+        // confusing constraint-name dump.
+        if (typeof json.error === "string" && json.error.includes("Someone else uploaded")) {
+          setError("Another user just uploaded to this category. Refresh the page to see their version, then re-upload yours as a new version.");
+        } else {
+          setError(json.detail ?? json.error ?? "Upload failed.");
+        }
         return;
       }
-      setSuccess(`Uploaded "${json.document.file_name}" (v${json.document.version}).`);
+      const d = json.document;
+      const versionLine = d.version === 1
+        ? `Uploaded "${d.file_name}" as v1 — first in this category.`
+        : `Uploaded "${d.file_name}" as v${d.version} — prior version archived.`;
+      setSuccess(versionLine);
       formEl.reset();
       setPickedFile(null);
+      setExpiryMode("auto");
       // Hard refresh of the route so the new row shows in the list.
       router.refresh();
     } catch (err) {
@@ -164,6 +236,21 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
           />
         </div>
 
+        {/* Sanitized filename preview — server lowercases + strips spaces
+            and special chars. Showing this BEFORE upload prevents the
+            "wait, why did my filename change?" surprise. Only renders
+            when sanitization actually changed something. */}
+        {sanitizedPreview?.changed && (
+          <div className="text-[11px] text-ppp-charcoal-500 bg-ppp-charcoal-50 rounded-lg px-3 py-2">
+            Will be saved as <strong className="text-ppp-charcoal-700">{sanitizedPreview.sanitized}</strong> (spaces + special chars stripped for safe storage).
+          </div>
+        )}
+        {heicWarning && (
+          <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {heicWarning}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label htmlFor="category" className={LABEL_CLS}>
@@ -185,15 +272,55 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
             </select>
           </div>
           <div>
-            <label htmlFor="expires_at" className={LABEL_CLS}>
-              Expires
-            </label>
-            <input
-              id="expires_at"
-              name="expires_at"
-              type="date"
-              className={INPUT_CLS}
-            />
+            <label className={LABEL_CLS}>Expiry</label>
+            {/* 3-mode expiry picker. "Auto" is the default — COI / W-9 /
+                MSA get a 1-year default from the server; other categories
+                get no expiry. "Custom" reveals a date picker. "No expiry"
+                explicitly skips the alert system (for evergreen docs). */}
+            <div className="flex gap-1.5 mb-2" role="radiogroup" aria-label="Expiry mode">
+              {([
+                { key: "auto", label: "Auto" },
+                { key: "custom", label: "Pick date" },
+                { key: "none", label: "No expiry" },
+              ] as const).map((o) => {
+                const active = expiryMode === o.key;
+                return (
+                  <button
+                    key={o.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setExpiryMode(o.key)}
+                    className={`flex-1 px-2 py-2 rounded-lg text-[12px] font-medium border transition-colors min-h-[40px] touch-manipulation ${
+                      active
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+            {expiryMode === "custom" && (
+              <input
+                id="expires_at"
+                name="expires_at"
+                type="date"
+                required
+                className={INPUT_CLS}
+              />
+            )}
+            {expiryMode === "auto" && (
+              <p className="text-[10px] text-ppp-charcoal-500">
+                COI / W-9 / MSA default to 1 year. Other categories default to no expiry.
+              </p>
+            )}
+            {expiryMode === "none" && (
+              <p className="text-[10px] text-ppp-charcoal-500">
+                Document won&apos;t appear in expiring-soon alerts. Use for evergreen records.
+              </p>
+            )}
           </div>
         </div>
 

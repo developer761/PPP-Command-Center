@@ -27,7 +27,9 @@ import {
 } from "@/lib/commercial/accounts/assignments";
 import {
   listAccountDocuments,
+  listAccountDocumentsWithUploaders,
   archiveDocument,
+  restoreDocument,
   documentCategoryLabel,
   expiryStatus,
   buildComplianceChecklist,
@@ -1488,6 +1490,24 @@ async function archiveDocumentAction(formData: FormData) {
   redirect(`/commercial/accounts/${account_id}?tab=documents`);
 }
 
+async function restoreDocumentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const account_id = String(formData.get("account_id") ?? "");
+  const document_id = String(formData.get("document_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(document_id)) {
+    redirect("/commercial/accounts");
+  }
+  const result = await restoreDocument(document_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=documents&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/accounts/${account_id}?tab=documents`);
+}
+
 /**
  * Account-side Opportunities tab. Every bid PPP has ever pitched this
  * customer — open at the top in a "Open · N" section, decided history
@@ -1800,7 +1820,10 @@ function statusPillTone(status: OpportunityStatus): { cls: string } {
 }
 
 async function DocumentsTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
-  const grouped = await listAccountDocuments(accountId);
+  // Use the uploader-enriched variant so each row can show "Uploaded by
+  // Alice · Jun 12" + "Archived by Bob · Jun 18". One extra profile
+  // query in the lib; same row shape otherwise.
+  const grouped = await listAccountDocumentsWithUploaders(accountId);
   const hasAnyDocs = grouped.some((g) => g.active || g.history.length > 0);
 
   // Pre-compute expiry summary so the heads-up banner can fire when needed.
@@ -1886,11 +1909,16 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
   );
 }
 
+type DocWithNames = CommercialAccountDocument & {
+  uploader_name: string | null;
+  archiver_name: string | null;
+};
+
 function DocumentCategoryCard({
   group,
   accountId,
 }: {
-  group: { category: DocumentCategory; active: CommercialAccountDocument | null; history: CommercialAccountDocument[] };
+  group: { category: DocumentCategory; active: DocWithNames | null; history: DocWithNames[] };
   accountId: string;
 }) {
   const { category, active, history } = group;
@@ -1929,7 +1957,7 @@ function DocumentRow({
   accountId,
   isActive,
 }: {
-  doc: CommercialAccountDocument;
+  doc: DocWithNames;
   accountId: string;
   isActive: boolean;
 }) {
@@ -1990,11 +2018,23 @@ function DocumentRow({
         <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
           {sizeLabel && <span>{sizeLabel}</span>}
           {sizeLabel && <span aria-hidden>·</span>}
-          <span>Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}</span>
+          <span>
+            Uploaded {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
+            {doc.uploader_name && <> by <strong className="text-ppp-charcoal-700">{doc.uploader_name}</strong></>}
+          </span>
           {doc.expires_at && (
             <>
               <span aria-hidden>·</span>
-              <span>Expires {new Date(doc.expires_at).toLocaleDateString()}</span>
+              <span>Expires {new Date(doc.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}</span>
+            </>
+          )}
+          {!isActive && doc.archived_at && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="text-ppp-charcoal-400">
+                Archived {new Date(doc.archived_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
+                {doc.archiver_name && <> by {doc.archiver_name}</>}
+              </span>
             </>
           )}
         </div>
@@ -2002,6 +2042,19 @@ function DocumentRow({
           <p className="text-[11px] text-ppp-charcoal-600 italic mt-1">{doc.notes}</p>
         )}
       </div>
+      {!isActive && doc.archived && (
+        <form action={restoreDocumentAction} className="shrink-0">
+          <input type="hidden" name="account_id" value={accountId} />
+          <input type="hidden" name="document_id" value={doc.id} />
+          <button
+            type="submit"
+            className="px-3 py-1.5 text-[12px] font-medium text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 min-h-[44px] touch-manipulation"
+            title="Make this version the active one. Creates a new version at the top of the chain — keeps the audit trail intact."
+          >
+            Restore as new version
+          </button>
+        </form>
+      )}
       {isActive && !doc.archived && (
         <form action={archiveDocumentAction} className="shrink-0">
           <input type="hidden" name="account_id" value={accountId} />
