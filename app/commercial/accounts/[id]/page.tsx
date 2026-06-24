@@ -111,6 +111,10 @@ const TABS = [
   // Notes added 2026-06-24 alongside Win/Loss Debrief feature — auto-debrief
   // notes land on this account's timeline when a linked opp closes.
   { key: "notes", label: "Notes" },
+  // Activity moved out of Info tab 2026-06-24 (Karan: "should be in a
+  // separate tab or else it's way too cluttered"). Chronological feed
+  // of every status change / note / task across this account's opps.
+  { key: "activity", label: "Activity" },
   { key: "team", label: "Team" },
   { key: "contacts", label: "Contacts" },
   { key: "opportunities", label: "Opportunities" },
@@ -297,6 +301,7 @@ export default async function CommercialAccountDetailPage({
 
       {/* Tab content */}
       {tab === "info" && <InfoTab account={account} errorMessage={sp.error} />}
+      {tab === "activity" && <ActivityTab accountId={account.id} />}
       {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "opportunities" && <OpportunitiesTab accountId={account.id} overview={overview} />}
@@ -383,14 +388,13 @@ async function removeTagAction(formData: FormData) {
 }
 
 async function InfoTab({ account, errorMessage }: { account: CommercialAccount; errorMessage?: string }) {
-  // Load tags + suggestions + compliance checklist + recent activity
-  // in parallel so the Info tab renders in one round-trip's worth of
-  // latency. Recent Activity pulls from opp status_log + notes + tasks.
-  const [tags, allTags, docGroups, activity] = await Promise.all([
+  // Recent Activity moved out of InfoTab → its own tab 2026-06-24.
+  // InfoTab stays focused on identity + tags + compliance — no chronological
+  // feed that competed with the rest of the layout for vertical space.
+  const [tags, allTags, docGroups] = await Promise.all([
     listAccountTags(account.id),
     listAllDistinctTags(),
     listAccountDocuments(account.id),
-    getAccountRecentActivity(account.id, 10),
   ]);
   // Filter suggestions to tags NOT already on this account (case-
   // insensitive) — saves the picker from showing dupes.
@@ -411,10 +415,6 @@ async function InfoTab({ account, errorMessage }: { account: CommercialAccount; 
         accountId={account.id}
         tags={tags}
         suggestions={suggestions}
-        className="lg:col-span-2"
-      />
-      <RecentActivityCard
-        entries={activity}
         className="lg:col-span-2"
       />
       <ComplianceChecklistCard
@@ -493,9 +493,10 @@ function RecentActivityCard({
                   className="text-[11px] text-ppp-charcoal-500 mt-1"
                   title={when.toISOString()}
                 >
-                  {when.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  {when.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}
                   {" · "}
-                  {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                  {when.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}
+                  {" ET"}
                 </div>
               </div>
             </li>
@@ -504,6 +505,25 @@ function RecentActivityCard({
       </ol>
     </section>
   );
+}
+
+/** Dedicated Activity tab — separates the chronological feed from the
+ *  Info tab so neither competes for vertical space. Pulls 50 entries
+ *  (vs 10 on the old inline card) since this surface is BUILT for
+ *  scrolling. Empty state explains where activity comes from. */
+async function ActivityTab({ accountId }: { accountId: string }) {
+  const activity = await getAccountRecentActivity(accountId, 50);
+  if (activity.length === 0) {
+    return (
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+        <div className="text-sm font-semibold text-ppp-charcoal mb-1">No activity yet</div>
+        <p className="text-[12px] text-ppp-charcoal-500 max-w-md mx-auto leading-relaxed">
+          Status changes, notes, and completed tasks on this account&apos;s opportunities show up here as a chronological feed.
+        </p>
+      </div>
+    );
+  }
+  return <RecentActivityCard entries={activity} />;
 }
 
 function ComplianceChecklistCard({
