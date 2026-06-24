@@ -84,5 +84,17 @@ export async function POST(
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
+  // For Won, drop the placeholder auto-note so the account timeline
+  // reflects the closure instantly. Client redirects to the opp page
+  // with `?just_closed=1` so the DebriefOnlyCard surfaces for optional
+  // structured-debrief follow-through.
+  if (to_status === "won") {
+    const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
+    await postPlaceholderAutoNote({
+      opportunityId: opp_id,
+      outcome: "won",
+      actorUserId: auth.user.id,
+    });
+  }
   return NextResponse.json({ ok: true });
 }

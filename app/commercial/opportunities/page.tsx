@@ -54,9 +54,11 @@ async function quickFlipStatusAction(formData: FormData) {
     redirect("/commercial/opportunities?status_error=" + encodeURIComponent("Invalid status."));
   }
   // Lost / No-bid require a structured reason — bounce to detail page
-  // where DebriefFields captures it. Won flips immediately (no reason
-  // required); user lands back here with the deal in the Won column +
-  // amber "Debrief needed" banner on the opp page for optional follow-up.
+  // where DebriefFields captures it (status flips there after reason is
+  // picked). Won flips immediately, then routes the user to the detail
+  // page with `?just_closed=1` so the DebriefOnlyCard renders prominently
+  // for optional structured-debrief follow-through. User can fill the
+  // debrief there or hit "Skip — debrief later" to return to the board.
   if (to_status === "lost" || to_status === "no_bid") {
     redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
   }
@@ -68,11 +70,12 @@ async function quickFlipStatusAction(formData: FormData) {
   if (!result.ok) {
     redirect("/commercial/opportunities?status_error=" + encodeURIComponent(result.error));
   }
-  // For Won transitions, also drop the auto-account-note placeholder
-  // so the account timeline reflects the closure instantly.
   if (to_status === "won") {
+    // Drop the placeholder auto-note so the account timeline reflects
+    // the closure instantly, then route to the debrief panel.
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&just_closed=1#debrief-now-form`);
   }
   redirect("/commercial/opportunities?status_ok=1");
 }

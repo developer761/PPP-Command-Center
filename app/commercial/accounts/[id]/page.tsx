@@ -326,7 +326,9 @@ async function quickFlipFromAccountAction(formData: FormData) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Invalid status.")}`);
   }
   // Lost / No-bid need loss_reason capture — bounce to detail page.
-  // Won flips immediately + drops the placeholder auto-note.
+  // Won flips immediately, drops the placeholder auto-note, then routes
+  // to the opp page so the DebriefOnlyCard is right there for optional
+  // structured-debrief follow-through.
   if (to_status === "lost" || to_status === "no_bid") {
     redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
   }
@@ -341,6 +343,7 @@ async function quickFlipFromAccountAction(formData: FormData) {
   if (to_status === "won") {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&just_closed=1#debrief-now-form`);
   }
   redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
 }

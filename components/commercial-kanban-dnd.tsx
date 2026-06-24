@@ -57,9 +57,8 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     if (!oppId) return;
 
     // Lost / No-bid need loss_reason — bounce to the detail page so
-    // the user can pick a reason via the structured DebriefFields.
-    // Won flips immediately like any other transition; the optional
-    // structured debrief shows up as an amber banner afterwards.
+    // the user can pick a reason via the structured DebriefFields
+    // (status doesn't flip until the reason lands).
     if (toStatus === "lost" || toStatus === "no_bid") {
       setNavigating(toStatus);
       requestAnimationFrame(() => {
@@ -93,6 +92,17 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
       if (!res.ok || !json.ok) {
         setOptimisticMove(null); // revert
         flashError(json.error || "Couldn't move that deal.");
+        return;
+      }
+      // Won flips like any other status, but we ALSO route the user to
+      // the opp page so the DebriefOnlyCard is right there for optional
+      // structured-debrief follow-through. Server already dropped the
+      // placeholder auto-note in the move-status API.
+      if (toStatus === "won") {
+        setNavigating("won");
+        requestAnimationFrame(() => {
+          window.location.href = `/commercial/opportunities/${oppId}?tab=info&just_closed=1#debrief-now-form`;
+        });
         return;
       }
       // Refresh in a transition so the optimistic card stays in place

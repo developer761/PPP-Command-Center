@@ -85,7 +85,56 @@ type SP = Promise<{
   confirm_delete?: string;
   edited?: string;
   cloned?: string;
+  just_closed?: string;
+  debrief_saved?: string;
 }>;
+
+async function submitDebriefOnlyAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  // Load opp so we know its terminal outcome (debrief panel only renders
+  // for terminal opps; this is the server-side echo of that gate).
+  const opp = await getCommercialOpportunity(opp_id);
+  if (!opp) redirect("/commercial/opportunities");
+  const isTerminal = opp.status === "won" || opp.status === "lost" || opp.status === "no_bid";
+  if (!isTerminal) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info`);
+  }
+  const competitor = String(formData.get("debrief_competitor") ?? "").trim();
+  const decidingFactor = String(formData.get("debrief_deciding_factor") ?? "").trim();
+  const lessons = String(formData.get("debrief_lessons") ?? "").trim();
+  const internalNotes = String(formData.get("debrief_internal_notes") ?? "").trim();
+  // Resolve the most recent terminal status_log row as the FK target so
+  // we link the debrief to the actual close event (not a prior reopen).
+  const sb = commercialDb();
+  const { data: lastLog } = await sb
+    .from("commercial_opportunity_status_log")
+    .select("id")
+    .eq("opportunity_id", opp_id)
+    .eq("to_status", opp.status)
+    .order("changed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const statusLogId = (lastLog as { id: string } | null)?.id ?? null;
+  const result = await writeDebrief({
+    opportunityId: opp_id,
+    outcome: opp.status as "won" | "lost" | "no_bid",
+    competitorName: competitor || null,
+    decidingFactor: (decidingFactor && (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(decidingFactor)) ? decidingFactor : null,
+    lessonsLearned: lessons || null,
+    internalNotes: internalNotes || null,
+    statusLogId,
+    actorUserId: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
+  }
+  redirect(`/commercial/opportunities/${opp_id}?tab=info&debrief_saved=1`);
+}
 
 async function changeStatusAction(formData: FormData) {
   "use server";
@@ -560,7 +609,7 @@ export default async function OpportunityDetailPage({
             </div>
           </div>
           <Link
-            href={`/commercial/opportunities/${opp.id}?tab=info#status-change-form`}
+            href={`/commercial/opportunities/${opp.id}?tab=info#debrief-now-form`}
             className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-700 text-white text-[12px] font-semibold hover:bg-amber-800 active:bg-amber-900 min-h-[44px] touch-manipulation shrink-0"
           >
             Add debrief
@@ -679,6 +728,8 @@ export default async function OpportunityDetailPage({
           statusOk={pickFirst(sp.status_ok) === "1"}
           preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
           confirmDelete={pickFirst(sp.confirm_delete) === "1"}
+          justClosed={pickFirst(sp.just_closed) === "1"}
+          debriefSaved={pickFirst(sp.debrief_saved) === "1"}
         />
       )}
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
@@ -698,6 +749,8 @@ async function InfoTab({
   statusOk,
   preselectTo,
   confirmDelete,
+  justClosed,
+  debriefSaved,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -705,6 +758,8 @@ async function InfoTab({
   statusOk?: boolean;
   preselectTo?: OpportunityStatus;
   confirmDelete?: boolean;
+  justClosed?: boolean;
+  debriefSaved?: boolean;
 }) {
   // Fetch debriefs when terminal — used by the Win/Loss Debrief card to
   // display the structured competitor + deciding factor + lessons.
@@ -736,6 +791,27 @@ async function InfoTab({
             Dismiss
           </Link>
         </div>
+      )}
+      {debriefSaved && (
+        <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+          Debrief saved. Thanks — this feeds the quarterly Win/Loss report.
+        </div>
+      )}
+      {/* Standalone debrief panel — shows when the opp is in a terminal
+          state but no debrief exists yet. Two paths land users here:
+          1. Just flipped to Won/Lost/No-bid from kanban/list/account
+             (justClosed=1) — the panel auto-scrolls into view.
+          2. Returning later to fill the debrief via the amber banner.
+          User can fill the form (writes via submitDebriefOnlyAction —
+          status is already correct, doesn't re-flip) OR hit "Skip" to
+          come back later. Renders ABOVE ChangeStatusCard so it's the
+          primary CTA; ChangeStatusCard below still allows reopening. */}
+      {isTerminal && !opp.win_loss_debriefed_at && (
+        <DebriefOnlyCard
+          opp={opp}
+          justClosed={justClosed === true}
+          className="lg:col-span-2"
+        />
       )}
       <ChangeStatusCard
         opp={opp}
@@ -1065,6 +1141,70 @@ function ChangeStatusCard({
           </div>
         </form>
       )}
+    </section>
+  );
+}
+
+function DebriefOnlyCard({
+  opp,
+  justClosed,
+  className,
+}: {
+  opp: CommercialOpportunity;
+  justClosed: boolean;
+  className?: string;
+}) {
+  // Headline copy adapts to outcome — Won is celebratory, Lost is
+  // diagnostic. Both surface the same DebriefFields form (the field is
+  // outcome-aware internally via its initialStatus prop).
+  const outcomeLabel =
+    opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid";
+  const headline = justClosed
+    ? `Closed as ${opportunityStatusLabel(opp.status)} — add the ${outcomeLabel} debrief?`
+    : `Add the ${outcomeLabel} debrief`;
+  const subhead = opp.status === "won"
+    ? "Capture what sealed it — competitor, deciding factor, and what worked. Feeds the quarterly Win/Loss report."
+    : opp.status === "lost"
+    ? "Capture who we lost to and why. Two minutes now pays back across the quarterly review."
+    : "Capture why we passed. Helps Alex pattern-match the bids worth declining versus chasing.";
+  return (
+    <section
+      id="debrief-now-form"
+      className={`bg-white border-2 border-amber-300 rounded-xl p-5 shadow-sm ${className ?? ""}`}
+    >
+      <div className="flex items-start gap-3 mb-4">
+        <div className="shrink-0 w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center" aria-hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-700">
+            <path d="M9 11l3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-bold text-ppp-charcoal">{headline}</h2>
+          <p className="text-[13px] text-ppp-charcoal-600 mt-1 leading-relaxed">{subhead}</p>
+        </div>
+      </div>
+      <form action={submitDebriefOnlyAction} className="space-y-3">
+        <input type="hidden" name="opp_id" value={opp.id} />
+        {/* DebriefFields normally hides itself until a terminal is picked
+            in the sibling <select name="to_status">. Here the status is
+            already terminal so we pass initialStatus to render it open. */}
+        <DebriefFields initialStatus={opp.status} />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2">
+          <Link
+            href="/commercial/opportunities"
+            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-medium hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 transition-colors min-h-[44px] touch-manipulation"
+          >
+            Skip — debrief later
+          </Link>
+          <button
+            type="submit"
+            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+          >
+            Save debrief
+          </button>
+        </div>
+      </form>
     </section>
   );
 }
