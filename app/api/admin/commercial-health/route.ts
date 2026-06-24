@@ -369,6 +369,38 @@ export async function GET() {
         message: "Migrations 018–037 confirmed via column probes",
       };
     }),
+
+    probe("winloss_migration", "Win/Loss Debrief · Migrations 038 + 039", "commercial_cc", async () => {
+      // Confirm 038 by hitting the debrief table; confirm 039 by checking
+      // the source_outcome column on account_notes (added in 039 for
+      // cross-flip protection). One probe covers both — if either is
+      // missing, the Debrief tab will 500 at runtime.
+      const { error: m038 } = await sb
+        .from("commercial_win_loss_debrief")
+        .select("id", { count: "exact", head: true });
+      if (m038) {
+        return {
+          status: "fail",
+          message: `commercial_win_loss_debrief missing: ${m038.message}`.slice(0, 150),
+          fix: "Paste supabase/migrations/038_commercial_win_loss_debrief.sql",
+        };
+      }
+      const { error: m039 } = await sb
+        .from("commercial_account_notes")
+        .select("source_outcome")
+        .limit(1);
+      if (m039) {
+        return {
+          status: "fail",
+          message: `source_outcome column missing: ${m039.message}`.slice(0, 150),
+          fix: "Paste supabase/migrations/039_win_loss_debrief_hardening.sql",
+        };
+      }
+      return {
+        status: "ok",
+        message: "Debrief + competitors + account_notes tables ready",
+      };
+    }),
   ]);
 
   // ──────────────── SUMMARY ────────────────
