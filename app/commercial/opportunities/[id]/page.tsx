@@ -760,9 +760,10 @@ export default async function OpportunityDetailPage({
 
       {/* Tab bar — Debrief tab only surfaces on terminal opps. Holds
           either the un-filled debrief form OR the completed read-only
-          structured debrief. Keeps the Info tab clean. */}
-      <nav className="border-b border-ppp-charcoal-100">
-        <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto">
+          structured debrief. Keeps the Info tab clean. Right-edge fade
+          hints there's more to scroll on 375px mobile (audit fix). */}
+      <nav className="relative border-b border-ppp-charcoal-100">
+        <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {visibleTabs.map((t) => {
             const active = t.key === tab;
             const needsAttention = t.key === "debrief" && !opp.win_loss_debriefed_at;
@@ -785,6 +786,7 @@ export default async function OpportunityDetailPage({
             );
           })}
         </ul>
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white via-white/80 to-transparent sm:hidden" aria-hidden />
       </nav>
 
       {tab === "info" && (
@@ -1460,7 +1462,7 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
                         <button
                           type="submit"
                           aria-label={`Remove ${opportunityAssignmentRoleLabel(a.role)} role`}
-                          className={`-mr-1 ml-0.5 px-2 py-1 min-h-[32px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-emerald-700/80 hover:text-emerald-900"}`}
+                          className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-emerald-700/80 hover:text-emerald-900"}`}
                         >
                           ✕
                         </button>
@@ -1653,7 +1655,7 @@ function TaskList({
                     type="submit"
                     aria-label={`Delete ${t.title}`}
                     title="Delete task"
-                    className="px-2 py-1 text-[11px] text-ppp-charcoal-500 hover:text-rose-700 min-h-[32px] inline-flex items-center touch-manipulation"
+                    className="px-2 py-1 text-[11px] text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] inline-flex items-center touch-manipulation"
                   >
                     Delete
                   </button>
@@ -1791,7 +1793,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
       <details className="group">
         <summary className="list-none cursor-pointer">
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{note.body}</p>
-          <span className="text-[11px] text-emerald-700 underline mt-2 inline-flex items-center gap-1 min-h-[32px] touch-manipulation">
+          <span className="text-[11px] text-emerald-700 underline mt-2 inline-flex items-center gap-1 min-h-[44px] touch-manipulation">
             Edit / Delete
           </span>
         </summary>
@@ -1822,7 +1824,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               <input type="hidden" name="note_id" value={note.id} />
               <button
                 type="submit"
-                className={`inline-flex items-center gap-1.5 text-[11px] underline min-h-[32px] touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ppp-blue px-1 ${
+                className={`inline-flex items-center gap-1.5 text-[11px] underline min-h-[44px] touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ppp-blue px-1 ${
                   isPinned
                     ? "text-ppp-charcoal-700 hover:text-ppp-charcoal-900"
                     : "text-amber-700 hover:text-amber-900"
@@ -1839,7 +1841,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               <input type="hidden" name="note_id" value={note.id} />
               <button
                 type="submit"
-                className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[32px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1"
+                className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[44px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1"
               >
                 Delete note
               </button>
@@ -2072,19 +2074,6 @@ async function TimelineTab({ oppId }: { oppId: string }) {
         })}
       </ol>
     </section>
-  );
-}
-
-function ComingSoonTab({ label }: { label: string }) {
-  return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
-      <div className="text-sm text-ppp-charcoal-500">
-        <strong className="text-ppp-charcoal">{label}</strong> tab — ships in a later Phase 2 batch.
-      </div>
-      <div className="text-[12px] text-ppp-charcoal-500 mt-2">
-        Team (Batch 3) · Plans & Specs (Batch 4) · Notes / Tasks / Timeline (Batch 3)
-      </div>
-    </div>
   );
 }
 
