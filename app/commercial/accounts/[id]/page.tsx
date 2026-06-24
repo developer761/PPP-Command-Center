@@ -2522,7 +2522,7 @@ function KpiTile({
   // of the opp page KPI strip.
   const cls =
     tone === "live"
-      ? "relative bg-gradient-to-br from-white to-emerald-50/40 border-ppp-charcoal-200 shadow-sm"
+      ? "relative bg-gradient-to-br from-white to-ppp-blue-50/40 border-ppp-charcoal-200 shadow-sm"
       : "bg-ppp-charcoal-50/60 border-ppp-charcoal-200 border-dashed";
 
   return href ? (
