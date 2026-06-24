@@ -4,6 +4,7 @@ import {
   uploadDocument,
   ALLOWED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
+  verifyFileMagicBytes,
   type DocumentCategory,
   DOCUMENT_CATEGORIES,
 } from "@/lib/commercial/accounts/documents";
@@ -102,6 +103,22 @@ export async function POST(
     }
 
     const buffer = new Uint8Array(await file.arrayBuffer());
+
+    // Magic-byte sniff: the browser-reported MIME is user-spoofable
+    // (rename malware.exe → invoice.pdf and it'll declare application/pdf).
+    // Read the first 12 bytes and verify they match the declared type.
+    // Executables and unknown signatures fail closed.
+    const magicCheck = verifyFileMagicBytes(buffer, file.type);
+    if (!magicCheck.ok) {
+      return NextResponse.json(
+        {
+          error: "file_content_mismatch",
+          detail: `Declared as ${file.type || "(unknown)"} but the file looks like ${magicCheck.detected}. If you're sure this is the right document, try saving/exporting it again from the source app.`,
+        },
+        { status: 415 }
+      );
+    }
+
     const result = await uploadDocument({
       account_id: accountId,
       category,

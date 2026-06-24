@@ -61,6 +61,11 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
   const [expiryMode, setExpiryMode] = useState<ExpiryMode>("auto");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
+  // AbortController for the in-flight fetch — lets Cancel actually
+  // interrupt a slow upload (Karan: "give users a way out — phones on
+  // LTE shouldn't trap them in a 4-minute wait"). Recreated per submit;
+  // ref lifetime survives re-renders.
+  const abortRef = useRef<AbortController | null>(null);
 
   const handleFile = (file: File | null) => {
     setError(null);
@@ -120,10 +125,13 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
       data.set("expires_at", "");
     }
     setBusy(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await fetch(`/api/commercial/accounts/${accountId}/documents`, {
         method: "POST",
         body: data,
+        signal: controller.signal,
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
@@ -147,9 +155,22 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
       // Hard refresh of the route so the new row shows in the list.
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error.");
+      // AbortError is the user clicking Cancel — show a friendly message
+      // instead of a generic network-error scare.
+      if (err instanceof Error && err.name === "AbortError") {
+        setError("Upload cancelled. Pick the file again to retry.");
+      } else {
+        setError(err instanceof Error ? err.message : "Network error.");
+      }
     } finally {
       setBusy(false);
+      abortRef.current = null;
+    }
+  };
+
+  const handleCancel = () => {
+    if (abortRef.current) {
+      abortRef.current.abort();
     }
   };
 
@@ -337,13 +358,29 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
           />
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {busy && (
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-200 bg-white text-rose-700 text-sm font-medium hover:bg-rose-50 hover:border-rose-300 min-h-[44px] sm:min-h-0 touch-manipulation"
+            >
+              Cancel
+            </button>
+          )}
           <button
             type="submit"
             disabled={busy || !pickedFile}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0 touch-manipulation"
           >
-            {busy ? "Uploading…" : "Upload"}
+            {busy ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin" aria-hidden>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                Uploading…
+              </>
+            ) : "Upload"}
           </button>
         </div>
       </form>

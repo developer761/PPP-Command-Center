@@ -79,6 +79,104 @@ export const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 
+/**
+ * Verify the file's actual binary content matches the MIME type the
+ * browser reported. Prevents the "renamed malware.exe to invoice.pdf"
+ * trick — the browser-reported MIME type is user-spoofable, but the
+ * first few bytes of the file (the "magic number") are not.
+ *
+ * Returns { ok: true } if content matches the declared type, or
+ * { ok: false, detected } with what we sniffed instead.
+ *
+ * Word/Excel detection is intentionally loose: docx/xlsx are ZIP
+ * containers (PK\x03\x04), and old .doc/.xls are OLE compound files
+ * (D0 CF 11 E0). We accept either prefix for any office-mime — better
+ * a false-positive accept on a legitimate file than a false-positive
+ * reject on a customer's W-9.
+ */
+export function verifyFileMagicBytes(
+  buffer: Uint8Array,
+  declaredMime: string
+): { ok: true } | { ok: false; detected: string } {
+  // Need at least the first 12 bytes for the most common signatures.
+  if (buffer.length < 4) {
+    return { ok: false, detected: "file too short to verify" };
+  }
+  const b = buffer;
+  const startsWith = (sig: number[]) => sig.every((byte, i) => b[i] === byte);
+  const matchesAt = (offset: number, sig: number[]) =>
+    sig.every((byte, i) => b[offset + i] === byte);
+
+  // PDF — "%PDF" (25 50 44 46)
+  if (startsWith([0x25, 0x50, 0x44, 0x46])) {
+    return declaredMime === "application/pdf"
+      ? { ok: true }
+      : { ok: false, detected: "PDF" };
+  }
+  // PNG — 89 50 4E 47
+  if (startsWith([0x89, 0x50, 0x4e, 0x47])) {
+    return declaredMime === "image/png" ? { ok: true } : { ok: false, detected: "PNG" };
+  }
+  // JPEG — FF D8 FF
+  if (startsWith([0xff, 0xd8, 0xff])) {
+    return declaredMime === "image/jpeg" || declaredMime === "image/jpg"
+      ? { ok: true }
+      : { ok: false, detected: "JPEG" };
+  }
+  // WEBP — "RIFF" ... "WEBP" at offset 8
+  if (startsWith([0x52, 0x49, 0x46, 0x46]) && b.length >= 12 && matchesAt(8, [0x57, 0x45, 0x42, 0x50])) {
+    return declaredMime === "image/webp" ? { ok: true } : { ok: false, detected: "WEBP" };
+  }
+  // HEIC / HEIF — "ftyp" at offset 4, then "heic" / "heif" / "mif1" / "msf1" at offset 8
+  if (b.length >= 12 && matchesAt(4, [0x66, 0x74, 0x79, 0x70])) {
+    const brand = String.fromCharCode(b[8], b[9], b[10], b[11]);
+    if (["heic", "heix", "heif", "mif1", "msf1"].includes(brand)) {
+      return declaredMime === "image/heic" || declaredMime === "image/heif"
+        ? { ok: true }
+        : { ok: false, detected: "HEIC/HEIF" };
+    }
+  }
+  // GIF — "GIF87a" / "GIF89a"
+  if (startsWith([0x47, 0x49, 0x46, 0x38])) {
+    return { ok: false, detected: "GIF (not in allowlist)" };
+  }
+  // ZIP-based Office (docx, xlsx, pptx) — PK\x03\x04
+  if (startsWith([0x50, 0x4b, 0x03, 0x04])) {
+    const officeZipMimes = new Set([
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]);
+    return officeZipMimes.has(declaredMime)
+      ? { ok: true }
+      : { ok: false, detected: "ZIP-based (docx/xlsx)" };
+  }
+  // Legacy Office OLE compound (.doc, .xls) — D0 CF 11 E0 A1 B1 1A E1
+  if (startsWith([0xd0, 0xcf, 0x11, 0xe0])) {
+    const oleMimes = new Set([
+      "application/msword",
+      "application/vnd.ms-excel",
+    ]);
+    return oleMimes.has(declaredMime)
+      ? { ok: true }
+      : { ok: false, detected: "Legacy Office (doc/xls)" };
+  }
+  // Executable signatures — explicit reject. We DON'T accept these even
+  // if the user declares some random MIME, because there's no path that
+  // should let an exe / Mach-O / ELF into commercial-account-docs.
+  if (startsWith([0x4d, 0x5a])) {
+    return { ok: false, detected: "Windows executable (.exe / .dll)" };
+  }
+  if (startsWith([0x7f, 0x45, 0x4c, 0x46])) {
+    return { ok: false, detected: "Linux executable (ELF)" };
+  }
+  if (startsWith([0xcf, 0xfa, 0xed, 0xfe]) || startsWith([0xfe, 0xed, 0xfa, 0xce])) {
+    return { ok: false, detected: "macOS executable (Mach-O)" };
+  }
+  // Unknown signature — fail closed. If a legitimate format isn't
+  // covered, add it to the allowlist explicitly above.
+  return { ok: false, detected: `unknown (first 4 bytes: ${Array.from(b.slice(0, 4)).map((x) => x.toString(16).padStart(2, "0")).join(" ")})` };
+}
+
 /** Strip path-unsafe chars from a filename, collapse spaces, lowercase. */
 export function sanitizeFileName(name: string): string {
   const base = name.replace(/\\/g, "/").split("/").pop() ?? name;
