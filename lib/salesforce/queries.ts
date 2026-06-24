@@ -72,7 +72,12 @@ const cache: Map<string, CacheEntry<unknown>> =
 // Supabase round-trip on every page render; the cost is up to 60s of
 // stale cross-instance cache after a writeback, which is fine because
 // every writeback path also invalidates the affected snapshot keys.
-const GEN_REFRESH_MIN_INTERVAL_MS = 60_000;
+// Speed audit 2026-06-24: bumped 60s → 120s. Warm-instance page loads
+// were paying a 50-100ms Supabase round-trip to recheck the generation
+// counter even though writebacks are rare. The local instance always
+// stays current (writeback paths bump in-memory immediately, line ~119);
+// trade-off is doubling the cross-instance stale window from 60s → 2 min.
+const GEN_REFRESH_MIN_INTERVAL_MS = 120_000;
 let cachedGeneration = 0;
 let lastGenFetchAt = 0;
 
