@@ -1297,7 +1297,7 @@ function OpportunityRow({
             name="to_status"
             defaultValue=""
             required
-            className={`${SELECT_CLS} text-[12px] sm:text-sm py-1.5 min-h-[36px]`}
+            className={`${SELECT_CLS} text-[12px] sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
             style={SELECT_BG_STYLE}
           >
             <option value="" disabled>
@@ -1314,7 +1314,7 @@ function OpportunityRow({
           </select>
           <button
             type="submit"
-            className="px-3 py-1 rounded-md bg-ppp-charcoal text-white text-[12px] font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[36px] touch-manipulation"
+            className="px-3 py-1 rounded-md bg-ppp-charcoal text-white text-[12px] font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             Apply
           </button>

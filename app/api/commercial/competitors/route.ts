@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { searchCompetitors } from "@/lib/commercial/competitors";
+import { commercialDb } from "@/lib/commercial/db";
 
 /**
  * GET /api/commercial/competitors?q=...
@@ -21,6 +22,17 @@ export async function GET(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  // Audit fix 2026-06-24: gate on has_new_platform_access — competitor
+  // names are commercial-only intel; a residential-only user signed
+  // into the SaaS should not be able to enumerate them.
+  const { data: prof } = await commercialDb()
+    .from("profiles")
+    .select("has_new_platform_access")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!prof || !(prof as { has_new_platform_access: boolean }).has_new_platform_access) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
   const url = new URL(request.url);

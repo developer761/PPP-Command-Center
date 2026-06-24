@@ -911,7 +911,9 @@ async function detachContactAction(formData: FormData) {
   if (!UUID_RE.test(account_id) || !UUID_RE.test(account_contact_id)) {
     redirect("/commercial/accounts");
   }
-  await detachContactFromAccount(account_contact_id, user.id);
+  // Security fix 2026-06-24: pass account_id for cross-account scoping
+  // — see lib/commercial/accounts/contacts.ts detachContactFromAccount.
+  await detachContactFromAccount(account_id, account_contact_id, user.id);
   redirect(`/commercial/accounts/${account_id}?tab=contacts`);
 }
 
@@ -1208,7 +1210,10 @@ async function removeAssignmentAction(formData: FormData) {
   if (!UUID_RE.test(account_id) || !UUID_RE.test(assignment_id)) {
     redirect("/commercial/accounts");
   }
-  await removeAssignment(assignment_id, user.id);
+  // Security fix 2026-06-24: pass account_id so the lib double-scopes
+  // the row + the update. Without this, a hand-crafted POST with a
+  // foreign assignment_id could soft-delete a row from a different account.
+  await removeAssignment(account_id, assignment_id, user.id);
   redirect(`/commercial/accounts/${account_id}?tab=team`);
 }
 
@@ -1506,7 +1511,9 @@ async function archiveDocumentAction(formData: FormData) {
   if (!UUID_RE.test(account_id) || !UUID_RE.test(document_id)) {
     redirect("/commercial/accounts");
   }
-  const result = await archiveDocument(document_id, user.id);
+  // Security fix 2026-06-24: pass account_id so the lib double-scopes
+  // the lookup + update against cross-account hand-crafted POSTs.
+  const result = await archiveDocument(account_id, document_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/accounts/${account_id}?tab=documents&error=${encodeURIComponent(result.error)}`);
   }
@@ -1524,7 +1531,10 @@ async function restoreDocumentAction(formData: FormData) {
   if (!UUID_RE.test(account_id) || !UUID_RE.test(document_id)) {
     redirect("/commercial/accounts");
   }
-  const result = await restoreDocument(document_id, user.id);
+  // Security fix 2026-06-24: pass account_id — restoreDocument is the
+  // worst of the doc paths (mutates the active version), so cross-account
+  // scoping here is critical.
+  const result = await restoreDocument(account_id, document_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/accounts/${account_id}?tab=documents&error=${encodeURIComponent(result.error)}`);
   }
@@ -1805,7 +1815,7 @@ function AccountOpportunityRow({
             name="to_status"
             defaultValue=""
             required
-            className={`${SELECT_CLS} text-[12px] sm:text-sm py-1.5 min-h-[36px]`}
+            className={`${SELECT_CLS} text-[12px] sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
             style={SELECT_BG_STYLE}
           >
             <option value="" disabled>
@@ -1822,7 +1832,7 @@ function AccountOpportunityRow({
           </select>
           <button
             type="submit"
-            className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[36px] touch-manipulation"
+            className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             Move
           </button>

@@ -95,7 +95,7 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
     const { data: assignments } = await sb
       .from("commercial_account_assignments")
       .select(
-        "account_id, user_id, role, user:profiles!commercial_account_assignments_user_id_fkey(is_active)"
+        "account_id, user_id, role, user:profiles!commercial_account_assignments_user_id_fkey(is_active, has_new_platform_access)"
       )
       .in("account_id", accountIds)
       .eq("is_primary", true)
@@ -105,14 +105,17 @@ export async function runExpiringDocumentsReminder(): Promise<Result> {
       user_id: string;
       role: string;
       user:
-        | { is_active: boolean | null }
-        | Array<{ is_active: boolean | null }>
+        | { is_active: boolean | null; has_new_platform_access: boolean | null }
+        | Array<{ is_active: boolean | null; has_new_platform_access: boolean | null }>
         | null;
     };
     const byAccount = new Map<string, Array<{ user_id: string; role: string }>>();
     for (const a of (assignments ?? []) as unknown as Assn[]) {
       const u = Array.isArray(a.user) ? a.user[0] ?? null : a.user;
       if (u?.is_active === false) continue; // skip deactivated primaries
+      // Audit fix 2026-06-24: skip if Commercial CC access was revoked
+      // post-assignment — they can't act on the doc anymore.
+      if (u?.has_new_platform_access === false) continue;
       const list = byAccount.get(a.account_id) ?? [];
       list.push({ user_id: a.user_id, role: a.role });
       byAccount.set(a.account_id, list);

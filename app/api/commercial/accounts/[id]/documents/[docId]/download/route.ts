@@ -66,6 +66,19 @@ export async function GET(
     return NextResponse.json({ error: "doc_account_mismatch" }, { status: 403 });
   }
 
+  // Audit fix 2026-06-24: also confirm the parent account isn't soft-
+  // deleted. Without this, a stale link to a doc on a deleted account
+  // still resolves — opp-side download already has this guard, account-
+  // side was missing it.
+  const { data: parent } = await sb
+    .from("commercial_accounts")
+    .select("deleted_at")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (!parent || (parent as { deleted_at: string | null }).deleted_at) {
+    return NextResponse.json({ error: "account_deleted" }, { status: 404 });
+  }
+
   const signed = await getDocumentSignedUrl(row.storage_key, 5 * 60);
   if (!signed) {
     return NextResponse.json({ error: "signed_url_failed" }, { status: 500 });

@@ -405,8 +405,13 @@ export async function uploadDocument(
  * Archive an active document without uploading a replacement. Sets
  * `archived = TRUE` + audit fields. Storage object stays so the history
  * tab can still download it.
+ *
+ * Security fix 2026-06-24: now requires accountId and double-scopes the
+ * row lookup + update. Without this, a hand-crafted POST with a foreign
+ * document_id could archive a doc from a different account.
  */
 export async function archiveDocument(
+  accountId: string,
   documentId: string,
   archivedByUserId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -415,6 +420,7 @@ export async function archiveDocument(
     .from("commercial_account_documents")
     .select("*")
     .eq("id", documentId)
+    .eq("account_id", accountId)
     .maybeSingle();
   if (!before) return { ok: false, error: "Document not found." };
   const beforeRow = before as CommercialAccountDocument;
@@ -428,6 +434,7 @@ export async function archiveDocument(
       archived_by_user_id: archivedByUserId,
     })
     .eq("id", documentId)
+    .eq("account_id", accountId)
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
@@ -449,16 +456,21 @@ export async function archiveDocument(
  * Returns the new active document on success.
  */
 export async function restoreDocument(
+  accountId: string,
   archivedDocumentId: string,
   restoredByUserId: string
 ): Promise<{ ok: true; document: CommercialAccountDocument } | { ok: false; error: string }> {
   const sb = commercialDb();
 
-  // Load the archived doc we're restoring from.
+  // Security fix 2026-06-24: scope the lookup by account_id so a
+  // hand-crafted POST can't restore a doc from a different account.
+  // (Restore is the worst of the three doc operations — it mutates the
+  // target account's active version pointer.)
   const { data: src } = await sb
     .from("commercial_account_documents")
     .select("*")
     .eq("id", archivedDocumentId)
+    .eq("account_id", accountId)
     .maybeSingle();
   if (!src) return { ok: false, error: "Document not found." };
   const srcRow = src as CommercialAccountDocument;

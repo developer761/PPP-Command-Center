@@ -177,7 +177,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                 type="date"
                 name="from"
                 defaultValue={range.fromYmd}
-                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-[12px] text-ppp-charcoal min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
+                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-[12px] text-ppp-charcoal min-h-[44px] sm:min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
                 aria-label="From date"
               />
               <span className="text-[12px] text-ppp-charcoal-400" aria-hidden>→</span>
@@ -187,7 +187,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                 type="date"
                 name="to"
                 defaultValue={range.toYmd}
-                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-[12px] text-ppp-charcoal min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
+                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-[12px] text-ppp-charcoal min-h-[44px] sm:min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
                 aria-label="To date"
               />
               <button

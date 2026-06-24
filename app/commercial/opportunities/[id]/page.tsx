@@ -441,9 +441,13 @@ async function quickAssignMeAction(formData: FormData) {
     role,
     is_primary: false,
     notes: null,
-    // assigned_by null on the self-assign path so the audit log reads
-    // "self-assigned" cleanly instead of "X assigned by X".
-    assigned_by_user_id: null,
+    // Pass user.id (NOT null) — the self-skip guards in
+    // notifyAssignment + bell-insert are `if (X && X === Y) return;` and
+    // short-circuit FALSE on null, so passing null actually FIRES both
+    // the email + bell to the actor about their own assignment. The
+    // cosmetic "X assigned by X" audit-log line is a fine trade — better
+    // than spamming users with self-assign notifications they triggered.
+    assigned_by_user_id: user.id,
   });
   if (!result.ok) {
     // Swallow the "already on this opp" duplicate-click error on the
@@ -1724,7 +1728,7 @@ function TaskList({
                   <button
                     type="submit"
                     aria-label={t.completed_at ? `Reopen ${t.title}` : `Complete ${t.title}`}
-                    className={`rounded border-2 inline-flex items-center justify-center touch-manipulation min-h-[36px] min-w-[36px] text-base ${
+                    className={`rounded border-2 inline-flex items-center justify-center touch-manipulation min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] text-base ${
                       t.completed_at
                         ? "bg-emerald-600 border-emerald-600 text-white"
                         : "border-ppp-charcoal-300 hover:border-emerald-500"
@@ -1914,7 +1918,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
             <div className="flex justify-end gap-2">
               <button
                 type="submit"
-                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-ppp-charcoal text-white text-[12px] font-semibold hover:bg-ppp-charcoal-700 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-ppp-charcoal text-white text-[12px] font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
               >
                 Save edit
               </button>

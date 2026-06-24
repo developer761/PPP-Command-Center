@@ -228,11 +228,12 @@ export async function addAssignment(
       // re-add. Matches the opp-side behavior at
       // lib/commercial/opportunities/assignments.ts:160-204.
       if (input.is_primary && !e.is_primary) {
-        await demoteCurrentPrimary(
+        const demoteRes = await demoteCurrentPrimary(
           input.account_id,
           input.role,
           input.assigned_by_user_id ?? null
         );
+        if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
         const { data: promoted, error: promoteErr } = await sb
           .from("commercial_account_assignments")
           .update({
@@ -270,7 +271,8 @@ export async function addAssignment(
     }
     // Restore: clear removed_at + reset is_primary if requested.
     if (input.is_primary) {
-      await demoteCurrentPrimary(input.account_id, input.role, input.assigned_by_user_id ?? null);
+      const demoteRes = await demoteCurrentPrimary(input.account_id, input.role, input.assigned_by_user_id ?? null);
+      if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
     }
     const { data: restored, error: restoreErr } = await sb
       .from("commercial_account_assignments")
@@ -312,7 +314,8 @@ export async function addAssignment(
 
   // Fresh row. Demote any existing primary in this (account, role) first.
   if (input.is_primary) {
-    await demoteCurrentPrimary(input.account_id, input.role, input.assigned_by_user_id ?? null);
+    const demoteRes = await demoteCurrentPrimary(input.account_id, input.role, input.assigned_by_user_id ?? null);
+    if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
   }
 
   const { data: inserted, error: insertErr } = await sb
@@ -465,8 +468,15 @@ function escape(s: string): string {
 /**
  * Remove an assignment (soft delete — sets `removed_at`). The audit row
  * captures the before/after state; the row itself stays for history.
+ *
+ * Security fix 2026-06-24: now requires accountId and double-scopes the
+ * row lookup + the update so a hand-crafted POST with a foreign
+ * assignment_id cannot remove a row from a different account. Before
+ * this, the action only validated UUID format and trusted the inner lib
+ * — which let any commercial-CC user soft-delete any assignment row.
  */
 export async function removeAssignment(
+  accountId: string,
   assignmentId: string,
   removedByUserId?: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -475,6 +485,7 @@ export async function removeAssignment(
     .from("commercial_account_assignments")
     .select("*")
     .eq("id", assignmentId)
+    .eq("account_id", accountId)
     .maybeSingle();
   if (!before) return { ok: false, error: "Assignment not found." };
   const beforeRow = before as { removed_at: string | null };
@@ -488,6 +499,7 @@ export async function removeAssignment(
       is_primary: false,
     })
     .eq("id", assignmentId)
+    .eq("account_id", accountId)
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
@@ -501,14 +513,26 @@ export async function removeAssignment(
   return { ok: true };
 }
 
-/** Clears `is_primary` on whoever currently holds it for (account, role).
- *  Audit-logs the demote so the trail shows WHO was demoted when a new
- *  primary took over. */
+/**
+ * Clears `is_primary` on whoever currently holds it for (account, role).
+ * Audit-logs the demote so the trail shows WHO was demoted when a new
+ * primary took over.
+ *
+ * Returns ok=true even when nothing to demote (no current primary).
+ *
+ * Audit fix 2026-06-24: previously returned void and swallowed both
+ * "nothing to demote" and update-failed errors into the same silent
+ * code path. A failed demote left two `is_primary=true` rows for the
+ * same (account_id, role) violating the invariant. Now returns a
+ * discriminated result so the promote caller can abort + surface the
+ * error instead of writing inconsistent state. Same shape as the
+ * opp-side fix that landed in commit 6cba0c9.
+ */
 async function demoteCurrentPrimary(
   account_id: string,
   role: AssignmentRole,
   actingUserId: string | null
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
     .from("commercial_account_assignments")
@@ -518,16 +542,24 @@ async function demoteCurrentPrimary(
     .eq("is_primary", true)
     .is("removed_at", null)
     .maybeSingle();
-  if (!before) return;
+  if (!before) return { ok: true }; // nothing to demote — clean state
 
   const beforeRow = before as { id: string };
-  const { data: after } = await sb
+  const { data: after, error: updErr } = await sb
     .from("commercial_account_assignments")
     .update({ is_primary: false })
     .eq("id", beforeRow.id)
+    .eq("is_primary", true) // race-guard — only demote if still primary
     .select("*")
-    .single();
-  if (!after) return;
+    .maybeSingle();
+  if (updErr) {
+    return { ok: false, error: `Demote failed: ${updErr.message}` };
+  }
+  if (!after) {
+    // Race: prior primary was already demoted by another concurrent
+    // call. That's fine — caller can proceed.
+    return { ok: true };
+  }
 
   await logUpdate(
     "commercial_account_assignments",
@@ -536,4 +568,5 @@ async function demoteCurrentPrimary(
     after,
     actingUserId
   );
+  return { ok: true };
 }

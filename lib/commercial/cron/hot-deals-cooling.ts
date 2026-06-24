@@ -108,7 +108,7 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
     const { data: assignments } = await sb
       .from("commercial_opportunity_assignments")
       .select(
-        "opportunity_id, user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(is_active)"
+        "opportunity_id, user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(is_active, has_new_platform_access)"
       )
       .in("opportunity_id", oppIds)
       .eq("is_primary", true)
@@ -117,14 +117,17 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
       opportunity_id: string;
       user_id: string;
       user:
-        | { is_active: boolean | null }
-        | Array<{ is_active: boolean | null }>
+        | { is_active: boolean | null; has_new_platform_access: boolean | null }
+        | Array<{ is_active: boolean | null; has_new_platform_access: boolean | null }>
         | null;
     };
     const primaryByOpp = new Map<string, string>();
     for (const a of (assignments ?? []) as unknown as Assn[]) {
       const u = Array.isArray(a.user) ? a.user[0] ?? null : a.user;
       if (u?.is_active === false) continue;
+      // Audit fix 2026-06-24: skip if Commercial CC access was revoked
+      // — they can't act on the cooling deal anymore.
+      if (u?.has_new_platform_access === false) continue;
       // First-wins is fine — if there are multiple primaries we pick
       // any (the data shouldn't allow it via unique-partial-index, but
       // even if it did, "alert one" is better than "fan out to many").

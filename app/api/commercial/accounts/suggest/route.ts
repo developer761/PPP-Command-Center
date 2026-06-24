@@ -18,6 +18,17 @@ export async function GET(request: Request) {
   if (!auth?.user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  // Audit fix 2026-06-24: gate on has_new_platform_access. Without
+  // this, a residential-only user signed into the SaaS could enumerate
+  // commercial account names via this endpoint.
+  const { data: prof } = await commercialDb()
+    .from("profiles")
+    .select("has_new_platform_access")
+    .eq("user_id", auth.user.id)
+    .maybeSingle();
+  if (!prof || !(prof as { has_new_platform_access: boolean }).has_new_platform_access) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
 
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();

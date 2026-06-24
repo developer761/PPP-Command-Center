@@ -132,11 +132,20 @@ async function dispatchCommercialNotification(input: {
     // outbound notification email.
     const { data: profile } = await sb
       .from("profiles")
-      .select("user_id, email, is_active")
+      .select("user_id, email, is_active, has_new_platform_access")
       .eq("user_id", input.recipientUserId)
       .maybeSingle();
-    const p = profile as { user_id?: string; email?: string; is_active?: boolean | null } | null;
-    if (!p || p.is_active === false) {
+    const p = profile as {
+      user_id?: string;
+      email?: string;
+      is_active?: boolean | null;
+      has_new_platform_access?: boolean | null;
+    } | null;
+    // Audit fix 2026-06-24: also gate on has_new_platform_access. If an
+    // admin revoked Commercial CC access (without soft-deleting their
+    // assignments), the user keeps getting bells + emails for an app they
+    // can no longer open. Skip those too.
+    if (!p || p.is_active === false || p.has_new_platform_access === false) {
       return { ok: true, written: false };
     }
     // Bell row first — even if email fails, the assignee sees the dot.
@@ -368,15 +377,15 @@ export async function insertCommercialOppStatusChangedNotifications(input: {
   const { data: rows } = await sb
     .from("commercial_opportunity_assignments")
     .select(
-      "user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(user_id, email, is_active)"
+      "user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(user_id, email, is_active, has_new_platform_access)"
     )
     .eq("opportunity_id", input.opportunityId)
     .is("removed_at", null);
   type Row = {
     user_id: string;
     user:
-      | { user_id: string; email: string; is_active: boolean | null }
-      | Array<{ user_id: string; email: string; is_active: boolean | null }>
+      | { user_id: string; email: string; is_active: boolean | null; has_new_platform_access: boolean | null }
+      | Array<{ user_id: string; email: string; is_active: boolean | null; has_new_platform_access: boolean | null }>
       | null;
   };
   const recipientIds = new Set<string>();
@@ -384,6 +393,8 @@ export async function insertCommercialOppStatusChangedNotifications(input: {
     const u = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
     if (!u) continue;
     if (u.is_active === false) continue;
+    // Audit fix 2026-06-24: also skip if Commercial CC access was revoked.
+    if (u.has_new_platform_access === false) continue;
     if (input.actingUserId && u.user_id === input.actingUserId) continue;
     recipientIds.add(u.user_id);
   }
@@ -466,15 +477,15 @@ export async function insertCommercialOppNoteAddedNotifications(input: {
   const { data: rows } = await sb
     .from("commercial_opportunity_assignments")
     .select(
-      "user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(user_id, email, is_active)"
+      "user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(user_id, email, is_active, has_new_platform_access)"
     )
     .eq("opportunity_id", input.opportunityId)
     .is("removed_at", null);
   type Row = {
     user_id: string;
     user:
-      | { user_id: string; email: string; is_active: boolean | null }
-      | Array<{ user_id: string; email: string; is_active: boolean | null }>
+      | { user_id: string; email: string; is_active: boolean | null; has_new_platform_access: boolean | null }
+      | Array<{ user_id: string; email: string; is_active: boolean | null; has_new_platform_access: boolean | null }>
       | null;
   };
   const exclude = new Set(input.excludeUserIds ?? []);
@@ -483,6 +494,8 @@ export async function insertCommercialOppNoteAddedNotifications(input: {
     const u = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
     if (!u) continue;
     if (u.is_active === false) continue;
+    // Audit fix 2026-06-24: also skip if Commercial CC access was revoked.
+    if (u.has_new_platform_access === false) continue;
     if (input.actingUserId && u.user_id === input.actingUserId) continue;
     if (exclude.has(u.user_id)) continue;
     recipientIds.add(u.user_id);

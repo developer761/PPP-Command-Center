@@ -372,8 +372,15 @@ export async function addContactToAccount(input: AddContactInput): Promise<
   return { ok: true, account_contact_id: row.id };
 }
 
-/** Detach a contact role from an account (deletes the junction row). */
+/**
+ * Detach a contact role from an account (deletes the junction row).
+ *
+ * Security fix 2026-06-24: now requires accountId and double-scopes the
+ * row lookup + delete. Without this, a hand-crafted POST with a foreign
+ * account_contact_id could detach a contact from a different account.
+ */
 export async function detachContactFromAccount(
+  accountId: string,
   account_contact_id: string,
   deletedByUserId?: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -382,13 +389,15 @@ export async function detachContactFromAccount(
     .from("commercial_account_contacts")
     .select("*")
     .eq("id", account_contact_id)
+    .eq("account_id", accountId)
     .maybeSingle();
   if (!before) return { ok: false, error: "Attachment not found." };
 
   const { error } = await sb
     .from("commercial_account_contacts")
     .delete()
-    .eq("id", account_contact_id);
+    .eq("id", account_contact_id)
+    .eq("account_id", accountId);
   if (error) return { ok: false, error: error.message };
 
   await logDelete("commercial_account_contacts", account_contact_id, before, deletedByUserId);
