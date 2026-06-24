@@ -84,13 +84,13 @@ function ArchiveAddressBar({
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-ppp-charcoal mb-1">
-            BCC this address to archive an email
+            Auto-archive your customer emails here
           </h3>
           <p className="text-xs text-ppp-charcoal-500 leading-relaxed">
-            Saved to your Gmail contacts as &ldquo;
-            {kind === "opp" ? "Opp Archive" : "Account Archive"}&rdquo;. Add it to
-            BCC on any outbound email — the thread appears here within a few
-            seconds. Replies threaded automatically.
+            This {kind === "opp" ? "deal" : "account"} has its own private email address (below).
+            Copy it, then BCC it whenever you email the customer about this {kind === "opp" ? "deal" : "account"} —
+            your message and any replies will land in this tab automatically.
+            Save it to your phone or Gmail as &ldquo;{kind === "opp" ? "Opp Archive" : "Account Archive"}&rdquo; so it&apos;s one tap to add.
           </p>
         </div>
         <div className="shrink-0">

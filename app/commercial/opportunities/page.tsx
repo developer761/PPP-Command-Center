@@ -1175,7 +1175,12 @@ function OpportunityRow({
                 <span className="text-ppp-charcoal-700">{account.company_name}</span>
               )}
               {account?.rating && <RatingPill rating={account.rating} />}
-              {account?.prequalification_status && (
+              {/* Prequal pill only renders for accounts with an actual
+                  prequal state — not_started would render "Prequal: —"
+                  which is just noise on the kanban card. Pending /
+                  approved / rejected DO show (those are signals Alex
+                  needs at a glance before bidding). */}
+              {account?.prequalification_status && account.prequalification_status !== "not_started" && (
                 <PrequalPill status={account.prequalification_status} />
               )}
               <span aria-hidden>·</span>

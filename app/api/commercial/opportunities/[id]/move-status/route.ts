@@ -76,6 +76,18 @@ export async function POST(
     );
   }
 
+  // Snapshot the prior status BEFORE flipping so we can detect the
+  // "drag from terminal column back to active" case below and clear the
+  // win_loss_debriefed_at flag. Without this, dragging Won → Estimating
+  // via kanban left the flag set, so the amber "Debrief needed" banner
+  // wouldn't reappear on the next close.
+  const { data: priorOpp } = await sb
+    .from("commercial_opportunities")
+    .select("status")
+    .eq("id", opp_id)
+    .maybeSingle();
+  const priorStatus = (priorOpp as { status: string } | null)?.status ?? null;
+
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: to_status as OpportunityStatus,
@@ -95,6 +107,17 @@ export async function POST(
       outcome: "won",
       actorUserId: auth.user.id,
     });
+  }
+  // If the drag flipped a terminal opp back to an active state (e.g.
+  // dragged Won → Estimating), clear the debriefed_at flag so a future
+  // re-close prompts for a fresh debrief. Mirrors what changeStatusAction
+  // does for the detail-page form path. Idempotent: no-op if flag already
+  // null. Only fires when prior was terminal AND new is not.
+  const wasTerminal = priorStatus === "won" || priorStatus === "lost" || priorStatus === "no_bid";
+  const nowTerminal = to_status === "won" || to_status === "lost" || to_status === "no_bid";
+  if (wasTerminal && !nowTerminal) {
+    const { clearDebriefFlagOnReopen } = await import("@/lib/commercial/win-loss/debrief");
+    await clearDebriefFlagOnReopen(opp_id, auth.user.id);
   }
   return NextResponse.json({ ok: true });
 }

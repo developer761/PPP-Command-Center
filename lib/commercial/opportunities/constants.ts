@@ -90,8 +90,10 @@ export const WARN_TRANSITIONS: ReadonlySet<string> = new Set([
   // Scope-change re-bid warnings
   "proposal_sent→estimating",
   "negotiating→estimating",
-  // Rare-deal-return warning
-  "won→reopened",
+  // (won→reopened removed 2026-06-24 — Reopen is a dedicated header
+  // action on terminal opps, not a dropdown choice, so the warning
+  // about "unusual transition" is misleading. Re-engaging a closed
+  // customer is a normal motion, not a flagged edge case.)
 ]);
 
 /** Statuses that the LIST-PAGE quick-flip dropdown should expose. Terminal

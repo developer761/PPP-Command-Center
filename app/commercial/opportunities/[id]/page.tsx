@@ -251,6 +251,25 @@ async function changeStatusAction(formData: FormData) {
  * tab" path was hitting a 404 in some flows.) revalidatePath on the
  * destination so the deleted row is gone from the list immediately.
  */
+async function reopenOpportunityAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const result = await changeOpportunityStatus({
+    opp_id,
+    to_status: "reopened" as OpportunityStatus,
+    acting_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent(result.error));
+  }
+  await clearDebriefFlagOnReopen(opp_id, user.id);
+  redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
+}
+
 async function softDeleteOpportunityAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -668,6 +687,27 @@ export default async function OpportunityDetailPage({
                 Duplicate
               </button>
             </form>
+            {/* Reopen — only surfaces for closed deals (won/lost/no_bid).
+                Replaces the ChangeStatusCard on terminal opps since the
+                only allowed next is reopened anyway; one focused action
+                in the header beats a whole "Move this deal forward" card
+                with a dropdown of one option. */}
+            {(opp.status === "won" || opp.status === "lost" || opp.status === "no_bid") && (
+              <form action={reopenOpportunityAction} className="contents">
+                <input type="hidden" name="opp_id" value={opp.id} />
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-emerald-200 bg-white text-emerald-700 text-[12px] font-semibold hover:bg-emerald-50 hover:border-emerald-300 min-h-[44px] touch-manipulation"
+                  title="Customer's back in play? Reopen puts this deal back into the active pipeline."
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.8 2.8L3 8" />
+                    <path d="M3 3v5h5" />
+                  </svg>
+                  Reopen
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </header>
@@ -813,12 +853,19 @@ async function InfoTab({
           className="lg:col-span-2"
         />
       )}
-      <ChangeStatusCard
-        opp={opp}
-        nextStatuses={nextStatuses}
-        preselectTo={preselectTo}
-        className="lg:col-span-2"
-      />
+      {/* ChangeStatusCard is for moving a deal forward — irrelevant on
+          terminal opps (the only allowed next is reopened, which lives
+          as its own dedicated button in the page header). Hiding it
+          here eliminates two confusing "Save status, debrief later" /
+          "Skip — debrief later" buttons stacked on the same page. */}
+      {!isTerminal && (
+        <ChangeStatusCard
+          opp={opp}
+          nextStatuses={nextStatuses}
+          preselectTo={preselectTo}
+          className="lg:col-span-2"
+        />
+      )}
       <Card title="Deal">
         <Field label="Title" value={opp.title} />
         <Field label="Status" value={opportunityStatusLabel(opp.status)} />
