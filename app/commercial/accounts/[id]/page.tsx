@@ -2015,27 +2015,28 @@ function DocumentRow({
         >
           {doc.file_name}
         </a>
-        <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
-          {sizeLabel && <span>{sizeLabel}</span>}
-          {sizeLabel && <span aria-hidden>·</span>}
-          <span>
-            Uploaded {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
+        {/* Condensed audit trail — uploaded date + uploader on top line,
+            expiry + archived-by on a second line ONLY when present. The
+            previous flex-wrap version wrapped into 4+ ugly lines at 375px
+            when names were long. Use short month + 2-digit year so the
+            line holds even on tight mobile widths. */}
+        <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 leading-snug">
+          <div>
+            {sizeLabel && <>{sizeLabel} · </>}
+            Uploaded {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit", timeZone: "America/New_York" })}
             {doc.uploader_name && <> by <strong className="text-ppp-charcoal-700">{doc.uploader_name}</strong></>}
-          </span>
-          {doc.expires_at && (
-            <>
-              <span aria-hidden>·</span>
-              <span>Expires {new Date(doc.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}</span>
-            </>
-          )}
-          {!isActive && doc.archived_at && (
-            <>
-              <span aria-hidden>·</span>
-              <span className="text-ppp-charcoal-400">
-                Archived {new Date(doc.archived_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
-                {doc.archiver_name && <> by {doc.archiver_name}</>}
-              </span>
-            </>
+          </div>
+          {(doc.expires_at || (!isActive && doc.archived_at)) && (
+            <div className="text-ppp-charcoal-400 mt-0.5">
+              {doc.expires_at && (
+                <>Expires {new Date(doc.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit", timeZone: "America/New_York" })}</>
+              )}
+              {doc.expires_at && !isActive && doc.archived_at && " · "}
+              {!isActive && doc.archived_at && (
+                <>Archived {new Date(doc.archived_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit", timeZone: "America/New_York" })}
+                {doc.archiver_name && <> by {doc.archiver_name}</>}</>
+              )}
+            </div>
           )}
         </div>
         {doc.notes && (
@@ -2043,25 +2044,25 @@ function DocumentRow({
         )}
       </div>
       {!isActive && doc.archived && (
-        <form action={restoreDocumentAction} className="shrink-0">
+        <form action={restoreDocumentAction} className="shrink-0 w-full sm:w-auto">
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="document_id" value={doc.id} />
           <button
             type="submit"
-            className="px-3 py-1.5 text-[12px] font-medium text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 min-h-[44px] touch-manipulation"
-            title="Make this version the active one. Creates a new version at the top of the chain — keeps the audit trail intact."
+            className="w-full sm:w-auto px-3 py-2 text-[12px] font-medium text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 min-h-[44px] touch-manipulation whitespace-nowrap"
+            title="Make this the active version. Adds a new entry to the chain so the audit trail stays intact."
           >
-            Restore as new version
+            Restore as active
           </button>
         </form>
       )}
       {isActive && !doc.archived && (
-        <form action={archiveDocumentAction} className="shrink-0">
+        <form action={archiveDocumentAction} className="shrink-0 w-full sm:w-auto">
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="document_id" value={doc.id} />
           <button
             type="submit"
-            className="px-3 py-1.5 text-[12px] font-medium text-ppp-charcoal-700 border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+            className="w-full sm:w-auto px-3 py-2 text-[12px] font-medium text-ppp-charcoal-700 border border-ppp-charcoal-100 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation whitespace-nowrap"
             title="Archive without replacement. File stays downloadable in History."
           >
             Archive

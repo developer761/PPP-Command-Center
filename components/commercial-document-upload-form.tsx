@@ -4,6 +4,12 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
+/** Mirror of MAX_UPLOAD_BYTES in lib/commercial/accounts/documents.ts.
+ *  Duplicated because importing a server-only lib into a client component
+ *  errors at build time. Keep these two in sync — if either changes,
+ *  audit the bucket policy in Supabase too. Last verified: 50 MB. */
+const CLIENT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 const CATEGORIES = [
   { value: "coi", label: "Certificate of Insurance (COI)" },
   { value: "w9", label: "W-9" },
@@ -77,8 +83,9 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
       setPickedFile(null);
       return;
     }
-    if (file && file.size > 50 * 1024 * 1024) {
-      setError(`That file is ${Math.round(file.size / 1024 / 1024)} MB — max is 50 MB. Try compressing or splitting.`);
+    if (file && file.size > CLIENT_MAX_UPLOAD_BYTES) {
+      const maxMb = Math.round(CLIENT_MAX_UPLOAD_BYTES / 1024 / 1024);
+      setError(`That file is ${Math.round(file.size / 1024 / 1024)} MB — max is ${maxMb} MB. Try compressing or splitting.`);
       setPickedFile(null);
       return;
     }
@@ -231,7 +238,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
                   if (fileInputRef.current) fileInputRef.current.value = "";
                   setPickedFile(null);
                 }}
-                className="mt-2 text-[11px] underline text-emerald-700"
+                className="mt-2 text-[12px] underline text-emerald-700 min-h-[44px] px-3 inline-flex items-center touch-manipulation"
               >
                 Pick a different file
               </button>
@@ -272,6 +279,9 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
           </div>
         )}
 
+        {/* Category + Expiry stack on mobile (single column) so the 3-mode
+            expiry radio gets full width. Side-by-side at sm+ where there's
+            room. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label htmlFor="category" className={LABEL_CLS}>
@@ -329,7 +339,8 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
                 name="expires_at"
                 type="date"
                 required
-                className={INPUT_CLS}
+                // text-base = 16px so iOS Safari doesn't auto-zoom on focus.
+                className={`${INPUT_CLS} text-base`}
               />
             )}
             {expiryMode === "auto" && (

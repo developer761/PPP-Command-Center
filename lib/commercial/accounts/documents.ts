@@ -497,6 +497,16 @@ export async function restoreDocument(
     .from(STORAGE_BUCKET)
     .copy(srcRow.storage_key, newStorageKey);
   if (copyResult.error) {
+    // Common cause: the source blob was hard-deleted from the Supabase
+    // dashboard, so the metadata row references a file that no longer
+    // exists. Detect "object not found" and surface a clear next step.
+    const msg = copyResult.error.message.toLowerCase();
+    if (msg.includes("not found") || msg.includes("does not exist") || msg.includes("404")) {
+      return {
+        ok: false,
+        error: "This version's file is missing from storage (likely deleted manually). Re-upload it as a fresh document instead.",
+      };
+    }
     return { ok: false, error: `Storage copy failed: ${copyResult.error.message}` };
   }
 
