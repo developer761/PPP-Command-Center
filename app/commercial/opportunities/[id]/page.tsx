@@ -1261,7 +1261,7 @@ function DebriefReadOnlyView({
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-bold text-ppp-charcoal">{opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid"} Debrief</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1">
-            Recorded {new Date(debrief.debriefed_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+            Recorded {new Date(debrief.debriefed_at).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "America/New_York" })}
             {debriefCount > 1 && ` · ${debriefCount} debriefs on file (this is the most recent)`}
           </p>
         </div>
@@ -1775,13 +1775,15 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
           <span className="text-sm font-semibold text-ppp-charcoal">{author}</span>
         </div>
         <span className="text-[11px] text-ppp-charcoal-500">
-          {new Date(note.created_at).toLocaleString(undefined, {
+          {new Date(note.created_at).toLocaleString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
             hour: "numeric",
             minute: "2-digit",
+            timeZone: "America/New_York",
           })}
+          {" ET"}
           {edited && " · edited"}
         </span>
       </div>
@@ -1912,10 +1914,11 @@ function AttachmentRow({
   oppId: string;
   active: boolean;
 }) {
-  const uploaded = new Date(attachment.uploaded_at).toLocaleDateString(undefined, {
+  const uploaded = new Date(attachment.uploaded_at).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "America/New_York",
   });
   const category = categorizeFilename(attachment.file_name);
   return (
@@ -2040,9 +2043,14 @@ async function TimelineTab({ oppId }: { oppId: string }) {
                   className="text-[12px] text-ppp-charcoal-500"
                   title={when.toISOString()}
                 >
-                  {when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  {/* America/New_York timezone — the platform is rendered
+                      server-side on Vercel (UTC), so leaving timeZone out
+                      shows UTC timestamps to NYC users. PPP is in NYC, all
+                      end-users are NYC. */}
+                  {when.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
                   {" · "}
-                  {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                  {when.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}
+                  {" ET"}
                 </span>
               </div>
               {/* Only surface loss_reason on terminal lost/no_bid rows —

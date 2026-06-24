@@ -304,13 +304,15 @@ function formatDate(iso: string): string {
   const now = Date.now();
   const ageMs = now - d.getTime();
   const oneDay = 24 * 60 * 60 * 1000;
+  // Force NYC time so server-rendered timestamps match what PPP staff
+  // expect (the Vercel runtime is UTC).
   if (ageMs < oneDay) {
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
   }
   if (ageMs < 7 * oneDay) {
-    return d.toLocaleDateString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" });
+    return d.toLocaleDateString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
   }
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
 }
 
 function formatBytes(n: number): string {
