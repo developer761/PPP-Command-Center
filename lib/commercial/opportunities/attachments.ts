@@ -66,17 +66,6 @@ export async function listOpportunityAttachments(
   opportunity_id: string
 ): Promise<{ active: OpportunityAttachment[]; history: OpportunityAttachment[] }> {
   const sb = commercialDb();
-  // Audit fix 2026-06-24: gate listing on the parent opp's deleted_at
-  // so attachments don't leak after a soft-delete. Uploads were already
-  // gated; the listing path was not. Cheap one-row lookup.
-  const { data: oppRow } = await sb
-    .from("commercial_opportunities")
-    .select("deleted_at")
-    .eq("id", opportunity_id)
-    .maybeSingle();
-  if (!oppRow || (oppRow as { deleted_at: string | null }).deleted_at) {
-    return { active: [], history: [] };
-  }
   const { data, error } = await sb
     .from("commercial_opportunity_attachments")
     .select("*")

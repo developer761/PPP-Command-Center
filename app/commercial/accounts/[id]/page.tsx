@@ -276,13 +276,9 @@ export default async function CommercialAccountDetailPage({
           glance. */}
       <AccountComplianceBanner accountId={account.id} overview={overview} />
 
-      {/* Tab bar — wrapped in a relative container so the right-edge
-          fade gradient hints there's more to scroll. Audit 2026-06-24:
-          on 375px with 9 tabs, the rightmost tabs were below the fold
-          with no visual cue. Now there's a soft white→transparent
-          gradient on the right that disappears when scrolled fully. */}
-      <nav className="relative border-b border-ppp-charcoal-100">
-        <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      {/* Tab bar */}
+      <nav className="border-b border-ppp-charcoal-100">
+        <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto">
           {TABS.map((t) => {
             const active = t.key === tab;
             return (
@@ -301,7 +297,6 @@ export default async function CommercialAccountDetailPage({
             );
           })}
         </ul>
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white via-white/80 to-transparent sm:hidden" aria-hidden />
       </nav>
 
       {/* Tab content */}
