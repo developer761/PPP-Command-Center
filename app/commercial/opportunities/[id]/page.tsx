@@ -404,6 +404,37 @@ async function addTeamAction(formData: FormData) {
   redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
 }
 
+/**
+ * One-click "assign me to this opp" — common case is a rep visiting an opp
+ * they care about and wanting onto it without picking themselves from the
+ * staff dropdown. Validates the picked role only; the user_id is forced to
+ * the authenticated session so this can't be used to assign someone else.
+ */
+async function quickAssignMeAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const role = String(formData.get("role") ?? "") as OpportunityAssignmentRole;
+  if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
+  if (!(OPPORTUNITY_ASSIGNMENT_ROLES as readonly string[]).includes(role)) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a role first.")}`);
+  }
+  const result = await addOpportunityAssignment({
+    opportunity_id,
+    user_id: user.id,
+    role,
+    is_primary: false,
+    notes: null,
+    assigned_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent(result.error)}`);
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
+}
+
 async function removeTeamAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -1312,6 +1343,8 @@ function DebriefReadOnlyView({
 // ─────────────── Team tab ───────────────
 
 async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   const [team, staff] = await Promise.all([
     listOpportunityTeam(oppId),
     listAssignableStaff(),
@@ -1327,6 +1360,12 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
     }
   }
   const missingPrimaryRoles = Array.from(rolesPresent).filter((r) => !rolesWithPrimary.has(r));
+  // Is the current viewer already on this team? If yes, hide the quick
+  // self-assign chip — they're covered. If no AND staff list includes
+  // them (i.e. they have Commercial CC access), show the chip.
+  const viewerOnTeam = user ? team.some((p) => p.user_id === user.id) : false;
+  const viewerIsStaff = user ? staff.some((s) => s.user_id === user.id) : false;
+  const showSelfAssign = !!user && viewerIsStaff && !viewerOnTeam;
   return (
     <div className="space-y-5">
       {errorMessage && (
@@ -1344,6 +1383,43 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
           No PPP staff have Commercial CC access yet. Grant access on the admin Users page first.
         </div>
+      )}
+
+      {/* Quick self-assign — only when the viewer is staff but not yet on
+          this opp. Cuts 5 clicks (open dropdown, scroll, pick self, role,
+          submit) down to 2 (role, submit). */}
+      {showSelfAssign && (
+        <section className="bg-sky-50 border border-sky-200 rounded-xl p-4">
+          <form action={quickAssignMeAction} className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <input type="hidden" name="opportunity_id" value={oppId} />
+            <div className="flex-1 min-w-0">
+              <label htmlFor="self_assign_role" className="block text-[12px] font-semibold text-sky-900 mb-1">
+                Quick assign — add yourself to this opp
+              </label>
+              <select
+                id="self_assign_role"
+                name="role"
+                required
+                defaultValue=""
+                className={SELECT_CLS}
+                style={SELECT_BG_STYLE}
+              >
+                <option value="">Pick a role…</option>
+                {OPPORTUNITY_ASSIGNMENT_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {opportunityAssignmentRoleLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-sky-700 text-white text-sm font-semibold hover:bg-sky-800 active:bg-sky-900 min-h-[44px] touch-manipulation"
+            >
+              Assign me
+            </button>
+          </form>
+        </section>
       )}
 
       {/* Add assignment form */}

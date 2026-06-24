@@ -3,12 +3,23 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   currentQuarterRange,
+  previousQuarterRange,
+  currentYearRange,
+  previousYearRange,
   getWinLossSummary,
   getCompetitorBreakdown,
   getDecidingFactorBreakdown,
   getLessonsLearnedFeed,
 } from "@/lib/commercial/win-loss/reports";
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
+
+type Preset = "this_quarter" | "last_quarter" | "this_year" | "last_year";
+const PRESETS: ReadonlyArray<{ key: Preset; label: string }> = [
+  { key: "this_quarter", label: "This Quarter" },
+  { key: "last_quarter", label: "Last Quarter" },
+  { key: "this_year", label: "This Year" },
+  { key: "last_year", label: "Last Year" },
+];
 
 /**
  * Win/Loss Reports — Alex's quarterly review surface. Aggregates every
@@ -27,7 +38,7 @@ import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ from?: string; to?: string }>;
+type SP = Promise<{ from?: string; to?: string; preset?: string }>;
 
 function formatCents(cents: number): string {
   if (cents === 0) return "$0";
@@ -37,26 +48,54 @@ function formatCents(cents: number): string {
   return `$${dollars.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
-function parseRange(sp: { from?: string; to?: string }): {
+function parseRange(sp: { from?: string; to?: string; preset?: string }): {
   fromIso: string;
   toIso: string;
   label: string;
-  isCustom: boolean;
+  /** What kind of range the user is viewing — drives chip highlight state. */
+  activeKey: Preset | "custom";
+  /** Echoed back into the custom-range form's date inputs so the picker
+   *  remembers what was last submitted (or shows today as a sane default). */
+  fromYmd: string;
+  toYmd: string;
 } {
+  // Custom range always wins if both dates are present + valid.
   if (sp.from && sp.to) {
     const fromDate = new Date(sp.from);
     const toDate = new Date(sp.to);
-    if (!isNaN(fromDate.getTime()) && !isNaN(toDate.getTime())) {
+    if (!isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && fromDate <= toDate) {
+      const fromYmd = fromDate.toISOString().slice(0, 10);
+      const toYmd = toDate.toISOString().slice(0, 10);
       return {
         fromIso: fromDate.toISOString(),
         toIso: toDate.toISOString(),
         label: `${fromDate.toLocaleDateString()} – ${toDate.toLocaleDateString()}`,
-        isCustom: true,
+        activeKey: "custom",
+        fromYmd,
+        toYmd,
       };
     }
   }
-  const q = currentQuarterRange();
-  return { fromIso: q.fromIso, toIso: q.toIso, label: q.label, isCustom: false };
+  // Otherwise pick a preset (default: this quarter).
+  const preset = (sp.preset as Preset) ?? "this_quarter";
+  let r: ReturnType<typeof currentQuarterRange>;
+  let key: Preset;
+  switch (preset) {
+    case "last_quarter": r = previousQuarterRange(); key = "last_quarter"; break;
+    case "this_year": r = currentYearRange(); key = "this_year"; break;
+    case "last_year": r = previousYearRange(); key = "last_year"; break;
+    case "this_quarter":
+    default: r = currentQuarterRange(); key = "this_quarter"; break;
+  }
+  // For the custom-form defaults, pre-fill with the active preset's bounds.
+  return {
+    fromIso: r.fromIso,
+    toIso: r.toIso,
+    label: r.label,
+    activeKey: key,
+    fromYmd: r.fromIso.slice(0, 10),
+    toYmd: new Date(new Date(r.toIso).getTime() - 86_400_000).toISOString().slice(0, 10),
+  };
 }
 
 export default async function WinLossReportsPage({ searchParams }: { searchParams: SP }) {
@@ -87,6 +126,71 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           Aggregated debrief data — what we&apos;re winning, what we&apos;re losing, and why.
           Quarterly review fuel. <span className="font-medium text-ppp-charcoal">Period: {range.label}.</span>
         </p>
+
+        {/* Period picker — preset chips + custom dates. Plain anchor links
+            (no client JS) so the page stays a pure server component.
+            Custom-range form GETs back to the same route with from/to. */}
+        <div className="mt-4 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {PRESETS.map((p) => {
+              const active = range.activeKey === p.key;
+              return (
+                <Link
+                  key={p.key}
+                  href={p.key === "this_quarter"
+                    ? "/commercial/reports/win-loss"
+                    : `/commercial/reports/win-loss?preset=${p.key}`}
+                  className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold border min-h-[36px] touch-manipulation transition-colors ${
+                    active
+                      ? "bg-sky-700 text-white border-sky-700 shadow-sm"
+                      : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+                  }`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {p.label}
+                </Link>
+              );
+            })}
+            <span className="text-[12px] text-ppp-charcoal-400 mx-1 hidden sm:inline" aria-hidden>
+              or
+            </span>
+            <form
+              action="/commercial/reports/win-loss"
+              method="GET"
+              className="inline-flex flex-wrap items-center gap-2"
+            >
+              <label htmlFor="rng_from" className="sr-only">From date</label>
+              <input
+                id="rng_from"
+                type="date"
+                name="from"
+                defaultValue={range.fromYmd}
+                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-[12px] text-ppp-charcoal min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
+                aria-label="From date"
+              />
+              <span className="text-[12px] text-ppp-charcoal-400" aria-hidden>→</span>
+              <label htmlFor="rng_to" className="sr-only">To date</label>
+              <input
+                id="rng_to"
+                type="date"
+                name="to"
+                defaultValue={range.toYmd}
+                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-[12px] text-ppp-charcoal min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
+                aria-label="To date"
+              />
+              <button
+                type="submit"
+                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold border min-h-[36px] touch-manipulation transition-colors ${
+                  range.activeKey === "custom"
+                    ? "bg-sky-700 text-white border-sky-700 shadow-sm"
+                    : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+                }`}
+              >
+                Apply
+              </button>
+            </form>
+          </div>
+        </div>
       </header>
 
       {/* KPI strip */}

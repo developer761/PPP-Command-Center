@@ -71,6 +71,39 @@ export function currentQuarterRange(): DateRange & { label: string } {
   return { fromIso, toIso, label: `Q${quarter + 1} ${year}` };
 }
 
+/** Previous calendar quarter (Q4 prev year if we're in Q1). */
+export function previousQuarterRange(): DateRange & { label: string } {
+  const now = new Date();
+  const month = now.getUTCMonth();
+  const quarter = Math.floor(month / 3);
+  const year = now.getUTCFullYear();
+  // If current quarter is Q1 (idx 0), previous is Q4 of last year.
+  const prevQuarter = quarter === 0 ? 3 : quarter - 1;
+  const prevYear = quarter === 0 ? year - 1 : year;
+  const startMonth = prevQuarter * 3;
+  const fromIso = new Date(Date.UTC(prevYear, startMonth, 1)).toISOString();
+  const endYear = startMonth + 3 >= 12 ? prevYear + 1 : prevYear;
+  const endMonth = (startMonth + 3) % 12;
+  const toIso = new Date(Date.UTC(endYear, endMonth, 1)).toISOString();
+  return { fromIso, toIso, label: `Q${prevQuarter + 1} ${prevYear}` };
+}
+
+/** Current calendar year (Jan 1 → next Jan 1). */
+export function currentYearRange(): DateRange & { label: string } {
+  const year = new Date().getUTCFullYear();
+  const fromIso = new Date(Date.UTC(year, 0, 1)).toISOString();
+  const toIso = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+  return { fromIso, toIso, label: `${year}` };
+}
+
+/** Previous calendar year. */
+export function previousYearRange(): DateRange & { label: string } {
+  const year = new Date().getUTCFullYear() - 1;
+  const fromIso = new Date(Date.UTC(year, 0, 1)).toISOString();
+  const toIso = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+  return { fromIso, toIso, label: `${year}` };
+}
+
 /** Get summary KPIs for a date range. */
 export async function getWinLossSummary(range: DateRange): Promise<WinLossSummary> {
   const sb = commercialDb();

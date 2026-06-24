@@ -60,19 +60,56 @@ export default function DebriefFields(props: Props) {
   const [terminal, setTerminal] = useState<"won" | "lost" | "no_bid" | null>(
     TERMINAL_STATUSES.has(initial) ? (initial as "won" | "lost" | "no_bid") : null
   );
+  const sectionRef = useRef<HTMLElement>(null);
+  // Track whether the user (vs the initial-render hydration) caused the
+  // terminal flip — only the user-initiated change should scroll/focus.
+  // Otherwise re-opening a closed opp would jerk the page on every mount.
+  const userInitiatedRef = useRef(false);
 
   // Watch the sibling status dropdown without needing a Context provider.
   useEffect(() => {
     const select = document.querySelector<HTMLSelectElement>('select[name="to_status"]');
     if (!select) return;
-    const onChange = () => {
+    const onChange = (e: Event) => {
       const v = select.value.toLowerCase();
+      // Only the real "change" event marks user intent — the initial
+      // synthetic call below should not trigger scroll-into-view.
+      if (e.type === "change") userInitiatedRef.current = true;
       setTerminal(TERMINAL_STATUSES.has(v) ? (v as "won" | "lost" | "no_bid") : null);
     };
     select.addEventListener("change", onChange);
-    onChange();
+    onChange(new Event("init"));
     return () => select.removeEventListener("change", onChange);
   }, []);
+
+  // When the user picks a terminal status, scroll the debrief into view +
+  // softly focus the first required input (competitor for lost, deciding
+  // factor for won/no_bid). Saves a second of "where did the new fields
+  // go?" scanning. Honors prefers-reduced-motion via behavior:auto.
+  useEffect(() => {
+    if (!terminal || !userInitiatedRef.current) return;
+    const node = sectionRef.current;
+    if (!node) return;
+    const reduceMotion = typeof window !== "undefined"
+      && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    // Defer a tick so the fade-up animation can mount first; otherwise
+    // scrollIntoView fires against a still-collapsing layout.
+    const t = setTimeout(() => {
+      node.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "start",
+      });
+      // Focus the most-relevant field for the chosen outcome. Don't
+      // steal focus if the user already clicked into something else.
+      if (document.activeElement === document.body || document.activeElement === null) {
+        const target = terminal === "lost"
+          ? node.querySelector<HTMLInputElement>('input[name="debrief_competitor"]')
+          : null;
+        target?.focus({ preventScroll: true });
+      }
+    }, 80);
+    return () => clearTimeout(t);
+  }, [terminal]);
 
   // Legacy loss_reason + note fields were removed from the parent form
   // 2026-06-24 — no DOM siblings to hide anymore. The data-form-field
@@ -90,8 +127,9 @@ export default function DebriefFields(props: Props) {
 
   return (
     <section
+      ref={sectionRef}
       data-debrief
-      className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/30 overflow-hidden animate-fade-up"
+      className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/30 overflow-hidden animate-fade-up scroll-mt-20"
       aria-label="Win/Loss debrief"
     >
       <header className="px-4 sm:px-5 pt-4 pb-3 border-b border-emerald-100 bg-emerald-50/60">
