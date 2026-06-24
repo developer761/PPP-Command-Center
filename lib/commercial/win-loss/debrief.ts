@@ -96,13 +96,19 @@ export async function postPlaceholderAutoNote(input: {
   actorUserId: string | null;
 }): Promise<{ ok: true; noteId: string } | { ok: false; error: string }> {
   const sb = commercialDb();
+  // Audit fix 2026-06-24 (data-correctness #5): include deleted_at in the
+  // select + treat a soft-deleted opp as "not found" so we don't post auto-
+  // notes against orphaned accounts. Defensive — the call sites today only
+  // fire on legitimate status flips, but a future caller (cron, retry job)
+  // shouldn't be able to pollute the timeline with notes for deleted opps.
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, title")
+    .select("id, account_id, title, deleted_at")
     .eq("id", input.opportunityId)
     .maybeSingle();
   if (!opp) return { ok: false, error: "Opportunity not found." };
-  const o = opp as { id: string; account_id: string | null; title: string };
+  const o = opp as { id: string; account_id: string | null; title: string; deleted_at: string | null };
+  if (o.deleted_at) return { ok: false, error: "Opportunity has been deleted." };
   if (!o.account_id) {
     // Orphan opp (no linked account) — skip the auto-note. Future
     // enhancement: stash + post retroactively when account gets linked.

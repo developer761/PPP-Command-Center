@@ -165,11 +165,12 @@ export async function addOpportunityAssignment(
       // same person + role with the primary checkbox flipped on. Without
       // this branch he'd have to remove + re-add, which is silly.
       if (input.is_primary && !e.is_primary) {
-        await demoteCurrentPrimary(
+        const demoteRes = await demoteCurrentPrimary(
           input.opportunity_id,
           input.role,
           input.assigned_by_user_id ?? null
         );
+        if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
         const { data: promoted, error: promoteErr } = await sb
           .from("commercial_opportunity_assignments")
           .update({
@@ -206,11 +207,12 @@ export async function addOpportunityAssignment(
     }
     // Restore path — previously removed. Bring back online.
     if (input.is_primary) {
-      await demoteCurrentPrimary(
+      const demoteRes = await demoteCurrentPrimary(
         input.opportunity_id,
         input.role,
         input.assigned_by_user_id ?? null
       );
+      if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
     }
     const { data: restored, error: restoreErr } = await sb
       .from("commercial_opportunity_assignments")
@@ -248,11 +250,12 @@ export async function addOpportunityAssignment(
   }
 
   if (input.is_primary) {
-    await demoteCurrentPrimary(
+    const demoteRes = await demoteCurrentPrimary(
       input.opportunity_id,
       input.role,
       input.assigned_by_user_id ?? null
     );
+    if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
   }
 
   const { data: inserted, error: insertErr } = await sb
@@ -468,11 +471,23 @@ export async function removeOpportunityAssignment(
   return { ok: true };
 }
 
+/**
+ * Demote the current primary holder for a (opportunity, role) pair so the
+ * caller can promote a new primary atomically. Returns ok=true even when
+ * there's nothing to demote (no current primary).
+ *
+ * Audit fix 2026-06-24 (logic-flow #6): previously this returned void and
+ * swallowed both "nothing to demote" and update-failed errors into the
+ * same silent code path. A failed demote left two primaries in the DB
+ * violating the (opportunity_id, role, is_primary=true) invariant. Now
+ * returns a discriminated result so the promote caller can abort + surface
+ * the error instead of writing inconsistent state.
+ */
 async function demoteCurrentPrimary(
   opportunity_id: string,
   role: OpportunityAssignmentRole,
   actingUserId: string | null
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
     .from("commercial_opportunity_assignments")
@@ -482,15 +497,23 @@ async function demoteCurrentPrimary(
     .eq("is_primary", true)
     .is("removed_at", null)
     .maybeSingle();
-  if (!before) return;
+  if (!before) return { ok: true }; // nothing to demote — clean state
   const beforeRow = before as { id: string };
-  const { data: after } = await sb
+  const { data: after, error: updErr } = await sb
     .from("commercial_opportunity_assignments")
     .update({ is_primary: false })
     .eq("id", beforeRow.id)
+    .eq("is_primary", true) // race guard — only demote if still primary
     .select("*")
-    .single();
-  if (!after) return;
+    .maybeSingle();
+  if (updErr) {
+    return { ok: false, error: `Demote failed: ${updErr.message}` };
+  }
+  if (!after) {
+    // Race: prior primary was already demoted by another concurrent call.
+    // That's fine — caller can proceed.
+    return { ok: true };
+  }
   await logUpdate(
     "commercial_opportunity_assignments",
     beforeRow.id,
@@ -498,6 +521,7 @@ async function demoteCurrentPrimary(
     after,
     actingUserId
   );
+  return { ok: true };
 }
 
 /** Bulk-fetch the primary lead (whoever is is_primary=TRUE in any role,

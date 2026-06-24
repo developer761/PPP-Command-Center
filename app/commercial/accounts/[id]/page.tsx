@@ -710,7 +710,7 @@ function TagsCard({
                 <button
                   type="submit"
                   aria-label={`Remove ${t.tag}`}
-                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[32px] min-w-[32px] inline-flex items-center justify-center text-emerald-700/60 hover:text-emerald-900 touch-manipulation"
+                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-emerald-700/60 hover:text-emerald-900 touch-manipulation"
                 >
                   ✕
                 </button>
@@ -1074,7 +1074,7 @@ function ContactRow({
                 <button
                   type="submit"
                   aria-label={`Remove ${roleLabel(a.role)} role`}
-                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[32px] min-w-[32px] inline-flex items-center justify-center text-emerald-700/80 hover:text-emerald-900 touch-manipulation"
+                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-emerald-700/80 hover:text-emerald-900 touch-manipulation"
                 >
                   ✕
                 </button>
@@ -1479,7 +1479,7 @@ function TeamRow({
                 <button
                   type="submit"
                   aria-label={`Remove ${assignmentRoleLabel(a.role)} role from ${person.user_full_name ?? person.user_email}`}
-                  className={`-mr-1 ml-0.5 px-2 py-1 min-h-[32px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-emerald-700/80 hover:text-emerald-900"}`}
+                  className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-emerald-700/80 hover:text-emerald-900"}`}
                 >
                   ✕
                 </button>
@@ -1631,7 +1631,7 @@ async function OpportunitiesTab({
           </span>
           <Link
             href={`/commercial/opportunities/new?account=${accountId}`}
-            className="font-semibold underline hover:text-blue-900 min-h-[32px] inline-flex items-center"
+            className="font-semibold underline hover:text-blue-900 min-h-[44px] inline-flex items-center"
           >
             Start the next bid →
           </Link>

@@ -99,10 +99,16 @@ async function createAction(formData: FormData) {
   if (!result.ok) {
     redirect("/commercial/opportunities/new?error=" + encodeURIComponent(result.error));
   }
+  // Include the new opp's title in the redirect so the success banner
+  // can echo "Sunridge Apartments bid logged" instead of the generic
+  // "Opportunity created." Karan UX audit 2026-06-24: context-rich
+  // success messages help Alex keep track of which deal he just
+  // logged when batch-entering bids.
+  const createdTitle = encodeURIComponent(result.opportunity.title);
   if (returnTo === "account" && UUID_RE.test(account_id)) {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities&created=1`);
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&created=1&created_title=${createdTitle}`);
   }
-  redirect("/commercial/opportunities?created=1");
+  redirect(`/commercial/opportunities?created=1&created_title=${createdTitle}`);
 }
 
 export default async function NewOpportunityPage({

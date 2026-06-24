@@ -97,6 +97,7 @@ export default async function CommercialOpportunitiesPage({
     ? (statusFilter as OpportunityStatus)
     : undefined;
   const created = pickFirst(sp.created) === "1";
+  const createdTitle = pickFirst(sp.created_title);
   const statusOk = pickFirst(sp.status_ok) === "1";
   const statusError = pickFirst(sp.status_error);
   const deletedTitle = pickFirst(sp.deleted);
@@ -457,7 +458,11 @@ export default async function CommercialOpportunitiesPage({
 
       {created && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
-          Opportunity created.
+          {createdTitle ? (
+            <><strong>{createdTitle}</strong> logged. Ready for the next bid.</>
+          ) : (
+            "Opportunity created."
+          )}
         </div>
       )}
       {deletedTitle && (

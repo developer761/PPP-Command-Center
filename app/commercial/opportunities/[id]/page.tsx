@@ -240,6 +240,12 @@ async function changeStatusAction(formData: FormData) {
     }
     // Skipped the inline debrief — route to Debrief tab so the user
     // sees the form and can decide to fill it now or skip again.
+    // Audit fix 2026-06-24 (logic-flow #1): clear the stale debriefed_at
+    // flag BEFORE redirect when transitioning terminal→terminal (e.g.
+    // Won → Reopened → Lost). Without this, the new terminal state
+    // inherits the prior outcome's debriefed flag, suppressing the
+    // amber "Debrief needed" prompt on the second close.
+    await clearDebriefFlagOnReopen(opp_id, user.id);
     redirect(`/commercial/opportunities/${opp_id}?tab=debrief&status_ok=1`);
   } else {
     // Non-terminal transition. If the opp WAS terminal (reopen case),
