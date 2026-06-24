@@ -10,6 +10,7 @@ import {
   softDeleteCommercialAccount,
 } from "@/lib/commercial/accounts/mutations";
 import CommercialAddressFields from "@/components/commercial-address-fields";
+import CommercialSiteAddressToggle from "@/components/commercial-site-address-toggle";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 export const dynamic = "force-dynamic";
@@ -52,10 +53,12 @@ async function updateAction(formData: FormData) {
       billing_city: get("billing_city"),
       billing_state: get("billing_state"),
       billing_zip: get("billing_zip"),
-      site_street: get("site_street"),
-      site_city: get("site_city"),
-      site_state: get("site_state"),
-      site_zip: get("site_zip"),
+      // "Same as billing" toggle: if set, copy billing → site so the
+      // user doesn't retype. Site fields aren't rendered in this case.
+      site_street: get("site_same_as_billing") === "1" ? get("billing_street") : get("site_street"),
+      site_city: get("site_same_as_billing") === "1" ? get("billing_city") : get("site_city"),
+      site_state: get("site_same_as_billing") === "1" ? get("billing_state") : get("site_state"),
+      site_zip: get("site_same_as_billing") === "1" ? get("billing_zip") : get("site_zip"),
       phone: get("phone"),
       ap_phone: get("ap_phone"),
       website: get("website"),
@@ -176,9 +179,17 @@ export default async function EditCommercialAccountPage({
           />
         </Section>
 
-        <Section title="Primary site address (if different)">
-          <CommercialAddressFields
-            prefix="site"
+        <Section title="Primary site address">
+          {/* Default the "Same as billing" toggle to ON when the existing
+              site address matches billing (common case for accounts
+              created before the toggle existed — they had to retype). */}
+          <CommercialSiteAddressToggle
+            defaultChecked={
+              (account.site_street ?? "") === (account.billing_street ?? "") &&
+              (account.site_city ?? "") === (account.billing_city ?? "") &&
+              (account.site_state ?? "") === (account.billing_state ?? "") &&
+              (account.site_zip ?? "") === (account.billing_zip ?? "")
+            }
             defaults={{
               street: account.site_street ?? "",
               city: account.site_city ?? "",

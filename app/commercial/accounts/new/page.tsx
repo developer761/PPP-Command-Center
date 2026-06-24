@@ -10,6 +10,7 @@ import {
   type AssignmentRole,
 } from "@/lib/commercial/accounts/assignments";
 import CommercialAddressFields from "@/components/commercial-address-fields";
+import CommercialSiteAddressToggle from "@/components/commercial-site-address-toggle";
 import CommercialNewAccountTeamPicker from "@/components/commercial-new-account-team-picker";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
@@ -63,10 +64,14 @@ async function createAction(formData: FormData) {
     billing_city: get("billing_city"),
     billing_state: get("billing_state"),
     billing_zip: get("billing_zip"),
-    site_street: get("site_street"),
-    site_city: get("site_city"),
-    site_state: get("site_state"),
-    site_zip: get("site_zip"),
+    // "Same as billing" toggle: when the checkbox is set, copy billing
+    // into site so the user doesn't retype the same 4 fields. The site
+    // fields aren't even rendered in this case (the toggle hides them),
+    // so we fall back to billing values explicitly.
+    site_street: get("site_same_as_billing") === "1" ? get("billing_street") : get("site_street"),
+    site_city: get("site_same_as_billing") === "1" ? get("billing_city") : get("site_city"),
+    site_state: get("site_same_as_billing") === "1" ? get("billing_state") : get("site_state"),
+    site_zip: get("site_same_as_billing") === "1" ? get("billing_zip") : get("site_zip"),
     phone: get("phone"),
     ap_phone: get("ap_phone"),
     website: get("website"),
@@ -281,8 +286,8 @@ export default async function NewCommercialAccountPage({
           <CommercialAddressFields prefix="billing" />
         </Section>
 
-        <Section title="Primary site address (if different)">
-          <CommercialAddressFields prefix="site" />
+        <Section title="Primary site address">
+          <CommercialSiteAddressToggle />
         </Section>
 
         <Section title="Contact">
