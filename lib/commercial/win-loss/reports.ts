@@ -56,51 +56,85 @@ export type LessonRow = {
   debriefed_at: string;
 };
 
-/** Get the current quarter's date range in UTC. */
+/**
+ * Returns the UTC instant of midnight in America/New_York for the given
+ * (year, monthIdx, day). PPP HQ is in NY and the convention across the
+ * platform (see lib/salesforce/derive.ts) is to render periods in ET.
+ *
+ * Without this, a debrief recorded at 23:00 ET on Mar 31 stamps as
+ * 03:00Z Apr 1 — which falls OUTSIDE a UTC-bounded Q1 query and gets
+ * counted in Q2. Boundary debriefs were silently moving periods.
+ *
+ * Handles DST automatically by probing noon UTC of the target day to
+ * read the ET offset that day (-5h EST winter, -4h EDT summer).
+ */
+function etMidnightToUTC(year: number, monthIdx: number, day: number): Date {
+  const probe = new Date(Date.UTC(year, monthIdx, day, 12, 0, 0));
+  // hour12:false + hour:"2-digit" gives "07" (EST) or "08" (EDT) when
+  // we render noon UTC as NY local time. nyHour - 12 = the ET offset
+  // for that calendar day.
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    hour12: false,
+  });
+  const nyHour = parseInt(fmt.format(probe), 10);
+  const offsetHours = nyHour - 12; // -5 (EST) or -4 (EDT)
+  return new Date(Date.UTC(year, monthIdx, day, -offsetHours));
+}
+
+/** Get "now" anchored as the calendar quarter in America/New_York. */
+function nowInET(): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => parseInt(parts.find((p) => p.type === t)?.value ?? "0", 10);
+  return { year: get("year"), month: get("month") - 1, day: get("day") };
+}
+
+/** Get the current quarter's date range (boundaries snapped to ET midnight). */
 export function currentQuarterRange(): DateRange & { label: string } {
-  const now = new Date();
-  const month = now.getUTCMonth(); // 0-11
-  const quarter = Math.floor(month / 3); // 0-3
-  const year = now.getUTCFullYear();
+  const { year, month } = nowInET();
+  const quarter = Math.floor(month / 3);
   const startMonth = quarter * 3;
-  const fromIso = new Date(Date.UTC(year, startMonth, 1)).toISOString();
-  // Exclusive end = first day of NEXT quarter
   const endYear = startMonth + 3 >= 12 ? year + 1 : year;
   const endMonth = (startMonth + 3) % 12;
-  const toIso = new Date(Date.UTC(endYear, endMonth, 1)).toISOString();
+  const fromIso = etMidnightToUTC(year, startMonth, 1).toISOString();
+  const toIso = etMidnightToUTC(endYear, endMonth, 1).toISOString();
   return { fromIso, toIso, label: `Q${quarter + 1} ${year}` };
 }
 
 /** Previous calendar quarter (Q4 prev year if we're in Q1). */
 export function previousQuarterRange(): DateRange & { label: string } {
-  const now = new Date();
-  const month = now.getUTCMonth();
+  const { year, month } = nowInET();
   const quarter = Math.floor(month / 3);
-  const year = now.getUTCFullYear();
-  // If current quarter is Q1 (idx 0), previous is Q4 of last year.
   const prevQuarter = quarter === 0 ? 3 : quarter - 1;
   const prevYear = quarter === 0 ? year - 1 : year;
   const startMonth = prevQuarter * 3;
-  const fromIso = new Date(Date.UTC(prevYear, startMonth, 1)).toISOString();
   const endYear = startMonth + 3 >= 12 ? prevYear + 1 : prevYear;
   const endMonth = (startMonth + 3) % 12;
-  const toIso = new Date(Date.UTC(endYear, endMonth, 1)).toISOString();
+  const fromIso = etMidnightToUTC(prevYear, startMonth, 1).toISOString();
+  const toIso = etMidnightToUTC(endYear, endMonth, 1).toISOString();
   return { fromIso, toIso, label: `Q${prevQuarter + 1} ${prevYear}` };
 }
 
-/** Current calendar year (Jan 1 → next Jan 1). */
+/** Current calendar year (Jan 1 ET → next Jan 1 ET). */
 export function currentYearRange(): DateRange & { label: string } {
-  const year = new Date().getUTCFullYear();
-  const fromIso = new Date(Date.UTC(year, 0, 1)).toISOString();
-  const toIso = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+  const { year } = nowInET();
+  const fromIso = etMidnightToUTC(year, 0, 1).toISOString();
+  const toIso = etMidnightToUTC(year + 1, 0, 1).toISOString();
   return { fromIso, toIso, label: `${year}` };
 }
 
 /** Previous calendar year. */
 export function previousYearRange(): DateRange & { label: string } {
-  const year = new Date().getUTCFullYear() - 1;
-  const fromIso = new Date(Date.UTC(year, 0, 1)).toISOString();
-  const toIso = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+  const { year: thisYear } = nowInET();
+  const year = thisYear - 1;
+  const fromIso = etMidnightToUTC(year, 0, 1).toISOString();
+  const toIso = etMidnightToUTC(year + 1, 0, 1).toISOString();
   return { fromIso, toIso, label: `${year}` };
 }
 

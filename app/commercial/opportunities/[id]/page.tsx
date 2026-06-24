@@ -88,6 +88,7 @@ type SP = Promise<{
   cloned?: string;
   just_closed?: string;
   debrief_saved?: string;
+  assigned?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
@@ -454,11 +455,11 @@ async function quickAssignMeAction(formData: FormData) {
     // self-assign path — the user is on the team in that role either way,
     // and a rose error toast on a successful action is confusing.
     if (/already on this opp/i.test(result.error)) {
-      redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
+      redirect(`/commercial/opportunities/${opportunity_id}?tab=team&assigned=1`);
     }
     redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent(result.error)}`);
   }
-  redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=team&assigned=1`);
 }
 
 async function removeTeamAction(formData: FormData) {
@@ -869,7 +870,7 @@ export default async function OpportunityDetailPage({
           errorMessage={pickFirst(sp.error)}
         />
       )}
-      {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} assignedOk={pickFirst(sp.assigned) === "1"} />}
       {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "plans" && <PlansTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
@@ -1368,7 +1369,7 @@ function DebriefReadOnlyView({
 
 // ─────────────── Team tab ───────────────
 
-async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; errorMessage?: string; assignedOk?: boolean }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const [team, staff] = await Promise.all([
@@ -1397,6 +1398,12 @@ async function TeamTab({ oppId, errorMessage }: { oppId: string; errorMessage?: 
       {errorMessage && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
           {errorMessage}
+        </div>
+      )}
+      {assignedOk && (
+        <div className="bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 text-sm text-sky-800 flex items-start gap-2">
+          <span aria-hidden>✓</span>
+          <span>You&apos;re on this opp. Open tasks + status changes will surface in your bell + email.</span>
         </div>
       )}
       {missingPrimaryRoles.length > 0 && (
