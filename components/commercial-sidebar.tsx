@@ -42,7 +42,10 @@ const navSections: NavSection[] = [
     items: [
       { label: "Accounts", href: "/commercial/accounts", icon: <IconBuilding /> },
       { label: "Opportunities", href: "/commercial/opportunities", icon: <IconTarget /> },
-      { label: "Estimates", href: "/commercial/estimates", phase: 3, disabled: true, icon: <IconCalc /> },
+      // Estimates entry removed 2026-06-24 — Phase 3 ships invoicing
+      // without estimates first (Karan: "i dont thinkw e need the
+      // estimates for right now"). We may add it back as Phase 3.5 if
+      // Alex asks for "what we quoted vs billed" history.
     ],
   },
   {
@@ -56,7 +59,11 @@ const navSections: NavSection[] = [
   {
     heading: "Financials",
     items: [
-      { label: "Billing", href: "/commercial/billing", phase: 8, disabled: true, icon: <IconDollar /> },
+      // Bumped from phase 8 → 3 on 2026-06-24 when invoicing moved
+      // ahead in the roadmap. Stays disabled until Phase 3 ships; the
+      // disabled state still surfaces the link so Alex sees what's
+      // coming next.
+      { label: "Invoices", href: "/commercial/invoices", phase: 3, disabled: true, icon: <IconDollar /> },
     ],
   },
   // NEW Reports group — promoted out of "Financials" (win/loss is sales
@@ -67,6 +74,9 @@ const navSections: NavSection[] = [
     heading: "Reports",
     items: [
       { label: "Win/Loss", href: "/commercial/reports/win-loss", icon: <IconChart /> },
+      // Revenue dashboard ships with Phase 3 invoicing. Disabled until
+      // then so Alex sees what's coming.
+      { label: "Revenue", href: "/commercial/reports/revenue", phase: 3, disabled: true, icon: <IconChart /> },
     ],
   },
   // Settings sits at the bottom of the nav (after the workflow groups).
@@ -216,14 +226,6 @@ function IconTarget() {
       <circle cx="12" cy="12" r="10" />
       <circle cx="12" cy="12" r="6" />
       <circle cx="12" cy="12" r="2" />
-    </svg>
-  );
-}
-function IconCalc() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="4" y="2" width="16" height="20" rx="2" />
-      <path d="M8 6h8 M8 10h2 M12 10h2 M16 10h0 M8 14h2 M12 14h2 M16 14h0 M8 18h8" />
     </svg>
   );
 }
