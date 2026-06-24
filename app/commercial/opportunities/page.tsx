@@ -1404,21 +1404,23 @@ function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
 }
 
 function StatusPill({ status }: { status: OpportunityStatus }) {
+  // Boosted to -100/-800/-300 saturation 2026-06-24 to match StatusPill
+  // in the detail page (Karan: brighter + more vibrant like PPP CC).
   const map: Record<OpportunityStatus, string> = {
-    inquiry: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100",
-    site_visit_scheduled: "bg-blue-50 text-blue-700 border-blue-200",
-    site_visit_done: "bg-blue-50 text-blue-700 border-blue-200",
-    estimating: "bg-amber-50 text-amber-800 border-amber-200",
-    proposal_sent: "bg-amber-50 text-amber-800 border-amber-200",
-    negotiating: "bg-amber-50 text-amber-800 border-amber-200",
-    on_hold: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100",
-    won: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    lost: "bg-rose-50 text-rose-700 border-rose-200",
-    no_bid: "bg-rose-50 text-rose-700 border-rose-200",
-    reopened: "bg-blue-50 text-blue-700 border-blue-200",
+    inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+    site_visit_scheduled: "bg-sky-100 text-sky-800 border-sky-300",
+    site_visit_done: "bg-cyan-100 text-cyan-800 border-cyan-300",
+    estimating: "bg-amber-100 text-amber-900 border-amber-300",
+    proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
+    negotiating: "bg-orange-100 text-orange-900 border-orange-300",
+    on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+    won: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    lost: "bg-rose-100 text-rose-800 border-rose-300",
+    no_bid: "bg-rose-100 text-rose-800 border-rose-300",
+    reopened: "bg-blue-100 text-blue-800 border-blue-300",
   };
   return (
-    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${map[status]}`}>
+    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${map[status]}`}>
       {opportunityStatusLabel(status)}
     </span>
   );

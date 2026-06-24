@@ -166,7 +166,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                     <Link
                       href={item.href}
                       onClick={onNavigate}
-                      className={`${baseClasses} ${active ? "bg-emerald-50 text-emerald-700" : "text-ppp-charcoal hover:bg-ppp-charcoal-50"}`}
+                      className={`${baseClasses} ${active ? "bg-emerald-100 text-emerald-800 font-semibold ring-1 ring-emerald-200" : "text-ppp-charcoal hover:bg-ppp-charcoal-50"}`}
                     >
                       <span className={active ? "text-emerald-700" : "text-ppp-charcoal-500"}>
                         {item.icon}
