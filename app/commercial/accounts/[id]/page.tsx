@@ -2512,9 +2512,12 @@ function KpiTile({
   // lift to read as actionable. Placeholders are quieter (lighter
   // background, dashed border) so the eye doesn't waste time on them
   // until the future phase lands.
+  // Karan 2026-06-24: live tiles now use a subtle emerald→sky gradient
+  // background instead of pure white, matching the brightened look
+  // of the opp page KPI strip.
   const cls =
     tone === "live"
-      ? "bg-white border-ppp-charcoal-200 shadow-sm"
+      ? "relative bg-gradient-to-br from-white to-emerald-50/40 border-ppp-charcoal-200 shadow-sm"
       : "bg-ppp-charcoal-50/60 border-ppp-charcoal-200 border-dashed";
 
   return href ? (
@@ -2530,15 +2533,17 @@ function KpiTile({
 }
 
 function Pill({ children, tone }: { children: React.ReactNode; tone: "emerald" | "blue" | "amber" | "rose" | "neutral" }) {
+  // Karan 2026-06-24: boosted saturation from -50/-700/-200 to
+  // -100/-800/-300 to match the brighter status pills on opp page.
   const cls = {
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
-    amber: "bg-amber-50 text-amber-700 border-amber-200",
-    rose: "bg-rose-50 text-rose-700 border-rose-200",
-    neutral: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100",
+    emerald: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    blue: "bg-blue-100 text-blue-800 border-blue-300",
+    amber: "bg-amber-100 text-amber-900 border-amber-300",
+    rose: "bg-rose-100 text-rose-800 border-rose-300",
+    neutral: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
   }[tone];
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${cls}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${cls}`}>
       {children}
     </span>
   );

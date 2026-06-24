@@ -2195,8 +2195,12 @@ function KpiTile({
   value: string;
   tooltip?: string;
 }) {
+  // Karan 2026-06-24: added a tinted top-bar + bumped to gradient bg
+  // so the KPI strip pops instead of looking like four white squares.
+  // Emerald top-bar matches the brand accent + signals "live data."
   return (
-    <div className="border border-ppp-charcoal-100 rounded-lg px-3 py-3 bg-white min-h-[64px] flex flex-col justify-center">
+    <div className="relative border border-ppp-charcoal-100 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-white to-emerald-50/30 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden">
+      <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-emerald-500 to-sky-500" aria-hidden />
       <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 flex items-center gap-1">
         <span>{label}</span>
         {tooltip && <InfoDot text={tooltip} />}
