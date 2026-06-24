@@ -23,6 +23,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
+import { isTerminalOpportunityStatus } from "@/lib/commercial/opportunities/constants";
 import {
   allowedNextStatuses,
   changeOpportunityStatus,
@@ -100,7 +101,7 @@ async function submitDebriefOnlyAction(formData: FormData) {
   // for terminal opps; this is the server-side echo of that gate).
   const opp = await getCommercialOpportunity(opp_id);
   if (!opp) redirect("/commercial/opportunities");
-  const isTerminal = opp.status === "won" || opp.status === "lost" || opp.status === "no_bid";
+  const isTerminal = isTerminalOpportunityStatus(opp.status);
   if (!isTerminal) {
     redirect(`/commercial/opportunities/${opp_id}?tab=info`);
   }
@@ -184,7 +185,7 @@ async function changeStatusAction(formData: FormData) {
   //   3. User didn't see the form (legacy path / API call) → same placeholder
   // Re-opening (from terminal → non-terminal) clears the debriefed_at flag
   // so a future re-close requires a new debrief.
-  const isTerminal = to_status === "won" || to_status === "lost" || to_status === "no_bid";
+  const isTerminal = isTerminalOpportunityStatus(to_status);
   if (isTerminal) {
     const skip = String(formData.get("debrief_skip") ?? "") === "1";
     const competitor = String(formData.get("debrief_competitor") ?? "").trim();
@@ -597,7 +598,7 @@ export default async function OpportunityDetailPage({
   // Building the tab list AFTER fetching opp lets us conditionally
   // expose it so non-terminal opps don't see a "Debrief" tab with
   // nothing to fill out.
-  const isOppTerminal = opp.status === "won" || opp.status === "lost" || opp.status === "no_bid";
+  const isOppTerminal = isTerminalOpportunityStatus(opp.status);
   const visibleTabs = isOppTerminal
     ? [
         TABS[0],
@@ -634,7 +635,7 @@ export default async function OpportunityDetailPage({
           terminal state (won/lost/no_bid) but win_loss_debriefed_at is
           NULL. Quarterly report quality + Alex follow-through depend on
           this; banner only goes away when the structured debrief lands. */}
-      {(opp.status === "won" || opp.status === "lost" || opp.status === "no_bid") &&
+      {(isTerminalOpportunityStatus(opp.status)) &&
         !opp.win_loss_debriefed_at && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -712,7 +713,7 @@ export default async function OpportunityDetailPage({
                 only allowed next is reopened anyway; one focused action
                 in the header beats a whole "Move this deal forward" card
                 with a dropdown of one option. */}
-            {(opp.status === "won" || opp.status === "lost" || opp.status === "no_bid") && (
+            {(isTerminalOpportunityStatus(opp.status)) && (
               <form action={reopenOpportunityAction} className="contents">
                 <input type="hidden" name="opp_id" value={opp.id} />
                 <button
@@ -834,7 +835,7 @@ async function InfoTab({
   // not on Info. Info stays focused on deal facts: bid, dates, address,
   // account. The amber banner above the page header still nudges the
   // user to the Debrief tab until win_loss_debriefed_at is set.
-  const isTerminal = opp.status === "won" || opp.status === "lost" || opp.status === "no_bid";
+  const isTerminal = isTerminalOpportunityStatus(opp.status);
   // Filter the DAG-allowed next statuses by what we actually want to
   // expose in this surface. Detail page allows ALL valid transitions,
   // including terminal ones (won/lost/no_bid) because we have room for
@@ -2018,7 +2019,7 @@ async function TimelineTab({ oppId }: { oppId: string }) {
       <ol className="divide-y divide-ppp-charcoal-100">
         {log.map((entry) => {
           const when = new Date(entry.changed_at);
-          const isTerminal = entry.to_status === "won" || entry.to_status === "lost" || entry.to_status === "no_bid";
+          const isTerminal = isTerminalOpportunityStatus(entry.to_status);
           const isWin = entry.to_status === "won";
           const cls = isWin
             ? "border-l-emerald-500"

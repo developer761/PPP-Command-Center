@@ -10,6 +10,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import {
   QUICK_FLIP_BLOCKED_STATUSES,
+  isTerminalOpportunityStatus,
 } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
@@ -113,8 +114,8 @@ export async function POST(
   // re-close prompts for a fresh debrief. Mirrors what changeStatusAction
   // does for the detail-page form path. Idempotent: no-op if flag already
   // null. Only fires when prior was terminal AND new is not.
-  const wasTerminal = priorStatus === "won" || priorStatus === "lost" || priorStatus === "no_bid";
-  const nowTerminal = to_status === "won" || to_status === "lost" || to_status === "no_bid";
+  const wasTerminal = isTerminalOpportunityStatus(priorStatus);
+  const nowTerminal = isTerminalOpportunityStatus(to_status);
   if (wasTerminal && !nowTerminal) {
     const { clearDebriefFlagOnReopen } = await import("@/lib/commercial/win-loss/debrief");
     await clearDebriefFlagOnReopen(opp_id, auth.user.id);

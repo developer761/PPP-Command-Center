@@ -40,6 +40,13 @@ export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   "no_bid",
 ]);
 
+/** Predicate form for inline use — eliminates the 8-site repetition of
+ *  `s === "won" || s === "lost" || s === "no_bid"` across the codebase.
+ *  Accepts unknown so callers don't have to type-narrow first. */
+export function isTerminalOpportunityStatus(status: string | null | undefined): boolean {
+  return status !== null && status !== undefined && TERMINAL_STATUSES.has(status);
+}
+
 /**
  * The status DAG — which `to_status` is allowed from each `from_status`.
  * Drives the quick-flip dropdown on the list page (filters next options

@@ -68,6 +68,7 @@ import {
   STALE_OPP_DAYS,
   STALE_ACCOUNT_OPP_COOLING_MULTIPLIER,
   QUICK_FLIP_BLOCKED_STATUSES,
+  isTerminalOpportunityStatus,
 } from "@/lib/commercial/opportunities/constants";
 import {
   getAccountRecentActivity,
@@ -1768,7 +1769,7 @@ function AccountOpportunityRow({
               Next status…
             </option>
             {nextStatuses.map((s) => {
-              const isTerminal = s === "won" || s === "lost" || s === "no_bid";
+              const isTerminal = isTerminalOpportunityStatus(s);
               return (
                 <option key={s} value={s}>
                   {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}

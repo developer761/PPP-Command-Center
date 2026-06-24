@@ -24,6 +24,7 @@ import {
   HOT_DEAL_BID_CENTS,
   HOT_DEAL_DECISION_DAYS,
   HOT_DEAL_ACTIVE_STATUSES,
+  isTerminalOpportunityStatus,
 } from "@/lib/commercial/opportunities/constants";
 import {
   allowedNextStatuses,
@@ -943,7 +944,7 @@ function KanbanCard({
           >
             <option value="" disabled>Move to…</option>
             {nextStatuses.map((s) => {
-              const isTerminal = s === "won" || s === "lost" || s === "no_bid";
+              const isTerminal = isTerminalOpportunityStatus(s);
               return (
                 <option key={s} value={s}>
                   {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
@@ -1298,7 +1299,7 @@ function OpportunityRow({
               Next status…
             </option>
             {nextStatuses.map((s) => {
-              const isTerminal = s === "won" || s === "lost" || s === "no_bid";
+              const isTerminal = isTerminalOpportunityStatus(s);
               return (
                 <option key={s} value={s}>
                   {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}

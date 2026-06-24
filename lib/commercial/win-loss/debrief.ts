@@ -9,6 +9,7 @@ import {
 } from "@/lib/commercial/account-notes";
 import { getOrCreateCompetitor } from "@/lib/commercial/competitors";
 import { OPPORTUNITY_LOSS_REASONS } from "@/lib/commercial/opportunities/db";
+import { reportWarn } from "@/lib/observability";
 
 /**
  * Win/Loss Debrief — captures structured "what happened" data when an opp
@@ -210,7 +211,12 @@ export async function writeDebrief(
     // refresh and the next load will re-check the flag. Without this
     // return, the user got "debrief saved" but the amber banner would
     // mysteriously persist on the next visit.
-    console.warn("[debrief] failed to set win_loss_debriefed_at:", flagErr.message);
+    reportWarn({
+      key: "debrief_flag_set_failed",
+      message: "Win/Loss Debrief saved but the win_loss_debriefed_at flag failed to set",
+      platform: "commercial_cc",
+      context: { opportunity_id: input.opportunityId, error: flagErr.message },
+    });
     return {
       ok: false,
       error: `Debrief saved but the banner-clear failed (${flagErr.message}). Refresh the page; data is intact.`,
