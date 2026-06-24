@@ -135,7 +135,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {navSections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-6" : ""}>
-            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
+            <div className="font-condensed px-3 mb-2 text-[10px] font-bold tracking-[0.18em] text-sky-700 uppercase">
               {section.heading}
             </div>
             <ul className="space-y-0.5">
