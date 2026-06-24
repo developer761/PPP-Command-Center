@@ -114,7 +114,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             height={60}
             priority
           />
-          <div className="font-condensed mt-3 text-[10px] font-bold tracking-[0.16em] uppercase text-ppp-blue-700 leading-tight">
+          <div className="font-condensed mt-3 text-[10px] font-bold tracking-[0.16em] uppercase text-emerald-700 leading-tight">
             Commercial<br />Command Center
           </div>
         </Link>
@@ -166,9 +166,9 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                     <Link
                       href={item.href}
                       onClick={onNavigate}
-                      className={`${baseClasses} ${active ? "bg-ppp-blue-50 text-ppp-blue-700 font-semibold ring-1 ring-ppp-blue-200" : "text-ppp-charcoal hover:bg-ppp-charcoal-50"}`}
+                      className={`${baseClasses} ${active ? "bg-emerald-100 text-emerald-800 font-semibold ring-1 ring-emerald-200" : "text-ppp-charcoal hover:bg-ppp-charcoal-50"}`}
                     >
-                      <span className={active ? "text-ppp-blue-700" : "text-ppp-charcoal-500"}>
+                      <span className={active ? "text-emerald-700" : "text-ppp-charcoal-500"}>
                         {item.icon}
                       </span>
                       <span className="flex-1">{item.label}</span>
