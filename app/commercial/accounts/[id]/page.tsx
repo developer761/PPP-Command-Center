@@ -343,7 +343,7 @@ async function quickFlipFromAccountAction(formData: FormData) {
   if (to_status === "won") {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&just_closed=1#debrief-now-form`);
+    redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
   }
   redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
 }

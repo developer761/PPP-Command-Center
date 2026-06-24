@@ -101,7 +101,7 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
       if (toStatus === "won") {
         setNavigating("won");
         requestAnimationFrame(() => {
-          window.location.href = `/commercial/opportunities/${oppId}?tab=info&just_closed=1#debrief-now-form`;
+          window.location.href = `/commercial/opportunities/${oppId}?tab=debrief&just_closed=1`;
         });
         return;
       }

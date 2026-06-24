@@ -75,7 +75,7 @@ async function quickFlipStatusAction(formData: FormData) {
     // the closure instantly, then route to the debrief panel.
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&just_closed=1#debrief-now-form`);
+    redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
   }
   redirect("/commercial/opportunities?status_ok=1");
 }

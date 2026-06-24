@@ -131,9 +131,9 @@ async function submitDebriefOnlyAction(formData: FormData) {
     actorUserId: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
+    redirect(`/commercial/opportunities/${opp_id}?tab=debrief&error=` + encodeURIComponent(result.error));
   }
-  redirect(`/commercial/opportunities/${opp_id}?tab=info&debrief_saved=1`);
+  redirect(`/commercial/opportunities/${opp_id}?tab=debrief&debrief_saved=1`);
 }
 
 async function changeStatusAction(formData: FormData) {
@@ -222,8 +222,11 @@ async function changeStatusAction(formData: FormData) {
         // here would create a duplicate "[AUTO] Debrief pending" on the
         // account timeline. Just warn the user; banner will catch the
         // missing debrief on next visit.
-        redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1&debrief_warn=` + encodeURIComponent(debriefResult.error));
+        redirect(`/commercial/opportunities/${opp_id}?tab=debrief&status_ok=1&debrief_warn=` + encodeURIComponent(debriefResult.error));
       }
+      // Debrief saved INLINE with the status flip — land them on the
+      // Debrief tab with the read-only view + success banner.
+      redirect(`/commercial/opportunities/${opp_id}?tab=debrief&debrief_saved=1`);
     } else {
       // User skipped or didn't fill — drop the minimal placeholder so the
       // account timeline reflects the closure immediately. Amber banner
@@ -234,6 +237,9 @@ async function changeStatusAction(formData: FormData) {
         actorUserId: user.id,
       });
     }
+    // Skipped the inline debrief — route to Debrief tab so the user
+    // sees the form and can decide to fill it now or skip again.
+    redirect(`/commercial/opportunities/${opp_id}?tab=debrief&status_ok=1`);
   } else {
     // Non-terminal transition. If the opp WAS terminal (reopen case),
     // clear the debriefed_at flag so a future re-close requires a fresh
@@ -583,12 +589,26 @@ export default async function OpportunityDetailPage({
   const { id } = await params;
   if (!UUID_RE.test(id)) notFound();
   const sp = await searchParams;
-  const tab = (sp.tab && TABS.some((t) => t.key === sp.tab) ? sp.tab : "info") as
-    (typeof TABS)[number]["key"];
-
   const opp = await getCommercialOpportunity(id);
   if (!opp) notFound();
   const account = await getCommercialAccount(opp.account_id);
+
+  // The Debrief tab only exists for terminal opps (won/lost/no_bid).
+  // Building the tab list AFTER fetching opp lets us conditionally
+  // expose it so non-terminal opps don't see a "Debrief" tab with
+  // nothing to fill out.
+  const isOppTerminal = opp.status === "won" || opp.status === "lost" || opp.status === "no_bid";
+  const visibleTabs = isOppTerminal
+    ? [
+        TABS[0],
+        // Slot Debrief right after Info — most important tab on a
+        // closed deal (until filled in).
+        { key: "debrief", label: "Debrief" } as const,
+        ...TABS.slice(1),
+      ]
+    : TABS;
+  const tab = (sp.tab && visibleTabs.some((t) => t.key === sp.tab) ? sp.tab : "info") as
+    (typeof visibleTabs)[number]["key"];
 
   const editedOk = pickFirst(sp.edited) === "1";
   const clonedOk = pickFirst(sp.cloned) === "1";
@@ -628,7 +648,7 @@ export default async function OpportunityDetailPage({
             </div>
           </div>
           <Link
-            href={`/commercial/opportunities/${opp.id}?tab=info#debrief-now-form`}
+            href={`/commercial/opportunities/${opp.id}?tab=debrief`}
             className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-700 text-white text-[12px] font-semibold hover:bg-amber-800 active:bg-amber-900 min-h-[44px] touch-manipulation shrink-0"
           >
             Add debrief
@@ -737,22 +757,28 @@ export default async function OpportunityDetailPage({
         />
       </section>
 
-      {/* Tab bar */}
+      {/* Tab bar — Debrief tab only surfaces on terminal opps. Holds
+          either the un-filled debrief form OR the completed read-only
+          structured debrief. Keeps the Info tab clean. */}
       <nav className="border-b border-ppp-charcoal-100">
         <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto">
-          {TABS.map((t) => {
+          {visibleTabs.map((t) => {
             const active = t.key === tab;
+            const needsAttention = t.key === "debrief" && !opp.win_loss_debriefed_at;
             return (
               <li key={t.key}>
                 <Link
                   href={`/commercial/opportunities/${opp.id}?tab=${t.key}`}
-                  className={`inline-flex items-center px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
+                  className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
                       ? "border-emerald-600 text-ppp-charcoal"
                       : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-100"
                   }`}
                 >
                   {t.label}
+                  {needsAttention && (
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" aria-label="Debrief pending" />
+                  )}
                 </Link>
               </li>
             );
@@ -768,8 +794,15 @@ export default async function OpportunityDetailPage({
           statusOk={pickFirst(sp.status_ok) === "1"}
           preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
           confirmDelete={pickFirst(sp.confirm_delete) === "1"}
+        />
+      )}
+      {tab === "debrief" && isOppTerminal && (
+        <DebriefTab
+          opp={opp}
           justClosed={pickFirst(sp.just_closed) === "1"}
           debriefSaved={pickFirst(sp.debrief_saved) === "1"}
+          statusOk={pickFirst(sp.status_ok) === "1"}
+          errorMessage={pickFirst(sp.error)}
         />
       )}
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
@@ -789,8 +822,6 @@ async function InfoTab({
   statusOk,
   preselectTo,
   confirmDelete,
-  justClosed,
-  debriefSaved,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -798,17 +829,12 @@ async function InfoTab({
   statusOk?: boolean;
   preselectTo?: OpportunityStatus;
   confirmDelete?: boolean;
-  justClosed?: boolean;
-  debriefSaved?: boolean;
 }) {
-  // Fetch debriefs when terminal — used by the Win/Loss Debrief card to
-  // display the structured competitor + deciding factor + lessons.
-  // Keeps the rest of the tab synchronous; this is one cheap indexed query.
+  // Terminal opps now show debrief content in a dedicated Debrief tab,
+  // not on Info. Info stays focused on deal facts: bid, dates, address,
+  // account. The amber banner above the page header still nudges the
+  // user to the Debrief tab until win_loss_debriefed_at is set.
   const isTerminal = opp.status === "won" || opp.status === "lost" || opp.status === "no_bid";
-  const debriefs = isTerminal
-    ? await (await import("@/lib/commercial/win-loss/debrief")).listDebriefsForOpp(opp.id)
-    : [];
-  const latestDebrief = debriefs[0] ?? null;
   // Filter the DAG-allowed next statuses by what we actually want to
   // expose in this surface. Detail page allows ALL valid transitions,
   // including terminal ones (won/lost/no_bid) because we have room for
@@ -832,32 +858,10 @@ async function InfoTab({
           </Link>
         </div>
       )}
-      {debriefSaved && (
-        <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
-          Debrief saved. Thanks — this feeds the quarterly Win/Loss report.
-        </div>
-      )}
-      {/* Standalone debrief panel — shows when the opp is in a terminal
-          state but no debrief exists yet. Two paths land users here:
-          1. Just flipped to Won/Lost/No-bid from kanban/list/account
-             (justClosed=1) — the panel auto-scrolls into view.
-          2. Returning later to fill the debrief via the amber banner.
-          User can fill the form (writes via submitDebriefOnlyAction —
-          status is already correct, doesn't re-flip) OR hit "Skip" to
-          come back later. Renders ABOVE ChangeStatusCard so it's the
-          primary CTA; ChangeStatusCard below still allows reopening. */}
-      {isTerminal && !opp.win_loss_debriefed_at && (
-        <DebriefOnlyCard
-          opp={opp}
-          justClosed={justClosed === true}
-          className="lg:col-span-2"
-        />
-      )}
       {/* ChangeStatusCard is for moving a deal forward — irrelevant on
           terminal opps (the only allowed next is reopened, which lives
-          as its own dedicated button in the page header). Hiding it
-          here eliminates two confusing "Save status, debrief later" /
-          "Skip — debrief later" buttons stacked on the same page. */}
+          as its own dedicated button in the page header). The Debrief
+          tab carries everything terminal-specific. */}
       {!isTerminal && (
         <ChangeStatusCard
           opp={opp}
@@ -936,74 +940,6 @@ async function InfoTab({
           </p>
         )}
       </Card>
-      {/* Win/Loss Debrief card — only shows for terminal opps. Renders
-          the structured debrief (competitor, factor, lessons, internal
-          notes) if one exists, or the legacy loss_reason/loss_notes as
-          a fallback for opps closed before the debrief feature shipped. */}
-      {isTerminal && (
-        <Card title="Win/Loss Debrief">
-          {latestDebrief ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label={opp.status === "won" ? "Beat" : opp.status === "lost" ? "Lost to" : "Competitor"}
-                  value={latestDebrief.competitor_name ?? "—"}
-                />
-                <Field
-                  label={opp.status === "won" ? "What sealed it" : "Deciding factor"}
-                  value={latestDebrief.deciding_factor
-                    ? opportunityLossReasonLabel(latestDebrief.deciding_factor as OpportunityLossReason)
-                    : "—"}
-                />
-              </div>
-              {latestDebrief.lessons_learned && (
-                <div>
-                  <div className={LABEL_CLS}>
-                    {opp.status === "won" ? "What worked" : "What we'd do differently"}
-                  </div>
-                  <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
-                    {latestDebrief.lessons_learned}
-                  </p>
-                </div>
-              )}
-              {latestDebrief.internal_notes && (
-                <details>
-                  <summary className="cursor-pointer text-[11px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none">
-                    Internal notes
-                  </summary>
-                  <p className="mt-2 text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
-                    {latestDebrief.internal_notes}
-                  </p>
-                </details>
-              )}
-              <div className="text-[11px] text-ppp-charcoal-400 pt-2 border-t border-ppp-charcoal-100">
-                Debriefed {new Date(latestDebrief.debriefed_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
-                {debriefs.length > 1 && ` · ${debriefs.length} debriefs total (this is most recent)`}
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm">
-              <p className="text-amber-800 mb-2">
-                <strong>No structured debrief yet.</strong> Fill it out in the
-                status-change form below to feed the quarterly Win/Loss report.
-              </p>
-              {opp.loss_reason && (
-                <div className="mt-3 pt-3 border-t border-ppp-charcoal-100">
-                  <div className={LABEL_CLS}>Legacy loss reason</div>
-                  <p className="text-sm text-ppp-charcoal-700">
-                    {opportunityLossReasonLabel(opp.loss_reason)}
-                  </p>
-                  {opp.loss_notes && (
-                    <p className="mt-1 text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
-                      {opp.loss_notes}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
-      )}
       {opp.description && (
         <Card title="Description" className="lg:col-span-2">
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
@@ -1192,33 +1128,82 @@ function ChangeStatusCard({
   );
 }
 
-function DebriefOnlyCard({
+async function DebriefTab({
   opp,
   justClosed,
-  className,
+  debriefSaved,
+  statusOk,
+  errorMessage,
 }: {
   opp: CommercialOpportunity;
   justClosed: boolean;
-  className?: string;
+  debriefSaved: boolean;
+  statusOk: boolean;
+  errorMessage?: string;
 }) {
-  // Headline copy adapts to outcome — Won is celebratory, Lost is
-  // diagnostic. Both surface the same DebriefFields form (the field is
-  // outcome-aware internally via its initialStatus prop).
+  // Pull existing debriefs so we can render the read-only completed
+  // view if win_loss_debriefed_at is set. listDebriefsForOpp returns
+  // newest-first; we surface the most recent.
+  const debriefs = await (await import("@/lib/commercial/win-loss/debrief")).listDebriefsForOpp(opp.id);
+  const latestDebrief = debriefs[0] ?? null;
+  const isDebriefed = Boolean(opp.win_loss_debriefed_at) && latestDebrief !== null;
   const outcomeLabel =
     opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid";
-  const headline = justClosed
-    ? `Closed as ${opportunityStatusLabel(opp.status)} — add the ${outcomeLabel} debrief?`
-    : `Add the ${outcomeLabel} debrief`;
+
+  return (
+    <div className="space-y-4">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+      {(statusOk || justClosed) && !isDebriefed && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+          Deal saved as <strong>{opportunityStatusLabel(opp.status)}</strong>. Capture the {outcomeLabel.toLowerCase()} debrief below to feed the quarterly Win/Loss report — or skip and come back later.
+        </div>
+      )}
+      {debriefSaved && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+          Debrief saved. Thanks — this feeds the quarterly Win/Loss report.
+        </div>
+      )}
+
+      {isDebriefed && latestDebrief ? (
+        <DebriefReadOnlyView opp={opp} debrief={latestDebrief} debriefCount={debriefs.length} />
+      ) : (
+        <DebriefFormCard opp={opp} />
+      )}
+
+      {/* Legacy loss reason — only if it exists AND a structured debrief
+          doesn't supersede it. Keeps continuity for opps closed before
+          the debrief feature shipped. */}
+      {!isDebriefed && opp.loss_reason && (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <div className={LABEL_CLS}>Legacy loss reason (pre-debrief)</div>
+          <p className="text-sm text-ppp-charcoal-700 mt-1">
+            {opportunityLossReasonLabel(opp.loss_reason)}
+          </p>
+          {opp.loss_notes && (
+            <p className="mt-2 text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+              {opp.loss_notes}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
+  const outcomeLabel =
+    opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid";
   const subhead = opp.status === "won"
     ? "Capture what sealed it — competitor, deciding factor, and what worked. Feeds the quarterly Win/Loss report."
     : opp.status === "lost"
     ? "Capture who we lost to and why. Two minutes now pays back across the quarterly review."
     : "Capture why we passed. Helps Alex pattern-match the bids worth declining versus chasing.";
   return (
-    <section
-      id="debrief-now-form"
-      className={`bg-white border-2 border-amber-300 rounded-xl p-5 shadow-sm ${className ?? ""}`}
-    >
+    <section className="bg-white border-2 border-amber-300 rounded-xl p-5 shadow-sm">
       <div className="flex items-start gap-3 mb-4">
         <div className="shrink-0 w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center" aria-hidden>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-700">
@@ -1227,15 +1212,15 @@ function DebriefOnlyCard({
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-ppp-charcoal">{headline}</h2>
+          <h2 className="text-base font-bold text-ppp-charcoal">Add the {outcomeLabel} debrief</h2>
           <p className="text-[13px] text-ppp-charcoal-600 mt-1 leading-relaxed">{subhead}</p>
         </div>
       </div>
       <form action={submitDebriefOnlyAction} className="space-y-3">
         <input type="hidden" name="opp_id" value={opp.id} />
-        {/* DebriefFields normally hides itself until a terminal is picked
-            in the sibling <select name="to_status">. Here the status is
-            already terminal so we pass initialStatus to render it open. */}
+        {/* DebriefFields normally watches a sibling <select name="to_status">.
+            Here the status is already terminal — passing initialStatus
+            renders the form fully open without a sibling select. */}
         <DebriefFields initialStatus={opp.status} />
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2">
           <Link
@@ -1252,6 +1237,67 @@ function DebriefOnlyCard({
           </button>
         </div>
       </form>
+    </section>
+  );
+}
+
+function DebriefReadOnlyView({
+  opp,
+  debrief,
+  debriefCount,
+}: {
+  opp: CommercialOpportunity;
+  debrief: { competitor_name: string | null; deciding_factor: string | null; lessons_learned: string | null; internal_notes: string | null; debriefed_at: string };
+  debriefCount: number;
+}) {
+  return (
+    <section className="bg-white border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50">
+      <div className="flex items-start gap-3 mb-4">
+        <div className="shrink-0 w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center" aria-hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-700">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-bold text-ppp-charcoal">{opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid"} Debrief</h2>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1">
+            Recorded {new Date(debrief.debriefed_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+            {debriefCount > 1 && ` · ${debriefCount} debriefs on file (this is the most recent)`}
+          </p>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field
+          label={opp.status === "won" ? "Beat" : opp.status === "lost" ? "Lost to" : "Competitor"}
+          value={debrief.competitor_name ?? "—"}
+        />
+        <Field
+          label={opp.status === "won" ? "What sealed it" : "Deciding factor"}
+          value={debrief.deciding_factor
+            ? opportunityLossReasonLabel(debrief.deciding_factor as OpportunityLossReason)
+            : "—"}
+        />
+      </div>
+      {debrief.lessons_learned && (
+        <div className="mt-4">
+          <div className={LABEL_CLS}>
+            {opp.status === "won" ? "What worked" : "What we'd do differently"}
+          </div>
+          <p className="mt-1 text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+            {debrief.lessons_learned}
+          </p>
+        </div>
+      )}
+      {debrief.internal_notes && (
+        <details className="mt-4">
+          <summary className="cursor-pointer text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none">
+            Internal notes
+          </summary>
+          <p className="mt-2 text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+            {debrief.internal_notes}
+          </p>
+        </details>
+      )}
     </section>
   );
 }
