@@ -92,8 +92,12 @@ export default function DebriefFields(props: Props) {
     if (!node) return;
     const reduceMotion = typeof window !== "undefined"
       && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    // Defer a tick so the fade-up animation can mount first; otherwise
-    // scrollIntoView fires against a still-collapsing layout.
+    // Defer until AFTER the fade-up animation finishes — animate-fade-up in
+    // app/globals.css is 320ms, so a shorter delay would scroll into a
+    // still-translating element and the smooth-scroll would chase a moving
+    // target. 340ms gives the animation 20ms of headroom on slower devices.
+    // (Reduced-motion users skip the animation, but the delay is cheap enough
+    // to keep for them too — no perceived lag.)
     const t = setTimeout(() => {
       node.scrollIntoView({
         behavior: reduceMotion ? "auto" : "smooth",
@@ -107,7 +111,7 @@ export default function DebriefFields(props: Props) {
           : null;
         target?.focus({ preventScroll: true });
       }
-    }, 80);
+    }, 340);
     return () => clearTimeout(t);
   }, [terminal]);
 

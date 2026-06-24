@@ -58,6 +58,9 @@ function parseRange(sp: { from?: string; to?: string; preset?: string }): {
    *  remembers what was last submitted (or shows today as a sane default). */
   fromYmd: string;
   toYmd: string;
+  /** True iff the user supplied from/to but we couldn't accept it. The page
+   *  renders an inline hint so the fallback isn't invisible. */
+  rejected: boolean;
 } {
   // Custom range always wins if both dates are present + valid.
   if (sp.from && sp.to) {
@@ -66,16 +69,24 @@ function parseRange(sp: { from?: string; to?: string; preset?: string }): {
     if (!isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && fromDate <= toDate) {
       const fromYmd = fromDate.toISOString().slice(0, 10);
       const toYmd = toDate.toISOString().slice(0, 10);
+      // CRITICAL: the DB filter is `.lt(debriefed_at, toIso)` — exclusive
+      // end. The user-typed "to" is read as the last INCLUSIVE day (matches
+      // every other date picker convention), so we push toIso forward by
+      // 24h to capture all debriefs on that last day. Without this, picking
+      // "to=Jun 30" silently drops every Jun 30 debrief.
+      const toIso = new Date(toDate.getTime() + 86_400_000).toISOString();
       return {
         fromIso: fromDate.toISOString(),
-        toIso: toDate.toISOString(),
+        toIso,
         label: `${fromDate.toLocaleDateString()} – ${toDate.toLocaleDateString()}`,
         activeKey: "custom",
         fromYmd,
         toYmd,
+        rejected: false,
       };
     }
   }
+  const supplied = !!(sp.from || sp.to);
   // Otherwise pick a preset (default: this quarter).
   const preset = (sp.preset as Preset) ?? "this_quarter";
   let r: ReturnType<typeof currentQuarterRange>;
@@ -95,6 +106,7 @@ function parseRange(sp: { from?: string; to?: string; preset?: string }): {
     activeKey: key,
     fromYmd: r.fromIso.slice(0, 10),
     toYmd: new Date(new Date(r.toIso).getTime() - 86_400_000).toISOString().slice(0, 10),
+    rejected: supplied,
   };
 }
 
@@ -190,6 +202,12 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
               </button>
             </form>
           </div>
+          {range.rejected && (
+            <p className="text-[11px] text-rose-700">
+              Custom range was invalid (missing date, unparseable, or from is
+              after to) — showing <span className="font-semibold">{range.label}</span> instead.
+            </p>
+          )}
         </div>
       </header>
 

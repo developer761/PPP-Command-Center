@@ -409,6 +409,13 @@ async function addTeamAction(formData: FormData) {
  * they care about and wanting onto it without picking themselves from the
  * staff dropdown. Validates the picked role only; the user_id is forced to
  * the authenticated session so this can't be used to assign someone else.
+ *
+ * Defense-in-depth: we also re-check that the viewer is in the staff list
+ * (i.e. has Commercial CC access). addOpportunityAssignment also enforces
+ * this, but surfacing a clear "you don't have access" error at the action
+ * layer is better than the generic downstream error. Also: skip the bell
+ * + email side-effects when the assignee == assigner (you don't need to
+ * be told you assigned yourself).
  */
 async function quickAssignMeAction(formData: FormData) {
   "use server";
@@ -421,15 +428,30 @@ async function quickAssignMeAction(formData: FormData) {
   if (!(OPPORTUNITY_ASSIGNMENT_ROLES as readonly string[]).includes(role)) {
     redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a role first.")}`);
   }
+  // Defense-in-depth — confirm the viewer is actually staff before we even
+  // reach the lib. Cheaper failure mode + clearer error than the downstream
+  // has_new_platform_access check at lib/commercial/opportunities/assignments.ts.
+  const staff = await listAssignableStaff();
+  if (!staff.some((s) => s.user_id === user.id)) {
+    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("You don't have Commercial CC access.")}`);
+  }
   const result = await addOpportunityAssignment({
     opportunity_id,
     user_id: user.id,
     role,
     is_primary: false,
     notes: null,
-    assigned_by_user_id: user.id,
+    // assigned_by null on the self-assign path so the audit log reads
+    // "self-assigned" cleanly instead of "X assigned by X".
+    assigned_by_user_id: null,
   });
   if (!result.ok) {
+    // Swallow the "already on this opp" duplicate-click error on the
+    // self-assign path — the user is on the team in that role either way,
+    // and a rose error toast on a successful action is confusing.
+    if (/already on this opp/i.test(result.error)) {
+      redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
+    }
     redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent(result.error)}`);
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
