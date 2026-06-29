@@ -58,9 +58,11 @@ import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { fmtMoneyK, fmtScheduleDate } from "@/lib/format";
 import {
   deriveOpenMaterialsWorkOrders,
+  deserializeOpenJobs,
   getSupplierName,
   type OpenWorkOrderForMaterials,
   type ResolvedWoli,
+  type SerializedOpenWorkOrderForMaterials,
 } from "@/lib/salesforce/materials";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 import type { SnapshotAccount, SnapshotPaintColor } from "@/lib/salesforce/queries";
@@ -100,6 +102,14 @@ type Props = {
   /** Tuned coverage config (Settings → Coverage) so the WO-card paint estimate
    *  matches the order modal/email. Defaults to the code constants. */
   coverageConfig?: CoverageConfig;
+  /** Already-derived open-WO list serialized from the server. Same data
+   *  `deriveOpenMaterialsWorkOrders(snapshot)` would produce; passed as a
+   *  prop so the client doesn't re-derive on hydration (saves 150-400ms TTI
+   *  on a 300+ WO scope). Map field is shipped as Array<[key, count]> since
+   *  Maps don't survive RSC serialization. See lib/salesforce/materials.ts
+   *  `serializeOpenJobs` / `deserializeOpenJobs`. Optional for back-compat;
+   *  falls back to the old client-side derive when omitted. */
+  openJobsSerialized?: SerializedOpenWorkOrderForMaterials[];
 };
 
 // Virtuoso list/item components — defined at module scope (not inside
@@ -133,7 +143,7 @@ const VIRTUOSO_COMPONENTS = {
   Item: VirtuosoLI,
 } as unknown as Components<OpenWorkOrderForMaterials>;
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, coverageConfig = COVERAGE_CONFIG }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized }: Props) {
   const { snapshot, viewer } = bundle;
 
   // Index form statuses by WO id for constant-time lookup in the render loop.
@@ -196,9 +206,20 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   }, [formStatuses]);
   const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
 
+  // Speed pass 2026-06-29 — when the server passes `openJobsSerialized`
+  // (the already-derived open-WO list with Map→Array conversion), skip the
+  // duplicate client-side derive walk. With 300+ WOs and ~700+ WOLIs that
+  // derive blocks the main thread for 150-400ms post-hydration. Falls back
+  // to the old client derive when the prop is omitted (back-compat for any
+  // future caller that hasn't pre-computed). The WeakMap memoization
+  // inside deriveOpenMaterialsWorkOrders is server-only and can't cross
+  // the RSC boundary, hence the prop pre-pass.
   const openJobs = useMemo<OpenWorkOrderForMaterials[]>(
-    () => (snapshot ? deriveOpenMaterialsWorkOrders(snapshot) : []),
-    [snapshot]
+    () => {
+      if (openJobsSerialized) return deserializeOpenJobs(openJobsSerialized);
+      return snapshot ? deriveOpenMaterialsWorkOrders(snapshot) : [];
+    },
+    [openJobsSerialized, snapshot]
   );
 
   // Per-WOLI sqft overrides — Karan 2026-06-13. When SF doesn't have

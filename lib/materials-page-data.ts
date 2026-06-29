@@ -140,6 +140,11 @@ export async function getMaterialsPageAuxData(
       .from("customer_form_tokens")
       .select("token, work_order_id, work_order_number, sent_at, opened_at, submitted_at, expires_at, created_at, kind")
       .in("work_order_id", workOrderIds)
+      // Push the preview-skip filter down to the DB instead of doing it
+      // in the JS loop. Speed pass 2026-06-29 — fewer rows over the wire
+      // + skips the per-row dance below. Loop-level guard at row.kind
+      // stays as defensive belt-and-suspenders.
+      .neq("kind", "preview")
       .order("created_at", { ascending: false }),
     sb
       .from("supplier_orders")

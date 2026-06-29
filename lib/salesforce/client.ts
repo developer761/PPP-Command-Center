@@ -1,7 +1,7 @@
 import "server-only";
 
 import jsforce, { Connection } from "jsforce";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Salesforce OAuth + REST client utilities.
@@ -42,16 +42,27 @@ export function isSalesforceConfigured(): boolean {
   );
 }
 
-/** Server-only Supabase client w/ service role. Used to read/write system_credentials. */
+/**
+ * Server-only Supabase client w/ service role. Used to read/write system_credentials.
+ *
+ * Module-singleton — speed pass 2026-06-29. getStoredSalesforceCredentials
+ * is called on every page load that touches SF (e.g. Materials, Dashboard),
+ * and the old "fresh client per call" cost ~30-80ms of TLS+HTTP/2 setup per
+ * request. Same pattern already used in lib/salesforce/queries.ts +
+ * coverage-config.ts + materials-page-data.ts.
+ */
+let _supabaseServiceClient: SupabaseClient | null = null;
 function getSupabaseServiceClient() {
+  if (_supabaseServiceClient) return _supabaseServiceClient;
   assertSupabaseEnv();
-  return createSupabaseClient(
+  _supabaseServiceClient = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SECRET_KEY!,
     {
       auth: { persistSession: false, autoRefreshToken: false },
     }
   );
+  return _supabaseServiceClient;
 }
 
 /** Build the Salesforce authorization URL the admin must visit to start the OAuth dance.

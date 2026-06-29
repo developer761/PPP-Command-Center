@@ -1,7 +1,7 @@
 import "server-only";
 
 import { gzipSync, gunzipSync } from "zlib";
-import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseAdminClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { isHiddenWoliStatus } from "@/lib/customer-form/woli-status";
 import {
@@ -202,12 +202,19 @@ async function invalidateSharedSnapshot(key: string): Promise<void> {
 
 const SHARED_SNAPSHOT_MAX_GZ_BYTES = 45 * 1024 * 1024; // refuse to push an absurd blob into Postgres
 
+// Module-singleton — speed pass 2026-06-29. Previously called twice per
+// materials request (getCurrentGeneration + readSharedSnapshot), each
+// doing fresh TLS + HTTP/2 setup. Same pattern as coverage-config.ts,
+// sf-cache.ts, materials-page-data.ts. Saves ~60-150ms cold, ~30-50ms warm.
+let _snapshotCacheClient: SupabaseClient | null = null;
 function snapshotCacheClient() {
-  return createSupabaseAdminClient(
+  if (_snapshotCacheClient) return _snapshotCacheClient;
+  _snapshotCacheClient = createSupabaseAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SECRET_KEY!,
     { auth: { persistSession: false, autoRefreshToken: false } }
   );
+  return _snapshotCacheClient;
 }
 
 async function readSharedSnapshot(key: string): Promise<SalesforceSnapshot | null> {

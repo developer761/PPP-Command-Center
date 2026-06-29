@@ -35,6 +35,29 @@ export type OpenWorkOrderForMaterials = {
 };
 
 /**
+ * Serializable variant — Map replaced with Array<[key, count]>. Used to ship
+ * the already-derived open-WO list from the server (RSC) to the client
+ * component as a prop, so the client doesn't re-derive from scratch on
+ * hydration. The Map field is the only piece that doesn't survive RSC
+ * serialization. Helpers below convert between the two shapes.
+ *
+ * Speed pass 2026-06-29 — see app/dashboard/materials/page.tsx +
+ * components/materials-view.tsx. Compute-once-on-server avoids a 150-400ms
+ * duplicate walk on the main thread blocking interactivity.
+ */
+export type SerializedOpenWorkOrderForMaterials = Omit<OpenWorkOrderForMaterials, "bySupplier"> & {
+  bySupplier: Array<[string | "unknown", number]>;
+};
+
+export function serializeOpenJobs(jobs: OpenWorkOrderForMaterials[]): SerializedOpenWorkOrderForMaterials[] {
+  return jobs.map((j) => ({ ...j, bySupplier: Array.from(j.bySupplier.entries()) }));
+}
+
+export function deserializeOpenJobs(jobs: SerializedOpenWorkOrderForMaterials[]): OpenWorkOrderForMaterials[] {
+  return jobs.map((j) => ({ ...j, bySupplier: new Map(j.bySupplier) }));
+}
+
+/**
  * PPP statuses that indicate a WO is "done" — no materials needed. Anything
  * NOT in this set is treated as open / in-flight. Substring matching is
  * deliberate so subtle variants ("Paid in Full (Disputed)", "Complete - Hold")
