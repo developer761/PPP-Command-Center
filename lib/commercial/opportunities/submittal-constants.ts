@@ -198,7 +198,11 @@ export function submittalStatusTone(s: SubmittalStatus | string):
     case "revise_and_resubmit": return "amber";
     case "rejected": return "rose";
     case "closed": return "charcoal";
-    case "voided": return "charcoal";
+    // Voided uses ROSE (not charcoal) — sent-in-error needs to read
+    // visually distinct from "successfully closed". Lines up with the
+    // PDF VOIDED watermark + the void-action button tone. Audit UI H1
+    // (2026-06-30).
+    case "voided": return "rose";
     default: return "neutral";
   }
 }

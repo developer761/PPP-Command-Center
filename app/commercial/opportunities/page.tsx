@@ -1329,6 +1329,43 @@ function OpportunityRow({
           </svg>
         </div>
       </Link>
+      {/* Tab-jump chips — sibling of the wrapping Link so clicking a
+          badge navigates directly to its tab instead of dumping the
+          user on Overview (audit interaction #31/#32, 2026-06-30).
+          Only renders for opps that have at least one of the two
+          counts; otherwise the row stays clean. */}
+      {(finishCount > 0 || (submittalStats && submittalStats.total > 0)) && (
+        <div className="px-4 pb-2 -mt-1 flex flex-wrap items-center gap-2">
+          {finishCount > 0 && (
+            <Link
+              href={`/commercial/opportunities/${opportunity.id}?tab=finishes`}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 transition-colors min-h-[28px] touch-manipulation"
+            >
+              <span aria-hidden>🎨</span>
+              <span>{finishCount} {finishCount === 1 ? "finish" : "finishes"} →</span>
+            </Link>
+          )}
+          {submittalStats && submittalStats.total > 0 && (
+            <Link
+              href={`/commercial/opportunities/${opportunity.id}?tab=submittals`}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border transition-colors min-h-[28px] touch-manipulation ${
+                submittalStats.awaiting_response > 0
+                  ? "text-sky-900 bg-sky-50 border-sky-100 hover:bg-sky-100"
+                  : "text-ppp-charcoal-700 bg-ppp-charcoal-50 border-ppp-charcoal-100 hover:bg-ppp-charcoal-100/70"
+              }`}
+            >
+              <span aria-hidden>📋</span>
+              <span>
+                {submittalStats.total} submittal{submittalStats.total === 1 ? "" : "s"}
+                {submittalStats.awaiting_response > 0 && (
+                  <span className="ml-1 font-semibold">· {submittalStats.awaiting_response} awaiting</span>
+                )}
+                {" →"}
+              </span>
+            </Link>
+          )}
+        </div>
+      )}
       {/* Quick status-flip — lives OUTSIDE the row Link so the select
           + submit don't trigger navigation. Native <select> renders
           the iOS picker on phones (familiar) and a standard dropdown

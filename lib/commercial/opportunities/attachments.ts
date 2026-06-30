@@ -3,6 +3,8 @@ import "server-only";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { reportWarn } from "@/lib/observability";
+import { verifyOppEditable, loadOppContextOrNull } from "./guards";
 import {
   ALLOWED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
@@ -385,13 +387,7 @@ export async function listAttachmentsBySubmittal(
   submittal_id: string
 ): Promise<OpportunityAttachment[]> {
   const sb = commercialDb();
-  // Reject if parent opp soft-deleted (2026-06-24 fix shape).
-  const { data: oppRow } = await sb
-    .from("commercial_opportunities")
-    .select("deleted_at")
-    .eq("id", opportunity_id)
-    .maybeSingle();
-  if (!oppRow || (oppRow as { deleted_at: string | null }).deleted_at) return [];
+  if (!(await loadOppContextOrNull(opportunity_id))) return [];
 
   const { data, error } = await sb
     .from("commercial_opportunity_attachments")
@@ -401,7 +397,12 @@ export async function listAttachmentsBySubmittal(
     .eq("archived", false)
     .order("uploaded_at", { ascending: false });
   if (error) {
-    console.warn("[commercial/opp-attachments] listBySubmittal failed:", error.message);
+    reportWarn({
+      key: "submittal_attachments_list_failed",
+      message: "Submittal-attachment list query failed",
+      platform: "commercial_cc",
+      context: { opp: opportunity_id.slice(0, 8), sub: submittal_id.slice(0, 8), err_code: (error as { code?: string }).code ?? "unknown" },
+    });
     return [];
   }
   return (data ?? []) as OpportunityAttachment[];
@@ -416,12 +417,7 @@ export async function listUnlinkedOpportunityAttachments(
   opportunity_id: string
 ): Promise<OpportunityAttachment[]> {
   const sb = commercialDb();
-  const { data: oppRow } = await sb
-    .from("commercial_opportunities")
-    .select("deleted_at")
-    .eq("id", opportunity_id)
-    .maybeSingle();
-  if (!oppRow || (oppRow as { deleted_at: string | null }).deleted_at) return [];
+  if (!(await loadOppContextOrNull(opportunity_id))) return [];
 
   const { data, error } = await sb
     .from("commercial_opportunity_attachments")
@@ -431,7 +427,12 @@ export async function listUnlinkedOpportunityAttachments(
     .eq("archived", false)
     .order("uploaded_at", { ascending: false });
   if (error) {
-    console.warn("[commercial/opp-attachments] listUnlinked failed:", error.message);
+    reportWarn({
+      key: "unlinked_attachments_list_failed",
+      message: "Unlinked-attachment list query failed",
+      platform: "commercial_cc",
+      context: { opp: opportunity_id.slice(0, 8), err_code: (error as { code?: string }).code ?? "unknown" },
+    });
     return [];
   }
   return (data ?? []) as OpportunityAttachment[];
@@ -450,6 +451,9 @@ export async function linkAttachmentToSubmittal(
   acting_user_id: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
+
+  const oppGuard = await verifyOppEditable(opportunity_id);
+  if (!oppGuard.ok) return { ok: false, error: oppGuard.error };
 
   // Verify the submittal is on this opp AND not voided.
   const { data: subRow } = await sb
@@ -478,14 +482,21 @@ export async function linkAttachmentToSubmittal(
   // Idempotent: already linked to this exact submittal → no-op success.
   if (beforeRow.submittal_id === submittal_id) return { ok: true };
 
+  // Race-guard: re-assert archived=false in WHERE so a concurrent archive
+  // can't slip through and link a now-archived attachment (audit
+  // data-integrity #3, 2026-06-30).
   const { data: after, error: updErr } = await sb
     .from("commercial_opportunity_attachments")
     .update({ submittal_id })
     .eq("id", attachment_id)
     .eq("opportunity_id", opportunity_id)
+    .eq("archived", false)
     .select("*")
-    .single();
+    .maybeSingle();
   if (updErr) return { ok: false, error: updErr.message };
+  if (!after) {
+    return { ok: false, error: "Attachment was archived in another tab. Reload to see the latest." };
+  }
 
   await logUpdate(
     "commercial_opportunity_attachments",
@@ -508,6 +519,9 @@ export async function unlinkAttachmentFromSubmittal(
   acting_user_id: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
+
+  const oppGuard = await verifyOppEditable(opportunity_id);
+  if (!oppGuard.ok) return { ok: false, error: oppGuard.error };
 
   const { data: before } = await sb
     .from("commercial_opportunity_attachments")

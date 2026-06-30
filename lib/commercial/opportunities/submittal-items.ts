@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logDelete, logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { verifyOppEditable } from "./guards";
 
 /**
  * Submittal items — the rows in the cover's "Copies / Date / # / Description"
@@ -36,9 +37,18 @@ export type OpportunitySubmittalItem = {
   updated_at: string;
 };
 
-// Internal helper: validate that the submittal is on this opp AND in draft.
-// All item mutations route through this. Returns the submittal status on
-// success so callers can include it in error messages.
+// Internal helper: validate the parent opp+account aren't soft-deleted,
+// then validate the submittal is on this opp AND in draft.
+//
+// All item mutations route through this. Returns submittal status so
+// callers can include it in error messages.
+//
+// Race-window note: the draft check happens here but the actual write
+// happens in the caller, so a concurrent Send between the two could let
+// an item land on a now-submitted package. Each mutation re-asserts
+// `status='draft'` via a separate guard query at the WHERE-clause level
+// after the write — see addSubmittalItem / editSubmittalItem /
+// deleteSubmittalItem (audit data-integrity #2, 2026-06-30).
 async function loadSubmittalForItemMutation(
   opportunity_id: string,
   submittal_id: string
@@ -46,6 +56,10 @@ async function loadSubmittalForItemMutation(
   | { ok: true; submittal: { id: string; opportunity_id: string; status: string } }
   | { ok: false; error: string }
 > {
+  // Chain-of-trust on parent opp + account (audit follow-up).
+  const oppGuard = await verifyOppEditable(opportunity_id);
+  if (!oppGuard.ok) return { ok: false, error: oppGuard.error };
+
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_opp_submittals")
@@ -62,6 +76,22 @@ async function loadSubmittalForItemMutation(
     };
   }
   return { ok: true, submittal: row };
+}
+
+// Race-guard: confirm the parent submittal is STILL in draft. Called
+// after item writes to detect the window where (1) we read status=draft,
+// (2) another tab sent the submittal, (3) we wrote anyway. If the
+// confirm returns false, the caller treats the write as void.
+async function confirmSubmittalStillDraft(
+  submittal_id: string
+): Promise<boolean> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_opp_submittals")
+    .select("status")
+    .eq("id", submittal_id)
+    .maybeSingle();
+  return (data as { status: string } | null)?.status === "draft";
 }
 
 // ─── Add ─────────────────────────────────────────────────────────────
@@ -123,6 +153,18 @@ export async function addSubmittalItem(
   if (insertErr) return { ok: false, error: insertErr.message };
 
   const row = inserted as OpportunitySubmittalItem;
+
+  // Race-guard: if the submittal was sent in another tab between our
+  // status check and the insert, roll back the insert. Otherwise we'd
+  // dirty a sent package (audit data-integrity #2).
+  if (!(await confirmSubmittalStillDraft(input.submittal_id))) {
+    await sb.from("commercial_opp_submittal_items").delete().eq("id", row.id);
+    return {
+      ok: false,
+      error: "Submittal was sent in another tab. Reload to see the latest.",
+    };
+  }
+
   await logInsert(
     "commercial_opp_submittal_items",
     row.id,
@@ -155,7 +197,7 @@ export async function editSubmittalItem(
   const guard = await loadSubmittalForItemMutation(input.opportunity_id, input.submittal_id);
   if (!guard.ok) return guard;
 
-  // Triple-scope: id + submittal_id (parent already scoped to opp via guard).
+  // Double-scope: id + submittal_id (parent already scoped to opp via guard).
   const { data: before } = await sb
     .from("commercial_opp_submittal_items")
     .select("*")
@@ -194,6 +236,26 @@ export async function editSubmittalItem(
     .single();
   if (updErr) return { ok: false, error: updErr.message };
 
+  // Race-guard: if a concurrent Send slipped in, the edit just dirtied
+  // a sent package. Roll the row back to its pre-edit state.
+  if (!(await confirmSubmittalStillDraft(input.submittal_id))) {
+    await sb
+      .from("commercial_opp_submittal_items")
+      .update({
+        description: (before as { description: string }).description,
+        copies: (before as { copies: number }).copies,
+        item_date: (before as { item_date: string | null }).item_date,
+        item_number: (before as { item_number: string | null }).item_number,
+        finish_code: (before as { finish_code: string | null }).finish_code,
+        position: (before as { position: number }).position,
+      })
+      .eq("id", input.item_id);
+    return {
+      ok: false,
+      error: "Submittal was sent in another tab. Reload to see the latest.",
+    };
+  }
+
   await logUpdate(
     "commercial_opp_submittal_items",
     input.item_id,
@@ -231,6 +293,33 @@ export async function deleteSubmittalItem(
     .eq("id", item_id)
     .eq("submittal_id", submittal_id);
   if (error) return { ok: false, error: error.message };
+
+  // Race-guard: if a concurrent Send slipped in, the delete just removed
+  // a line from a sent package. Restore the row.
+  if (!(await confirmSubmittalStillDraft(submittal_id))) {
+    const beforeRow = before as {
+      position: number;
+      copies: number;
+      item_date: string | null;
+      item_number: string | null;
+      description: string;
+      finish_code: string | null;
+    };
+    await sb.from("commercial_opp_submittal_items").insert({
+      id: item_id,
+      submittal_id,
+      position: beforeRow.position,
+      copies: beforeRow.copies,
+      item_date: beforeRow.item_date,
+      item_number: beforeRow.item_number,
+      description: beforeRow.description,
+      finish_code: beforeRow.finish_code,
+    });
+    return {
+      ok: false,
+      error: "Submittal was sent in another tab. Reload to see the latest.",
+    };
+  }
 
   await logDelete(
     "commercial_opp_submittal_items",

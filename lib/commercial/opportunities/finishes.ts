@@ -2,6 +2,8 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logDelete, logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { reportWarn } from "@/lib/observability";
+import { verifyOppEditable, loadOppContextOrNull } from "./guards";
 
 /**
  * Finish Schedule per opportunity. The "WD-1 = Penofin Verde Olive" codes
@@ -55,23 +57,7 @@ export async function listOpportunityFinishes(
 ): Promise<OpportunityFinish[]> {
   const sb = commercialDb();
 
-  // Chain-of-trust: opp not deleted + account not deleted. Matches the
-  // listOpportunityAttachments fix shipped 2026-06-24 (attachments.ts:69-79).
-  const { data: opp } = await sb
-    .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
-    .eq("id", opportunity_id)
-    .maybeSingle();
-  if (!opp) return [];
-  const oppRow = opp as { id: string; account_id: string; deleted_at: string | null };
-  if (oppRow.deleted_at) return [];
-
-  const { data: acct } = await sb
-    .from("commercial_accounts")
-    .select("id, deleted_at")
-    .eq("id", oppRow.account_id)
-    .maybeSingle();
-  if (!acct || (acct as { deleted_at: string | null }).deleted_at) return [];
+  if (!(await loadOppContextOrNull(opportunity_id))) return [];
 
   const { data, error } = await sb
     .from("commercial_opp_finishes")
@@ -79,7 +65,12 @@ export async function listOpportunityFinishes(
     .eq("opportunity_id", opportunity_id)
     .order("position", { ascending: true });
   if (error) {
-    console.warn("[commercial/opportunities/finishes] list failed:", error.message);
+    reportWarn({
+      key: "finish_list_failed",
+      message: "Finish list query failed",
+      platform: "commercial_cc",
+      context: { opp: opportunity_id.slice(0, 8), err_code: (error as { code?: string }).code ?? "unknown" },
+    });
     return [];
   }
   return (data ?? []) as OpportunityFinish[];
@@ -103,7 +94,12 @@ export async function listFinishCountByOpp(
     .select("opportunity_id")
     .in("opportunity_id", opportunity_ids);
   if (error) {
-    console.warn("[commercial/opportunities/finishes] count failed:", error.message);
+    reportWarn({
+      key: "finish_count_failed",
+      message: "Finish bulk-count query failed",
+      platform: "commercial_cc",
+      context: { opp_ids_count: opportunity_ids.length, err_code: (error as { code?: string }).code ?? "unknown" },
+    });
     return new Map();
   }
   const out = new Map<string, number>();
@@ -137,25 +133,8 @@ export async function addOpportunityFinish(
   const code = input.code?.trim();
   if (!code) return { ok: false, error: "Finish code is required." };
 
-  // Chain-of-trust: opp + account not soft-deleted (security pattern from
-  // 2026-06-24 cross-account scoping fix — every mutation must verify).
-  const { data: opp } = await sb
-    .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
-    .eq("id", input.opportunity_id)
-    .maybeSingle();
-  if (!opp) return { ok: false, error: "Opportunity not found." };
-  const oppRow = opp as { id: string; account_id: string; deleted_at: string | null };
-  if (oppRow.deleted_at) return { ok: false, error: "Opportunity has been deleted." };
-
-  const { data: acct } = await sb
-    .from("commercial_accounts")
-    .select("id, deleted_at")
-    .eq("id", oppRow.account_id)
-    .maybeSingle();
-  if (!acct || (acct as { deleted_at: string | null }).deleted_at) {
-    return { ok: false, error: "Account has been deleted." };
-  }
+  const guard = await verifyOppEditable(input.opportunity_id);
+  if (!guard.ok) return { ok: false, error: guard.error };
 
   // Compute next position if not supplied — gap by 1000 for drag-reorder
   // (audit S4). MAX + 1000 keeps the list tail-sorted by insertion order.
@@ -229,9 +208,12 @@ export async function editOpportunityFinish(
 ): Promise<{ ok: true; finish: OpportunityFinish } | { ok: false; error: string }> {
   const sb = commercialDb();
 
-  // Chain-of-trust + double-scope (pre-audit S5 + yesterday's cross-account fix):
-  // lookup by id AND opportunity_id so a hand-crafted POST with a foreign
-  // finish_id can't mutate a row on another opp.
+  const guard = await verifyOppEditable(input.opportunity_id);
+  if (!guard.ok) return { ok: false, error: guard.error };
+
+  // Double-scope: lookup by id AND opportunity_id so a hand-crafted POST
+  // with a foreign finish_id can't mutate a row on another opp (audit
+  // S5 + 2026-06-24 cross-account fix shape).
   const { data: before } = await sb
     .from("commercial_opp_finishes")
     .select("*")
@@ -293,6 +275,9 @@ export async function deleteOpportunityFinish(
   deleted_by_user_id?: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
+
+  const guard = await verifyOppEditable(opportunity_id);
+  if (!guard.ok) return { ok: false, error: guard.error };
 
   // Double-scope lookup (same pattern as edit).
   const { data: before } = await sb

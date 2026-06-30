@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { PPP_BRAND } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -85,9 +86,10 @@ export async function GET(
       submittal,
       items,
       opp,
-      // PPP entity name — hardcoded for now. Future: tenant-configurable
-      // via a setting on commercial_settings or profile.
-      fromCompany: "Precision Painting Plus",
+      // PPP entity name — sourced from lib/brand.ts (single source of
+      // truth, audit backend M2). Strip the ® for PDF rendering so it
+      // doesn't show as a fallback glyph in Helvetica.
+      fromCompany: PPP_BRAND.name.replace("®", "").trim(),
     });
   } catch (err) {
     console.error("[submittal-pdf] render failed:", err);

@@ -723,14 +723,17 @@ export default async function SubmittalDetailPage({
             />
           </div>
 
-          {/* WE ARE SENDING YOU — 9 checkboxes in a wrap grid */}
+          {/* WE ARE SENDING YOU — 9 checkboxes in a wrap grid.
+              Single-col on the smallest screens (≤375px) so each label
+              has a full 44px+ tap target with breathing room, 2-col on
+              ≥400px, 3-col on tablet+ (audit UI H3, 2026-06-30). */}
           <div>
             <label className={LABEL_CLS}>We are sending you</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-1">
+            <div className="grid grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-3 gap-2 mt-1">
               {INCLUDED_KINDS.map((kind) => (
                 <label
                   key={kind}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded border min-h-[44px] touch-manipulation ${
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded border min-h-[44px] touch-manipulation ${
                     isDraft
                       ? "border-ppp-charcoal-200 hover:bg-ppp-charcoal-50 cursor-pointer"
                       : "border-ppp-charcoal-100 bg-ppp-charcoal-50/50 cursor-not-allowed"
@@ -741,9 +744,9 @@ export default async function SubmittalDetailPage({
                     name={`included_${kind}`}
                     defaultChecked={includedSet.has(kind)}
                     disabled={!isDraft}
-                    className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40"
+                    className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40 shrink-0"
                   />
-                  <span className="text-[12px] text-ppp-charcoal-700">
+                  <span className="text-[13px] text-ppp-charcoal-700 leading-tight">
                     {includedKindLabel(kind)}
                   </span>
                 </label>
@@ -827,8 +830,12 @@ export default async function SubmittalDetailPage({
               />
             </div>
 
-            {/* Copies / Date / # / Finish — 2-col mobile, 4-col desktop */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Copies / Date / # / Finish — single-col on small mobile so
+                the native date picker has full width (it overflows in a
+                2-col layout on iOS at 375px). 2-col on ≥400px, 4-col on
+                tablet+ (audit UI H5, 2026-06-30). Children get min-w-0
+                so the date picker can shrink inside its grid track. */}
+            <div className="grid grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-4 gap-3 [&>div]:min-w-0">
               <div>
                 <label className={LABEL_CLS}>Copies</label>
                 <input
@@ -941,7 +948,7 @@ export default async function SubmittalDetailPage({
                           className={INPUT_CLS}
                         />
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-4 gap-3 [&>div]:min-w-0">
                         <div>
                           <label className={LABEL_CLS}>Copies</label>
                           <input
@@ -1256,10 +1263,36 @@ function StatusActionsPanel({
   hasResponse: boolean;
 }) {
   const allowed = ALLOWED_SUBMITTAL_TRANSITIONS[status] ?? [];
-  // No actions available on terminal states (closed/voided). Bail early so
-  // we don't render a stub panel with nothing in it.
+  // Terminal states (closed/voided): no transitions left, but the user
+  // still benefits from a card that tells them WHY this is the end of
+  // the line + what to do next (audit UI H2, 2026-06-30). Previously
+  // we returned null here, leaving Alex on a page with no "next" cue.
   if (allowed.length === 0) {
-    return null;
+    const isVoid = status === "voided";
+    return (
+      <section className={`border rounded-xl p-5 ${
+        isVoid
+          ? "bg-rose-50/50 border-rose-100"
+          : "bg-ppp-charcoal-50/50 border-ppp-charcoal-100"
+      }`}>
+        <h2 className={`text-sm font-bold ${isVoid ? "text-rose-900" : "text-ppp-charcoal"}`}>
+          {isVoid ? "Voided — sent in error" : "Closed — package complete"}
+        </h2>
+        <p className={`text-[12px] mt-1 ${isVoid ? "text-rose-800" : "text-ppp-charcoal-600"}`}>
+          {isVoid
+            ? "This submittal won't appear in the opp's badge count. The PDF is preserved with a VOIDED watermark for the audit trail. Start a new submittal from the opportunity if you need to send a replacement."
+            : "Status log + items are locked. To send another package on this opp, start a new submittal from the Submittals tab."}
+        </p>
+        <div className="mt-3">
+          <Link
+            href={`/commercial/opportunities/${opportunityId}?tab=submittals`}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+          >
+            ← Back to submittals
+          </Link>
+        </div>
+      </section>
+    );
   }
 
   // Hidden inputs every form needs.

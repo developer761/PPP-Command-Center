@@ -8,15 +8,16 @@ import {
   StyleSheet,
   renderToBuffer,
   Font,
-  type DocumentProps,
 } from "@react-pdf/renderer";
 import * as React from "react";
 
 import type { OpportunitySubmittal } from "./submittals";
 import {
   includedKindLabel,
+  INCLUDED_KINDS,
   submittalStatusLabel,
   transmittedAsLabel,
+  TRANSMITTED_AS_OPTIONS,
 } from "./submittal-constants";
 
 /**
@@ -54,12 +55,15 @@ const colors = {
   rose: "#B91C1C",
   amber: "#92400E",
   bgSubtle: "#F9FAFB",
-  bgInfo: "#EFF6FF",
 };
 
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
+    paddingTop: 40,
+    paddingHorizontal: 40,
+    // Extra bottom padding so the absolutely-positioned footer doesn't
+    // overlap content on dense multi-page submittals (audit PDF #C4).
+    paddingBottom: 60,
     fontSize: 10,
     fontFamily: "Helvetica",
     color: colors.charcoal,
@@ -259,6 +263,22 @@ const styles = StyleSheet.create({
   statusPillAmber: { backgroundColor: "#FEF3C7", color: colors.amber },
   statusPillRose: { backgroundColor: "#FEE2E2", color: colors.rose },
   statusPillNeutral: { backgroundColor: "#F3F4F6", color: colors.charcoal },
+  // VOIDED watermark — diagonal text overlay on every page so a printed
+  // copy of a voided submittal can't be mistaken for the real package
+  // (audit PDF #S1, 2026-06-30).
+  voidWatermark: {
+    position: "absolute",
+    top: "40%",
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontSize: 90,
+    fontFamily: "Helvetica-Bold",
+    color: "#FEE2E2",
+    opacity: 0.6,
+    transform: "rotate(-25deg)",
+    letterSpacing: 8,
+  },
 });
 
 // ─── Component ───────────────────────────────────────────────────────
@@ -280,49 +300,39 @@ type SubmittalPdfInput = {
   fromCompany: string; // PPP entity name — hardcoded for now, could be tenant-configurable
 };
 
-const TRANSMITTED_AS_ALL = [
-  { key: "for_approval", label: "For approval" },
-  { key: "for_your_use", label: "For your use" },
-  { key: "as_requested", label: "As requested" },
-  { key: "for_review", label: "For review and comment" },
-  { key: "for_bids", label: "For bids due" },
-  { key: "prints_returned", label: "Prints returned after loan to us" },
-] as const;
+// Source-of-truth arrays come from submittal-constants.ts. Don't
+// duplicate them here — adding a new kind there would silently drift
+// otherwise (audit backend H1, 2026-06-30).
 
-const INCLUDED_KINDS_ALL = [
-  "shop_drawings",
-  "prints",
-  "plans",
-  "samples",
-  "specifications",
-  "submittals",
-  "copy_of_letter",
-  "change_order",
-  "contracts",
-] as const;
+function safeDateLabel(value: string | null | undefined, fmt: Intl.DateTimeFormatOptions): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { timeZone: "America/New_York", ...fmt });
+}
 
 function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: SubmittalPdfInput) {
   const issueDate = submittal.sent_at ?? submittal.created_at;
-  const dateLabel = new Date(issueDate).toLocaleDateString("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const dateLabel = safeDateLabel(issueDate, { year: "numeric", month: "long", day: "numeric" });
   const submittalNumber = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${
     submittal.revision_number > 0 ? ` Rev ${submittal.revision_number}` : ""
   }`;
   const includedSet = new Set(submittal.included_kinds);
   const isDraft = submittal.status === "draft";
   const isVoided = submittal.status === "voided";
-  const statusStyle =
-    submittal.status === "approved" || submittal.status === "approved_as_noted" || submittal.status === "closed"
-      ? styles.statusPillEmerald
-      : submittal.status === "revise_and_resubmit"
-      ? styles.statusPillAmber
-      : submittal.status === "rejected" || isVoided
-      ? styles.statusPillRose
-      : styles.statusPillNeutral;
+  const isRejected = submittal.status === "rejected";
+  const isApproved =
+    submittal.status === "approved" ||
+    submittal.status === "approved_as_noted" ||
+    submittal.status === "closed";
+  const isRevise = submittal.status === "revise_and_resubmit";
+  const statusStyle = isApproved
+    ? styles.statusPillEmerald
+    : isRevise
+    ? styles.statusPillAmber
+    : isRejected || isVoided
+    ? styles.statusPillRose
+    : styles.statusPillNeutral;
 
   const addrLines = submittal.to_address_lines ?? [];
 
@@ -333,6 +343,13 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
       subject={submittal.re_subject ?? "Submittals"}
     >
       <Page size="LETTER" style={styles.page}>
+        {/* VOIDED watermark — diagonal text overlay on every page so a
+            printed voided submittal can't be mistaken for the real one
+            (audit PDF #S1). `fixed` repeats on each page. */}
+        {isVoided && (
+          <Text style={styles.voidWatermark} fixed>VOIDED</Text>
+        )}
+
         {/* Header band */}
         <View style={styles.headerRow}>
           <View>
@@ -345,7 +362,11 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
               {submittalNumber}
               {isDraft && <Text style={{ color: colors.muted }}>  ·  DRAFT (not yet sent)</Text>}
             </Text>
-            {isVoided && (
+            {/* Status pill: render for any non-neutral terminal state
+                so an approved/rejected/closed package is unambiguous on
+                paper too, not just for voided (audit PDF #S6 — was
+                only firing for voided, now respects the full DAG). */}
+            {(isVoided || isApproved || isRejected || isRevise) && (
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.statusPill, statusStyle]}>{submittalStatusLabel(submittal.status)}</Text>
               </View>
@@ -388,7 +409,7 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
         {/* WE ARE SENDING YOU — checkbox row */}
         <Text style={styles.sectionLabel}>We are sending you</Text>
         <View style={styles.checkboxRow}>
-          {INCLUDED_KINDS_ALL.map((kind) => {
+          {INCLUDED_KINDS.map((kind) => {
             const checked = includedSet.has(kind);
             return (
               <View key={kind} style={styles.checkbox}>
@@ -404,7 +425,10 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
         {/* Items table */}
         <Text style={styles.sectionLabel}>Items transmitted</Text>
         <View style={styles.table}>
-          <View style={styles.tableHeader}>
+          {/* `fixed` re-renders the header on every page when the table
+              spans pages (audit PDF #C3). Without it, page 2+ has
+              orphaned rows with no column labels. */}
+          <View style={styles.tableHeader} fixed>
             <Text style={[styles.tableHeaderCell, styles.colCopies]}>Copies</Text>
             <Text style={[styles.tableHeaderCell, styles.colDate]}>Date</Text>
             <Text style={[styles.tableHeaderCell, styles.colNumber]}>Ref #</Text>
@@ -417,12 +441,13 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
             items.map((item, i) => {
               const last = i === items.length - 1;
               return (
-                <View key={i} style={last ? styles.tableRowLast : styles.tableRow}>
+                /* `wrap={false}` keeps a row atomic — never split across
+                    pages mid-description, which looks broken to a GC
+                    (audit PDF #C3). */
+                <View key={i} style={last ? styles.tableRowLast : styles.tableRow} wrap={false}>
                   <Text style={[styles.tableCell, styles.colCopies]}>{item.copies}</Text>
                   <Text style={[styles.tableCell, styles.colDate]}>
-                    {item.item_date
-                      ? new Date(item.item_date).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "numeric", day: "numeric", year: "2-digit" })
-                      : "—"}
+                    {safeDateLabel(item.item_date, { month: "numeric", day: "numeric", year: "2-digit" })}
                   </Text>
                   <Text style={[styles.tableCell, styles.colNumber]}>{item.item_number ?? "—"}</Text>
                   <Text style={[styles.tableCell, styles.colDesc]}>{item.description}</Text>
@@ -436,14 +461,14 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
         {/* THESE ARE TRANSMITTED */}
         <Text style={styles.sectionLabel}>These are transmitted</Text>
         <View style={styles.checkboxRow}>
-          {TRANSMITTED_AS_ALL.map((opt) => {
-            const checked = submittal.transmitted_as === opt.key;
+          {TRANSMITTED_AS_OPTIONS.map((key) => {
+            const checked = submittal.transmitted_as === key;
             return (
-              <View key={opt.key} style={styles.checkbox}>
+              <View key={key} style={styles.checkbox}>
                 <View style={checked ? styles.checkboxBoxChecked : styles.checkboxBox}>
                   {checked && <Text style={styles.checkmark}>X</Text>}
                 </View>
-                <Text style={styles.checkboxLabel}>{opt.label}</Text>
+                <Text style={styles.checkboxLabel}>{transmittedAsLabel(key)}</Text>
               </View>
             );
           })}
@@ -479,14 +504,11 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
 export async function renderLetterOfTransmittalPdf(
   input: SubmittalPdfInput
 ): Promise<Buffer> {
-  // The component returns a <Document>, which satisfies renderToBuffer's
-  // ReactElement<DocumentProps> contract. Cast the createElement result so
-  // TS narrows away the FunctionComponentElement wrapper.
-  const element = React.createElement(
-    LetterOfTransmittalDocument,
-    input
-  ) as unknown as React.ReactElement<DocumentProps>;
-  return await renderToBuffer(element);
+  // React-PDF's renderToBuffer types are over-narrow on FC elements; the
+  // component IS a <Document>, so the runtime contract holds. The cast
+  // is the documented escape hatch (see @react-pdf/renderer issue #2730).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return await renderToBuffer(React.createElement(LetterOfTransmittalDocument, input) as any);
 }
 
 // Display-name + export for testability

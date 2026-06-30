@@ -2,6 +2,8 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logDelete, logInsert, logUpdate, writeCommercialAudit } from "@/lib/commercial/audit-log";
+import { reportWarn } from "@/lib/observability";
+import { verifyOppEditable, loadOppContextOrNull } from "./guards";
 import {
   ALLOWED_SUBMITTAL_TRANSITIONS,
   INCLUDED_KINDS,
@@ -95,22 +97,8 @@ export async function listOpportunitySubmittals(
 ): Promise<OpportunitySubmittalWithItemCount[]> {
   const sb = commercialDb();
 
-  // Chain-of-trust guard (audit C5 + 2026-06-24 fix shape).
-  const { data: opp } = await sb
-    .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
-    .eq("id", opportunity_id)
-    .maybeSingle();
-  if (!opp) return [];
-  const oppRow = opp as { id: string; account_id: string; deleted_at: string | null };
-  if (oppRow.deleted_at) return [];
-
-  const { data: acct } = await sb
-    .from("commercial_accounts")
-    .select("id, deleted_at")
-    .eq("id", oppRow.account_id)
-    .maybeSingle();
-  if (!acct || (acct as { deleted_at: string | null }).deleted_at) return [];
+  // Chain-of-trust guard — extracted to guards.ts (audit H2, 2026-06-30).
+  if (!(await loadOppContextOrNull(opportunity_id))) return [];
 
   const { data, error } = await sb
     .from("commercial_opp_submittals")
@@ -118,7 +106,12 @@ export async function listOpportunitySubmittals(
     .eq("opportunity_id", opportunity_id)
     .order("created_at", { ascending: false });
   if (error) {
-    console.warn("[commercial/opportunities/submittals] list failed:", error.message);
+    reportWarn({
+      key: "submittal_list_failed",
+      message: "Submittal list query failed",
+      platform: "commercial_cc",
+      context: { opp: opportunity_id.slice(0, 8), err_code: (error as { code?: string }).code ?? "unknown" },
+    });
     return [];
   }
   const submittals = (data ?? []) as OpportunitySubmittal[];
@@ -139,7 +132,10 @@ export async function listOpportunitySubmittals(
 
 /**
  * Bulk submittal-count by opp_id — fuels the opp list badge ("📋 2 sub").
- * Does NOT chain-of-trust because the caller already filtered out deleted opps.
+ * No chain-of-trust pre-check: the badge function takes a list of opp_ids
+ * the caller already produced (typically from listOpportunities, which is
+ * itself chain-of-trust scoped). If a stale id slips in, the worst case
+ * is a 0/0 entry, not data leakage — the badge just doesn't render.
  */
 export async function listSubmittalCountByOpp(
   opportunity_ids: string[]
@@ -147,12 +143,23 @@ export async function listSubmittalCountByOpp(
   const out = new Map<string, { total: number; awaiting_response: number }>();
   if (opportunity_ids.length === 0) return out;
   const sb = commercialDb();
+  // Exclude voided from the badge count entirely — voided submittals
+  // are "sent in error" and shouldn't inflate the per-opp tally (audit
+  // workflow #4, 2026-06-30). Voided rows stay queryable via the detail
+  // page's history; they just don't fight for visual real estate on the
+  // opp list.
   const { data, error } = await sb
     .from("commercial_opp_submittals")
     .select("opportunity_id, status")
-    .in("opportunity_id", opportunity_ids);
+    .in("opportunity_id", opportunity_ids)
+    .neq("status", "voided");
   if (error) {
-    console.warn("[commercial/opportunities/submittals] count failed:", error.message);
+    reportWarn({
+      key: "submittal_count_failed",
+      message: "Submittal bulk-count query failed",
+      platform: "commercial_cc",
+      context: { opp_ids_count: opportunity_ids.length, err_code: (error as { code?: string }).code ?? "unknown" },
+    });
     return out;
   }
   // "Awaiting response" = sent state, GC hasn't replied yet.
@@ -192,22 +199,7 @@ export async function getOpportunitySubmittal(
 } | null> {
   const sb = commercialDb();
 
-  // Chain-of-trust.
-  const { data: opp } = await sb
-    .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
-    .eq("id", opportunity_id)
-    .maybeSingle();
-  if (!opp) return null;
-  const oppRow = opp as { id: string; account_id: string; deleted_at: string | null };
-  if (oppRow.deleted_at) return null;
-
-  const { data: acct } = await sb
-    .from("commercial_accounts")
-    .select("id, deleted_at")
-    .eq("id", oppRow.account_id)
-    .maybeSingle();
-  if (!acct || (acct as { deleted_at: string | null }).deleted_at) return null;
+  if (!(await loadOppContextOrNull(opportunity_id))) return null;
 
   // Submittal — double-scoped lookup.
   const { data: subm } = await sb
@@ -280,24 +272,8 @@ export async function createOpportunitySubmittal(
 ): Promise<{ ok: true; submittal: OpportunitySubmittal } | { ok: false; error: string }> {
   const sb = commercialDb();
 
-  // Chain-of-trust.
-  const { data: opp } = await sb
-    .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
-    .eq("id", input.opportunity_id)
-    .maybeSingle();
-  if (!opp) return { ok: false, error: "Opportunity not found." };
-  const oppRow = opp as { id: string; account_id: string; deleted_at: string | null };
-  if (oppRow.deleted_at) return { ok: false, error: "Opportunity has been deleted." };
-
-  const { data: acct } = await sb
-    .from("commercial_accounts")
-    .select("id, deleted_at")
-    .eq("id", oppRow.account_id)
-    .maybeSingle();
-  if (!acct || (acct as { deleted_at: string | null }).deleted_at) {
-    return { ok: false, error: "Account has been deleted." };
-  }
+  const guard = await verifyOppEditable(input.opportunity_id);
+  if (!guard.ok) return { ok: false, error: guard.error };
 
   // Validate included_kinds payload (defense in depth — DB CHECK also enforces).
   const kinds = input.included_kinds ?? [];
@@ -394,11 +370,51 @@ export async function createOpportunitySubmittal(
       note: input.revises_submittal_id ? "Revision of parent submittal" : null,
     });
 
+    // Revision copy-forward (audit workflow #3, 2026-06-30): when this
+    // submittal revises a parent, snapshot the parent's ITEMS into the
+    // new draft so Alex doesn't retype 12 finish rows after a R&R. Cover
+    // fields were already snapshotted into the insert above. Attachments
+    // are NOT auto-linked — the new draft typically has a new PDF, and
+    // a new linkage UI lets the user pull forward whichever still apply.
+    if (input.revises_submittal_id) {
+      const { data: parentItems } = await sb
+        .from("commercial_opp_submittal_items")
+        .select("position, copies, item_date, item_number, description, finish_code")
+        .eq("submittal_id", input.revises_submittal_id)
+        .order("position", { ascending: true });
+      const itemsToCopy = (parentItems ?? []) as Array<{
+        position: number;
+        copies: number;
+        item_date: string | null;
+        item_number: string | null;
+        description: string;
+        finish_code: string | null;
+      }>;
+      if (itemsToCopy.length > 0) {
+        await sb.from("commercial_opp_submittal_items").insert(
+          itemsToCopy.map((it) => ({
+            submittal_id: row.id,
+            position: it.position,
+            copies: it.copies,
+            item_date: it.item_date,
+            item_number: it.item_number,
+            description: it.description,
+            finish_code: it.finish_code,
+            created_by_user_id: input.created_by_user_id ?? null,
+            updated_by_user_id: input.created_by_user_id ?? null,
+          }))
+        );
+      }
+    }
+
     await logInsert("commercial_opp_submittals", row.id, row, input.created_by_user_id ?? null);
     return { ok: true, submittal: row };
   }
 
-  return { ok: false, error: "Could not assign a submittal number after retries. Try again." };
+  return {
+    ok: false,
+    error: "Couldn't assign a submittal number after several retries — another tab may be creating submittals at the same time. Try again.",
+  };
 }
 
 // ─── Edit (draft only) ───────────────────────────────────────────────
@@ -426,6 +442,12 @@ export async function editOpportunitySubmittal(
 ): Promise<{ ok: true; submittal: OpportunitySubmittal } | { ok: false; error: string }> {
   const sb = commercialDb();
 
+  // Chain-of-trust: parent opp + account not soft-deleted. Without this
+  // an Alex who has the URL in a stale tab could edit a draft submittal
+  // on an opp Katie already trashed (audit C5 follow-up, 2026-06-30).
+  const guard = await verifyOppEditable(input.opportunity_id);
+  if (!guard.ok) return { ok: false, error: guard.error };
+
   const { data: before } = await sb
     .from("commercial_opp_submittals")
     .select("*")
@@ -444,7 +466,14 @@ export async function editOpportunitySubmittal(
   const patch: Record<string, unknown> = { updated_by_user_id: input.updated_by_user_id ?? null };
   if (input.to_company !== undefined) patch.to_company = input.to_company;
   if (input.to_attention !== undefined) patch.to_attention = input.to_attention;
-  if (input.to_address_lines !== undefined) patch.to_address_lines = input.to_address_lines;
+  if (input.to_address_lines !== undefined) {
+    // Cap at 6 lines — PDF cover-grid box can't render more without
+    // overflowing the meta column (audit workflow #5, 2026-06-30).
+    if (input.to_address_lines && input.to_address_lines.length > 6) {
+      return { ok: false, error: "To-address can't exceed 6 lines." };
+    }
+    patch.to_address_lines = input.to_address_lines;
+  }
   if (input.re_subject !== undefined) patch.re_subject = input.re_subject;
   if (input.included_kinds !== undefined) {
     for (const k of input.included_kinds) {
@@ -519,6 +548,10 @@ export async function changeSubmittalStatus(
     return { ok: false, error: `Unknown status: ${input.to_status}` };
   }
 
+  // Chain-of-trust on the parent opp + account (audit follow-up).
+  const guard = await verifyOppEditable(input.opportunity_id);
+  if (!guard.ok) return { ok: false, error: guard.error };
+
   const { data: before } = await sb
     .from("commercial_opp_submittals")
     .select("*")
@@ -535,6 +568,24 @@ export async function changeSubmittalStatus(
       ok: false,
       error: `Cannot change status from "${fromStatus}" to "${input.to_status}". Allowed: ${allowed.join(", ") || "(none)"}.`,
     };
+  }
+
+  // Server-side 0-item gate on send (audit workflow #7, 2026-06-30): the
+  // UI already disables the Send button when itemCount=0, but a
+  // hand-crafted POST or stale-tab race could submit an empty package.
+  // Refuse it here so the GC never gets a Letter of Transmittal with no
+  // line items.
+  if (input.to_status === "submitted") {
+    const { count: itemCount } = await sb
+      .from("commercial_opp_submittal_items")
+      .select("id", { count: "exact", head: true })
+      .eq("submittal_id", input.submittal_id);
+    if (!itemCount || itemCount === 0) {
+      return {
+        ok: false,
+        error: "Add at least one item before sending — empty submittals can't go to the GC.",
+      };
+    }
   }
 
   // Build the update payload with the right side-effects per target status.
@@ -624,6 +675,9 @@ export async function deleteOpportunitySubmittal(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
 
+  const guard = await verifyOppEditable(opportunity_id);
+  if (!guard.ok) return { ok: false, error: guard.error };
+
   const { data: before } = await sb
     .from("commercial_opp_submittals")
     .select("*")
@@ -639,13 +693,19 @@ export async function deleteOpportunitySubmittal(
     };
   }
 
-  const { error } = await sb
+  // Race-guard: re-assert status='draft' in WHERE so a concurrent Send
+  // can't slip through and leave us deleting a now-sent submittal.
+  const { data: deletedRows, error } = await sb
     .from("commercial_opp_submittals")
     .delete()
     .eq("id", submittal_id)
     .eq("opportunity_id", opportunity_id)
-    .eq("status", "draft");
+    .eq("status", "draft")
+    .select("id");
   if (error) return { ok: false, error: error.message };
+  if (!deletedRows || deletedRows.length === 0) {
+    return { ok: false, error: "Submittal was sent in another tab. Reload to see the latest." };
+  }
 
   await logDelete(
     "commercial_opp_submittals",
