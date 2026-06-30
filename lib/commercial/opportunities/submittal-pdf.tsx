@@ -358,14 +358,16 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
           </View>
           <View style={styles.titleBlock}>
             <Text style={styles.title}>Letter of Transmittal</Text>
-            <Text style={styles.subNumber}>
-              {submittalNumber}
-              {isDraft && <Text style={{ color: colors.muted }}>  ·  DRAFT (not yet sent)</Text>}
-            </Text>
-            {/* Status pill: render for any non-neutral terminal state
-                so an approved/rejected/closed package is unambiguous on
-                paper too, not just for voided (audit PDF #S6 — was
-                only firing for voided, now respects the full DAG). */}
+            <Text style={styles.subNumber}>{submittalNumber}</Text>
+            {/* Status pill — render for ANY non-default state. DRAFT
+                gets a visible amber pill (audit PDF #L1) so a printed
+                draft can't be mistaken for the real package; previously
+                it was a muted text suffix that disappeared at glance. */}
+            {isDraft && (
+              <View style={{ marginTop: 4 }}>
+                <Text style={[styles.statusPill, styles.statusPillAmber]}>Draft · not yet sent</Text>
+              </View>
+            )}
             {(isVoided || isApproved || isRejected || isRevise) && (
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.statusPill, statusStyle]}>{submittalStatusLabel(submittal.status)}</Text>

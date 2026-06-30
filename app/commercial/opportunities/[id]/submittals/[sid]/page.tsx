@@ -296,6 +296,41 @@ async function linkAttachmentAction(formData: FormData) {
   redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}`);
 }
 
+async function bulkLinkAttachmentsAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const submittal_id = String(formData.get("submittal_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(submittal_id)) {
+    redirect("/commercial/opportunities");
+  }
+  // FormData.getAll returns FormDataEntryValue[]; coerce each to string
+  // + filter to valid UUIDs so a hand-crafted POST can't pass garbage.
+  const attachment_ids = formData.getAll("attachment_ids")
+    .map((v) => String(v))
+    .filter((s) => UUID_RE.test(s));
+  if (attachment_ids.length === 0) {
+    redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
+      encodeURIComponent("Pick at least one attachment to link."));
+  }
+  // Loop linkAttachmentToSubmittal — the lib is already idempotent +
+  // race-guarded per row, so a partial failure here only blocks the
+  // bad row. Collect the first error so the redirect can surface it.
+  let firstErr: string | null = null;
+  for (const aid of attachment_ids) {
+    const res = await linkAttachmentToSubmittal(opportunity_id, submittal_id, aid, user.id);
+    if (!res.ok && !firstErr) firstErr = res.error;
+  }
+  if (firstErr) {
+    redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
+      encodeURIComponent(`Some links failed: ${firstErr}`));
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?saved=1`);
+}
+
 async function unlinkAttachmentAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -623,17 +658,27 @@ export default async function SubmittalDetailPage({
           </div>
         )}
 
-        {/* Revision link — if this submittal is itself a revision, link to parent */}
+        {/* Revision banner — when viewing a revision, surface the
+            relationship to the parent so Alex can jump back at a glance
+            (audit workflow #6, many-revisions grouping). Includes the
+            revision number + a copy-forward summary so it's obvious
+            this is a child row, not a fresh package. */}
         {submittal.revises_submittal_id && (
-          <div className="mt-4 px-3 py-2 rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700">
-            This is a revision of{" "}
-            <Link
-              href={`/commercial/opportunities/${opportunity_id}/submittals/${submittal.revises_submittal_id}`}
-              className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2 font-medium"
-            >
-              the prior submittal
-            </Link>
-            .
+          <div className="mt-4 px-3 py-2.5 rounded-lg bg-sky-50 border border-sky-100 text-[12px] text-sky-900 flex items-start gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0" aria-hidden>
+              <path d="M3 7v6a2 2 0 0 0 2 2h13l-4-4M21 17v-6a2 2 0 0 0-2-2H6l4-4" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <strong className="font-semibold">Revision {submittal.revision_number}</strong>
+              {" of "}
+              <Link
+                href={`/commercial/opportunities/${opportunity_id}/submittals/${submittal.revises_submittal_id}`}
+                className="text-sky-700 hover:text-sky-900 underline underline-offset-2 font-medium"
+              >
+                SUB-{String(submittal.submittal_number).padStart(3, "0")}
+              </Link>
+              {" — cover + items copied forward when this revision was created. The original was auto-closed."}
+            </div>
           </div>
         )}
       </header>
@@ -655,9 +700,17 @@ export default async function SubmittalDetailPage({
           Letter of Transmittal — cover
         </h2>
         {!isDraft && (
-          <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900">
-            <strong className="font-semibold">Sent.</strong> Cover is locked. To revise content,
-            void this submittal and create a new revision.
+          <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900 flex items-start gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0" aria-hidden>
+              <rect x="5" y="11" width="14" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+            <div className="flex-1">
+              <strong className="font-semibold">Locked — already sent.</strong>{" "}
+              Editing the cover or items would invalidate the GC&apos;s copy. If something needs to change,{" "}
+              <strong>create a revision</strong> (the original auto-closes, items copy forward) — use the{" "}
+              <em>Revise &amp; Resubmit</em> response branch, or the Void path for a sent-in-error.
+            </div>
           </div>
         )}
         <form action={editCoverAction} className="space-y-4">
@@ -862,19 +915,31 @@ export default async function SubmittalDetailPage({
                 />
               </div>
               <div>
-                <label className={LABEL_CLS}>Finish code</label>
+                <label className={LABEL_CLS}>
+                  Finish code
+                  {finishes.length === 0 && (
+                    <Link
+                      href={`/commercial/opportunities/${opportunity_id}?tab=finishes`}
+                      className="ml-2 text-[10px] font-normal text-sky-700 hover:text-sky-900 underline underline-offset-2"
+                    >
+                      Add finishes first →
+                    </Link>
+                  )}
+                </label>
                 <input
                   name="finish_code"
                   type="text"
                   maxLength={32}
                   list="finish-codes-list"
-                  placeholder="e.g. WD-1"
+                  placeholder={finishes.length === 0 ? "no finishes yet" : "e.g. WD-1"}
                   className={INPUT_CLS}
                 />
               </div>
             </div>
 
-            {/* Datalist powers the finish-code typeahead from the opp's Finish Schedule */}
+            {/* Datalist powers the finish-code typeahead from the opp's Finish Schedule.
+                Empty state is fine — Alex can still type free-form codes; the cold-start
+                link above nudges them to populate the Finish Schedule for typeahead. */}
             <datalist id="finish-codes-list">
               {finishes.map((f) => (
                 <option key={f.id} value={f.code}>
@@ -1144,7 +1209,11 @@ export default async function SubmittalDetailPage({
           </ul>
         )}
 
-        {/* Link existing PDF picker — collapsed by default to avoid clutter */}
+        {/* Link existing PDF picker — collapsed by default to avoid clutter.
+            One form with checkboxes + a single "Attach selected" button
+            (audit workflow #8 — bulk-link). Previously one form per
+            attachment meant 6 separate round-trips when Alex needed to
+            attach all the architect spec PDFs to a fresh draft. */}
         {canLinkAttachments && unlinkedAttachments.length > 0 && (
           <details className="mt-4 group">
             <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 min-h-[36px] touch-manipulation select-none">
@@ -1153,19 +1222,24 @@ export default async function SubmittalDetailPage({
               </svg>
               + Link existing PDF ({unlinkedAttachments.length} available)
             </summary>
-            <div className="mt-3 p-3 rounded-lg border border-emerald-100 bg-emerald-50/30">
-              <p className="text-[11px] text-ppp-charcoal-600 mb-2">
-                These are the unlinked PDFs on this opp. Click to attach.
+            <form action={bulkLinkAttachmentsAction} className="mt-3 p-3 rounded-lg border border-emerald-100 bg-emerald-50/30 space-y-3">
+              <input type="hidden" name="opportunity_id" value={opportunity_id} />
+              <input type="hidden" name="submittal_id" value={submittal_id} />
+              <p className="text-[11px] text-ppp-charcoal-600">
+                Tick the PDFs that belong to this submittal package. Multi-select supported.
               </p>
               <ul className="space-y-1">
                 {unlinkedAttachments.map((att) => {
                   const category = categorizeFilename(att.file_name);
                   return (
                     <li key={att.id}>
-                      <form action={linkAttachmentAction} className="flex items-center justify-between gap-3 p-2 rounded hover:bg-white transition-colors">
-                        <input type="hidden" name="opportunity_id" value={opportunity_id} />
-                        <input type="hidden" name="submittal_id" value={submittal_id} />
-                        <input type="hidden" name="attachment_id" value={att.id} />
+                      <label className="flex items-center gap-3 p-2 rounded hover:bg-white transition-colors cursor-pointer min-h-[44px] touch-manipulation">
+                        <input
+                          type="checkbox"
+                          name="attachment_ids"
+                          value={att.id}
+                          className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40 shrink-0"
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm text-ppp-charcoal break-words">{att.file_name}</div>
                           <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
@@ -1177,18 +1251,20 @@ export default async function SubmittalDetailPage({
                             v{att.version} · {formatBytes(att.size_bytes)}
                           </div>
                         </div>
-                        <button
-                          type="submit"
-                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors min-h-[36px] touch-manipulation shrink-0"
-                        >
-                          Attach
-                        </button>
-                      </form>
+                      </label>
                     </li>
                   );
                 })}
               </ul>
-            </div>
+              <div className="flex justify-end pt-1 border-t border-emerald-100">
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+                >
+                  Attach selected
+                </button>
+              </div>
+            </form>
           </details>
         )}
 
@@ -1200,26 +1276,55 @@ export default async function SubmittalDetailPage({
         )}
       </section>
 
-      {/* Status timeline */}
+      {/* Status timeline — proper rail+dot pattern (mirrors how the opp
+          detail timeline renders activity rows; submittal audit M1 pulled
+          us off the flat-bullet list into something Alex can scan as a
+          journey). Dot color picks up the tone of the to_status so the
+          eye can spot approved-vs-revise-vs-voided without reading. */}
       {statusLog.length > 0 && (
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
           <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Status history</h2>
-          <ol className="space-y-2">
-            {statusLog.map((log) => (
-              <li key={log.id} className="text-[12px] text-ppp-charcoal-700 flex items-start gap-2">
-                <span className="text-ppp-charcoal-400 mt-0.5">•</span>
-                <div className="flex-1">
-                  <span className="font-medium">
-                    {log.from_status ? `${submittalStatusLabel(log.from_status)} → ` : ""}
-                    {submittalStatusLabel(log.to_status)}
+          <ol className="relative space-y-3">
+            {/* Vertical rail */}
+            <span aria-hidden className="absolute left-[7px] top-2 bottom-2 w-px bg-ppp-charcoal-100" />
+            {statusLog.map((log) => {
+              const tone = submittalStatusTone(log.to_status);
+              const dotCls =
+                tone === "emerald" ? "bg-emerald-500 ring-emerald-100"
+                : tone === "rose" ? "bg-rose-500 ring-rose-100"
+                : tone === "amber" ? "bg-amber-500 ring-amber-100"
+                : tone === "sky" ? "bg-sky-500 ring-sky-100"
+                : "bg-ppp-charcoal-300 ring-ppp-charcoal-100";
+              return (
+                <li key={log.id} className="relative flex items-start gap-3 pl-1">
+                  <span
+                    aria-hidden
+                    className={`relative z-10 w-[15px] h-[15px] rounded-full ring-4 ring-white shrink-0 mt-0.5 ${dotCls}`}
+                  >
+                    <span className={`absolute inset-1 rounded-full ${dotCls.split(" ")[0]}`} />
                   </span>
-                  <span className="text-ppp-charcoal-500 ml-2">{fmtDateTime(log.changed_at)}</span>
-                  {log.note && (
-                    <div className="text-ppp-charcoal-500 mt-0.5">&ldquo;{log.note}&rdquo;</div>
-                  )}
-                </div>
-              </li>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline flex-wrap gap-x-2">
+                      <span className="text-[13px] font-semibold text-ppp-charcoal">
+                        {log.from_status ? (
+                          <>
+                            <span className="text-ppp-charcoal-500 font-normal">{submittalStatusLabel(log.from_status)}</span>
+                            <span className="text-ppp-charcoal-400 mx-1">→</span>
+                            <span>{submittalStatusLabel(log.to_status)}</span>
+                          </>
+                        ) : (
+                          <span>{submittalStatusLabel(log.to_status)}</span>
+                        )}
+                      </span>
+                      <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">{fmtDateTime(log.changed_at)}</span>
+                    </div>
+                    {log.note && (
+                      <div className="text-[12px] text-ppp-charcoal-600 mt-1 italic">&ldquo;{log.note}&rdquo;</div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ol>
         </section>
       )}
@@ -1456,23 +1561,28 @@ function StatusActionsPanel({
         </div>
       )}
 
-      {/* Void — bottom-of-card, rose, requires reason. Available on every
-          non-terminal state. */}
+      {/* Void — bottom-of-card, rose. The summary used to be a thin
+          text link which made it easy to miss when Alex actually needed
+          it (audit UI M4). Now styled as a visible secondary button so
+          it's findable, but still tucked at the bottom + outlined (not
+          filled) so it doesn't compete with the primary action above. */}
       {allowed.includes("voided") && (
         <details className="mt-5 group">
-          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-medium text-rose-700 hover:text-rose-800 min-h-[36px] touch-manipulation select-none">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
+          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-white text-[13px] font-semibold text-rose-800 hover:bg-rose-50 active:bg-rose-100 min-h-[40px] touch-manipulation select-none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
               <path d="M9 18l6-6-6-6" />
             </svg>
             Void this submittal
           </summary>
-          <form action={changeStatusAction} className="mt-3 space-y-3 p-4 rounded-lg border border-rose-200 bg-rose-50/50">
+          <form action={changeStatusAction} className="mt-3 space-y-3 p-4 rounded-lg border-2 border-rose-300 bg-rose-50">
             {hiddenIds}
             <input type="hidden" name="to_status" value="voided" />
-            <p className="text-[12px] text-rose-900">
-              Voiding marks the submittal as &ldquo;sent in error&rdquo;. It stays in history with
-              the reason below but is excluded from the active log. Use this when the
-              wrong package went out, not for revisions.
+            <p className="text-[12px] text-rose-900 leading-relaxed">
+              <strong className="font-semibold">Heads up — voiding is irreversible.</strong>{" "}
+              Voiding marks the submittal as &ldquo;sent in error&rdquo;. The PDF gets a VOIDED
+              watermark, the row stays in history with the reason below, and the badge count
+              on the opportunity drops. Use this when the wrong package went out, not for
+              revisions (use Revise &amp; Resubmit → Create revision for that).
             </p>
             <div>
               <label htmlFor="void_reason" className={LABEL_CLS}>
@@ -1542,18 +1652,24 @@ function ResponseRecorder({
   defaultResponse: SubmittalResponse;
   copiesPlaceholder?: string;
 }) {
+  // Tone differentiation in the COLLAPSED state too — without the dot
+  // the 4 cards look identical when closed, defeating the at-a-glance
+  // outcome cue (audit UI M3, 2026-06-30).
   const toneStyles =
     tone === "emerald"
-      ? { card: "border-emerald-200 bg-emerald-50/40", btn: "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/30" }
+      ? { card: "border-emerald-200 bg-emerald-50/40", btn: "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/30", dot: "bg-emerald-500" }
       : tone === "amber"
-      ? { card: "border-amber-200 bg-amber-50/40", btn: "bg-amber-700 hover:bg-amber-800 active:bg-amber-900 shadow-amber-700/30" }
-      : { card: "border-rose-200 bg-rose-50/40", btn: "bg-rose-700 hover:bg-rose-800 active:bg-rose-900 shadow-rose-700/30" };
+      ? { card: "border-amber-200 bg-amber-50/40", btn: "bg-amber-700 hover:bg-amber-800 active:bg-amber-900 shadow-amber-700/30", dot: "bg-amber-500" }
+      : { card: "border-rose-200 bg-rose-50/40", btn: "bg-rose-700 hover:bg-rose-800 active:bg-rose-900 shadow-rose-700/30", dot: "bg-rose-500" };
 
   return (
     <details className={`group rounded-lg border ${toneStyles.card} overflow-hidden`}>
       <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-white/50 min-h-[44px] touch-manipulation select-none">
-        <span className="text-sm font-semibold text-ppp-charcoal">{label}</span>
-        <span aria-hidden className="text-ppp-charcoal-400 text-[12px] transition-transform group-open:rotate-90">
+        <span className="flex items-center gap-2 min-w-0">
+          <span aria-hidden className={`w-2 h-2 rounded-full shrink-0 ${toneStyles.dot}`} />
+          <span className="text-sm font-semibold text-ppp-charcoal truncate">{label}</span>
+        </span>
+        <span aria-hidden className="text-ppp-charcoal-400 text-[12px] transition-transform group-open:rotate-90 shrink-0">
           ▶
         </span>
       </summary>

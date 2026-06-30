@@ -2502,10 +2502,23 @@ async function FinishesTab({
         </form>
       </section>
 
-      {/* Empty state */}
+      {/* Empty state — points to Plans & Specs since architect drawings
+          are where the WD-1/P-1 codes come from (audit polish #L4). */}
       {finishes.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-          No finishes captured yet. Add the WD-1, P-1, etc. codes from the architect spec book — they flow into your submittals later.
+          <p>
+            No finishes captured yet. Add the WD-1, P-1, etc. codes from the architect spec book —
+            they flow into your submittals later.
+          </p>
+          <p className="mt-3 text-[12px]">
+            <Link
+              href={`/commercial/opportunities/${oppId}?tab=plans`}
+              className="text-sky-700 hover:text-sky-900 underline underline-offset-2"
+            >
+              📎 Check Plans &amp; Specs
+            </Link>
+            {" — most finish codes live in the architect drawings."}
+          </p>
         </div>
       ) : (
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -2586,8 +2599,15 @@ function FinishRow({
     <li className="px-4 py-3">
       <details className="group">
         <summary className="cursor-pointer list-none flex items-start gap-3 -mx-2 px-2 py-1 rounded-lg hover:bg-ppp-charcoal-50 transition-colors">
-          {/* Code chip — short, bold, monospace for parsability */}
-          <span className="shrink-0 inline-flex items-center px-2 py-1 rounded-md bg-sky-50 text-sky-800 border border-sky-200 text-[12px] font-bold font-mono min-w-[3rem] justify-center">
+          {/* Code chip — short, bold, monospace for parsability. Caps at
+              ~10ch with overflow truncation so a long code (e.g.
+              "WD-1-EXT-DOORS") doesn't blow out the row width on mobile
+              — full code is in the title tooltip + expanded details
+              (audit UI M2, 2026-06-30). */}
+          <span
+            className="shrink-0 inline-flex items-center px-2 py-1 rounded-md bg-sky-50 text-sky-800 border border-sky-200 text-[12px] font-bold font-mono min-w-[3rem] max-w-[10rem] justify-center truncate"
+            title={finish.code}
+          >
             {finish.code}
           </span>
           <div className="flex-1 min-w-0">
