@@ -89,6 +89,28 @@ let lastGenFetchAt = 0;
 // restart so a redeploy after a schema migration picks up the new fields.
 let cachedWoliExtraFields: string[] | null = null;
 
+/**
+ * Cached SObject describe() results — speed pass 2026-06-29.
+ *
+ * Each describe is a ~300-500ms SF round-trip on cold cache. Both run on
+ * the CRITICAL PATH for cold materials regen (Opp describe to discover
+ * the revenue field, WO describe to build the SOQL field list). Schema is
+ * stable per deployment (same rationale as cachedWoliExtraFields), so
+ * caching at module scope saves ~500-1000ms per cold snapshot rebuild.
+ * Cleared by clearSalesforceCache() so a redeploy picks up schema changes.
+ */
+type SfDescribeMeta = {
+  fields: Array<{
+    name: string;
+    type: string;
+    custom: boolean;
+    referenceTo?: string[] | null;
+    relationshipName?: string | null;
+  }>;
+};
+let cachedOppDescribe: SfDescribeMeta | null = null;
+let cachedWoDescribe: SfDescribeMeta | null = null;
+
 async function getCurrentGeneration(): Promise<number> {
   const now = Date.now();
   if (now - lastGenFetchAt < GEN_REFRESH_MIN_INTERVAL_MS) return cachedGeneration;
@@ -165,6 +187,11 @@ async function cached<T>(key: string, fetcher: () => Promise<T>, ttlMs: number =
 
 export async function clearSalesforceCache() {
   cache.clear();
+  // Speed pass 2026-06-29: also drop the module-cached describe()
+  // results so a redeploy after a SF schema migration re-probes them.
+  cachedOppDescribe = null;
+  cachedWoDescribe = null;
+  cachedWoliExtraFields = null;
   // Also invalidate the SHARED snapshot cache — otherwise a manual refresh or a
   // post-writeback invalidation would just re-read the stale blob and mask the
   // fresh data. And bump the global generation counter so OTHER serverless
@@ -921,7 +948,16 @@ export async function loadSalesforceSnapshot(
     // duplicate round-trip out of every snapshot rebuild.
     let oppMetaFieldNames: Set<string> = new Set<string>();
     try {
-      const meta = await conn.sobject("Opportunity").describe();
+      // Speed pass 2026-06-29: module-cached describe (see cachedOppDescribe
+      // declaration above). Saves ~300-500ms per cold regen since schema
+      // is stable per deployment.
+      let meta: SfDescribeMeta;
+      if (cachedOppDescribe) {
+        meta = cachedOppDescribe;
+      } else {
+        meta = (await conn.sobject("Opportunity").describe()) as unknown as SfDescribeMeta;
+        cachedOppDescribe = meta;
+      }
       oppMetaFieldNames = new Set(meta.fields.map((f) => f.name));
       allCurrencyFields = meta.fields
         .filter((f) => f.custom && (f.type === "currency" || f.type === "double"))
@@ -1650,7 +1686,16 @@ export async function loadSalesforceSnapshot(
     let workOrderRecords: Array<Record<string, unknown>> = [];
 
     try {
-      const woMeta = await conn.sobject("WorkOrder").describe();
+      // Speed pass 2026-06-29: module-cached describe (cachedWoDescribe).
+      // WO describe blocks the entire 365d WO SOQL because woFieldList is
+      // computed from it. Caching saves ~300-500ms per cold regen.
+      let woMeta: SfDescribeMeta;
+      if (cachedWoDescribe) {
+        woMeta = cachedWoDescribe;
+      } else {
+        woMeta = (await conn.sobject("WorkOrder").describe()) as unknown as SfDescribeMeta;
+        cachedWoDescribe = woMeta;
+      }
       woCurrencyFields = woMeta.fields
         .filter((f) => f.custom && (f.type === "currency" || f.type === "double"))
         .map((f) => f.name);

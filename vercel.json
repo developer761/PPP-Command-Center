@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/commercial-daily",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/warm-snapshot",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

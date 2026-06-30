@@ -179,6 +179,24 @@ export async function getStoredSalesforceCredentials(): Promise<
  * and surface a "Salesforce not connected — visit /api/auth/salesforce/login"
  * message in the UI.
  */
+/**
+ * Module-singleton cache of the SF access_token. SF access tokens live ~2
+ * hours; we refresh defensively every 60 min. Without this cache, jsforce
+ * does a silent `refresh_token → access_token` POST to login.salesforce.com
+ * before the first query on EVERY cold instance, costing ~400-800ms on
+ * critical-path materials/dashboard regen.
+ *
+ * Speed pass 2026-06-29. Self-healing: on any INVALID_SESSION_ID error
+ * from jsforce, callers can call `clearSalesforceAccessTokenCache()` and
+ * the next request will refresh.
+ */
+const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000; // 60 min — half of SF's 2h default
+let _cachedAccessToken: { token: string; expiresAt: number; instanceUrl: string } | null = null;
+
+export function clearSalesforceAccessTokenCache(): void {
+  _cachedAccessToken = null;
+}
+
 export async function getSalesforceClient(): Promise<Connection> {
   assertSupabaseEnv();
   assertSalesforceOAuthEnv();
@@ -189,6 +207,31 @@ export async function getSalesforceClient(): Promise<Connection> {
     );
   }
 
+  // Fast path: cached access_token still valid AND matches the same SF
+  // instance. Skip the silent refresh-token → access-token POST that
+  // jsforce would otherwise do before the first query.
+  const now = Date.now();
+  if (
+    _cachedAccessToken
+    && _cachedAccessToken.expiresAt > now
+    && _cachedAccessToken.instanceUrl === creds.instanceUrl
+  ) {
+    return new jsforce.Connection({
+      oauth2: {
+        loginUrl: process.env.SF_LOGIN_URL!,
+        clientId: process.env.SF_CONSUMER_KEY!,
+        clientSecret: process.env.SF_CONSUMER_SECRET!,
+      },
+      instanceUrl: creds.instanceUrl,
+      accessToken: _cachedAccessToken.token,
+      refreshToken: creds.refreshToken,
+    });
+  }
+
+  // Cold path: let jsforce mint the access_token via the refresh-token
+  // dance. We pre-emptively fire conn.identity() to force the dance to
+  // happen NOW (instead of inside the first query), then capture the
+  // resulting access_token for future cold instances on this same node.
   const conn = new jsforce.Connection({
     oauth2: {
       loginUrl: process.env.SF_LOGIN_URL!,
@@ -198,7 +241,22 @@ export async function getSalesforceClient(): Promise<Connection> {
     instanceUrl: creds.instanceUrl,
     refreshToken: creds.refreshToken,
   });
-
+  try {
+    // jsforce auto-refreshes on first authenticated call. .identity() is
+    // cheap (~150ms) and gives us the access_token to cache.
+    await conn.identity();
+    if (conn.accessToken) {
+      _cachedAccessToken = {
+        token: conn.accessToken,
+        expiresAt: now + ACCESS_TOKEN_TTL_MS,
+        instanceUrl: creds.instanceUrl,
+      };
+    }
+  } catch {
+    // Identity probe failed — return conn anyway, jsforce will retry the
+    // refresh on the next call. Don't cache a bad token.
+    _cachedAccessToken = null;
+  }
   return conn;
 }
 
