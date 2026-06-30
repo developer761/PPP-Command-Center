@@ -17,6 +17,9 @@ import {
   getOpportunitySubmittal,
   editOpportunitySubmittal,
   deleteOpportunitySubmittal,
+  changeSubmittalStatus,
+  createOpportunitySubmittal,
+  type ChangeSubmittalStatusInput,
 } from "@/lib/commercial/opportunities/submittals";
 import {
   addSubmittalItem,
@@ -25,14 +28,19 @@ import {
 } from "@/lib/commercial/opportunities/submittal-items";
 import { listOpportunityFinishes } from "@/lib/commercial/opportunities/finishes";
 import {
+  ALLOWED_SUBMITTAL_TRANSITIONS,
   INCLUDED_KINDS,
+  SUBMITTAL_RESPONSES,
   TRANSMITTED_AS_OPTIONS,
   includedKindLabel,
   isTerminalSubmittalStatus,
+  submittalResponseLabel,
   submittalStatusLabel,
   submittalStatusTone,
   transmittedAsLabel,
   type IncludedKind,
+  type SubmittalResponse,
+  type SubmittalStatus,
   type TransmittedAs,
 } from "@/lib/commercial/opportunities/submittal-constants";
 
@@ -250,6 +258,143 @@ async function deleteSubmittalAction(formData: FormData) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Status DAG transitions — single server action behind the lib's
+//  changeSubmittalStatus enforcement. Mirror of the opportunity status
+//  pattern at lib/commercial/opportunities/status.ts.
+// ─────────────────────────────────────────────────────────────────────
+//
+// Flow:
+//   draft        → Send                    → submitted
+//   submitted    → Mark received           → under_review
+//   under_review → Approved                → approved   (response stamped)
+//   under_review → Approved as Noted       → approved_as_noted
+//   under_review → Revise & Resubmit       → revise_and_resubmit
+//   under_review → Reject                  → rejected
+//   approved/_as_noted/revise/rejected → Close → closed
+//   any non-closed → Void (with reason) → voided
+
+async function changeStatusAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const submittal_id = String(formData.get("submittal_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(submittal_id)) {
+    redirect("/commercial/opportunities");
+  }
+
+  const to_status = String(formData.get("to_status") ?? "") as SubmittalStatus;
+
+  // Build the input — only include side-effect fields the target status needs.
+  const input: ChangeSubmittalStatusInput = {
+    opportunity_id,
+    submittal_id,
+    to_status,
+    changed_by_user_id: user.id,
+    note: (formData.get("note") as string)?.trim() || null,
+  };
+
+  // Response branches require a response enum + optionally copies count.
+  if (
+    to_status === "approved" ||
+    to_status === "approved_as_noted" ||
+    to_status === "revise_and_resubmit" ||
+    to_status === "rejected"
+  ) {
+    const responseRaw = (formData.get("response") as string)?.trim() || "";
+    if (responseRaw) input.response = responseRaw as SubmittalResponse;
+    const copiesRaw = (formData.get("response_copies") as string)?.trim();
+    if (copiesRaw) {
+      const n = parseInt(copiesRaw, 10);
+      if (Number.isFinite(n) && n >= 0) input.response_copies = n;
+    }
+    const recv = (formData.get("response_received_at") as string)?.trim();
+    // HTML date input gives YYYY-MM-DD; convert to ISO timestamp (noon ET to
+    // avoid timezone-day-shift surprises).
+    if (recv) input.response_received_at = `${recv}T17:00:00.000Z`;
+  }
+
+  // Void branch requires void_reason.
+  if (to_status === "voided") {
+    const reason = (formData.get("void_reason") as string)?.trim();
+    if (!reason) {
+      redirect(
+        `/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
+          encodeURIComponent("Void reason is required.")
+      );
+    }
+    input.void_reason = reason;
+  }
+
+  const result = await changeSubmittalStatus(input);
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
+        encodeURIComponent(result.error)
+    );
+  }
+  // Status-change ripples to the opp list badge ("awaiting GC" count).
+  revalidatePath("/commercial/opportunities");
+  redirect(
+    `/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?saved=1`
+  );
+}
+
+/**
+ * Create a revision of this submittal in one click. Spawns a new draft
+ * row with revises_submittal_id pointing back at the parent + the parent's
+ * cover snapshotted in (lib does the defaulting), then closes the parent
+ * (revise_and_resubmit → closed), then redirects to the new revision so
+ * Alex can edit the cover + items.
+ *
+ * Only valid when parent status is revise_and_resubmit or rejected.
+ */
+async function createRevisionAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const parent_submittal_id = String(formData.get("submittal_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(parent_submittal_id)) {
+    redirect("/commercial/opportunities");
+  }
+
+  // Create the revision row (lib pulls parent cover snapshot + bumps
+  // revision_number).
+  const createRes = await createOpportunitySubmittal({
+    opportunity_id,
+    revises_submittal_id: parent_submittal_id,
+    created_by_user_id: user.id,
+  });
+  if (!createRes.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}/submittals/${parent_submittal_id}?error=` +
+        encodeURIComponent(createRes.error)
+    );
+  }
+
+  // Best-effort close the parent. If it's not in a state that allows
+  // close (e.g. user already closed manually), we don't block — the new
+  // revision is the source of truth from here.
+  await changeSubmittalStatus({
+    opportunity_id,
+    submittal_id: parent_submittal_id,
+    to_status: "closed",
+    changed_by_user_id: user.id,
+    note: `Superseded by revision ${createRes.submittal.id.slice(0, 8)}.`,
+  });
+
+  revalidatePath("/commercial/opportunities");
+  redirect(
+    `/commercial/opportunities/${opportunity_id}/submittals/${createRes.submittal.id}?saved=1`
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Page
 // ─────────────────────────────────────────────────────────────────────
 
@@ -373,15 +518,44 @@ export default async function SubmittalDetailPage({
           )}
         </div>
 
-        {/* Status-transition action placeholder — Batch 4 will wire these */}
-        {!isTerminal && (
-          <div className="mt-4 px-3 py-2 rounded-lg bg-sky-50 border border-sky-100 text-[12px] text-sky-800">
-            <strong className="font-semibold">Lifecycle actions coming next:</strong>{" "}
-            Send · Mark Approved · Approve as Noted · Request Revision · Void.
-            Wire-up lands in Batch 4 of the Submittals phase.
+        {/* Voided banner — show prominent reason if voided */}
+        {submittal.status === "voided" && submittal.void_reason && (
+          <div className="mt-4 px-4 py-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-900">
+            <strong className="font-semibold">Voided.</strong>{" "}
+            {submittal.void_reason}
+            {submittal.voided_at && (
+              <span className="text-rose-700/80 text-[12px] ml-2">
+                · {fmtDateTime(submittal.voided_at)}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Revision link — if this submittal is itself a revision, link to parent */}
+        {submittal.revises_submittal_id && (
+          <div className="mt-4 px-3 py-2 rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700">
+            This is a revision of{" "}
+            <Link
+              href={`/commercial/opportunities/${opportunity_id}/submittals/${submittal.revises_submittal_id}`}
+              className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2 font-medium"
+            >
+              the prior submittal
+            </Link>
+            .
           </div>
         )}
       </header>
+
+      {/* ──────────── Status Actions Panel ────────────
+          Contextual buttons + inline forms that surface the next-step
+          transitions allowed by the DAG for the current status. */}
+      <StatusActionsPanel
+        opportunityId={opportunity_id}
+        submittalId={submittal_id}
+        status={submittal.status}
+        itemCount={items.length}
+        hasResponse={!!submittal.response}
+      />
 
       {/* Cover form */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
@@ -807,5 +981,377 @@ export default async function SubmittalDetailPage({
         </section>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Status Actions Panel
+// ─────────────────────────────────────────────────────────────────────
+//
+// Contextual action surface — what Alex can do next from the current
+// status, surfaced as a card immediately under the header. Each transition
+// uses a server-action form so we get URL-stable state + no client JS.
+//
+// Design principles:
+//   1. ONE primary action per state (emerald) — the obvious "next step"
+//   2. Secondary actions (charcoal) — viable alternatives
+//   3. Destructive (Void) — always shown for non-terminal states, but
+//      tucked at the bottom in rose so it's intentional
+//   4. Inline response form when transitioning into a response branch —
+//      no second screen, no modal
+//   5. Disabled-with-reason banners when an action is technically valid
+//      but contextually wrong (e.g. "Send" with 0 items)
+//   6. After-revision affordance — when in revise/rejected, the primary
+//      action is "Create revision" (one-click spawns the new draft)
+//
+// All buttons hit 44px min-h, touch-manipulation. Forms stack on mobile.
+
+function StatusActionsPanel({
+  opportunityId,
+  submittalId,
+  status,
+  itemCount,
+  hasResponse,
+}: {
+  opportunityId: string;
+  submittalId: string;
+  status: SubmittalStatus;
+  itemCount: number;
+  hasResponse: boolean;
+}) {
+  const allowed = ALLOWED_SUBMITTAL_TRANSITIONS[status] ?? [];
+  // No actions available on terminal states (closed/voided). Bail early so
+  // we don't render a stub panel with nothing in it.
+  if (allowed.length === 0) {
+    return null;
+  }
+
+  // Hidden inputs every form needs.
+  const hiddenIds = (
+    <>
+      <input type="hidden" name="opportunity_id" value={opportunityId} />
+      <input type="hidden" name="submittal_id" value={submittalId} />
+    </>
+  );
+
+  return (
+    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-sm font-bold text-ppp-charcoal">What&apos;s next?</h2>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+            {actionHelperLine(status)}
+          </p>
+        </div>
+      </div>
+
+      {/* DRAFT → SUBMITTED */}
+      {status === "draft" && (
+        <div className="space-y-3">
+          {itemCount === 0 && (
+            <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900">
+              <strong className="font-semibold">Heads up:</strong>{" "}
+              Add at least one item before sending — GCs expect a populated transmittal.
+            </div>
+          )}
+          <form action={changeStatusAction} className="flex flex-wrap items-center gap-2">
+            {hiddenIds}
+            <input type="hidden" name="to_status" value="submitted" />
+            <button
+              type="submit"
+              disabled={itemCount === 0}
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+              Send to GC
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* SUBMITTED → UNDER_REVIEW (GC acknowledged receipt) */}
+      {status === "submitted" && (
+        <div className="space-y-3">
+          <form action={changeStatusAction} className="flex flex-wrap items-center gap-2">
+            {hiddenIds}
+            <input type="hidden" name="to_status" value="under_review" />
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+            >
+              Mark received by GC
+            </button>
+            <span className="text-[12px] text-ppp-charcoal-500">
+              Use when the GC acknowledges they got the package — &ldquo;under review&rdquo; period starts.
+            </span>
+          </form>
+        </div>
+      )}
+
+      {/* UNDER_REVIEW → response branches */}
+      {status === "under_review" && (
+        <div className="space-y-4">
+          <p className="text-[12px] text-ppp-charcoal-700">
+            Record the GC&apos;s response — pick the outcome below + (optional) details.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <ResponseRecorder
+              opportunityId={opportunityId}
+              submittalId={submittalId}
+              to_status="approved"
+              tone="emerald"
+              label="Approved as Submitted"
+              defaultResponse="approved"
+            />
+            <ResponseRecorder
+              opportunityId={opportunityId}
+              submittalId={submittalId}
+              to_status="approved_as_noted"
+              tone="emerald"
+              label="Approved as Noted"
+              defaultResponse="approved_as_noted"
+            />
+            <ResponseRecorder
+              opportunityId={opportunityId}
+              submittalId={submittalId}
+              to_status="revise_and_resubmit"
+              tone="amber"
+              label="Revise & Resubmit"
+              defaultResponse="returned_for_corrections"
+              copiesPlaceholder="copies requested"
+            />
+            <ResponseRecorder
+              opportunityId={opportunityId}
+              submittalId={submittalId}
+              to_status="rejected"
+              tone="rose"
+              label="Rejected"
+              defaultResponse="returned_for_corrections"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* APPROVED / APPROVED_AS_NOTED → close */}
+      {(status === "approved" || status === "approved_as_noted") && (
+        <div className="space-y-3">
+          {hasResponse ? null : (
+            <div className="px-3 py-2 rounded-lg bg-sky-50 border border-sky-100 text-[12px] text-sky-800">
+              Response captured. Close to lock the package + move it into history.
+            </div>
+          )}
+          <form action={changeStatusAction} className="flex flex-wrap items-center gap-2">
+            {hiddenIds}
+            <input type="hidden" name="to_status" value="closed" />
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+            >
+              Close submittal
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* REVISE_AND_RESUBMIT / REJECTED → create revision is the primary path */}
+      {(status === "revise_and_resubmit" || status === "rejected") && (
+        <div className="space-y-3">
+          <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900">
+            <strong className="font-semibold">Revision path:</strong>{" "}
+            Create a new revision — cover + items copy forward; original closes automatically.
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <form action={createRevisionAction}>
+              {hiddenIds}
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+              >
+                + Create revision
+              </button>
+            </form>
+            {/* Manual close fallback — for the rare case where Alex doesn't actually need a revision */}
+            <form action={changeStatusAction}>
+              {hiddenIds}
+              <input type="hidden" name="to_status" value="closed" />
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+              >
+                Close without revision
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Void — bottom-of-card, rose, requires reason. Available on every
+          non-terminal state. */}
+      {allowed.includes("voided") && (
+        <details className="mt-5 group">
+          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-medium text-rose-700 hover:text-rose-800 min-h-[36px] touch-manipulation select-none">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+            Void this submittal
+          </summary>
+          <form action={changeStatusAction} className="mt-3 space-y-3 p-4 rounded-lg border border-rose-200 bg-rose-50/50">
+            {hiddenIds}
+            <input type="hidden" name="to_status" value="voided" />
+            <p className="text-[12px] text-rose-900">
+              Voiding marks the submittal as &ldquo;sent in error&rdquo;. It stays in history with
+              the reason below but is excluded from the active log. Use this when the
+              wrong package went out, not for revisions.
+            </p>
+            <div>
+              <label htmlFor="void_reason" className={LABEL_CLS}>
+                Void reason <span className="text-rose-700">*</span>
+              </label>
+              <textarea
+                id="void_reason"
+                name="void_reason"
+                required
+                rows={2}
+                maxLength={500}
+                placeholder="e.g. Sent to wrong GC contact — replaced by SUB-006"
+                className={TEXTAREA_CLS}
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-700 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
+              >
+                Void submittal
+              </button>
+            </div>
+          </form>
+        </details>
+      )}
+    </section>
+  );
+}
+
+/** Helper text under the "What's next?" panel header — explains the
+ *  workflow stage in one line. */
+function actionHelperLine(status: SubmittalStatus): string {
+  switch (status) {
+    case "draft": return "Fill the cover + items, then send to the GC.";
+    case "submitted": return "Sent. Mark received when the GC acknowledges the package.";
+    case "under_review": return "GC is reviewing. Record their response when it comes back.";
+    case "approved": return "Approved as submitted. Close to lock + archive.";
+    case "approved_as_noted": return "Approved with comments. Close to lock + archive.";
+    case "revise_and_resubmit": return "GC wants changes. Create a revision to copy forward + start fresh.";
+    case "rejected": return "GC rejected. Create a revision or close to abandon.";
+    default: return "";
+  }
+}
+
+/**
+ * One response-recorder card — collapsible details element that expands
+ * to a small form (response enum + optional copies count + optional date +
+ * optional note). Used for the 4 under_review → branches.
+ *
+ * Tone drives the border + button color (emerald/amber/rose).
+ */
+function ResponseRecorder({
+  opportunityId,
+  submittalId,
+  to_status,
+  tone,
+  label,
+  defaultResponse,
+  copiesPlaceholder,
+}: {
+  opportunityId: string;
+  submittalId: string;
+  to_status: SubmittalStatus;
+  tone: "emerald" | "amber" | "rose";
+  label: string;
+  defaultResponse: SubmittalResponse;
+  copiesPlaceholder?: string;
+}) {
+  const toneStyles =
+    tone === "emerald"
+      ? { card: "border-emerald-200 bg-emerald-50/40", btn: "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/30" }
+      : tone === "amber"
+      ? { card: "border-amber-200 bg-amber-50/40", btn: "bg-amber-700 hover:bg-amber-800 active:bg-amber-900 shadow-amber-700/30" }
+      : { card: "border-rose-200 bg-rose-50/40", btn: "bg-rose-700 hover:bg-rose-800 active:bg-rose-900 shadow-rose-700/30" };
+
+  return (
+    <details className={`group rounded-lg border ${toneStyles.card} overflow-hidden`}>
+      <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-white/50 min-h-[44px] touch-manipulation select-none">
+        <span className="text-sm font-semibold text-ppp-charcoal">{label}</span>
+        <span aria-hidden className="text-ppp-charcoal-400 text-[12px] transition-transform group-open:rotate-90">
+          ▶
+        </span>
+      </summary>
+      <form action={changeStatusAction} className="px-3 pb-3 pt-1 space-y-3 border-t border-white/60">
+        <input type="hidden" name="opportunity_id" value={opportunityId} />
+        <input type="hidden" name="submittal_id" value={submittalId} />
+        <input type="hidden" name="to_status" value={to_status} />
+
+        <div>
+          <label className={LABEL_CLS}>GC response (exact wording)</label>
+          <select
+            name="response"
+            defaultValue={defaultResponse}
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
+          >
+            {SUBMITTAL_RESPONSES.map((r) => (
+              <option key={r} value={r}>{submittalResponseLabel(r)}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={LABEL_CLS}>
+              {copiesPlaceholder ? "Copies" : "Copies (if specified)"}
+            </label>
+            <input
+              name="response_copies"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              placeholder={copiesPlaceholder ?? "optional"}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label className={LABEL_CLS}>Response date</label>
+            <input
+              name="response_received_at"
+              type="date"
+              defaultValue={new Date().toISOString().slice(0, 10)}
+              className={INPUT_CLS}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className={LABEL_CLS}>Note (optional)</label>
+          <input
+            name="note"
+            type="text"
+            maxLength={300}
+            placeholder="e.g. Spec changes requested — see attached redline."
+            className={INPUT_CLS}
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            className={`inline-flex items-center justify-center px-4 py-2 rounded-lg ${toneStyles.btn} text-white text-sm font-semibold transition-colors shadow-sm min-h-[44px] touch-manipulation`}
+          >
+            Record {label.toLowerCase()}
+          </button>
+        </div>
+      </form>
+    </details>
   );
 }
