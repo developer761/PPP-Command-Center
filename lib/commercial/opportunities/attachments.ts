@@ -38,6 +38,10 @@ export type OpportunityAttachment = {
   archived: boolean;
   archived_at: string | null;
   archived_by_user_id: string | null;
+  // Phase 2.5 — optional link to a specific submittal. NULL = generic
+  // Plans/Specs attachment that's not tied to any one submittal.
+  // ON DELETE SET NULL on the FK so voiding a submittal preserves the PDF.
+  submittal_id: string | null;
 };
 
 /** Service-role client for Storage operations. Mirror documents.ts. */
@@ -358,4 +362,183 @@ export function categorizeFilename(name: string): AttachmentCategory | null {
   if (/\bspec(s|ifications?|book)?\b|\bsection[\s_-]*\d/.test(lower)) return "Specs";
   if (/\bplan(s|set)?\b|\bdrawing\b|\barch\b|\bblueprint\b|sheet[\s_-]*[a-z0-9]+/.test(lower)) return "Plans";
   return null;
+}
+
+// ─── Phase 2.5: submittal linkage ────────────────────────────────────
+//
+// Attachments live on the opportunity (Plans & Specs tab). Some of them
+// belong to a specific submittal package — the spec sheets, drawdowns,
+// color charts that Tomco bundled into SUB-001. We link via the
+// commercial_opportunity_attachments.submittal_id column added in
+// migration 041. ON DELETE SET NULL on the FK so voiding a submittal
+// preserves the underlying PDF on the Plans & Specs tab.
+
+/**
+ * List active attachments linked to a specific submittal. Used by the
+ * submittal detail page's "Attached spec sheets" section.
+ *
+ * Chain-of-trust: lib already gates listings via the opp's deleted_at
+ * (see listOpportunityAttachments). Same shape here.
+ */
+export async function listAttachmentsBySubmittal(
+  opportunity_id: string,
+  submittal_id: string
+): Promise<OpportunityAttachment[]> {
+  const sb = commercialDb();
+  // Reject if parent opp soft-deleted (2026-06-24 fix shape).
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("deleted_at")
+    .eq("id", opportunity_id)
+    .maybeSingle();
+  if (!oppRow || (oppRow as { deleted_at: string | null }).deleted_at) return [];
+
+  const { data, error } = await sb
+    .from("commercial_opportunity_attachments")
+    .select("*")
+    .eq("opportunity_id", opportunity_id)
+    .eq("submittal_id", submittal_id)
+    .eq("archived", false)
+    .order("uploaded_at", { ascending: false });
+  if (error) {
+    console.warn("[commercial/opp-attachments] listBySubmittal failed:", error.message);
+    return [];
+  }
+  return (data ?? []) as OpportunityAttachment[];
+}
+
+/**
+ * List active attachments on this opp that are NOT yet linked to any
+ * submittal. Feeds the "Link existing PDF" picker on the submittal
+ * detail page so Alex sees only files that are available to link.
+ */
+export async function listUnlinkedOpportunityAttachments(
+  opportunity_id: string
+): Promise<OpportunityAttachment[]> {
+  const sb = commercialDb();
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("deleted_at")
+    .eq("id", opportunity_id)
+    .maybeSingle();
+  if (!oppRow || (oppRow as { deleted_at: string | null }).deleted_at) return [];
+
+  const { data, error } = await sb
+    .from("commercial_opportunity_attachments")
+    .select("*")
+    .eq("opportunity_id", opportunity_id)
+    .is("submittal_id", null)
+    .eq("archived", false)
+    .order("uploaded_at", { ascending: false });
+  if (error) {
+    console.warn("[commercial/opp-attachments] listUnlinked failed:", error.message);
+    return [];
+  }
+  return (data ?? []) as OpportunityAttachment[];
+}
+
+/**
+ * Link an existing attachment to a specific submittal. Defense in depth:
+ * the lib double-scopes by opportunity_id + verifies the submittal
+ * belongs to that opp AND is not voided (voided submittals can't gain
+ * new attachments). Mirror of yesterday's cross-account fix shape.
+ */
+export async function linkAttachmentToSubmittal(
+  opportunity_id: string,
+  submittal_id: string,
+  attachment_id: string,
+  acting_user_id: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+
+  // Verify the submittal is on this opp AND not voided.
+  const { data: subRow } = await sb
+    .from("commercial_opp_submittals")
+    .select("id, opportunity_id, status")
+    .eq("id", submittal_id)
+    .eq("opportunity_id", opportunity_id)
+    .maybeSingle();
+  if (!subRow) return { ok: false, error: "Submittal not found on this opportunity." };
+  const sub = subRow as { id: string; opportunity_id: string; status: string };
+  if (sub.status === "voided") {
+    return { ok: false, error: "Cannot link to a voided submittal." };
+  }
+
+  // Load before-state for audit log + verify scope.
+  const { data: before } = await sb
+    .from("commercial_opportunity_attachments")
+    .select("*")
+    .eq("id", attachment_id)
+    .eq("opportunity_id", opportunity_id)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "Attachment not found on this opportunity." };
+  const beforeRow = before as OpportunityAttachment;
+  if (beforeRow.archived) return { ok: false, error: "Cannot link an archived attachment." };
+
+  // Idempotent: already linked to this exact submittal → no-op success.
+  if (beforeRow.submittal_id === submittal_id) return { ok: true };
+
+  const { data: after, error: updErr } = await sb
+    .from("commercial_opportunity_attachments")
+    .update({ submittal_id })
+    .eq("id", attachment_id)
+    .eq("opportunity_id", opportunity_id)
+    .select("*")
+    .single();
+  if (updErr) return { ok: false, error: updErr.message };
+
+  await logUpdate(
+    "commercial_opportunity_attachments",
+    attachment_id,
+    before,
+    after,
+    acting_user_id
+  );
+  return { ok: true };
+}
+
+/**
+ * Unlink an attachment from its submittal (sets submittal_id = NULL).
+ * The file stays on Plans & Specs — only the linkage is removed.
+ */
+export async function unlinkAttachmentFromSubmittal(
+  opportunity_id: string,
+  submittal_id: string,
+  attachment_id: string,
+  acting_user_id: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+
+  const { data: before } = await sb
+    .from("commercial_opportunity_attachments")
+    .select("*")
+    .eq("id", attachment_id)
+    .eq("opportunity_id", opportunity_id)
+    .eq("submittal_id", submittal_id)
+    .maybeSingle();
+  if (!before) {
+    return { ok: false, error: "Attachment not found or not linked to this submittal." };
+  }
+
+  const { data: after, error: updErr } = await sb
+    .from("commercial_opportunity_attachments")
+    .update({ submittal_id: null })
+    .eq("id", attachment_id)
+    .eq("opportunity_id", opportunity_id)
+    .eq("submittal_id", submittal_id)  // race-guard: only unlink if still linked here
+    .select("*")
+    .maybeSingle();
+  if (updErr) return { ok: false, error: updErr.message };
+  if (!after) {
+    return { ok: false, error: "Attachment was relinked in another tab. Reload to see the latest." };
+  }
+
+  await logUpdate(
+    "commercial_opportunity_attachments",
+    attachment_id,
+    before,
+    after,
+    acting_user_id
+  );
+  return { ok: true };
 }

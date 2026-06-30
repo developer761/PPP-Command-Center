@@ -35,6 +35,8 @@ import { listPrimaryLeadByOpp, opportunityAssignmentRoleLabel } from "@/lib/comm
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
+import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
+import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 // CommercialOpportunitiesSortPicker removed 2026-06-17 — sort merged into
 // the unified Sort & Filter dropdown below. The client component file
 // remains in the repo in case a future surface needs a standalone sort.
@@ -161,12 +163,22 @@ export default async function CommercialOpportunitiesPage({
   // the row's signal-rich badges (days-in-status, overdue tasks count,
   // last-note-at, primary lead) cost one round-trip each, not N+1.
   const oppIds = oppsRaw.map((o) => o.id);
-  const [statusEnteredAtMap, taskStatsMap, lastNoteMap, primaryLeadMap, fileCountMap] = await Promise.all([
+  const [
+    statusEnteredAtMap,
+    taskStatsMap,
+    lastNoteMap,
+    primaryLeadMap,
+    fileCountMap,
+    submittalCountMap,
+    finishCountMap,
+  ] = await Promise.all([
     listCurrentStatusEnteredAtByOpp(oppIds),
     listOpenTaskStatsByOpp(oppIds),
     listLastNoteByOpp(oppIds),
     listPrimaryLeadByOpp(oppIds),
     listAttachmentCountByOpp(oppIds),
+    listSubmittalCountByOpp(oppIds),
+    listFinishCountByOpp(oppIds),
   ]);
 
   // Apply chip filters post-fetch.
@@ -687,6 +699,8 @@ export default async function CommercialOpportunitiesPage({
                 lastNote={lastNoteMap.get(o.id) ?? null}
                 primaryLead={primaryLeadMap.get(o.id) ?? null}
                 fileCount={fileCountMap.get(o.id) ?? 0}
+                submittalStats={submittalCountMap.get(o.id) ?? null}
+                finishCount={finishCountMap.get(o.id) ?? 0}
               />
             ))}
           </ul>
@@ -1129,6 +1143,8 @@ function OpportunityRow({
   lastNote,
   primaryLead,
   fileCount,
+  submittalStats,
+  finishCount,
 }: {
   opportunity: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -1137,6 +1153,11 @@ function OpportunityRow({
   lastNote: { created_at: string; author_label: string | null } | null;
   primaryLead: { user_email: string; user_full_name: string | null; role: import("@/lib/commercial/opportunities/assignments").OpportunityAssignmentRole } | null;
   fileCount: number;
+  /** Phase 2.5 — submittal log signal. total = all submittals on this opp,
+   *  awaiting_response = submitted/under_review (awaiting GC reply). */
+  submittalStats: { total: number; awaiting_response: number } | null;
+  /** Phase 2.5 — count of finish-schedule codes (WD-1, P-1, etc.) on this opp. */
+  finishCount: number;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
   // Decision countdown — color-coded so Alex's eye catches urgency on
@@ -1265,6 +1286,38 @@ function OpportunityRow({
                     <span aria-hidden className="text-ppp-charcoal-300">·</span>
                     <span className="text-ppp-charcoal-500" title="Plans & Specs attachments">
                       📎 {fileCount} {fileCount === 1 ? "file" : "files"}
+                    </span>
+                  </>
+                )}
+                {finishCount > 0 && (
+                  <>
+                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                    <span className="text-ppp-charcoal-500" title={`${finishCount} finish-schedule code${finishCount === 1 ? "" : "s"} defined (WD-1, P-1, etc.)`}>
+                      🎨 {finishCount} {finishCount === 1 ? "finish" : "finishes"}
+                    </span>
+                  </>
+                )}
+                {submittalStats && submittalStats.total > 0 && (
+                  <>
+                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                    <span
+                      className={
+                        submittalStats.awaiting_response > 0
+                          ? "text-sky-700 font-medium"
+                          : "text-ppp-charcoal-500"
+                      }
+                      title={
+                        submittalStats.awaiting_response > 0
+                          ? `${submittalStats.awaiting_response} awaiting GC response`
+                          : `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"} closed`
+                      }
+                    >
+                      📋 {submittalStats.total}
+                      {submittalStats.awaiting_response > 0 && (
+                        <span className="ml-1 inline-flex items-center px-1 py-0 rounded bg-sky-100 text-sky-800 text-[10px] font-bold uppercase tracking-wider">
+                          {submittalStats.awaiting_response} awaiting
+                        </span>
+                      )}
                     </span>
                   </>
                 )}

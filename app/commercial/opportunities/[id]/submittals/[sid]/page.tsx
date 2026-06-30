@@ -28,6 +28,14 @@ import {
 } from "@/lib/commercial/opportunities/submittal-items";
 import { listOpportunityFinishes } from "@/lib/commercial/opportunities/finishes";
 import {
+  listAttachmentsBySubmittal,
+  listUnlinkedOpportunityAttachments,
+  linkAttachmentToSubmittal,
+  unlinkAttachmentFromSubmittal,
+  categorizeFilename,
+  formatBytes,
+} from "@/lib/commercial/opportunities/attachments";
+import {
   ALLOWED_SUBMITTAL_TRANSITIONS,
   INCLUDED_KINDS,
   SUBMITTAL_RESPONSES,
@@ -258,6 +266,64 @@ async function deleteSubmittalAction(formData: FormData) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+//  Attachment linkage — link existing Plans & Specs PDFs to this submittal
+// ─────────────────────────────────────────────────────────────────────
+
+async function linkAttachmentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const submittal_id = String(formData.get("submittal_id") ?? "");
+  const attachment_id = String(formData.get("attachment_id") ?? "");
+  if (![opportunity_id, submittal_id, attachment_id].every((s) => UUID_RE.test(s))) {
+    redirect("/commercial/opportunities");
+  }
+  const result = await linkAttachmentToSubmittal(
+    opportunity_id,
+    submittal_id,
+    attachment_id,
+    user.id
+  );
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
+        encodeURIComponent(result.error)
+    );
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}`);
+}
+
+async function unlinkAttachmentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const submittal_id = String(formData.get("submittal_id") ?? "");
+  const attachment_id = String(formData.get("attachment_id") ?? "");
+  if (![opportunity_id, submittal_id, attachment_id].every((s) => UUID_RE.test(s))) {
+    redirect("/commercial/opportunities");
+  }
+  const result = await unlinkAttachmentFromSubmittal(
+    opportunity_id,
+    submittal_id,
+    attachment_id,
+    user.id
+  );
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
+        encodeURIComponent(result.error)
+    );
+  }
+  redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────
 //  Status DAG transitions — single server action behind the lib's
 //  changeSubmittalStatus enforcement. Mirror of the opportunity status
 //  pattern at lib/commercial/opportunities/status.ts.
@@ -417,7 +483,15 @@ export default async function SubmittalDetailPage({
   const { submittal, items, statusLog } = loaded;
 
   // Finish-code suggestions for the items editor (autocomplete-friendly).
-  const finishes = await listOpportunityFinishes(opportunity_id);
+  // Attachments — linked + unlinked, fetched in parallel for the
+  // "Attached spec sheets" section.
+  const [finishes, linkedAttachments, unlinkedAttachments] = await Promise.all([
+    listOpportunityFinishes(opportunity_id),
+    listAttachmentsBySubmittal(opportunity_id, submittal_id),
+    listUnlinkedOpportunityAttachments(opportunity_id),
+  ]);
+  // Can't link new things to a voided submittal; show different copy.
+  const canLinkAttachments = submittal.status !== "voided";
 
   const isDraft = submittal.status === "draft";
   const isTerminal = isTerminalSubmittalStatus(submittal.status);
@@ -960,19 +1034,163 @@ export default async function SubmittalDetailPage({
         )}
       </section>
 
-      {/* Spec-sheet attachments — Batch 6 wires this to attachment.submittal_id */}
+      {/* ──────────── Attached spec sheets & samples ──────────── */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
-        <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Attached spec sheets &amp; samples</h2>
-        <p className="text-[12px] text-ppp-charcoal-500">
-          Coming next batch: link uploaded PDFs from{" "}
-          <Link
-            href={`/commercial/opportunities/${opportunity_id}?tab=plans`}
-            className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
-          >
-            Plans &amp; Specs
-          </Link>
-          {" "}to this specific submittal, and auto-store the generated Letter of Transmittal PDF here.
-        </p>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-sm font-bold text-ppp-charcoal">
+              Attached spec sheets &amp; samples
+            </h2>
+            <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+              The PDFs that ship with this submittal — product data, color charts,
+              drawdowns, etc. Source files live in{" "}
+              <Link
+                href={`/commercial/opportunities/${opportunity_id}?tab=plans`}
+                className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
+              >
+                Plans &amp; Specs
+              </Link>
+              ; link the ones that belong to this transmittal here.
+            </p>
+          </div>
+        </div>
+
+        {/* Linked attachments list */}
+        {linkedAttachments.length === 0 ? (
+          <div className="bg-ppp-charcoal-50/50 border border-dashed border-ppp-charcoal-200 rounded-lg p-6 text-center text-[12px] text-ppp-charcoal-500">
+            No PDFs linked yet.{" "}
+            {canLinkAttachments && unlinkedAttachments.length > 0 && (
+              <span>Pick from {unlinkedAttachments.length} unlinked file{unlinkedAttachments.length === 1 ? "" : "s"} below.</span>
+            )}
+            {canLinkAttachments && unlinkedAttachments.length === 0 && (
+              <span>
+                Upload spec sheets on{" "}
+                <Link
+                  href={`/commercial/opportunities/${opportunity_id}?tab=plans`}
+                  className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
+                >
+                  Plans &amp; Specs
+                </Link>
+                {" "}first, then come back to link them here.
+              </span>
+            )}
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {linkedAttachments.map((att) => {
+              const category = categorizeFilename(att.file_name);
+              return (
+                <li
+                  key={att.id}
+                  className="flex items-start justify-between gap-3 p-3 rounded-lg border border-ppp-charcoal-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors"
+                >
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <span
+                      aria-hidden
+                      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded bg-emerald-50 text-emerald-700 border border-emerald-100"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8" />
+                      </svg>
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-ppp-charcoal break-words">
+                        {att.file_name}
+                      </div>
+                      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                        {category && (
+                          <span className="inline-block px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 text-[10px] uppercase tracking-wider font-bold mr-1.5">
+                            {category}
+                          </span>
+                        )}
+                        v{att.version} · {formatBytes(att.size_bytes)} · uploaded {fmtDate(att.uploaded_at)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <a
+                      href={`/api/commercial/opportunities/${opportunity_id}/attachments/${att.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[36px] touch-manipulation"
+                    >
+                      Open
+                    </a>
+                    {canLinkAttachments && (
+                      <form action={unlinkAttachmentAction} className="inline">
+                        <input type="hidden" name="opportunity_id" value={opportunity_id} />
+                        <input type="hidden" name="submittal_id" value={submittal_id} />
+                        <input type="hidden" name="attachment_id" value={att.id} />
+                        <button
+                          type="submit"
+                          title="Unlink — file stays on Plans & Specs"
+                          className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[36px] sm:min-h-[36px] touch-manipulation"
+                        >
+                          Unlink
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {/* Link existing PDF picker — collapsed by default to avoid clutter */}
+        {canLinkAttachments && unlinkedAttachments.length > 0 && (
+          <details className="mt-4 group">
+            <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 min-h-[36px] touch-manipulation select-none">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+              + Link existing PDF ({unlinkedAttachments.length} available)
+            </summary>
+            <div className="mt-3 p-3 rounded-lg border border-emerald-100 bg-emerald-50/30">
+              <p className="text-[11px] text-ppp-charcoal-600 mb-2">
+                These are the unlinked PDFs on this opp. Click to attach.
+              </p>
+              <ul className="space-y-1">
+                {unlinkedAttachments.map((att) => {
+                  const category = categorizeFilename(att.file_name);
+                  return (
+                    <li key={att.id}>
+                      <form action={linkAttachmentAction} className="flex items-center justify-between gap-3 p-2 rounded hover:bg-white transition-colors">
+                        <input type="hidden" name="opportunity_id" value={opportunity_id} />
+                        <input type="hidden" name="submittal_id" value={submittal_id} />
+                        <input type="hidden" name="attachment_id" value={att.id} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-ppp-charcoal break-words">{att.file_name}</div>
+                          <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                            {category && (
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 text-[10px] uppercase tracking-wider font-bold mr-1.5">
+                                {category}
+                              </span>
+                            )}
+                            v{att.version} · {formatBytes(att.size_bytes)}
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors min-h-[36px] touch-manipulation shrink-0"
+                        >
+                          Attach
+                        </button>
+                      </form>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </details>
+        )}
+
+        {!canLinkAttachments && linkedAttachments.length === 0 && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900">
+            Voided submittals can&apos;t gain new attachments. The package shipped with no
+            spec sheets attached.
+          </div>
+        )}
       </section>
 
       {/* Status timeline */}
