@@ -64,6 +64,8 @@ import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
+import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
+import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import {
   OPEN_OPP_STATUSES,
   TERMINAL_STATUSES,
@@ -1565,12 +1567,14 @@ async function OpportunitiesTab({
 
   // Bulk-fetch every row signal in parallel — keeps the tab a single
   // batch query regardless of opp count.
-  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap] = await Promise.all([
+  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap] = await Promise.all([
     listCurrentStatusEnteredAtByOpp(ids),
     listOpenTaskStatsByOpp(ids),
     listLastNoteByOpp(ids),
     listPrimaryLeadByOpp(ids),
     listAttachmentCountByOpp(ids),
+    listSubmittalCountByOpp(ids),
+    listFinishCountByOpp(ids),
   ]);
 
   const open = all.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
@@ -1666,6 +1670,8 @@ async function OpportunitiesTab({
                 lastNote={lastNoteMap.get(opp.id) ?? null}
                 primaryLead={primaryLeadMap.get(opp.id) ?? null}
                 fileCount={attachmentMap.get(opp.id) ?? 0}
+                submittalStats={submittalMap.get(opp.id) ?? null}
+                finishCount={finishMap.get(opp.id) ?? 0}
               />
             ))}
           </ul>
@@ -1690,6 +1696,8 @@ async function OpportunitiesTab({
                 lastNote={lastNoteMap.get(opp.id) ?? null}
                 primaryLead={primaryLeadMap.get(opp.id) ?? null}
                 fileCount={attachmentMap.get(opp.id) ?? 0}
+                submittalStats={submittalMap.get(opp.id) ?? null}
+                finishCount={finishMap.get(opp.id) ?? 0}
               />
             ))}
           </ul>
@@ -1713,6 +1721,8 @@ function AccountOpportunityRow({
   lastNote,
   primaryLead,
   fileCount,
+  submittalStats,
+  finishCount,
 }: {
   opp: CommercialOpportunity;
   accountId: string;
@@ -1721,6 +1731,8 @@ function AccountOpportunityRow({
   lastNote: { created_at: string; author_label: string | null } | null;
   primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
   fileCount: number;
+  submittalStats: { total: number; awaiting_response: number } | null;
+  finishCount: number;
 }) {
   const statusInfo = statusPillTone(opp.status);
   const daysInStatus = daysSinceIso(statusEnteredAt);
@@ -1783,12 +1795,26 @@ function AccountOpportunityRow({
               )}
               {fileCount > 0 && (
                 <span className="text-ppp-charcoal-500" aria-label={`${fileCount} files`}>
-                  📎 {fileCount}
+                  <span aria-hidden>📎</span> {fileCount}
+                </span>
+              )}
+              {finishCount > 0 && (
+                <span className="text-ppp-charcoal-500" aria-label={`${finishCount} finishes`}>
+                  <span aria-hidden>🎨</span> {finishCount}
+                </span>
+              )}
+              {submittalStats && submittalStats.total > 0 && (
+                <span
+                  className={submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : "text-ppp-charcoal-500"}
+                  aria-label={`${submittalStats.total} submittals${submittalStats.awaiting_response > 0 ? `, ${submittalStats.awaiting_response} awaiting GC response` : ""}`}
+                >
+                  <span aria-hidden>📋</span> {submittalStats.total}
+                  {submittalStats.awaiting_response > 0 && ` (${submittalStats.awaiting_response} awaiting)`}
                 </span>
               )}
               {lastNote && (
                 <span className="text-ppp-charcoal-500 truncate max-w-[180px]">
-                  📝 {relativeActivity(lastNote.created_at)}
+                  <span aria-hidden>📝</span> {relativeActivity(lastNote.created_at)}
                 </span>
               )}
             </div>

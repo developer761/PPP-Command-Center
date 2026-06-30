@@ -677,6 +677,8 @@ export default async function CommercialOpportunitiesPage({
           taskStatsMap={taskStatsMap}
           primaryLeadMap={primaryLeadMap}
           fileCountMap={fileCountMap}
+          submittalCountMap={submittalCountMap}
+          finishCountMap={finishCountMap}
         />
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -736,6 +738,8 @@ function KanbanBoard({
   taskStatsMap,
   primaryLeadMap,
   fileCountMap,
+  submittalCountMap,
+  finishCountMap,
 }: {
   opps: CommercialOpportunity[];
   accountById: Map<string, CommercialAccount>;
@@ -743,6 +747,8 @@ function KanbanBoard({
   taskStatsMap: Map<string, { open: number; overdue: number; due_soon: number }>;
   primaryLeadMap: Map<string, { user_email: string; user_full_name: string | null; role: string }>;
   fileCountMap: Map<string, number>;
+  submittalCountMap: Map<string, { total: number; awaiting_response: number }>;
+  finishCountMap: Map<string, number>;
 }) {
   // Open columns (7) + terminal columns (3) = 10. Terminal columns are
   // drop targets too — that's where the Win/Loss Debrief flow starts
@@ -845,6 +851,8 @@ function KanbanBoard({
                           taskStats={taskStatsMap.get(opp.id) ?? null}
                           primaryLead={primaryLeadMap.get(opp.id) ?? null}
                           fileCount={fileCountMap.get(opp.id) ?? 0}
+                          submittalStats={submittalCountMap.get(opp.id) ?? null}
+                          finishCount={finishCountMap.get(opp.id) ?? 0}
                         />
                       </KanbanDnDCard>
                     ))
@@ -894,6 +902,8 @@ function KanbanCard({
   taskStats,
   primaryLead,
   fileCount,
+  submittalStats,
+  finishCount,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -901,6 +911,8 @@ function KanbanCard({
   taskStats: { open: number; overdue: number; due_soon: number } | null;
   primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
   fileCount: number;
+  submittalStats: { total: number; awaiting_response: number } | null;
+  finishCount: number;
 }) {
   const nextStatuses = allowedNextStatuses(opp.status);
   const days = statusEnteredAt
@@ -940,13 +952,22 @@ function KanbanCard({
             <span className={daysTone}>· {days}d here</span>
           )}
           {leadFirst && (
-            <span>· ★ {leadFirst}</span>
+            <span>· <span aria-hidden>★</span> {leadFirst}</span>
           )}
           {taskStats && taskStats.overdue > 0 && (
             <span className="text-rose-600">· {taskStats.overdue} overdue</span>
           )}
           {fileCount > 0 && (
-            <span>· 📎 {fileCount}</span>
+            <span>· <span aria-hidden>📎</span> {fileCount}</span>
+          )}
+          {finishCount > 0 && (
+            <span>· <span aria-hidden>🎨</span> {finishCount}</span>
+          )}
+          {submittalStats && submittalStats.total > 0 && (
+            <span className={submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : undefined}>
+              · <span aria-hidden>📋</span> {submittalStats.total}
+              {submittalStats.awaiting_response > 0 && ` (${submittalStats.awaiting_response} awaiting)`}
+            </span>
           )}
         </div>
       </Link>
@@ -1285,7 +1306,7 @@ function OpportunityRow({
                   <>
                     <span aria-hidden className="text-ppp-charcoal-300">·</span>
                     <span className="text-ppp-charcoal-500" title="Plans & Specs attachments">
-                      📎 {fileCount} {fileCount === 1 ? "file" : "files"}
+                      <span aria-hidden>📎</span> {fileCount} {fileCount === 1 ? "file" : "files"}
                     </span>
                   </>
                 )}
@@ -1293,7 +1314,7 @@ function OpportunityRow({
                   <>
                     <span aria-hidden className="text-ppp-charcoal-300">·</span>
                     <span className="text-ppp-charcoal-500" title={`${finishCount} finish-schedule code${finishCount === 1 ? "" : "s"} defined (WD-1, P-1, etc.)`}>
-                      🎨 {finishCount} {finishCount === 1 ? "finish" : "finishes"}
+                      <span aria-hidden>🎨</span> {finishCount} {finishCount === 1 ? "finish" : "finishes"}
                     </span>
                   </>
                 )}
@@ -1312,7 +1333,7 @@ function OpportunityRow({
                           : `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"} closed`
                       }
                     >
-                      📋 {submittalStats.total}
+                      <span aria-hidden>📋</span> {submittalStats.total}
                       {submittalStats.awaiting_response > 0 && (
                         <span className="ml-1 inline-flex items-center px-1 py-0 rounded bg-sky-100 text-sky-800 text-[10px] font-bold uppercase tracking-wider">
                           {submittalStats.awaiting_response} awaiting

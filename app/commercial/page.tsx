@@ -1,23 +1,25 @@
 /**
- * `/commercial` — New Platform landing.
+ * `/commercial` — Commercial Command Center landing.
  *
- * Phase 0 placeholder. As phases ship, this page evolves into the
- * executive dashboard (sales / operations / financial / workforce /
- * scorecard per the diagram). For now it just confirms the chrome works
- * and previews what's coming.
+ * Evolves into the executive dashboard (sales / ops / financial / workforce
+ * / scorecard per the diagram) as phases ship. For now: roadmap card so
+ * Alex + Katie can see what's shipped vs queued at a glance.
  */
 export const dynamic = "force-dynamic";
 
+// Roadmap statuses. Keep in sync with what's actually been merged on main.
+// "Shipped" = live in prod; "Up next" = the next phase being scoped/built;
+// "Queued" = on the roadmap, not yet scoped.
 const PHASES = [
-  { num: 1, name: "Account Management", status: "Next up", color: "bg-blue-50 text-blue-700 border-blue-200" },
-  { num: 2, name: "Opportunity (Preconstruction)", status: "Queued", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { num: 3, name: "Estimating & Proposal", status: "Queued", color: "bg-purple-50 text-purple-700 border-purple-200" },
-  { num: 4, name: "Contract Award", status: "Queued", color: "bg-amber-50 text-amber-700 border-amber-200" },
-  { num: 5, name: "Project Setup", status: "Queued", color: "bg-teal-50 text-teal-700 border-teal-200" },
-  { num: 8, name: "Billing & Financials", status: "Pulled up", color: "bg-rose-50 text-rose-700 border-rose-200" },
-  { num: 6, name: "Project Execution", status: "Heaviest phase", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  { num: 7, name: "Change Management", status: "Queued", color: "bg-red-50 text-red-700 border-red-200" },
-  { num: 9, name: "Closeout", status: "Queued", color: "bg-yellow-50 text-yellow-700 border-yellow-200" },
+  { num: 1, name: "Account Management", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { num: 2, name: "Opportunity (Preconstruction)", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { num: "2.5", name: "Submittals & Finish Schedule", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { num: 3, name: "Invoicing & Revenue", status: "Up next", color: "bg-blue-50 text-blue-700 border-blue-200" },
+  { num: 4, name: "Contract Award", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
+  { num: 5, name: "Project Setup", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
+  { num: 6, name: "Project Execution", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
+  { num: 7, name: "Change Management", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
+  { num: 9, name: "Closeout", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
 ];
 
 export default function CommercialDashboardPage() {
@@ -25,7 +27,7 @@ export default function CommercialDashboardPage() {
     <div className="space-y-8">
       <header>
         <div className="flex items-center gap-2 mb-2">
-          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
             Phase 3 · Invoicing Up Next
           </span>
         </div>
@@ -38,11 +40,10 @@ export default function CommercialDashboardPage() {
       <section className="bg-white rounded-xl border border-ppp-charcoal-100 p-6">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Where we are</h2>
         <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
-          Phases 0–2.5 shipped: foundation + Accounts + Opportunities + Win/Loss Debrief +
-          Submittals + Finish Schedule. Phase 3 — Invoicing &amp; Revenue dashboard — is up next.
-          Each phase ships as its own slice with schema, surfaces, and edge-case audit before
-          the next one starts. Plan docs in <code className="bg-ppp-charcoal-50 px-1.5 py-0.5 rounded text-xs">~/Desktop/SUBMITTALS_PHASE_PLAN.md</code> and{" "}
-          <code className="bg-ppp-charcoal-50 px-1.5 py-0.5 rounded text-xs">~/Desktop/PHASE_3_INVOICING_PLAN.md</code>.
+          Phases 1–2.5 live: Account Management, Opportunities (Pipeline + Kanban + Win/Loss
+          Debrief), and Submittals + Finish Schedule. Phase 3 — Invoicing &amp; Revenue
+          dashboard — is up next. Each phase ships as its own slice with schema, surfaces,
+          and edge-case audit before the next one starts.
         </p>
       </section>
 
@@ -50,9 +51,9 @@ export default function CommercialDashboardPage() {
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Build roadmap</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {PHASES.map((p) => (
-            <div key={p.num} className="rounded-xl border border-ppp-charcoal-100 bg-white p-4">
+            <div key={String(p.num)} className="rounded-xl border border-ppp-charcoal-100 bg-white p-4">
               <div className="flex items-start justify-between gap-2 mb-2">
-                <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-ppp-charcoal text-white text-xs font-bold">
+                <span className="inline-flex items-center justify-center h-7 min-w-[28px] px-2 rounded-full bg-ppp-charcoal text-white text-xs font-bold">
                   {p.num}
                 </span>
                 <span className={`text-[10px] font-bold tracking-widest uppercase border px-2 py-0.5 rounded ${p.color}`}>

@@ -316,17 +316,28 @@ async function bulkLinkAttachmentsAction(formData: FormData) {
     redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
       encodeURIComponent("Pick at least one attachment to link."));
   }
+  // Hard-cap batch size — each id triggers 3 SELECTs + 1 UPDATE in the
+  // lib, so an unbounded batch can blow past the 30s function budget
+  // AND hold the user request hostage. Recheck audit 2026-06-30.
+  // 25 is well above any real submittal package (Tomco ref had 3-12).
+  if (attachment_ids.length > 25) {
+    redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
+      encodeURIComponent("Can only attach up to 25 files at once. Pick a smaller batch."));
+  }
   // Loop linkAttachmentToSubmittal — the lib is already idempotent +
-  // race-guarded per row, so a partial failure here only blocks the
-  // bad row. Collect the first error so the redirect can surface it.
-  let firstErr: string | null = null;
+  // race-guarded per row. Track ALL failures (not just first) so the
+  // surfaced copy is honest about partial success.
+  const failures: string[] = [];
   for (const aid of attachment_ids) {
     const res = await linkAttachmentToSubmittal(opportunity_id, submittal_id, aid, user.id);
-    if (!res.ok && !firstErr) firstErr = res.error;
+    if (!res.ok) failures.push(res.error);
   }
-  if (firstErr) {
+  if (failures.length > 0) {
+    const summary = failures.length === attachment_ids.length
+      ? `All ${failures.length} failed: ${failures[0]}`
+      : `${failures.length} of ${attachment_ids.length} failed: ${failures[0]}`;
     redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
-      encodeURIComponent(`Some links failed: ${firstErr}`));
+      encodeURIComponent(summary));
   }
   redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?saved=1`);
 }
@@ -412,9 +423,26 @@ async function changeStatusAction(formData: FormData) {
       if (Number.isFinite(n) && n >= 0) input.response_copies = n;
     }
     const recv = (formData.get("response_received_at") as string)?.trim();
-    // HTML date input gives YYYY-MM-DD; convert to ISO timestamp (noon ET to
-    // avoid timezone-day-shift surprises).
-    if (recv) input.response_received_at = `${recv}T17:00:00.000Z`;
+    // HTML date input gives YYYY-MM-DD; convert to ISO timestamp at
+    // midday-ET so the date doesn't shift across timezones. Previous
+    // hardcoded T17:00:00Z was noon EST but 1pm EDT — recheck audit
+    // 2026-06-30 caught it. T16:00:00Z = noon EDT (DST, ~Mar–Nov);
+    // T17:00:00Z = noon EST (~Nov–Mar). Detect DST for the date the
+    // user picked rather than the date of the request.
+    if (recv) {
+      const recvDate = new Date(`${recv}T12:00:00Z`);
+      // Round-trip through ET to discover the actual offset on that day.
+      const etHour = Number(recvDate.toLocaleString("en-US", {
+        timeZone: "America/New_York",
+        hour: "numeric",
+        hour12: false,
+      }));
+      // etHour is what 12:00 UTC maps to in NY (7 in EST, 8 in EDT).
+      // Offset (UTC -> ET) = etHour - 12. So to land noon-ET, ISO = (12 - offset).
+      const utcHourForNoonEt = 12 - (etHour - 12);
+      const hh = String(utcHourForNoonEt).padStart(2, "0");
+      input.response_received_at = `${recv}T${hh}:00:00.000Z`;
+    }
   }
 
   // Void branch requires void_reason.
@@ -570,7 +598,7 @@ export default async function SubmittalDetailPage({
         href={`/commercial/opportunities/${opportunity_id}?tab=submittals`}
         className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:text-ppp-charcoal min-h-[44px] touch-manipulation"
       >
-        ← Back to submittals
+        <span aria-hidden>←</span> Back to submittals
       </Link>
 
       {/* Banners */}
@@ -659,25 +687,32 @@ export default async function SubmittalDetailPage({
         )}
 
         {/* Revision banner — when viewing a revision, surface the
-            relationship to the parent so Alex can jump back at a glance
-            (audit workflow #6, many-revisions grouping). Includes the
-            revision number + a copy-forward summary so it's obvious
-            this is a child row, not a fresh package. */}
+            relationship to the parent so Alex can jump back at a glance.
+            The package number (SUB-XXX) is shared across revisions so
+            we link by parent's revision_number (current - 1, since
+            createOpportunitySubmittal does `parent.revision_number + 1`)
+            — this disambiguates from the header which already shows the
+            current Rev N. Audit recheck 2026-06-30. */}
         {submittal.revises_submittal_id && (
           <div className="mt-4 px-3 py-2.5 rounded-lg bg-sky-50 border border-sky-100 text-[12px] text-sky-900 flex items-start gap-2">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0" aria-hidden>
               <path d="M3 7v6a2 2 0 0 0 2 2h13l-4-4M21 17v-6a2 2 0 0 0-2-2H6l4-4" />
             </svg>
             <div className="flex-1 min-w-0">
-              <strong className="font-semibold">Revision {submittal.revision_number}</strong>
-              {" of "}
+              <strong className="font-semibold">
+                Revision {submittal.revision_number} of SUB-{String(submittal.submittal_number).padStart(3, "0")}
+              </strong>
+              {" — cover + items copied forward from "}
               <Link
                 href={`/commercial/opportunities/${opportunity_id}/submittals/${submittal.revises_submittal_id}`}
-                className="text-sky-700 hover:text-sky-900 underline underline-offset-2 font-medium"
+                className="text-sky-700 hover:text-sky-900 underline underline-offset-2 font-semibold"
               >
-                SUB-{String(submittal.submittal_number).padStart(3, "0")}
+                {submittal.revision_number > 1
+                  ? `Rev ${submittal.revision_number - 1}`
+                  : "the original draft"}
+                {" →"}
               </Link>
-              {" — cover + items copied forward when this revision was created. The original was auto-closed."}
+              {", which was auto-closed."}
             </div>
           </div>
         )}
@@ -699,7 +734,11 @@ export default async function SubmittalDetailPage({
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">
           Letter of Transmittal — cover
         </h2>
-        {!isDraft && (
+        {/* Locked banner — sent + non-terminal. Skipped for voided
+            (the rose Voided banner up top already covers it; suggesting
+            Revise/Void here would mislead since voided is terminal).
+            Audit recheck 2026-06-30. */}
+        {!isDraft && submittal.status !== "voided" && (
           <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900 flex items-start gap-2">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0" aria-hidden>
               <rect x="5" y="11" width="14" height="10" rx="2" />
@@ -1289,20 +1328,23 @@ export default async function SubmittalDetailPage({
             <span aria-hidden className="absolute left-[7px] top-2 bottom-2 w-px bg-ppp-charcoal-100" />
             {statusLog.map((log) => {
               const tone = submittalStatusTone(log.to_status);
+              // Single solid dot in the tone's primary color, sitting on
+              // a `ring-white` halo so it punches over the vertical rail
+              // cleanly. Audit recheck 2026-06-30 caught the prior
+              // outer-ring-overridden + same-color-inner-dot = invisible
+              // nested-span structure. One dot, one color, done.
               const dotCls =
-                tone === "emerald" ? "bg-emerald-500 ring-emerald-100"
-                : tone === "rose" ? "bg-rose-500 ring-rose-100"
-                : tone === "amber" ? "bg-amber-500 ring-amber-100"
-                : tone === "sky" ? "bg-sky-500 ring-sky-100"
-                : "bg-ppp-charcoal-300 ring-ppp-charcoal-100";
+                tone === "emerald" ? "bg-emerald-500"
+                : tone === "rose" ? "bg-rose-500"
+                : tone === "amber" ? "bg-amber-500"
+                : tone === "sky" ? "bg-sky-500"
+                : "bg-ppp-charcoal-400";
               return (
                 <li key={log.id} className="relative flex items-start gap-3 pl-1">
                   <span
                     aria-hidden
                     className={`relative z-10 w-[15px] h-[15px] rounded-full ring-4 ring-white shrink-0 mt-0.5 ${dotCls}`}
-                  >
-                    <span className={`absolute inset-1 rounded-full ${dotCls.split(" ")[0]}`} />
-                  </span>
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline flex-wrap gap-x-2">
                       <span className="text-[13px] font-semibold text-ppp-charcoal">
@@ -1393,7 +1435,7 @@ function StatusActionsPanel({
             href={`/commercial/opportunities/${opportunityId}?tab=submittals`}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
           >
-            ← Back to submittals
+            <span aria-hidden>←</span> Back to submittals
           </Link>
         </div>
       </section>

@@ -2523,7 +2523,7 @@ async function FinishesTab({
       ) : (
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
-            <h2 className="text-sm font-semibold text-ppp-charcoal">
+            <h2 className="text-sm font-bold text-ppp-charcoal">
               Finish Schedule · {finishes.length}{" "}
               {finishes.length === 1 ? "finish" : "finishes"}
             </h2>

@@ -295,7 +295,9 @@ export async function deleteSubmittalItem(
   if (error) return { ok: false, error: error.message };
 
   // Race-guard: if a concurrent Send slipped in, the delete just removed
-  // a line from a sent package. Restore the row.
+  // a line from a sent package. Restore the row — including created_at
+  // so the audit trail doesn't gain a fresh-creation timestamp on a
+  // recovered row (audit recheck 2026-06-30).
   if (!(await confirmSubmittalStillDraft(submittal_id))) {
     const beforeRow = before as {
       position: number;
@@ -304,6 +306,7 @@ export async function deleteSubmittalItem(
       item_number: string | null;
       description: string;
       finish_code: string | null;
+      created_at: string;
     };
     await sb.from("commercial_opp_submittal_items").insert({
       id: item_id,
@@ -314,6 +317,7 @@ export async function deleteSubmittalItem(
       item_number: beforeRow.item_number,
       description: beforeRow.description,
       finish_code: beforeRow.finish_code,
+      created_at: beforeRow.created_at,
     });
     return {
       ok: false,

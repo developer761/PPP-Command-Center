@@ -283,6 +283,12 @@ export async function createOpportunitySubmittal(
   if (input.transmitted_as && !TRANSMITTED_AS_OPTIONS.includes(input.transmitted_as)) {
     return { ok: false, error: `Unknown transmitted_as: ${input.transmitted_as}` };
   }
+  // Mirror the 6-line cap that editOpportunitySubmittal enforces, so a
+  // direct-create POST can't land an oversize address that the PDF
+  // overflows past the meta box (audit recheck 2026-06-30).
+  if (input.to_address_lines && input.to_address_lines.length > 6) {
+    return { ok: false, error: "To-address can't exceed 6 lines." };
+  }
 
   // Resolve revision metadata if this is a resubmission.
   let parentSubmittalNumber: number | null = null;
@@ -391,19 +397,41 @@ export async function createOpportunitySubmittal(
         finish_code: string | null;
       }>;
       if (itemsToCopy.length > 0) {
-        await sb.from("commercial_opp_submittal_items").insert(
-          itemsToCopy.map((it) => ({
-            submittal_id: row.id,
-            position: it.position,
-            copies: it.copies,
-            item_date: it.item_date,
-            item_number: it.item_number,
-            description: it.description,
-            finish_code: it.finish_code,
-            created_by_user_id: input.created_by_user_id ?? null,
-            updated_by_user_id: input.created_by_user_id ?? null,
-          }))
-        );
+        // commercial_opp_submittal_items has NO created_by_user_id /
+        // updated_by_user_id columns (migration 041:203-217). A prior
+        // version of this block included them and the insert silently
+        // 42703'd against Postgres — every revision got zero items.
+        // Audit recheck 2026-06-30 caught it. Match addSubmittalItem
+        // (line ~144) which correctly omits those fields.
+        const { error: copyErr } = await sb
+          .from("commercial_opp_submittal_items")
+          .insert(
+            itemsToCopy.map((it) => ({
+              submittal_id: row.id,
+              position: it.position,
+              copies: it.copies,
+              item_date: it.item_date,
+              item_number: it.item_number,
+              description: it.description,
+              finish_code: it.finish_code,
+            }))
+          );
+        if (copyErr) {
+          // Don't fail the whole revision — the cover row already
+          // committed and rollback is messier than surfacing a warning.
+          // But DO report so we'd see this happen in prod.
+          reportWarn({
+            key: "revision_items_copy_failed",
+            message: "Revision created but items failed to copy from parent",
+            platform: "commercial_cc",
+            context: {
+              parent: input.revises_submittal_id?.slice(0, 8) ?? "unknown",
+              child: row.id.slice(0, 8),
+              items_attempted: itemsToCopy.length,
+              err_code: (copyErr as { code?: string }).code ?? "unknown",
+            },
+          });
+        }
       }
     }
 

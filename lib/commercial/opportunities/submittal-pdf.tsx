@@ -262,6 +262,7 @@ const styles = StyleSheet.create({
   statusPillEmerald: { backgroundColor: "#D1FAE5", color: "#065F46" },
   statusPillAmber: { backgroundColor: "#FEF3C7", color: colors.amber },
   statusPillRose: { backgroundColor: "#FEE2E2", color: colors.rose },
+  statusPillSky: { backgroundColor: "#DBEAFE", color: "#1E40AF" },
   statusPillNeutral: { backgroundColor: "#F3F4F6", color: colors.charcoal },
   // VOIDED watermark — diagonal text overlay on every page so a printed
   // copy of a voided submittal can't be mistaken for the real package
@@ -306,7 +307,16 @@ type SubmittalPdfInput = {
 
 function safeDateLabel(value: string | null | undefined, fmt: Intl.DateTimeFormatOptions): string {
   if (!value) return "—";
-  const d = new Date(value);
+  // Defend against "0000-00-00" sentinel — JS parses it as a BC year not
+  // NaN, which would render as "12/31/00" or similar nonsense.
+  if (value.startsWith("0000")) return "—";
+  // Bare YYYY-MM-DD parses as UTC midnight. With `timeZone: "America/New_York"`
+  // (UTC-4/5), that displays as the PREVIOUS day for any user east of UTC —
+  // every item_date stored as a Postgres DATE would show off by one. Detect
+  // and append T12:00:00 (noon UTC) so the ET conversion lands the right day
+  // year-round (audit recheck 2026-06-30).
+  const isoDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const d = new Date(isoDateOnly ? `${value}T12:00:00Z` : value);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-US", { timeZone: "America/New_York", ...fmt });
 }
@@ -326,12 +336,19 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
     submittal.status === "approved_as_noted" ||
     submittal.status === "closed";
   const isRevise = submittal.status === "revise_and_resubmit";
+  // "submitted" + "under_review" get a sky pill so a printed package is
+  // unambiguous about which side of the GC court it sits on (audit
+  // recheck 2026-06-30 — previously these printed with NO pill, looked
+  // identical to a fresh draft on paper).
+  const isInFlight = submittal.status === "submitted" || submittal.status === "under_review";
   const statusStyle = isApproved
     ? styles.statusPillEmerald
     : isRevise
     ? styles.statusPillAmber
     : isRejected || isVoided
     ? styles.statusPillRose
+    : isInFlight
+    ? styles.statusPillSky
     : styles.statusPillNeutral;
 
   const addrLines = submittal.to_address_lines ?? [];
@@ -368,7 +385,7 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
                 <Text style={[styles.statusPill, styles.statusPillAmber]}>Draft · not yet sent</Text>
               </View>
             )}
-            {(isVoided || isApproved || isRejected || isRevise) && (
+            {(isVoided || isApproved || isRejected || isRevise || isInFlight) && (
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.statusPill, statusStyle]}>{submittalStatusLabel(submittal.status)}</Text>
               </View>
