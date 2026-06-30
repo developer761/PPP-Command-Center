@@ -67,6 +67,14 @@ import {
   formatBytes,
   type OpportunityAttachment,
 } from "@/lib/commercial/opportunities/attachments";
+import {
+  listOpportunityFinishes,
+  addOpportunityFinish,
+  editOpportunityFinish,
+  deleteOpportunityFinish,
+  type OpportunityFinish,
+} from "@/lib/commercial/opportunities/finishes";
+import { FINISH_TYPES, finishTypeLabel } from "@/lib/commercial/opportunities/submittal-constants";
 import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
@@ -89,6 +97,8 @@ type SP = Promise<{
   just_closed?: string;
   debrief_saved?: string;
   assigned?: string;
+  /** When set, the matching finish row swaps to a rose-bg "Confirm delete?" panel. */
+  confirm_delete_finish?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
@@ -628,6 +638,119 @@ async function deleteNoteAction(formData: FormData) {
   redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
 }
 
+// ────────────── Finishes tab actions ──────────────
+// Server actions for the Finish Schedule (WD-1, P-1, EX-1 codes per opp).
+// Every action mirrors the addTaskAction / archiveAttachmentAction shape:
+// auth check → UUID validation → lib call → redirect with ?error= on
+// failure → revalidatePath the opp list (only for add/delete — count badge
+// changes). Cross-account scoping is enforced inside the lib via opp_id
+// double-scope (audit S5 from pre-build audit + 2026-06-24 security fix).
+
+async function addFinishAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
+
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
+        encodeURIComponent("Finish code is required (e.g. WD-1).")
+    );
+  }
+
+  const result = await addOpportunityFinish({
+    opportunity_id,
+    code,
+    location_description: (formData.get("location_description") as string)?.trim() || null,
+    product_name: (formData.get("product_name") as string)?.trim() || null,
+    manufacturer: (formData.get("manufacturer") as string)?.trim() || null,
+    color: (formData.get("color") as string)?.trim() || null,
+    sheen: (formData.get("sheen") as string)?.trim() || null,
+    finish_type: (formData.get("finish_type") as string)?.trim() || null,
+    notes: (formData.get("notes") as string)?.trim() || null,
+    created_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
+        encodeURIComponent(result.error)
+    );
+  }
+  // Keep the list-page badge fresh on add (badge count derived from this table).
+  revalidatePath("/commercial/opportunities");
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=finishes`);
+}
+
+async function editFinishAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const finish_id = String(formData.get("finish_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(finish_id)) {
+    redirect("/commercial/opportunities");
+  }
+
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
+        encodeURIComponent("Finish code cannot be blank.")
+    );
+  }
+
+  const result = await editOpportunityFinish({
+    opportunity_id,
+    finish_id,
+    code,
+    location_description: (formData.get("location_description") as string)?.trim() || null,
+    product_name: (formData.get("product_name") as string)?.trim() || null,
+    manufacturer: (formData.get("manufacturer") as string)?.trim() || null,
+    color: (formData.get("color") as string)?.trim() || null,
+    sheen: (formData.get("sheen") as string)?.trim() || null,
+    finish_type: (formData.get("finish_type") as string)?.trim() || null,
+    notes: (formData.get("notes") as string)?.trim() || null,
+    updated_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
+        encodeURIComponent(result.error)
+    );
+  }
+  // Edits don't change row count — skip the revalidate to keep CDN cache warm.
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=finishes`);
+}
+
+async function deleteFinishAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const finish_id = String(formData.get("finish_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(finish_id)) {
+    redirect("/commercial/opportunities");
+  }
+  const result = await deleteOpportunityFinish(opportunity_id, finish_id, user.id);
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
+        encodeURIComponent(result.error)
+    );
+  }
+  revalidatePath("/commercial/opportunities");
+  redirect(`/commercial/opportunities/${opportunity_id}?tab=finishes`);
+}
+
 const TABS = [
   { key: "info", label: "Info" },
   // Email promoted to position 2 (audit fix 2026-06-18): on a 375px
@@ -639,6 +762,10 @@ const TABS = [
   { key: "email", label: "Email" },
   { key: "team", label: "Team" },
   { key: "plans", label: "Plans & Specs" },
+  // Finishes slotted right after Plans — same workflow context (architect
+  // spec book → finish codes → submittal items). Added 2026-06-30 as part
+  // of Phase 2.5 Submittals.
+  { key: "finishes", label: "Finishes" },
   { key: "notes", label: "Notes" },
   { key: "tasks", label: "Tasks" },
   { key: "timeline", label: "Timeline" },
@@ -874,6 +1001,13 @@ export default async function OpportunityDetailPage({
       {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "plans" && <PlansTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "finishes" && (
+        <FinishesTab
+          oppId={opp.id}
+          errorMessage={pickFirst(sp.error)}
+          confirmDeleteFinish={pickFirst(sp.confirm_delete_finish)}
+        />
+      )}
       {tab === "email" && <EmailArchiveTab kind="opp" sourceId={opp.id} />}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
     </div>
@@ -2095,6 +2229,429 @@ function AttachmentRow({
           </button>
         </form>
       )}
+    </li>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Finishes tab — the WD-1 / P-1 / EX-1 Finish Schedule per opportunity.
+// ─────────────────────────────────────────────────────────────────────
+// Architect spec books assign per-finish codes (WD-1 = Penofin Verde Olive,
+// P-1 = Sherwin Emerald Trim Enamel, etc.) that appear on architectural
+// drawings and travel through to submittals → materials orders. This tab
+// is the canonical place to capture that schedule.
+//
+// Patterns: mirror TasksTab / NotesTab structure — single section card per
+// row + add-row form at top, inline-expand <details> for edit (NoteCard
+// pattern), 1-step URL-confirm for delete (danger-zone pattern from
+// :1021-1062). All form classnames from lib/commercial/form-classnames.ts.
+
+async function FinishesTab({
+  oppId,
+  errorMessage,
+  confirmDeleteFinish,
+}: {
+  oppId: string;
+  errorMessage?: string;
+  confirmDeleteFinish?: string;
+}) {
+  const finishes = await listOpportunityFinishes(oppId);
+
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* Add finish form — inline at top, no modal (matches PlansTab + TasksTab) */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add finish</h2>
+        <form action={addFinishAction} className="space-y-3">
+          <input type="hidden" name="opportunity_id" value={oppId} />
+
+          {/* Code — required, full-width, prominent */}
+          <div>
+            <label htmlFor="finish_code" className={LABEL_CLS}>
+              Code <span className="text-rose-700">*</span>
+            </label>
+            <input
+              id="finish_code"
+              name="code"
+              type="text"
+              required
+              maxLength={32}
+              placeholder="e.g. WD-1"
+              className={INPUT_CLS}
+            />
+            <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+              Case-insensitive — &ldquo;WD-1&rdquo; and &ldquo;wd-1&rdquo; are treated as duplicates.
+            </p>
+          </div>
+
+          {/* Location — full-width (longest free-text) */}
+          <div>
+            <label htmlFor="finish_location" className={LABEL_CLS}>
+              Location / scope
+            </label>
+            <input
+              id="finish_location"
+              name="location_description"
+              type="text"
+              maxLength={200}
+              placeholder="e.g. Stair handrails, lobby trim"
+              className={INPUT_CLS}
+            />
+          </div>
+
+          {/* Product | Manufacturer — 2-col on sm+ */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="finish_product" className={LABEL_CLS}>
+                Product
+              </label>
+              <input
+                id="finish_product"
+                name="product_name"
+                type="text"
+                maxLength={120}
+                placeholder="e.g. Emerald Urethane Trim Enamel"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label htmlFor="finish_manufacturer" className={LABEL_CLS}>
+                Manufacturer
+              </label>
+              <input
+                id="finish_manufacturer"
+                name="manufacturer"
+                type="text"
+                maxLength={80}
+                placeholder="e.g. Sherwin-Williams"
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
+
+          {/* Color | Sheen — 2-col on sm+ */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="finish_color" className={LABEL_CLS}>
+                Color
+              </label>
+              <input
+                id="finish_color"
+                name="color"
+                type="text"
+                maxLength={80}
+                placeholder="e.g. Penofin Verde Olive"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label htmlFor="finish_sheen" className={LABEL_CLS}>
+                Sheen
+              </label>
+              <input
+                id="finish_sheen"
+                name="sheen"
+                type="text"
+                maxLength={32}
+                placeholder="e.g. Satin"
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
+
+          {/* Finish type — guided select using the FINISH_TYPES enum */}
+          <div>
+            <label htmlFor="finish_type" className={LABEL_CLS}>
+              Finish type
+            </label>
+            <select
+              id="finish_type"
+              name="finish_type"
+              defaultValue=""
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
+            >
+              <option value="">Pick a type…</option>
+              {FINISH_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {finishTypeLabel(t)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Notes — short textarea */}
+          <div>
+            <label htmlFor="finish_notes" className={LABEL_CLS}>
+              Notes
+            </label>
+            <textarea
+              id="finish_notes"
+              name="notes"
+              rows={2}
+              maxLength={500}
+              placeholder="Optional — application notes, spec deviations, etc."
+              className={TEXTAREA_CLS}
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+            >
+              Add finish
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* Empty state */}
+      {finishes.length === 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+          No finishes captured yet. Add the WD-1, P-1, etc. codes from the architect spec book — they flow into your submittals later.
+        </div>
+      ) : (
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100">
+            <h2 className="text-sm font-semibold text-ppp-charcoal">
+              Finish Schedule · {finishes.length}{" "}
+              {finishes.length === 1 ? "finish" : "finishes"}
+            </h2>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {finishes.map((f) => (
+              <FinishRow
+                key={f.id}
+                finish={f}
+                oppId={oppId}
+                confirmDelete={confirmDeleteFinish === f.id}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One row in the Finish Schedule list.
+ *
+ * Compact summary at top (Code · Location · Product · Manufacturer), with
+ * an inline <details> expand that reveals the full edit form (all 9
+ * fields) + a "Delete" link that opens the 1-step URL confirm panel.
+ *
+ * When `confirmDelete` is true (URL `?confirm_delete_finish=<id>` matches
+ * this row's id), the row swaps to a rose-bg panel with "Yes, delete" +
+ * "Cancel" buttons. Same pattern as the opp danger-zone delete at
+ * page.tsx:1021-1062.
+ */
+function FinishRow({
+  finish,
+  oppId,
+  confirmDelete,
+}: {
+  finish: OpportunityFinish;
+  oppId: string;
+  confirmDelete: boolean;
+}) {
+  if (confirmDelete) {
+    return (
+      <li className="px-4 py-4 bg-rose-50">
+        <div className="text-sm text-rose-900 mb-3">
+          <strong>Delete finish &ldquo;{finish.code}&rdquo;?</strong>{" "}
+          This is permanent. Submittal items referencing this code as text
+          will remain but won&apos;t resolve to a product.
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <form action={deleteFinishAction} className="inline">
+            <input type="hidden" name="opportunity_id" value={oppId} />
+            <input type="hidden" name="finish_id" value={finish.id} />
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-700 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
+            >
+              Yes, delete
+            </button>
+          </form>
+          <Link
+            href={`/commercial/opportunities/${oppId}?tab=finishes`}
+            className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+          >
+            Cancel
+          </Link>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="px-4 py-3">
+      <details className="group">
+        <summary className="cursor-pointer list-none flex items-start gap-3 -mx-2 px-2 py-1 rounded-lg hover:bg-ppp-charcoal-50 transition-colors">
+          {/* Code chip — short, bold, monospace for parsability */}
+          <span className="shrink-0 inline-flex items-center px-2 py-1 rounded-md bg-sky-50 text-sky-800 border border-sky-200 text-[12px] font-bold font-mono min-w-[3rem] justify-center">
+            {finish.code}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline gap-2 flex-wrap text-sm">
+              <span className="font-medium text-ppp-charcoal break-words">
+                {finish.product_name || <span className="text-ppp-charcoal-400 italic">No product set</span>}
+              </span>
+              {finish.color && (
+                <span className="text-ppp-charcoal-700 break-words">· {finish.color}</span>
+              )}
+              {finish.sheen && (
+                <span className="text-ppp-charcoal-500 text-[12px]">· {finish.sheen}</span>
+              )}
+            </div>
+            <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 break-words">
+              {finish.manufacturer && <span>{finish.manufacturer}</span>}
+              {finish.manufacturer && finish.location_description && <span> · </span>}
+              {finish.location_description && <span>{finish.location_description}</span>}
+              {finish.finish_type && (
+                <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-ppp-charcoal-50 text-ppp-charcoal-600 text-[10px] uppercase tracking-wider">
+                  {finishTypeLabel(finish.finish_type)}
+                </span>
+              )}
+            </div>
+          </div>
+          <span
+            aria-hidden
+            className="shrink-0 text-ppp-charcoal-400 text-[12px] mt-1 transition-transform group-open:rotate-90"
+          >
+            ▶
+          </span>
+        </summary>
+
+        {/* Inline edit form — every field, prefilled. Matches NoteCard edit
+            shape (details > summary > inline form). */}
+        <form action={editFinishAction} className="mt-3 space-y-3 pl-1">
+          <input type="hidden" name="opportunity_id" value={oppId} />
+          <input type="hidden" name="finish_id" value={finish.id} />
+
+          <div>
+            <label className={LABEL_CLS}>
+              Code <span className="text-rose-700">*</span>
+            </label>
+            <input
+              name="code"
+              type="text"
+              required
+              maxLength={32}
+              defaultValue={finish.code}
+              className={INPUT_CLS}
+            />
+          </div>
+
+          <div>
+            <label className={LABEL_CLS}>Location / scope</label>
+            <input
+              name="location_description"
+              type="text"
+              maxLength={200}
+              defaultValue={finish.location_description ?? ""}
+              className={INPUT_CLS}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL_CLS}>Product</label>
+              <input
+                name="product_name"
+                type="text"
+                maxLength={120}
+                defaultValue={finish.product_name ?? ""}
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label className={LABEL_CLS}>Manufacturer</label>
+              <input
+                name="manufacturer"
+                type="text"
+                maxLength={80}
+                defaultValue={finish.manufacturer ?? ""}
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL_CLS}>Color</label>
+              <input
+                name="color"
+                type="text"
+                maxLength={80}
+                defaultValue={finish.color ?? ""}
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label className={LABEL_CLS}>Sheen</label>
+              <input
+                name="sheen"
+                type="text"
+                maxLength={32}
+                defaultValue={finish.sheen ?? ""}
+                className={INPUT_CLS}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className={LABEL_CLS}>Finish type</label>
+            <select
+              name="finish_type"
+              defaultValue={finish.finish_type ?? ""}
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
+            >
+              <option value="">Pick a type…</option>
+              {FINISH_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {finishTypeLabel(t)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className={LABEL_CLS}>Notes</label>
+            <textarea
+              name="notes"
+              rows={2}
+              maxLength={500}
+              defaultValue={finish.notes ?? ""}
+              className={TEXTAREA_CLS}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Link
+              href={`/commercial/opportunities/${oppId}?tab=finishes&confirm_delete_finish=${finish.id}`}
+              className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation"
+            >
+              Delete
+            </Link>
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation"
+            >
+              Save changes
+            </button>
+          </div>
+        </form>
+      </details>
     </li>
   );
 }

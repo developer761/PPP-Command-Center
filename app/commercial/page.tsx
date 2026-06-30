@@ -26,7 +26,7 @@ export default function CommercialDashboardPage() {
       <header>
         <div className="flex items-center gap-2 mb-2">
           <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-            Phase 0 · Foundation Live
+            Phase 3 · Invoicing Up Next
           </span>
         </div>
         <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal">Commercial Command Center</h1>
@@ -38,10 +38,11 @@ export default function CommercialDashboardPage() {
       <section className="bg-white rounded-xl border border-ppp-charcoal-100 p-6">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Where we are</h2>
         <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
-          Phase 0 (this page, the platform picker, the sidebar switcher, RBAC, audit log) is live. Phase 1 — Account
-          Management — is next. Each phase ships as its own slice with schema, surfaces, and edge-case audit before
-          the next one starts. Plan doc: <code className="bg-ppp-charcoal-50 px-1.5 py-0.5 rounded text-xs">docs/NEW_PLATFORM_PLAN.md</code>.
-          Architecture diagram for Alex: <code className="bg-ppp-charcoal-50 px-1.5 py-0.5 rounded text-xs">docs/NEW_PLATFORM_ARCHITECTURE.html</code>.
+          Phases 0–2.5 shipped: foundation + Accounts + Opportunities + Win/Loss Debrief +
+          Submittals + Finish Schedule. Phase 3 — Invoicing &amp; Revenue dashboard — is up next.
+          Each phase ships as its own slice with schema, surfaces, and edge-case audit before
+          the next one starts. Plan docs in <code className="bg-ppp-charcoal-50 px-1.5 py-0.5 rounded text-xs">~/Desktop/SUBMITTALS_PHASE_PLAN.md</code> and{" "}
+          <code className="bg-ppp-charcoal-50 px-1.5 py-0.5 rounded text-xs">~/Desktop/PHASE_3_INVOICING_PLAN.md</code>.
         </p>
       </section>
 

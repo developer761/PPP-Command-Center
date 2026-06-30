@@ -110,14 +110,14 @@ export default function PlatformPicker({ email }: { email: string }) {
                     <path d="M2 22h20 M3 22V11l9-7 9 7v11 M9 22v-6h6v6" />
                   </svg>
                 </div>
-                <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                  Phase 0
+                <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                  Phase 3
                 </span>
               </div>
               <h2 className="text-lg font-bold text-ppp-charcoal mb-1">Commercial Command Center</h2>
               <p className="text-sm text-ppp-charcoal-500 leading-relaxed">
-                Bidding + project lifecycle (9 phases: account → opportunity → estimating → contract → execution → close).
-                Postgres-native, in early build.
+                Bidding + project lifecycle: Accounts · Opportunities · Submittals + Finish Schedule.
+                Invoicing + Revenue dashboard up next. Postgres-native.
               </p>
               <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-emerald-700 group-hover:gap-2 transition-all">
                 {busy === "new_platform" ? "Loading…" : "Open"}

@@ -194,7 +194,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
       </nav>
 
       <div className="px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
-        <div className="font-semibold text-ppp-charcoal">Phase 0 · Foundation</div>
+        <div className="font-semibold text-ppp-charcoal">Phase 3 · Invoicing</div>
         <div className="mt-0.5 flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
           Postgres-native
