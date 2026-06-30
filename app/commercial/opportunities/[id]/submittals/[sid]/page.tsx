@@ -503,19 +503,37 @@ export default async function SubmittalDetailPage({
             </div>
           </div>
 
-          {/* Draft-only actions: delete */}
-          {isDraft && (
-            <form action={deleteSubmittalAction}>
-              <input type="hidden" name="opportunity_id" value={opportunity_id} />
-              <input type="hidden" name="submittal_id" value={submittal_id} />
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation"
-              >
-                Delete draft
-              </button>
-            </form>
-          )}
+          {/* Right-side action cluster */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Download Letter of Transmittal PDF — always available, opens in
+                new tab. Inline content-disposition means browser PDF viewer
+                handles save/print. */}
+            <a
+              href={`/api/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors min-h-[44px] touch-manipulation"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
+              </svg>
+              Download PDF
+            </a>
+
+            {/* Draft-only actions: delete */}
+            {isDraft && (
+              <form action={deleteSubmittalAction}>
+                <input type="hidden" name="opportunity_id" value={opportunity_id} />
+                <input type="hidden" name="submittal_id" value={submittal_id} />
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation"
+                >
+                  Delete draft
+                </button>
+              </form>
+            )}
+          </div>
         </div>
 
         {/* Voided banner — show prominent reason if voided */}
