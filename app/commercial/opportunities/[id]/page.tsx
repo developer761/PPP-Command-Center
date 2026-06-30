@@ -74,7 +74,17 @@ import {
   deleteOpportunityFinish,
   type OpportunityFinish,
 } from "@/lib/commercial/opportunities/finishes";
-import { FINISH_TYPES, finishTypeLabel } from "@/lib/commercial/opportunities/submittal-constants";
+import {
+  listOpportunitySubmittals,
+  createOpportunitySubmittal,
+  type OpportunitySubmittalWithItemCount,
+} from "@/lib/commercial/opportunities/submittals";
+import {
+  FINISH_TYPES,
+  finishTypeLabel,
+  submittalStatusLabel,
+  submittalStatusTone,
+} from "@/lib/commercial/opportunities/submittal-constants";
 import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
@@ -751,6 +761,82 @@ async function deleteFinishAction(formData: FormData) {
   redirect(`/commercial/opportunities/${opportunity_id}?tab=finishes`);
 }
 
+// ────────────── Submittals tab create action ──────────────
+// Creates a new draft submittal seeded from the opp/account context
+// (so Alex doesn't re-type the GC company on every submittal), then
+// redirects into the detail page for cover-form editing + items entry.
+// All other submittal mutations live in the detail route itself.
+
+async function createSubmittalAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
+
+  // Seed the cover from the opp/account context. Caller can override on
+  // the detail page. Pull only what we need (lib also does chain-of-trust).
+  const sb = commercialDb();
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("id, account_id, ppp_job_number")
+    .eq("id", opportunity_id)
+    .maybeSingle();
+  type OppLite = { id: string; account_id: string; ppp_job_number: string | null };
+  const oppLite = oppRow as OppLite | null;
+  if (!oppLite) redirect("/commercial/opportunities");
+
+  let to_company: string | null = null;
+  let to_address_lines: string[] | null = null;
+  {
+    const { data: acctRow } = await sb
+      .from("commercial_accounts")
+      .select("company_name, billing_street, billing_city, billing_state, billing_zip")
+      .eq("id", oppLite.account_id)
+      .maybeSingle();
+    type AcctLite = {
+      company_name: string | null;
+      billing_street: string | null;
+      billing_city: string | null;
+      billing_state: string | null;
+      billing_zip: string | null;
+    };
+    const acct = acctRow as AcctLite | null;
+    to_company = acct?.company_name ?? null;
+    // Assemble standard 2-line US address: street \n city, state zip.
+    if (acct) {
+      const lines: string[] = [];
+      if (acct.billing_street?.trim()) lines.push(acct.billing_street.trim());
+      const cityStateZip = [acct.billing_city?.trim(), acct.billing_state?.trim()]
+        .filter(Boolean)
+        .join(", ");
+      const csz = [cityStateZip, acct.billing_zip?.trim()].filter(Boolean).join(" ");
+      if (csz) lines.push(csz);
+      if (lines.length > 0) to_address_lines = lines;
+    }
+  }
+
+  const result = await createOpportunitySubmittal({
+    opportunity_id,
+    to_company,
+    to_address_lines,
+    re_subject: "Submittals",
+    created_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=submittals&error=` +
+        encodeURIComponent(result.error)
+    );
+  }
+  // Revalidate opp list so the new "1 submittal" badge appears on the list page.
+  revalidatePath("/commercial/opportunities");
+  // Hand off to the detail page so Alex can fill out the cover + items.
+  redirect(`/commercial/opportunities/${opportunity_id}/submittals/${result.submittal.id}`);
+}
+
 const TABS = [
   { key: "info", label: "Info" },
   // Email promoted to position 2 (audit fix 2026-06-18): on a 375px
@@ -762,10 +848,11 @@ const TABS = [
   { key: "email", label: "Email" },
   { key: "team", label: "Team" },
   { key: "plans", label: "Plans & Specs" },
-  // Finishes slotted right after Plans — same workflow context (architect
-  // spec book → finish codes → submittal items). Added 2026-06-30 as part
-  // of Phase 2.5 Submittals.
+  // Finishes + Submittals slotted right after Plans — same workflow context
+  // (architect spec book → finish codes → submittal items sent to GC).
+  // Added 2026-06-30 as part of Phase 2.5 Submittals.
   { key: "finishes", label: "Finishes" },
+  { key: "submittals", label: "Submittals" },
   { key: "notes", label: "Notes" },
   { key: "tasks", label: "Tasks" },
   { key: "timeline", label: "Timeline" },
@@ -1007,6 +1094,9 @@ export default async function OpportunityDetailPage({
           errorMessage={pickFirst(sp.error)}
           confirmDeleteFinish={pickFirst(sp.confirm_delete_finish)}
         />
+      )}
+      {tab === "submittals" && (
+        <SubmittalsTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />
       )}
       {tab === "email" && <EmailArchiveTab kind="opp" sourceId={opp.id} />}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
@@ -2652,6 +2742,161 @@ function FinishRow({
           </div>
         </form>
       </details>
+    </li>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Submittals tab — list of Letter of Transmittal records per opp.
+// ─────────────────────────────────────────────────────────────────────
+// Cover-form editing + items table editing live on the detail page at
+// /commercial/opportunities/[id]/submittals/[sid]. This tab is the list:
+// click any row → drill into the detail page.
+//
+// "New submittal" CTA creates a draft with the opp/account context seeded,
+// then redirects straight to the detail page so Alex can fill in items.
+
+async function SubmittalsTab({
+  oppId,
+  errorMessage,
+}: {
+  oppId: string;
+  errorMessage?: string;
+}) {
+  const submittals = await listOpportunitySubmittals(oppId);
+
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* New Submittal CTA — single button, seeds a draft, redirects to detail */}
+      <section className="bg-sky-50 border border-sky-200 rounded-xl p-4">
+        <form action={createSubmittalAction} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="text-sm text-sky-900">
+            <strong className="font-semibold">New submittal package</strong>
+            <p className="text-[12px] text-sky-800/80 mt-0.5">
+              Creates a draft Letter of Transmittal. Fill cover + items on the next page, attach spec PDFs, then send.
+            </p>
+          </div>
+          <input type="hidden" name="opportunity_id" value={oppId} />
+          <button
+            type="submit"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-sky-700 text-white text-sm font-semibold hover:bg-sky-800 active:bg-sky-900 transition-colors shadow-sm shadow-sky-700/30 min-h-[44px] touch-manipulation shrink-0"
+          >
+            + New submittal
+          </button>
+        </form>
+      </section>
+
+      {/* Empty state */}
+      {submittals.length === 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+          No submittals yet. The first submittal package usually goes out right after
+          the Finish Schedule is locked + spec PDFs are uploaded to Plans &amp; Specs.
+        </div>
+      ) : (
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-ppp-charcoal-100">
+            <h2 className="text-sm font-semibold text-ppp-charcoal">
+              Submittal log · {submittals.length}{" "}
+              {submittals.length === 1 ? "submittal" : "submittals"}
+            </h2>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {submittals.map((s) => (
+              <SubmittalRow key={s.id} submittal={s} oppId={oppId} />
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One row in the submittal log. Whole row is a Link to the detail page.
+ *
+ * Compact card: SUB-### (+ Rev N if revision) · status pill · date sent /
+ * created · # of items · response (if received).
+ */
+function SubmittalRow({
+  submittal,
+  oppId,
+}: {
+  submittal: OpportunitySubmittalWithItemCount;
+  oppId: string;
+}) {
+  const tone = submittalStatusTone(submittal.status);
+  const tonePillCls =
+    tone === "emerald" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+    : tone === "amber" ? "bg-amber-50 text-amber-900 border-amber-200"
+    : tone === "rose" ? "bg-rose-50 text-rose-800 border-rose-200"
+    : tone === "sky" ? "bg-sky-50 text-sky-800 border-sky-200"
+    : tone === "charcoal" ? "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200"
+    : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200";
+
+  // ET date rendering per platform convention (memory: project_commercial_cc_cleanup_conventions).
+  const fmt = (iso: string | null): string => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+  // Subline: sent_at if sent; created_at otherwise.
+  const subline = submittal.sent_at
+    ? `Sent ${fmt(submittal.sent_at)}`
+    : `Drafted ${fmt(submittal.created_at)}`;
+  const responseLine = submittal.response_received_at
+    ? ` · Response received ${fmt(submittal.response_received_at)}`
+    : "";
+
+  return (
+    <li>
+      <Link
+        href={`/commercial/opportunities/${oppId}/submittals/${submittal.id}`}
+        className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px]"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className="font-mono font-bold text-ppp-charcoal text-sm">
+                SUB-{String(submittal.submittal_number).padStart(3, "0")}
+                {submittal.revision_number > 0 && (
+                  <span className="text-ppp-charcoal-500 ml-1">Rev {submittal.revision_number}</span>
+                )}
+              </span>
+              <span
+                className={`inline-flex items-center text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded border ${tonePillCls}`}
+              >
+                {submittalStatusLabel(submittal.status)}
+              </span>
+            </div>
+            <div className="text-[12px] text-ppp-charcoal-500 mt-1">
+              {subline}
+              {responseLine}
+              <span className="ml-2">
+                · {submittal.item_count} {submittal.item_count === 1 ? "item" : "items"}
+              </span>
+            </div>
+            {submittal.to_company && (
+              <div className="text-[12px] text-ppp-charcoal-700 mt-0.5 truncate">
+                To: {submittal.to_company}
+                {submittal.to_attention ? <span className="text-ppp-charcoal-500"> · Attn {submittal.to_attention}</span> : null}
+              </div>
+            )}
+          </div>
+          <span aria-hidden className="shrink-0 text-ppp-charcoal-400 text-base mt-0.5">
+            →
+          </span>
+        </div>
+      </Link>
     </li>
   );
 }
