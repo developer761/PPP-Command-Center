@@ -67,7 +67,7 @@ import {
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string; sid: string }>;
-type SP = Promise<{ error?: string; saved?: string }>;
+type SP = Promise<{ error?: string; saved?: string; picker?: string; preselect?: string }>;
 
 // ─────────────────────────────────────────────────────────────────────
 //  Cover form edit action — draft-only (lib enforces)
@@ -312,17 +312,22 @@ async function bulkLinkAttachmentsAction(formData: FormData) {
   const attachment_ids = formData.getAll("attachment_ids")
     .map((v) => String(v))
     .filter((s) => UUID_RE.test(s));
+  // Preserve the picker state on error so Alex doesn't have to re-tick
+  // 25 checkboxes after a rejection (audit Round 3, 2026-07-01).
+  // preselect is a comma-list of UUIDs that render as defaultChecked +
+  // force the <details> picker open when present.
+  const preselect = attachment_ids.join(",");
+  const errBase = `/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}` +
+    `?picker=open&preselect=${preselect}&error=`;
   if (attachment_ids.length === 0) {
-    redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
-      encodeURIComponent("Pick at least one attachment to link."));
+    redirect(errBase + encodeURIComponent("Pick at least one attachment to link."));
   }
   // Hard-cap batch size — each id triggers 3 SELECTs + 1 UPDATE in the
   // lib, so an unbounded batch can blow past the 30s function budget
   // AND hold the user request hostage. Recheck audit 2026-06-30.
   // 25 is well above any real submittal package (Tomco ref had 3-12).
   if (attachment_ids.length > 25) {
-    redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
-      encodeURIComponent("Can only attach up to 25 files at once. Pick a smaller batch."));
+    redirect(errBase + encodeURIComponent("Can only attach up to 25 files at once. Pick a smaller batch."));
   }
   // Loop linkAttachmentToSubmittal — the lib is already idempotent +
   // race-guarded per row. Track ALL failures (not just first) so the
@@ -336,8 +341,7 @@ async function bulkLinkAttachmentsAction(formData: FormData) {
     const summary = failures.length === attachment_ids.length
       ? `All ${failures.length} failed: ${failures[0]}`
       : `${failures.length} of ${attachment_ids.length} failed: ${failures[0]}`;
-    redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?error=` +
-      encodeURIComponent(summary));
+    redirect(errBase + encodeURIComponent(summary));
   }
   redirect(`/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}?saved=1`);
 }
@@ -540,6 +544,14 @@ export default async function SubmittalDetailPage({
   const sp = await searchParams;
   const errorMessage = pickFirst(sp.error);
   const saved = pickFirst(sp.saved) === "1";
+  // Bulk-link picker state preservation on error (audit Round 3).
+  // `?picker=open` re-opens the <details>; `?preselect=<comma-list>`
+  // seeds defaultChecked so Alex doesn't re-tick 25 boxes after a
+  // rejected submit.
+  const pickerOpen = pickFirst(sp.picker) === "open";
+  const preselectedIds = (pickFirst(sp.preselect) ?? "")
+    .split(",")
+    .filter((s) => UUID_RE.test(s));
 
   const loaded = await getOpportunitySubmittal(opportunity_id, submittal_id);
   if (!loaded) notFound();
@@ -1283,7 +1295,7 @@ export default async function SubmittalDetailPage({
             attachment meant 6 separate round-trips when Alex needed to
             attach all the architect spec PDFs to a fresh draft. */}
         {canLinkAttachments && unlinkedAttachments.length > 0 && (
-          <details className="mt-4 group">
+          <details className="mt-4 group" open={pickerOpen}>
             <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 min-h-[36px] touch-manipulation select-none">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
                 <path d="M9 18l6-6-6-6" />
@@ -1294,7 +1306,7 @@ export default async function SubmittalDetailPage({
               <input type="hidden" name="opportunity_id" value={opportunity_id} />
               <input type="hidden" name="submittal_id" value={submittal_id} />
               <p className="text-[11px] text-ppp-charcoal-600">
-                Tick the PDFs that belong to this submittal package. Multi-select supported.
+                Tick the PDFs that belong to this submittal package. Multi-select supported (up to 25 per batch).
               </p>
               <ul className="space-y-1">
                 {unlinkedAttachments.map((att) => {
@@ -1306,6 +1318,7 @@ export default async function SubmittalDetailPage({
                           type="checkbox"
                           name="attachment_ids"
                           value={att.id}
+                          defaultChecked={preselectedIds.includes(att.id)}
                           className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40 shrink-0"
                         />
                         <div className="flex-1 min-w-0">
@@ -1593,19 +1606,40 @@ function StatusActionsPanel({
           ) : (
             <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900">
               <strong className="font-semibold">No GC response on file.</strong>{" "}
-              This submittal is marked approved but the response wasn&apos;t recorded — note it
-              on the cover before closing if it matters for the audit trail.
+              This submittal is marked approved but the response wasn&apos;t recorded on the
+              cover. Closing will lock it as-is; the status log will show the transition
+              without a captured response. If that matters, add a note to the status log
+              via the close form below.
             </div>
           )}
-          <form action={changeStatusAction} className="flex flex-wrap items-center gap-2">
+          <form action={changeStatusAction} className="space-y-2">
             {hiddenIds}
             <input type="hidden" name="to_status" value="closed" />
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
-            >
-              Close submittal
-            </button>
+            {/* Optional note captured onto the status log entry for this
+                transition — makes the audit trail useful when there was
+                no formal GC response but Alex has context worth
+                preserving (audit Round 3, 2026-07-01). */}
+            <div>
+              <label htmlFor="close-note" className={LABEL_CLS}>
+                Close note <span className="text-ppp-charcoal-500">(optional)</span>
+              </label>
+              <textarea
+                id="close-note"
+                name="note"
+                rows={2}
+                maxLength={500}
+                placeholder="Optional — captured on the status log (e.g. &ldquo;Verbal OK from PM 6/28.&rdquo;)"
+                className={TEXTAREA_CLS}
+              />
+            </div>
+            <div>
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+              >
+                Close submittal
+              </button>
+            </div>
           </form>
         </div>
       )}

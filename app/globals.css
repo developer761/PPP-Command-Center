@@ -38,13 +38,21 @@
   --color-ppp-pale-green: #e9f4d4;
   --color-ppp-warm-beige: #f0e8dd;
 
-  /* ─── Charcoal neutrals (kept for medium-gray usage) ─── */
+  /* ─── Charcoal neutrals (kept for medium-gray usage) ───
+     Full 50/100/200/300/400/500/600/700/800/900 scale so muted-text /
+     border classes across the codebase resolve to real values instead
+     of silently inheriting the parent color. Intermediates interpolated
+     between the anchor shades (Phase 2.5 recheck 2026-07-01). */
   --color-ppp-charcoal: #3f3e40;
   --color-ppp-charcoal-50: #f7f7f7;
   --color-ppp-charcoal-100: #e5e5e6;
   --color-ppp-charcoal-200: #c8c8ca;
+  --color-ppp-charcoal-300: #a8a7aa;
+  --color-ppp-charcoal-400: #88878a;
   --color-ppp-charcoal-500: #6f6e71;
+  --color-ppp-charcoal-600: #575658;
   --color-ppp-charcoal-700: #3f3e40;
+  --color-ppp-charcoal-800: #2f2e30;
   --color-ppp-charcoal-900: #1f1e20;
 
   /* ─── Surfaces ─── */
