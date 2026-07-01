@@ -71,7 +71,7 @@ export default function DraftOrderModal({
         aria-hidden
       />
       <div className="relative z-10 w-full sm:max-w-3xl max-h-[92vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col animate-fade-up">
-        <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3">
+        <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 shrink-0">
           <div className="min-w-0">
             <h3 className="text-base font-bold text-ppp-navy">Draft materials order</h3>
             <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 truncate">
@@ -82,7 +82,7 @@ export default function DraftOrderModal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 transition-colors flex items-center justify-center"
+            className="shrink-0 h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors flex items-center justify-center touch-manipulation"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 6l12 12 M18 6l-12 12" />
@@ -90,8 +90,14 @@ export default function DraftOrderModal({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 overflow-y-auto flex-1">
-          <div className="border-b lg:border-b-0 lg:border-r border-ppp-charcoal-100 p-5 space-y-4 bg-[var(--color-surface-muted)]/40">
+        {/* Body — on mobile: single scroll region (stacked cards). On
+            desktop (lg+): grid with INDEPENDENT scroll per column so
+            the source-data list and preview don't fight each other.
+            Karan feedback 2026-07-01: previously the whole grid
+            scrolled as one unit, which made the "preview" side
+            unreachable when the source list was long. */}
+        <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden lg:grid lg:grid-cols-2">
+          <div className="border-b lg:border-b-0 lg:border-r border-ppp-charcoal-100 p-5 space-y-4 bg-[var(--color-surface-muted)]/40 lg:overflow-y-auto lg:min-h-0">
             <div>
               <div className="text-[11px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500 mb-1">
                 Source data (Salesforce)
@@ -111,7 +117,7 @@ export default function DraftOrderModal({
             ))}
           </div>
 
-          <div className="p-5 space-y-4">
+          <div className="p-5 space-y-4 lg:overflow-y-auto lg:min-h-0">
             <div>
               <div className="text-[11px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500 mb-1">
                 Order draft preview
@@ -184,24 +190,24 @@ export default function DraftOrderModal({
           </div>
         </div>
 
-        <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="text-[11px] text-ppp-charcoal-500 italic">
-            Review the colors, then <strong>Order materials</strong> to pick the store you&apos;re buying from.
+        <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="text-[11px] text-ppp-charcoal-500 italic order-2 sm:order-1">
+            Review the colors, then <strong>Order materials</strong> to pick the store.
           </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-2 order-1 sm:order-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+              className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation flex-1 sm:flex-none"
             >
               Close
             </button>
             <button
               type="button"
               onClick={onOrderMaterials}
-              className="px-3.5 py-2 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+              className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-green-600 text-white text-sm font-semibold hover:bg-ppp-green-700 active:bg-ppp-green-700 transition-colors shadow-sm shadow-ppp-green/30 touch-manipulation flex-1 sm:flex-none inline-flex items-center justify-center gap-1"
             >
-              Order materials →
+              Order materials <span aria-hidden>→</span>
             </button>
           </div>
         </div>

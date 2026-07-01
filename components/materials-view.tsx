@@ -1444,13 +1444,23 @@ function JobDetailImpl({
             still render correctly in Mail Hub history; it's just no
             longer reachable from the worker UI. */}
         <div className="mt-5 rounded-xl border border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 p-3 sm:p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-4">
+          {/* Three sections. On mobile they stack with subtle divider
+              lines so the eye doesn't merge them into one big blob;
+              on md+ they grid to 3 columns with the divider lines
+              becoming vertical borders. Karan 2026-07-01: too much
+              visual weight from stacked primary buttons — split by
+              tone so it reads as CUSTOMER (blue = pending ask) /
+              MATERIALS (green = the action) / REFERENCE (charcoal
+              = lookup). */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-4 divide-y md:divide-y-0 md:divide-x divide-ppp-charcoal-100">
             {/* CUSTOMER section: collect color picks from the homeowner. */}
-            <div className="min-w-0">
+            <div className="min-w-0 pt-4 first:pt-0 md:pt-0 md:pl-0 md:pr-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
-                </svg>
+                <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-blue-50 text-ppp-blue-700">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+                  </svg>
+                </span>
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
                   Customer
                 </span>
@@ -1490,11 +1500,13 @@ function JobDetailImpl({
             </div>
 
             {/* MATERIALS section: turn colors into a real supplier order. */}
-            <div className="min-w-0">
+            <div className="min-w-0 pt-4 md:pt-0 md:px-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
-                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
-                </svg>
+                <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-green-50 text-ppp-green-700">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
+                  </svg>
+                </span>
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
                   Materials
                 </span>
@@ -1504,11 +1516,13 @@ function JobDetailImpl({
                     any brand from stores like Aboffs/Willis, not from the manufacturer).
                     The picker lists PPP's configured vendors; the chosen store's order
                     includes the whole WO's colors. The manufacturer breakdown above is
-                    informational only (it's what the email describes as "what to buy"). */}
+                    informational only (it's what the email describes as "what to buy").
+                    Green primary — distinct from the CUSTOMER blue so two primary
+                    actions don't compete for the eye. */}
                 <button
                   type="button"
                   onClick={() => setShowPicker(true)}
-                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors shadow-sm shadow-ppp-blue/30"
+                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-green-600 text-white text-sm font-semibold hover:bg-ppp-green-700 active:bg-ppp-green-700 transition-colors shadow-sm shadow-ppp-green/30 touch-manipulation"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
@@ -1552,11 +1566,13 @@ function JobDetailImpl({
             </div>
 
             {/* REFERENCE section: cross-check past correspondence. */}
-            <div className="min-w-0">
+            <div className="min-w-0 pt-4 md:pt-0 md:pl-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-500" aria-hidden>
-                  <path d="M12 8v4l3 3 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                </svg>
+                <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-charcoal-100 text-ppp-charcoal-700">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 8v4l3 3 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                  </svg>
+                </span>
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
                   Reference
                 </span>
@@ -1731,7 +1747,7 @@ function JobDetailImpl({
         <button
           type="button"
           onClick={() => setShowPicker(true)}
-          className="w-full h-12 rounded-lg bg-ppp-blue text-white font-semibold text-sm hover:bg-ppp-blue-700 active:bg-ppp-blue-800 transition-colors touch-manipulation flex items-center justify-center gap-2 shadow-md shadow-ppp-blue/30"
+          className="w-full h-12 rounded-lg bg-ppp-green-600 text-white font-semibold text-sm hover:bg-ppp-green-700 active:bg-ppp-green-700 transition-colors touch-manipulation flex items-center justify-center gap-2 shadow-md shadow-ppp-green/30"
           aria-label="Open supplier order picker"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2548,14 +2564,31 @@ function SendColorFormButton({
             onClick={() => !sending && reset()}
             aria-hidden
           />
-          <div className="relative z-10 w-full sm:max-w-md bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden animate-fade-up">
-            <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100">
-              <h3 className="text-base font-bold text-ppp-navy">Send Color Form</h3>
-              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-                Email a link to the customer so they can pick their paint colors.
-              </p>
+          {/* max-h + flex-col so tall content (long form URL after
+              send, or mobile keyboard shrinking viewport) has a
+              scroll region and the Cancel/Send footer stays reachable. */}
+          <div className="relative z-10 w-full sm:max-w-md max-h-[92vh] sm:max-h-[85vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col animate-fade-up">
+            <div className="px-5 sm:px-6 py-4 border-b border-ppp-charcoal-100 shrink-0 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-ppp-navy">Send Color Form</h3>
+                <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                  Email a link to the customer so they can pick their paint colors.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={reset}
+                disabled={sending}
+                aria-label="Close"
+                className="shrink-0 h-9 w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors flex items-center justify-center disabled:opacity-50 touch-manipulation"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M6 6l12 12 M18 6l-12 12" />
+                </svg>
+              </button>
             </div>
 
+            <div className="flex-1 overflow-y-auto">
             {!result && (
               <div className="p-5 sm:p-6 space-y-4">
                 <div>
@@ -2666,7 +2699,9 @@ function SendColorFormButton({
               </div>
             )}
 
-            <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white flex items-center justify-end gap-2">
+            </div>
+
+            <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white shrink-0 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={reset}
@@ -2680,8 +2715,14 @@ function SendColorFormButton({
                   type="button"
                   onClick={send}
                   disabled={sending || !customerEmail.trim()}
-                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 >
+                  {sending && (
+                    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+                      <circle cx="12" cy="12" r="10" strokeOpacity="0.3" />
+                      <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+                    </svg>
+                  )}
                   {sending ? "Sending…" : "Send Form"}
                 </button>
               )}
