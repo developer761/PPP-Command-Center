@@ -1049,7 +1049,7 @@ export default async function OpportunityDetailPage({
                   href={`/commercial/opportunities/${opp.id}?tab=${t.key}`}
                   className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
-                      ? "border-emerald-600 text-ppp-charcoal"
+                      ? "border-cc-brand-600 text-ppp-charcoal"
                       : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-100"
                   }`}
                 >
@@ -1406,7 +1406,7 @@ function ChangeStatusCard({
             </button>
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
             >
               Move forward →
             </button>
@@ -1520,7 +1520,7 @@ function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
           </Link>
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
           >
             Save debrief
           </button>
@@ -1728,7 +1728,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <input id="team_primary" name="is_primary" type="checkbox" className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40" />
+              <input id="team_primary" name="is_primary" type="checkbox" className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40" />
               <label htmlFor="team_primary" className="text-[12px] text-ppp-charcoal-700">
                 Mark as primary in this role
               </label>
@@ -1748,7 +1748,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
               >
                 Add to team
               </button>
@@ -1786,7 +1786,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                       key={a.id}
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
                         a.is_primary
-                          ? "bg-emerald-600 text-white border-emerald-700"
+                          ? "bg-cc-brand-600 text-white border-emerald-700"
                           : "bg-emerald-50 text-emerald-700 border-emerald-200"
                       }`}
                       title={a.notes ?? undefined}
@@ -1888,7 +1888,7 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Add task
             </button>
@@ -1961,7 +1961,7 @@ function TaskList({
                     aria-label={t.completed_at ? `Reopen ${t.title}` : `Complete ${t.title}`}
                     className={`rounded border-2 inline-flex items-center justify-center touch-manipulation min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] text-base ${
                       t.completed_at
-                        ? "bg-emerald-600 border-emerald-600 text-white"
+                        ? "bg-cc-brand-600 border-cc-brand-600 text-white"
                         : "border-ppp-charcoal-300 hover:border-emerald-500"
                     }`}
                   >
@@ -2064,7 +2064,7 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Add note
             </button>
@@ -2494,7 +2494,7 @@ async function FinishesTab({
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
             >
               Add finish
             </button>

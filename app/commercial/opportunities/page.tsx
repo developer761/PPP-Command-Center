@@ -388,7 +388,7 @@ export default async function CommercialOpportunitiesPage({
           </div>
           <Link
             href="/commercial/opportunities/new"
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors touch-manipulation shadow-sm shadow-emerald-600/30 min-h-[44px]"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px]"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
@@ -442,7 +442,7 @@ export default async function CommercialOpportunitiesPage({
             type="search"
             defaultValue={search ?? ""}
             placeholder="Search opportunities by title…"
-            className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 min-h-[44px] shadow-sm"
+            className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px] shadow-sm"
           />
         </div>
         {/* Hidden status + view fields preserve them through search submit
@@ -540,7 +540,7 @@ export default async function CommercialOpportunitiesPage({
                   href={statusDrillHref(r.status)}
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[36px] touch-manipulation transition-colors ${
                     isActive
-                      ? "bg-emerald-600 border-emerald-700 text-white"
+                      ? "bg-cc-brand-600 border-emerald-700 text-white"
                       : "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                   }`}
                   title={isActive ? `Showing only ${opportunityStatusLabel(r.status)} — tap to clear` : `Filter to ${opportunityStatusLabel(r.status)}`}
@@ -663,7 +663,7 @@ export default async function CommercialOpportunitiesPage({
           {!anyFilterActive && (
             <Link
               href="/commercial/opportunities/new"
-              className="inline-flex items-center justify-center gap-1.5 mt-4 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px]"
+              className="inline-flex items-center justify-center gap-1.5 mt-4 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]"
             >
               New opportunity
             </Link>
@@ -925,7 +925,7 @@ function KanbanCard({
       ? "text-rose-600"
       : days > 7
       ? "text-amber-600"
-      : "text-emerald-600";
+      : "text-cc-brand-600";
   const leadFirst = primaryLead
     ? primaryLead.user_full_name?.split(" ")[0] ?? primaryLead.user_email.split("@")[0]
     : null;
@@ -994,7 +994,7 @@ function KanbanCard({
           </select>
           <button
             type="submit"
-            className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+            className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             Go
           </button>
@@ -1058,12 +1058,12 @@ function SortOption({
       <span
         className={`inline-flex items-center justify-center h-4 w-4 rounded-full border shrink-0 ${
           active
-            ? "border-emerald-600"
+            ? "border-cc-brand-600"
             : "border-ppp-charcoal-300"
         }`}
         aria-hidden
       >
-        {active && <span className="block h-2 w-2 rounded-full bg-emerald-600" />}
+        {active && <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />}
       </span>
       <span className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal-700"}`}>
         {label}
@@ -1097,7 +1097,7 @@ function FilterOption({
       <span
         className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
           active
-            ? "bg-emerald-600 border-emerald-700 text-white"
+            ? "bg-cc-brand-600 border-emerald-700 text-white"
             : "bg-white border-ppp-charcoal-300 text-transparent"
         }`}
         aria-hidden

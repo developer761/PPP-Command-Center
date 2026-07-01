@@ -291,7 +291,7 @@ export default async function CommercialAccountDetailPage({
                   href={`/commercial/accounts/${id}?tab=${t.key}`}
                   className={`inline-block px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap ${
                     active
-                      ? "border-emerald-600 text-emerald-700"
+                      ? "border-cc-brand-600 text-emerald-700"
                       : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-300"
                   }`}
                 >
@@ -749,7 +749,7 @@ function TagsCard({
         </div>
         <button
           type="submit"
-          className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] shrink-0"
+          className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] shrink-0"
         >
           Add
         </button>
@@ -947,7 +947,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
               id="role"
               name="role"
               defaultValue="decision_maker"
-              className="w-full sm:w-auto px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white"
+              className="w-full sm:w-auto px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 bg-white"
             >
               {CONTACT_ROLES.map((r) => (
                 <option key={r} value={r}>
@@ -971,7 +971,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Add contact
             </button>
@@ -1327,7 +1327,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-emerald-600/30" />
+            <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30" />
             Mark as primary in this role (replaces any current primary)
           </label>
           <div>
@@ -1345,7 +1345,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           <div className="flex justify-end">
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
             >
               Add to team
             </button>
@@ -1363,7 +1363,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
         </summary>
         <ul className="px-4 py-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700 space-y-1.5">
           <li>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-600 text-white border-emerald-700 mr-1">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-600 text-white border-emerald-700 mr-1">
               ★ Sales Rep
             </span>
             Primary holder of this role — the &ldquo;THE&rdquo; person platform-wide. One per (account, role).
@@ -1394,7 +1394,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           </p>
           <a
             href="#assign-ppp-staff"
-            className="inline-flex items-center gap-1.5 mt-4 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+            className="inline-flex items-center gap-1.5 mt-4 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
@@ -1473,7 +1473,7 @@ function TeamRow({
               key={a.id}
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
                 a.is_primary
-                  ? "bg-emerald-600 text-white border-emerald-700"
+                  ? "bg-cc-brand-600 text-white border-emerald-700"
                   : "bg-emerald-50 text-emerald-700 border-emerald-200"
               }`}
               title={tipBits.join("\n")}
@@ -1593,7 +1593,7 @@ async function OpportunitiesTab({
         </p>
         <Link
           href={`/commercial/opportunities/new?account=${accountId}`}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
         >
           + New opportunity
         </Link>
@@ -1631,7 +1631,7 @@ async function OpportunitiesTab({
         </div>
         <Link
           href={`/commercial/opportunities/new?account=${accountId}`}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation shrink-0"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shrink-0"
         >
           + New opportunity
         </Link>
@@ -2562,7 +2562,7 @@ function KpiTile({
   return href ? (
     <a
       href={href}
-      className={`block rounded-xl border px-3 py-3 sm:px-4 sm:py-3.5 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-600/40 touch-manipulation ${cls}`}
+      className={`block rounded-xl border px-3 py-3 sm:px-4 sm:py-3.5 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 touch-manipulation ${cls}`}
     >
       {content}
     </a>

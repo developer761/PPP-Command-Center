@@ -233,7 +233,7 @@ function FactorButtonGrid({
               onClick={() => setPicked(active ? "" : f.value)}
               className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-colors min-h-[44px] touch-manipulation ${
                 active
-                  ? "bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-600/20"
+                  ? "bg-cc-brand-600 text-white border-cc-brand-600 shadow-sm shadow-emerald-600/20"
                   : "bg-white text-ppp-charcoal border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
               }`}
               aria-pressed={active}

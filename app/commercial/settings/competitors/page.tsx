@@ -157,7 +157,7 @@ export default async function CompetitorsAdminPage({
           />
           <button
             type="submit"
-            className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 min-h-[44px]"
+            className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]"
           >
             Add
           </button>
@@ -275,7 +275,7 @@ function RenameForm({ competitorId, currentName }: { competitorId: string; curre
         />
         <button
           type="submit"
-          className="text-xs font-semibold px-3 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+          className="text-xs font-semibold px-3 py-1.5 rounded bg-cc-brand-600 text-white hover:bg-cc-brand-700"
         >
           Save
         </button>

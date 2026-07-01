@@ -860,7 +860,7 @@ export default async function SubmittalDetailPage({
                     name={`included_${kind}`}
                     defaultChecked={includedSet.has(kind)}
                     disabled={!isDraft}
-                    className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40 shrink-0"
+                    className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40 shrink-0"
                   />
                   <span className="text-[13px] text-ppp-charcoal-700 leading-tight">
                     {includedKindLabel(kind)}
@@ -907,7 +907,7 @@ export default async function SubmittalDetailPage({
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
               >
                 Save cover
               </button>
@@ -1319,7 +1319,7 @@ export default async function SubmittalDetailPage({
                           name="attachment_ids"
                           value={att.id}
                           defaultChecked={preselectedIds.includes(att.id)}
-                          className="w-4 h-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/40 shrink-0"
+                          className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40 shrink-0"
                         />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm text-ppp-charcoal break-words">{att.file_name}</div>
@@ -1340,7 +1340,7 @@ export default async function SubmittalDetailPage({
               <div className="flex justify-end pt-1 border-t border-emerald-100">
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+                  className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
                 >
                   Attach selected
                 </button>
@@ -1518,7 +1518,7 @@ function StatusActionsPanel({
               type="submit"
               disabled={itemCount === 0}
               title={itemCount === 0 ? "Add at least one item before sending" : undefined}
-              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z" />
@@ -1537,7 +1537,7 @@ function StatusActionsPanel({
             <input type="hidden" name="to_status" value="under_review" />
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
             >
               Mark received by GC
             </button>
@@ -1635,7 +1635,7 @@ function StatusActionsPanel({
             <div>
               <button
                 type="submit"
-                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
               >
                 Close submittal
               </button>
@@ -1656,7 +1656,7 @@ function StatusActionsPanel({
               {hiddenIds}
               <button
                 type="submit"
-                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
               >
                 + Create revision
               </button>
@@ -1772,7 +1772,7 @@ function ResponseRecorder({
   // outcome cue (audit UI M3, 2026-06-30).
   const toneStyles =
     tone === "emerald"
-      ? { card: "border-emerald-200 bg-emerald-50/40", btn: "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 shadow-emerald-600/30", dot: "bg-emerald-500" }
+      ? { card: "border-emerald-200 bg-emerald-50/40", btn: "bg-cc-brand-600 hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-cc-brand-600/30", dot: "bg-emerald-500" }
       : tone === "amber"
       ? { card: "border-amber-200 bg-amber-50/40", btn: "bg-amber-700 hover:bg-amber-800 active:bg-amber-900 shadow-amber-700/30", dot: "bg-amber-500" }
       : { card: "border-rose-200 bg-rose-50/40", btn: "bg-rose-700 hover:bg-rose-800 active:bg-rose-900 shadow-rose-700/30", dot: "bg-rose-500" };

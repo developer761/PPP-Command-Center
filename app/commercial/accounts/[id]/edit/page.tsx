@@ -250,7 +250,7 @@ export default async function EditCommercialAccountPage({
               type="checkbox"
               name="tax_exempt"
               defaultChecked={account.tax_exempt}
-              className="h-5 w-5 rounded border-ppp-charcoal-300 focus:ring-emerald-600/30"
+              className="h-5 w-5 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
             />
             Tax exempt
           </label>
@@ -263,7 +263,7 @@ export default async function EditCommercialAccountPage({
               type="checkbox"
               name="is_key_relationship"
               defaultChecked={Boolean(account.is_key_relationship)}
-              className="h-5 w-5 mt-0.5 rounded border-ppp-charcoal-300 focus:ring-emerald-600/30"
+              className="h-5 w-5 mt-0.5 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
             />
             <span>
               <strong>★ Key Relationship</strong>
@@ -281,7 +281,7 @@ export default async function EditCommercialAccountPage({
             rows={4}
             defaultValue={account.notes ?? ""}
             placeholder="Anything PPP staff should know about this account."
-            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
+            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
           />
         </Section>
 
@@ -294,7 +294,7 @@ export default async function EditCommercialAccountPage({
           </Link>
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
           >
             Save changes
           </button>
