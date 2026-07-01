@@ -10,6 +10,7 @@ import {
   getCompetitorBreakdown,
   getDecidingFactorBreakdown,
   getLessonsLearnedFeed,
+  etMidnightToUTC,
 } from "@/lib/commercial/win-loss/reports";
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
 
@@ -48,14 +49,17 @@ function formatCents(cents: number): string {
   return `$${dollars.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
-/** Parse bare "YYYY-MM-DD" as noon-ET so the resulting Date's ymd matches
- *  the picker input in America/New_York year-round. Returns null on any
- *  non-YYYY-MM-DD input to short-circuit invalid custom ranges. */
-function parseYmdInEt(ymd: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
-  // Noon UTC = 7-8am ET, always the same YMD in NY. Safe date-only anchor.
-  const d = new Date(`${ymd}T12:00:00Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
+/** Split bare "YYYY-MM-DD" into calendar parts for etMidnightToUTC.
+ *  Returns null on any non-YYYY-MM-DD input to short-circuit invalid
+ *  custom ranges. */
+function parseYmdParts(ymd: string): { year: number; monthIdx: number; day: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const monthIdx = parseInt(m[2], 10) - 1;
+  const day = parseInt(m[3], 10);
+  if (year < 1970 || year > 2100 || monthIdx < 0 || monthIdx > 11 || day < 1 || day > 31) return null;
+  return { year, monthIdx, day };
 }
 
 /** Format a Date in America/New_York, "Jul 1, 2026" style. */
@@ -84,29 +88,32 @@ function parseRange(sp: { from?: string; to?: string; preset?: string }): {
 } {
   // Custom range always wins if both dates are present + valid.
   if (sp.from && sp.to) {
-    // Parse bare YYYY-MM-DD as ET so a user picking "Jul 1" gets the
-    // Jul 1 window in New York, not the (Jul 1 UTC) window that shifts
-    // by 4-5h. Audit Round 4, 2026-07-01.
-    const fromDate = parseYmdInEt(sp.from);
-    const toDate = parseYmdInEt(sp.to);
-    if (fromDate && toDate && fromDate <= toDate) {
-      const fromYmd = sp.from;
-      const toYmd = sp.to;
-      // CRITICAL: the DB filter is `.lt(debriefed_at, toIso)` — exclusive
-      // end. The user-typed "to" is read as the last INCLUSIVE day (matches
-      // every other date picker convention), so we push toIso forward by
-      // 24h to capture all debriefs on that last day. Without this, picking
-      // "to=Jun 30" silently drops every Jun 30 debrief.
-      const toIso = new Date(toDate.getTime() + 86_400_000).toISOString();
-      return {
-        fromIso: fromDate.toISOString(),
-        toIso,
-        label: `${fmtEtDate(fromDate)} – ${fmtEtDate(toDate)}`,
-        activeKey: "custom",
-        fromYmd,
-        toYmd,
-        rejected: false,
-      };
+    // Parse bare YYYY-MM-DD → { year, monthIdx, day } for etMidnightToUTC.
+    // Round 3 recheck audit 2026-07-01: an earlier attempt used
+    // `new Date(ymd + "T12:00:00Z")` which is 8am ET, silently excluding
+    // debriefs stamped between midnight and 8am ET on `sp.from` AND
+    // debriefs from 8am ET onward on `sp.to`. The presets (currentQuarter,
+    // etc.) already use etMidnightToUTC — the custom range must too.
+    const fromParts = parseYmdParts(sp.from);
+    const toParts = parseYmdParts(sp.to);
+    if (fromParts && toParts) {
+      const fromIso = etMidnightToUTC(fromParts.year, fromParts.monthIdx, fromParts.day).toISOString();
+      // Push toIso forward one day so the last day is INCLUSIVE (matches
+      // the .lt() DB filter — without this, picking "to=Jun 30" silently
+      // drops every Jun 30 debrief).
+      const toMidnight = etMidnightToUTC(toParts.year, toParts.monthIdx, toParts.day + 1);
+      const toIso = toMidnight.toISOString();
+      if (new Date(fromIso).getTime() <= new Date(toIso).getTime()) {
+        return {
+          fromIso,
+          toIso,
+          label: `${fmtEtDate(new Date(fromIso))} – ${fmtEtDate(new Date(toMidnight.getTime() - 86_400_000))}`,
+          activeKey: "custom",
+          fromYmd: sp.from,
+          toYmd: sp.to,
+          rejected: false,
+        };
+      }
     }
   }
   const supplied = !!(sp.from || sp.to);

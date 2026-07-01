@@ -1841,7 +1841,7 @@ function AccountOpportunityRow({
             name="to_status"
             defaultValue=""
             required
-            className={`${SELECT_CLS} text-[12px] sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
+            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
             style={SELECT_BG_STYLE}
           >
             <option value="" disabled>

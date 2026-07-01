@@ -165,12 +165,20 @@ export default function NotificationBell() {
           <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
         </svg>
         {unread > 0 && (
-          <span
-            className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full bg-ppp-blue text-white text-[10px] font-semibold flex items-center justify-center"
-            aria-hidden
-          >
-            {badgeText}
-          </span>
+          <>
+            {/* Superhuman-style presence ping — subtle emerald pulse
+                overlay that draws the eye without shouting. */}
+            <span
+              aria-hidden
+              className="absolute -top-1 -right-1 h-5 min-w-[20px] rounded-full bg-emerald-500 opacity-40 animate-ping"
+            />
+            <span
+              className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full bg-ppp-blue text-white text-[10px] font-semibold flex items-center justify-center"
+              aria-hidden
+            >
+              {badgeText}
+            </span>
+          </>
         )}
       </button>
 

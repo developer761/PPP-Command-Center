@@ -978,7 +978,7 @@ function KanbanCard({
             name="to_status"
             defaultValue=""
             required
-            className={`${SELECT_CLS} flex-1 text-[12px] sm:text-xs py-1.5 min-h-[44px] sm:min-h-[36px]`}
+            className={`${SELECT_CLS} flex-1 text-base sm:text-xs py-1.5 min-h-[44px] sm:min-h-[36px]`}
             style={SELECT_BG_STYLE}
             aria-label={`Move ${opp.title}`}
           >

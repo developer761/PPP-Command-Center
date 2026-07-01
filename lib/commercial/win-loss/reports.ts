@@ -68,7 +68,7 @@ export type LessonRow = {
  * Handles DST automatically by probing noon UTC of the target day to
  * read the ET offset that day (-5h EST winter, -4h EDT summer).
  */
-function etMidnightToUTC(year: number, monthIdx: number, day: number): Date {
+export function etMidnightToUTC(year: number, monthIdx: number, day: number): Date {
   const probe = new Date(Date.UTC(year, monthIdx, day, 12, 0, 0));
   // hour12:false + hour:"2-digit" gives "07" (EST) or "08" (EDT) when
   // we render noon UTC as NY local time. nyHour - 12 = the ET offset

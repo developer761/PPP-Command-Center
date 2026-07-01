@@ -207,8 +207,8 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
-      <div className="relative z-10 w-full sm:max-w-md bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden">
-        <div className="px-5 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3">
+      <div className="relative z-10 w-full sm:max-w-md max-h-[92vh] sm:max-h-[85vh] bg-white border border-ppp-charcoal-100 rounded-t-2xl sm:rounded-2xl shadow-2xl shadow-ppp-charcoal/20 overflow-hidden flex flex-col">
+        <div className="px-5 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 shrink-0">
           <div>
             <h3 className="text-base font-bold text-ppp-navy">Add a new supplier</h3>
             <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
@@ -221,7 +221,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
             </svg>
           </button>
         </div>
-        <div className="px-5 py-4 space-y-3">
+        <div className="px-5 py-4 space-y-3 flex-1 overflow-y-auto">
           <div>
             <label className="text-[11px] uppercase tracking-wide font-semibold text-ppp-charcoal-500 block mb-1">Supplier name *</label>
             <input
@@ -230,7 +230,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Smithtown Paints"
-              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
             />
           </div>
           <div>
@@ -243,7 +243,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="orders@supplier.com"
-              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
             />
             <p className="text-[10px] text-ppp-charcoal-500 mt-1">Needed for the Send button to activate on the Supplier Order Modal.</p>
           </div>
@@ -254,7 +254,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
               placeholder="optional"
-              className="w-full px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
+              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
             />
           </div>
           {error && (
@@ -263,7 +263,7 @@ function AddSupplierModal({ onClose, onCreated }: { onClose: () => void; onCreat
             </div>
           )}
         </div>
-        <div className="px-5 py-4 border-t border-ppp-charcoal-100 flex items-center justify-end gap-2">
+        <div className="px-5 py-4 border-t border-ppp-charcoal-100 flex items-center justify-end gap-2 shrink-0">
           <button
             type="button"
             onClick={onClose}
