@@ -43,8 +43,12 @@ describe("isTransitionAllowed — DAG enforcement", () => {
     expect(isTransitionAllowed("inquiry", "estimating")).toBe(true);
   });
 
-  it("inquiry → won REJECTED (must go through negotiating)", () => {
-    expect(isTransitionAllowed("inquiry", "won")).toBe(false);
+  // Was REJECTED before 2026-06-24. Karan opened it up so a rep can
+  // close a repeat-customer verbal-yes without walking the whole funnel.
+  // The transition is now allowed at the lib level; UI still warns via
+  // WARN_TRANSITIONS so misclicks get a soft prompt.
+  it("inquiry → won allowed (repeat-customer verbal-yes path)", () => {
+    expect(isTransitionAllowed("inquiry", "won")).toBe(true);
   });
 
   it("negotiating → won allowed", () => {
@@ -124,8 +128,12 @@ describe("shouldWarnTransition — UX warn-only transitions", () => {
     expect(shouldWarnTransition("negotiating", "estimating")).toBe(true);
   });
 
-  it("warns on won → reopened (rare)", () => {
-    expect(shouldWarnTransition("won", "reopened")).toBe(true);
+  // Won → reopened warning was removed 2026-06-24. Reopen is a dedicated
+  // header action on terminal opps, not a dropdown choice, so the
+  // "unusual transition" warning was misleading — re-engaging a closed
+  // customer is a normal motion, not a flagged edge case.
+  it("does NOT warn on won → reopened (Reopen is a normal header action)", () => {
+    expect(shouldWarnTransition("won", "reopened")).toBe(false);
   });
 
   it("does NOT warn on normal forward motion", () => {
