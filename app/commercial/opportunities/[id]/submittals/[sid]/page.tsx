@@ -1826,7 +1826,17 @@ function ResponseRecorder({
             <input
               name="response_received_at"
               type="date"
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              // ET-correct today via en-CA formatter (returns YYYY-MM-DD).
+              // Was toISOString().slice(0,10) which is UTC — between
+              // 8pm and midnight ET, the picker defaulted to tomorrow's
+              // date and Alex would stamp the wrong response date on GC
+              // approvals. Audit Round 4, 2026-07-01.
+              defaultValue={new Intl.DateTimeFormat("en-CA", {
+                timeZone: "America/New_York",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              }).format(new Date())}
               className={INPUT_CLS}
             />
           </div>

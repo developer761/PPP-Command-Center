@@ -260,10 +260,10 @@ export default async function CompetitorsAdminPage({
 function RenameForm({ competitorId, currentName }: { competitorId: string; currentName: string }) {
   return (
     <details className="relative">
-      <summary className="cursor-pointer text-xs font-medium px-3 py-2 rounded-md border border-ppp-charcoal-200 text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] inline-flex items-center select-none">
+      <summary className="cursor-pointer list-none text-xs font-medium px-3 py-2 rounded-md border border-ppp-charcoal-200 text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] inline-flex items-center select-none">
         Rename
       </summary>
-      <form action={renameAction} className="absolute z-10 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg p-3 w-64 flex gap-2">
+      <form action={renameAction} className="absolute z-10 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg p-3 w-64 max-w-[calc(100vw-2rem)] flex gap-2">
         <input type="hidden" name="id" value={competitorId} />
         <input
           type="text"
@@ -271,7 +271,7 @@ function RenameForm({ competitorId, currentName }: { competitorId: string; curre
           defaultValue={currentName}
           required
           maxLength={200}
-          className="flex-1 px-2 py-1.5 rounded border border-ppp-charcoal-200 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="flex-1 min-w-0 px-2 py-1.5 rounded border border-ppp-charcoal-200 text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
         <button
           type="submit"
@@ -296,10 +296,10 @@ function MergeForm({
   if (candidates.length === 0) return null;
   return (
     <details className="relative">
-      <summary className="cursor-pointer text-xs font-medium px-3 py-2 rounded-md border border-rose-200 text-rose-800 hover:bg-rose-50 min-h-[44px] inline-flex items-center select-none">
+      <summary className="cursor-pointer list-none text-xs font-medium px-3 py-2 rounded-md border border-rose-200 text-rose-800 hover:bg-rose-50 min-h-[44px] inline-flex items-center select-none">
         Merge
       </summary>
-      <form action={mergeAction} className="absolute z-10 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg p-3 w-72">
+      <form action={mergeAction} className="absolute z-10 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg p-3 w-72 max-w-[calc(100vw-2rem)]">
         <input type="hidden" name="source_id" value={sourceId} />
         <p className="text-[11px] text-ppp-charcoal-500 mb-2">
           Merge <strong>{sourceName}</strong> into another competitor. All historic debriefs will roll up to the target.
@@ -308,7 +308,7 @@ function MergeForm({
           name="target_id"
           required
           defaultValue=""
-          className="block w-full px-2 py-1.5 rounded border border-ppp-charcoal-200 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="block w-full px-2 py-1.5 rounded border border-ppp-charcoal-200 text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
         >
           <option value="" disabled>Pick target…</option>
           {candidates.map((t) => (

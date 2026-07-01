@@ -25,16 +25,22 @@ const PHASES = [
 export default function CommercialDashboardPage() {
   return (
     <div className="space-y-8">
-      <header>
-        <div className="flex items-center gap-2 mb-2">
-          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
-            Phase 3 · Invoicing Up Next
-          </span>
+      <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cc-brand-800 via-cc-brand-700 to-cc-brand-800 text-white px-6 sm:px-8 py-8 sm:py-10 shadow-lg shadow-cc-brand-900/20">
+        {/* Subtle diagonal texture — pure CSS, no image weight. */}
+        <div aria-hidden className="absolute inset-0 opacity-[0.08]" style={{
+          backgroundImage: "repeating-linear-gradient(135deg, transparent 0 12px, white 12px 13px)",
+        }} />
+        <div className="relative">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-white bg-white/20 backdrop-blur-sm border border-white/30 px-2 py-0.5 rounded">
+              Phase 3 · Invoicing Up Next
+            </span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Commercial Command Center</h1>
+          <p className="mt-1 text-sm text-cc-brand-100">
+            From bid intake to closeout, all in one record.
+          </p>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal">Commercial Command Center</h1>
-        <p className="mt-1 text-sm text-ppp-charcoal-500">
-          From bid intake to closeout, all in one record.
-        </p>
       </header>
 
       <section className="bg-white rounded-xl border border-ppp-charcoal-100 p-6">

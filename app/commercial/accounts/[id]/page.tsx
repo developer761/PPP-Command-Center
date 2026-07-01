@@ -651,7 +651,7 @@ function KeyDatesCard({
           {dated.map((item) => {
             const dt = item.expires_at ? new Date(item.expires_at) : null;
             const display = dt
-              ? dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+              ? dt.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" })
               : "—";
             const { tone } = healthDecoration(item);
             const inDays =
@@ -947,7 +947,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
               id="role"
               name="role"
               defaultValue="decision_maker"
-              className="w-full sm:w-auto px-3 py-2 text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white"
+              className="w-full sm:w-auto px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 bg-white"
             >
               {CONTACT_ROLES.map((r) => (
                 <option key={r} value={r}>

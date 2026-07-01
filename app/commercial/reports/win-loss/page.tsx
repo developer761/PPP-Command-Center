@@ -48,6 +48,26 @@ function formatCents(cents: number): string {
   return `$${dollars.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+/** Parse bare "YYYY-MM-DD" as noon-ET so the resulting Date's ymd matches
+ *  the picker input in America/New_York year-round. Returns null on any
+ *  non-YYYY-MM-DD input to short-circuit invalid custom ranges. */
+function parseYmdInEt(ymd: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  // Noon UTC = 7-8am ET, always the same YMD in NY. Safe date-only anchor.
+  const d = new Date(`${ymd}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Format a Date in America/New_York, "Jul 1, 2026" style. */
+function fmtEtDate(d: Date): string {
+  return d.toLocaleDateString("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function parseRange(sp: { from?: string; to?: string; preset?: string }): {
   fromIso: string;
   toIso: string;
@@ -64,11 +84,14 @@ function parseRange(sp: { from?: string; to?: string; preset?: string }): {
 } {
   // Custom range always wins if both dates are present + valid.
   if (sp.from && sp.to) {
-    const fromDate = new Date(sp.from);
-    const toDate = new Date(sp.to);
-    if (!isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && fromDate <= toDate) {
-      const fromYmd = fromDate.toISOString().slice(0, 10);
-      const toYmd = toDate.toISOString().slice(0, 10);
+    // Parse bare YYYY-MM-DD as ET so a user picking "Jul 1" gets the
+    // Jul 1 window in New York, not the (Jul 1 UTC) window that shifts
+    // by 4-5h. Audit Round 4, 2026-07-01.
+    const fromDate = parseYmdInEt(sp.from);
+    const toDate = parseYmdInEt(sp.to);
+    if (fromDate && toDate && fromDate <= toDate) {
+      const fromYmd = sp.from;
+      const toYmd = sp.to;
       // CRITICAL: the DB filter is `.lt(debriefed_at, toIso)` — exclusive
       // end. The user-typed "to" is read as the last INCLUSIVE day (matches
       // every other date picker convention), so we push toIso forward by
@@ -78,7 +101,7 @@ function parseRange(sp: { from?: string; to?: string; preset?: string }): {
       return {
         fromIso: fromDate.toISOString(),
         toIso,
-        label: `${fromDate.toLocaleDateString()} – ${toDate.toLocaleDateString()}`,
+        label: `${fmtEtDate(fromDate)} – ${fmtEtDate(toDate)}`,
         activeKey: "custom",
         fromYmd,
         toYmd,
@@ -177,7 +200,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                 type="date"
                 name="from"
                 defaultValue={range.fromYmd}
-                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-[12px] text-ppp-charcoal min-h-[44px] sm:min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
+                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-[12px] text-ppp-charcoal min-h-[44px] sm:min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
                 aria-label="From date"
               />
               <span className="text-[12px] text-ppp-charcoal-400" aria-hidden>→</span>
@@ -187,7 +210,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                 type="date"
                 name="to"
                 defaultValue={range.toYmd}
-                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-[12px] text-ppp-charcoal min-h-[44px] sm:min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
+                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-[12px] text-ppp-charcoal min-h-[44px] sm:min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
                 aria-label="To date"
               />
               <button
@@ -368,7 +391,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                       &ldquo;{l.lessons_learned}&rdquo;
                     </p>
                     <div className="text-[11px] text-ppp-charcoal-400 mt-1">
-                      {new Date(l.debriefed_at).toLocaleDateString()}
+                      {fmtEtDate(new Date(l.debriefed_at))}
                     </div>
                   </li>
                 ))}

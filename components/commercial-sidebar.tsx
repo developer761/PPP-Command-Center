@@ -104,17 +104,19 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 lg:w-64 h-full bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
-      <div className="px-6 py-5 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
+    <aside className="w-64 lg:w-64 h-full bg-cc-brand-800 text-white border-r border-cc-brand-900 flex flex-col shrink-0">
+      <div className="px-6 py-5 lg:py-6 border-b border-cc-brand-700/60 flex items-center justify-between gap-2 bg-cc-brand-900/40">
         <Link href="/commercial" className="block" onClick={onNavigate}>
-          <Image
-            src="/brand/logo.svg"
-            alt="Precision Painting Plus"
-            width={180}
-            height={60}
-            priority
-          />
-          <div className="font-condensed mt-3 text-[10px] font-bold tracking-[0.16em] uppercase text-sky-700 leading-tight">
+          <div className="bg-white/95 rounded-md p-2 inline-block">
+            <Image
+              src="/brand/logo.svg"
+              alt="Precision Painting Plus"
+              width={160}
+              height={50}
+              priority
+            />
+          </div>
+          <div className="font-condensed mt-3 text-[10px] font-bold tracking-[0.16em] uppercase text-cc-brand-100 leading-tight">
             Commercial<br />Command Center
           </div>
         </Link>
@@ -123,7 +125,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             type="button"
             onClick={onNavigate}
             aria-label="Close menu"
-            className="lg:hidden flex items-center justify-center h-11 w-11 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+            className="lg:hidden flex items-center justify-center h-11 w-11 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 6l12 12 M18 6l-12 12" />
@@ -135,7 +137,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {navSections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-6" : ""}>
-            <div className="font-condensed px-3 mb-2 text-[10px] font-bold tracking-[0.18em] text-sky-700 uppercase">
+            <div className="font-condensed px-3 mb-2 text-[10px] font-bold tracking-[0.18em] text-cc-brand-200 uppercase">
               {section.heading}
             </div>
             <ul className="space-y-0.5">
@@ -149,11 +151,11 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                 if (item.disabled) {
                   return (
                     <li key={item.href}>
-                      <div className={`${baseClasses} text-ppp-charcoal-300 cursor-not-allowed select-none`} title={item.phase ? `Coming in Phase ${item.phase}` : "Coming soon"}>
-                        <span className="text-ppp-charcoal-300">{item.icon}</span>
+                      <div className={`${baseClasses} text-cc-brand-300/70 cursor-not-allowed select-none`} title={item.phase ? `Coming in Phase ${item.phase}` : "Coming soon"}>
+                        <span className="text-cc-brand-300/70">{item.icon}</span>
                         <span className="flex-1">{item.label}</span>
                         {item.phase != null && (
-                          <span className="shrink-0 text-[9px] font-bold tracking-wider uppercase text-ppp-charcoal-500 bg-ppp-charcoal-50 px-1.5 py-0.5 rounded">
+                          <span className="shrink-0 text-[9px] font-bold tracking-wider uppercase text-cc-brand-100/80 bg-cc-brand-900/60 px-1.5 py-0.5 rounded">
                             Phase {item.phase}
                           </span>
                         )}
@@ -166,9 +168,9 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                     <Link
                       href={item.href}
                       onClick={onNavigate}
-                      className={`${baseClasses} ${active ? "bg-sky-100 text-sky-800 font-semibold ring-1 ring-sky-200" : "text-ppp-charcoal hover:bg-ppp-charcoal-50"}`}
+                      className={`${baseClasses} ${active ? "bg-white text-cc-brand-800 font-semibold shadow-sm" : "text-white/90 hover:bg-white/10"}`}
                     >
-                      <span className={active ? "text-sky-700" : "text-ppp-charcoal-500"}>
+                      <span className={active ? "text-cc-brand-700" : "text-white/70"}>
                         {item.icon}
                       </span>
                       <span className="flex-1">{item.label}</span>
@@ -184,8 +186,8 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             sidebar: last item inside the nav block so it scrolls with the
             other items. Visible only to multi-platform users. */}
         {showSwitcher && (
-          <div className="mt-6 pt-4 border-t border-ppp-charcoal-100">
-            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
+          <div className="mt-6 pt-4 border-t border-cc-brand-700/60">
+            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-cc-brand-200 uppercase">
               Platforms
             </div>
             <PlatformSwitcher current="new_platform" />
@@ -193,10 +195,10 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
         )}
       </nav>
 
-      <div className="px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
-        <div className="font-semibold text-ppp-charcoal">Phase 3 · Invoicing</div>
+      <div className="px-6 py-4 border-t border-cc-brand-700/60 text-[11px] text-cc-brand-100/80 bg-cc-brand-900/40">
+        <div className="font-semibold text-white">Phase 3 · Invoicing</div>
         <div className="mt-0.5 flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
           Postgres-native
         </div>
       </div>
