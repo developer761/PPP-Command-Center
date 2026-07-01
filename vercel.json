@@ -7,7 +7,7 @@
     },
     {
       "path": "/api/cron/warm-snapshot",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 6 * * *"
     }
   ]
 }
