@@ -895,13 +895,13 @@ export default async function OpportunityDetailPage({
   return (
     <div className="space-y-5">
       {editedOk && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>Changes saved.</span>
         </div>
       )}
       {clonedOk && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>
             Cloned from another opportunity. Edit the title + bid range now, then
@@ -937,7 +937,7 @@ export default async function OpportunityDetailPage({
       <header>
         <Link
           href="/commercial/opportunities"
-          className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800 min-h-[44px] touch-manipulation -ml-1 px-1"
+          className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800 min-h-[44px] touch-manipulation -ml-1 px-1"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M19 12H5 M12 19l-7-7 7-7" />
@@ -953,7 +953,7 @@ export default async function OpportunityDetailPage({
               {account && (
                 <Link
                   href={`/commercial/accounts/${account.id}`}
-                  className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
+                  className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
                 >
                   {account.company_name}
                 </Link>
@@ -996,7 +996,7 @@ export default async function OpportunityDetailPage({
                 <input type="hidden" name="opp_id" value={opp.id} />
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-emerald-200 bg-white text-emerald-700 text-[12px] font-semibold hover:bg-emerald-50 hover:border-emerald-300 min-h-[44px] touch-manipulation"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-blue-200 bg-white text-blue-700 text-[12px] font-semibold hover:bg-blue-50 hover:border-blue-300 min-h-[44px] touch-manipulation"
                   title="Customer's back in play? Reopen puts this deal back into the active pipeline."
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1137,11 +1137,11 @@ async function InfoTab({
         </div>
       )}
       {statusOk && (
-        <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700 flex items-start justify-between gap-3">
+        <div className="lg:col-span-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700 flex items-start justify-between gap-3">
           <span>Status updated to <strong>{opportunityStatusLabel(opp.status)}</strong>.</span>
           <Link
             href={`/commercial/opportunities/${opp.id}`}
-            className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] text-blue-700 hover:text-blue-900 underline shrink-0 min-h-[24px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -1217,7 +1217,7 @@ async function InfoTab({
             <p className="text-[12px] mt-2">
               <Link
                 href={`/commercial/accounts/${account.id}`}
-                className="text-emerald-700 hover:text-emerald-800 underline"
+                className="text-blue-700 hover:text-blue-800 underline"
               >
                 Open account →
               </Link>
@@ -1316,11 +1316,11 @@ function ChangeStatusCard({
   // up-front block makes the warning visible BEFORE the user picks).
   const warnNext = nextStatuses.filter((s) => shouldWarnTransition(opp.status, s));
   return (
-    <section className={`bg-white border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50 ${className ?? ""}`}>
+    <section className={`bg-white border border-blue-200 rounded-xl p-5 ring-1 ring-blue-50 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
         <div>
           <h2 className="text-base font-bold text-ppp-charcoal flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[14px]" aria-hidden>→</span>
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[14px]" aria-hidden>→</span>
             Move this deal forward
           </h2>
           <p className="text-[12px] text-ppp-charcoal-600 mt-1">
@@ -1447,12 +1447,12 @@ async function DebriefTab({
         </div>
       )}
       {(statusOk || justClosed) && !isDebriefed && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
           Deal saved as <strong>{opportunityStatusLabel(opp.status)}</strong>. Capture the {outcomeLabel.toLowerCase()} debrief below to feed the quarterly Win/Loss report — or skip and come back later.
         </div>
       )}
       {debriefSaved && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
           Debrief saved. Thanks — this feeds the quarterly Win/Loss report.
         </div>
       )}
@@ -1776,7 +1776,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                   {person.user_full_name ?? person.user_email}
                 </div>
                 {person.user_full_name && (
-                  <a href={`mailto:${person.user_email}`} className="text-[12px] text-emerald-700 hover:text-emerald-800 underline">
+                  <a href={`mailto:${person.user_email}`} className="text-[12px] text-blue-700 hover:text-blue-800 underline">
                     {person.user_email}
                   </a>
                 )}
@@ -1786,8 +1786,8 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                       key={a.id}
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
                         a.is_primary
-                          ? "bg-cc-brand-600 text-white border-emerald-700"
-                          : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          ? "bg-cc-brand-600 text-white border-cc-brand-700"
+                          : "bg-blue-50 text-blue-700 border-blue-200"
                       }`}
                       title={a.notes ?? undefined}
                     >
@@ -1799,7 +1799,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                         <button
                           type="submit"
                           aria-label={`Remove ${opportunityAssignmentRoleLabel(a.role)} role`}
-                          className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-emerald-700/80 hover:text-emerald-900"}`}
+                          className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-blue-700/80 hover:text-blue-900"}`}
                         >
                           ✕
                         </button>
@@ -2130,7 +2130,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
       <details className="group">
         <summary className="list-none cursor-pointer">
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{note.body}</p>
-          <span className="text-[11px] text-emerald-700 underline mt-2 inline-flex items-center gap-1 min-h-[44px] touch-manipulation">
+          <span className="text-[11px] text-blue-700 underline mt-2 inline-flex items-center gap-1 min-h-[44px] touch-manipulation">
             Edit / Delete
           </span>
         </summary>
@@ -2267,7 +2267,7 @@ function AttachmentRow({
         <div className="flex items-center gap-2 flex-wrap">
           <a
             href={`/api/commercial/opportunities/${oppId}/attachments/${attachment.id}/download`}
-            className="text-sm font-semibold text-emerald-700 hover:text-emerald-800 underline break-words py-1 inline-block"
+            className="text-sm font-semibold text-blue-700 hover:text-blue-800 underline break-words py-1 inline-block"
             target="_blank"
             rel="noopener noreferrer"
           >

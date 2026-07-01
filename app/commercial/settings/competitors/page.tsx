@@ -128,7 +128,7 @@ export default async function CompetitorsAdminPage({
       </header>
 
       {sp.ok && (
-        <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-sm text-emerald-800">
+        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-blue-800">
           {sp.ok === "added" && "Competitor added."}
           {sp.ok === "renamed" && "Competitor renamed."}
           {sp.ok === "updated" && "Competitor status updated."}
@@ -223,7 +223,7 @@ export default async function CompetitorsAdminPage({
                   <input type="hidden" name="set_to" value="active" />
                   <button
                     type="submit"
-                    className="text-xs font-medium px-3 py-2 rounded-md border border-emerald-200 text-emerald-800 hover:bg-emerald-50 min-h-[44px]"
+                    className="text-xs font-medium px-3 py-2 rounded-md border border-blue-200 text-blue-800 hover:bg-blue-50 min-h-[44px]"
                   >
                     Reactivate
                   </button>

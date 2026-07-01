@@ -347,7 +347,7 @@ export default async function CommercialOpportunitiesPage({
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <div className="text-[10px] font-bold tracking-widest uppercase text-emerald-700">
+          <div className="text-[10px] font-bold tracking-widest uppercase text-blue-700">
             Phase 2 · Opportunities
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal mt-1">
@@ -367,7 +367,7 @@ export default async function CommercialOpportunitiesPage({
               href={viewToggleHref("list")}
               className={`px-3 py-2 text-[12px] font-medium min-h-[44px] inline-flex items-center touch-manipulation ${
                 viewMode === "list"
-                  ? "bg-emerald-50 text-emerald-700"
+                  ? "bg-blue-50 text-blue-700"
                   : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
               }`}
               title="List view — best for scanning + filtering + CSV export"
@@ -378,7 +378,7 @@ export default async function CommercialOpportunitiesPage({
               href={viewToggleHref("kanban")}
               className={`px-3 py-2 text-[12px] font-medium min-h-[44px] inline-flex items-center touch-manipulation border-l border-ppp-charcoal-200 ${
                 viewMode === "kanban"
-                  ? "bg-emerald-50 text-emerald-700"
+                  ? "bg-blue-50 text-blue-700"
                   : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
               }`}
               title="Kanban — drag deals through the pipeline (status-by-status)"
@@ -469,7 +469,7 @@ export default async function CommercialOpportunitiesPage({
       </form>
 
       {created && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
           {createdTitle ? (
             <><strong>{createdTitle}</strong> logged. Ready for the next bid.</>
           ) : (
@@ -491,11 +491,11 @@ export default async function CommercialOpportunitiesPage({
         </div>
       )}
       {statusOk && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700 flex items-start justify-between gap-3">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700 flex items-start justify-between gap-3">
           <span>Status updated.</span>
           <Link
             href="/commercial/opportunities"
-            className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] text-blue-700 hover:text-blue-900 underline shrink-0 min-h-[24px] inline-flex items-center"
           >
             Dismiss
           </Link>

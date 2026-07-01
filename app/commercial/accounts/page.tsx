@@ -289,7 +289,7 @@ export default async function CommercialAccountsPage({
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <div className="text-[10px] font-bold tracking-widest uppercase text-emerald-700">
+          <div className="text-[10px] font-bold tracking-widest uppercase text-blue-700">
             Phase 1 · Accounts
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal mt-1">
@@ -433,16 +433,16 @@ export default async function CommercialAccountsPage({
       </form>
 
       {justDeleted && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
           Account deleted. The record + every contact, document, and team assignment stays in the database — an admin can restore it.
         </div>
       )}
       {bulkResult && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-700 flex items-start justify-between gap-3">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700 flex items-start justify-between gap-3">
           <span>{bulkResult}</span>
           <Link
             href="/commercial/accounts"
-            className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] text-blue-700 hover:text-blue-900 underline shrink-0 min-h-[24px] inline-flex items-center"
             aria-label="Dismiss banner"
           >
             Dismiss
@@ -478,7 +478,7 @@ export default async function CommercialAccountsPage({
               <summary
                 className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                   activeCount > 0
-                    ? "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                    ? "bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100"
                     : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                 }`}
               >
@@ -532,7 +532,7 @@ export default async function CommercialAccountsPage({
             {anyFilterActive && (
               <Link
                 href="/commercial/accounts"
-                className="text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 underline ml-auto"
+                className="text-[12px] font-semibold text-blue-700 hover:text-blue-800 underline ml-auto"
               >
                 Clear all filters
               </Link>
@@ -546,8 +546,8 @@ export default async function CommercialAccountsPage({
           quick-glance "what changed this week" without scanning the full
           list. */}
       {!anyFilterActive && recentlyActive.length > 0 && (
-        <section className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 sm:p-5">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-3">
+        <section className="bg-blue-50/50 border border-blue-200 rounded-xl p-4 sm:p-5">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700 mb-3">
             Recently active · last 7 days
           </div>
           <ul className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -561,7 +561,7 @@ export default async function CommercialAccountsPage({
                 <li key={account.id}>
                   <Link
                     href={`/commercial/accounts/${account.id}`}
-                    className="block bg-white border border-emerald-100 rounded-lg px-3 py-2.5 hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors touch-manipulation min-h-[44px]"
+                    className="block bg-white border border-blue-100 rounded-lg px-3 py-2.5 hover:border-blue-300 hover:bg-blue-50/40 transition-colors touch-manipulation min-h-[44px]"
                   >
                     <div className="text-sm font-semibold text-ppp-charcoal truncate">
                       {account.company_name}
@@ -718,7 +718,7 @@ function SortOption({
       href={href}
       className={`flex items-center gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
         active
-          ? "bg-emerald-50 hover:bg-emerald-100"
+          ? "bg-blue-50 hover:bg-blue-100"
           : "hover:bg-ppp-charcoal-50"
       }`}
     >
@@ -732,7 +732,7 @@ function SortOption({
       >
         {active && <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />}
       </span>
-      <span className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal-700"}`}>
+      <span className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal-700"}`}>
         {label}
       </span>
     </Link>
@@ -760,14 +760,14 @@ function FilterOption({
       href={href}
       className={`flex items-start gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
         active
-          ? "bg-emerald-50 hover:bg-emerald-100"
+          ? "bg-blue-50 hover:bg-blue-100"
           : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
         className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
           active
-            ? "bg-cc-brand-600 border-emerald-700 text-white"
+            ? "bg-cc-brand-600 border-blue-700 text-white"
             : "bg-white border-ppp-charcoal-300 text-transparent"
         }`}
         aria-hidden
@@ -777,7 +777,7 @@ function FilterOption({
         </svg>
       </span>
       <div className="min-w-0 flex-1">
-        <div className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal"}`}>
+        <div className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal"}`}>
           {label}
         </div>
         <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 leading-snug">
@@ -843,7 +843,7 @@ function AccountRow({
   const tone = overview ? activityTone(overview.last_activity_at) : null;
   const activityCls =
     tone === "ok"
-      ? "text-emerald-700"
+      ? "text-blue-700"
       : tone === "stale"
       ? "text-amber-700"
       : tone === "cold"
@@ -855,7 +855,7 @@ function AccountRow({
   const visibleTags = tags.slice(0, 3);
   const extraTagCount = Math.max(0, tags.length - visibleTags.length);
   return (
-    <li className="flex items-start gap-2 hover:bg-emerald-50/40 transition-colors group/row">
+    <li className="flex items-start gap-2 hover:bg-blue-50/40 transition-colors group/row">
       {/* Checkbox sits OUTSIDE the Link so clicking it doesn't navigate.
           Touch-manipulation keeps the iOS tap responsive. The label
           wraps both checkbox + the row content for big-tap-target
@@ -950,7 +950,7 @@ function AccountRow({
                 {(overview.open_opps_count ?? 0) > 0 && (
                   <>
                     <span aria-hidden>·</span>
-                    <span className="text-emerald-700">
+                    <span className="text-blue-700">
                       <strong>{overview.open_opps_count}</strong> open bid{overview.open_opps_count === 1 ? "" : "s"}
                       {(() => {
                         const bidRange = formatBidCents(
@@ -986,7 +986,7 @@ function AccountRow({
                 {visibleTags.map((t) => (
                   <span
                     key={t.id}
-                    className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-medium"
+                    className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-medium"
                   >
                     {t.tag}
                   </span>
@@ -1009,7 +1009,7 @@ function AccountRow({
 function RatingPill({ rating }: { rating: "A" | "B" | "C" }) {
   const cls =
     rating === "A"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      ? "bg-blue-50 text-blue-700 border-blue-200"
       : rating === "B"
       ? "bg-blue-50 text-blue-700 border-blue-200"
       : "bg-amber-50 text-amber-700 border-amber-200";

@@ -161,13 +161,13 @@ export default async function CommercialAccountDetailPage({
           out via reload (no client component needed — the user navigating
           away clears the query string naturally). */}
       {savedOk && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>Changes saved.</span>
         </div>
       )}
       {teamAddedCount > 0 && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2 flex-wrap">
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2 flex-wrap">
           <span aria-hidden>✓</span>
           <span className="flex-1 min-w-0">
             Added {teamAddedCount} team member{teamAddedCount === 1 ? "" : "s"}.
@@ -175,7 +175,7 @@ export default async function CommercialAccountDetailPage({
           </span>
           <Link
             href={`/commercial/accounts/${account.id}?tab=documents`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-50 min-h-[36px] touch-manipulation shrink-0"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 min-h-[36px] touch-manipulation shrink-0"
           >
             Upload COI / W-9 →
           </Link>
@@ -191,7 +191,7 @@ export default async function CommercialAccountDetailPage({
         </div>
       )}
       <header>
-        <Link href="/commercial/accounts" className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800">
+        <Link href="/commercial/accounts" className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M19 12H5 M12 19l-7-7 7-7" />
           </svg>
@@ -236,7 +236,7 @@ export default async function CommercialAccountDetailPage({
                 {primary.contact.email && (
                   <a
                     href={`mailto:${primary.contact.email}`}
-                    className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
+                    className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 underline underline-offset-2"
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" />
@@ -291,7 +291,7 @@ export default async function CommercialAccountDetailPage({
                   href={`/commercial/accounts/${id}?tab=${t.key}`}
                   className={`inline-block px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap ${
                     active
-                      ? "border-cc-brand-600 text-emerald-700"
+                      ? "border-cc-brand-600 text-blue-700"
                       : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-300"
                   }`}
                 >
@@ -466,7 +466,7 @@ function RecentActivityCard({
             entry.kind === "status_change"
               ? "bg-blue-100 text-blue-700"
               : entry.kind === "task_completed"
-              ? "bg-emerald-100 text-emerald-700"
+              ? "bg-blue-100 text-blue-700"
               : "bg-ppp-charcoal-100 text-ppp-charcoal-700";
           const icon =
             entry.kind === "status_change" ? "→" : entry.kind === "task_completed" ? "✓" : "📝";
@@ -484,7 +484,7 @@ function RecentActivityCard({
                   <span className="text-ppp-charcoal-400">on</span>
                   <Link
                     href={`/commercial/opportunities/${entry.opportunity_id}`}
-                    className="text-emerald-700 hover:text-emerald-800 underline break-words"
+                    className="text-blue-700 hover:text-blue-800 underline break-words"
                   >
                     {entry.opportunity_title || "(untitled)"}
                   </Link>
@@ -555,7 +555,7 @@ function ComplianceChecklistCard({
         </div>
         <Link
           href={`/commercial/accounts/${accountId}?tab=documents`}
-          className="text-[12px] text-emerald-700 hover:text-emerald-800 underline shrink-0"
+          className="text-[12px] text-blue-700 hover:text-blue-800 underline shrink-0"
         >
           Documents tab
         </Link>
@@ -575,7 +575,7 @@ function ComplianceChecklistCard({
         })}
       </ul>
       {allGood && (
-        <p className="mt-3 text-[12px] text-emerald-700">All required docs on file and valid.</p>
+        <p className="mt-3 text-[12px] text-blue-700">All required docs on file and valid.</p>
       )}
       {!allGood && (
         <p className="mt-3 text-[12px] text-ppp-charcoal-500">
@@ -608,11 +608,11 @@ function healthDecoration(item: ComplianceItem): { dot: string; label: string; t
       };
     case "ok":
       return {
-        dot: "bg-emerald-500",
+        dot: "bg-blue-500",
         label: item.expires_at
           ? `${item.days_until ?? 0}d left`
           : "On file",
-        tone: "text-emerald-700",
+        tone: "text-blue-700",
       };
   }
 }
@@ -703,7 +703,7 @@ function TagsCard({
           {tags.map((t) => (
             <span
               key={t.id}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px] font-medium border bg-blue-50 text-blue-700 border-blue-200"
             >
               {t.tag}
               <form action={removeTagAction} className="inline">
@@ -712,7 +712,7 @@ function TagsCard({
                 <button
                   type="submit"
                   aria-label={`Remove ${t.tag}`}
-                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-emerald-700/60 hover:text-emerald-900 touch-manipulation"
+                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-blue-700/60 hover:text-blue-900 touch-manipulation"
                 >
                   ✕
                 </button>
@@ -1051,7 +1051,7 @@ function ContactRow({
         )}
         <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
           {contact.email && (
-            <a href={`mailto:${contact.email}`} className="text-emerald-700 hover:text-emerald-800 break-all">
+            <a href={`mailto:${contact.email}`} className="text-blue-700 hover:text-blue-800 break-all">
               {contact.email}
             </a>
           )}
@@ -1068,7 +1068,7 @@ function ContactRow({
           {attachments.map((a) => (
             <span
               key={a.account_contact_id}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200"
               title={a.notes ?? undefined}
             >
               {roleLabel(a.role)}
@@ -1078,7 +1078,7 @@ function ContactRow({
                 <button
                   type="submit"
                   aria-label={`Remove ${roleLabel(a.role)} role`}
-                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-emerald-700/80 hover:text-emerald-900 touch-manipulation"
+                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-blue-700/80 hover:text-blue-900 touch-manipulation"
                 >
                   ✕
                 </button>
@@ -1108,7 +1108,7 @@ function ContactRow({
               <input type="hidden" name="account_contact_id" value={attachments[0].account_contact_id} />
               <button
                 type="submit"
-                className="text-[11px] text-ppp-charcoal-500 hover:text-emerald-700 underline underline-offset-2 touch-manipulation min-h-[44px] px-1 inline-flex items-center"
+                className="text-[11px] text-ppp-charcoal-500 hover:text-blue-700 underline underline-offset-2 touch-manipulation min-h-[44px] px-1 inline-flex items-center"
                 title="Record that you just emailed or called this contact"
               >
                 I just touched base
@@ -1363,13 +1363,13 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
         </summary>
         <ul className="px-4 py-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700 space-y-1.5">
           <li>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-600 text-white border-emerald-700 mr-1">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-600 text-white border-blue-700 mr-1">
               ★ Sales Rep
             </span>
             Primary holder of this role — the &ldquo;THE&rdquo; person platform-wide. One per (account, role).
           </li>
           <li>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200 mr-1">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200 mr-1">
               Sales Rep
             </span>
             Standard role assignment without primary status — supports the primary or covers when they&apos;re out.
@@ -1448,7 +1448,7 @@ function TeamRow({
         </div>
         <a
           href={`mailto:${person.user_email}`}
-          className="text-[11px] text-emerald-700 hover:text-emerald-800 break-all"
+          className="text-[11px] text-blue-700 hover:text-blue-800 break-all"
         >
           {person.user_email}
         </a>
@@ -1473,8 +1473,8 @@ function TeamRow({
               key={a.id}
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
                 a.is_primary
-                  ? "bg-cc-brand-600 text-white border-emerald-700"
-                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  ? "bg-cc-brand-600 text-white border-blue-700"
+                  : "bg-blue-50 text-blue-700 border-blue-200"
               }`}
               title={tipBits.join("\n")}
             >
@@ -1486,7 +1486,7 @@ function TeamRow({
                 <button
                   type="submit"
                   aria-label={`Remove ${assignmentRoleLabel(a.role)} role from ${person.user_full_name ?? person.user_email}`}
-                  className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-emerald-700/80 hover:text-emerald-900"}`}
+                  className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-blue-700/80 hover:text-blue-900"}`}
                 >
                   ✕
                 </button>
@@ -1743,7 +1743,7 @@ function AccountOpportunityRow({
       ? "text-rose-700"
       : daysInStatus > 7
       ? "text-amber-700"
-      : "text-emerald-700";
+      : "text-blue-700";
   // First name from "Sarah Connor" → "Sarah". Falls back to the local
   // part of the email when no full name is set.
   const leadLabel = primaryLead
@@ -1929,13 +1929,13 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
         </summary>
         <ul className="px-4 py-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700 space-y-1.5">
           <li>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200 mr-1">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200 mr-1">
               v3
             </span>
             Active version. Highest version number wins. Older versions stack into &ldquo;History&rdquo;.
           </li>
           <li>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-100 text-emerald-800 border-emerald-200 mr-1">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-100 text-blue-800 border-blue-200 mr-1">
               ✓ Valid 6mo
             </span>
             Document is in good standing &mdash; expires more than 30 days out (or never).
@@ -2039,7 +2039,7 @@ function DocumentRow({
     }
     if (doc.expires_at) {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
           ✓ Valid
         </span>
       );
@@ -2058,7 +2058,7 @@ function DocumentRow({
     <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
             v{doc.version}
           </span>
           {expBadge}
@@ -2070,7 +2070,7 @@ function DocumentRow({
         </div>
         <a
           href={`/api/commercial/accounts/${accountId}/documents/${doc.id}/download`}
-          className="text-sm font-medium text-emerald-700 hover:text-emerald-800 break-all"
+          className="text-sm font-medium text-blue-700 hover:text-blue-800 break-all"
         >
           {doc.file_name}
         </a>
@@ -2108,7 +2108,7 @@ function DocumentRow({
           <input type="hidden" name="document_id" value={doc.id} />
           <button
             type="submit"
-            className="w-full sm:w-auto px-3 py-2 text-[12px] font-medium text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 min-h-[44px] touch-manipulation whitespace-nowrap"
+            className="w-full sm:w-auto px-3 py-2 text-[12px] font-medium text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 min-h-[44px] touch-manipulation whitespace-nowrap"
             title="Make this the active version. Adds a new entry to the chain so the audit trail stays intact."
           >
             Restore as active
@@ -2188,7 +2188,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
                       <span
                         className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                           n.source_outcome === "won"
-                            ? "bg-emerald-100 text-emerald-800"
+                            ? "bg-blue-100 text-blue-800"
                             : n.source_outcome === "lost"
                             ? "bg-rose-100 text-rose-800"
                             : "bg-ppp-charcoal-100 text-ppp-charcoal-700"
@@ -2210,7 +2210,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
               {isAuto && n.source_opportunity_id && (
                 <Link
                   href={`/commercial/opportunities/${n.source_opportunity_id}`}
-                  className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800 shrink-0 underline underline-offset-2"
+                  className="text-[11px] font-medium text-blue-700 hover:text-blue-800 shrink-0 underline underline-offset-2"
                 >
                   {n.source_opportunity_title ?? "View opportunity"} →
                 </Link>
@@ -2272,7 +2272,7 @@ function Field({
             href={value.startsWith("http") ? value : `https://${value}`}
             target="_blank"
             rel="noreferrer noopener"
-            className="text-emerald-700 hover:text-emerald-800 break-all"
+            className="text-blue-700 hover:text-blue-800 break-all"
           >
             {value}
           </a>
@@ -2378,7 +2378,7 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
   const tone = activityTone(overview.last_activity_at);
   const activityClass =
     tone === "ok"
-      ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+      ? "text-blue-700 bg-blue-50 border-blue-200"
       : tone === "stale"
       ? "text-amber-700 bg-amber-50 border-amber-200"
       : "text-rose-700 bg-rose-50 border-rose-200";
@@ -2391,7 +2391,7 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
       : overview.expiring_soon_document_count > 0
       ? { label: `${overview.expiring_soon_document_count} expiring`, cls: "text-amber-700" }
       : overview.active_document_count > 0
-      ? { label: "all current", cls: "text-emerald-700" }
+      ? { label: "all current", cls: "text-blue-700" }
       : { label: "none on file", cls: "text-ppp-charcoal-500" };
 
   // Repeat customer badge — won at least one bid = relationship has real
@@ -2562,7 +2562,7 @@ function KpiTile({
   return href ? (
     <a
       href={href}
-      className={`block rounded-xl border px-3 py-3 sm:px-4 sm:py-3.5 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 touch-manipulation ${cls}`}
+      className={`block rounded-xl border px-3 py-3 sm:px-4 sm:py-3.5 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 touch-manipulation ${cls}`}
     >
       {content}
     </a>
@@ -2575,7 +2575,7 @@ function Pill({ children, tone }: { children: React.ReactNode; tone: "emerald" |
   // Karan 2026-06-24: boosted saturation from -50/-700/-200 to
   // -100/-800/-300 to match the brighter status pills on opp page.
   const cls = {
-    emerald: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    emerald: "bg-blue-100 text-blue-800 border-blue-300",
     blue: "bg-blue-100 text-blue-800 border-blue-300",
     amber: "bg-amber-100 text-amber-900 border-amber-300",
     rose: "bg-rose-100 text-rose-800 border-rose-300",
