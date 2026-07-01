@@ -1452,9 +1452,9 @@ function JobDetailImpl({
               tone so it reads as CUSTOMER (blue = pending ask) /
               MATERIALS (green = the action) / REFERENCE (charcoal
               = lookup). */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-4 divide-y md:divide-y-0 md:divide-x divide-ppp-charcoal-100">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-0 divide-y md:divide-y-0 md:divide-x divide-ppp-charcoal-100">
             {/* CUSTOMER section: collect color picks from the homeowner. */}
-            <div className="min-w-0 pt-4 first:pt-0 md:pt-0 md:pl-0 md:pr-4">
+            <div className="min-w-0 pt-3 first:pt-0 md:pt-0 md:pr-4">
               <div className="flex items-center gap-1.5 mb-2">
                 <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-blue-50 text-ppp-blue-700">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
@@ -1500,7 +1500,7 @@ function JobDetailImpl({
             </div>
 
             {/* MATERIALS section: turn colors into a real supplier order. */}
-            <div className="min-w-0 pt-4 md:pt-0 md:px-4">
+            <div className="min-w-0 pt-3 md:pt-0 md:px-4">
               <div className="flex items-center gap-1.5 mb-2">
                 <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-green-50 text-ppp-green-700">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
@@ -1566,7 +1566,7 @@ function JobDetailImpl({
             </div>
 
             {/* REFERENCE section: cross-check past correspondence. */}
-            <div className="min-w-0 pt-4 md:pt-0 md:pl-4">
+            <div className="min-w-0 pt-3 md:pt-0 md:pl-4">
               <div className="flex items-center gap-1.5 mb-2">
                 <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-charcoal-100 text-ppp-charcoal-700">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
