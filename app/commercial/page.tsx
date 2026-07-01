@@ -25,7 +25,7 @@ const PHASES = [
 export default function CommercialDashboardPage() {
   return (
     <div className="space-y-8">
-      <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cc-brand-800 via-cc-brand-700 to-cc-brand-800 text-white px-6 sm:px-8 py-8 sm:py-10 shadow-lg shadow-cc-brand-900/20">
+      <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cc-brand-700 via-cc-brand-600 to-cc-brand-700 text-white px-6 sm:px-8 py-8 sm:py-10 shadow-lg shadow-cc-brand-900/25">
         {/* Subtle diagonal texture — pure CSS, no image weight. */}
         <div aria-hidden className="absolute inset-0 opacity-[0.08]" style={{
           backgroundImage: "repeating-linear-gradient(135deg, transparent 0 12px, white 12px 13px)",

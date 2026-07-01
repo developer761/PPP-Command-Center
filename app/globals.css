@@ -39,20 +39,23 @@
   --color-ppp-warm-beige: #f0e8dd;
 
   /* ─── Commercial CC brand red ───
-     Deep barn-red used as the CC brand color: dark sidebar chrome +
+     Bold, saturated red used as the CC brand color: sidebar chrome +
      accent tint on the landing header. Warmer than Tailwind rose;
      distinct from PPP orange. Semantic destructive stays rose-* so
-     users don't mistake a primary brand button for a delete action. */
-  --color-cc-brand-50:  #fef3f3;
-  --color-cc-brand-100: #fcdada;
-  --color-cc-brand-200: #f7b3b3;
-  --color-cc-brand-300: #ee8585;
-  --color-cc-brand-400: #dd5b5b;
-  --color-cc-brand-500: #c33d3d;
-  --color-cc-brand-600: #a72d2d;
-  --color-cc-brand-700: #8a2323;
-  --color-cc-brand-800: #6b1c1c;
-  --color-cc-brand-900: #4a1414;
+     users don't mistake a primary brand button for a delete action.
+     Karan 2026-07-01: "make it pop, more visible." Bumped saturation
+     across the whole scale — 700 (sidebar) now reads unmistakably
+     as vibrant crimson, not brown. */
+  --color-cc-brand-50:  #fef2f2;
+  --color-cc-brand-100: #fee2e2;
+  --color-cc-brand-200: #fecaca;
+  --color-cc-brand-300: #fca5a5;
+  --color-cc-brand-400: #f87171;
+  --color-cc-brand-500: #ef4444;
+  --color-cc-brand-600: #dc2626;
+  --color-cc-brand-700: #b91c1c;
+  --color-cc-brand-800: #991b1b;
+  --color-cc-brand-900: #7f1d1d;
 
   /* ─── Charcoal neutrals (kept for medium-gray usage) ───
      Full 50/100/200/300/400/500/600/700/800/900 scale so muted-text /

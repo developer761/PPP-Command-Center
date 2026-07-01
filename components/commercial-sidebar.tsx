@@ -104,8 +104,8 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 lg:w-64 h-full bg-cc-brand-800 text-white border-r border-cc-brand-900 flex flex-col shrink-0">
-      <div className="px-6 py-5 lg:py-6 border-b border-cc-brand-700/60 flex items-center justify-between gap-2 bg-cc-brand-900/40">
+    <aside className="w-64 lg:w-64 h-full bg-cc-brand-700 text-white border-r border-cc-brand-900 flex flex-col shrink-0">
+      <div className="px-6 py-5 lg:py-6 border-b border-cc-brand-600/60 flex items-center justify-between gap-2 bg-cc-brand-800/40">
         <Link href="/commercial" className="block" onClick={onNavigate}>
           <div className="bg-white/95 rounded-md p-2 inline-block">
             <Image
@@ -168,9 +168,9 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                     <Link
                       href={item.href}
                       onClick={onNavigate}
-                      className={`${baseClasses} ${active ? "bg-white text-cc-brand-800 font-semibold shadow-sm" : "text-white/90 hover:bg-white/10"}`}
+                      className={`${baseClasses} ${active ? "bg-white text-cc-brand-700 font-semibold shadow-sm" : "text-white/95 hover:bg-white/15"}`}
                     >
-                      <span className={active ? "text-cc-brand-700" : "text-white/70"}>
+                      <span className={active ? "text-cc-brand-600" : "text-white/80"}>
                         {item.icon}
                       </span>
                       <span className="flex-1">{item.label}</span>
