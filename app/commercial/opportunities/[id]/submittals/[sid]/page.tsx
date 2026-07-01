@@ -567,9 +567,18 @@ export default async function SubmittalDetailPage({
     : tone === "charcoal" ? "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200"
     : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200";
 
+  // Mirrors the PDF's safeDateLabel — bare "YYYY-MM-DD" (Postgres DATE
+  // column) parses as UTC midnight, which renders as the PREVIOUS day in
+  // America/New_York. Append T12:00:00Z (noon UTC = 7-8am ET, still same
+  // day) before parsing. Round 2 audit caught the items-list rendering
+  // one day early for item_date values stored as DATE.
   const fmtDate = (iso: string | null): string => {
     if (!iso) return "—";
-    return new Date(iso).toLocaleDateString("en-US", {
+    if (iso.startsWith("0000")) return "—";
+    const isoDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+    const d = new Date(isoDateOnly ? `${iso}T12:00:00Z` : iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("en-US", {
       timeZone: "America/New_York",
       year: "numeric",
       month: "short",
@@ -673,11 +682,14 @@ export default async function SubmittalDetailPage({
           </div>
         </div>
 
-        {/* Voided banner — show prominent reason if voided */}
-        {submittal.status === "voided" && submittal.void_reason && (
+        {/* Voided banner — show on status alone (Round 2 audit). The
+            reason field is required by the void action, but legacy/admin
+            rows may have null reasons; the banner must still surface so
+            the user sees the voided status up top. */}
+        {submittal.status === "voided" && (
           <div className="mt-4 px-4 py-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-900">
             <strong className="font-semibold">Voided.</strong>{" "}
-            {submittal.void_reason}
+            {submittal.void_reason ?? <em className="text-rose-700/80">No reason recorded.</em>}
             {submittal.voided_at && (
               <span className="text-rose-700/80 text-[12px] ml-2">
                 · {fmtDateTime(submittal.voided_at)}
@@ -941,7 +953,24 @@ export default async function SubmittalDetailPage({
               </div>
               <div>
                 <label className={LABEL_CLS}>Date</label>
-                <input name="item_date" type="date" className={INPUT_CLS} />
+                {/* Default to today (ET) — matches the response-date input
+                    pattern + saves Alex blank-fielding every row. Round 2
+                    audit caught the inconsistency. ET-correct via
+                    Intl format → re-pack as YYYY-MM-DD. */}
+                <input
+                  name="item_date"
+                  type="date"
+                  defaultValue={(() => {
+                    const parts = new Intl.DateTimeFormat("en-CA", {
+                      timeZone: "America/New_York",
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                    }).format(new Date());
+                    return parts; // en-CA already gives YYYY-MM-DD
+                  })()}
+                  className={INPUT_CLS}
+                />
               </div>
               <div>
                 <label className={LABEL_CLS}>Ref #</label>
@@ -1333,12 +1362,16 @@ export default async function SubmittalDetailPage({
               // cleanly. Audit recheck 2026-06-30 caught the prior
               // outer-ring-overridden + same-color-inner-dot = invisible
               // nested-span structure. One dot, one color, done.
+              // Charcoal-500 is the fallback for draft/closed (charcoal +
+              // neutral tones). Charcoal-400 isn't in @theme — caught by
+              // Round 2 audit, dot would render colorless.
               const dotCls =
                 tone === "emerald" ? "bg-emerald-500"
                 : tone === "rose" ? "bg-rose-500"
                 : tone === "amber" ? "bg-amber-500"
                 : tone === "sky" ? "bg-sky-500"
-                : "bg-ppp-charcoal-400";
+                : tone === "charcoal" ? "bg-ppp-charcoal-500"
+                : "bg-ppp-charcoal-500";
               return (
                 <li key={log.id} className="relative flex items-start gap-3 pl-1">
                   <span
@@ -1430,14 +1463,9 @@ function StatusActionsPanel({
             ? "This submittal won't appear in the opp's badge count. The PDF is preserved with a VOIDED watermark for the audit trail. Start a new submittal from the opportunity if you need to send a replacement."
             : "Status log + items are locked. To send another package on this opp, start a new submittal from the Submittals tab."}
         </p>
-        <div className="mt-3">
-          <Link
-            href={`/commercial/opportunities/${opportunityId}?tab=submittals`}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
-          >
-            <span aria-hidden>←</span> Back to submittals
-          </Link>
-        </div>
+        {/* No back-link button — the page already has a "← Back to
+            submittals" link at the top of every state (line ~597),
+            avoid duplicating it. Round 2 audit. */}
       </section>
     );
   }
@@ -1476,6 +1504,7 @@ function StatusActionsPanel({
             <button
               type="submit"
               disabled={itemCount === 0}
+              title={itemCount === 0 ? "Add at least one item before sending" : undefined}
               className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1553,9 +1582,19 @@ function StatusActionsPanel({
       {/* APPROVED / APPROVED_AS_NOTED → close */}
       {(status === "approved" || status === "approved_as_noted") && (
         <div className="space-y-3">
-          {hasResponse ? null : (
+          {/* Inverted condition was the bug — shown when hasResponse=false
+              (Round 2 audit). The banner makes sense AFTER a response was
+              captured (sky-info nudging the user to close), and we should
+              warn when no response is stamped (the unusual bypass path). */}
+          {hasResponse ? (
             <div className="px-3 py-2 rounded-lg bg-sky-50 border border-sky-100 text-[12px] text-sky-800">
               Response captured. Close to lock the package + move it into history.
+            </div>
+          ) : (
+            <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900">
+              <strong className="font-semibold">No GC response on file.</strong>{" "}
+              This submittal is marked approved but the response wasn&apos;t recorded — note it
+              on the cover before closing if it matters for the audit trail.
             </div>
           )}
           <form action={changeStatusAction} className="flex flex-wrap items-center gap-2">
