@@ -25,22 +25,23 @@ const PHASES = [
 export default function CommercialDashboardPage() {
   return (
     <div className="space-y-8">
-      <header className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cc-brand-700 via-cc-brand-600 to-cc-brand-700 text-white px-6 sm:px-8 py-8 sm:py-10 shadow-lg shadow-cc-brand-900/25">
-        {/* Subtle diagonal texture — pure CSS, no image weight. */}
-        <div aria-hidden className="absolute inset-0 opacity-[0.08]" style={{
-          backgroundImage: "repeating-linear-gradient(135deg, transparent 0 12px, white 12px 13px)",
-        }} />
-        <div className="relative">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-white bg-white/20 backdrop-blur-sm border border-white/30 px-2 py-0.5 rounded">
-              Phase 3 · Invoicing Up Next
-            </span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Commercial Command Center</h1>
-          <p className="mt-1 text-sm text-cc-brand-100">
-            From bid intake to closeout, all in one record.
-          </p>
+      {/* Clean landing header — same shape as PageHeader (3px×40px red
+          accent bar → title → subtitle). Karan 2026-07-01: "the red
+          dashboard looks terrible its way too red." Red is now the
+          accent, not the background. */}
+      <header>
+        <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
+            Commercial Command Center
+          </h1>
+          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 px-2 py-0.5 rounded">
+            Phase 3 · Invoicing Up Next
+          </span>
         </div>
+        <p className="text-sm text-ppp-charcoal-500">
+          From bid intake to closeout, all in one record.
+        </p>
       </header>
 
       <section className="bg-white rounded-xl border border-ppp-charcoal-100 p-6">
