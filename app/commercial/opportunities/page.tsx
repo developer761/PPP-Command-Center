@@ -404,7 +404,7 @@ export default async function CommercialOpportunitiesPage({
           label="Open opportunities"
           value={openOpps.length.toString()}
           sublabel={`${opps.length - openOpps.length} closed`}
-          tone="emerald"
+          tone="cc-brand"
         />
         <SummaryTile
           label="Bid range (open)"
@@ -540,7 +540,7 @@ export default async function CommercialOpportunitiesPage({
                   href={statusDrillHref(r.status)}
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[36px] touch-manipulation transition-colors ${
                     isActive
-                      ? "bg-cc-brand-600 border-emerald-700 text-white"
+                      ? "bg-cc-brand-600 border-cc-brand-700 text-white"
                       : "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                   }`}
                   title={isActive ? `Showing only ${opportunityStatusLabel(r.status)} — tap to clear` : `Filter to ${opportunityStatusLabel(r.status)}`}
@@ -573,7 +573,7 @@ export default async function CommercialOpportunitiesPage({
                 <summary
                   className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                     activeCount > 0
-                      ? "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                      ? "bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100"
                       : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                   }`}
                 >
@@ -878,7 +878,7 @@ function KanbanBoard({
               <li key={opp.id} className="py-2">
                 <Link
                   href={`/commercial/opportunities/${opp.id}`}
-                  className="text-[13px] text-emerald-700 hover:text-emerald-800 underline"
+                  className="text-[13px] text-blue-700 hover:text-blue-800 underline"
                 >
                   {opp.title}
                 </Link>
@@ -1013,16 +1013,22 @@ function SummaryTile({
   label: string;
   value: string;
   sublabel: string;
-  tone: "emerald" | "blue" | "neutral";
+  tone: "cc-brand" | "blue" | "neutral";
 }) {
+  // Ring + accent bar per tone. Red = primary metric, blue = supporting.
+  // Neutral = just data. Small left accent stripe adds visual signature
+  // without shouting.
   const ring =
-    tone === "emerald"
-      ? "border-emerald-200 bg-emerald-50/40"
+    tone === "cc-brand"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/40"
       : tone === "blue"
-      ? "border-blue-200 bg-blue-50/40"
+      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/40"
       : "border-ppp-charcoal-100 bg-white";
+  const stripe =
+    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : "bg-ppp-charcoal-200";
   return (
-    <div className={`border rounded-xl px-4 py-3 ${ring}`}>
+    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
       <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
         {label}
       </div>
@@ -1051,7 +1057,7 @@ function SortOption({
       href={href}
       className={`flex items-center gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
         active
-          ? "bg-emerald-50 hover:bg-emerald-100"
+          ? "bg-blue-50 hover:bg-blue-100"
           : "hover:bg-ppp-charcoal-50"
       }`}
     >
@@ -1065,7 +1071,7 @@ function SortOption({
       >
         {active && <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />}
       </span>
-      <span className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal-700"}`}>
+      <span className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal-700"}`}>
         {label}
       </span>
     </Link>
@@ -1090,14 +1096,14 @@ function FilterOption({
       href={href}
       className={`flex items-start gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
         active
-          ? "bg-emerald-50 hover:bg-emerald-100"
+          ? "bg-blue-50 hover:bg-blue-100"
           : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
         className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
           active
-            ? "bg-cc-brand-600 border-emerald-700 text-white"
+            ? "bg-cc-brand-600 border-cc-brand-700 text-white"
             : "bg-white border-ppp-charcoal-300 text-transparent"
         }`}
         aria-hidden
@@ -1107,7 +1113,7 @@ function FilterOption({
         </svg>
       </span>
       <div className="min-w-0 flex-1">
-        <div className={`text-[13px] font-semibold ${active ? "text-emerald-800" : "text-ppp-charcoal"}`}>
+        <div className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal"}`}>
           {label}
         </div>
         <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 leading-snug">
@@ -1141,7 +1147,7 @@ function FilterChip({
       ? "bg-ppp-charcoal-100 border-ppp-charcoal-300 text-ppp-charcoal-700"
       : tone === "hot"
       ? "bg-rose-100 border-rose-300 text-rose-800"
-      : "bg-emerald-100 border-emerald-300 text-emerald-800";
+      : "bg-blue-100 border-blue-300 text-blue-800";
   return (
     <Link
       href={href}
@@ -1207,7 +1213,7 @@ function OpportunityRow({
     <li className="relative">
       <Link
         href={`/commercial/opportunities/${opportunity.id}`}
-        className="block px-4 py-4 hover:bg-emerald-50/40 transition-colors touch-manipulation"
+        className="block px-4 py-4 hover:bg-blue-50/40 transition-colors touch-manipulation"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -1294,7 +1300,7 @@ function OpportunityRow({
                   <>
                     <span aria-hidden className="text-ppp-charcoal-300">·</span>
                     <span
-                      className="inline-flex items-center gap-1 text-emerald-700"
+                      className="inline-flex items-center gap-1 text-blue-700"
                       title={`${opportunityAssignmentRoleLabel(primaryLead.role)}: ${primaryLead.user_full_name ?? primaryLead.user_email}`}
                     >
                       <span aria-hidden>★</span>
@@ -1360,7 +1366,7 @@ function OpportunityRow({
           {finishCount > 0 && (
             <Link
               href={`/commercial/opportunities/${opportunity.id}?tab=finishes`}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 transition-colors min-h-[28px] touch-manipulation"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-blue-800 bg-blue-50 border border-blue-100 hover:bg-blue-100 transition-colors min-h-[28px] touch-manipulation"
             >
               <span aria-hidden>🎨</span>
               <span>{finishCount} {finishCount === 1 ? "finish" : "finishes"} →</span>
@@ -1479,7 +1485,7 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
       ? "bg-rose-50 text-rose-700 border-rose-200"
       : tone === "soon"
       ? "bg-amber-50 text-amber-800 border-amber-200"
-      : "bg-emerald-50 text-emerald-700 border-emerald-200";
+      : "bg-blue-50 text-blue-700 border-blue-200";
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}>
       {label}
@@ -1530,7 +1536,7 @@ function StatusPill({ status }: { status: OpportunityStatus }) {
     proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
     negotiating: "bg-orange-100 text-orange-900 border-orange-300",
     on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    won: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    won: "bg-emerald-100 text-blue-800 border-emerald-300",
     lost: "bg-rose-100 text-rose-800 border-rose-300",
     no_bid: "bg-rose-100 text-rose-800 border-rose-300",
     reopened: "bg-blue-100 text-blue-800 border-blue-300",
