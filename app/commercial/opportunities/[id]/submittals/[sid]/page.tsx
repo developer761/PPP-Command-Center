@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
+import SubmittalDirectUpload from "@/components/commercial/submittal-direct-upload";
 
 import { createClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -1186,46 +1187,59 @@ export default async function SubmittalDetailPage({
         )}
       </section>
 
-      {/* ──────────── Attached spec sheets & samples ──────────── */}
+      {/* ──────────── Attached spec sheets & samples ────────────
+          Redesigned 2026-07-05 with a top-right "Upload PDF" button
+          (client component) so users can add files directly to the
+          submittal without the round-trip through Plans & Specs.
+          Auto-links the uploaded attachment via `submittal_id` form
+          field on the API endpoint. Karan: "make sure they can also
+          add pdfs directly on here." */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
+        <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+          <div className="min-w-0 flex-1">
             <h2 className="text-sm font-bold text-ppp-charcoal">
               Attached spec sheets &amp; samples
             </h2>
             <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-              The PDFs that ship with this submittal — product data, color charts,
-              drawdowns, etc. Source files live in{" "}
+              The PDFs that ship with this transmittal — product data, color charts,
+              drawdowns, samples. Upload directly here, or link files already on{" "}
               <Link
-                href={`/commercial/opportunities/${opportunity_id}?tab=plans`}
-                className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
+                href={`/commercial/opportunities/${opportunity_id}?tab=docs&sub=plans`}
+                className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
               >
                 Plans &amp; Specs
-              </Link>
-              ; link the ones that belong to this transmittal here.
+              </Link>.
             </p>
           </div>
+          {canLinkAttachments && (
+            <SubmittalDirectUpload
+              opportunityId={opportunity_id}
+              submittalId={submittal_id}
+            />
+          )}
         </div>
 
         {/* Linked attachments list */}
         {linkedAttachments.length === 0 ? (
-          <div className="bg-ppp-charcoal-50/50 border border-dashed border-ppp-charcoal-200 rounded-lg p-6 text-center text-[12px] text-ppp-charcoal-500">
-            No PDFs linked yet.{" "}
-            {canLinkAttachments && unlinkedAttachments.length > 0 && (
-              <span>Pick from {unlinkedAttachments.length} unlinked file{unlinkedAttachments.length === 1 ? "" : "s"} below.</span>
-            )}
-            {canLinkAttachments && unlinkedAttachments.length === 0 && (
-              <span>
-                Upload spec sheets on{" "}
-                <Link
-                  href={`/commercial/opportunities/${opportunity_id}?tab=plans`}
-                  className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
-                >
-                  Plans &amp; Specs
-                </Link>
-                {" "}first, then come back to link them here.
-              </span>
-            )}
+          <div className="bg-ppp-charcoal-50/50 border border-dashed border-ppp-charcoal-200 rounded-lg p-6 text-center">
+            <div className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-white border border-ppp-charcoal-100 mb-2 mx-auto">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-400" aria-hidden>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
+              </svg>
+            </div>
+            <div className="text-sm font-medium text-ppp-charcoal">
+              No PDFs attached yet
+            </div>
+            <p className="text-[12px] text-ppp-charcoal-500 mt-1">
+              {canLinkAttachments ? (
+                <>Click <strong className="text-ppp-charcoal">Upload PDF</strong> above to add a file directly.{" "}
+                {unlinkedAttachments.length > 0 && (
+                  <>Or pick from {unlinkedAttachments.length} file{unlinkedAttachments.length === 1 ? "" : "s"} already on Plans &amp; Specs below.</>
+                )}</>
+              ) : (
+                <>Voided submittals can&apos;t gain new attachments.</>
+              )}
+            </p>
           </div>
         ) : (
           <ul className="space-y-2">
@@ -1502,13 +1516,18 @@ function StatusActionsPanel({
         </div>
       </div>
 
-      {/* DRAFT → SUBMITTED */}
+      {/* DRAFT → SUBMITTED
+          Renamed "Send to GC" → "Mark as sent to GC" with a clarifying
+          subtitle (Karan 2026-07-05). Today this ONLY flips the status +
+          stamps sent_at; the actual email to the General Contractor is
+          still sent manually from the user's own email client. Real
+          auto-send is a Phase 3+ item — for now the copy is honest. */}
       {status === "draft" && (
         <div className="space-y-3">
           {itemCount === 0 && (
             <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-[12px] text-amber-900">
               <strong className="font-semibold">Heads up:</strong>{" "}
-              Add at least one item before sending — GCs expect a populated transmittal.
+              Add at least one item before marking as sent — General Contractors expect a populated transmittal.
             </div>
           )}
           <form action={changeStatusAction} className="flex flex-wrap items-center gap-2">
@@ -1517,15 +1536,19 @@ function StatusActionsPanel({
             <button
               type="submit"
               disabled={itemCount === 0}
-              title={itemCount === 0 ? "Add at least one item before sending" : undefined}
+              title={itemCount === 0 ? "Add at least one item first" : "Marks this submittal as delivered — you still email the GC separately with the Letter of Transmittal PDF attached."}
               className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z" />
               </svg>
-              Send to GC
+              Mark as sent to GC
             </button>
           </form>
+          <p className="text-[11px] text-ppp-charcoal-500 leading-snug max-w-2xl">
+            <strong className="text-ppp-charcoal-700">What this does:</strong> flips the submittal status to <em>Submitted</em> and starts the &ldquo;days waiting for GC response&rdquo; clock.{" "}
+            <strong className="text-ppp-charcoal-700">What it doesn&apos;t do:</strong> email the General Contractor. You still send the Letter of Transmittal PDF from your own email client — <span className="underline">Download PDF</span> above.
+          </p>
         </div>
       )}
 

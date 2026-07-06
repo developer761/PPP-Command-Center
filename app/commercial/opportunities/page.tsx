@@ -610,7 +610,9 @@ export default async function CommercialOpportunitiesPage({
 
           {anyFilterActive && (
             <Link
-              href={viewMode === "kanban" ? "/commercial/opportunities" : "/commercial/opportunities?view=list"}
+              // Preserve view mode when clearing filters — dropping filters
+              // shouldn't yank the user from list view back to kanban default.
+              href={viewMode === "list" ? "/commercial/opportunities?view=list" : "/commercial/opportunities"}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -909,7 +911,10 @@ function KanbanBoard({
                   Drop here to close the deal
                 </div>
               </div>
-              <div className="flex gap-2 p-2">
+              {/* Cluster interior — stacks vertically on narrow phones (<640px)
+                  so the 3 sub-columns don't force horizontal scroll inside
+                  the already-narrow board layout. Side-by-side from sm+. */}
+              <div className="flex flex-col sm:flex-row gap-2 p-2">
                 {TERMINAL_COLUMNS.map((status) => {
                   const colOpps = byStatus.get(status) ?? [];
                   const tone =
@@ -920,7 +925,7 @@ function KanbanBoard({
                       : { col: "bg-slate-50 border-slate-200", head: "bg-slate-100 border-slate-200 text-slate-700" };
                   return (
                     <KanbanDnDColumn key={status} status={status}>
-                      <div className={`w-44 sm:w-48 shrink-0 border rounded-lg overflow-hidden flex flex-col h-full ${tone.col}`}>
+                      <div className={`w-full sm:w-44 lg:w-48 shrink-0 border rounded-lg overflow-hidden flex flex-col h-full ${tone.col}`}>
                         <div className={`px-2 py-1.5 border-b ${tone.head}`}>
                           <div className="flex items-center justify-between gap-1">
                             <span className="text-[11px] font-bold uppercase tracking-wide">
@@ -931,10 +936,10 @@ function KanbanBoard({
                             </span>
                           </div>
                         </div>
-                        <ul className="p-1.5 space-y-1.5 overflow-y-auto max-h-[70vh] min-h-[80px]">
+                        <ul className="p-1.5 space-y-1.5 overflow-y-auto max-h-[70vh] min-h-[64px]">
                           {colOpps.length === 0 ? (
-                            <li className="text-[10px] text-ppp-charcoal-400 italic text-center py-4 leading-tight">
-                              Drop a<br />{status === "won" ? "winning" : status === "lost" ? "lost" : "no-bid"} deal
+                            <li className="text-[10px] text-ppp-charcoal-400 italic text-center py-3 leading-tight">
+                              {status === "won" ? "Drop a winning deal" : status === "lost" ? "Drop a lost deal" : "Drop a no-bid deal"}
                             </li>
                           ) : (
                             colOpps.map((opp) => (

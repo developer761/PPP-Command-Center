@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import {
   uploadOpportunityAttachment,
+  linkAttachmentToSubmittal,
 } from "@/lib/commercial/opportunities/attachments";
 import {
   ALLOWED_MIME_TYPES,
@@ -96,6 +97,27 @@ export async function POST(
 
     if (!result.ok) {
       return NextResponse.json({ error: "upload_failed", detail: result.error }, { status: 500 });
+    }
+
+    // Optional auto-link to a submittal — when the caller passed a valid
+    // submittal_id, wire the freshly uploaded attachment to that submittal
+    // in the same round-trip so the user doesn't have to go back and link
+    // manually. Karan 2026-07-05: "make sure they can also add pdfs
+    // directly on here" on the submittal page. Silent failure on the
+    // link step because the upload itself already succeeded — the file
+    // will show up in the unlinked list on Plans & Specs and the user
+    // can link it manually.
+    const rawSubmittalId = (formData.get("submittal_id") as string) || null;
+    if (rawSubmittalId && UUID_RE.test(rawSubmittalId)) {
+      const linkResult = await linkAttachmentToSubmittal(
+        opportunity_id,
+        rawSubmittalId,
+        result.attachment.id,
+        data.user.id
+      );
+      if (!linkResult.ok) {
+        console.warn(`[commercial/opp-attachments] auto-link failed: ${linkResult.error}`);
+      }
     }
     return NextResponse.json({ ok: true, attachment: result.attachment });
   } catch (err) {
