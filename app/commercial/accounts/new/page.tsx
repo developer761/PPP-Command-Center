@@ -227,14 +227,18 @@ export default async function NewCommercialAccountPage({
   return (
     <div className="space-y-6">
       <header>
-        <Link href="/commercial/accounts" className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800">
+        <Link
+          href="/commercial/accounts"
+          className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800 min-h-[44px] touch-manipulation -ml-1 px-1"
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M19 12H5 M12 19l-7-7 7-7" />
           </svg>
           All accounts
         </Link>
-        <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal mt-2">New account</h1>
-        <p className="text-sm text-ppp-charcoal-500 mt-1">
+        <span aria-hidden className="block h-[3px] w-10 rounded-full mt-2 mb-3 bg-cc-brand-600" />
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">New account</h1>
+        <p className="mt-1 text-sm text-ppp-charcoal-500">
           The basics — add documents, contacts, and other detail after saving.
         </p>
       </header>

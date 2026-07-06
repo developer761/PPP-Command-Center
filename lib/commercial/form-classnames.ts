@@ -19,7 +19,7 @@ const CHEVRON_SVG = encodeURIComponent(
 /** Custom-styled <select> classname. Apply to every select in the
  *  Commercial CC so the look stays consistent. */
 export const SELECT_CLS =
-  `w-full appearance-none cursor-pointer pl-3.5 pr-10 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors bg-no-repeat ` +
+  `w-full appearance-none cursor-pointer pl-3.5 pr-10 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors bg-no-repeat ` +
   // Background-image must live in style prop (Tailwind can't process
   // URL-encoded SVG inside arbitrary values reliably). See INPUT_BG_STYLE.
   ``;
@@ -33,11 +33,11 @@ export const SELECT_BG_STYLE = {
 
 /** Custom-styled <input> classname for text/date/number inputs. */
 export const INPUT_CLS =
-  `w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors`;
+  `w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors`;
 
 /** Custom-styled textarea classname. Adds resize-y. */
 export const TEXTAREA_CLS =
-  `w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 hover:border-ppp-charcoal-300 resize-y transition-colors`;
+  `w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors`;
 
 /** Label classname — uppercase tracking, charcoal-500. */
 export const LABEL_CLS =

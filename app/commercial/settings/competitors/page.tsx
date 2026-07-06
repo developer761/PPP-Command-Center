@@ -115,15 +115,19 @@ export default async function CompetitorsAdminPage({
   const merged = competitors.filter((c) => !!c.merged_into_competitor_id);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 animate-fade-up">
-      <header className="mb-5">
-        <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal">
-          Competitors
-        </h1>
-        <p className="text-sm text-ppp-charcoal-500 mt-2 leading-relaxed">
-          The competitor dictionary that fuels the Win/Loss Debrief typeahead.
-          Rename typos, retire those who&apos;ve left the market, merge duplicates so
-          reports aggregate correctly.
+    <div className="space-y-5">
+      <header>
+        <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
+            Competitors
+          </h1>
+          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 px-2 py-0.5 rounded">
+            {active.length} active
+          </span>
+        </div>
+        <p className="text-sm text-ppp-charcoal-500">
+          The dictionary that fuels the Win/Loss Debrief typeahead. Rename typos, retire competitors who&apos;ve left the market, merge duplicates so reports aggregate correctly.
         </p>
       </header>
 

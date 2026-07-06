@@ -135,17 +135,18 @@ export default async function EditOpportunityPage({
       <header>
         <Link
           href={`/commercial/opportunities/${id}`}
-          className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800"
+          className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800 min-h-[44px] touch-manipulation -ml-1 px-1"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M19 12H5 M12 19l-7-7 7-7" />
           </svg>
           Back to opportunity
         </Link>
-        <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal mt-2 truncate">
+        <span aria-hidden className="block h-[3px] w-10 rounded-full mt-2 mb-3 bg-cc-brand-600" />
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal truncate">
           Edit: {opp.title}
         </h1>
-        <p className="text-sm text-ppp-charcoal-500 mt-1">
+        <p className="mt-1 text-sm text-ppp-charcoal-500">
           Change status from the Info tab so the DAG + status log run correctly. This form only edits the standing fields.
         </p>
       </header>

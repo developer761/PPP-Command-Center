@@ -1239,7 +1239,17 @@ async function InfoTab({
           className="lg:col-span-2"
         />
       )}
-      <Card title="Deal">
+      <Card
+        title="Deal"
+        tone="cc-brand"
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="10" />
+            <circle cx="12" cy="12" r="6" />
+            <circle cx="12" cy="12" r="2" />
+          </svg>
+        }
+      >
         <Field label="Title" value={opp.title} />
         <Field label="Status" value={opportunityStatusLabel(opp.status)} />
         <Field
@@ -1253,7 +1263,15 @@ async function InfoTab({
           tooltip="Likelihood we win this bid. Defaults from status; override if you have a stronger read."
         />
       </Card>
-      <Card title="Bid + dates">
+      <Card
+        title="Bid + dates"
+        tone="blue"
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+        }
+      >
         <Field
           label="Bid range"
           value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
@@ -1285,32 +1303,59 @@ async function InfoTab({
           tooltip="Target completion date we're quoting. Internal estimate — informs scheduling once the bid is won."
         />
       </Card>
-      <Card title="Property / project address">
+      <Card
+        title="Property / project address"
+        tone="amber"
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+        }
+      >
         <OppPropertyAddress opp={opp} account={account} />
       </Card>
-      <Card title="Account">
+      <Card
+        title="Account"
+        tone="neutral"
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="4" y="2" width="16" height="20" rx="1" />
+            <path d="M9 22v-4h6v4 M8 6h2 M14 6h2 M8 10h2 M14 10h2 M8 14h2 M14 14h2" />
+          </svg>
+        }
+      >
         {account ? (
           <>
             <Field label="Company" value={account.company_name} />
             <Field label="Industry" value={account.industry ?? "—"} />
             <Field label="Rating" value={account.rating ?? "—"} />
-            <p className="text-[12px] mt-2">
+            <div className="pt-2">
               <Link
                 href={`/commercial/accounts/${account.id}`}
-                className="text-blue-700 hover:text-blue-800 underline"
+                className="inline-flex items-center gap-1 text-[13px] font-semibold text-blue-700 hover:text-blue-800 underline underline-offset-2 min-h-[36px] touch-manipulation"
               >
                 Open account →
               </Link>
-            </p>
+            </div>
           </>
         ) : (
-          <p className="text-sm text-ppp-charcoal-500">
+          <p className="text-sm text-ppp-charcoal-500 italic">
             Account isn&apos;t available — it may have been deleted or you may not have access.
           </p>
         )}
       </Card>
       {opp.description && (
-        <Card title="Description" className="lg:col-span-2">
+        <Card
+          title="Description"
+          tone="neutral"
+          className="lg:col-span-2"
+          icon={
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M4 6h16 M4 12h16 M4 18h10" />
+            </svg>
+          }
+        >
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
             {opp.description}
           </p>
@@ -3096,15 +3141,50 @@ function Card({
   title,
   children,
   className,
+  icon,
+  tone = "neutral",
 }: {
   title: string;
   children: React.ReactNode;
   className?: string;
+  /** Optional icon rendered in a colored puck to the left of the title.
+   *  Adds visual weight so the card doesn't look like a plain white box.
+   *  Karan 2026-07-06: "so much room for improvement." */
+  icon?: React.ReactNode;
+  /** Header tone — sets both the icon puck color and the accent-line
+   *  under the title. Consistent with the platform's red/blue palette. */
+  tone?: "cc-brand" | "blue" | "amber" | "neutral";
 }) {
+  const iconCls =
+    tone === "cc-brand"
+      ? "bg-cc-brand-50 text-cc-brand-700"
+      : tone === "blue"
+      ? "bg-blue-50 text-blue-700"
+      : tone === "amber"
+      ? "bg-amber-50 text-amber-700"
+      : "bg-ppp-charcoal-50 text-ppp-charcoal-600";
+  const accentCls =
+    tone === "cc-brand"
+      ? "bg-cc-brand-500"
+      : tone === "blue"
+      ? "bg-blue-500"
+      : tone === "amber"
+      ? "bg-amber-500"
+      : "bg-ppp-charcoal-200";
   return (
-    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
-      <h2 className="text-sm font-bold text-ppp-charcoal mb-3">{title}</h2>
-      <div className="space-y-2">{children}</div>
+    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm ${className ?? ""}`}>
+      <header className="px-5 pt-4 pb-3 flex items-center gap-3 border-b border-ppp-charcoal-50">
+        {icon && (
+          <span aria-hidden className={`inline-flex items-center justify-center h-8 w-8 rounded-lg shrink-0 ${iconCls}`}>
+            {icon}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-bold text-ppp-charcoal tracking-tight">{title}</h2>
+          <span aria-hidden className={`block h-[2px] w-8 rounded-full mt-1 ${accentCls}`} />
+        </div>
+      </header>
+      <div className="px-5 py-4 space-y-2.5">{children}</div>
     </section>
   );
 }
@@ -3177,15 +3257,26 @@ function Field({
   value: string | null | undefined;
   tooltip?: string;
 }) {
+  // Empty values render as a muted italic "Not set" instead of the flat
+  // "—" so users see the field IS blank without wondering if data is
+  // missing. Present values are bold-charcoal so they visually dominate
+  // the muted label. Karan 2026-07-06: "so much room for improvement."
+  const hasValue = value !== undefined && value !== null && value !== "" && value !== "—";
   return (
-    <div className="flex items-baseline gap-3">
-      <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 shrink-0 w-32 inline-flex items-center gap-1">
+    <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 py-1">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 shrink-0 sm:w-32 inline-flex items-center gap-1">
         {label}
         {tooltip && <InfoDot text={tooltip} />}
       </span>
-      <span className="text-sm text-ppp-charcoal-700 min-w-0 break-words">
-        {value || "—"}
-      </span>
+      {hasValue ? (
+        <span className="text-sm font-semibold text-ppp-charcoal min-w-0 break-words leading-snug">
+          {value}
+        </span>
+      ) : (
+        <span className="text-sm text-ppp-charcoal-400 italic min-w-0 leading-snug">
+          Not set
+        </span>
+      )}
     </div>
   );
 }
