@@ -524,7 +524,7 @@ export default async function CommercialOpportunitiesPage({
               <span>Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</span>
               <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
             </summary>
-            <div className="absolute right-0 sm:right-auto mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[320px] max-h-[75vh] overflow-y-auto space-y-3">
+            <div className="absolute right-0 sm:right-auto mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[320px] max-w-[calc(100vw-1rem)] max-h-[75vh] overflow-y-auto space-y-3">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
                   Priority
@@ -579,7 +579,7 @@ export default async function CommercialOpportunitiesPage({
               <span className="max-w-[140px] truncate">{currentSortLabel}</span>
               <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
             </summary>
-            <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[260px]">
+            <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[260px] max-w-[calc(100vw-1rem)]">
               <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 pt-2 pb-1">
                 Sort by
               </div>
