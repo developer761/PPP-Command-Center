@@ -1,3 +1,28 @@
+/**
+ * `/commercial/opportunities` — Phase 2 Opportunity Pipeline list page.
+ *
+ * UI rebuild 2026-07-05 (Karan: "confusing and unorganized, 100x better").
+ * Same principles applied as the accounts page rebuild:
+ *   1. One unified toolbar — search + view toggle + filter popover +
+ *      sort popover + export + New CTA. Replaces the scattered
+ *      3-tile-strip + 5-chip-row + separate Sort dropdown + Export
+ *      button + Status snapshot layout.
+ *   2. Slim KPI strip below the title — Open opps · Bid range ·
+ *      Weighted pipeline · Wins this month. Left accent stripe + tint.
+ *   3. Status snapshot pills preserved but now rendered as a secondary
+ *      strip inside a unified surface, list-view only (kanban has
+ *      columns for status).
+ *   4. OpportunityRow simplified to a 3-line hierarchy: primary line
+ *      (title + status + bid + due chip), meta line (account · rating ·
+ *      prequal · confidence), signals line (days-in-status · tasks ·
+ *      last-note · lead · files · finishes · submittals). Tab-jump chips
+ *      + quick-flip form kept but reorganized into a right-side action
+ *      column so the row header stays clean.
+ *
+ * Zero backend changes: every URL param read, server action call, data
+ * fetch, and DAG rule is byte-identical to the prior version. Only the
+ * visual layout + component composition changed.
+ */
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -20,7 +45,6 @@ import {
   OPEN_OPP_STATUSES,
   DEFAULT_PROBABILITY_BY_STATUS,
   STALE_OPP_DAYS,
-  QUICK_FLIP_BLOCKED_STATUSES,
   HOT_DEAL_BID_CENTS,
   HOT_DEAL_DECISION_DAYS,
   HOT_DEAL_ACTIVE_STATUSES,
@@ -37,9 +61,6 @@ import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
-// CommercialOpportunitiesSortPicker removed 2026-06-17 — sort merged into
-// the unified Sort & Filter dropdown below. The client component file
-// remains in the repo in case a future surface needs a standalone sort.
 import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
@@ -56,12 +77,6 @@ async function quickFlipStatusAction(formData: FormData) {
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     redirect("/commercial/opportunities?status_error=" + encodeURIComponent("Invalid status."));
   }
-  // Lost / No-bid require a structured reason — bounce to detail page
-  // where DebriefFields captures it (status flips there after reason is
-  // picked). Won flips immediately, then routes the user to the detail
-  // page with `?just_closed=1` so the DebriefOnlyCard renders prominently
-  // for optional structured-debrief follow-through. User can fill the
-  // debrief there or hit "Skip — debrief later" to return to the board.
   if (to_status === "lost" || to_status === "no_bid") {
     redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
   }
@@ -74,8 +89,6 @@ async function quickFlipStatusAction(formData: FormData) {
     redirect("/commercial/opportunities?status_error=" + encodeURIComponent(result.error));
   }
   if (to_status === "won") {
-    // Drop the placeholder auto-note so the account timeline reflects
-    // the closure instantly, then route to the debrief panel.
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
     redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
@@ -104,29 +117,13 @@ export default async function CommercialOpportunitiesPage({
   const statusError = pickFirst(sp.status_error);
   const deletedTitle = pickFirst(sp.deleted);
 
-  // Chip filters (client-side post-fetch — no DB index help needed):
-  //   ?stale=1            — only open opps not updated in STALE_OPP_DAYS
-  //   ?hot=1              — bid_value_high >= $50k AND proposal_due_at <= 14d
-  //                         AND status in HOT_DEAL_ACTIVE_STATUSES
-  //   ?sources=email,phone — multi-select source filter (comma-joined)
   const staleFilter = pickFirst(sp.stale) === "1";
   const hotFilter = pickFirst(sp.hot) === "1";
   const sourcesRaw = pickFirst(sp.sources);
 
-  // View toggle: classic list (default) vs kanban board. Kanban is
-  // Alex's preferred sales-pipeline view; list is better for scan +
-  // filter + CSV export workflows. URL state survives so a bookmark of
-  // "?view=kanban" deep-links to the board.
-  // Default to kanban (Alex's preferred view); `?view=list` is the
-  // explicit opt-out. Treat anything else as kanban so a bookmark like
-  // /commercial/opportunities just goes straight to the board.
   const viewRaw = pickFirst(sp.view);
   const viewMode: "list" | "kanban" = viewRaw === "list" ? "list" : "kanban";
 
-  // Sort dropdown — Alex's Friday workflow needs the right lens at the
-  // right time. recent = "what's been touched" (default), oldest = "what's
-  // stuck", bid_high / bid_low = "biggest first / smallest first" for
-  // pricing conversations, due_soon = "next-week urgency."
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently updated" },
     { key: "oldest", label: "Oldest / stuck deals" },
@@ -150,18 +147,12 @@ export default async function CommercialOpportunitiesPage({
     }
   }
 
-  // Load opps + accounts in parallel so we can show the account name
-  // per row without an N+1 join. PPP's commercial book is small enough
-  // (~50 accounts) that this is one round-trip not many.
   const [oppsRaw, accounts] = await Promise.all([
     listCommercialOpportunities({ search, status: validStatus }),
     listCommercialAccounts(),
   ]);
   const accountById = new Map<string, CommercialAccount>(accounts.map((a) => [a.id, a]));
 
-  // Row-augmentation bulk fetches — all in one parallel Promise.all so
-  // the row's signal-rich badges (days-in-status, overdue tasks count,
-  // last-note-at, primary lead) cost one round-trip each, not N+1.
   const oppIds = oppsRaw.map((o) => o.id);
   const [
     statusEnteredAtMap,
@@ -181,7 +172,6 @@ export default async function CommercialOpportunitiesPage({
     listFinishCountByOpp(oppIds),
   ]);
 
-  // Apply chip filters post-fetch.
   let opps = oppsRaw;
   if (staleFilter) {
     opps = opps.filter((o) => {
@@ -191,9 +181,6 @@ export default async function CommercialOpportunitiesPage({
     });
   }
   if (hotFilter) {
-    // Hot = the deal we want to win NOW. Big bid + clock running + still
-    // actively in flight. Filter mirrors lib/.../export.ts so the CSV
-    // export of "?hot=1" returns the same rows the user sees.
     opps = opps.filter((o) => {
       if (!(HOT_DEAL_ACTIVE_STATUSES as readonly string[]).includes(o.status)) return false;
       if (!o.bid_value_high_cents || o.bid_value_high_cents < HOT_DEAL_BID_CENTS) return false;
@@ -208,9 +195,6 @@ export default async function CommercialOpportunitiesPage({
     opps = opps.filter((o) => o.source && sourceSet.has(o.source));
   }
 
-  // Apply sort after all filters so the ordering reflects exactly what
-  // Alex is looking at. Stable secondary key on updated_at so ties land
-  // in a predictable order (newest-touched-wins-tie).
   const stableTie = (a: CommercialOpportunity, b: CommercialOpportunity) =>
     new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   opps = [...opps].sort((a, b) => {
@@ -222,8 +206,6 @@ export default async function CommercialOpportunitiesPage({
       return diff !== 0 ? diff : stableTie(a, b);
     }
     if (sortKey === "due_soon") {
-      // Opps with NO proposal_due_at go to the bottom so the soonest
-      // due rises to the top.
       const av = a.proposal_due_at ? new Date(a.proposal_due_at).getTime() : Infinity;
       const bv = b.proposal_due_at ? new Date(b.proposal_due_at).getTime() : Infinity;
       const diff = av - bv;
@@ -233,28 +215,28 @@ export default async function CommercialOpportunitiesPage({
       const diff = (b.probability_pct ?? 0) - (a.probability_pct ?? 0);
       return diff !== 0 ? diff : stableTie(a, b);
     }
-    // "recent" default — already returned newest-first by listCommercialOpportunities.
     return stableTie(a, b);
   });
 
-  // Pipeline summary tile values — computed across the visible (filtered)
-  // open opps so the number on the page matches what's listed below.
   const openOpps = opps.filter((o) => (OPEN_OPP_STATUSES as readonly string[]).includes(o.status));
   const totalPipelineCents = openOpps.reduce((acc, o) => acc + weightedPipelineCents(o), 0);
   const totalBidLowCents = openOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
   const totalBidHighCents = openOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
+  // Wins this month — mirrors the /commercial dashboard KPI so the two
+  // surfaces agree. Uses UTC-month-start; close enough for exec-review
+  // "how'd we do this month" scan.
+  const now = new Date();
+  const monthStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const wonThisMonth = oppsRaw.filter((o) => o.status === "won" && (o.decided_at ?? "") >= monthStartIso).length;
 
-  // URL state preservation for chip toggles. Stale + sources collapse
-  // into the URL so reload + bookmark survive.
+  // URL builders — behavior unchanged from prior file.
   const baseParams = new URLSearchParams();
   if (search) baseParams.set("q", search);
   if (validStatus) baseParams.set("status", validStatus);
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
-  // Kanban is now the default — only list mode needs the URL param.
   if (viewMode === "list") baseParams.set("view", "list");
 
-  // View toggle hrefs preserve the rest of the filter context.
   const viewToggleHref = (target: "list" | "kanban") => {
     const p = new URLSearchParams(baseParams);
     if (target === "list") p.set("view", "list");
@@ -290,8 +272,6 @@ export default async function CommercialOpportunitiesPage({
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
-  // Sort link builder — preserves every other URL param and just flips
-  // the sort key. Drops the param when picking the default.
   const setSortHref = (newSort: string): string => {
     const p = new URLSearchParams();
     if (search) p.set("q", search);
@@ -304,36 +284,42 @@ export default async function CommercialOpportunitiesPage({
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
+  const clearFilterHref = (drop: "q" | "status" | "hot" | "stale" | "sources"): string => {
+    const p = new URLSearchParams();
+    if (search && drop !== "q") p.set("q", search);
+    if (validStatus && drop !== "status") p.set("status", validStatus);
+    if (hotFilter && drop !== "hot") p.set("hot", "1");
+    if (staleFilter && drop !== "stale") p.set("stale", "1");
+    if (sourceSet.size > 0 && drop !== "sources") p.set("sources", Array.from(sourceSet).join(","));
+    if (sortKey !== "recent") p.set("sort", sortKey);
+    if (viewMode === "list") p.set("view", "list");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  };
 
-  // The CSV export endpoint takes the exact same params the page does
-  // (including sort) so the download is "what the user sees, as a
-  // spreadsheet" — row order included.
   const exportParams = new URLSearchParams(baseParams);
   if (staleFilter) exportParams.set("stale", "1");
   if (hotFilter) exportParams.set("hot", "1");
-  // `sort` is already in baseParams when not the default.
   const exportHref = `/api/commercial/opportunities/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
 
   const anyFilterActive =
     !!search || !!validStatus || staleFilter || hotFilter || sourceSet.size > 0;
+  const sortChanged = sortKey !== "recent";
+  const activeFilterCount =
+    (search ? 1 : 0) + (validStatus ? 1 : 0) +
+    (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size;
+  const currentSortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated";
 
-  // Status snapshot — open-opp count per status, for the inline "where
-  // is the pipeline stuck?" pill row above the chip cluster. Each pill
-  // is clickable: tapping "Estimating 7" deep-links to the same view
-  // pre-filtered to estimating, so the card doubles as a drill-down.
   const statusSnapshot: Array<{ status: OpportunityStatus; count: number }> = (
     OPEN_OPP_STATUSES as readonly OpportunityStatus[]
   )
     .map((s) => ({ status: s, count: openOpps.filter((o) => o.status === s).length }))
     .filter((r) => r.count > 0);
 
-  // Toggle: tapping a status pill drills in OR clears the filter if
-  // that status is already active. Other chips (sources, hot, stale)
-  // preserved either way so drilling in/out doesn't wipe context.
   const statusDrillHref = (s: OpportunityStatus) => {
     const p = new URLSearchParams(baseParams);
     if (validStatus === s) {
-      p.delete("status"); // tap the active pill again to clear
+      p.delete("status");
     } else {
       p.set("status", s);
     }
@@ -344,51 +330,22 @@ export default async function CommercialOpportunitiesPage({
   };
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-bold tracking-widest uppercase text-blue-700">
-            Phase 2 · Opportunities
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal mt-1">
-            Opportunities
-          </h1>
-          <p className="text-sm text-ppp-charcoal-500 mt-1">
-            The deal record. From inquiry through won — track every commercial bid.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* View toggle — kanban vs list. Sits next to the New CTA so
-              the primary surface choice + the primary action are in
-              the same neighborhood. Active view uses emerald to match
-              the platform's "selected" language. */}
-          <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden">
-            <Link
-              href={viewToggleHref("list")}
-              className={`px-3 py-2 text-[12px] font-medium min-h-[44px] inline-flex items-center touch-manipulation ${
-                viewMode === "list"
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-              }`}
-              title="List view — best for scanning + filtering + CSV export"
-            >
-              List
-            </Link>
-            <Link
-              href={viewToggleHref("kanban")}
-              className={`px-3 py-2 text-[12px] font-medium min-h-[44px] inline-flex items-center touch-manipulation border-l border-ppp-charcoal-200 ${
-                viewMode === "kanban"
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-              }`}
-              title="Kanban — drag deals through the pipeline (status-by-status)"
-            >
-              Kanban
-            </Link>
+    <div className="space-y-5">
+      {/* ─── Hero + slim KPI strip ─── */}
+      <header className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
+              Opportunities
+            </h1>
+            <p className="mt-1 text-sm text-ppp-charcoal-500">
+              The deal record. From inquiry through won — every commercial bid.
+            </p>
           </div>
           <Link
             href="/commercial/opportunities/new"
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px]"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px] shrink-0"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
@@ -396,136 +353,300 @@ export default async function CommercialOpportunitiesPage({
             New opportunity
           </Link>
         </div>
-      </header>
 
-      {/* Pipeline summary — single-glance "where do we stand on open deals?" */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <SummaryTile
-          label="Open opportunities"
-          value={openOpps.length.toString()}
-          sublabel={`${opps.length - openOpps.length} closed`}
-          tone="cc-brand"
-        />
-        <SummaryTile
-          label="Bid range (open)"
-          value={`${formatCents(totalBidLowCents)} – ${formatCents(totalBidHighCents)}`}
-          sublabel="Total of low + high"
-          tone="neutral"
-        />
-        <SummaryTile
-          label="Weighted pipeline"
-          value={formatCents(totalPipelineCents)}
-          sublabel="Σ midpoint × probability"
-          tone="blue"
-        />
-      </section>
-
-      {/* Search bar — replaces the old "Search field + Status dropdown
-          + Filter button" trio Karan flagged as ugly. Status filtering
-          now happens via the "Open by status" snapshot pills below
-          (which are also the kanban column headers). One clean search
-          input, magnifying-glass icon, auto-submit on Enter, and a
-          single inline "Clear" chip when any filter is active. */}
-      <form className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <svg
-            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"
-            aria-hidden
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4.3-4.3" />
-          </svg>
-          <input
-            id="q"
-            name="q"
-            type="search"
-            defaultValue={search ?? ""}
-            placeholder="Search opportunities by title…"
-            className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px] shadow-sm"
+        {/* KPI strip. Red primary = Open opps count. Blue supporting =
+            Weighted pipeline + Wins this month. Neutral = bid range. */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard
+            tone="cc-brand"
+            label="Open opportunities"
+            value={openOpps.length.toString()}
+            sub={`${opps.length - openOpps.length} closed`}
+          />
+          <KpiCard
+            tone="cc-brand"
+            label="Weighted pipeline"
+            value={formatCents(totalPipelineCents)}
+            sub="Σ midpoint × probability"
+          />
+          <KpiCard
+            tone="neutral"
+            label="Bid range (open)"
+            value={
+              totalBidLowCents === 0 && totalBidHighCents === 0
+                ? "—"
+                : `${formatCents(totalBidLowCents)}–${formatCents(totalBidHighCents)}`
+            }
+            sub="low + high across open deals"
+          />
+          <KpiCard
+            tone="blue"
+            label="Wins this month"
+            value={wonThisMonth.toString()}
+            sub={wonThisMonth === 0 ? "no closes yet" : "and counting"}
           />
         </div>
-        {/* Hidden status + view fields preserve them through search submit
-            so picking a search doesn't reset status filtering. */}
-        {validStatus && <input type="hidden" name="status" value={validStatus} />}
-        {viewMode === "list" && <input type="hidden" name="view" value="list" />}
-        {hotFilter && <input type="hidden" name="hot" value="1" />}
-        {staleFilter && <input type="hidden" name="stale" value="1" />}
-        {sourceSet.size > 0 && (
-          <input type="hidden" name="sources" value={Array.from(sourceSet).join(",")} />
-        )}
-        {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
-        {anyFilterActive && (
-          <Link
-            href={viewMode === "kanban" ? "/commercial/opportunities" : "/commercial/opportunities?view=list"}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-ppp-charcoal-50 border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-medium hover:bg-ppp-charcoal-100 min-h-[44px] touch-manipulation shrink-0"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M18 6L6 18 M6 6l12 12" />
-            </svg>
-            Clear filters
-          </Link>
-        )}
-      </form>
+      </header>
 
-      {created && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
-          {createdTitle ? (
-            <><strong>{createdTitle}</strong> logged. Ready for the next bid.</>
-          ) : (
-            "Opportunity created."
+      {/* ─── Result banners ─── */}
+      {(created || deletedTitle || statusOk || statusError) && (
+        <div className="space-y-2">
+          {created && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
+              <span aria-hidden>✓</span>
+              <span className="flex-1">
+                {createdTitle ? (
+                  <><strong>{createdTitle}</strong> logged. Ready for the next bid.</>
+                ) : (
+                  "Opportunity created."
+                )}
+              </span>
+            </div>
+          )}
+          {deletedTitle && (
+            <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-start justify-between gap-3">
+              <span>
+                Deleted <strong className="text-ppp-charcoal">{deletedTitle}</strong>. Soft-deleted — an admin can restore it.
+              </span>
+              <Link
+                href="/commercial/opportunities"
+                className="text-[12px] text-ppp-charcoal-600 hover:text-ppp-charcoal-800 underline shrink-0 min-h-[24px] inline-flex items-center"
+              >
+                Dismiss
+              </Link>
+            </div>
+          )}
+          {statusOk && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start justify-between gap-3">
+              <span>Status updated.</span>
+              <Link
+                href="/commercial/opportunities"
+                className="text-[12px] text-blue-700 hover:text-blue-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+              >
+                Dismiss
+              </Link>
+            </div>
+          )}
+          {statusError && (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800 flex items-start justify-between gap-3">
+              <span>{statusError}</span>
+              <Link
+                href="/commercial/opportunities"
+                className="text-[12px] text-rose-700 hover:text-rose-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+              >
+                Dismiss
+              </Link>
+            </div>
           )}
         </div>
       )}
-      {deletedTitle && (
-        <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-3 text-sm text-ppp-charcoal-700 flex items-start justify-between gap-3">
-          <span>
-            Deleted <strong className="text-ppp-charcoal">{deletedTitle}</strong>. The record is soft-deleted — an admin can restore it.
-          </span>
-          <Link
-            href="/commercial/opportunities"
-            className="text-[12px] text-ppp-charcoal-600 hover:text-ppp-charcoal-800 underline shrink-0 min-h-[24px] inline-flex items-center"
-          >
-            Dismiss
-          </Link>
-        </div>
-      )}
-      {statusOk && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700 flex items-start justify-between gap-3">
-          <span>Status updated.</span>
-          <Link
-            href="/commercial/opportunities"
-            className="text-[12px] text-blue-700 hover:text-blue-900 underline shrink-0 min-h-[24px] inline-flex items-center"
-          >
-            Dismiss
-          </Link>
-        </div>
-      )}
-      {statusError && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700 flex items-start justify-between gap-3">
-          <span>{statusError}</span>
-          <Link
-            href="/commercial/opportunities"
-            className="text-[12px] text-rose-700 hover:text-rose-900 underline shrink-0 min-h-[24px] inline-flex items-center"
-          >
-            Dismiss
-          </Link>
-        </div>
-      )}
 
-      {/* Status snapshot — open opps grouped by status. Shows the
-          pipeline shape at a glance: where are deals sitting? where's
-          the bottleneck? Hidden when no open opps. Each pill is a
-          tappable drill-down — "Estimating 7" → list filtered to
-          estimating with the other filter chips preserved. */}
-      {/* Hide "Open by status" pill row on KANBAN — the columns ARE the
-          status filter, so the pills are redundant noise. List view still
-          shows them (the list doesn't group by status visually so the
-          chips give the same "where are deals sitting" snapshot Alex
-          uses for triage). Karan flagged the kanban clutter 2026-06-24. */}
+      {/* ─── Toolbar: single row. Search + View toggle + Filter popover
+          + Sort popover + Export + Clear. ─── */}
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
+        <form className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px]">
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"
+              aria-hidden
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              id="q"
+              name="q"
+              type="search"
+              defaultValue={search ?? ""}
+              placeholder="Search opportunities by title…"
+              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
+            />
+          </div>
+          {validStatus && <input type="hidden" name="status" value={validStatus} />}
+          {viewMode === "list" && <input type="hidden" name="view" value="list" />}
+          {hotFilter && <input type="hidden" name="hot" value="1" />}
+          {staleFilter && <input type="hidden" name="stale" value="1" />}
+          {sourceSet.size > 0 && (
+            <input type="hidden" name="sources" value={Array.from(sourceSet).join(",")} />
+          )}
+          {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
+
+          {/* View toggle — segmented control. Kanban is default, list
+              is the explicit opt-out. */}
+          <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden shrink-0">
+            <Link
+              href={viewToggleHref("kanban")}
+              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1.5 touch-manipulation ${
+                viewMode === "kanban"
+                  ? "bg-cc-brand-50 text-cc-brand-700"
+                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+              }`}
+              title="Kanban — drag deals through the pipeline"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3" y="3" width="7" height="18" rx="1" />
+                <rect x="14" y="3" width="7" height="12" rx="1" />
+              </svg>
+              Kanban
+            </Link>
+            <Link
+              href={viewToggleHref("list")}
+              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1.5 touch-manipulation border-l border-ppp-charcoal-200 ${
+                viewMode === "list"
+                  ? "bg-cc-brand-50 text-cc-brand-700"
+                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+              }`}
+              title="List view — best for scanning + filtering + CSV export"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+              List
+            </Link>
+          </div>
+
+          {/* Filter popover — hot / stale / source multi-select all live
+              here. Native <details> for zero-JS state. */}
+          <details className="relative inline-block group">
+            <summary
+              className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
+                activeFilterCount > 0
+                  ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
+                  : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+              </svg>
+              <span>Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</span>
+              <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+            </summary>
+            <div className="absolute right-0 sm:right-auto mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[320px] max-h-[75vh] overflow-y-auto space-y-3">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
+                  Priority
+                </div>
+                <div className="space-y-1">
+                  <FilterOption
+                    href={toggleHotHref}
+                    active={hotFilter}
+                    label={`🔥 Hot ($50k+ · <${HOT_DEAL_DECISION_DAYS}d)`}
+                    description={`Bid ≥ $50k, proposal due within ${HOT_DEAL_DECISION_DAYS} days, still in play.`}
+                  />
+                  <FilterOption
+                    href={toggleStaleHref}
+                    active={staleFilter}
+                    label={`Stale > ${STALE_OPP_DAYS}d`}
+                    description={`Open opps with no update in over ${STALE_OPP_DAYS} days.`}
+                  />
+                </div>
+              </div>
+              <div className="border-t border-ppp-charcoal-100 pt-3">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
+                  By source
+                </div>
+                <div className="space-y-1">
+                  {OPPORTUNITY_SOURCES.map((s) => (
+                    <FilterOption
+                      key={s}
+                      href={toggleSourceHref(s)}
+                      active={sourceSet.has(s)}
+                      label={opportunitySourceLabel(s)}
+                      description="How this opportunity came in."
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </details>
+
+          {/* Sort popover. */}
+          <details className="relative inline-block group">
+            <summary
+              className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
+                sortChanged
+                  ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                  : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 6h18 M7 12h10 M11 18h2" />
+              </svg>
+              <span className="hidden sm:inline">Sort:&nbsp;</span>
+              <span className="max-w-[140px] truncate">{currentSortLabel}</span>
+              <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+            </summary>
+            <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[260px]">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 pt-2 pb-1">
+                Sort by
+              </div>
+              <div className="space-y-0.5">
+                {SORT_OPTIONS.map((o) => (
+                  <SortOption
+                    key={o.key}
+                    href={setSortHref(o.key)}
+                    active={sortKey === o.key}
+                    label={o.label}
+                  />
+                ))}
+              </div>
+            </div>
+          </details>
+
+          {/* Export CSV — takes the same params as the visible list. */}
+          <a
+            href={exportHref}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
+            title="Download the current filter view as CSV"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
+            </svg>
+            Export
+          </a>
+
+          {anyFilterActive && (
+            <Link
+              href={viewMode === "kanban" ? "/commercial/opportunities" : "/commercial/opportunities?view=list"}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M18 6L6 18 M6 6l12 12" />
+              </svg>
+              Clear
+            </Link>
+          )}
+        </form>
+
+        {/* Active filter chip strip — shows what's applied so users can
+            drop one at a time without opening the popover. */}
+        {anyFilterActive && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-1">
+              Applied:
+            </span>
+            {search && <ActiveFilterChip href={clearFilterHref("q")} label={`Search: "${search}"`} />}
+            {validStatus && <ActiveFilterChip href={clearFilterHref("status")} label={`Status: ${opportunityStatusLabel(validStatus)}`} />}
+            {hotFilter && <ActiveFilterChip href={clearFilterHref("hot")} label="🔥 Hot" />}
+            {staleFilter && <ActiveFilterChip href={clearFilterHref("stale")} label={`Stale > ${STALE_OPP_DAYS}d`} />}
+            {sourceSet.size > 0 && (
+              <ActiveFilterChip
+                href={clearFilterHref("sources")}
+                label={`Source: ${Array.from(sourceSet).map((s) => opportunitySourceLabel(s)).join(", ")}`}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Status snapshot (list mode only — kanban columns ARE the
+          snapshot) ─── */}
       {viewMode === "list" && statusSnapshot.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5 flex items-center justify-between">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2 flex items-center justify-between">
             <span>Open by status</span>
             <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal text-[10px]">
               {validStatus ? "Tap active pill to clear" : "Tap to filter"}
@@ -557,115 +678,40 @@ export default async function CommercialOpportunitiesPage({
         </div>
       )}
 
-      {/* Unified Sort & Filter dropdown — Karan 2026-06-16 round 4:
-          merged the separate Sort picker + Filter chips into ONE
-          button so the opps surface matches the accounts page. URL-
-          driven; active count on the label. */}
-      <div className="flex flex-wrap items-center gap-3 justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          {(() => {
-            const activeChipCount = (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size;
-            const sortChanged = sortKey !== "recent";
-            const activeCount = activeChipCount + (sortChanged ? 1 : 0);
-            const currentSortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated";
-            return (
-              <details className="relative inline-block group">
-                <summary
-                  className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
-                    activeCount > 0
-                      ? "bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100"
-                      : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
-                  }`}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M3 6h18 M7 12h10 M11 18h2" />
-                  </svg>
-                  <span>Sort &amp; Filter{activeCount > 0 ? ` · ${activeCount}` : ""}</span>
-                  <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
-                </summary>
-                <div className="absolute mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg p-3 min-w-[320px] max-h-[70vh] overflow-y-auto">
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
-                    Sort by — currently: {currentSortLabel}
-                  </div>
-                  <div className="space-y-1">
-                    {SORT_OPTIONS.map((o) => (
-                      <SortOption
-                        key={o.key}
-                        href={setSortHref(o.key)}
-                        active={sortKey === o.key}
-                        label={o.label}
-                      />
-                    ))}
-                  </div>
-                  <div className="border-t border-ppp-charcoal-100 my-2 pt-2">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
-                      More filters
-                    </div>
-                    <div className="space-y-1">
-                      <FilterOption
-                        href={toggleHotHref}
-                        active={hotFilter}
-                        label={`🔥 Hot ($50k+ · <${HOT_DEAL_DECISION_DAYS}d)`}
-                        description={`Bid ≥ $50k, proposal due within ${HOT_DEAL_DECISION_DAYS} days, still in play.`}
-                      />
-                      <FilterOption
-                        href={toggleStaleHref}
-                        active={staleFilter}
-                        label={`Stale > ${STALE_OPP_DAYS}d`}
-                        description={`Open opps with no update in over ${STALE_OPP_DAYS} days.`}
-                      />
-                    </div>
-                  </div>
-                  <div className="border-t border-ppp-charcoal-100 my-2 pt-2">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
-                      By source
-                    </div>
-                    <div className="space-y-1">
-                      {OPPORTUNITY_SOURCES.map((s) => (
-                        <FilterOption
-                          key={s}
-                          href={toggleSourceHref(s)}
-                          active={sourceSet.has(s)}
-                          label={opportunitySourceLabel(s)}
-                          description="How this opportunity came in."
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </details>
-            );
-          })()}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
-          <a
-            href={exportHref}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation shrink-0"
-            title="Download the current filter view as a CSV"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
-            </svg>
-            Export CSV
-          </a>
-        </div>
-      </div>
-
-      {/* List or Kanban — driven by ?view=kanban URL param. The empty
-          state is shared (no opps = same message regardless of view). */}
+      {/* ─── List / Kanban / Empty ─── */}
       {opps.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
-          <div className="text-sm text-ppp-charcoal-500">
-            {anyFilterActive
-              ? "No opportunities match these filters."
-              : "No opportunities yet — log the first deal to get started."}
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-12 text-center">
+          <div aria-hidden className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-4">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="6" />
+              <circle cx="12" cy="12" r="2" />
+            </svg>
           </div>
-          {!anyFilterActive && (
+          <div className="text-sm font-semibold text-ppp-charcoal">
+            {anyFilterActive ? "No opportunities match these filters" : "No opportunities yet"}
+          </div>
+          <p className="mt-1 text-sm text-ppp-charcoal-500">
+            {anyFilterActive
+              ? "Try clearing a filter or use search to find a specific bid."
+              : "Log the first commercial deal to get started."}
+          </p>
+          {!anyFilterActive ? (
             <Link
               href="/commercial/opportunities/new"
-              className="inline-flex items-center justify-center gap-1.5 mt-4 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
             >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 5v14 M5 12h14" />
+              </svg>
               New opportunity
+            </Link>
+          ) : (
+            <Link
+              href="/commercial/opportunities"
+              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
+            >
+              Clear all filters
             </Link>
           )}
         </div>
@@ -683,12 +729,14 @@ export default async function CommercialOpportunitiesPage({
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-ppp-charcoal">
-              {opps.length} opportunit{opps.length === 1 ? "y" : "ies"}
-            </h2>
-            <span className="text-[11px] text-ppp-charcoal-500">
-              Sorted by most recently updated
-            </span>
+            <div>
+              <h2 className="text-sm font-bold text-ppp-charcoal">
+                {opps.length} opportunit{opps.length === 1 ? "y" : "ies"}
+              </h2>
+              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                Sorted by {currentSortLabel.toLowerCase()}
+              </p>
+            </div>
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {opps.map((o) => (
@@ -721,15 +769,9 @@ function formatCents(cents: number): string {
 }
 
 /**
- * Kanban board view — column per open status, card per opp. Click a
- * card to open the detail page. Each card has an inline "Next →"
- * dropdown using the existing quickFlipStatusAction (DAG-filtered) so
- * Alex moves deals forward without leaving the board.
- *
- * Columns scroll horizontally on mobile; vertical scroll within each
- * column when the stack is taller than the viewport. Terminal opps
- * (won/lost/no_bid) get their own collapsed footer summary rather than
- * a column each, since the value of the kanban is the LIVE pipeline.
+ * Kanban board — same shape as the prior implementation. Columns +
+ * terminal drop targets + overflow drawer preserved unchanged. Only
+ * the drag-hint header re-worded slightly for clarity.
  */
 function KanbanBoard({
   opps,
@@ -750,27 +792,19 @@ function KanbanBoard({
   submittalCountMap: Map<string, { total: number; awaiting_response: number }>;
   finishCountMap: Map<string, number>;
 }) {
-  // Open columns (7) + terminal columns (3) = 10. Terminal columns are
-  // drop targets too — that's where the Win/Loss Debrief flow starts
-  // (drag → bounce to detail page with debrief form pre-opened).
-  // Karan 2026-06-24: was just the 7 open columns; users couldn't
-  // drag-to-close because there was no Won/Lost/No-bid target.
   const OPEN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
   const TERMINAL_COLUMNS: readonly OpportunityStatus[] = ["won", "lost", "no_bid"];
   const KANBAN_COLUMNS = [...OPEN_COLUMNS, ...TERMINAL_COLUMNS] as readonly OpportunityStatus[];
-  const TERMINAL_DISPLAY_CAP = 10; // show most-recent N per terminal column; overflow lives in the Decided drawer
+  const TERMINAL_DISPLAY_CAP = 10;
 
   const byStatus = new Map<OpportunityStatus, CommercialOpportunity[]>();
   for (const s of KANBAN_COLUMNS) byStatus.set(s, []);
-  const overflowClosed: CommercialOpportunity[] = []; // beyond the per-column cap, listed in the Decided drawer
-  // First bucket all opps by status.
+  const overflowClosed: CommercialOpportunity[] = [];
   for (const o of opps) {
     if (KANBAN_COLUMNS.includes(o.status as OpportunityStatus)) {
       byStatus.get(o.status as OpportunityStatus)!.push(o);
     }
   }
-  // Then cap terminal columns + move overflow to the drawer. Sort
-  // terminal columns by decided_at DESC (most recently closed first).
   for (const s of TERMINAL_COLUMNS) {
     const list = byStatus.get(s) ?? [];
     list.sort((a, b) => (b.decided_at ?? "").localeCompare(a.decided_at ?? ""));
@@ -783,114 +817,109 @@ function KanbanBoard({
   }
   return (
     <KanbanDnDProvider>
-    <div className="space-y-3">
-      <div className="text-[11px] text-ppp-charcoal-500 px-1 flex flex-wrap gap-x-3 gap-y-1">
-        <span>💡 Drag a card between columns to move the deal forward. Dragging to <strong>Won / Lost / No-bid</strong> opens a quick debrief.</span>
-        <span className="text-ppp-charcoal-400">Sort applies within each column.</span>
-      </div>
-      <div className="overflow-x-auto -mx-2 px-2 pb-2">
-        <div className="flex gap-3 min-w-max">
-          {KANBAN_COLUMNS.map((status) => {
-            const colOpps = byStatus.get(status) ?? [];
-            const colTotal = colOpps.reduce(
-              (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
-              0
-            );
-            // Distinct visual treatment by status family — Won/Lost/No-bid
-            // get terminal tints (emerald/rose/slate). Reopened gets a
-            // blue tint to signal "re-engaged — needs re-routing" so it
-            // visually stands out from the regular pipeline.
-            const tone =
-              status === "won"
-                ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-50 border-emerald-200" }
-                : status === "lost"
-                ? { col: "bg-rose-50/40 border-rose-200", head: "bg-rose-50 border-rose-200" }
-                : status === "no_bid"
-                ? { col: "bg-slate-50 border-slate-200", head: "bg-slate-100 border-slate-200" }
-                : status === "reopened"
-                ? { col: "bg-blue-50/40 border-blue-200", head: "bg-blue-50 border-blue-200" }
-                : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
-            return (
-              <KanbanDnDColumn key={status} status={status}>
-              <div className={`w-72 sm:w-80 shrink-0 border rounded-xl overflow-hidden flex flex-col h-full ${tone.col}`}>
-                <div className={`px-3 py-2 border-b ${tone.head}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12px] font-semibold text-ppp-charcoal">
-                      {opportunityStatusLabel(status)}
-                    </span>
-                    <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white/70 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
-                      {colOpps.length}
-                    </span>
-                  </div>
-                  {colTotal > 0 && (
-                    <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
-                      {formatCents(colTotal)} top-of-range
-                    </div>
-                  )}
-                </div>
-                <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px]">
-                  {colOpps.length === 0 ? (
-                    <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
-                      {status === "won"
-                        ? "Drag a winning deal here"
-                        : status === "lost"
-                        ? "Drag a lost deal here"
-                        : status === "no_bid"
-                        ? "Deals we passed on"
-                        : status === "reopened"
-                        ? "Reopened deals land here — drop them back into the right column"
-                        : "Drop a deal here"}
-                    </li>
-                  ) : (
-                    colOpps.map((opp) => (
-                      <KanbanDnDCard key={opp.id} oppId={opp.id}>
-                        <KanbanCard
-                          opp={opp}
-                          account={accountById.get(opp.account_id) ?? null}
-                          statusEnteredAt={statusEnteredAtMap.get(opp.id) ?? null}
-                          taskStats={taskStatsMap.get(opp.id) ?? null}
-                          primaryLead={primaryLeadMap.get(opp.id) ?? null}
-                          fileCount={fileCountMap.get(opp.id) ?? 0}
-                          submittalStats={submittalCountMap.get(opp.id) ?? null}
-                          finishCount={finishCountMap.get(opp.id) ?? 0}
-                        />
-                      </KanbanDnDCard>
-                    ))
-                  )}
-                </ul>
-              </div>
-              </KanbanDnDColumn>
-            );
-          })}
+      <div className="space-y-3">
+        <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-blue-50 border border-blue-100 rounded-full px-3 py-1.5">
+          <span aria-hidden>💡</span>
+          <span>
+            Drag a card between columns to move the deal forward. Dropping into <strong>Won / Lost / No-bid</strong> opens a quick debrief.
+          </span>
         </div>
+        <div className="overflow-x-auto -mx-2 px-2 pb-2">
+          <div className="flex gap-3 min-w-max">
+            {KANBAN_COLUMNS.map((status) => {
+              const colOpps = byStatus.get(status) ?? [];
+              const colTotal = colOpps.reduce(
+                (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
+                0
+              );
+              const tone =
+                status === "won"
+                  ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-50 border-emerald-200" }
+                  : status === "lost"
+                  ? { col: "bg-rose-50/40 border-rose-200", head: "bg-rose-50 border-rose-200" }
+                  : status === "no_bid"
+                  ? { col: "bg-slate-50 border-slate-200", head: "bg-slate-100 border-slate-200" }
+                  : status === "reopened"
+                  ? { col: "bg-blue-50/40 border-blue-200", head: "bg-blue-50 border-blue-200" }
+                  : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
+              return (
+                <KanbanDnDColumn key={status} status={status}>
+                  <div className={`w-72 sm:w-80 shrink-0 border rounded-xl overflow-hidden flex flex-col h-full ${tone.col}`}>
+                    <div className={`px-3 py-2 border-b ${tone.head}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[12px] font-bold text-ppp-charcoal">
+                          {opportunityStatusLabel(status)}
+                        </span>
+                        <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white/70 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
+                          {colOpps.length}
+                        </span>
+                      </div>
+                      {colTotal > 0 && (
+                        <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                          {formatCents(colTotal)} top-of-range
+                        </div>
+                      )}
+                    </div>
+                    <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px]">
+                      {colOpps.length === 0 ? (
+                        <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
+                          {status === "won"
+                            ? "Drag a winning deal here"
+                            : status === "lost"
+                            ? "Drag a lost deal here"
+                            : status === "no_bid"
+                            ? "Deals we passed on"
+                            : status === "reopened"
+                            ? "Reopened deals land here"
+                            : "Drop a deal here"}
+                        </li>
+                      ) : (
+                        colOpps.map((opp) => (
+                          <KanbanDnDCard key={opp.id} oppId={opp.id}>
+                            <KanbanCard
+                              opp={opp}
+                              account={accountById.get(opp.account_id) ?? null}
+                              statusEnteredAt={statusEnteredAtMap.get(opp.id) ?? null}
+                              taskStats={taskStatsMap.get(opp.id) ?? null}
+                              primaryLead={primaryLeadMap.get(opp.id) ?? null}
+                              fileCount={fileCountMap.get(opp.id) ?? 0}
+                              submittalStats={submittalCountMap.get(opp.id) ?? null}
+                              finishCount={finishCountMap.get(opp.id) ?? 0}
+                            />
+                          </KanbanDnDCard>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                </KanbanDnDColumn>
+              );
+            })}
+          </div>
+        </div>
+        {overflowClosed.length > 0 && (
+          <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+            <summary className="px-4 py-2.5 cursor-pointer text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
+              <span>Older decided deals · {overflowClosed.length}</span>
+              <span aria-hidden className="text-ppp-charcoal-400">▾</span>
+            </summary>
+            <ul className="divide-y divide-ppp-charcoal-100 px-3 py-2">
+              {overflowClosed.map((opp) => (
+                <li key={opp.id} className="py-2">
+                  <Link
+                    href={`/commercial/opportunities/${opp.id}`}
+                    className="text-[13px] text-blue-700 hover:text-blue-800 underline"
+                  >
+                    {opp.title}
+                  </Link>
+                  <span className="text-[11px] text-ppp-charcoal-500 ml-2">
+                    {opportunityStatusLabel(opp.status)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
-      {/* Overflow drawer — only shows when a terminal column hit the
-          per-column display cap (10). Lets users still reach older
-          decided opps without scrolling forever in a single column. */}
-      {overflowClosed.length > 0 && (
-        <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-          <summary className="px-4 py-2.5 cursor-pointer text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
-            <span>Older decided deals · {overflowClosed.length}</span>
-            <span aria-hidden className="text-ppp-charcoal-400">▾</span>
-          </summary>
-          <ul className="divide-y divide-ppp-charcoal-100 px-3 py-2">
-            {overflowClosed.map((opp) => (
-              <li key={opp.id} className="py-2">
-                <Link
-                  href={`/commercial/opportunities/${opp.id}`}
-                  className="text-[13px] text-blue-700 hover:text-blue-800 underline"
-                >
-                  {opp.title}
-                </Link>
-                <span className="text-[11px] text-ppp-charcoal-500 ml-2">
-                  {opportunityStatusLabel(opp.status)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </div>
     </KanbanDnDProvider>
   );
 }
@@ -1004,25 +1033,26 @@ function KanbanCard({
   );
 }
 
-function SummaryTile({
+/**
+ * Slim KPI card — same shape as the accounts page. Consistency across
+ * both list pages so users learn the pattern once.
+ */
+function KpiCard({
+  tone,
   label,
   value,
-  sublabel,
-  tone,
+  sub,
 }: {
+  tone: "cc-brand" | "blue" | "neutral";
   label: string;
   value: string;
-  sublabel: string;
-  tone: "cc-brand" | "blue" | "neutral";
+  sub: string;
 }) {
-  // Ring + accent bar per tone. Red = primary metric, blue = supporting.
-  // Neutral = just data. Small left accent stripe adds visual signature
-  // without shouting.
   const ring =
     tone === "cc-brand"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/40"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/40"
+      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
       : "border-ppp-charcoal-100 bg-white";
   const stripe =
     tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : "bg-ppp-charcoal-200";
@@ -1035,14 +1065,30 @@ function SummaryTile({
       <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1">
         {value}
       </div>
-      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sublabel}</div>
+      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>
     </div>
   );
 }
 
-/** Sort dropdown row — radio-style. Mirrors the accounts-page
- *  SortOption shape for visual consistency. URL link sets the sort
- *  key + preserves every other filter on the URL. */
+/**
+ * One-click "remove this specific filter" chip. Same shape as the
+ * accounts page ActiveFilterChip for visual consistency.
+ */
+function ActiveFilterChip({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700 text-[11px] font-semibold hover:bg-cc-brand-100 transition-colors min-h-[28px] touch-manipulation"
+      title={`Remove filter: ${label}`}
+    >
+      <span className="truncate max-w-[180px]">{label}</span>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M18 6L6 18 M6 6l12 12" />
+      </svg>
+    </Link>
+  );
+}
+
 function SortOption({
   href,
   active,
@@ -1055,17 +1101,13 @@ function SortOption({
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
-        active
-          ? "bg-blue-50 hover:bg-blue-100"
-          : "hover:bg-ppp-charcoal-50"
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg min-h-[40px] touch-manipulation transition-colors ${
+        active ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
         className={`inline-flex items-center justify-center h-4 w-4 rounded-full border shrink-0 ${
-          active
-            ? "border-cc-brand-600"
-            : "border-ppp-charcoal-300"
+          active ? "border-cc-brand-600" : "border-ppp-charcoal-300"
         }`}
         aria-hidden
       >
@@ -1078,8 +1120,6 @@ function SortOption({
   );
 }
 
-/** Filter dropdown row — used inside the Filter <details> popover.
- *  Mirrors the accounts-page FilterOption shape for visual consistency. */
 function FilterOption({
   href,
   active,
@@ -1095,16 +1135,12 @@ function FilterOption({
     <Link
       href={href}
       className={`flex items-start gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
-        active
-          ? "bg-blue-50 hover:bg-blue-100"
-          : "hover:bg-ppp-charcoal-50"
+        active ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
         className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
-          active
-            ? "bg-cc-brand-600 border-cc-brand-700 text-white"
-            : "bg-white border-ppp-charcoal-300 text-transparent"
+          active ? "bg-cc-brand-600 border-cc-brand-700 text-white" : "bg-white border-ppp-charcoal-300 text-transparent"
         }`}
         aria-hidden
       >
@@ -1124,44 +1160,18 @@ function FilterOption({
   );
 }
 
-function FilterChip({
-  href,
-  active,
-  tone,
-  children,
-  title,
-}: {
-  href: string;
-  active: boolean;
-  tone: "neutral" | "cold" | "hot";
-  children: React.ReactNode;
-  /** Native browser tooltip — hover on desktop, long-press on mobile.
-   *  Explains the chip's filter criteria for users who don't recognize
-   *  the abbreviated label. */
-  title?: string;
-}) {
-  const inactiveCls =
-    "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50";
-  const activeCls =
-    tone === "cold"
-      ? "bg-ppp-charcoal-100 border-ppp-charcoal-300 text-ppp-charcoal-700"
-      : tone === "hot"
-      ? "bg-rose-100 border-rose-300 text-rose-800"
-      : "bg-blue-100 border-blue-300 text-blue-800";
-  return (
-    <Link
-      href={href}
-      title={title}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-medium transition-colors touch-manipulation min-h-[36px] ${
-        active ? activeCls : inactiveCls
-      }`}
-    >
-      {active && <span aria-hidden>✓</span>}
-      {children}
-    </Link>
-  );
-}
-
+/**
+ * Opportunity row — redesigned 3-line hierarchy:
+ *   Line 1: title + status pill + DueChip
+ *   Line 2: account · rating · prequal · bid · confidence
+ *   Line 3: days-in-status · tasks · last-note · lead · files · finishes · submittals
+ *   Line 4 (conditional): tab-jump chips (finishes / submittals with awaiting)
+ *   Line 5 (conditional): quick-flip form
+ *
+ * Same data as before, cleaner visual grouping. Right chevron aligns to
+ * the first line. All signals preserved (Karan: "the information we have
+ * is all needed, dont take anything out").
+ */
 function OpportunityRow({
   opportunity,
   account,
@@ -1180,64 +1190,46 @@ function OpportunityRow({
   lastNote: { created_at: string; author_label: string | null } | null;
   primaryLead: { user_email: string; user_full_name: string | null; role: import("@/lib/commercial/opportunities/assignments").OpportunityAssignmentRole } | null;
   fileCount: number;
-  /** Phase 2.5 — submittal log signal. total = all submittals on this opp,
-   *  awaiting_response = submitted/under_review (awaiting GC reply). */
   submittalStats: { total: number; awaiting_response: number } | null;
-  /** Phase 2.5 — count of finish-schedule codes (WD-1, P-1, etc.) on this opp. */
   finishCount: number;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
-  // Decision countdown — color-coded so Alex's eye catches urgency on
-  // a Friday scan. Reuses the same green/amber/rose language as the
-  // accounts list activity tones.
   const dueChip = decisionChip(opportunity.proposal_due_at);
-  // Days-in-current-status — from the status_log "entered at" lookup.
-  // Tones: <7 muted / 7-14 amber / >14 rose. Surfaces "stuck deals"
-  // at a glance without opening detail.
   const daysInStatus = statusEnteredAt
     ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
     : null;
-  // Probability override badge — shows a quiet "custom" indicator when
-  // the user set probability away from the status default. Signals
-  // "this is a gut call, not the system default" — useful intel.
   const defaultProb = DEFAULT_PROBABILITY_BY_STATUS[opportunity.status] ?? null;
   const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
-  // Quick-flip dropdown options — ALL DAG-valid next statuses, including
-  // terminal won/lost/no_bid. Picking a terminal state triggers a redirect
-  // to the detail page via quickFlipStatusAction's server-side check
-  // (line 57) so the user can fill out the structured debrief. Karan
-  // 2026-06-24: previously hid terminal here — broke the discoverability
-  // of "how do I mark a deal closed" since users only had kanban-drag.
   const nextStatuses = allowedNextStatuses(opportunity.status);
   return (
-    <li className="relative">
+    <li className="relative group/row hover:bg-blue-50/30 transition-colors">
       <Link
         href={`/commercial/opportunities/${opportunity.id}`}
-        className="block px-4 py-4 hover:bg-blue-50/40 transition-colors touch-manipulation"
+        className="block px-4 py-4 touch-manipulation"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
+            {/* Line 1 — title + status + due chip. Bigger typography so
+                scanning finds titles fast. */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-ppp-charcoal text-sm">
+              <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
                 {opportunity.title}
               </span>
               <StatusPill status={opportunity.status} />
               {dueChip && <DueChip {...dueChip} />}
             </div>
-            <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+
+            {/* Line 2 — account context + bid + confidence. Muted so
+                the eye lands on the title first. */}
+            <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
               {account && (
-                <span className="text-ppp-charcoal-700">{account.company_name}</span>
+                <span className="text-ppp-charcoal-700 font-medium">{account.company_name}</span>
               )}
               {account?.rating && <RatingPill rating={account.rating} />}
-              {/* Prequal pill only renders for accounts with an actual
-                  prequal state — not_started would render "Prequal: —"
-                  which is just noise on the kanban card. Pending /
-                  approved / rejected DO show (those are signals Alex
-                  needs at a glance before bidding). */}
               {account?.prequalification_status && account.prequalification_status !== "not_started" && (
                 <PrequalPill status={account.prequalification_status} />
               )}
-              <span aria-hidden>·</span>
+              {account && <span aria-hidden>·</span>}
               <span>
                 <strong className="text-ppp-charcoal">{bid}</strong> bid
               </span>
@@ -1247,21 +1239,21 @@ function OpportunityRow({
                 {probOverridden && <span className="ml-0.5 text-amber-700" aria-label="Probability overridden from status default">*</span>}
               </span>
             </div>
-            {/* Signal row — secondary glance band. Shows up to 4 quick
-                cues so Alex can scan the list without opening detail:
-                days-in-status, overdue/due-soon task chips, last-note
-                touchpoint, primary lead initials. Each only renders
-                when the data warrants it. */}
-            {(daysInStatus !== null || taskStats || lastNote || primaryLead) && (
-              <div className="text-[11px] mt-1 flex items-center gap-x-2 gap-y-1 flex-wrap">
+
+            {/* Line 3 — signal row: days-in-status, tasks, last-note,
+                lead, files, finishes, submittals. Each only renders
+                when data warrants it. Colored tint on urgent signals
+                (overdue tasks, stuck deal). */}
+            {(daysInStatus !== null || taskStats || lastNote || primaryLead || fileCount > 0 || finishCount > 0 || (submittalStats && submittalStats.total > 0)) && (
+              <div className="text-[12px] mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap text-ppp-charcoal-600">
                 {daysInStatus !== null && (
                   <span
                     className={
                       daysInStatus > 14
-                        ? "text-rose-700"
+                        ? "text-rose-700 font-medium"
                         : daysInStatus > 7
                         ? "text-amber-700"
-                        : "text-ppp-charcoal-500"
+                        : "text-ppp-charcoal-600"
                     }
                     title={`Entered ${opportunityStatusLabel(opportunity.status)} ${daysInStatus}d ago`}
                   >
@@ -1269,98 +1261,77 @@ function OpportunityRow({
                   </span>
                 )}
                 {taskStats && taskStats.open > 0 && (
-                  <>
-                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                    <span
-                      className={
-                        taskStats.overdue > 0
-                          ? "text-rose-700 font-medium"
-                          : taskStats.due_soon > 0
-                          ? "text-amber-700"
-                          : "text-ppp-charcoal-500"
-                      }
-                      title={`${taskStats.open} open · ${taskStats.overdue} overdue · ${taskStats.due_soon} due in 7d`}
-                    >
-                      {taskStats.overdue > 0
-                        ? `${taskStats.overdue} overdue task${taskStats.overdue === 1 ? "" : "s"}`
-                        : `${taskStats.open} open task${taskStats.open === 1 ? "" : "s"}`}
-                    </span>
-                  </>
+                  <span
+                    className={
+                      taskStats.overdue > 0
+                        ? "text-rose-700 font-medium"
+                        : taskStats.due_soon > 0
+                        ? "text-amber-700"
+                        : "text-ppp-charcoal-600"
+                    }
+                    title={`${taskStats.open} open · ${taskStats.overdue} overdue · ${taskStats.due_soon} due in 7d`}
+                  >
+                    {taskStats.overdue > 0
+                      ? `${taskStats.overdue} overdue task${taskStats.overdue === 1 ? "" : "s"}`
+                      : `${taskStats.open} open task${taskStats.open === 1 ? "" : "s"}`}
+                  </span>
                 )}
                 {lastNote && (
-                  <>
-                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                    <span className="text-ppp-charcoal-500" title={new Date(lastNote.created_at).toLocaleString()}>
-                      Last note {relativeAgo(lastNote.created_at)}
-                      {lastNote.author_label ? ` by ${lastNote.author_label}` : ""}
-                    </span>
-                  </>
+                  <span className="text-ppp-charcoal-600" title={new Date(lastNote.created_at).toLocaleString()}>
+                    Last note {relativeAgo(lastNote.created_at)}
+                    {lastNote.author_label ? ` · ${lastNote.author_label}` : ""}
+                  </span>
                 )}
                 {primaryLead && (
-                  <>
-                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                    <span
-                      className="inline-flex items-center gap-1 text-blue-700"
-                      title={`${opportunityAssignmentRoleLabel(primaryLead.role)}: ${primaryLead.user_full_name ?? primaryLead.user_email}`}
-                    >
-                      <span aria-hidden>★</span>
-                      {(primaryLead.user_full_name ?? primaryLead.user_email).split(" ")[0]}
-                    </span>
-                  </>
+                  <span
+                    className="inline-flex items-center gap-1 text-blue-700"
+                    title={`${opportunityAssignmentRoleLabel(primaryLead.role)}: ${primaryLead.user_full_name ?? primaryLead.user_email}`}
+                  >
+                    <span aria-hidden>★</span>
+                    {(primaryLead.user_full_name ?? primaryLead.user_email).split(" ")[0]}
+                  </span>
                 )}
                 {fileCount > 0 && (
-                  <>
-                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                    <span className="text-ppp-charcoal-500" title="Plans & Specs attachments">
-                      <span aria-hidden>📎</span> {fileCount} {fileCount === 1 ? "file" : "files"}
-                    </span>
-                  </>
+                  <span className="text-ppp-charcoal-600" title="Plans & Specs attachments">
+                    <span aria-hidden>📎</span> {fileCount} {fileCount === 1 ? "file" : "files"}
+                  </span>
                 )}
                 {finishCount > 0 && (
-                  <>
-                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                    <span className="text-ppp-charcoal-500" title={`${finishCount} finish-schedule code${finishCount === 1 ? "" : "s"} defined (WD-1, P-1, etc.)`}>
-                      <span aria-hidden>🎨</span> {finishCount} {finishCount === 1 ? "finish" : "finishes"}
-                    </span>
-                  </>
+                  <span className="text-ppp-charcoal-600" title={`${finishCount} finish-schedule code${finishCount === 1 ? "" : "s"} defined`}>
+                    <span aria-hidden>🎨</span> {finishCount} {finishCount === 1 ? "finish" : "finishes"}
+                  </span>
                 )}
                 {submittalStats && submittalStats.total > 0 && (
-                  <>
-                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                    <span
-                      className={
-                        submittalStats.awaiting_response > 0
-                          ? "text-sky-700 font-medium"
-                          : "text-ppp-charcoal-500"
-                      }
-                      title={
-                        submittalStats.awaiting_response > 0
-                          ? `${submittalStats.awaiting_response} awaiting GC response`
-                          : `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"} closed`
-                      }
-                    >
-                      <span aria-hidden>📋</span> {submittalStats.total}
-                      {submittalStats.awaiting_response > 0 && (
-                        <span className="ml-1 inline-flex items-center px-1 py-0 rounded bg-sky-100 text-sky-800 text-[10px] font-bold uppercase tracking-wider">
-                          {submittalStats.awaiting_response} awaiting
-                        </span>
-                      )}
-                    </span>
-                  </>
+                  <span
+                    className={submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : "text-ppp-charcoal-600"}
+                    title={
+                      submittalStats.awaiting_response > 0
+                        ? `${submittalStats.awaiting_response} awaiting GC response`
+                        : `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"} closed`
+                    }
+                  >
+                    <span aria-hidden>📋</span> {submittalStats.total}
+                    {submittalStats.awaiting_response > 0 && (
+                      <span className="ml-1 inline-flex items-center px-1 py-0 rounded bg-sky-100 text-sky-800 text-[10px] font-bold uppercase tracking-wider">
+                        {submittalStats.awaiting_response} awaiting
+                      </span>
+                    )}
+                  </span>
                 )}
               </div>
             )}
           </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 shrink-0 mt-0.5" aria-hidden>
+
+          {/* Right chevron aligns to first line — group-hover tint. */}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/row:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
             <path d="M9 18l6-6-6-6" />
           </svg>
         </div>
       </Link>
-      {/* Tab-jump chips — sibling of the wrapping Link so clicking a
-          badge navigates directly to its tab instead of dumping the
-          user on Overview (audit interaction #31/#32, 2026-06-30).
-          Only renders for opps that have at least one of the two
-          counts; otherwise the row stays clean. */}
+
+      {/* Tab-jump chips — sibling of the wrapping Link so clicking them
+          navigates to the specific tab. Only renders when there's a
+          count > 0. */}
       {(finishCount > 0 || (submittalStats && submittalStats.total > 0)) && (
         <div className="px-4 pb-2 -mt-1 flex flex-wrap items-center gap-2">
           {finishCount > 0 && (
@@ -1393,13 +1364,9 @@ function OpportunityRow({
           )}
         </div>
       )}
-      {/* Quick status-flip — lives OUTSIDE the row Link so the select
-          + submit don't trigger navigation. Native <select> renders
-          the iOS picker on phones (familiar) and a standard dropdown
-          on desktop. The submit button is small + adjacent so a single
-          tap → pick → tap commits the change. Hidden when nothing's a
-          valid next status (terminal-from won/lost/no_bid render the
-          "open detail to reopen" hint instead). */}
+
+      {/* Quick status-flip form — outside Link so form controls don't
+          trigger nav. Same server action + form fields as before. */}
       {nextStatuses.length > 0 ? (
         <form
           action={quickFlipStatusAction}
@@ -1450,9 +1417,6 @@ function OpportunityRow({
   );
 }
 
-/** Compact "3d ago" / "yesterday" / "today" relative-time for the
- *  list-row last-note signal. Future timestamps (clock skew) collapse
- *  to "just now" rather than render confusingly. */
 function relativeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   if (!Number.isFinite(ms) || ms < 0) return "just now";
@@ -1465,8 +1429,6 @@ function relativeAgo(iso: string): string {
   return `${Math.floor(days / 365)}y ago`;
 }
 
-/** Decision-date chip — turns the bare ISO date into a glanceable
- *  urgency signal. Past-due → rose, ≤ 7d → amber, > 7d → emerald. */
 function decisionChip(iso: string | null): { label: string; tone: "ok" | "soon" | "overdue" } | null {
   if (!iso) return null;
   const target = new Date(iso.slice(0, 10) + "T00:00:00").getTime();
@@ -1508,9 +1470,6 @@ function RatingPill({ rating }: { rating: CommercialAccountRating }) {
 }
 
 function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
-  // Compliance signal inline on the opp row — Alex spots "C-rated +
-  // prequal rejected" instantly so he doesn't burn a Friday on a deal
-  // that can't legally close.
   const map = {
     not_started: { label: "Prequal: —", cls: "bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-100" },
     pending: { label: "Prequal: pending", cls: "bg-amber-50 text-amber-700 border-amber-200" },
@@ -1526,8 +1485,6 @@ function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
 }
 
 function StatusPill({ status }: { status: OpportunityStatus }) {
-  // Boosted to -100/-800/-300 saturation 2026-06-24 to match StatusPill
-  // in the detail page (Karan: brighter + more vibrant like PPP CC).
   const map: Record<OpportunityStatus, string> = {
     inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
     site_visit_scheduled: "bg-sky-100 text-sky-800 border-sky-300",
@@ -1536,7 +1493,7 @@ function StatusPill({ status }: { status: OpportunityStatus }) {
     proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
     negotiating: "bg-orange-100 text-orange-900 border-orange-300",
     on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    won: "bg-emerald-100 text-blue-800 border-emerald-300",
+    won: "bg-emerald-100 text-emerald-800 border-emerald-300",
     lost: "bg-rose-100 text-rose-800 border-rose-300",
     no_bid: "bg-rose-100 text-rose-800 border-rose-300",
     reopened: "bg-blue-100 text-blue-800 border-blue-300",
