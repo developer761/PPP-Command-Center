@@ -815,36 +815,37 @@ function KanbanBoard({
       overflowClosed.push(...overflow);
     }
   }
+  // Karan 2026-07-05: "so many statuses and its a lot to scroll thru."
+  // Split the board into two flex-groups so users see the OPEN pipeline
+  // (main flow) first, then a narrower "Closed" cluster grouped visually
+  // at the far right. Drag-drop targets stay intact — each terminal
+  // column still exists as a separate drop zone so the debrief flow
+  // still routes correctly on drop.
   return (
     <KanbanDnDProvider>
       <div className="space-y-3">
         <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-blue-50 border border-blue-100 rounded-full px-3 py-1.5">
           <span aria-hidden>💡</span>
           <span>
-            Drag a card between columns to move the deal forward. Dropping into <strong>Won / Lost / No-bid</strong> opens a quick debrief.
+            Drag a card between stages to move it forward. Drop into <strong>Won / Lost / No-bid</strong> to close the deal.
           </span>
         </div>
         <div className="overflow-x-auto -mx-2 px-2 pb-2">
-          <div className="flex gap-3 min-w-max">
-            {KANBAN_COLUMNS.map((status) => {
+          <div className="flex gap-3 min-w-max items-stretch">
+            {/* Open pipeline — 8 wide columns for the active flow. */}
+            {OPEN_COLUMNS.map((status) => {
               const colOpps = byStatus.get(status) ?? [];
               const colTotal = colOpps.reduce(
                 (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
                 0
               );
               const tone =
-                status === "won"
-                  ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-50 border-emerald-200" }
-                  : status === "lost"
-                  ? { col: "bg-rose-50/40 border-rose-200", head: "bg-rose-50 border-rose-200" }
-                  : status === "no_bid"
-                  ? { col: "bg-slate-50 border-slate-200", head: "bg-slate-100 border-slate-200" }
-                  : status === "reopened"
+                status === "reopened"
                   ? { col: "bg-blue-50/40 border-blue-200", head: "bg-blue-50 border-blue-200" }
                   : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
               return (
                 <KanbanDnDColumn key={status} status={status}>
-                  <div className={`w-72 sm:w-80 shrink-0 border rounded-xl overflow-hidden flex flex-col h-full ${tone.col}`}>
+                  <div className={`w-64 sm:w-72 shrink-0 border rounded-xl overflow-hidden flex flex-col h-full ${tone.col}`}>
                     <div className={`px-3 py-2 border-b ${tone.head}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[12px] font-bold text-ppp-charcoal">
@@ -863,15 +864,7 @@ function KanbanBoard({
                     <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px]">
                       {colOpps.length === 0 ? (
                         <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
-                          {status === "won"
-                            ? "Drag a winning deal here"
-                            : status === "lost"
-                            ? "Drag a lost deal here"
-                            : status === "no_bid"
-                            ? "Deals we passed on"
-                            : status === "reopened"
-                            ? "Reopened deals land here"
-                            : "Drop a deal here"}
+                          {status === "reopened" ? "Reopened deals land here" : "Drop a deal here"}
                         </li>
                       ) : (
                         colOpps.map((opp) => (
@@ -894,6 +887,79 @@ function KanbanBoard({
                 </KanbanDnDColumn>
               );
             })}
+
+            {/* Closed cluster — 3 narrow stacked drop-target columns.
+                Visually grouped inside a single "Closed" outer card so
+                the eye reads them as one section. Each is still a
+                separate KanbanDnDColumn so drag-to-Won vs drag-to-Lost
+                still triggers the correct debrief routing. Narrower
+                (w-44) so all 3 fit in the horizontal space one normal
+                column used to take. */}
+            <div className="shrink-0 border rounded-xl overflow-hidden flex flex-col h-full bg-white border-ppp-charcoal-100">
+              <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[12px] font-bold text-ppp-charcoal uppercase tracking-wide">
+                    Closed
+                  </span>
+                  <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
+                    {TERMINAL_COLUMNS.reduce((acc, s) => acc + (byStatus.get(s)?.length ?? 0), 0)}
+                  </span>
+                </div>
+                <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                  Drop here to close the deal
+                </div>
+              </div>
+              <div className="flex gap-2 p-2">
+                {TERMINAL_COLUMNS.map((status) => {
+                  const colOpps = byStatus.get(status) ?? [];
+                  const tone =
+                    status === "won"
+                      ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-100 border-emerald-200 text-emerald-800" }
+                      : status === "lost"
+                      ? { col: "bg-rose-50/40 border-rose-200", head: "bg-rose-100 border-rose-200 text-rose-800" }
+                      : { col: "bg-slate-50 border-slate-200", head: "bg-slate-100 border-slate-200 text-slate-700" };
+                  return (
+                    <KanbanDnDColumn key={status} status={status}>
+                      <div className={`w-44 sm:w-48 shrink-0 border rounded-lg overflow-hidden flex flex-col h-full ${tone.col}`}>
+                        <div className={`px-2 py-1.5 border-b ${tone.head}`}>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[11px] font-bold uppercase tracking-wide">
+                              {opportunityStatusLabel(status)}
+                            </span>
+                            <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-white/80 text-ppp-charcoal-700 text-[10px] font-semibold">
+                              {colOpps.length}
+                            </span>
+                          </div>
+                        </div>
+                        <ul className="p-1.5 space-y-1.5 overflow-y-auto max-h-[70vh] min-h-[80px]">
+                          {colOpps.length === 0 ? (
+                            <li className="text-[10px] text-ppp-charcoal-400 italic text-center py-4 leading-tight">
+                              Drop a<br />{status === "won" ? "winning" : status === "lost" ? "lost" : "no-bid"} deal
+                            </li>
+                          ) : (
+                            colOpps.map((opp) => (
+                              <KanbanDnDCard key={opp.id} oppId={opp.id}>
+                                <KanbanCard
+                                  opp={opp}
+                                  account={accountById.get(opp.account_id) ?? null}
+                                  statusEnteredAt={statusEnteredAtMap.get(opp.id) ?? null}
+                                  taskStats={taskStatsMap.get(opp.id) ?? null}
+                                  primaryLead={primaryLeadMap.get(opp.id) ?? null}
+                                  fileCount={fileCountMap.get(opp.id) ?? 0}
+                                  submittalStats={submittalCountMap.get(opp.id) ?? null}
+                                  finishCount={finishCountMap.get(opp.id) ?? 0}
+                                  compact
+                                />
+                              </KanbanDnDCard>
+                            ))
+                          )}
+                        </ul>
+                      </div>
+                    </KanbanDnDColumn>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
         {overflowClosed.length > 0 && (
@@ -933,6 +999,7 @@ function KanbanCard({
   fileCount,
   submittalStats,
   finishCount,
+  compact,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -942,6 +1009,10 @@ function KanbanCard({
   fileCount: number;
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
+  /** Compact mode — used inside the narrow "Closed" cluster where cards
+   *  have half the horizontal space of the open pipeline. Hides quick-flip
+   *  form + trims the meta band to just title + bid. */
+  compact?: boolean;
 }) {
   const nextStatuses = allowedNextStatuses(opp.status);
   const days = statusEnteredAt
@@ -958,6 +1029,28 @@ function KanbanCard({
   const leadFirst = primaryLead
     ? primaryLead.user_full_name?.split(" ")[0] ?? primaryLead.user_email.split("@")[0]
     : null;
+  if (compact) {
+    // Compact mode — used inside the narrow "Closed" cluster. Just
+    // title + account + bid; no quick-flip form (closed deals shouldn't
+    // be re-routed by drag, they go through the Reopen action instead).
+    return (
+      <li className="bg-white border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
+        <Link href={`/commercial/opportunities/${opp.id}`} className="block">
+          <div className="text-[11px] font-semibold text-ppp-charcoal leading-snug break-words line-clamp-2">
+            {opp.title || "(untitled)"}
+          </div>
+          {account && (
+            <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 truncate">
+              {account.company_name}
+            </div>
+          )}
+          <div className="text-[10px] font-medium text-ppp-charcoal-700 mt-0.5">
+            {formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
+          </div>
+        </Link>
+      </li>
+    );
+  }
   return (
     <li className="bg-white border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 transition-colors">
       <Link

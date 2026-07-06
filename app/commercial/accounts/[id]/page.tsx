@@ -1,5 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import EmailArchiveTab from "@/components/commercial/email-archive-tab";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
@@ -98,31 +97,71 @@ const UUID_RE = /^[0-9a-f-]{36}$/i;
 type PP = Promise<{ id: string }>;
 type SP = Promise<{
   tab?: string;
+  sub?: string;
   error?: string;
   team_added?: string;
   team_skipped?: string;
   saved?: string;
 }>;
 
-const TABS = [
-  { key: "info", label: "Info" },
-  // Email promoted to position 2 (audit fix 2026-06-18): on 375px the
-  // rightmost tabs were below the fold + Alex wasn't discovering them.
-  // See lib comment in opp detail page for the same rationale.
-  { key: "email", label: "Email" },
-  // Notes added 2026-06-24 alongside Win/Loss Debrief feature — auto-debrief
-  // notes land on this account's timeline when a linked opp closes.
-  { key: "notes", label: "Notes" },
-  // Activity moved out of Info tab 2026-06-24 (Karan: "should be in a
-  // separate tab or else it's way too cluttered"). Chronological feed
-  // of every status change / note / task across this account's opps.
+// Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
+// Karan 2026-07-05: "too cluttered, needs better organization." Went
+// from 9 flat tabs to 4 primary groups with sub-navigation. Email tab
+// removed entirely per user's explicit ask.
+//
+//   Overview      → Info (default) · Team · Performance
+//   People        → Contacts (default) · Notes
+//   Deals & Docs  → Opportunities (default) · Documents
+//   Activity      → Activity (chronological feed of all account events)
+//
+// Sub-nav uses URL `?tab=X&sub=Y`; missing/invalid sub falls back to the
+// group's default. Legacy `?tab=info|team|contacts|...` deep links still
+// resolve via `resolveTabParam` so old bookmarks + bell links work.
+type PrimaryTab = "overview" | "people" | "deals" | "activity";
+type SubTab =
+  | "info"
+  | "team"
+  | "performance"
+  | "contacts"
+  | "notes"
+  | "opportunities"
+  | "documents";
+const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "people", label: "People" },
+  { key: "deals", label: "Deals & Docs" },
   { key: "activity", label: "Activity" },
-  { key: "team", label: "Team" },
-  { key: "contacts", label: "Contacts" },
-  { key: "opportunities", label: "Opportunities" },
-  { key: "documents", label: "Documents" },
-  { key: "performance", label: "Performance" },
-] as const;
+];
+const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "activity">, { key: SubTab; label: string }[]> = {
+  overview: [
+    { key: "info", label: "Info" },
+    { key: "team", label: "Team" },
+    { key: "performance", label: "Performance" },
+  ],
+  people: [
+    { key: "contacts", label: "Contacts" },
+    { key: "notes", label: "Notes" },
+  ],
+  deals: [
+    { key: "opportunities", label: "Opportunities" },
+    { key: "documents", label: "Documents" },
+  ],
+};
+const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "activity">, SubTab> = {
+  overview: "info",
+  people: "contacts",
+  deals: "opportunities",
+};
+function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
+  if (!raw) return { primary: "overview", sub: null };
+  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "activity") {
+    return { primary: raw, sub: null };
+  }
+  if (raw === "info" || raw === "team" || raw === "performance") return { primary: "overview", sub: raw as SubTab };
+  if (raw === "contacts" || raw === "notes") return { primary: "people", sub: raw as SubTab };
+  if (raw === "opportunities" || raw === "documents") return { primary: "deals", sub: raw as SubTab };
+  return { primary: "overview", sub: null };
+}
 
 export default async function CommercialAccountDetailPage({
   params,
@@ -135,8 +174,23 @@ export default async function CommercialAccountDetailPage({
   // UUID gate — refuse garbage path segments before they reach the DB.
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const sp = await searchParams;
-  const tab = (sp.tab && TABS.some((t) => t.key === sp.tab) ? sp.tab : "info") as
-    (typeof TABS)[number]["key"];
+  const rawTab = sp.tab;
+  const rawSub = sp.sub;
+  const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
+  // Named `primaryTab` here to avoid collision with the `primary` local
+  // below that refers to the primary contact record.
+  const primaryTab: PrimaryTab = resolvedPrimary;
+  const sub: SubTab | null =
+    primaryTab === "activity"
+      ? null
+      : (rawSub && SUB_TABS_BY_PRIMARY[primaryTab].some((s) => s.key === rawSub))
+      ? (rawSub as SubTab)
+      : resolvedSub && SUB_TABS_BY_PRIMARY[primaryTab].some((s) => s.key === resolvedSub)
+      ? resolvedSub
+      : DEFAULT_SUB_BY_PRIMARY[primaryTab];
+  // Legacy compat: existing tab dispatchers below check `tab === "info"`
+  // etc. Preserve that shape so the sub-tabs still route correctly.
+  const tab: SubTab | "activity" = primaryTab === "activity" ? "activity" : sub!;
 
   const account = await getCommercialAccount(id);
   if (!account) notFound();
@@ -278,21 +332,20 @@ export default async function CommercialAccountDetailPage({
           glance. */}
       <AccountComplianceBanner accountId={account.id} overview={overview} />
 
-      {/* Tab bar — right-edge fade hints there's more tabs on mobile.
-          Built-in Tailwind classes only (no custom-color opacity that
-          broke the build earlier today). */}
+      {/* Primary tab bar — 4 groups. Consolidated from 9 flat tabs;
+          Email tab removed entirely. Karan 2026-07-05. */}
       <nav className="relative border-b border-ppp-charcoal-100">
         <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {TABS.map((t) => {
-            const active = t.key === tab;
+          {PRIMARY_TABS.map((t) => {
+            const active = t.key === primaryTab;
             return (
               <li key={t.key}>
                 <Link
                   href={`/commercial/accounts/${id}?tab=${t.key}`}
-                  className={`inline-block px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap ${
+                  className={`inline-flex items-center px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
-                      ? "border-cc-brand-600 text-blue-700"
-                      : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-300"
+                      ? "border-cc-brand-600 text-ppp-charcoal"
+                      : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-100"
                   }`}
                 >
                   {t.label}
@@ -304,14 +357,37 @@ export default async function CommercialAccountDetailPage({
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent sm:hidden" aria-hidden />
       </nav>
 
-      {/* Tab content */}
+      {/* Sub-tab pill row — only when the primary has sub-tabs.
+          Activity is a single-view feed with no sub-nav. */}
+      {primaryTab !== "activity" && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {SUB_TABS_BY_PRIMARY[primaryTab].map((s) => {
+            const active = s.key === sub;
+            return (
+              <Link
+                key={s.key}
+                href={`/commercial/accounts/${id}?tab=${primaryTab}&sub=${s.key}`}
+                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[36px] ${
+                  active
+                    ? "bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200"
+                    : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border border-transparent hover:bg-ppp-charcoal-100"
+                }`}
+              >
+                {s.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tab content — dispatches on the flat `tab` key (SubTab | "activity")
+          so all existing tab === "info" etc. lookups keep working. */}
       {tab === "info" && <InfoTab account={account} errorMessage={sp.error} />}
       {tab === "activity" && <ActivityTab accountId={account.id} />}
       {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "opportunities" && <OpportunitiesTab accountId={account.id} overview={overview} />}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
-      {tab === "email" && <EmailArchiveTab kind="acc" sourceId={account.id} />}
       {tab === "notes" && <NotesTab accountId={account.id} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
     </div>

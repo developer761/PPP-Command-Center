@@ -159,110 +159,118 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
   const totalFactorMentions = factors.reduce((sum, f) => sum + f.count, 0);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 animate-fade-up">
-      <header className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal">
-          Win/Loss Reports
-        </h1>
-        <p className="text-sm text-ppp-charcoal-500 mt-2 leading-relaxed">
-          Aggregated debrief data — what we&apos;re winning, what we&apos;re losing, and why.
-          Quarterly review fuel. <span className="font-medium text-ppp-charcoal">Period: {range.label}.</span>
-        </p>
-
-        {/* Period picker — preset chips + custom dates. Plain anchor links
-            (no client JS) so the page stays a pure server component.
-            Custom-range form GETs back to the same route with from/to. */}
-        <div className="mt-4 flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {PRESETS.map((p) => {
-              const active = range.activeKey === p.key;
-              return (
-                <Link
-                  key={p.key}
-                  href={p.key === "this_quarter"
-                    ? "/commercial/reports/win-loss"
-                    : `/commercial/reports/win-loss?preset=${p.key}`}
-                  className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold border min-h-[36px] touch-manipulation transition-colors ${
-                    active
-                      ? "bg-sky-700 text-white border-sky-700 shadow-sm"
-                      : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
-                  }`}
-                  aria-current={active ? "page" : undefined}
-                >
-                  {p.label}
-                </Link>
-              );
-            })}
-            <span className="text-[12px] text-ppp-charcoal-400 mx-1 hidden sm:inline" aria-hidden>
-              or
-            </span>
-            <form
-              action="/commercial/reports/win-loss"
-              method="GET"
-              className="inline-flex flex-wrap items-center gap-2"
-            >
-              <label htmlFor="rng_from" className="sr-only">From date</label>
-              <input
-                id="rng_from"
-                type="date"
-                name="from"
-                defaultValue={range.fromYmd}
-                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-[12px] text-ppp-charcoal min-h-[44px] sm:min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
-                aria-label="From date"
-              />
-              <span className="text-[12px] text-ppp-charcoal-400" aria-hidden>→</span>
-              <label htmlFor="rng_to" className="sr-only">To date</label>
-              <input
-                id="rng_to"
-                type="date"
-                name="to"
-                defaultValue={range.toYmd}
-                className="rounded-lg border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-[12px] text-ppp-charcoal min-h-[44px] sm:min-h-[36px] focus:outline-none focus:ring-2 focus:ring-sky-600/40"
-                aria-label="To date"
-              />
-              <button
-                type="submit"
-                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold border min-h-[36px] touch-manipulation transition-colors ${
-                  range.activeKey === "custom"
-                    ? "bg-sky-700 text-white border-sky-700 shadow-sm"
-                    : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
-                }`}
-              >
-                Apply
-              </button>
-            </form>
-          </div>
-          {range.rejected && (
-            <p className="text-[11px] text-rose-700">
-              Custom range was invalid (missing date, unparseable, or from is
-              after to) — showing <span className="font-semibold">{range.label}</span> instead.
-            </p>
-          )}
+    <div className="space-y-5">
+      {/* ─── Hero — same PageHeader shape as every other Commercial CC
+          surface. 3px×40px red accent bar → title → subtitle. ─── */}
+      <header>
+        <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
+            Win/Loss Reports
+          </h1>
+          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 px-2 py-0.5 rounded">
+            {range.label}
+          </span>
         </div>
+        <p className="text-sm text-ppp-charcoal-500">
+          Aggregated debrief data — what we&apos;re winning, what we&apos;re losing, and why. Quarterly review fuel.
+        </p>
       </header>
 
-      {/* KPI strip */}
-      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      {/* ─── Toolbar with period picker (preset chips + custom range form) ─── */}
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {PRESETS.map((p) => {
+            const active = range.activeKey === p.key;
+            return (
+              <Link
+                key={p.key}
+                href={p.key === "this_quarter"
+                  ? "/commercial/reports/win-loss"
+                  : `/commercial/reports/win-loss?preset=${p.key}`}
+                className={`inline-flex items-center px-3.5 py-2 rounded-lg text-[13px] font-semibold border min-h-[44px] touch-manipulation transition-colors ${
+                  active
+                    ? "bg-cc-brand-600 text-white border-cc-brand-700 shadow-sm shadow-cc-brand-600/30"
+                    : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+                }`}
+                aria-current={active ? "page" : undefined}
+              >
+                {p.label}
+              </Link>
+            );
+          })}
+          <span className="text-[11px] text-ppp-charcoal-400 mx-1 hidden sm:inline" aria-hidden>
+            or custom range:
+          </span>
+          <form
+            action="/commercial/reports/win-loss"
+            method="GET"
+            className="inline-flex flex-wrap items-center gap-2"
+          >
+            <label htmlFor="rng_from" className="sr-only">From date</label>
+            <input
+              id="rng_from"
+              type="date"
+              name="from"
+              defaultValue={range.fromYmd}
+              className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1 text-base sm:text-[13px] text-ppp-charcoal min-h-[44px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 focus:border-cc-brand-600"
+              aria-label="From date"
+            />
+            <span className="text-[12px] text-ppp-charcoal-400" aria-hidden>→</span>
+            <label htmlFor="rng_to" className="sr-only">To date</label>
+            <input
+              id="rng_to"
+              type="date"
+              name="to"
+              defaultValue={range.toYmd}
+              className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1 text-base sm:text-[13px] text-ppp-charcoal min-h-[44px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 focus:border-cc-brand-600"
+              aria-label="To date"
+            />
+            <button
+              type="submit"
+              className={`inline-flex items-center px-3.5 py-2 rounded-lg text-[13px] font-semibold border min-h-[44px] touch-manipulation transition-colors ${
+                range.activeKey === "custom"
+                  ? "bg-cc-brand-600 text-white border-cc-brand-700 shadow-sm shadow-cc-brand-600/30"
+                  : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+              }`}
+            >
+              Apply
+            </button>
+          </form>
+        </div>
+        {range.rejected && (
+          <p className="text-[11px] text-rose-700">
+            Custom range was invalid — showing <span className="font-semibold">{range.label}</span> instead.
+          </p>
+        )}
+      </div>
+
+      {/* ─── KPI strip — same left-accent-stripe design as the other
+          Commercial CC surfaces for visual consistency. ─── */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
+          tone="cc-brand"
           label="Win rate"
           value={`${summary.winRatePct}%`}
-          subline={`${summary.wonCount} won / ${summary.lostCount} lost`}
+          sub={`${summary.wonCount} won · ${summary.lostCount} lost`}
         />
         <KpiCard
+          tone="blue"
           label="Won $"
           value={formatCents(summary.wonValueCents)}
-          subline={summary.wonCount === 1 ? "1 deal" : `${summary.wonCount} deals`}
+          sub={summary.wonCount === 1 ? "1 deal" : `${summary.wonCount} deals`}
         />
         <KpiCard
+          tone="rose"
           label="Lost $"
           value={formatCents(summary.lostValueCents)}
-          subline={summary.lostCount === 1 ? "1 deal" : `${summary.lostCount} deals`}
-          accentNegative
+          sub={summary.lostCount === 1 ? "1 deal" : `${summary.lostCount} deals`}
         />
         <KpiCard
+          tone="neutral"
           label="No-bid"
           value={String(summary.noBidCount)}
-          subline="We passed"
+          sub="deals we passed on"
         />
       </section>
 
@@ -273,7 +281,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           </h2>
           <p className="text-sm text-ppp-charcoal-500">
             As opportunities close with completed debriefs, they&apos;ll show up here.
-            See <Link href="/commercial/opportunities" className="text-emerald-700 underline">opportunities</Link> for active deals.
+            See <Link href="/commercial/opportunities" className="text-blue-700 underline">opportunities</Link> for active deals.
           </p>
         </section>
       ) : (
@@ -378,7 +386,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                     <div className="flex flex-wrap items-baseline gap-2 mb-1">
                       <Link
                         href={`/commercial/opportunities/${l.opportunity_id}`}
-                        className="text-sm font-semibold text-emerald-700 hover:text-emerald-800 underline underline-offset-2"
+                        className="text-sm font-semibold text-blue-700 hover:text-blue-800 underline underline-offset-2"
                       >
                         {l.opportunity_title}
                       </Link>
@@ -412,29 +420,43 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
 }
 
 function KpiCard({
+  tone,
   label,
   value,
-  subline,
-  accentNegative,
+  sub,
 }: {
+  tone: "cc-brand" | "blue" | "rose" | "neutral";
   label: string;
   value: string;
-  subline?: string;
-  accentNegative?: boolean;
+  sub: string;
 }) {
+  const ring =
+    tone === "cc-brand"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
+      : tone === "blue"
+      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
+      : tone === "rose"
+      ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
+      : "border-ppp-charcoal-100 bg-white";
+  const stripe =
+    tone === "cc-brand"
+      ? "bg-cc-brand-600"
+      : tone === "blue"
+      ? "bg-blue-500"
+      : tone === "rose"
+      ? "bg-rose-500"
+      : "bg-ppp-charcoal-200";
+  const valueCls = tone === "rose" ? "text-rose-700" : "text-ppp-charcoal";
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4">
-      <div className="text-[10px] uppercase tracking-wider text-ppp-charcoal-500 font-semibold">
+    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
         {label}
       </div>
-      <div className={`text-xl sm:text-2xl font-bold mt-1 ${accentNegative ? "text-rose-700" : "text-ppp-charcoal"}`}>
+      <div className={`text-xl sm:text-2xl font-bold mt-1 ${valueCls}`}>
         {value}
       </div>
-      {subline && (
-        <div className="text-[11px] text-ppp-charcoal-500 mt-1 truncate">
-          {subline}
-        </div>
-      )}
+      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>
     </div>
   );
 }

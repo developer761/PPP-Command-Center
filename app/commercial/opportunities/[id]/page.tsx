@@ -89,7 +89,6 @@ import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
 import InfoDot from "@/components/info-dot";
-import EmailArchiveTab from "@/components/commercial/email-archive-tab";
 import MentionTextarea from "@/components/commercial/mention-textarea";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +96,7 @@ export const dynamic = "force-dynamic";
 type PP = Promise<{ id: string }>;
 type SP = Promise<{
   tab?: string;
+  sub?: string;
   error?: string;
   action?: string;
   to?: string;
@@ -837,26 +837,68 @@ async function createSubmittalAction(formData: FormData) {
   redirect(`/commercial/opportunities/${opportunity_id}/submittals/${result.submittal.id}`);
 }
 
-const TABS = [
-  { key: "info", label: "Info" },
-  // Email promoted to position 2 (audit fix 2026-06-18): on a 375px
-  // iPhone with 7 tabs in an overflow-x-auto bar, the rightmost tabs
-  // were below the visible fold and Alex never discovered them.
-  // Email is the top-3 daily-use surface once the BCC archive is
-  // adopted; positioning it right after Info makes it visible in the
-  // first 130px of the scroll.
-  { key: "email", label: "Email" },
-  { key: "team", label: "Team" },
-  { key: "plans", label: "Plans & Specs" },
-  // Finishes + Submittals slotted right after Plans — same workflow context
-  // (architect spec book → finish codes → submittal items sent to GC).
-  // Added 2026-06-30 as part of Phase 2.5 Submittals.
-  { key: "finishes", label: "Finishes" },
-  { key: "submittals", label: "Submittals" },
-  { key: "notes", label: "Notes" },
-  { key: "tasks", label: "Tasks" },
-  { key: "timeline", label: "Timeline" },
-] as const;
+// Tab structure redesigned 2026-07-05 (Karan: "too cluttered, needs
+// better organization"). Consolidated from 10 flat tabs to 3 primary
+// groups + 1 conditional Debrief. Email tab removed entirely per
+// user's explicit ask. Each primary group has sub-navigation for the
+// underlying surfaces, so users still reach every feature — the tab
+// bar itself is just quieter.
+//
+//   Overview  → Info (default) · Team
+//   Documents → Plans (default) · Finishes · Submittals
+//   Activity  → Notes (default) · Tasks · Timeline
+//   Debrief   → terminal opps only (unchanged)
+//
+// Sub-navigation drives from URL `?tab=X&sub=Y`. Missing/invalid `sub`
+// falls back to the group's default (Info / Plans / Notes).
+type PrimaryTab = "overview" | "docs" | "activity" | "debrief";
+type SubTab = "info" | "team" | "plans" | "finishes" | "submittals" | "notes" | "tasks" | "timeline";
+const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "docs", label: "Documents" },
+  { key: "activity", label: "Activity" },
+];
+const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief">, { key: SubTab; label: string }[]> = {
+  overview: [
+    { key: "info", label: "Info" },
+    { key: "team", label: "Team" },
+  ],
+  docs: [
+    { key: "plans", label: "Plans & Specs" },
+    { key: "finishes", label: "Finishes" },
+    { key: "submittals", label: "Submittals" },
+  ],
+  activity: [
+    { key: "notes", label: "Notes" },
+    { key: "tasks", label: "Tasks" },
+    { key: "timeline", label: "Timeline" },
+  ],
+};
+const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief">, SubTab> = {
+  overview: "info",
+  docs: "plans",
+  activity: "notes",
+};
+
+/**
+ * Backward-compat: earlier URLs used `?tab=team` / `?tab=plans` / etc.
+ * as flat keys. Deep-links from Phase 2.5 attachments, submittal-status
+ * redirects, and notification-bell links all still use those. Map them
+ * back to their new (primary, sub) shape so incoming URLs don't 404.
+ */
+function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
+  if (!raw) return { primary: "overview", sub: null };
+  // Direct primary hits.
+  if (raw === "overview" || raw === "docs" || raw === "activity" || raw === "debrief") {
+    return { primary: raw, sub: null };
+  }
+  // Legacy flat sub-tab keys → route to the primary + explicit sub.
+  if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
+  if (raw === "plans" || raw === "finishes" || raw === "submittals") return { primary: "docs", sub: raw as SubTab };
+  if (raw === "notes" || raw === "tasks" || raw === "timeline") return { primary: "activity", sub: raw as SubTab };
+  // Removed tabs (Email) or garbage → fall through to Overview.
+  return { primary: "overview", sub: null };
+}
 
 export default async function OpportunityDetailPage({
   params,
@@ -872,22 +914,34 @@ export default async function OpportunityDetailPage({
   if (!opp) notFound();
   const account = await getCommercialAccount(opp.account_id);
 
-  // The Debrief tab only exists for terminal opps (won/lost/no_bid).
-  // Building the tab list AFTER fetching opp lets us conditionally
-  // expose it so non-terminal opps don't see a "Debrief" tab with
-  // nothing to fill out.
+  // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY
+  // above. Debrief tab only appears on terminal opps + always slots
+  // as the last primary tab (most important action on a closed deal
+  // until filled in). Sub-tab keys come from URL `?sub=Y`; missing/
+  // invalid falls back to the group's default.
   const isOppTerminal = isTerminalOpportunityStatus(opp.status);
-  const visibleTabs = isOppTerminal
-    ? [
-        TABS[0],
-        // Slot Debrief right after Info — most important tab on a
-        // closed deal (until filled in).
-        { key: "debrief", label: "Debrief" } as const,
-        ...TABS.slice(1),
-      ]
-    : TABS;
-  const tab = (sp.tab && visibleTabs.some((t) => t.key === sp.tab) ? sp.tab : "info") as
-    (typeof visibleTabs)[number]["key"];
+  const visibleTabs: { key: PrimaryTab; label: string }[] = isOppTerminal
+    ? [...PRIMARY_TABS, { key: "debrief", label: "Debrief" }]
+    : PRIMARY_TABS;
+  const rawTab = pickFirst(sp.tab);
+  const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
+  // Only allow debrief primary on terminal opps.
+  const primary: PrimaryTab =
+    resolvedPrimary === "debrief" && !isOppTerminal ? "overview" : resolvedPrimary;
+  const rawSub = pickFirst(sp.sub) as SubTab | undefined;
+  const sub: SubTab | null =
+    primary === "debrief"
+      ? null
+      : (rawSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === rawSub))
+      ? rawSub
+      : resolvedSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === resolvedSub)
+      ? resolvedSub
+      : DEFAULT_SUB_BY_PRIMARY[primary];
+  // Legacy compat: many downstream server actions still redirect with
+  // `?tab=team&error=...` etc. The `tab` variable below stays a flat
+  // SubTab | "debrief" so all the existing tab === "team" checks below
+  // continue to work — we just derive it from the resolved primary+sub.
+  const tab: SubTab | "debrief" = primary === "debrief" ? "debrief" : sub!;
 
   const editedOk = pickFirst(sp.edited) === "1";
   const clonedOk = pickFirst(sp.cloned) === "1";
@@ -1036,18 +1090,20 @@ export default async function OpportunityDetailPage({
         />
       </section>
 
-      {/* Tab bar — Debrief tab only surfaces on terminal opps. Right-
-          edge fade hints there's more tabs to scroll on mobile. */}
+      {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
+          the previous 9-tab row; each group has its own sub-nav below
+          for the underlying surfaces so nothing's lost — just quieter.
+          Karan 2026-07-05: "too cluttered, 100 percent needed." */}
       <nav className="relative border-b border-ppp-charcoal-100">
         <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {visibleTabs.map((t) => {
-            const active = t.key === tab;
+            const active = t.key === primary;
             const needsAttention = t.key === "debrief" && !opp.win_loss_debriefed_at;
             return (
               <li key={t.key}>
                 <Link
                   href={`/commercial/opportunities/${opp.id}?tab=${t.key}`}
-                  className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
+                  className={`inline-flex items-center gap-1.5 px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
                       ? "border-cc-brand-600 text-ppp-charcoal"
                       : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-100"
@@ -1064,6 +1120,31 @@ export default async function OpportunityDetailPage({
         </ul>
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent sm:hidden" aria-hidden />
       </nav>
+
+      {/* Sub-tab pill row — only renders when the primary has sub-tabs
+          (Overview/Documents/Activity). Debrief has no sub-nav. Pills
+          are red-tinted when active so the two-level hierarchy is
+          visually obvious. */}
+      {primary !== "debrief" && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {SUB_TABS_BY_PRIMARY[primary].map((s) => {
+            const active = s.key === sub;
+            return (
+              <Link
+                key={s.key}
+                href={`/commercial/opportunities/${opp.id}?tab=${primary}&sub=${s.key}`}
+                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[36px] ${
+                  active
+                    ? "bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200"
+                    : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border border-transparent hover:bg-ppp-charcoal-100"
+                }`}
+              >
+                {s.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {tab === "info" && (
         <InfoTab
@@ -1098,7 +1179,6 @@ export default async function OpportunityDetailPage({
       {tab === "submittals" && (
         <SubmittalsTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />
       )}
-      {tab === "email" && <EmailArchiveTab kind="opp" sourceId={opp.id} />}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
     </div>
   );
