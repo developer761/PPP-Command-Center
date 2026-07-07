@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { listCommercialInvoices, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listCommercialAccounts, getCommercialAccount } from "@/lib/commercial/accounts/db";
+import { listCommercialOpportunities } from "@/lib/commercial/opportunities/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -45,12 +46,19 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const accountIdFilter = accountIdRaw && UUID_RE.test(accountIdRaw) ? accountIdRaw : undefined;
   const deletedFlash = pickFirst(sp.deleted) === "1";
 
-  const [invoices, accounts, accountFilter] = await Promise.all([
+  const [invoices, accounts, accountFilter, allOpps] = await Promise.all([
     listCommercialInvoices({ search, status: statusFilter, accountId: accountIdFilter }),
     listCommercialAccounts(),
     accountIdFilter ? getCommercialAccount(accountIdFilter) : Promise.resolve(null),
+    listCommercialOpportunities({}),
   ]);
   const accountById = new Map(accounts.map((a) => [a.id, a]));
+  // Only Won opps can be invoiced; sort newest first so the picker shows
+  // the most recent wins on top (Karan's typical flow after a Win/Loss
+  // Debrief lands).
+  const wonOpps = allOpps
+    .filter((o) => o.status === "won")
+    .sort((a, b) => (b.decided_at ?? b.created_at).localeCompare(a.decided_at ?? a.created_at));
 
   // Apply sort.
   const sorted = [...invoices].sort((a, b) => {
@@ -135,7 +143,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
       {deletedFlash && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
-          <span>Draft invoice deleted.</span>
+          <span>Invoice deleted.</span>
         </div>
       )}
       {accountFilter && (
@@ -175,6 +183,66 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               Bill for Won opportunities. Track sent · viewed · paid · overdue.
             </p>
           </div>
+          {/* New invoice CTA — right-aligned so it sits next to the title
+              like Salesforce's "New" button. Progressive-disclosure: click
+              to open a Won-opp picker directly on this page rather than
+              making the user go opp-first + click Convert. */}
+          <details className="relative sm:self-end group">
+            <summary
+              className="list-none cursor-pointer inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 5v14 M5 12h14" />
+              </svg>
+              New invoice
+              <span aria-hidden className="text-white/80 group-open:rotate-180 transition-transform">▾</span>
+            </summary>
+            <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[300px] max-w-[calc(100vw-1rem)]">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-1 pb-2">
+                Pick a Won opportunity to bill
+              </div>
+              {wonOpps.length === 0 ? (
+                <div className="px-2 py-3 text-[12.5px] text-ppp-charcoal-500">
+                  No Won opportunities yet.{" "}
+                  <Link href="/commercial/opportunities" className="text-blue-700 font-semibold hover:underline">
+                    Go to pipeline →
+                  </Link>
+                </div>
+              ) : (
+                <div className="max-h-[320px] overflow-y-auto space-y-0.5">
+                  {wonOpps.map((o) => {
+                    const acct = accountById.get(o.account_id);
+                    const existing = invoices.filter((i) => i.opportunity_id === o.id).length;
+                    return (
+                      <Link
+                        key={o.id}
+                        href={`/commercial/invoices/new?opp=${o.id}`}
+                        className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 min-h-[44px] touch-manipulation"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
+                            {o.title}
+                          </div>
+                          <div className="text-[11px] text-ppp-charcoal-500 truncate">
+                            {acct?.company_name ?? "—"}
+                            {existing > 0 && (
+                              <span className="ml-1.5 text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-1 py-0.5">
+                                {existing} invoice{existing === 1 ? "" : "s"} already
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span aria-hidden className="text-cc-brand-600 shrink-0 mt-0.5">→</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="mt-2 pt-2 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500 px-1">
+                Multiple invoices per opportunity are allowed (progress billing).
+              </div>
+            </div>
+          </details>
         </div>
 
         {/* KPI strip */}
@@ -385,6 +453,20 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
       : daysUntilDue <= 7
       ? { label: `Due in ${daysUntilDue}d`, tone: "soon" as const }
       : { label: `Due in ${daysUntilDue}d`, tone: "ok" as const };
+  const progressPct =
+    invoice.total_cents > 0
+      ? Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))
+      : 0;
+  const barTone =
+    invoice.status === "void"
+      ? "bg-ppp-charcoal-300"
+      : invoice.paid_cents >= invoice.total_cents && invoice.total_cents > 0
+      ? "bg-emerald-500"
+      : invoice.paid_cents > 0
+      ? "bg-blue-500"
+      : displayStatus === "overdue"
+      ? "bg-rose-500"
+      : "bg-ppp-charcoal-300";
   return (
     <li className="relative group/row hover:bg-blue-50/30 transition-colors">
       <Link href={`/commercial/invoices/${invoice.id}`} className="block px-4 py-4 touch-manipulation">
@@ -412,20 +494,53 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
                 </>
               )}
             </div>
-            <div className="text-[12px] mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap text-ppp-charcoal-600">
-              {invoice.issued_at && (
-                <span>Issued {fmtEtDate(invoice.issued_at)}</span>
-              )}
-              {invoice.due_at && (
-                <span>Due {fmtEtDate(invoice.due_at)}</span>
-              )}
-              {invoice.po_number && (
-                <span>PO {invoice.po_number}</span>
-              )}
-              {invoice.paid_at && (
-                <span className="text-emerald-700 font-medium">Paid {fmtEtDate(invoice.paid_at)}</span>
-              )}
-            </div>
+            {/* Prominent due date + payment progress bar. Due date reads
+                as the primary "when does this need to be paid" signal.
+                Karan 2026-07-07: due dates should be prominent, and each
+                invoice should have a progress bar showing how paid it is. */}
+            {(invoice.due_at || invoice.total_cents > 0) && invoice.status !== "void" && (
+              <div className="mt-2.5 space-y-1.5">
+                {invoice.due_at && (
+                  <div className="flex items-center gap-1.5 text-[12.5px]">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400">
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <path d="M16 2v4 M8 2v4 M3 10h18" />
+                    </svg>
+                    <span className="font-semibold text-ppp-charcoal">
+                      Due {fmtEtDate(invoice.due_at)}
+                    </span>
+                    {invoice.paid_at && invoice.paid_cents >= invoice.total_cents && (
+                      <span className="text-emerald-700 font-medium">
+                        · Paid {fmtEtDate(invoice.paid_at)}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {invoice.total_cents > 0 && (
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 flex-1 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${barTone}`}
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-semibold text-ppp-charcoal-500 tabular-nums shrink-0 w-9 text-right">
+                      {progressPct}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+            {(invoice.issued_at || invoice.po_number) && (
+              <div className="text-[11px] mt-1.5 flex items-center gap-x-3 gap-y-0.5 flex-wrap text-ppp-charcoal-500">
+                {invoice.issued_at && (
+                  <span>Issued {fmtEtDate(invoice.issued_at)}</span>
+                )}
+                {invoice.po_number && (
+                  <span>PO {invoice.po_number}</span>
+                )}
+              </div>
+            )}
           </div>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/row:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
             <path d="M9 18l6-6-6-6" />

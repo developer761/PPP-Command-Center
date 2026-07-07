@@ -24,6 +24,9 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from 
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { isTerminalOpportunityStatus } from "@/lib/commercial/opportunities/constants";
+import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
+import { deriveInvoiceStatus, invoiceStatusLabel, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween } from "@/lib/commercial/invoices/format";
 import {
   allowedNextStatuses,
   changeOpportunityStatus,
@@ -1200,6 +1203,208 @@ export default async function OpportunityDetailPage({
   );
 }
 
+/**
+ * Multi-invoice panel for Won opps — Karan 2026-07-07: progress-billing
+ * story. Shows every invoice attached to this opp with a status pill,
+ * total, due date, and a payment progress bar. Header includes a
+ * roll-up (total billed / total paid across all invoices for this opp)
+ * plus a "New invoice" CTA that hits the same converter route. Empty
+ * state guides the user to their first invoice on this deal.
+ */
+async function OpportunityInvoicesPanel({ oppId, className }: { oppId: string; className?: string }) {
+  const invoices = await listCommercialInvoices({ opportunityId: oppId });
+  // Roll-ups — exclude drafts + voids so the numbers reflect real billing.
+  const billable = invoices.filter((i) => i.status !== "draft" && i.status !== "void");
+  const totalInvoicedCents = billable.reduce((acc, i) => acc + i.total_cents, 0);
+  const totalPaidCents = billable.reduce((acc, i) => acc + i.paid_cents, 0);
+  const totalBalanceCents = totalInvoicedCents - totalPaidCents;
+  return (
+    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 ${className ?? ""}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <div className="flex items-center gap-2">
+          <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-100 text-cc-brand-700">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+          </span>
+          <div>
+            <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Invoices</h2>
+            <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
+              Progress billing — bill this deal in as many installments as you need.
+            </p>
+          </div>
+        </div>
+        <Link
+          href={`/commercial/invoices/new?opp=${oppId}`}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 5v14 M5 12h14" />
+          </svg>
+          New invoice
+        </Link>
+      </div>
+
+      {invoices.length === 0 ? (
+        <div className="border border-dashed border-ppp-charcoal-200 rounded-lg px-4 py-6 text-center">
+          <div className="text-[13px] font-semibold text-ppp-charcoal">No invoices yet</div>
+          <p className="mt-1 text-[12px] text-ppp-charcoal-500">
+            Bill this Won opp when you're ready to collect. Multiple invoices are allowed for progress billing.
+          </p>
+          <Link
+            href={`/commercial/invoices/new?opp=${oppId}`}
+            className="inline-flex items-center justify-center gap-1.5 mt-3 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
+          >
+            Create the first invoice
+          </Link>
+        </div>
+      ) : (
+        <>
+          {/* Roll-up strip */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <MiniStat label="Invoiced" value={formatCentsCompact(totalInvoicedCents)} tone="cc-brand" />
+            <MiniStat label="Paid" value={formatCentsCompact(totalPaidCents)} tone="emerald" />
+            <MiniStat
+              label="Balance"
+              value={formatCentsCompact(totalBalanceCents)}
+              tone={totalBalanceCents > 0 ? "blue" : "neutral"}
+            />
+          </div>
+          <ul className="space-y-1.5">
+            {invoices.map((inv) => {
+              const displayStatus = deriveInvoiceStatus(inv);
+              const progressPct =
+                inv.total_cents > 0
+                  ? Math.min(100, Math.round((inv.paid_cents / inv.total_cents) * 100))
+                  : 0;
+              const daysUntilDue = daysBetween(new Date().toISOString(), inv.due_at);
+              const isOverdue = displayStatus === "overdue";
+              const barTone =
+                inv.status === "void"
+                  ? "bg-ppp-charcoal-300"
+                  : inv.paid_cents >= inv.total_cents && inv.total_cents > 0
+                  ? "bg-emerald-500"
+                  : inv.paid_cents > 0
+                  ? "bg-blue-500"
+                  : isOverdue
+                  ? "bg-rose-500"
+                  : "bg-ppp-charcoal-300";
+              return (
+                <li key={inv.id}>
+                  <Link
+                    href={`/commercial/invoices/${inv.id}`}
+                    className="group/inv block px-3 py-2.5 rounded-lg border border-ppp-charcoal-100 hover:border-blue-300 hover:bg-blue-50/40 transition-colors touch-manipulation"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal">
+                            {inv.invoice_number}
+                          </span>
+                          <InvoicePill status={displayStatus} />
+                          {inv.due_at && (
+                            <span
+                              className={`text-[11px] font-semibold ${
+                                isOverdue
+                                  ? "text-rose-700"
+                                  : daysUntilDue !== null && daysUntilDue <= 7
+                                  ? "text-amber-700"
+                                  : "text-ppp-charcoal-600"
+                              }`}
+                            >
+                              Due {fmtEtDate(inv.due_at)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-[11.5px] text-ppp-charcoal-500">
+                          <strong className="text-ppp-charcoal">{formatCentsFull(inv.total_cents)}</strong>
+                          {inv.balance_cents > 0 && inv.status !== "void" && (
+                            <>
+                              {" · "}
+                              <span className="text-cc-brand-700 font-medium">
+                                {formatCentsFull(inv.balance_cents)} outstanding
+                              </span>
+                            </>
+                          )}
+                          {inv.paid_at && inv.paid_cents >= inv.total_cents && (
+                            <>
+                              {" · "}
+                              <span className="text-emerald-700 font-medium">
+                                Paid {fmtEtDate(inv.paid_at)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {inv.total_cents > 0 && inv.status !== "void" && (
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <div className="h-1.5 flex-1 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${barTone}`}
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-semibold text-ppp-charcoal-500 tabular-nums shrink-0 w-9 text-right">
+                              {progressPct}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/inv:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function MiniStat({ label, value, tone }: { label: string; value: string; tone: "cc-brand" | "emerald" | "blue" | "neutral" }) {
+  const cls =
+    tone === "cc-brand"
+      ? "border-cc-brand-200 bg-cc-brand-50/50"
+      : tone === "emerald"
+      ? "border-emerald-200 bg-emerald-50/50"
+      : tone === "blue"
+      ? "border-blue-200 bg-blue-50/50"
+      : "border-ppp-charcoal-200 bg-ppp-charcoal-50/50";
+  return (
+    <div className={`border rounded-lg px-3 py-2 ${cls}`}>
+      <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+        {label}
+      </div>
+      <div className="text-sm sm:text-base font-bold text-ppp-charcoal mt-0.5 tabular-nums">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function InvoicePill({ status }: { status: InvoiceStatus }) {
+  const cls =
+    status === "paid"
+      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+      : status === "overdue"
+      ? "bg-rose-100 text-rose-800 border-rose-300"
+      : status === "void"
+      ? "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200"
+      : status === "sent" || status === "viewed"
+      ? "bg-blue-100 text-blue-800 border-blue-300"
+      : status === "partial"
+      ? "bg-amber-100 text-amber-900 border-amber-300"
+      : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}>
+      {invoiceStatusLabel(status)}
+    </span>
+  );
+}
+
 async function InfoTab({
   opp,
   account,
@@ -1254,6 +1459,9 @@ async function InfoTab({
           preselectTo={preselectTo}
           className="lg:col-span-2"
         />
+      )}
+      {opp.status === "won" && (
+        <OpportunityInvoicesPanel oppId={opp.id} className="lg:col-span-2" />
       )}
       <Card
         title="Deal"
@@ -3360,14 +3568,6 @@ function StatusPill({ status }: { status: OpportunityStatus }) {
       {opportunityStatusLabel(status)}
     </span>
   );
-}
-
-function formatCentsCompact(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars === 0) return "$0";
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}k`;
-  return `$${Math.round(dollars).toLocaleString()}`;
 }
 
 function daysUntilDisplay(iso: string | null): string {

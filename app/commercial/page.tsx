@@ -294,21 +294,25 @@ function QuickAction({
   sub: string;
   icon: React.ReactNode;
 }) {
-  // Primary card = solid red, high-contrast text. Supporting cards =
-  // white with a colored icon puck. Same hover-lift affordance so all
-  // four cards feel equally tappable.
+  // Karan 2026-07-07: primary card was too bold as solid red — softened
+  // to a white card with a red left-stripe + red icon puck. Still reads
+  // as "the main action" (icon color, subtle red glow) but doesn't
+  // dominate the row. Matches the KPI-tile signature above.
   const shell = primary
-    ? "bg-gradient-to-br from-cc-brand-600 to-cc-brand-700 text-white border-cc-brand-700 shadow-sm shadow-cc-brand-600/30"
+    ? "bg-white border-cc-brand-200 text-ppp-charcoal hover:border-cc-brand-300 shadow-sm shadow-cc-brand-100/40 relative overflow-hidden"
     : "bg-white border-ppp-charcoal-100 text-ppp-charcoal hover:border-cc-brand-200";
   const iconCls = primary
-    ? "bg-white/20 text-white"
+    ? "bg-cc-brand-100 text-cc-brand-700"
     : "bg-cc-brand-50 text-cc-brand-700";
-  const subCls = primary ? "text-white/80" : "text-ppp-charcoal-500";
+  const subCls = "text-ppp-charcoal-500";
   return (
     <Link
       href={href}
       className={`block border rounded-xl px-4 py-4 transition-all hover:shadow-md hover:-translate-y-0.5 touch-manipulation ${shell}`}
     >
+      {primary && (
+        <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600" />
+      )}
       <span aria-hidden className={`inline-flex items-center justify-center h-9 w-9 rounded-lg mb-3 ${iconCls}`}>
         {icon}
       </span>

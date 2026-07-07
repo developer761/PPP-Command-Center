@@ -95,8 +95,10 @@ export async function changeInvoiceStatus(
   return { ok: true };
 }
 
-/** Soft-delete an invoice. Only drafts can be deleted; sent invoices
- *  must be voided instead (paper trail). */
+/** Soft-delete an invoice. Karan 2026-07-07: opened up to any state so
+ *  a void/paid invoice that clutters the list can be removed. The row
+ *  stays in the DB (deleted_at set) so reporting can still reconstruct
+ *  history; the UI just filters `deleted_at is null` everywhere. */
 export async function softDeleteInvoice(
   invoice_id: string,
   actor_user_id: string
@@ -108,14 +110,12 @@ export async function softDeleteInvoice(
     .eq("id", invoice_id)
     .maybeSingle();
   if (!before || before.deleted_at) return { ok: false, error: "invoice_not_found" };
-  if (before.status !== "draft") {
-    return { ok: false, error: "only_drafts_can_be_deleted_use_void_instead" };
-  }
+  const from_status = before.status as InvoiceStatus;
   const { error } = await sb
     .from("commercial_invoices")
     .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", invoice_id);
   if (error) return { ok: false, error: error.message };
-  await logStatusChange(invoice_id, "draft", "void", actor_user_id, "Draft deleted");
+  await logStatusChange(invoice_id, from_status, "void", actor_user_id, "Invoice deleted");
   return { ok: true };
 }

@@ -38,15 +38,25 @@ export function invoiceStatusLabel(s: InvoiceStatus): string {
 }
 
 /** DAG — which `to_status` is allowed from each `from_status`.
- *  Enforced in lib + DB trigger + UI (dropdown filtering). */
+ *  Enforced in lib + DB trigger + UI (dropdown filtering).
+ *
+ *  Karan 2026-07-07: user asked for "mark and unmark as sent anytime" +
+ *  the ability to void or restore from any state. So:
+ *    - draft ↔ sent flips both ways (unsend a mistake, resend a draft)
+ *    - void can come back to draft (mis-void recovery)
+ *    - paid can come back to sent (mis-recording recovery) — this is
+ *      always a signal that a payment needs to be removed too, but the
+ *      UI shows both actions so the user knows what to do
+ *  Payment-driven states (partial, paid) still can't be set BY HAND; the
+ *  trigger owns them. The UI just shows the un-transitions. */
 export const ALLOWED_INVOICE_TRANSITIONS: Record<InvoiceStatus, ReadonlyArray<InvoiceStatus>> = {
   draft: ["sent", "void"],
-  sent: ["viewed", "partial", "paid", "void"],
-  viewed: ["partial", "paid", "void"],
-  partial: ["paid", "void"],
-  paid: [],       // terminal (except admin-side restore via lib, not user)
-  overdue: ["partial", "paid", "void"],  // computed state; UI treats like sent
-  void: [],       // terminal
+  sent: ["draft", "viewed", "void"],
+  viewed: ["sent", "void"],
+  partial: ["void"],
+  paid: ["sent", "void"],
+  overdue: ["sent", "void"],
+  void: ["draft"],
 };
 
 /** Statuses that mean "this invoice is done" — reporting rolls these

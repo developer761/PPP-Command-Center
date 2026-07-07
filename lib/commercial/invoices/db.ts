@@ -288,9 +288,25 @@ export async function updateInvoiceCoreFields(
     due_at?: string | null;
   }
 ): Promise<{ ok: boolean; error?: string }> {
-  const gate = await verifyEditable(invoice_id);
-  if (!gate.ok) return gate;
   const sb = commercialDb();
+  // Karan 2026-07-07: due_at + payment_terms + po_number + customer_message
+  // are safe to edit at any status (they're presentation fields that
+  // don't affect balance). tax_pct changes the total, so we still gate
+  // it to drafts only. `notes` is internal-only — safe anytime.
+  const changingBalanceFields = patch.tax_pct !== undefined;
+  if (changingBalanceFields) {
+    const gate = await verifyEditable(invoice_id);
+    if (!gate.ok) return gate;
+  } else {
+    // Still verify the invoice exists + isn't soft-deleted.
+    const { data } = await sb
+      .from("commercial_invoices")
+      .select("deleted_at")
+      .eq("id", invoice_id)
+      .maybeSingle();
+    if (!data) return { ok: false, error: "invoice_not_found" };
+    if (data.deleted_at) return { ok: false, error: "invoice_deleted" };
+  }
   const clean: Record<string, unknown> = {};
   if (patch.tax_pct !== undefined) {
     if (patch.tax_pct < 0 || patch.tax_pct > 100) return { ok: false, error: "tax_pct_out_of_range" };

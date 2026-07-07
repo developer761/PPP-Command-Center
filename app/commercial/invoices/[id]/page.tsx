@@ -318,19 +318,48 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {isDraft && (
-              <form action={deleteDraftAction} className="inline">
-                <input type="hidden" name="invoice_id" value={invoice.id} />
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
-                >
-                  Delete draft
-                </button>
-              </form>
-            )}
+            <form action={deleteDraftAction} className="inline">
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
+                title="Remove this invoice from the list. The row stays in the DB for audit but is hidden everywhere."
+              >
+                Delete invoice
+              </button>
+            </form>
           </div>
         </div>
+
+        {/* Payment progress bar — always shown when there's a total.
+            Karan 2026-07-07: makes the "how paid is this" glanceable
+            without opening the payments log. Filled portion = paid_cents,
+            total width = total_cents. Emerald because "money in" is a
+            semantic win. */}
+        {invoice.total_cents > 0 && !isVoid && (
+          <div className="mt-5">
+            <div className="flex items-baseline justify-between text-[11px] font-semibold uppercase tracking-wider mb-1">
+              <span className="text-ppp-charcoal-500">Payment progress</span>
+              <span className="text-ppp-charcoal-700">
+                {Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))}%
+              </span>
+            </div>
+            <div className="h-2 w-full bg-ppp-charcoal-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  invoice.paid_cents >= invoice.total_cents
+                    ? "bg-emerald-500"
+                    : invoice.paid_cents > 0
+                    ? "bg-blue-500"
+                    : "bg-ppp-charcoal-300"
+                }`}
+                style={{
+                  width: `${Math.min(100, (invoice.paid_cents / invoice.total_cents) * 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Big numbers */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
