@@ -76,6 +76,8 @@ export type CreateInvoiceInput = {
   customer_message?: string | null;
   po_number?: string | null;
   payment_terms?: string;
+  /** Explicit ISO due date. If present, wins over due_days. */
+  due_at?: string;
   due_days?: number;
   /** Optional starting line items — usually blank and filled after create. */
   line_items?: Array<{
@@ -228,7 +230,7 @@ export async function createCommercialInvoice(
       payment_terms: input.payment_terms ?? DEFAULT_PAYMENT_TERMS,
       customer_message: input.customer_message ?? null,
       po_number: input.po_number ?? null,
-      due_at: new Date(Date.now() + due_days * 86_400_000).toISOString(),
+      due_at: input.due_at ?? new Date(Date.now() + due_days * 86_400_000).toISOString(),
       created_by_user_id: input.created_by_user_id,
     })
     .select("*")

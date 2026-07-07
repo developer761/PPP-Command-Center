@@ -174,14 +174,30 @@ async function updateCoreFieldsAction(formData: FormData) {
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   const tax_pct_raw = String(formData.get("tax_pct") ?? "");
   const tax_pct = tax_pct_raw ? parseFloat(tax_pct_raw) : undefined;
+  // Due date arrives as "YYYY-MM-DD" from <input type="date">. We store
+  // TIMESTAMPTZ, so noon-ET (16:00Z) is our anchor — that avoids "one day
+  // off" bugs when displayed in ET vs UTC boundaries. Empty string = clear.
+  const due_at_raw = String(formData.get("due_at") ?? "").trim();
+  let due_at: string | null | undefined;
+  if (due_at_raw === "") {
+    due_at = null;
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(due_at_raw)) {
+    due_at = `${due_at_raw}T16:00:00.000Z`;
+  } else {
+    due_at = undefined; // malformed — leave unchanged
+  }
   const patch: Parameters<typeof updateInvoiceCoreFields>[1] = {
     payment_terms: String(formData.get("payment_terms") ?? "").trim() || undefined,
     customer_message: (String(formData.get("customer_message") ?? "").trim() || null) as string | null,
     po_number: (String(formData.get("po_number") ?? "").trim() || null) as string | null,
     notes: (String(formData.get("notes") ?? "").trim() || null) as string | null,
   };
+  if (due_at !== undefined) patch.due_at = due_at;
   if (tax_pct !== undefined && Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
-  await updateInvoiceCoreFields(invoice_id, patch);
+  const result = await updateInvoiceCoreFields(invoice_id, patch);
+  if (!result.ok) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Could not save details."));
+  }
   revalidatePath(`/commercial/invoices/${invoice_id}`);
   redirect(`/commercial/invoices/${invoice_id}?saved=details`);
 }
@@ -628,37 +644,58 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         )}
       </section>
 
-      {/* Details (editable in draft, read-only elsewhere) */}
+      {/* Details — Karan 2026-07-07: due date + PO + terms + messages
+          editable at ANY status (they're presentation fields). Only tax
+          is draft-only because it changes the total (guarded server-side
+          in verifyEditable). Void/deleted invoices can't be edited at all. */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
         <div className="mb-3">
           <h2 className="text-sm font-bold text-ppp-charcoal">Details</h2>
           <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-            {isDraft ? "Terms, tax rate, PO#, and customer message shown to the customer." : "Read-only after send. Void this invoice to make changes."}
+            {isVoid
+              ? "This invoice is void. Restore it to draft to make changes."
+              : isDraft
+              ? "Due date, terms, tax rate, PO#, and customer message shown to the customer."
+              : "Due date, terms, PO#, and messages are editable anytime. Tax rate is draft-only (it changes the total)."}
           </p>
         </div>
         <form action={updateCoreFieldsAction} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input type="hidden" name="invoice_id" value={invoice.id} />
           <div>
-            <label htmlFor="dt-terms" className={LABEL_CLS}>Payment terms</label>
-            <input id="dt-terms" name="payment_terms" type="text" maxLength={60} defaultValue={invoice.payment_terms ?? ""} disabled={!isDraft} className={INPUT_CLS} />
+            <label htmlFor="dt-due" className={LABEL_CLS}>Due date</label>
+            <input
+              id="dt-due"
+              name="due_at"
+              type="date"
+              defaultValue={invoice.due_at ? invoice.due_at.slice(0, 10) : ""}
+              disabled={isVoid}
+              className={INPUT_CLS}
+            />
           </div>
           <div>
-            <label htmlFor="dt-tax" className={LABEL_CLS}>Tax % (flat)</label>
+            <label htmlFor="dt-terms" className={LABEL_CLS}>Payment terms</label>
+            <input id="dt-terms" name="payment_terms" type="text" maxLength={60} defaultValue={invoice.payment_terms ?? ""} disabled={isVoid} className={INPUT_CLS} />
+          </div>
+          <div>
+            <label htmlFor="dt-tax" className={LABEL_CLS}>
+              Tax % (flat)
+              {!isDraft && !isVoid && <span className="ml-1 text-[10px] font-medium text-ppp-charcoal-400">(draft-only)</span>}
+            </label>
             <input id="dt-tax" name="tax_pct" type="number" step="0.001" min="0" max="100" defaultValue={invoice.tax_pct} disabled={!isDraft} className={INPUT_CLS} />
           </div>
           <div>
             <label htmlFor="dt-po" className={LABEL_CLS}>PO number</label>
-            <input id="dt-po" name="po_number" type="text" maxLength={80} defaultValue={invoice.po_number ?? ""} disabled={!isDraft} className={INPUT_CLS} />
+            <input id="dt-po" name="po_number" type="text" maxLength={80} defaultValue={invoice.po_number ?? ""} disabled={isVoid} className={INPUT_CLS} />
           </div>
           <div className="sm:col-span-2">
             <label htmlFor="dt-msg" className={LABEL_CLS}>Message to customer</label>
-            <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={!isDraft} placeholder="Optional — appears above line items on the customer's copy." className={TEXTAREA_CLS} />
+            <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={isVoid} placeholder="Optional — appears above line items on the customer's copy." className={TEXTAREA_CLS} />
           </div>
           <div className="sm:col-span-2">
             <label htmlFor="dt-notes" className={LABEL_CLS}>Internal notes</label>
-            <textarea id="dt-notes" name="notes" rows={2} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={!isDraft} placeholder="Never on the customer copy." className={TEXTAREA_CLS} />
+            <textarea id="dt-notes" name="notes" rows={2} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={isVoid} placeholder="Never on the customer copy." className={TEXTAREA_CLS} />
           </div>
-          {isDraft && (
+          {!isVoid && (
             <div className="sm:col-span-2 flex justify-end">
               <button type="submit" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px]">
                 Save details

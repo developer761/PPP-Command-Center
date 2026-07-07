@@ -112,6 +112,9 @@ type SP = Promise<{
   assigned?: string;
   /** When set, the matching finish row swaps to a rose-bg "Confirm delete?" panel. */
   confirm_delete_finish?: string;
+  /** Set by /commercial/invoices/new after a batch create — count of drafts created. */
+  invoices_created?: string;
+  invoice_errors?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
@@ -1173,6 +1176,12 @@ export default async function OpportunityDetailPage({
           statusOk={pickFirst(sp.status_ok) === "1"}
           preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
           confirmDelete={pickFirst(sp.confirm_delete) === "1"}
+          invoicesCreated={
+            pickFirst(sp.invoices_created) ? Number(pickFirst(sp.invoices_created)) : 0
+          }
+          invoiceErrors={
+            pickFirst(sp.invoice_errors) ? Number(pickFirst(sp.invoice_errors)) : 0
+          }
         />
       )}
       {tab === "debrief" && isOppTerminal && (
@@ -1437,6 +1446,8 @@ async function InfoTab({
   statusOk,
   preselectTo,
   confirmDelete,
+  invoicesCreated,
+  invoiceErrors,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -1444,6 +1455,8 @@ async function InfoTab({
   statusOk?: boolean;
   preselectTo?: OpportunityStatus;
   confirmDelete?: boolean;
+  invoicesCreated?: number;
+  invoiceErrors?: number;
 }) {
   // Terminal opps now show debrief content in a dedicated Debrief tab,
   // not on Info. Info stays focused on deal facts: bid, dates, address,
@@ -1473,6 +1486,27 @@ async function InfoTab({
           </Link>
         </div>
       )}
+      {invoicesCreated && invoicesCreated > 0 ? (
+        <div className={`lg:col-span-2 rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
+          invoiceErrors && invoiceErrors > 0
+            ? "bg-amber-50 border border-amber-200 text-amber-900"
+            : "bg-blue-50 border border-blue-200 text-blue-700"
+        }`}>
+          <span>
+            <strong>{invoicesCreated}</strong> invoice{invoicesCreated === 1 ? "" : "s"} created.
+            {invoiceErrors && invoiceErrors > 0 && (
+              <> {invoiceErrors} row{invoiceErrors === 1 ? "" : "s"} skipped due to input errors.</>
+            )}
+            {" See them below."}
+          </span>
+          <Link
+            href={`/commercial/opportunities/${opp.id}?tab=info`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      ) : null}
       {/* ChangeStatusCard is for moving a deal forward — irrelevant on
           terminal opps (the only allowed next is reopened, which lives
           as its own dedicated button in the page header). The Debrief
