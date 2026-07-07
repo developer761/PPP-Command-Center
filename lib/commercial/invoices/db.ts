@@ -79,6 +79,10 @@ export type CreateInvoiceInput = {
   /** Explicit ISO due date. If present, wins over due_days. */
   due_at?: string;
   due_days?: number;
+  /** Flat tax % applied to the subtotal. Defaults to 0. */
+  tax_pct?: number;
+  /** Internal notes; never on customer copy. */
+  notes?: string | null;
   /** Optional starting line items — usually blank and filled after create. */
   line_items?: Array<{
     description: string;
@@ -247,11 +251,12 @@ export async function createCommercialInvoice(
       invoice_number,
       status: "draft",
       subtotal_cents,
-      tax_pct: 0,
+      tax_pct: typeof input.tax_pct === "number" && input.tax_pct >= 0 && input.tax_pct <= 100 ? input.tax_pct : 0,
       paid_cents: 0,
       payment_terms: input.payment_terms ?? DEFAULT_PAYMENT_TERMS,
       customer_message: input.customer_message ?? null,
       po_number: input.po_number ?? null,
+      notes: input.notes ?? null,
       due_at: input.due_at ?? new Date(Date.now() + due_days * 86_400_000).toISOString(),
       created_by_user_id: input.created_by_user_id,
     })
