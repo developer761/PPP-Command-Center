@@ -431,7 +431,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                           <button
                             type="submit"
                             title="Remove line item"
-                            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-ppp-charcoal-500 hover:bg-rose-50 hover:text-rose-700 touch-manipulation"
+                            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-ppp-charcoal-500 hover:bg-rose-50 hover:text-rose-700 touch-manipulation"
                           >
                             ×
                           </button>
@@ -540,7 +540,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     <input type="hidden" name="payment_id" value={p.id} />
                     <button
                       type="submit"
-                      className="inline-flex items-center justify-center h-8 px-2.5 rounded-lg text-rose-700 text-[11px] font-semibold hover:bg-rose-50 touch-manipulation"
+                      className="inline-flex items-center justify-center min-h-[44px] px-3 rounded-lg text-rose-700 text-[11px] font-semibold hover:bg-rose-50 touch-manipulation"
                     >
                       Remove
                     </button>

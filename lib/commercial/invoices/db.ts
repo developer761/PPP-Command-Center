@@ -258,6 +258,25 @@ export async function createCommercialInvoice(
   return { ok: true, invoice: inserted as CommercialInvoice };
 }
 
+/** Fetches the current status + returns an "editable?" verdict. Used by
+ *  every draft-only mutation to close the chain-of-trust loop: the UI
+ *  hides these buttons on non-drafts, but a direct POST to the server
+ *  action must ALSO be rejected. Callers pass through the result to the
+ *  client so the UI can show a helpful error. */
+async function verifyEditable(invoice_id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_invoices")
+    .select("status, deleted_at")
+    .eq("id", invoice_id)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "invoice_not_found" };
+  if (data.deleted_at) return { ok: false, error: "invoice_deleted" };
+  if (data.status !== "draft") return { ok: false, error: "only_drafts_can_be_edited" };
+  return { ok: true };
+}
+
 export async function updateInvoiceCoreFields(
   invoice_id: string,
   patch: {
@@ -269,6 +288,8 @@ export async function updateInvoiceCoreFields(
     due_at?: string | null;
   }
 ): Promise<{ ok: boolean; error?: string }> {
+  const gate = await verifyEditable(invoice_id);
+  if (!gate.ok) return gate;
   const sb = commercialDb();
   const clean: Record<string, unknown> = {};
   if (patch.tax_pct !== undefined) {
@@ -290,6 +311,8 @@ export async function addLineItem(
   invoice_id: string,
   input: { description: string; quantity: number; unit?: string | null; unit_price_cents: number }
 ): Promise<{ ok: boolean; error?: string }> {
+  const gate = await verifyEditable(invoice_id);
+  if (!gate.ok) return gate;
   const sb = commercialDb();
   if (!input.description.trim()) return { ok: false, error: "description_required" };
   if (input.quantity <= 0) return { ok: false, error: "quantity_must_be_positive" };
@@ -320,6 +343,8 @@ export async function removeLineItem(
   invoice_id: string,
   item_id: string
 ): Promise<{ ok: boolean; error?: string }> {
+  const gate = await verifyEditable(invoice_id);
+  if (!gate.ok) return gate;
   const sb = commercialDb();
   const { error } = await sb
     .from("commercial_invoice_line_items")
@@ -371,6 +396,12 @@ export async function addPayment(
     .maybeSingle();
   if (!inv) return { ok: false, error: "invoice_not_found" };
   if (inv.status === "void") return { ok: false, error: "cannot_pay_voided" };
+  // Reject payments on drafts. A draft is a work-in-progress bill that
+  // hasn't been shown to the customer; recording a payment on it would
+  // (a) bypass the status DAG (draft → partial without the sent step)
+  // and (b) confuse the audit trail (was the invoice ever sent?). The
+  // UI hides the payment form on drafts; this closes the chain-of-trust.
+  if (inv.status === "draft") return { ok: false, error: "cannot_pay_draft" };
   const balance = inv.balance_cents as number;
   const cappedAmount = Math.min(input.amount_cents, balance);
   if (cappedAmount <= 0) return { ok: false, error: "no_balance_due" };

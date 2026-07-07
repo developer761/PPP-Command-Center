@@ -75,19 +75,24 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // "Paid this month" uses an America/New_York month boundary so a
   // payment recorded at 11pm ET on the 1st doesn't count as previous
   // month for viewers in earlier UTC. All commercial ops live in ET.
+  // We resolve the offset (EST -05:00 vs EDT -04:00) dynamically via
+  // Intl so DST transitions can't skew the boundary by an hour.
+  const now = new Date();
   const nowEtParts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(new Date());
+  }).formatToParts(now);
   const etYear = nowEtParts.find((p) => p.type === "year")?.value ?? "1970";
   const etMonth = nowEtParts.find((p) => p.type === "month")?.value ?? "01";
-  // Approximate ET-local month start as UTC (04:00Z during EST, 05:00Z
-  // during EDT). We just use ISO string comparison against paid_at, so
-  // an exact TZ boundary within a few hours of month-start is close
-  // enough for a "paid this month" tally.
-  const monthStartEtIso = `${etYear}-${etMonth}-01T00:00:00-05:00`;
+  const offsetToken = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(now)
+    .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
+  const monthStartEtIso = `${etYear}-${etMonth}-01T00:00:00${offsetToken.replace("GMT", "")}`;
   const outstandingCents = kpiSource
     .filter((i) => BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)))
     .reduce((acc, i) => acc + i.balance_cents, 0);
@@ -151,7 +156,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           </div>
           <Link
             href="/commercial/invoices"
-            className="text-[12px] font-semibold text-blue-700 hover:text-blue-900 inline-flex items-center gap-1 min-h-[36px] px-2"
+            className="text-[12px] font-semibold text-blue-700 hover:text-blue-900 inline-flex items-center gap-1 min-h-[44px] px-3 touch-manipulation"
           >
             Show all invoices
             <span aria-hidden>→</span>
@@ -250,7 +255,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           {/* Sort popover */}
           <details className="relative inline-block group">
             <summary
-              className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
+              className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 ${
                 sortKey !== "recent"
                   ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
                   : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
@@ -272,7 +277,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                     <Link
                       key={o.key}
                       href={setSortHref(o.key)}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg min-h-[40px] touch-manipulation transition-colors ${
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
                         active ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-ppp-charcoal-50"
                       }`}
                     >

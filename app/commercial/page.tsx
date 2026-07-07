@@ -18,6 +18,8 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { OPEN_OPP_STATUSES, TERMINAL_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
+import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
+import { BILLABLE_INVOICE_STATUSES, deriveInvoiceStatus } from "@/lib/commercial/invoices/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +28,8 @@ const PHASES = [
   { num: 1, name: "Account Management", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   { num: 2, name: "Opportunity (Preconstruction)", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   { num: "2.5", name: "Submittals & Finish Schedule", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { num: 3, name: "Invoicing & Revenue", status: "Up next", color: "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200" },
-  { num: 4, name: "Contract Award", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
+  { num: 3, name: "Invoicing & Revenue", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { num: 4, name: "Contract Award", status: "Up next", color: "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200" },
   { num: 5, name: "Project Setup", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
   { num: 6, name: "Project Execution", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
   { num: 7, name: "Change Management", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
@@ -46,10 +48,20 @@ export default async function CommercialDashboardPage() {
   // Kick off both queries in parallel — the landing must feel snappy.
   // Both list helpers already fail-soft to [] on error so a partial
   // failure just shows zeros, not an error state.
-  const [opps, accounts] = await Promise.all([
+  const [opps, accounts, invoices] = await Promise.all([
     listCommercialOpportunities({}),
     listCommercialAccounts({}),
+    listCommercialInvoices({}),
   ]);
+  // Outstanding AR: sum of balance across all currently-billable invoices
+  // (sent + viewed + partial + overdue). Excludes drafts (not sent yet)
+  // and paid/void (settled). Overdue is a derived state (due_at < now +
+  // balance > 0), so we route the click to the overdue-filtered list
+  // when any overdue exists — otherwise to the sent list.
+  const arOutstandingCents = invoices
+    .filter((i) => BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)))
+    .reduce((acc, i) => acc + i.balance_cents, 0);
+  const arOverdueCount = invoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
 
   const openOpps = opps.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
   const wonOpps = opps.filter((o) => o.status === "won");
@@ -79,8 +91,8 @@ export default async function CommercialDashboardPage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
             Commercial Command Center
           </h1>
-          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 px-2 py-0.5 rounded">
-            Phase 3 · Invoicing Up Next
+          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+            Phase 3 · Invoicing Live
           </span>
         </div>
         <p className="text-sm text-ppp-charcoal-500">
@@ -91,7 +103,7 @@ export default async function CommercialDashboardPage() {
       {/* Live KPI strip. Red-accent tile = primary metric (open pipeline
           motion). Blue = supporting (accounts / wins). Left accent stripe
           + subtle gradient background gives visual weight without shouting. */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KpiTile
           tone="cc-brand"
           value={openOpps.length.toLocaleString()}
@@ -107,6 +119,24 @@ export default async function CommercialDashboardPage() {
           sub="Σ midpoint × probability"
           href="/commercial/opportunities?view=list"
           icon={<IconChart />}
+        />
+        <KpiTile
+          tone={arOverdueCount > 0 ? "rose" : "blue"}
+          value={formatCentsCompact(arOutstandingCents)}
+          label="Outstanding AR"
+          sub={
+            arOutstandingCents === 0
+              ? "nothing unpaid"
+              : arOverdueCount > 0
+              ? `${arOverdueCount} overdue`
+              : "unpaid balance"
+          }
+          href={
+            arOverdueCount > 0
+              ? "/commercial/invoices?status=overdue"
+              : "/commercial/invoices?status=sent"
+          }
+          icon={<IconDollar />}
         />
         <KpiTile
           tone="blue"
@@ -202,7 +232,7 @@ function KpiTile({
   href,
   icon,
 }: {
-  tone: "cc-brand" | "blue";
+  tone: "cc-brand" | "blue" | "rose";
   value: string;
   label: string;
   sub: string;
@@ -211,14 +241,21 @@ function KpiTile({
 }) {
   // Left accent stripe + soft-tinted gradient background. The stripe
   // is the "signature" — same shape as PageHeader's 3px accent bar.
+  // Rose tone reserved for "attention needed" (overdue AR) so the eye
+  // catches it without shouting like an error banner would.
   const ring =
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/60"
+      : tone === "rose"
+      ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/60"
       : "border-blue-200 bg-gradient-to-br from-white to-blue-50/60";
-  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : "bg-blue-500";
+  const stripe =
+    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "rose" ? "bg-rose-500" : "bg-blue-500";
   const iconCls =
     tone === "cc-brand"
       ? "bg-cc-brand-100 text-cc-brand-700"
+      : tone === "rose"
+      ? "bg-rose-100 text-rose-700"
       : "bg-blue-100 text-blue-700";
   return (
     <Link
@@ -311,6 +348,13 @@ function IconTrophy() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M8 21h8 M12 17v4 M17 5h3v3a4 4 0 0 1-4 4M7 5H4v3a4 4 0 0 0 4 4 M7 3h10v9a5 5 0 0 1-10 0V3z" />
+    </svg>
+  );
+}
+function IconDollar() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   );
 }

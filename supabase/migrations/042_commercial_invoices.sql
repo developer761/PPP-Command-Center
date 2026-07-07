@@ -165,9 +165,21 @@ BEGIN
           ELSE paid_at
         END,
         status = CASE
+          -- Void is terminal — never re-open on refund.
           WHEN inv_status = 'void' THEN 'void'
+          -- Fully paid: only invoices that actually have a bill can be paid
+          -- ($0 invoices never flip so a fat-fingered $0 draft doesn't
+          -- silently become "paid").
           WHEN new_paid >= inv_total AND inv_total > 0 THEN 'paid'
-          WHEN new_paid > 0 THEN 'partial'
+          -- Any positive payment on a NON-draft invoice → partial. Drafts
+          -- reject payments at the lib layer, so this branch only fires on
+          -- sent/viewed/overdue.
+          WHEN new_paid > 0 AND inv_status != 'draft' THEN 'partial'
+          -- Last payment refunded on a previously-paid or partially-paid
+          -- invoice: fall back to 'sent' so the "unpaid" balance surfaces
+          -- again + the invoice re-enters the collections funnel. Overdue
+          -- gets recomputed from due_at on read (deriveInvoiceStatus).
+          WHEN new_paid = 0 AND inv_status IN ('paid','partial') THEN 'sent'
           ELSE inv_status
         END,
         updated_at = now()
