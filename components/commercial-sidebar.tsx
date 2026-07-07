@@ -63,7 +63,7 @@ const navSections: NavSection[] = [
       // ahead in the roadmap. Stays disabled until Phase 3 ships; the
       // disabled state still surfaces the link so Alex sees what's
       // coming next.
-      { label: "Invoices", href: "/commercial/invoices", phase: 3, disabled: true, icon: <IconDollar /> },
+      { label: "Invoices", href: "/commercial/invoices", icon: <IconDollar /> },
     ],
   },
   // NEW Reports group — promoted out of "Financials" (win/loss is sales

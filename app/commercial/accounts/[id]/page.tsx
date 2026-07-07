@@ -47,6 +47,11 @@ import {
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
 import {
+  getInvoiceRollupForAccount,
+  type AccountInvoiceRollup,
+} from "@/lib/commercial/invoices/rollup";
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import {
   listCommercialOpportunities,
   opportunityStatusLabel,
   formatBidRange,
@@ -200,9 +205,10 @@ export default async function CommercialAccountDetailPage({
   // pasted yet (graceful degradation; the KPI strip just hides).
   // Primary contact loads in parallel so the header can show the
   // quick-email button without an extra round-trip.
-  const [overview, primary] = await Promise.all([
+  const [overview, primary, invoiceRollup] = await Promise.all([
     getAccountOverview(account.id),
     getPrimaryContact(account.id),
+    getInvoiceRollupForAccount(account.id),
   ]);
 
   const teamAddedCount = sp.team_added ? Number(sp.team_added) : 0;
@@ -321,7 +327,7 @@ export default async function CommercialAccountDetailPage({
           1). Grey tiles = "coming with Phase N" placeholders for the bid /
           invoiced / paid / balance numbers that fill in when later phases
           ship. The strip never changes shape — the data just gets richer. */}
-      <AccountOverviewStrip overview={overview} />
+      <AccountOverviewStrip overview={overview} invoiceRollup={invoiceRollup} accountId={account.id} />
 
       {/* Stage 3: Expiring-doc banner — appears between the KPI strip
           and the tab bar when ANY active doc on this account expires
@@ -2445,7 +2451,15 @@ function AccountComplianceBanner({
 
 // ───────────────────── Account 360 strip ─────────────────────
 
-function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }) {
+function AccountOverviewStrip({
+  overview,
+  invoiceRollup,
+  accountId,
+}: {
+  overview: AccountOverview | null;
+  invoiceRollup: AccountInvoiceRollup;
+  accountId: string;
+}) {
   // Graceful no-op if the view migration hasn't been applied yet. The page
   // still renders — the strip just hides until 024 is pasted.
   if (!overview) return null;
@@ -2539,19 +2553,41 @@ function AccountOverviewStrip({ overview }: { overview: AccountOverview | null }
           tooltip="Live opportunities still in play — anything in Inquiry, Site visit, Estimating, Proposal sent, Negotiating, or On hold. Excludes won, lost, and no-bid."
         />
         <KpiTile
-          tone="placeholder"
+          tone="live"
+          text={formatCentsCompact(invoiceRollup.invoiced_cents)}
           label="Invoiced"
-          placeholder="Phase 8"
+          href={`/commercial/invoices?account_id=${accountId}`}
+          sub={
+            invoiceRollup.invoice_count > 0
+              ? `${invoiceRollup.invoice_count} invoice${invoiceRollup.invoice_count === 1 ? "" : "s"}`
+              : undefined
+          }
+          subCls="text-ppp-charcoal-500"
+          tooltip="Total billable value invoiced to this account (excludes drafts + voided). Click through to filter the Invoices list to this account."
         />
         <KpiTile
-          tone="placeholder"
+          tone="live"
+          text={formatCentsCompact(invoiceRollup.paid_cents)}
           label="Paid"
-          placeholder="Phase 8"
+          href={`/commercial/invoices?account_id=${accountId}&status=paid`}
+          tooltip="Sum of payments received against this account's invoices — cash actually collected. Click to jump to this account's paid invoices."
         />
         <KpiTile
-          tone="placeholder"
+          tone="live"
+          text={formatCentsCompact(invoiceRollup.balance_cents)}
           label="Balance"
-          placeholder="Phase 8"
+          href={
+            invoiceRollup.overdue_count > 0
+              ? `/commercial/invoices?account_id=${accountId}&status=overdue`
+              : `/commercial/invoices?account_id=${accountId}&status=sent`
+          }
+          sub={
+            invoiceRollup.overdue_count > 0
+              ? `${invoiceRollup.overdue_count} overdue`
+              : undefined
+          }
+          subCls={invoiceRollup.overdue_count > 0 ? "text-rose-700" : "text-ppp-charcoal-500"}
+          tooltip="Outstanding balance across all non-voided invoices (Invoiced − Paid). The 'overdue' sub-count flags invoices past their due date. Click to see this account's outstanding or overdue invoices."
         />
         <KpiTile
           tone="live"
@@ -2580,6 +2616,7 @@ function renderWinRateSub(overview: AccountOverview): string | undefined {
 function KpiTile({
   tone,
   num,
+  text,
   label,
   sub,
   subCls,
@@ -2589,6 +2626,7 @@ function KpiTile({
 }: {
   tone: "live" | "placeholder";
   num?: number | null;
+  text?: string;
   label: string;
   sub?: string;
   subCls?: string;
@@ -2601,7 +2639,7 @@ function KpiTile({
       <div className="flex items-baseline justify-between gap-1">
         {tone === "live" ? (
           <span className="text-xl sm:text-2xl font-bold text-ppp-charcoal leading-none">
-            {(num ?? 0).toLocaleString()}
+            {text ?? (num ?? 0).toLocaleString()}
           </span>
         ) : (
           <span className="text-[11px] font-medium text-ppp-charcoal-400 italic">

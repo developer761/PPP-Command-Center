@@ -1,0 +1,706 @@
+/**
+ * `/commercial/invoices/[id]` — Phase 3 invoice detail page.
+ *
+ * Sections (single scroll, no tabs — this is a working surface, not
+ * navigational):
+ *   1. Hero — invoice number + status + amount + due date
+ *   2. Status action card (Send / Mark viewed / Void / Add payment)
+ *   3. Line items table (add row + remove row inline)
+ *   4. Payments log (add payment + delete)
+ *   5. Details grid (Info + Bill-to + Account cards, same shape as opp)
+ *   6. Status history timeline
+ */
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import {
+  getCommercialInvoice,
+  listInvoiceLineItems,
+  listInvoicePayments,
+  listInvoiceStatusLog,
+  addLineItem,
+  removeLineItem,
+  addPayment,
+  removePayment,
+  updateInvoiceCoreFields,
+} from "@/lib/commercial/invoices/db";
+import {
+  changeInvoiceStatus,
+  softDeleteInvoice,
+  allowedNextStatuses,
+} from "@/lib/commercial/invoices/status";
+import {
+  deriveInvoiceStatus,
+  invoiceStatusLabel,
+  PAYMENT_METHODS,
+  type InvoiceStatus,
+} from "@/lib/commercial/invoices/constants";
+import { formatCentsFull, fmtEtDate, parseDollarsToCents, daysBetween } from "@/lib/commercial/invoices/format";
+import { getCommercialAccount } from "@/lib/commercial/accounts/db";
+import { getCommercialOpportunity } from "@/lib/commercial/opportunities/db";
+import { UUID_RE } from "@/lib/commercial/uuid";
+import { pickFirst } from "@/lib/commercial/form-utils";
+import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+
+export const dynamic = "force-dynamic";
+
+type PP = Promise<{ id: string }>;
+type SP = Promise<{
+  error?: string;
+  saved?: string;
+  capped?: string;
+  applied?: string;
+  requested?: string;
+}>;
+
+// ────────────── Server actions ──────────────
+
+async function addLineItemAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const description = String(formData.get("description") ?? "").trim();
+  const quantity = parseFloat(String(formData.get("quantity") ?? "1"));
+  const unit = String(formData.get("unit") ?? "").trim() || null;
+  const priceRaw = String(formData.get("unit_price") ?? "");
+  const unit_price_cents = parseDollarsToCents(priceRaw);
+  if (!description || !Number.isFinite(quantity) || quantity <= 0 || unit_price_cents === null) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Fill description, quantity, and price."));
+  }
+  const result = await addLineItem(invoice_id, { description, quantity, unit, unit_price_cents: unit_price_cents! });
+  if (!result.ok) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to add line item."));
+  }
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  redirect(`/commercial/invoices/${invoice_id}`);
+}
+
+async function removeLineItemAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const item_id = String(formData.get("item_id") ?? "");
+  if (!UUID_RE.test(invoice_id) || !UUID_RE.test(item_id)) redirect("/commercial/invoices");
+  await removeLineItem(invoice_id, item_id);
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  redirect(`/commercial/invoices/${invoice_id}`);
+}
+
+async function addPaymentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  const paid_at = String(formData.get("paid_at") ?? "").trim() || undefined;
+  const method = String(formData.get("method") ?? "").trim() || null;
+  const reference = String(formData.get("reference") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  if (amount === null || amount <= 0) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a valid payment amount."));
+  }
+  const result = await addPayment(invoice_id, {
+    amount_cents: amount!,
+    paid_at: paid_at ? new Date(paid_at).toISOString() : undefined,
+    method,
+    reference,
+    notes,
+    recorded_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to record payment."));
+  }
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  // If the payment was over the balance, surface the capped amount so the
+  // recorder isn't confused when their $10k input records as $5k. The UI
+  // reads `capped` + `applied` + `requested` from the query and shows an
+  // amber note next to the success toast.
+  if (result.capped && result.applied_cents !== undefined && result.requested_cents !== undefined) {
+    const q = new URLSearchParams({
+      saved: "payment",
+      capped: "1",
+      applied: String(result.applied_cents),
+      requested: String(result.requested_cents),
+    });
+    redirect(`/commercial/invoices/${invoice_id}?${q.toString()}`);
+  }
+  redirect(`/commercial/invoices/${invoice_id}?saved=payment`);
+}
+
+async function removePaymentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const payment_id = String(formData.get("payment_id") ?? "");
+  if (!UUID_RE.test(invoice_id) || !UUID_RE.test(payment_id)) redirect("/commercial/invoices");
+  await removePayment(invoice_id, payment_id, user.id);
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  redirect(`/commercial/invoices/${invoice_id}`);
+}
+
+async function changeStatusAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const to_status = String(formData.get("to_status") ?? "") as InvoiceStatus;
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const result = await changeInvoiceStatus({ invoice_id, to_status, acting_user_id: user.id });
+  if (!result.ok) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error));
+  }
+  revalidatePath("/commercial/invoices");
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  redirect(`/commercial/invoices/${invoice_id}?saved=status`);
+}
+
+async function updateCoreFieldsAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const tax_pct_raw = String(formData.get("tax_pct") ?? "");
+  const tax_pct = tax_pct_raw ? parseFloat(tax_pct_raw) : undefined;
+  const patch: Parameters<typeof updateInvoiceCoreFields>[1] = {
+    payment_terms: String(formData.get("payment_terms") ?? "").trim() || undefined,
+    customer_message: (String(formData.get("customer_message") ?? "").trim() || null) as string | null,
+    po_number: (String(formData.get("po_number") ?? "").trim() || null) as string | null,
+    notes: (String(formData.get("notes") ?? "").trim() || null) as string | null,
+  };
+  if (tax_pct !== undefined && Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
+  await updateInvoiceCoreFields(invoice_id, patch);
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  redirect(`/commercial/invoices/${invoice_id}?saved=details`);
+}
+
+async function deleteDraftAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const result = await softDeleteInvoice(invoice_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Delete failed"));
+  }
+  revalidatePath("/commercial/invoices");
+  redirect(`/commercial/invoices?deleted=1`);
+}
+
+// ────────────── Page ──────────────
+
+export default async function InvoiceDetailPage({ params, searchParams }: { params: PP; searchParams: SP }) {
+  const { id } = await params;
+  if (!UUID_RE.test(id)) notFound();
+  const sp = await searchParams;
+  const errorMsg = pickFirst(sp.error);
+  const savedTarget = pickFirst(sp.saved);
+
+  const invoice = await getCommercialInvoice(id);
+  if (!invoice) notFound();
+  const [lineItems, payments, statusLog, account, opp] = await Promise.all([
+    listInvoiceLineItems(invoice.id),
+    listInvoicePayments(invoice.id),
+    listInvoiceStatusLog(invoice.id),
+    getCommercialAccount(invoice.account_id),
+    getCommercialOpportunity(invoice.opportunity_id),
+  ]);
+
+  const displayStatus = deriveInvoiceStatus(invoice);
+  const nextStatuses = allowedNextStatuses(invoice.status);
+  const daysUntilDue = daysBetween(new Date().toISOString(), invoice.due_at);
+  const isDraft = invoice.status === "draft";
+  const isVoid = invoice.status === "void";
+
+  return (
+    <div className="space-y-5">
+      {/* Back link */}
+      <Link
+        href="/commercial/invoices"
+        className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800 min-h-[44px] touch-manipulation -ml-1 px-1"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M19 12H5 M12 19l-7-7 7-7" />
+        </svg>
+        All invoices
+      </Link>
+
+      {errorMsg && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800">
+          {errorMsg}
+        </div>
+      )}
+      {savedTarget === "details" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+          <span aria-hidden>✓</span>
+          <span>Details saved.</span>
+        </div>
+      )}
+      {savedTarget === "status" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+          <span aria-hidden>✓</span>
+          <span>Status updated.</span>
+        </div>
+      )}
+      {savedTarget === "payment" && pickFirst(sp.capped) !== "1" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+          <span aria-hidden>✓</span>
+          <span>Payment recorded.</span>
+        </div>
+      )}
+      {savedTarget === "payment" && pickFirst(sp.capped) === "1" && (() => {
+        const requested = Number(pickFirst(sp.requested) ?? 0);
+        const applied = Number(pickFirst(sp.applied) ?? 0);
+        return (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900">
+            <div className="flex items-center gap-2 font-semibold">
+              <span aria-hidden>✓</span>
+              <span>Payment recorded — capped to invoice balance</span>
+            </div>
+            <div className="mt-1 text-[12.5px] text-amber-800">
+              You entered <span className="font-mono">${(requested / 100).toFixed(2)}</span> but only{" "}
+              <span className="font-mono">${(applied / 100).toFixed(2)}</span> was owed. The extra{" "}
+              <span className="font-mono">${((requested - applied) / 100).toFixed(2)}</span> was not recorded — refund the payer separately if needed.
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Hero */}
+      <header className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold tracking-tight text-ppp-charcoal font-mono">
+                {invoice.invoice_number}
+              </h1>
+              <StatusPill status={displayStatus} />
+            </div>
+            <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+              {account && (
+                <>
+                  <Link href={`/commercial/accounts/${account.id}`} className="text-blue-700 hover:text-blue-800 underline underline-offset-2 font-medium">
+                    {account.company_name}
+                  </Link>
+                  <span aria-hidden>·</span>
+                </>
+              )}
+              {opp && (
+                <>
+                  <Link href={`/commercial/opportunities/${opp.id}`} className="text-blue-700 hover:text-blue-800 underline underline-offset-2">
+                    {opp.title}
+                  </Link>
+                  <span aria-hidden>·</span>
+                </>
+              )}
+              <span>Created {fmtEtDate(invoice.created_at)}</span>
+              {invoice.sent_at && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>Sent {fmtEtDate(invoice.sent_at)}</span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isDraft && (
+              <form action={deleteDraftAction} className="inline">
+                <input type="hidden" name="invoice_id" value={invoice.id} />
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
+                >
+                  Delete draft
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+
+        {/* Big numbers */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+          <BigNumber label="Total invoiced" value={formatCentsFull(invoice.total_cents)} tone="cc-brand" />
+          <BigNumber label="Paid" value={formatCentsFull(invoice.paid_cents)} tone="blue" />
+          <BigNumber label="Outstanding balance" value={formatCentsFull(invoice.balance_cents)} tone={invoice.balance_cents > 0 ? "cc-brand" : "neutral"} />
+          <BigNumber
+            label="Due"
+            value={fmtEtDate(invoice.due_at)}
+            sub={daysUntilDue === null ? undefined : daysUntilDue < 0 ? `${Math.abs(daysUntilDue)} days overdue` : daysUntilDue === 0 ? "Due today" : `In ${daysUntilDue} days`}
+            tone={
+              daysUntilDue !== null && daysUntilDue < 0 && !isVoid && invoice.balance_cents > 0
+                ? "rose"
+                : "neutral"
+            }
+          />
+        </div>
+      </header>
+
+      {/* Status actions */}
+      {nextStatuses.length > 0 && !isVoid && (
+        <section className="bg-white border border-cc-brand-200 rounded-xl p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
+            <div>
+              <h2 className="text-sm font-bold text-ppp-charcoal">Move this invoice forward</h2>
+              <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+                Currently <strong className="text-ppp-charcoal">{invoiceStatusLabel(invoice.status)}</strong>. Pick the next state.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {nextStatuses.map((s) => (
+              <form key={s} action={changeStatusAction} className="inline">
+                <input type="hidden" name="invoice_id" value={invoice.id} />
+                <input type="hidden" name="to_status" value={s} />
+                <button
+                  type="submit"
+                  disabled={s === "sent" && lineItems.length === 0}
+                  title={s === "sent" && lineItems.length === 0 ? "Add at least one line item first" : undefined}
+                  className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors ${
+                    s === "void"
+                      ? "border border-rose-200 text-rose-700 bg-white hover:bg-rose-50"
+                      : "bg-cc-brand-600 text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30"
+                  } disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none`}
+                >
+                  {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : invoiceStatusLabel(s)}
+                </button>
+              </form>
+            ))}
+          </div>
+          {invoice.status === "draft" && (
+            <p className="mt-3 text-[11px] text-ppp-charcoal-500 leading-snug">
+              <strong className="text-ppp-charcoal-700">Note:</strong> &quot;Mark as sent&quot; flips the status and starts the days-outstanding clock. You still email the invoice to the customer manually. Real auto-send comes later.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* Line items */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-sm font-bold text-ppp-charcoal">Line items</h2>
+            <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+              {lineItems.length === 0 ? "No items yet. Add rows for labor, materials, or fixed-fee scope." : `${lineItems.length} row${lineItems.length === 1 ? "" : "s"} · Subtotal ${formatCentsFull(invoice.subtotal_cents)}`}
+            </p>
+          </div>
+        </div>
+
+        {lineItems.length > 0 && (
+          <div className="overflow-x-auto -mx-2 px-2">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 border-b border-ppp-charcoal-100">
+                  <th className="py-2 pr-3">Description</th>
+                  <th className="py-2 pr-3 text-right w-24">Qty</th>
+                  <th className="py-2 pr-3 w-24">Unit</th>
+                  <th className="py-2 pr-3 text-right w-28">Unit price</th>
+                  <th className="py-2 pr-3 text-right w-28">Subtotal</th>
+                  <th className="py-2 pl-2 w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lineItems.map((li) => (
+                  <tr key={li.id} className="border-b border-ppp-charcoal-50 last:border-b-0 hover:bg-ppp-charcoal-50/40">
+                    <td className="py-2.5 pr-3 text-ppp-charcoal align-top">{li.description}</td>
+                    <td className="py-2.5 pr-3 text-right text-ppp-charcoal-700 tabular-nums align-top">
+                      {li.quantity.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-2.5 pr-3 text-ppp-charcoal-600 align-top">{li.unit ?? "—"}</td>
+                    <td className="py-2.5 pr-3 text-right text-ppp-charcoal-700 tabular-nums align-top">{formatCentsFull(li.unit_price_cents)}</td>
+                    <td className="py-2.5 pr-3 text-right font-semibold text-ppp-charcoal tabular-nums align-top">{formatCentsFull(li.subtotal_cents)}</td>
+                    <td className="py-2.5 pl-2 text-right align-top">
+                      {isDraft && (
+                        <form action={removeLineItemAction} className="inline">
+                          <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="item_id" value={li.id} />
+                          <button
+                            type="submit"
+                            title="Remove line item"
+                            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-ppp-charcoal-500 hover:bg-rose-50 hover:text-rose-700 touch-manipulation"
+                          >
+                            ×
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={4} className="py-3 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Subtotal</td>
+                  <td className="py-3 pr-3 text-right font-bold text-ppp-charcoal tabular-nums">{formatCentsFull(invoice.subtotal_cents)}</td>
+                  <td />
+                </tr>
+                {invoice.tax_pct > 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-1 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Tax ({invoice.tax_pct}%)</td>
+                    <td className="py-1 pr-3 text-right text-ppp-charcoal-700 tabular-nums">{formatCentsFull(invoice.total_cents - invoice.subtotal_cents)}</td>
+                    <td />
+                  </tr>
+                )}
+                <tr>
+                  <td colSpan={4} className="py-2 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-cc-brand-700">Total invoiced</td>
+                  <td className="py-2 pr-3 text-right font-bold text-cc-brand-700 tabular-nums">{formatCentsFull(invoice.total_cents)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        {/* Add line item (draft only) */}
+        {isDraft && (
+          <form action={addLineItemAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-12 gap-2">
+            <input type="hidden" name="invoice_id" value={invoice.id} />
+            <div className="sm:col-span-5">
+              <label htmlFor="li-description" className={LABEL_CLS}>Description *</label>
+              <input id="li-description" name="description" type="text" required maxLength={500} placeholder="e.g. Interior repaint — lobby + corridor" className={INPUT_CLS} />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="li-quantity" className={LABEL_CLS}>Qty *</label>
+              <input id="li-quantity" name="quantity" type="number" required step="0.01" min="0.01" defaultValue="1" className={INPUT_CLS} />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="li-unit" className={LABEL_CLS}>Unit</label>
+              <input id="li-unit" name="unit" type="text" maxLength={20} placeholder="hrs, sqft, ea" className={INPUT_CLS} />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="li-price" className={LABEL_CLS}>Unit price *</label>
+              <input id="li-price" name="unit_price" type="text" required inputMode="decimal" placeholder="$1,500.00" className={INPUT_CLS} />
+            </div>
+            <div className="sm:col-span-1 flex items-end">
+              <button
+                type="submit"
+                className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+              >
+                Add
+              </button>
+            </div>
+          </form>
+        )}
+        {!isDraft && lineItems.length === 0 && (
+          <p className="mt-3 text-[12px] text-ppp-charcoal-500 italic">
+            Line items can only be edited while the invoice is in draft. Void this invoice and start over to change the scope.
+          </p>
+        )}
+      </section>
+
+      {/* Payments */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-sm font-bold text-ppp-charcoal">Payments</h2>
+            <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+              {payments.length === 0 ? "No payments recorded yet." : `${payments.length} payment${payments.length === 1 ? "" : "s"} · ${formatCentsFull(invoice.paid_cents)} of ${formatCentsFull(invoice.total_cents)} paid`}
+            </p>
+          </div>
+        </div>
+
+        {payments.length > 0 && (
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {payments.map((p) => (
+              <li key={p.id} className="py-3 flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(p.amount_cents)}</span>
+                    <span className="text-[11px] text-ppp-charcoal-500">· {fmtEtDate(p.paid_at)}</span>
+                    {p.method && (
+                      <span className="inline-flex items-center px-1.5 py-0 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-medium">
+                        {PAYMENT_METHODS.find((m) => m.key === p.method)?.label ?? p.method}
+                      </span>
+                    )}
+                  </div>
+                  {(p.reference || p.notes) && (
+                    <div className="text-[12px] text-ppp-charcoal-600 mt-0.5">
+                      {p.reference && <span>Ref: {p.reference}</span>}
+                      {p.reference && p.notes && <span aria-hidden> · </span>}
+                      {p.notes && <span>{p.notes}</span>}
+                    </div>
+                  )}
+                </div>
+                {!isVoid && (
+                  <form action={removePaymentAction} className="inline">
+                    <input type="hidden" name="invoice_id" value={invoice.id} />
+                    <input type="hidden" name="payment_id" value={p.id} />
+                    <button
+                      type="submit"
+                      className="inline-flex items-center justify-center h-8 px-2.5 rounded-lg text-rose-700 text-[11px] font-semibold hover:bg-rose-50 touch-manipulation"
+                    >
+                      Remove
+                    </button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {invoice.balance_cents > 0 && !isVoid && !isDraft && (
+          <form action={addPaymentAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-12 gap-2">
+            <input type="hidden" name="invoice_id" value={invoice.id} />
+            <div className="sm:col-span-3">
+              <label htmlFor="pmt-amount" className={LABEL_CLS}>Amount *</label>
+              <input id="pmt-amount" name="amount" type="text" required inputMode="decimal" placeholder={formatCentsFull(invoice.balance_cents)} className={INPUT_CLS} />
+            </div>
+            <div className="sm:col-span-3">
+              <label htmlFor="pmt-date" className={LABEL_CLS}>Paid on</label>
+              <input id="pmt-date" name="paid_at" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className={INPUT_CLS} />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="pmt-method" className={LABEL_CLS}>Method</label>
+              <select id="pmt-method" name="method" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+                <option value="">—</option>
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m.key} value={m.key}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-3">
+              <label htmlFor="pmt-reference" className={LABEL_CLS}>Reference</label>
+              <input id="pmt-reference" name="reference" type="text" maxLength={80} placeholder="Check #, wire memo" className={INPUT_CLS} />
+            </div>
+            <div className="sm:col-span-1 flex items-end">
+              <button
+                type="submit"
+                className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+              >
+                Record
+              </button>
+            </div>
+            <div className="sm:col-span-12">
+              <label htmlFor="pmt-notes" className={LABEL_CLS}>Notes</label>
+              <input id="pmt-notes" name="notes" type="text" maxLength={500} placeholder="Optional — internal notes" className={INPUT_CLS} />
+            </div>
+          </form>
+        )}
+        {invoice.balance_cents === 0 && payments.length > 0 && (
+          <p className="mt-2 text-[12px] text-emerald-700 font-medium">✓ Fully paid.</p>
+        )}
+        {isDraft && (
+          <p className="mt-3 text-[12px] text-ppp-charcoal-500 italic">
+            Payments open after the invoice is marked as sent.
+          </p>
+        )}
+      </section>
+
+      {/* Details (editable in draft, read-only elsewhere) */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <div className="mb-3">
+          <h2 className="text-sm font-bold text-ppp-charcoal">Details</h2>
+          <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+            {isDraft ? "Terms, tax rate, PO#, and customer message shown to the customer." : "Read-only after send. Void this invoice to make changes."}
+          </p>
+        </div>
+        <form action={updateCoreFieldsAction} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input type="hidden" name="invoice_id" value={invoice.id} />
+          <div>
+            <label htmlFor="dt-terms" className={LABEL_CLS}>Payment terms</label>
+            <input id="dt-terms" name="payment_terms" type="text" maxLength={60} defaultValue={invoice.payment_terms ?? ""} disabled={!isDraft} className={INPUT_CLS} />
+          </div>
+          <div>
+            <label htmlFor="dt-tax" className={LABEL_CLS}>Tax % (flat)</label>
+            <input id="dt-tax" name="tax_pct" type="number" step="0.001" min="0" max="100" defaultValue={invoice.tax_pct} disabled={!isDraft} className={INPUT_CLS} />
+          </div>
+          <div>
+            <label htmlFor="dt-po" className={LABEL_CLS}>PO number</label>
+            <input id="dt-po" name="po_number" type="text" maxLength={80} defaultValue={invoice.po_number ?? ""} disabled={!isDraft} className={INPUT_CLS} />
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="dt-msg" className={LABEL_CLS}>Message to customer</label>
+            <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={!isDraft} placeholder="Optional — appears above line items on the customer's copy." className={TEXTAREA_CLS} />
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="dt-notes" className={LABEL_CLS}>Internal notes</label>
+            <textarea id="dt-notes" name="notes" rows={2} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={!isDraft} placeholder="Never on the customer copy." className={TEXTAREA_CLS} />
+          </div>
+          {isDraft && (
+            <div className="sm:col-span-2 flex justify-end">
+              <button type="submit" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px]">
+                Save details
+              </button>
+            </div>
+          )}
+        </form>
+      </section>
+
+      {/* Status history */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Status history</h2>
+        {statusLog.length === 0 ? (
+          <p className="text-[12px] text-ppp-charcoal-500 italic">Nothing logged yet.</p>
+        ) : (
+          <ol className="relative border-l border-ppp-charcoal-100 ml-1 space-y-4">
+            {statusLog.map((row) => (
+              <li key={row.id} className="ml-4 relative">
+                <span
+                  aria-hidden
+                  className="absolute -left-[21px] top-1 h-3 w-3 rounded-full bg-cc-brand-500 border-2 border-white shadow-sm"
+                />
+                <div className="text-sm font-semibold text-ppp-charcoal">
+                  {row.from_status ? `${invoiceStatusLabel(row.from_status as InvoiceStatus)} → ${invoiceStatusLabel(row.to_status as InvoiceStatus)}` : invoiceStatusLabel(row.to_status as InvoiceStatus)}
+                </div>
+                <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                  {fmtEtDate(row.created_at)}
+                  {row.note && <span> · {row.note}</span>}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function BigNumber({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "cc-brand" | "blue" | "rose" | "neutral" }) {
+  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+  const valueCls = tone === "rose" ? "text-rose-700" : tone === "cc-brand" ? "text-cc-brand-700" : "text-ppp-charcoal";
+  return (
+    <div className="relative border border-ppp-charcoal-100 rounded-lg px-4 py-3 overflow-hidden bg-gradient-to-br from-white to-ppp-charcoal-50/40">
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+        {label}
+      </div>
+      <div className={`text-xl sm:text-2xl font-bold mt-1 tabular-nums ${valueCls}`}>
+        {value}
+      </div>
+      {sub && <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: InvoiceStatus }) {
+  const cls =
+    status === "paid"
+      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+      : status === "overdue"
+      ? "bg-rose-100 text-rose-800 border-rose-300"
+      : status === "void"
+      ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
+      : status === "sent" || status === "viewed"
+      ? "bg-blue-100 text-blue-800 border-blue-300"
+      : status === "partial"
+      ? "bg-amber-100 text-amber-900 border-amber-300"
+      : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}>
+      {invoiceStatusLabel(status)}
+    </span>
+  );
+}

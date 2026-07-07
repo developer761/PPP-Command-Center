@@ -1040,6 +1040,22 @@ export default async function OpportunityDetailPage({
                 Duplicate
               </button>
             </form>
+            {/* Convert to invoice — Won opps only. Deep-links to the
+                invoices/new server route which spins up a draft in one
+                round-trip and lands the user on the invoice detail
+                page. Phase 3 primary conversion action. */}
+            {opp.status === "won" && (
+              <Link
+                href={`/commercial/invoices/new?opp=${opp.id}`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+                title="Create a draft invoice from this Won opportunity — you can edit line items + tax on the invoice detail page."
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+                Convert to invoice
+              </Link>
+            )}
             {/* Reopen — only surfaces for closed deals (won/lost/no_bid).
                 Replaces the ChangeStatusCard on terminal opps since the
                 only allowed next is reopened anyway; one focused action
