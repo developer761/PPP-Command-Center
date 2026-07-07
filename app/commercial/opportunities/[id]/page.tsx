@@ -1327,25 +1327,30 @@ async function OpportunityInvoicesPanel({
                 <li key={inv.id}>
                   <Link
                     href={`/commercial/invoices/${inv.id}`}
-                    className="group/inv block px-3 py-2.5 rounded-lg border border-ppp-charcoal-100 hover:border-blue-300 hover:bg-blue-50/40 transition-colors touch-manipulation"
+                    aria-label={`Open invoice ${inv.invoice_number}${inv.due_at ? `, due ${fmtEtDate(inv.due_at)}` : ""}`}
+                    className="group/inv block px-3 py-2.5 rounded-lg border border-ppp-charcoal-100 hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm transition-all touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal">
+                          <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-blue-800 group-hover/inv:underline underline-offset-2 transition-colors">
                             {inv.invoice_number}
                           </span>
                           <InvoicePill status={displayStatus} />
                           {inv.due_at && (
                             <span
-                              className={`text-[11px] font-semibold ${
+                              className={`inline-flex items-center gap-1 text-[11px] font-semibold group-hover/inv:underline underline-offset-2 ${
                                 isOverdue
                                   ? "text-rose-700"
                                   : daysUntilDue !== null && daysUntilDue <= 7
                                   ? "text-amber-700"
-                                  : "text-ppp-charcoal-600"
+                                  : "text-blue-700"
                               }`}
                             >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <rect x="3" y="4" width="18" height="18" rx="2" />
+                                <path d="M16 2v4 M8 2v4 M3 10h18" />
+                              </svg>
                               Due {fmtEtDate(inv.due_at)}
                             </span>
                           )}

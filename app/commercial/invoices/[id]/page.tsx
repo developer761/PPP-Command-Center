@@ -24,6 +24,7 @@ import {
   addPayment,
   removePayment,
   updateInvoiceCoreFields,
+  getInvoiceContext,
 } from "@/lib/commercial/invoices/db";
 import {
   changeInvoiceStatus,
@@ -56,6 +57,24 @@ type SP = Promise<{
 
 // ────────────── Server actions ──────────────
 
+/**
+ * Revalidate every surface that shows this invoice's data. Called after
+ * any mutation (payment recorded, status flipped, line item added, etc.)
+ * so the opp detail's InvoicesPanel and the account 360 rollup tiles
+ * update at the same time as the invoice detail itself.
+ *
+ * Karan 2026-07-07: without this, the parent opp's progress bar was
+ * stale until Next's default revalidation window kicked in.
+ */
+async function revalidateInvoiceContext(invoice_id: string): Promise<void> {
+  const { opportunity_id, account_id } = await getInvoiceContext(invoice_id);
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+  if (opportunity_id) revalidatePath(`/commercial/opportunities/${opportunity_id}`);
+  if (account_id) revalidatePath(`/commercial/accounts/${account_id}`);
+}
+
 async function addLineItemAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -75,7 +94,7 @@ async function addLineItemAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to add line item."));
   }
-  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}`);
 }
 
@@ -88,7 +107,7 @@ async function removeLineItemAction(formData: FormData) {
   const item_id = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(item_id)) redirect("/commercial/invoices");
   await removeLineItem(invoice_id, item_id);
-  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}`);
 }
 
@@ -118,7 +137,7 @@ async function addPaymentAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to record payment."));
   }
-  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  await revalidateInvoiceContext(invoice_id);
   // If the payment was over the balance, surface the capped amount so the
   // recorder isn't confused when their $10k input records as $5k. The UI
   // reads `capped` + `applied` + `requested` from the query and shows an
@@ -144,7 +163,7 @@ async function removePaymentAction(formData: FormData) {
   const payment_id = String(formData.get("payment_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(payment_id)) redirect("/commercial/invoices");
   await removePayment(invoice_id, payment_id, user.id);
-  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}`);
 }
 
@@ -161,7 +180,7 @@ async function changeStatusAction(formData: FormData) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error));
   }
   revalidatePath("/commercial/invoices");
-  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}?saved=status`);
 }
 
@@ -198,7 +217,7 @@ async function updateCoreFieldsAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Could not save details."));
   }
-  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}?saved=details`);
 }
 
@@ -209,11 +228,19 @@ async function deleteDraftAction(formData: FormData) {
   if (!user) redirect("/");
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  // Capture context BEFORE the soft-delete so we can revalidate the
+  // parent opp + account. After deleted_at is set, the row is still in
+  // the DB, but semantically the panel should re-render without it —
+  // the roll-up + progress bar totals need to drop this invoice's share.
+  const ctx = await getInvoiceContext(invoice_id);
   const result = await softDeleteInvoice(invoice_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Delete failed"));
   }
   revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+  if (ctx.opportunity_id) revalidatePath(`/commercial/opportunities/${ctx.opportunity_id}`);
+  if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
   redirect(`/commercial/invoices?deleted=1`);
 }
 

@@ -95,6 +95,28 @@ export type ListInvoicesFilters = {
   search?: string;
 };
 
+/**
+ * Given an invoice_id, returns the parent opportunity + account IDs so
+ * server actions can revalidate every surface that shows this invoice's
+ * data (opp detail's InvoicesPanel, account 360's rollup tiles, etc).
+ * Returns nulls if the invoice or its parents don't exist.
+ */
+export async function getInvoiceContext(invoice_id: string): Promise<{
+  opportunity_id: string | null;
+  account_id: string | null;
+}> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_invoices")
+    .select("opportunity_id, account_id")
+    .eq("id", invoice_id)
+    .maybeSingle();
+  return {
+    opportunity_id: (data?.opportunity_id as string | undefined) ?? null,
+    account_id: (data?.account_id as string | undefined) ?? null,
+  };
+}
+
 // ────────────── Reads ──────────────
 
 export async function listCommercialInvoices(
