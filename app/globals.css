@@ -74,10 +74,14 @@
   --color-ppp-charcoal-800: #2f2e30;
   --color-ppp-charcoal-900: #1f1e20;
 
-  /* ─── Surfaces ─── */
+  /* ─── Surfaces ───
+   * Karan 2026-07-07: warmed the muted surface a touch (fafbfc → f7f6f4)
+   * so cards read as "lit from above" instead of floating on flat white.
+   * The subtle shift makes shadows read more clearly + adds warmth
+   * without any hue that competes with the red/blue brand palette. */
   --color-surface: #ffffff;
-  --color-surface-muted: #fafbfc;
-  --color-surface-subtle: #f4f5f7;
+  --color-surface-muted: #f7f6f4;
+  --color-surface-subtle: #eeece7;
 
   /* ─── Type — Roboto is the official PPP primary font ─── */
   --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;

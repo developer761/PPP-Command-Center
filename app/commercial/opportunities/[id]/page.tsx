@@ -897,8 +897,8 @@ const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
   if (!raw) return { primary: "overview", sub: null };
   // Direct primary hits.
-  if (raw === "overview" || raw === "docs" || raw === "activity" || raw === "debrief") {
-    return { primary: raw, sub: null };
+  if (raw === "overview" || raw === "docs" || raw === "activity" || raw === "invoices" || raw === "debrief") {
+    return { primary: raw as PrimaryTab, sub: null };
   }
   // Legacy flat sub-tab keys → route to the primary + explicit sub.
   if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };

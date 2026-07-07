@@ -30,7 +30,10 @@ type SP = Promise<{
   sort?: string;
   account_id?: string;
   deleted?: string;
+  view?: string;
 }>;
+
+type ViewMode = "list" | "grouped";
 
 export default async function CommercialInvoicesPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
@@ -42,6 +45,8 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     ? ("overdue" as InvoiceStatus)
     : undefined;
   const sortKey = pickFirst(sp.sort) ?? "recent";
+  const viewRaw = pickFirst(sp.view);
+  const viewMode: ViewMode = viewRaw === "grouped" ? "grouped" : "list";
   const accountIdRaw = pickFirst(sp.account_id);
   const accountIdFilter = accountIdRaw && UUID_RE.test(accountIdRaw) ? accountIdRaw : undefined;
   const deletedFlash = pickFirst(sp.deleted) === "1";
@@ -53,6 +58,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     listCommercialOpportunities({}),
   ]);
   const accountById = new Map(accounts.map((a) => [a.id, a]));
+  const oppById = new Map(allOpps.map((o) => [o.id, o]));
   // Only Won opps can be invoiced; sort newest first so the picker shows
   // the most recent wins on top (Karan's typical flow after a Win/Loss
   // Debrief lands).
@@ -127,6 +133,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     if (statusFilter) p.set("status", statusFilter);
     if (newSort !== "recent") p.set("sort", newSort);
     if (accountIdFilter) p.set("account_id", accountIdFilter);
+    if (viewMode !== "list") p.set("view", viewMode);
     return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
   };
   const setStatusHref = (newStatus: InvoiceStatus | null): string => {
@@ -135,6 +142,16 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     if (newStatus) p.set("status", newStatus);
     if (sortKey !== "recent") p.set("sort", sortKey);
     if (accountIdFilter) p.set("account_id", accountIdFilter);
+    if (viewMode !== "list") p.set("view", viewMode);
+    return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
+  };
+  const setViewHref = (newView: ViewMode): string => {
+    const p = new URLSearchParams();
+    if (search) p.set("q", search);
+    if (statusFilter) p.set("status", statusFilter);
+    if (sortKey !== "recent") p.set("sort", sortKey);
+    if (accountIdFilter) p.set("account_id", accountIdFilter);
+    if (newView !== "list") p.set("view", newView);
     return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
   };
 
@@ -320,6 +337,44 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             })}
           </div>
 
+          {/* View toggle — List (default flat) vs Grouped (per opp).
+              Karan 2026-07-07: "have the invoices for those in the
+              invoice tab itself and don't automatically direct them to
+              the opportunities tab, leave them in the invoices tab
+              with the new layout for that specific opportunity." */}
+          <div className="hidden md:inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden shrink-0">
+            <Link
+              href={setViewHref("list")}
+              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1 touch-manipulation ${
+                viewMode === "list"
+                  ? "bg-cc-brand-50 text-cc-brand-700"
+                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+              }`}
+              title="Show every invoice in one flat list"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 6h18 M3 12h18 M3 18h18" />
+              </svg>
+              List
+            </Link>
+            <Link
+              href={setViewHref("grouped")}
+              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1 touch-manipulation border-l border-ppp-charcoal-200 ${
+                viewMode === "grouped"
+                  ? "bg-cc-brand-50 text-cc-brand-700"
+                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+              }`}
+              title="Group invoices under their parent opportunity — see roll-up + progress across the whole deal"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3" y="3" width="18" height="6" rx="1" />
+                <rect x="3" y="11" width="12" height="4" rx="1" />
+                <rect x="3" y="17" width="12" height="4" rx="1" />
+              </svg>
+              By opp
+            </Link>
+          </div>
+
           {/* Sort popover */}
           <details className="relative inline-block group">
             <summary
@@ -413,8 +468,20 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             </Link>
           )}
         </div>
+      ) : viewMode === "grouped" ? (
+        // Grouped-by-opportunity view. Each opp becomes a card with its
+        // own roll-up + child invoices, so users can see the full
+        // progress-billing story per deal without leaving the invoices
+        // page. Karan 2026-07-07: "don't automatically direct them to
+        // the opportunities tab, leave them in the invoices tab with the
+        // new layout for that specific opportunity."
+        <GroupedByOpp
+          invoices={sorted}
+          oppById={oppById}
+          accountById={accountById}
+        />
       ) : (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-bold text-ppp-charcoal">
               {sorted.length} invoice{sorted.length === 1 ? "" : "s"}
@@ -434,6 +501,141 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+function GroupedByOpp({
+  invoices,
+  oppById,
+  accountById,
+}: {
+  invoices: CommercialInvoice[];
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string }>;
+  accountById: Map<string, { id: string; company_name: string }>;
+}) {
+  // Group invoices by opportunity_id. Preserve chronological order per
+  // group so the story reads top-down (oldest → newest inside each opp).
+  const groups = new Map<string, CommercialInvoice[]>();
+  for (const inv of invoices) {
+    const arr = groups.get(inv.opportunity_id) ?? [];
+    arr.push(inv);
+    groups.set(inv.opportunity_id, arr);
+  }
+  // Sort opps by most-recent invoice activity so the deals you're
+  // actively billing bubble to the top.
+  const oppOrder = Array.from(groups.entries()).sort((a, b) => {
+    const aLatest = Math.max(...a[1].map((i) => new Date(i.created_at).getTime()));
+    const bLatest = Math.max(...b[1].map((i) => new Date(i.created_at).getTime()));
+    return bLatest - aLatest;
+  });
+
+  if (oppOrder.length === 0) {
+    return (
+      <div className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+        <p className="text-[13px] text-ppp-charcoal-600">No invoices to group.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {oppOrder.map(([oppId, groupInvoices]) => {
+        const opp = oppById.get(oppId);
+        const account = opp ? accountById.get(opp.account_id) : null;
+        // Roll-up per opp — same rules as OpportunityInvoicesPanel:
+        // exclude drafts + voids from billable totals so numbers reflect
+        // real customer-facing billing.
+        const billable = groupInvoices.filter((i) => i.status !== "draft" && i.status !== "void");
+        const totalInvoiced = billable.reduce((s, i) => s + i.total_cents, 0);
+        const totalPaid = billable.reduce((s, i) => s + i.paid_cents, 0);
+        const totalBalance = totalInvoiced - totalPaid;
+        const overduePresent = groupInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
+        // Sort inside a group chronologically so progress-billing reads
+        // in the order the invoices were issued.
+        const sortedGroup = [...groupInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
+        return (
+          <section
+            key={oppId}
+            className={`bg-white border rounded-xl overflow-hidden shadow-sm ${
+              overduePresent ? "border-rose-200" : "border-ppp-charcoal-100"
+            }`}
+          >
+            {/* Opp header — title + account + roll-up strip */}
+            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-br from-white to-blue-50/30">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    {opp ? (
+                      <Link
+                        href={`/commercial/opportunities/${opp.id}?tab=invoices`}
+                        className="text-[15px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 truncate"
+                      >
+                        {opp.title}
+                      </Link>
+                    ) : (
+                      <span className="text-[15px] font-bold text-ppp-charcoal-400 italic">Opportunity unavailable</span>
+                    )}
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
+                      {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
+                    </span>
+                    {overduePresent && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-300 rounded px-1.5 py-0.5">
+                        Overdue
+                      </span>
+                    )}
+                  </div>
+                  {account && (
+                    <div className="text-[12px] text-ppp-charcoal-600 mt-0.5">
+                      <Link href={`/commercial/accounts/${account.id}`} className="text-blue-700 hover:text-blue-800 underline underline-offset-2">
+                        {account.company_name}
+                      </Link>
+                    </div>
+                  )}
+                </div>
+                {opp && opp.status === "won" && (
+                  <Link
+                    href={`/commercial/invoices/new?opp=${opp.id}`}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-white text-cc-brand-700 text-[11.5px] font-semibold hover:bg-cc-brand-50 min-h-[36px] touch-manipulation"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M12 5v14 M5 12h14" />
+                    </svg>
+                    Add invoice
+                  </Link>
+                )}
+              </div>
+              {/* Mini roll-up strip */}
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="border border-cc-brand-200 bg-cc-brand-50/40 rounded-lg px-2.5 py-1.5">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Invoiced</div>
+                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalInvoiced)}</div>
+                </div>
+                <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg px-2.5 py-1.5">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Paid</div>
+                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalPaid)}</div>
+                </div>
+                <div className={`border rounded-lg px-2.5 py-1.5 ${
+                  totalBalance > 0 ? "border-blue-200 bg-blue-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
+                }`}>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Balance</div>
+                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance)}</div>
+                </div>
+              </div>
+            </div>
+            {/* Child invoices */}
+            <ul className="divide-y divide-ppp-charcoal-100">
+              {sortedGroup.map((inv) => (
+                <InvoiceRow
+                  key={inv.id}
+                  invoice={inv}
+                  accountName={account?.company_name ?? "—"}
+                />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }
