@@ -1211,13 +1211,29 @@ export default async function OpportunityDetailPage({
  * plus a "New invoice" CTA that hits the same converter route. Empty
  * state guides the user to their first invoice on this deal.
  */
-async function OpportunityInvoicesPanel({ oppId, className }: { oppId: string; className?: string }) {
+async function OpportunityInvoicesPanel({
+  oppId,
+  bidMidpointCents,
+  className,
+}: {
+  oppId: string;
+  bidMidpointCents: number | null;
+  className?: string;
+}) {
   const invoices = await listCommercialInvoices({ opportunityId: oppId });
   // Roll-ups — exclude drafts + voids so the numbers reflect real billing.
   const billable = invoices.filter((i) => i.status !== "draft" && i.status !== "void");
   const totalInvoicedCents = billable.reduce((acc, i) => acc + i.total_cents, 0);
   const totalPaidCents = billable.reduce((acc, i) => acc + i.paid_cents, 0);
   const totalBalanceCents = totalInvoicedCents - totalPaidCents;
+  // % of contract billed — how much of the estimated deal value have we
+  // actually invoiced? Above 100% = we billed for more than we estimated
+  // (change orders, scope creep, or the estimate was low). Below = still
+  // room to bill. Null when the opp has no bid range (skip the stat).
+  const pctBilled =
+    bidMidpointCents && bidMidpointCents > 0
+      ? Math.round((totalInvoicedCents / bidMidpointCents) * 100)
+      : null;
   return (
     <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
@@ -1260,8 +1276,10 @@ async function OpportunityInvoicesPanel({ oppId, className }: { oppId: string; c
         </div>
       ) : (
         <>
-          {/* Roll-up strip */}
-          <div className="grid grid-cols-3 gap-2 mb-3">
+          {/* Roll-up strip — 3 tiles by default, 4 when the opp has a
+              bid range (so % billed vs contract shows). Alex-love feature
+              per audit: at-a-glance "am I under/over billed for this deal?" */}
+          <div className={`grid ${pctBilled !== null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2 mb-3`}>
             <MiniStat label="Invoiced" value={formatCentsCompact(totalInvoicedCents)} tone="cc-brand" />
             <MiniStat label="Paid" value={formatCentsCompact(totalPaidCents)} tone="emerald" />
             <MiniStat
@@ -1269,6 +1287,13 @@ async function OpportunityInvoicesPanel({ oppId, className }: { oppId: string; c
               value={formatCentsCompact(totalBalanceCents)}
               tone={totalBalanceCents > 0 ? "blue" : "neutral"}
             />
+            {pctBilled !== null && (
+              <MiniStat
+                label="% of contract"
+                value={`${pctBilled}%`}
+                tone={pctBilled > 100 ? "cc-brand" : "blue"}
+              />
+            )}
           </div>
           <ul className="space-y-1.5">
             {invoices.map((inv) => {
@@ -1461,7 +1486,15 @@ async function InfoTab({
         />
       )}
       {opp.status === "won" && (
-        <OpportunityInvoicesPanel oppId={opp.id} className="lg:col-span-2" />
+        <OpportunityInvoicesPanel
+          oppId={opp.id}
+          bidMidpointCents={
+            opp.bid_value_low_cents != null && opp.bid_value_high_cents != null
+              ? Math.round((opp.bid_value_low_cents + opp.bid_value_high_cents) / 2)
+              : null
+          }
+          className="lg:col-span-2"
+        />
       )}
       <Card
         title="Deal"

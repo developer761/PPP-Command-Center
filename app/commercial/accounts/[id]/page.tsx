@@ -259,17 +259,11 @@ export default async function CommercialAccountDetailPage({
         </Link>
         <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate flex items-center gap-2">
-              {account.is_key_relationship && (
-                <span
-                  className="text-amber-500 text-2xl leading-none shrink-0"
-                  title="★ Key Relationship — strategic partnership"
-                  aria-label="Key Relationship"
-                >
-                  ★
-                </span>
-              )}
-              <span className="truncate">{account.company_name}</span>
+            {/* Karan 2026-07-07 audit: dropped duplicate ★ inline star.
+                The Key Relationship pill below already carries the signal;
+                two stars was noise. */}
+            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate">
+              {account.company_name}
             </h1>
             {account.dba && (
               <p className="text-sm text-ppp-charcoal-500 mt-0.5">d/b/a {account.dba}</p>
@@ -348,7 +342,7 @@ export default async function CommercialAccountDetailPage({
               <li key={t.key}>
                 <Link
                   href={`/commercial/accounts/${id}?tab=${t.key}`}
-                  className={`inline-flex items-center px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
+                  className={`inline-flex items-center gap-1.5 px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
                       ? "border-cc-brand-600 text-ppp-charcoal"
                       : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-100"
