@@ -25,6 +25,7 @@ import {
   removePayment,
   updateInvoiceCoreFields,
   getInvoiceContext,
+  listCommercialInvoices,
 } from "@/lib/commercial/invoices/db";
 import {
   changeInvoiceStatus,
@@ -255,13 +256,23 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
   const invoice = await getCommercialInvoice(id);
   if (!invoice) notFound();
-  const [lineItems, payments, statusLog, account, opp] = await Promise.all([
+  const [lineItems, payments, statusLog, account, opp, siblingInvoices] = await Promise.all([
     listInvoiceLineItems(invoice.id),
     listInvoicePayments(invoice.id),
     listInvoiceStatusLog(invoice.id),
     getCommercialAccount(invoice.account_id),
     getCommercialOpportunity(invoice.opportunity_id),
+    listCommercialInvoices({ opportunityId: invoice.opportunity_id }),
   ]);
+  // Karan 2026-07-07: sibling-invoice nav. If this opp has multiple
+  // invoices (progress billing), show a compact strip so users can hop
+  // between them without going back to the opp panel. Sort by
+  // created_at so the strip reads chronologically.
+  const siblingsSorted = [...siblingInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const siblingIdx = siblingsSorted.findIndex((s) => s.id === invoice.id);
+  const prevSibling = siblingIdx > 0 ? siblingsSorted[siblingIdx - 1] : null;
+  const nextSibling = siblingIdx >= 0 && siblingIdx < siblingsSorted.length - 1 ? siblingsSorted[siblingIdx + 1] : null;
+  const hasSiblings = siblingsSorted.length > 1;
 
   const displayStatus = deriveInvoiceStatus(invoice);
   const nextStatuses = allowedNextStatuses(invoice.status);
@@ -281,6 +292,72 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         </svg>
         All invoices
       </Link>
+
+      {/* Sibling nav — only shown when this opp has multiple invoices
+          (progress billing). Prev/Next hops + "N of M" counter + link
+          back to the opp panel. Alex-love feature for staying in a
+          single opp's billing story. */}
+      {hasSiblings && opp && (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 text-[12px] text-ppp-charcoal-600">
+            <span className="inline-flex items-center gap-1">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400">
+                <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg>
+              <span className="font-semibold text-ppp-charcoal">
+                Invoice {siblingIdx + 1} of {siblingsSorted.length}
+              </span>
+              <span aria-hidden>·</span>
+              <Link
+                href={`/commercial/opportunities/${opp.id}?tab=info`}
+                className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
+              >
+                {opp.title}
+              </Link>
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            {prevSibling ? (
+              <Link
+                href={`/commercial/invoices/${prevSibling.id}`}
+                aria-label={`Previous invoice: ${prevSibling.invoice_number}`}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 min-h-[36px] touch-manipulation"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+                <span className="font-mono">{prevSibling.invoice_number.replace(/^PPP-INV-/, "…")}</span>
+              </Link>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-100 text-[12px] font-medium text-ppp-charcoal-300 min-h-[36px]" aria-hidden>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+                First
+              </span>
+            )}
+            {nextSibling ? (
+              <Link
+                href={`/commercial/invoices/${nextSibling.id}`}
+                aria-label={`Next invoice: ${nextSibling.invoice_number}`}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 min-h-[36px] touch-manipulation"
+              >
+                <span className="font-mono">{nextSibling.invoice_number.replace(/^PPP-INV-/, "…")}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </Link>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-100 text-[12px] font-medium text-ppp-charcoal-300 min-h-[36px]" aria-hidden>
+                Last
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800">
