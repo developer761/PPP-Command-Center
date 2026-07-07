@@ -18,7 +18,7 @@
  * (we use monotonic IDs) — the server picks up whatever's present.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { INPUT_CLS, LABEL_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 
 type Row = {
@@ -39,17 +39,33 @@ export default function BatchInvoiceRows() {
   // Which row indexes have the "More details" panel open. Set of ids.
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const nextId = useMemo(() => Math.max(0, ...rows.map((r) => r.id)) + 1, [rows]);
+  // Focus + scroll the newly-added row's description input. Audit finding:
+  // on mobile especially, appending a row past the fold left users hunting.
+  const [focusRowId, setFocusRowId] = useState<number | null>(null);
+  const rowRefs = useRef<Map<number, HTMLInputElement | null>>(new Map());
+  useEffect(() => {
+    if (focusRowId === null) return;
+    const el = rowRefs.current.get(focusRowId);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Small delay so the scroll animation lands before the caret jumps.
+      const t = setTimeout(() => el.focus({ preventScroll: true }), 200);
+      return () => clearTimeout(t);
+    }
+  }, [focusRowId]);
 
   const addRow = () => {
     const nextNum = rows.length + 1;
+    const newId = nextId;
     setRows((prev) => [
       ...prev,
       {
-        id: nextId,
+        id: newId,
         suggestedDue: suggestDue(30 * nextNum),
         suggestedDescription: `Progress payment #${nextNum}`,
       },
     ]);
+    setFocusRowId(newId);
   };
 
   const removeRow = (id: number) => {
@@ -115,6 +131,9 @@ export default function BatchInvoiceRows() {
                     defaultValue={row.suggestedDescription}
                     placeholder="What is this bill for?"
                     className={INPUT_CLS}
+                    ref={(el) => {
+                      rowRefs.current.set(rowKey, el);
+                    }}
                   />
                 </div>
                 <div className="sm:col-span-2">
