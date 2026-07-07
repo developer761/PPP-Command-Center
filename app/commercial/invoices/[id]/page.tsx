@@ -573,13 +573,13 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     <td className="py-2.5 pr-3 text-right text-ppp-charcoal-700 tabular-nums align-top">{formatCentsFull(li.unit_price_cents)}</td>
                     <td className="py-2.5 pr-3 text-right font-semibold text-ppp-charcoal tabular-nums align-top">{formatCentsFull(li.subtotal_cents)}</td>
                     <td className="py-2.5 pl-2 text-right align-top">
-                      {isDraft && (
+                      {!isVoid && (
                         <form action={removeLineItemAction} className="inline">
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="item_id" value={li.id} />
                           <button
                             type="submit"
-                            title="Remove line item"
+                            title="Remove line item — recalculates total + progress"
                             className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-ppp-charcoal-500 hover:bg-rose-50 hover:text-rose-700 touch-manipulation"
                           >
                             ×
@@ -613,8 +613,11 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </div>
         )}
 
-        {/* Add line item (draft only) */}
-        {isDraft && (
+        {/* Add line item — editable at any non-void status.
+            Karan 2026-07-07: "update the total even if it's not the
+            full invoice". Line items can adjust after sending to
+            handle scope changes without void-and-recreate. */}
+        {!isVoid && (
           <form action={addLineItemAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-12 gap-2">
             <input type="hidden" name="invoice_id" value={invoice.id} />
             <div className="sm:col-span-5">
@@ -643,9 +646,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </div>
           </form>
         )}
-        {!isDraft && lineItems.length === 0 && (
-          <p className="mt-3 text-[12px] text-ppp-charcoal-500 italic">
-            Line items can only be edited while the invoice is in draft. Void this invoice and start over to change the scope.
+        {!isDraft && !isVoid && (
+          <p className="mt-3 text-[11.5px] text-ppp-charcoal-500 italic">
+            Adding or removing a line item changes the total + rebalances the payment progress bar. Payments already recorded stay intact.
           </p>
         )}
       </section>

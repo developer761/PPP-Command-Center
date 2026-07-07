@@ -857,14 +857,16 @@ async function createSubmittalAction(formData: FormData) {
 //
 // Sub-navigation drives from URL `?tab=X&sub=Y`. Missing/invalid `sub`
 // falls back to the group's default (Info / Plans / Notes).
-type PrimaryTab = "overview" | "docs" | "activity" | "debrief";
+type PrimaryTab = "overview" | "docs" | "activity" | "invoices" | "debrief";
 type SubTab = "info" | "team" | "plans" | "finishes" | "submittals" | "notes" | "tasks" | "timeline";
-const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
+// Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
+// Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
+const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "docs", label: "Documents" },
   { key: "activity", label: "Activity" },
 ];
-const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief">, { key: SubTab; label: string }[]> = {
+const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
     { key: "team", label: "Team" },
@@ -880,7 +882,7 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief">, { key: SubTab;
     { key: "timeline", label: "Timeline" },
   ],
 };
-const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief">, SubTab> = {
+const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, SubTab> = {
   overview: "info",
   docs: "plans",
   activity: "notes",
@@ -926,17 +928,28 @@ export default async function OpportunityDetailPage({
   // until filled in). Sub-tab keys come from URL `?sub=Y`; missing/
   // invalid falls back to the group's default.
   const isOppTerminal = isTerminalOpportunityStatus(opp.status);
-  const visibleTabs: { key: PrimaryTab; label: string }[] = isOppTerminal
-    ? [...PRIMARY_TABS, { key: "debrief", label: "Debrief" }]
-    : PRIMARY_TABS;
+  const isOppWon = opp.status === "won";
+  // Karan 2026-07-07: Invoices tab is Won-only. Slots after Activity so
+  // it reads chronologically (Overview → Docs → Activity → Invoices).
+  const visibleTabs: { key: PrimaryTab; label: string }[] = [
+    ...PRIMARY_TABS_BASE,
+    ...(isOppWon ? [{ key: "invoices" as PrimaryTab, label: "Invoices" }] : []),
+    ...(isOppTerminal ? [{ key: "debrief" as PrimaryTab, label: "Debrief" }] : []),
+  ];
   const rawTab = pickFirst(sp.tab);
   const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
   // Only allow debrief primary on terminal opps.
   const primary: PrimaryTab =
-    resolvedPrimary === "debrief" && !isOppTerminal ? "overview" : resolvedPrimary;
+    resolvedPrimary === "debrief" && !isOppTerminal
+      ? "overview"
+      : resolvedPrimary === "invoices" && !isOppWon
+      ? "overview"
+      : resolvedPrimary;
   const rawSub = pickFirst(sp.sub) as SubTab | undefined;
+  // debrief + invoices are leaves (no sub-tabs). Only overview/docs/
+  // activity carry sub-tabs.
   const sub: SubTab | null =
-    primary === "debrief"
+    primary === "debrief" || primary === "invoices"
       ? null
       : (rawSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === rawSub))
       ? rawSub
@@ -947,7 +960,8 @@ export default async function OpportunityDetailPage({
   // `?tab=team&error=...` etc. The `tab` variable below stays a flat
   // SubTab | "debrief" so all the existing tab === "team" checks below
   // continue to work — we just derive it from the resolved primary+sub.
-  const tab: SubTab | "debrief" = primary === "debrief" ? "debrief" : sub!;
+  const tab: SubTab | "debrief" | "invoices" =
+    primary === "debrief" ? "debrief" : primary === "invoices" ? "invoices" : sub!;
 
   const editedOk = pickFirst(sp.edited) === "1";
   const clonedOk = pickFirst(sp.cloned) === "1";
@@ -1147,7 +1161,7 @@ export default async function OpportunityDetailPage({
           (Overview/Documents/Activity). Debrief has no sub-nav. Pills
           are red-tinted when active so the two-level hierarchy is
           visually obvious. */}
-      {primary !== "debrief" && (
+      {primary !== "debrief" && primary !== "invoices" && (
         <div className="flex flex-wrap items-center gap-1.5">
           {SUB_TABS_BY_PRIMARY[primary].map((s) => {
             const active = s.key === sub;
@@ -1193,6 +1207,22 @@ export default async function OpportunityDetailPage({
           errorMessage={pickFirst(sp.error)}
         />
       )}
+      {tab === "invoices" && isOppWon && (
+        <OpportunityInvoicesPanel
+          oppId={opp.id}
+          bidMidpointCents={
+            opp.bid_value_low_cents != null && opp.bid_value_high_cents != null
+              ? Math.round((opp.bid_value_low_cents + opp.bid_value_high_cents) / 2)
+              : null
+          }
+          invoicesCreated={
+            pickFirst(sp.invoices_created) ? Number(pickFirst(sp.invoices_created)) : 0
+          }
+          invoiceErrors={
+            pickFirst(sp.invoice_errors) ? Number(pickFirst(sp.invoice_errors)) : 0
+          }
+        />
+      )}
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} assignedOk={pickFirst(sp.assigned) === "1"} />}
       {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
@@ -1224,10 +1254,14 @@ async function OpportunityInvoicesPanel({
   oppId,
   bidMidpointCents,
   className,
+  invoicesCreated,
+  invoiceErrors,
 }: {
   oppId: string;
   bidMidpointCents: number | null;
   className?: string;
+  invoicesCreated?: number;
+  invoiceErrors?: number;
 }) {
   const invoices = await listCommercialInvoices({ opportunityId: oppId });
   // Roll-ups — exclude drafts + voids so the numbers reflect real billing.
@@ -1244,6 +1278,27 @@ async function OpportunityInvoicesPanel({
       ? Math.round((totalInvoicedCents / bidMidpointCents) * 100)
       : null;
   return (
+    <div className="space-y-3">
+      {invoicesCreated && invoicesCreated > 0 ? (
+        <div className={`rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
+          invoiceErrors && invoiceErrors > 0
+            ? "bg-amber-50 border border-amber-200 text-amber-900"
+            : "bg-blue-50 border border-blue-200 text-blue-700"
+        }`}>
+          <span>
+            <strong>{invoicesCreated}</strong> invoice{invoicesCreated === 1 ? "" : "s"} created.
+            {invoiceErrors && invoiceErrors > 0 && (
+              <> {invoiceErrors} row{invoiceErrors === 1 ? "" : "s"} skipped due to input errors.</>
+            )}
+          </span>
+          <Link
+            href={`/commercial/opportunities/${oppId}?tab=invoices`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      ) : null}
     <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
         <div className="flex items-center gap-2">
@@ -1400,6 +1455,7 @@ async function OpportunityInvoicesPanel({
         </>
       )}
     </section>
+    </div>
   );
 }
 
@@ -1491,27 +1547,8 @@ async function InfoTab({
           </Link>
         </div>
       )}
-      {invoicesCreated && invoicesCreated > 0 ? (
-        <div className={`lg:col-span-2 rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
-          invoiceErrors && invoiceErrors > 0
-            ? "bg-amber-50 border border-amber-200 text-amber-900"
-            : "bg-blue-50 border border-blue-200 text-blue-700"
-        }`}>
-          <span>
-            <strong>{invoicesCreated}</strong> invoice{invoicesCreated === 1 ? "" : "s"} created.
-            {invoiceErrors && invoiceErrors > 0 && (
-              <> {invoiceErrors} row{invoiceErrors === 1 ? "" : "s"} skipped due to input errors.</>
-            )}
-            {" See them below."}
-          </span>
-          <Link
-            href={`/commercial/opportunities/${opp.id}?tab=info`}
-            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
-          >
-            Dismiss
-          </Link>
-        </div>
-      ) : null}
+      {/* Invoice-created toast moved to the Invoices tab so it shows
+          right above the new panel. See OpportunityInvoicesPanel. */}
       {/* ChangeStatusCard is for moving a deal forward — irrelevant on
           terminal opps (the only allowed next is reopened, which lives
           as its own dedicated button in the page header). The Debrief
@@ -1525,15 +1562,25 @@ async function InfoTab({
         />
       )}
       {opp.status === "won" && (
-        <OpportunityInvoicesPanel
-          oppId={opp.id}
-          bidMidpointCents={
-            opp.bid_value_low_cents != null && opp.bid_value_high_cents != null
-              ? Math.round((opp.bid_value_low_cents + opp.bid_value_high_cents) / 2)
-              : null
-          }
-          className="lg:col-span-2"
-        />
+        <div className="lg:col-span-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 flex items-center justify-between gap-3 flex-wrap">
+          <span>
+            💰 <strong>This deal is Won.</strong> Bill it from the{" "}
+            <Link
+              href={`/commercial/opportunities/${opp.id}?tab=invoices`}
+              className="font-semibold underline underline-offset-2 hover:text-blue-900"
+            >
+              Invoices tab
+            </Link>{" "}
+            — progress bars, roll-up, % of contract, all in one place.
+          </span>
+          <Link
+            href={`/commercial/opportunities/${opp.id}?tab=invoices`}
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-blue-700 hover:text-blue-900 min-h-[36px] px-3"
+          >
+            Go to Invoices
+            <span aria-hidden>→</span>
+          </Link>
+        </div>
       )}
       <Card
         title="Deal"

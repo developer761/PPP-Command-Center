@@ -287,11 +287,16 @@ export async function createCommercialInvoice(
   return { ok: true, invoice: inserted as CommercialInvoice };
 }
 
-/** Fetches the current status + returns an "editable?" verdict. Used by
- *  every draft-only mutation to close the chain-of-trust loop: the UI
- *  hides these buttons on non-drafts, but a direct POST to the server
- *  action must ALSO be rejected. Callers pass through the result to the
- *  client so the UI can show a helpful error. */
+/** Fetches the current status + returns an "editable?" verdict.
+ *
+ *  Karan 2026-07-07: opened line-item edits to any non-void status. His
+ *  words: "update the total of the invoice even if it's not the full
+ *  invoice" — a Sent invoice that needs a scope adjustment shouldn't
+ *  require a void-and-recreate cycle. The customer never sees the
+ *  invoice unless we print it ourselves (no auto-email yet), so this
+ *  is safe. Void invoices remain immutable. Tax pct still uses this
+ *  gate to prevent Sent-invoice tax changes (which would silently
+ *  reprice a sent bill). Line items and details use it more loosely. */
 async function verifyEditable(invoice_id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data, error } = await sb
@@ -302,7 +307,7 @@ async function verifyEditable(invoice_id: string): Promise<{ ok: true } | { ok: 
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "invoice_not_found" };
   if (data.deleted_at) return { ok: false, error: "invoice_deleted" };
-  if (data.status !== "draft") return { ok: false, error: "only_drafts_can_be_edited" };
+  if (data.status === "void") return { ok: false, error: "void_invoices_are_immutable" };
   return { ok: true };
 }
 

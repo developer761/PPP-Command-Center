@@ -124,7 +124,7 @@ async function createBatchAction(formData: FormData) {
     redirect(`/commercial/invoices/new?opp=${opp_id}&error=` + encodeURIComponent(errors[0] ?? "No invoices created."));
   }
   const flash = new URLSearchParams({
-    tab: "info",
+    tab: "invoices",
     invoices_created: String(created),
   });
   if (errors.length > 0) flash.set("invoice_errors", String(errors.length));
