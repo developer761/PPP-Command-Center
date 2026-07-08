@@ -63,7 +63,7 @@ import {
   type CommercialOpportunity,
   type OpportunityStatus,
 } from "@/lib/commercial/opportunities/db";
-import { createCommercialOpportunity, softDeleteCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
+import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -112,11 +112,11 @@ type SP = Promise<{
   team_added?: string;
   team_skipped?: string;
   saved?: string;
-  /** Karan 2026-07-08: per-deal drill-in section. When `?deal=<uuid>` is
-   *  set AND the deal belongs to this account, OpportunitiesTab renders
-   *  the DealDrillIn card at the top. Set by /opportunities/[id] redirect
-   *  shim, by Edit-save redirects, and by the pipeline sheet's deep links. */
-  deal?: string;
+  /** Karan 2026-07-08: right-side slide-out edit sheet for a specific
+   *  deal. Replaces the DealDrillIn auto-focus behavior. Any surface
+   *  that used to redirect to `/commercial/opportunities/[id]/edit`
+   *  now redirects here — the standalone edit page is a shim now. */
+  edit?: string;
   /** Toast surface after softDeleteOpportunityAction fires on this account.
    *  URL-encoded deal title. */
   deleted?: string;
@@ -460,9 +460,9 @@ export default async function CommercialAccountDetailPage({
           overview={overview}
           openNewDeal={sp.new_deal === "1"}
           createdTitle={sp.created === "1" ? sp.created_title ?? null : null}
-          focusDealId={
-            typeof sp.deal === "string" && /^[0-9a-f-]{36}$/i.test(sp.deal)
-              ? sp.deal
+          editDealId={
+            typeof sp.edit === "string" && /^[0-9a-f-]{36}$/i.test(sp.edit)
+              ? sp.edit
               : null
           }
           savedFlash={sp.saved === "1"}
@@ -620,6 +620,112 @@ async function createDealInlineAction(formData: FormData) {
   revalidatePath("/commercial");
   const createdTitle = encodeURIComponent(result.opportunity.title);
   redirect(`/commercial/accounts/${account_id}?tab=opportunities&created=1&created_title=${createdTitle}#deal-${result.opportunity.id}`);
+}
+
+/**
+ * Karan 2026-07-08: edit a deal from the account-page slide-out sheet.
+ * Same field set as the standalone /commercial/opportunities/[id]/edit
+ * page (title, source, bid range, probability, all four date fields,
+ * description, project address override). On save the sheet closes
+ * (drops ?edit=) and the user lands back on the Deals tab with a
+ * green "Saved" flash. Cross-account defense: the deal is re-fetched
+ * from the mutation lib, and we validate account_id in the redirect.
+ */
+async function editDealFromAccountAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+  const back = `/commercial/accounts/${account_id}?tab=opportunities&edit=${opp_id}`;
+
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) redirect(`${back}&error=${encodeURIComponent("Title is required.")}#deal-edit-sheet`);
+
+  const sourceRaw = String(formData.get("source") ?? "").trim();
+  const source = sourceRaw && (OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)
+    ? (sourceRaw as (typeof OPPORTUNITY_SOURCES)[number])
+    : null;
+
+  // Dollar parser mirrors the New Deal action + standalone edit page
+  // so users get the same "50,000" / "$50000" / "50000.50" flexibility.
+  const parseDollarsSheet = (raw: string): number | null | "invalid" => {
+    const cleaned = raw.trim().replace(/[$,\s]/g, "");
+    if (cleaned === "") return null;
+    if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return "invalid";
+    const n = parseFloat(cleaned);
+    if (!Number.isFinite(n) || n < 0) return "invalid";
+    return Math.round(n * 100);
+  };
+  const lowParsed = parseDollarsSheet(String(formData.get("bid_low") ?? ""));
+  const highParsed = parseDollarsSheet(String(formData.get("bid_high") ?? ""));
+  if (lowParsed === "invalid") redirect(`${back}&error=${encodeURIComponent("Bid low must be a non-negative dollar amount.")}#deal-edit-sheet`);
+  if (highParsed === "invalid") redirect(`${back}&error=${encodeURIComponent("Bid high must be a non-negative dollar amount.")}#deal-edit-sheet`);
+
+  const probRaw = String(formData.get("probability_pct") ?? "").trim();
+  let probability_pct: number | null | undefined = undefined;
+  if (probRaw !== "") {
+    const p = Number(probRaw);
+    if (!Number.isFinite(p) || p < 0 || p > 100) {
+      redirect(`${back}&error=${encodeURIComponent("Probability must be a number 0-100.")}#deal-edit-sheet`);
+    }
+    probability_pct = Math.round(p);
+  }
+
+  const proposalDueRaw = String(formData.get("proposal_due_at") ?? "").trim();
+  const proposal_due_at = proposalDueRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposalDueRaw)
+    ? `${proposalDueRaw}T16:00:00.000Z`
+    : null;
+  const proposedStartRaw = String(formData.get("proposed_start_at") ?? "").trim();
+  const proposed_start_at = proposedStartRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedStartRaw)
+    ? `${proposedStartRaw}T09:00:00.000Z`
+    : null;
+  const proposedEndRaw = String(formData.get("proposed_end_at") ?? "").trim();
+  const proposed_end_at = proposedEndRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedEndRaw)
+    ? `${proposedEndRaw}T17:00:00.000Z`
+    : null;
+
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const property_street = String(formData.get("property_street") ?? "").trim() || null;
+  const property_city = String(formData.get("property_city") ?? "").trim() || null;
+  const property_state = String(formData.get("property_state") ?? "").trim() || null;
+  const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
+
+  const result = await updateCommercialOpportunity({
+    id: opp_id,
+    title,
+    source,
+    bid_value_low_cents: lowParsed as number | null,
+    bid_value_high_cents: highParsed as number | null,
+    probability_pct,
+    proposal_due_at,
+    proposed_start_at,
+    proposed_end_at,
+    description,
+    property_street,
+    property_city,
+    property_state,
+    property_zip,
+    updated_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`${back}&error=${encodeURIComponent(result.error)}#deal-edit-sheet`);
+  }
+  // Cross-account sanity: the updated row's account_id MUST equal the
+  // form-posted account_id. If not, someone posted a smuggled opp_id
+  // from a different customer's page — bounce with a generic error.
+  if (result.opportunity.account_id !== account_id) {
+    redirect(`/commercial/accounts?error=${encodeURIComponent("Deal moved. Refresh the page.")}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  revalidatePath("/commercial/opportunities");
+  revalidatePath("/commercial");
+  // Success — drop ?edit= so the sheet closes + land on Deals tab with
+  // the saved flash. User never leaves the account context.
+  redirect(`/commercial/accounts/${account_id}?tab=opportunities&saved=1`);
 }
 
 /**
@@ -2082,7 +2188,7 @@ async function OpportunitiesTab({
   overview,
   openNewDeal,
   createdTitle,
-  focusDealId,
+  editDealId,
   savedFlash,
   deletedFlash,
   errorMessage,
@@ -2091,13 +2197,12 @@ async function OpportunitiesTab({
   overview: AccountOverview | null;
   openNewDeal?: boolean;
   createdTitle?: string | null;
-  /** When set, expand a per-deal drill-in section at the top of the tab.
-   *  Loaded from `?deal=<uuid>` on the URL — set by edit/save redirects,
-   *  by the pipeline sheet's deep-links, and by the deprecated deal-detail
-   *  page's shim redirect. Cross-account access blocked by the
-   *  account_id-scoped fetch below (the deal only expands when it belongs
-   *  to `accountId`; a mismatched pair silently ignores the param). */
-  focusDealId?: string | null;
+  /** When set, open a right-side slide-out edit sheet for the deal.
+   *  Loaded from `?edit=<uuid>` on the URL. Cross-account access
+   *  blocked by the account_id-scoped fetch below (the sheet only
+   *  opens when the deal belongs to `accountId`; a mismatched pair
+   *  silently ignores the param). */
+  editDealId?: string | null;
   savedFlash?: boolean;
   deletedFlash?: string | null;
   errorMessage?: string;
@@ -2218,26 +2323,23 @@ async function OpportunitiesTab({
           action, not a nested collapsible chevron. When open exists the
           card stays collapsed; when it's the customer's only next move
           it opens by default with a "Start the next bid" label change. */}
-      {/* Karan 2026-07-08: per-deal drill-in section. Renders when the
-          URL carries ?deal=<uuid> AND the deal actually belongs to this
-          account (cross-account defense — `all` is already filtered by
-          accountId at the top of the tab). Full deal detail lives here
-          under a collapsible header with Edit + Delete + status flip
-          actions so users never leave the account page for routine
-          deal management. Auto-scrolled to via #deal-<id>. */}
-      {focusDealId && (() => {
-        const dealRow = all.find((d) => d.id === focusDealId);
+      {/* Karan 2026-07-08 rewrite: right-side slide-out edit sheet.
+          Killed the auto-focus DealDrillIn — user's feedback: "when i
+          click on an already existing deal it focuses the deal i dont
+          like that". Now ?edit=<uuid> opens a GHL-style right sheet
+          where the user edits the deal in place and saves. On save the
+          sheet closes and the deal lives back in the collapsible list
+          below. Cross-account defense — `all` is already scoped to
+          this accountId at the top of the tab; a smuggled UUID from
+          another account silently ignores the param. */}
+      {editDealId && (() => {
+        const dealRow = all.find((d) => d.id === editDealId);
         if (!dealRow) return null;
         return (
-          <DealDrillIn
+          <DealEditSheet
             deal={dealRow}
             accountId={accountId}
-            statusEnteredAt={statusEnteredMap.get(dealRow.id) ?? null}
-            taskStats={taskStatsMap.get(dealRow.id) ?? null}
             primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
-            fileCount={attachmentMap.get(dealRow.id) ?? 0}
-            submittalStats={submittalMap.get(dealRow.id) ?? null}
-            finishCount={finishMap.get(dealRow.id) ?? 0}
           />
         );
       })()}
@@ -2397,7 +2499,7 @@ function AccountOpportunityRow({
           submittals awaiting, primary lead, days-stuck. No cluttered 6-chip soup
           on every row — the empty state is quiet. */}
       <Link
-        href={`/commercial/opportunities/${opp.id}`}
+        href={`/commercial/accounts/${accountId}?tab=opportunities&edit=${opp.id}#deal-row-${opp.id}`}
         className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px] touch-manipulation"
       >
         <div className="flex items-start justify-between gap-3">
@@ -3825,252 +3927,282 @@ function AccountKpisTab({
 }
 
 /**
- * DealDrillIn — Karan 2026-07-08. Per-deal detail section on the account
- * page. Opens when the URL has ?deal=<uuid> matching one of this
- * account's deals. Contents:
- *   1. Header — anchor id, deal title, status pill, Edit + Delete
- *   2. KPI strip — Bid / Probability / Weighted / Decision countdown
- *   3. Info grid — status, source, dates, description, project address
- *   4. Move-to-next-stage form (same DAG as elsewhere)
- *   5. Collapse link (drops ?deal= from URL)
+ * DealEditSheet — Karan 2026-07-08 rewrite. GoHighLevel-style right-side
+ * slide-out for editing a deal. Replaces the old DealDrillIn auto-focus
+ * behavior the user rejected ("when i click on an already existing deal
+ * it focuses the deal i dont like that").
  *
- * Users can still click into full-detail workflows via deep links:
- * ?tab=debrief (for closed deals) and ?tab=documents survive on
- * /commercial/opportunities/{id} for structured forms.
+ * Contents (top-to-bottom):
+ *   1. Header — current title + status pill + Close
+ *   2. Read-only KPI band — Bid / Probability / Weighted / Decision-in
+ *      (visual context for what the user's about to change)
+ *   3. Full edit form — title, source, bid low/high, probability, all
+ *      three date fields, description, project address override
+ *   4. Footer — Save + Cancel (Cancel drops ?edit=)
+ *   5. Delete affordance (rose accent, native details confirm)
+ *
+ * URL-driven: ?edit=<uuid> opens; save/cancel drops the param.
+ * Backdrop is a full-viewport Link that closes.
+ * Cross-account defense in the caller (deal only rendered when it
+ * belongs to this accountId).
  */
-function DealDrillIn({
+function DealEditSheet({
   deal,
   accountId,
-  statusEnteredAt,
-  taskStats,
   primaryLead,
-  fileCount,
-  submittalStats,
-  finishCount,
 }: {
   deal: CommercialOpportunity;
   accountId: string;
-  statusEnteredAt: string | null;
-  taskStats: { open: number; overdue: number; due_soon: number } | null;
   primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
-  fileCount: number;
-  submittalStats: { total: number; awaiting_response: number } | null;
-  finishCount: number;
 }) {
   const bidLabel = formatBidRange(deal.bid_value_low_cents, deal.bid_value_high_cents);
   const weighted = weightedPipelineCents(deal);
-  const daysInStatus = daysSinceIso(statusEnteredAt);
-  const daysTone =
-    daysInStatus === null
-      ? "text-ppp-charcoal-500"
-      : daysInStatus > 14
-      ? "text-rose-700"
-      : daysInStatus > 7
-      ? "text-amber-700"
-      : "text-blue-700";
-  const nextStatuses = allowedNextStatuses(deal.status);
-  const isTerminal = TERMINAL_STATUSES.has(deal.status);
   const statusInfo = statusPillTone(deal.status);
-  const proposalDue = deal.proposal_due_at ? new Date(deal.proposal_due_at) : null;
-  const daysUntilDue = proposalDue ? Math.ceil((proposalDue.getTime() - Date.now()) / 86_400_000) : null;
-  const dueLabel = daysUntilDue === null
-    ? "—"
-    : daysUntilDue < 0
-    ? `${Math.abs(daysUntilDue)}d overdue`
-    : daysUntilDue === 0
-    ? "today"
-    : `${daysUntilDue}d`;
-  const dueTone = daysUntilDue === null
-    ? "text-ppp-charcoal-500"
-    : daysUntilDue < 0
-    ? "text-rose-700"
-    : daysUntilDue <= 3
-    ? "text-amber-700"
-    : "text-ppp-charcoal";
+  // ISO date-picker defaults — extract YYYY-MM-DD from the stored UTC
+  // timestamps so <input type="date"> renders them correctly.
+  const dueDateDefault = deal.proposal_due_at ? deal.proposal_due_at.slice(0, 10) : "";
+  const startDateDefault = deal.proposed_start_at ? deal.proposed_start_at.slice(0, 10) : "";
+  const endDateDefault = deal.proposed_end_at ? deal.proposed_end_at.slice(0, 10) : "";
+  const closeHref = `/commercial/accounts/${accountId}?tab=opportunities`;
+  const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]";
+  const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1";
   return (
-    <section
-      id={`deal-${deal.id}`}
-      className="bg-white border-2 border-cc-brand-300 rounded-xl overflow-hidden shadow-sm ring-1 ring-cc-brand-100 scroll-mt-4"
-    >
-      {/* Header row — title, status pill, action buttons */}
-      <header className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-r from-cc-brand-50/40 to-white">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-cc-brand-700 mb-1">
-              Focused deal
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-base sm:text-lg font-bold text-ppp-charcoal break-words leading-tight">
-                {deal.title || "(untitled)"}
-              </h3>
-              <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border shrink-0 ${statusInfo.cls}`}>
-                {opportunityStatusLabel(deal.status)}
-              </span>
-            </div>
-            {daysInStatus !== null && !isTerminal && (
-              <div className={`text-[11.5px] font-medium mt-1 ${daysTone}`}>
-                {daysInStatus === 0 ? "just entered this stage" : `${daysInStatus}d in ${opportunityStatusLabel(deal.status).toLowerCase()}`}
+    <div id="deal-edit-sheet" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="deal-edit-title">
+      {/* Backdrop — full-viewport link closes the sheet by dropping ?edit. */}
+      <Link
+        href={closeHref}
+        aria-label="Close deal editor"
+        className="absolute inset-0 bg-ppp-charcoal/40 backdrop-blur-[1px]"
+      />
+      {/* Sheet — right-aligned slide-out. Full-width on mobile, 480px on
+          desktop so the accounts page stays visible behind it. */}
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[520px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
+        {/* Header — title + status + close */}
+        <header className="px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-r from-cc-brand-50/50 to-white">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-cc-brand-700 mb-1">
+                Edit deal
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 id="deal-edit-title" className="text-lg font-bold text-ppp-charcoal break-words leading-tight">
+                  {deal.title || "(untitled)"}
+                </h2>
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${statusInfo.cls}`}>
+                  {opportunityStatusLabel(deal.status)}
+                </span>
+              </div>
+              <p className="text-[11px] text-ppp-charcoal-500 mt-1 leading-snug">
+                Status changes happen on the deal card&apos;s <strong>Move to next stage</strong> control below the list — the DAG + debrief flow live there so nothing bypasses them.
+              </p>
+            </div>
             <Link
-              href={`/commercial/opportunities/${deal.id}/edit`}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[40px] touch-manipulation"
-              title="Open the full deal-edit form"
+              href={closeHref}
+              aria-label="Close"
+              className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 hover:text-ppp-charcoal-800 touch-manipulation"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-              Edit
-            </Link>
-            <Link
-              href={`/commercial/accounts/${accountId}?tab=opportunities`}
-              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 text-[12px] font-semibold min-h-[40px] touch-manipulation"
-              title="Close this detail view"
-              aria-label="Close deal drill-in"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M18 6L6 18 M6 6l12 12" />
               </svg>
-              Close
             </Link>
           </div>
+        </header>
+
+        {/* Read-only KPI band — visual context for the edit form below. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-5 pt-4">
+          <SheetKpi label="Bid" value={bidLabel !== "—" ? bidLabel : "—"} />
+          <SheetKpi label="Weighted" value={weighted > 0 ? formatCentsCompact(weighted) : "—"} />
+          <SheetKpi label="Probability" value={`${deal.probability_pct}%`} />
+          <SheetKpi label="Primary lead" value={primaryLead ? (primaryLead.user_full_name ?? primaryLead.user_email).split(" ")[0] : "—"} />
         </div>
-      </header>
 
-      {/* KPI strip — bid / probability / weighted / decision countdown */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 sm:p-5">
-        <DrillTile label="Bid" value={bidLabel !== "—" ? bidLabel : "Not set"} />
-        <DrillTile label="Probability" value={`${deal.probability_pct}%`} />
-        <DrillTile label="Weighted" value={weighted > 0 ? formatCentsCompact(weighted) : "—"} />
-        <DrillTile label="Decision in" value={dueLabel} tone={dueTone} />
-      </div>
+        {/* Edit form — scrollable body. Submits to editDealFromAccountAction
+            which drops ?edit= on success + fires the ?saved=1 flash. */}
+        <form
+          action={editDealFromAccountAction}
+          id={`edit-deal-form-${deal.id}`}
+          className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
+        >
+          <input type="hidden" name="account_id" value={accountId} />
+          <input type="hidden" name="opp_id" value={deal.id} />
 
-      {/* Info grid — status meta, timeline, description, address */}
-      <div className="px-4 sm:px-5 pb-4 space-y-3 border-t border-ppp-charcoal-100 pt-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <DrillField label="Source" value={deal.source ? opportunitySourceLabel(deal.source) : "Not set"} />
-          <DrillField label="Primary lead" value={primaryLead ? primaryLead.user_full_name ?? primaryLead.user_email : "Unassigned"} />
-          <DrillField label="Proposal due" value={deal.proposal_due_at ? new Date(deal.proposal_due_at).toLocaleDateString() : "Not set"} />
-          <DrillField label="Decided" value={deal.decided_at ? new Date(deal.decided_at).toLocaleDateString() : "Not set"} />
-          <DrillField label="Proposed start" value={deal.proposed_start_at ? new Date(deal.proposed_start_at).toLocaleDateString() : "Not set"} />
-          <DrillField label="Proposed end" value={deal.proposed_end_at ? new Date(deal.proposed_end_at).toLocaleDateString() : "Not set"} />
-        </div>
-        {deal.description && (
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Description</div>
-            <p className="text-[13px] text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
-              {deal.description}
-            </p>
-          </div>
-        )}
-        {(deal.property_street || deal.property_city || deal.property_state) && (
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Project address</div>
-            <p className="text-[13px] text-ppp-charcoal-700">
-              {[deal.property_street, deal.property_city, deal.property_state, deal.property_zip].filter(Boolean).join(", ")}
-            </p>
-          </div>
-        )}
-        {(taskStats && (taskStats.open > 0 || taskStats.overdue > 0)) || fileCount > 0 || finishCount > 0 || (submittalStats && submittalStats.total > 0) ? (
-          <div className="text-[11.5px] flex items-center gap-x-3 gap-y-1 flex-wrap text-ppp-charcoal-600 pt-1">
-            {taskStats && taskStats.overdue > 0 && (
-              <span className="text-rose-700 font-medium">
-                <span aria-hidden>⚠</span> {taskStats.overdue} overdue task{taskStats.overdue === 1 ? "" : "s"}
-              </span>
-            )}
-            {taskStats && taskStats.overdue === 0 && taskStats.open > 0 && (
-              <span>{taskStats.open} open task{taskStats.open === 1 ? "" : "s"}</span>
-            )}
-            {fileCount > 0 && <span><span aria-hidden>📎</span> {fileCount} attachment{fileCount === 1 ? "" : "s"}</span>}
-            {finishCount > 0 && <span><span aria-hidden>🎨</span> {finishCount} finish{finishCount === 1 ? "" : "es"}</span>}
-            {submittalStats && submittalStats.total > 0 && (
-              <span className={submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : undefined}>
-                <span aria-hidden>📋</span> {submittalStats.total} submittal{submittalStats.total === 1 ? "" : "s"}
-                {submittalStats.awaiting_response > 0 && ` · ${submittalStats.awaiting_response} awaiting GC`}
-              </span>
-            )}
-          </div>
-        ) : null}
-      </div>
-
-      {/* Move-to-next-stage form + delete action, side-by-side on desktop */}
-      <div className="px-4 sm:px-5 pb-4 border-t border-ppp-charcoal-100 pt-4 flex items-center gap-2 flex-wrap">
-        {nextStatuses.length > 0 && (
-          <form action={quickFlipFromAccountAction} className="flex items-center gap-2 flex-wrap flex-1 min-w-[240px]">
-            <input type="hidden" name="account_id" value={accountId} />
-            <input type="hidden" name="opp_id" value={deal.id} />
-            <select
-              name="to_status"
-              defaultValue=""
+            <label htmlFor="edit-title" className={labelCls}>Deal title *</label>
+            <input
+              id="edit-title"
+              name="title"
+              type="text"
               required
-              aria-label={`Move ${deal.title} to next stage`}
-              className={`${SELECT_CLS} text-base sm:text-sm py-2 min-h-[40px] flex-1 min-w-[180px]`}
-              style={SELECT_BG_STYLE}
-            >
-              <option value="" disabled>Move to next stage…</option>
-              {nextStatuses.map((s) => {
-                const isT = isTerminalOpportunityStatus(s);
-                return (
-                  <option key={s} value={s}>
-                    {isT ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
-                  </option>
-                );
-              })}
-            </select>
-            <button
-              type="submit"
-              className="px-3.5 py-2 text-[12px] font-semibold rounded-lg bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
-            >
-              Go
-            </button>
-          </form>
-        )}
-        {/* Delete — native <details> confirm. No client JS; native
-            controls only. First click expands the confirm form; second
-            click (submit with confirm=yes) fires the delete. */}
-        <details className="relative group/del">
-          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-white text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[40px] touch-manipulation">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            </svg>
-            Delete
-          </summary>
-          <form action={deleteDealFromAccountAction} className="absolute right-0 top-full mt-1.5 z-10 bg-white border border-rose-200 rounded-lg shadow-xl p-3 w-[280px] space-y-2.5">
-            <input type="hidden" name="account_id" value={accountId} />
-            <input type="hidden" name="opp_id" value={deal.id} />
-            <input type="hidden" name="confirm" value="yes" />
-            <p className="text-[12px] text-rose-800 leading-relaxed">
-              Soft-delete <strong>{deal.title}</strong>. Rows tied to the deal hide from lists — an admin can restore from the audit log.
-            </p>
-            <button
-              type="submit"
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
-            >
-              Yes, delete this deal
-            </button>
-          </form>
-        </details>
-      </div>
-    </section>
-  );
-}
+              maxLength={200}
+              defaultValue={deal.title ?? ""}
+              className={inputCls}
+            />
+          </div>
 
-function DrillTile({ label, value, tone }: { label: string; value: string; tone?: string }) {
-  return (
-    <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
-      <div className={`text-sm sm:text-base font-bold mt-0.5 tabular-nums ${tone ?? "text-ppp-charcoal"}`}>{value}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="edit-source" className={labelCls}>How did this come in?</label>
+              <select
+                id="edit-source"
+                name="source"
+                defaultValue={deal.source ?? ""}
+                className={`${inputCls} bg-white`}
+                style={SELECT_BG_STYLE}
+              >
+                <option value="">— not set —</option>
+                {OPPORTUNITY_SOURCES.map((s) => (
+                  <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="edit-prob" className={labelCls}>Probability (%)</label>
+              <input
+                id="edit-prob"
+                name="probability_pct"
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                defaultValue={deal.probability_pct}
+                className={`${inputCls} tabular-nums`}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="edit-bid-low" className={labelCls}>Bid low ($)</label>
+              <input
+                id="edit-bid-low"
+                name="bid_low"
+                type="text"
+                inputMode="decimal"
+                defaultValue={deal.bid_value_low_cents ? (deal.bid_value_low_cents / 100).toFixed(2) : ""}
+                placeholder="0.00"
+                className={`${inputCls} tabular-nums`}
+              />
+            </div>
+            <div>
+              <label htmlFor="edit-bid-high" className={labelCls}>Bid high ($)</label>
+              <input
+                id="edit-bid-high"
+                name="bid_high"
+                type="text"
+                inputMode="decimal"
+                defaultValue={deal.bid_value_high_cents ? (deal.bid_value_high_cents / 100).toFixed(2) : ""}
+                placeholder="0.00"
+                className={`${inputCls} tabular-nums`}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label htmlFor="edit-due" className={labelCls}>Proposal due</label>
+              <input id="edit-due" name="proposal_due_at" type="date" defaultValue={dueDateDefault} className={inputCls} />
+            </div>
+            <div>
+              <label htmlFor="edit-start" className={labelCls}>Proposed start</label>
+              <input id="edit-start" name="proposed_start_at" type="date" defaultValue={startDateDefault} className={inputCls} />
+            </div>
+            <div>
+              <label htmlFor="edit-end" className={labelCls}>Proposed end</label>
+              <input id="edit-end" name="proposed_end_at" type="date" defaultValue={endDateDefault} className={inputCls} />
+            </div>
+          </div>
+
+          <div>
+            <div className={labelCls}>
+              Property / project address
+              <span className="ml-1 text-[9.5px] font-normal normal-case tracking-normal text-ppp-charcoal-400">
+                — clear all four to fall back to the account&apos;s site address
+              </span>
+            </div>
+            <input
+              name="property_street"
+              type="text"
+              maxLength={200}
+              defaultValue={deal.property_street ?? ""}
+              placeholder="Street"
+              className={inputCls}
+            />
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              <input name="property_city" type="text" maxLength={80} defaultValue={deal.property_city ?? ""} placeholder="City" className={inputCls} />
+              <input name="property_state" type="text" maxLength={2} defaultValue={deal.property_state ?? ""} placeholder="ST" className={inputCls} />
+              <input name="property_zip" type="text" maxLength={10} defaultValue={deal.property_zip ?? ""} placeholder="ZIP" className={inputCls} />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="edit-desc" className={labelCls}>Description / scope summary</label>
+            <textarea
+              id="edit-desc"
+              name="description"
+              rows={4}
+              maxLength={2000}
+              defaultValue={deal.description ?? ""}
+              placeholder="Scope, existing paint system, access notes…"
+              className={`${inputCls} min-h-[92px] resize-y`}
+            />
+          </div>
+        </form>
+
+        {/* Footer — Save + Cancel + Delete. Save fires the form above via
+            form= attribute; Cancel/Delete are separate forms/links. */}
+        <footer className="px-5 py-3 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/40 flex items-center gap-2 flex-wrap">
+          <button
+            type="submit"
+            form={`edit-deal-form-${deal.id}`}
+            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Save changes
+          </button>
+          <Link
+            href={closeHref}
+            className="inline-flex items-center gap-1 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+          >
+            Cancel
+          </Link>
+          <details className="relative">
+            <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-rose-200 bg-white text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              </svg>
+              Delete
+            </summary>
+            <form
+              action={deleteDealFromAccountAction}
+              className="absolute right-0 bottom-full mb-2 z-10 bg-white border border-rose-200 rounded-lg shadow-xl p-3 w-[260px] space-y-2.5"
+            >
+              <input type="hidden" name="account_id" value={accountId} />
+              <input type="hidden" name="opp_id" value={deal.id} />
+              <input type="hidden" name="confirm" value="yes" />
+              <p className="text-[12px] text-rose-800 leading-relaxed">
+                Soft-delete <strong>{deal.title}</strong>. Restorable by admin from the audit log.
+              </p>
+              <button
+                type="submit"
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+              >
+                Yes, delete this deal
+              </button>
+            </form>
+          </details>
+        </footer>
+      </aside>
     </div>
   );
 }
 
-function DrillField({ label, value }: { label: string; value: string }) {
+function SheetKpi({ label, value }: { label: string; value: string }) {
   return (
-    <div className="text-[12.5px]">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
-      <div className="text-ppp-charcoal-800 mt-0.5">{value}</div>
+    <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-2.5 py-1.5">
+      <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums mt-0.5 truncate" title={value}>{value}</div>
     </div>
   );
 }
