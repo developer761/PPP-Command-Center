@@ -271,27 +271,30 @@ export default async function CommercialAccountDetailPage({
           </span>
         </div>
       )}
+      {/* Karan 2026-07-08 Batch 2a: hero polish. Removed the "← All
+          accounts" back link — sidebar handles nav. Elevated the
+          primary contact into the pill row so email/phone are one
+          tap away without scrolling. Repeat-customer ★ signal moved
+          from the Financial Snapshot chip into the pill row where it
+          belongs (only when the account isn't already flagged Key
+          Relationship — avoids the "two stars" audit finding). Primary
+          CTA is "+ New deal" for direct action; Edit is a quieter
+          secondary link. Everything wraps cleanly on mobile. */}
       <header>
-        <Link href="/commercial/accounts" className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M19 12H5 M12 19l-7-7 7-7" />
-          </svg>
-          All accounts
-        </Link>
-        <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
-            {/* Karan 2026-07-07 audit: dropped duplicate ★ inline star.
-                The Key Relationship pill below already carries the signal;
-                two stars was noise. */}
-            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate">
+            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal break-words">
               {account.company_name}
             </h1>
             {account.dba && (
               <p className="text-sm text-ppp-charcoal-500 mt-0.5">d/b/a {account.dba}</p>
             )}
-            <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <div className="mt-2.5 flex items-center gap-2 flex-wrap">
               {account.is_key_relationship && (
                 <Pill tone="amber">★ Key Relationship</Pill>
+              )}
+              {!account.is_key_relationship && (overview?.won_opps_count ?? 0) > 0 && (
+                <Pill tone="amber">★ Repeat customer</Pill>
               )}
               {account.rating && <Pill tone={ratingTone(account.rating)}>{account.rating}</Pill>}
               {account.industry && <Pill tone="neutral">{account.industry}</Pill>}
@@ -302,38 +305,62 @@ export default async function CommercialAccountDetailPage({
               )}
             </div>
             {primary && (
-              <div className="mt-2.5 flex items-center gap-2 flex-wrap text-[12px]">
-                <span className="inline-flex items-center gap-1 text-amber-700">
-                  <span aria-hidden>★</span>
+              <div className="mt-2.5 flex items-center gap-x-2 gap-y-1 flex-wrap text-[12px]">
+                <span className="inline-flex items-center gap-1">
                   <span className="font-semibold text-ppp-charcoal">{primary.contact.full_name}</span>
                   <span className="text-ppp-charcoal-500">· {roleLabel(primary.role)}</span>
                 </span>
                 {primary.contact.email && (
                   <a
                     href={`mailto:${primary.contact.email}`}
-                    className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                    className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 hover:underline underline-offset-2 min-h-[24px]"
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" />
                     </svg>
                     Email
                   </a>
                 )}
+                {primary.contact.phone && (
+                  <a
+                    href={`tel:${primary.contact.phone.replace(/[^0-9+]/g, "")}`}
+                    className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 hover:underline underline-offset-2 min-h-[24px]"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                    </svg>
+                    Call
+                  </a>
+                )}
               </div>
             )}
           </div>
-          {/* Edit button — Karan 2026-06-14 Batch 5b. Lives in the header so
-              it's always reachable from any tab. Mobile: full-width button
-              wraps below the name; desktop: pinned to the right. */}
-          <Link
-            href={`/commercial/accounts/${account.id}/edit`}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-semibold hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation min-h-[44px] shrink-0"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
+          {/* Primary CTA cluster — "+ New deal" is the visually loud
+              action Alex will reach for most often (add another bid
+              for this customer). Edit is a subtle ghost link — always
+              reachable but doesn't compete for attention. */}
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+            <Link
+              href={`/commercial/accounts/${account.id}?tab=deals&sub=opportunities&new_deal=1#new-deal`}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px]"
+              title={`Log a new deal for ${account.company_name}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 5v14 M5 12h14" />
+              </svg>
+              New deal
+            </Link>
+            <Link
+              href={`/commercial/accounts/${account.id}/edit`}
+              className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-ppp-charcoal-600 text-sm font-medium hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation min-h-[44px]"
+              title="Edit account details"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
             Edit
           </Link>
+        </div>
         </div>
       </header>
 
@@ -2805,8 +2832,6 @@ function AccountOverviewStrip({
       ? "text-amber-700 bg-amber-50 border-amber-200"
       : "text-rose-700 bg-rose-50 border-rose-200";
 
-  const isRepeat = (overview.won_opps_count ?? 0) > 0;
-
   // Progress bar — collected as a fraction of invoiced. Tone escalates:
   //   fully paid → emerald · any overdue → rose ·
   //   partial paid → blue · nothing paid yet → neutral.
@@ -2847,22 +2872,16 @@ function AccountOverviewStrip({
             Every non-void invoice + payment, rolled up.
           </p>
         </div>
-        <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-          {isRepeat && (
-            <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 text-amber-800 border-amber-200"
-              title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this customer.`}
-            >
-              <span aria-hidden>★</span> Repeat customer
-            </span>
-          )}
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${activityClass}`}
-            title={`Most recent activity on this account. Last touched: ${overview.last_activity_at}`}
-          >
-            Active {activity}
-          </span>
-        </div>
+        {/* Batch 2a: Repeat-customer chip moved to the header pill row
+            where relationship signals belong. Activity chip stays here
+            since it's tied to the money numbers below (helps read
+            "invoiced X, last touched Y" as a single story). */}
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border shrink-0 ${activityClass}`}
+          title={`Most recent activity on this account. Last touched: ${overview.last_activity_at}`}
+        >
+          Active {activity}
+        </span>
       </div>
 
       {/* Three money tiles — same category (financials), same visual weight.
