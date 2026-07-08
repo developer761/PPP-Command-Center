@@ -228,6 +228,16 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         </div>
       )}
       {accountFilter && (
+        // Karan 2026-07-07 bug fix: the account company_name used to be
+        // a <Link> pointing at /commercial/accounts/<id>. Users scanning
+        // the banner clicked it and got teleported OUT of the invoicing
+        // context (Karan's "why did I land on the accounts page?"
+        // report). The banner's job is to explain the filter — nothing
+        // more. Company name is now plain bold text. The "Show all
+        // invoices" chip stays as the only escape. A separate low-key
+        // "Open account" chip on the right gives users the option to
+        // navigate but requires an explicit click (labeled, not
+        // ambient) so nobody misclicks into the wrong context.
         <div className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
@@ -235,21 +245,27 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             </span>
             <span>
               Showing invoices for{" "}
-              <Link
-                href={`/commercial/accounts/${accountFilter.id}`}
-                className="font-semibold text-blue-800 hover:underline"
-              >
+              <strong className="font-semibold text-ppp-charcoal">
                 {accountFilter.company_name}
-              </Link>
+              </strong>
             </span>
           </div>
-          <Link
-            href="/commercial/invoices"
-            className="text-[12px] font-semibold text-blue-700 hover:text-blue-900 inline-flex items-center gap-1 min-h-[44px] px-3 touch-manipulation"
-          >
-            Show all invoices
-            <span aria-hidden>→</span>
-          </Link>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href={`/commercial/accounts/${accountFilter.id}`}
+              className="text-[12px] font-medium text-ppp-charcoal-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 min-h-[36px] px-2 touch-manipulation"
+              title="Open the account detail page in a new context"
+            >
+              Open account
+            </Link>
+            <Link
+              href="/commercial/invoices"
+              className="text-[12px] font-semibold text-blue-700 hover:text-blue-900 inline-flex items-center gap-1 min-h-[44px] px-3 touch-manipulation"
+            >
+              Show all invoices
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
         </div>
       )}
       {/* Hero */}

@@ -671,9 +671,19 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   if (amount_cents === null || amount_cents <= 0) {
     redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("Enter a valid payment amount.")}`);
   }
+  // Karan 2026-07-07 TZ bug fix: `<input type="date">` returns a bare
+  // YYYY-MM-DD string. `new Date("2026-07-07").toISOString()` interprets
+  // that as UTC midnight → in America/New_York it renders as "Jul 6
+  // 8:00 PM" (off-by-one). Every commercial op lives in ET, so anchor
+  // the date at noon ET (16:00 UTC during EST, 15:00 UTC during EDT —
+  // 16:00 UTC works safely for both since noon ET is always ≥ 14:00 UTC
+  // and stays on the intended calendar day when displayed in ET). Same
+  // approach used for due_at on the invoice detail page.
   const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
   const paid_at = paid_at_raw
-    ? new Date(paid_at_raw).toISOString()
+    ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at_raw)
+      ? `${paid_at_raw}T16:00:00.000Z`
+      : new Date(paid_at_raw).toISOString()
     : undefined;
   const method = String(formData.get("method") ?? "").trim() || null;
   const reference = String(formData.get("reference") ?? "").trim() || null;
@@ -1685,8 +1695,14 @@ async function OpportunityInvoicesPanel({
                       >
                         <input type="hidden" name="opp_id" value={oppId} />
                         <input type="hidden" name="invoice_id" value={inv.id} />
+                        {/* Karan 2026-07-07: labels softened from ALL-CAPS
+                            uppercase tracking to sentence-case (matches
+                            the Details form). Inputs use text-base on
+                            mobile / text-[13px] on sm+ so iOS Safari
+                            doesn't auto-zoom on focus (< 16px triggers
+                            the zoom; sentence-cased labels don't). */}
                         <label className="block">
-                          <span className="block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
+                          <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
                             Amount
                           </span>
                           <input
@@ -1696,28 +1712,28 @@ async function OpportunityInvoicesPanel({
                             required
                             defaultValue={(inv.balance_cents / 100).toFixed(2)}
                             placeholder="0.00"
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                           />
                         </label>
                         <label className="block">
-                          <span className="block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
+                          <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
                             Paid on
                           </span>
                           <input
                             type="date"
                             name="paid_at"
                             defaultValue={todayEtIso}
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                           />
                         </label>
                         <label className="block">
-                          <span className="block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
+                          <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
                             Method
                           </span>
                           <select
                             name="method"
                             defaultValue=""
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-[13px] bg-white min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-white min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                           >
                             <option value="">— select —</option>
                             {PAYMENT_METHODS.map((m) => (
@@ -1736,14 +1752,14 @@ async function OpportunityInvoicesPanel({
                           </button>
                         </div>
                         <label className="block sm:col-span-4">
-                          <span className="block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
-                            Reference <span className="font-normal normal-case text-ppp-charcoal-400">(check #, txn ID — optional)</span>
+                          <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                            Reference <span className="font-normal text-ppp-charcoal-400">(check #, txn ID — optional)</span>
                           </span>
                           <input
                             type="text"
                             name="reference"
                             maxLength={128}
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                           />
                         </label>
                         <p className="sm:col-span-4 text-[11px] text-ppp-charcoal-500">

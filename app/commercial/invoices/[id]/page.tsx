@@ -129,9 +129,18 @@ async function addPaymentAction(formData: FormData) {
   if (amount === null || amount <= 0) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a valid payment amount."));
   }
+  // Karan 2026-07-07 TZ bug fix: `<input type="date">` returns
+  // YYYY-MM-DD; `new Date(...)` interprets as UTC midnight which
+  // renders one calendar day earlier in ET. Anchor at 16:00 UTC (noon
+  // ET) so the payment displays on the day the recorder actually typed.
+  const paid_at_iso = paid_at
+    ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at)
+      ? `${paid_at}T16:00:00.000Z`
+      : new Date(paid_at).toISOString()
+    : undefined;
   const result = await addPayment(invoice_id, {
     amount_cents: amount!,
-    paid_at: paid_at ? new Date(paid_at).toISOString() : undefined,
+    paid_at: paid_at_iso,
     method,
     reference,
     notes,
