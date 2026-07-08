@@ -26,7 +26,7 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from 
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { isTerminalOpportunityStatus } from "@/lib/commercial/opportunities/constants";
-import { listCommercialInvoices, addPayment, getInvoiceContext } from "@/lib/commercial/invoices/db";
+import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import {
@@ -734,6 +734,57 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
     flash.set("paid_capped", "1");
   }
   redirect(`/commercial/opportunities/${opp_id}?${flash.toString()}#inv-${invoice_id}`);
+}
+
+/**
+ * Karan 2026-07-08: quick-edit slide-out submit for the Invoices tab.
+ * Mirrors the invoice detail page's Details form but redirects back to
+ * the opp's Invoices tab (with the sheet closed) instead of the full
+ * invoice page. Same lib call so the state machine and audit log stay
+ * consistent. Reserved for the most-touched invoice fields — deeper
+ * edits still route to /commercial/invoices/[id].
+ */
+async function saveInvoiceDetailsFromOppAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(invoice_id)) {
+    redirect("/commercial/opportunities");
+  }
+  // Due date: bare YYYY-MM-DD from <input type="date">. Anchor at noon
+  // ET (see recordInvoicePaymentInlineAction for why). Empty = clear.
+  const due_at_raw = String(formData.get("due_at") ?? "").trim();
+  let due_at: string | null | undefined;
+  if (due_at_raw === "") {
+    due_at = null;
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(due_at_raw)) {
+    due_at = `${due_at_raw}T16:00:00.000Z`;
+  } else {
+    due_at = undefined;
+  }
+  const tax_pct_raw = String(formData.get("tax_pct") ?? "").trim();
+  const tax_pct = tax_pct_raw ? parseFloat(tax_pct_raw) : undefined;
+  const patch: Parameters<typeof updateInvoiceCoreFields>[1] = {
+    payment_terms: String(formData.get("payment_terms") ?? "").trim() || undefined,
+    customer_message: (String(formData.get("customer_message") ?? "").trim() || null) as string | null,
+    po_number: (String(formData.get("po_number") ?? "").trim() || null) as string | null,
+    notes: (String(formData.get("notes") ?? "").trim() || null) as string | null,
+  };
+  if (due_at !== undefined) patch.due_at = due_at;
+  if (tax_pct !== undefined && Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
+  const result = await updateInvoiceCoreFields(invoice_id, patch);
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&edit_invoice=${invoice_id}&error=${encodeURIComponent(result.error ?? "Save failed.")}#inv-${invoice_id}`);
+  }
+  const ctx = await getInvoiceContext(invoice_id);
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  revalidatePath("/commercial/invoices");
+  if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
+  redirect(`/commercial/opportunities/${opp_id}?tab=invoices&details_saved=${invoice_id}#inv-${invoice_id}`);
 }
 
 async function deleteNoteAction(formData: FormData) {
@@ -1444,6 +1495,8 @@ export default async function OpportunityDetailPage({
           paidCapped={pickFirst(sp.paid_capped) === "1"}
           errorMessage={pickFirst(sp.error)}
           isDealDeleted={isDeletedDeal}
+          editInvoiceId={pickFirst(sp.edit_invoice) ?? null}
+          detailsSavedInvoiceId={pickFirst(sp.details_saved) ?? null}
         />
       )}
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} assignedOk={pickFirst(sp.assigned) === "1"} />}
@@ -1484,6 +1537,8 @@ async function OpportunityInvoicesPanel({
   paidCapped,
   errorMessage,
   isDealDeleted = false,
+  editInvoiceId = null,
+  detailsSavedInvoiceId = null,
 }: {
   oppId: string;
   bidMidpointCents: number | null;
@@ -1495,6 +1550,8 @@ async function OpportunityInvoicesPanel({
   paidCapped?: boolean;
   errorMessage?: string;
   isDealDeleted?: boolean;
+  editInvoiceId?: string | null;
+  detailsSavedInvoiceId?: string | null;
 }) {
   const invoices = await listCommercialInvoices({ opportunityId: oppId });
   // Roll-ups (Karan 2026-07-07 bug fix): earlier version excluded drafts
@@ -1921,6 +1978,29 @@ async function OpportunityInvoicesPanel({
                       </form>
                     </details>
                   )}
+                  {/* Quick edit — slides out from the right with the
+                      most-touched fields (due date, PO#, payment terms,
+                      customer message, notes, tax %). Everything deeper
+                      lives on the full invoice page. */}
+                  {!isVoid && (
+                    <Link
+                      href={`?tab=invoices&edit_invoice=${inv.id}#inv-${inv.id}`}
+                      className="border-t border-ppp-charcoal-100 flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 rounded-b-lg min-h-[36px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                        </svg>
+                        Edit details
+                        <span className="text-[10px] font-normal text-ppp-charcoal-400">
+                          · due date, PO#, notes
+                        </span>
+                      </span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-400" aria-hidden>
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </Link>
+                  )}
                 </li>
               );
             })}
@@ -1928,6 +2008,192 @@ async function OpportunityInvoicesPanel({
         </>
       )}
     </section>
+      {/* GHL-style right-side quick-edit slide-out. Uses the same
+          URL-driven pattern as the account page's Deal edit sheet:
+          ?edit_invoice=<id> opens; clicking backdrop or close links
+          back to ?tab=invoices (URL param cleared). Server action
+          redirects here with details_saved=<id> on save. */}
+      {editInvoiceId && (() => {
+        const editing = invoices.find((i) => i.id === editInvoiceId);
+        if (!editing) return null;
+        const dueDefault = editing.due_at
+          ? new Date(editing.due_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" })
+          : "";
+        const backHref = `?tab=invoices#inv-${editing.id}`;
+        return (
+          <div className="fixed inset-0 z-50 flex justify-end" aria-modal="true" role="dialog" aria-labelledby="invoice-edit-sheet-title">
+            <Link
+              href={backHref}
+              aria-label="Close edit panel"
+              className="absolute inset-0 bg-ppp-charcoal-900/40 backdrop-blur-[1px]"
+            />
+            <aside className="relative z-10 w-full max-w-md h-full bg-white shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
+              <header className="px-5 pt-5 pb-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-500">
+                    Edit invoice
+                  </div>
+                  <h2 id="invoice-edit-sheet-title" className="mt-0.5 text-lg font-bold text-ppp-charcoal tracking-tight font-mono">
+                    {editing.invoice_number}
+                  </h2>
+                  <div className="mt-1 flex items-center gap-2">
+                    <InvoicePill status={deriveInvoiceStatus(editing)} />
+                    <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
+                      {formatCentsFull(editing.total_cents)}
+                    </span>
+                  </div>
+                </div>
+                <Link
+                  href={backHref}
+                  aria-label="Close"
+                  className="p-2 -mr-2 rounded-md text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M6 6l12 12 M18 6l-12 12" />
+                  </svg>
+                </Link>
+              </header>
+              {detailsSavedInvoiceId === editing.id && (
+                <div className="mx-5 mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-[12px] font-semibold text-emerald-800">
+                  Details saved.
+                </div>
+              )}
+              {errorMessage && (
+                <div className="mx-5 mt-3 rounded-md bg-rose-50 border border-rose-200 px-3 py-2 text-[12px] font-semibold text-rose-800">
+                  {errorMessage}
+                </div>
+              )}
+              <form
+                id="invoice-edit-sheet-form"
+                action={saveInvoiceDetailsFromOppAction}
+                className="flex-1 overflow-y-auto px-5 py-4 space-y-5"
+              >
+                <input type="hidden" name="opp_id" value={oppId} />
+                <input type="hidden" name="invoice_id" value={editing.id} />
+
+                {/* Schedule */}
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
+                      Schedule
+                    </div>
+                    <div className="flex-1 h-px bg-ppp-charcoal-100" />
+                  </div>
+                  <label className="block">
+                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Due date</span>
+                    <input
+                      type="date"
+                      name="due_at"
+                      defaultValue={dueDefault}
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Payment terms</span>
+                    <input
+                      type="text"
+                      name="payment_terms"
+                      maxLength={64}
+                      defaultValue={editing.payment_terms ?? ""}
+                      placeholder="Net 30"
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    />
+                  </label>
+                </section>
+
+                {/* Reference */}
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
+                      Reference
+                    </div>
+                    <div className="flex-1 h-px bg-ppp-charcoal-100" />
+                  </div>
+                  <label className="block">
+                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">PO #</span>
+                    <input
+                      type="text"
+                      name="po_number"
+                      maxLength={64}
+                      defaultValue={editing.po_number ?? ""}
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Tax %</span>
+                    <input
+                      type="number"
+                      step={0.01}
+                      min={0}
+                      max={100}
+                      name="tax_pct"
+                      defaultValue={editing.tax_pct ?? ""}
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 max-w-[140px]"
+                    />
+                  </label>
+                </section>
+
+                {/* Copy */}
+                <section className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
+                      Copy
+                    </div>
+                    <div className="flex-1 h-px bg-ppp-charcoal-100" />
+                  </div>
+                  <label className="block">
+                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Customer message</span>
+                    <textarea
+                      name="customer_message"
+                      rows={3}
+                      maxLength={2000}
+                      defaultValue={editing.customer_message ?? ""}
+                      placeholder="Shown on the invoice PDF"
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Internal notes</span>
+                    <textarea
+                      name="notes"
+                      rows={3}
+                      maxLength={2000}
+                      defaultValue={editing.notes ?? ""}
+                      placeholder="Only visible to your team"
+                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    />
+                  </label>
+                </section>
+
+                <div className="text-[11px] text-ppp-charcoal-500 leading-relaxed">
+                  Need to edit line items, change status, void, or delete?{" "}
+                  <Link
+                    href={`/commercial/invoices/${editing.id}`}
+                    className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                  >
+                    Open the full invoice
+                  </Link>.
+                </div>
+              </form>
+              <footer className="border-t border-ppp-charcoal-100 px-5 py-3 flex items-center justify-between gap-2 bg-white">
+                <Link
+                  href={backHref}
+                  className="inline-flex items-center justify-center px-3.5 py-2 rounded-md text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[36px] touch-manipulation"
+                >
+                  Cancel
+                </Link>
+                <button
+                  type="submit"
+                  form="invoice-edit-sheet-form"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[36px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+                >
+                  Save details
+                </button>
+              </footer>
+            </aside>
+          </div>
+        );
+      })()}
     </div>
   );
 }
