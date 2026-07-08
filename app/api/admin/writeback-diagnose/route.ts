@@ -50,14 +50,82 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const woId = url.searchParams.get("wo");
-  if (!woId) {
+  const tokenParam = url.searchParams.get("token");
+  if (!woId && !tokenParam) {
     return NextResponse.json({
       error: "missing_param",
-      usage: "GET /api/admin/writeback-diagnose?wo=0WOWj000007AwUvOAK",
+      usage: {
+        by_wo: "GET /api/admin/writeback-diagnose?wo=0WOWj000007AwUvOAK",
+        by_token: "GET /api/admin/writeback-diagnose?token=Dwq69udfcWwx4jxTyh2Y1pLLKmMNtr4vWGM38GRYc0k",
+      },
     });
   }
 
   const sb = adminClient();
+
+  // Token lookup path — resolves a specific customer-form token to its
+  // WO id (which becomes the woId for the rest of the diagnosis). Katie
+  // 2026-07-08: her form URL was
+  // /select/Dwq69udfcWwx4jxTyh2Y1pLLKmMNtr4vWGM38GRYc0k and the by-wo
+  // lookup returned zero tokens for the WO she was checking, meaning
+  // the form may have been generated for a different WO. This path
+  // sidesteps the guessing.
+  let resolvedWoId = woId;
+  let tokenLookup: {
+    found: boolean;
+    token: string | null;
+    work_order_id: string | null;
+    work_order_number: string | null;
+    kind: string | null;
+    created_at: string | null;
+    submitted_at: string | null;
+    resubmitted_at: string | null;
+    expires_at: string | null;
+    customer_name: string | null;
+    created_by_user_id: string | null;
+  } | null = null;
+  if (tokenParam) {
+    const { data: tokenRow } = await sb
+      .from("customer_form_tokens")
+      .select(
+        "token, work_order_id, work_order_number, kind, created_at, submitted_at, resubmitted_at, expires_at, customer_name, created_by_user_id"
+      )
+      .eq("token", tokenParam)
+      .maybeSingle();
+    tokenLookup = {
+      found: !!tokenRow,
+      token: tokenParam,
+      work_order_id: (tokenRow?.work_order_id as string | null) ?? null,
+      work_order_number: (tokenRow?.work_order_number as string | null) ?? null,
+      kind: (tokenRow?.kind as string | null) ?? null,
+      created_at: (tokenRow?.created_at as string | null) ?? null,
+      submitted_at: (tokenRow?.submitted_at as string | null) ?? null,
+      resubmitted_at: (tokenRow?.resubmitted_at as string | null) ?? null,
+      expires_at: (tokenRow?.expires_at as string | null) ?? null,
+      customer_name: (tokenRow?.customer_name as string | null) ?? null,
+      created_by_user_id: (tokenRow?.created_by_user_id as string | null) ?? null,
+    };
+    if (tokenRow?.work_order_id && !resolvedWoId) {
+      resolvedWoId = tokenRow.work_order_id as string;
+    }
+  }
+
+  // If we still have no WO id (token param given but token doesn't exist)
+  // return the token lookup + recent tokens so admin can see what's live.
+  if (!resolvedWoId) {
+    const { data: recent } = await sb
+      .from("customer_form_tokens")
+      .select("token, work_order_id, work_order_number, kind, customer_name, created_at, submitted_at, expires_at")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    return NextResponse.json({
+      verdict: tokenLookup?.found
+        ? `Token found but has no work_order_id — see token_lookup below.`
+        : `❌ TOKEN NOT FOUND — no customer_form_tokens row matches token '${tokenParam}'. Either it was typoed, or the token was purged after expires_at. Recent tokens listed below.`,
+      token_lookup: tokenLookup,
+      recent_tokens: recent ?? [],
+    });
+  }
 
   // 1. Current mode
   const { data: modeRow } = await sb
@@ -66,25 +134,34 @@ export async function GET(request: Request) {
     .eq("key", "global")
     .maybeSingle();
 
-  // 2. Allowlist check + total allowlist count
-  const [{ data: allowRow }, { count: allowCount }] = await Promise.all([
+  // 2. Allowlist check + total allowlist count. Salesforce Ids come in
+  //    15-char (case-sensitive) and 18-char (case-insensitive) flavors —
+  //    both refer to the same record. Check the exact string AND the
+  //    15-char prefix so an allowlist with the 18-char version still
+  //    matches a token stored with the 15-char version (or vice versa).
+  const woPrefix = resolvedWoId.slice(0, 15);
+  const [{ data: allowRows }, { count: allowCount }] = await Promise.all([
     sb
       .from("customer_form_writeback_allowlist")
       .select("work_order_id, label, added_by, added_at")
-      .eq("work_order_id", woId)
-      .maybeSingle(),
+      .like("work_order_id", `${woPrefix}%`),
     sb
       .from("customer_form_writeback_allowlist")
       .select("work_order_id", { count: "exact", head: true }),
   ]);
+  const allowRow = (allowRows ?? []).find(Boolean) ?? null;
 
-  // 3. Tokens for this WO
+  // 3. Tokens for this WO — also fuzzy-match on 15-char prefix so a WO id
+  //    stored differently between the token table and the allowlist still
+  //    shows up here. Katie 2026-07-08: her token wasn't found via exact
+  //    match but was on the allowlist — different id format between the
+  //    tables was the smoking gun for the first round of diagnosis.
   const { data: tokens } = await sb
     .from("customer_form_tokens")
     .select(
       "token, kind, work_order_id, work_order_number, customer_name, created_at, submitted_at, resubmitted_at, vendor_email_sent_at, expires_at, created_by_user_id"
     )
-    .eq("work_order_id", woId)
+    .like("work_order_id", `${woPrefix}%`)
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -94,7 +171,7 @@ export async function GET(request: Request) {
   //    include audit rows targeting the WO itself (MaterialType__c
   //    writes go against WorkOrder).
   const tokenList = (tokens ?? []).map((t) => t.token).filter(Boolean);
-  const prefix = woId.slice(0, 15);
+  const prefix = woPrefix;
   const audit = await (async () => {
     const rows: unknown[] = [];
     if (tokenList.length > 0) {
@@ -150,7 +227,7 @@ export async function GET(request: Request) {
   if (mode === "off") {
     verdict = "❌ MODE IS OFF — writeback disabled globally. Flip to 'all' or 'test_only' on /dashboard/settings/writeback to re-enable.";
   } else if (mode === "test_only" && !onAllowlist) {
-    verdict = `❌ WO NOT ON ALLOWLIST — mode is test_only and this specific WO ('${woId}') isn't listed. The customer form saves the submission but skips SF. Either add this WO on /dashboard/settings/writeback OR flip mode to 'all'.`;
+    verdict = `❌ WO NOT ON ALLOWLIST — mode is test_only and this specific WO ('${resolvedWoId}') isn't listed. The customer form saves the submission but skips SF. Either add this WO on /dashboard/settings/writeback OR flip mode to 'all'.`;
   } else if (auditRows.length === 0) {
     verdict = `⚠ NO WRITE ATTEMPTS LOGGED — mode + allowlist look good (${mode}, on-allowlist=${onAllowlist}) but no SF writes have been attempted for this WO. Either the customer never actually submitted the form OR the submit route bailed before reaching the write path. Check tokens[].submitted_at above — if that's populated but no audit rows exist, there's a code-path bug (route hitting an early return). If submitted_at is null, the customer never actually clicked submit.`;
   } else if (recentSuccess) {
@@ -162,9 +239,10 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    wo_id: woId,
+    wo_id: resolvedWoId,
     verdict,
     should_write: shouldWrite,
+    token_lookup: tokenLookup,
     mode: {
       current: mode,
       last_updated_at: modeRow?.updated_at ?? null,
