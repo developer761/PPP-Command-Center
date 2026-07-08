@@ -41,6 +41,21 @@ type NotifyInput = {
    *  Center only, not Salesforce. Without this, admin would assume SF was
    *  updated and rely on stale data. */
   writebackSkipped?: boolean;
+  /** Karan/Katie 2026-07-08: When the SF writes fired but SF rejected them
+   *  (permission errors, validation rules, FSL locking, etc.), the
+   *  submission was ATTEMPTED but nothing landed in SF. Different from
+   *  writebackSkipped (which is our own gate declining to try). Populated
+   *  with the SF error code + message from the first failed attempt so
+   *  admin sees exactly what SF said instead of scrolling through the
+   *  audit table. Prior to this, the email would say "colors submitted"
+   *  as if everything worked, and admin only found out via the diagnostic
+   *  endpoint. */
+  writesFailed?: {
+    attemptedCount: number;
+    failedCount: number;
+    sampleErrorCode: string | null;
+    sampleErrorMessage: string | null;
+  } | null;
 };
 
 /** Human-readable reason the submission produced no color writes. Katie
@@ -141,6 +156,16 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
         input.isReedit ? "didn't run" : "was bypassed"
       } for this work order (test mode or paused). Open Mail Hub to review + manually reconcile with SF if needed.`
     : "";
+  // Karan/Katie 2026-07-08: SF rejected all writes. Different from
+  // writebackSkipped (our gate declining to try) — the writes fired,
+  // Salesforce refused. Show the exact error code + message so admin
+  // knows what's broken on the SF side without opening the diagnostic.
+  const writesFailedNote =
+    input.writesFailed && input.writesFailed.failedCount > 0 && input.writesFailed.failedCount === input.writesFailed.attemptedCount
+      ? `\n\n❌ HEADS-UP: Salesforce rejected every write attempt for this submission. Colors are saved in Command Center but NOT in SF.\n\nSF error: ${input.writesFailed.sampleErrorCode ?? "UNKNOWN"} — ${input.writesFailed.sampleErrorMessage ?? "(no message)"}\n\nCommon causes: integration user missing Edit permission, Field Service Lightning locking the WOLI, or a validation rule blocking the update. Ask an SF admin to check.`
+      : input.writesFailed && input.writesFailed.failedCount > 0
+      ? `\n\n⚠ HEADS-UP: ${input.writesFailed.failedCount} of ${input.writesFailed.attemptedCount} SF writes failed for this submission. Some colors landed in Salesforce, others didn't.\n\nSample SF error: ${input.writesFailed.sampleErrorCode ?? "UNKNOWN"} — ${input.writesFailed.sampleErrorMessage ?? "(no message)"}\n\nOpen Mail Hub + reconcile the failed rooms with SF manually.`
+      : "";
 
   // Body line about "N rooms": doesn't apply when no color writes fired.
   // Katie 2026-07-08: distinguish two very different notes-only cases —
@@ -157,6 +182,7 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
     lineItemsLine,
     orderWarning,
     writebackSkippedNote,
+    writesFailedNote,
     "",
     "Open in Command Center:",
     materialsUrl,
@@ -176,6 +202,25 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
         } for this work order — typically because writeback is in test mode and this WO isn't on the allowlist, or writeback is paused entirely. The customer's submission is preserved in Mail Hub; reconcile with SF manually if needed.
       </p>`
     : "";
+  // Karan/Katie 2026-07-08: SF-rejected writes get a prominent red
+  // callout so admin sees it immediately instead of thinking everything
+  // worked. Full-fail (rose) is different from partial-fail (amber).
+  const writesFailedHtml =
+    input.writesFailed && input.writesFailed.failedCount > 0 && input.writesFailed.failedCount === input.writesFailed.attemptedCount
+      ? `<p style="margin:12px 0 0 0; padding:12px; background:#fef2f2; border-left:3px solid #dc2626; color:#7f1d1d;">
+          <strong>❌ Salesforce rejected every write attempt.</strong> Colors are saved in Command Center but did NOT reach Salesforce.<br /><br />
+          <strong>SF error:</strong> <code style="background:#fee2e2; padding:2px 6px; border-radius:3px;">${escapeHtml(input.writesFailed.sampleErrorCode ?? "UNKNOWN")}</code><br />
+          ${escapeHtml(input.writesFailed.sampleErrorMessage ?? "(no message)")}<br /><br />
+          <em>Common causes: integration user missing Edit permission, Field Service Lightning locking the WOLI, or a validation rule blocking the update. Ask an SF admin to check.</em>
+        </p>`
+      : input.writesFailed && input.writesFailed.failedCount > 0
+      ? `<p style="margin:12px 0 0 0; padding:12px; background:#fffbeb; border-left:3px solid #d97706; color:#78350f;">
+          <strong>⚠ Partial write failure.</strong> ${input.writesFailed.failedCount} of ${input.writesFailed.attemptedCount} SF writes failed. Some rooms landed in Salesforce, others didn't.<br /><br />
+          <strong>Sample SF error:</strong> <code style="background:#fef3c7; padding:2px 6px; border-radius:3px;">${escapeHtml(input.writesFailed.sampleErrorCode ?? "UNKNOWN")}</code><br />
+          ${escapeHtml(input.writesFailed.sampleErrorMessage ?? "(no message)")}<br /><br />
+          <em>Reconcile the failed rooms with SF manually.</em>
+        </p>`
+      : "";
 
   const html = `<table border="0" cellpadding="0" cellspacing="0" style="width:600px; font-family:tahoma,geneva,sans-serif; font-size:11pt; line-height:1.5; color:#333;">
   <tbody>
@@ -196,6 +241,7 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
         }
         ${orderWarningHtml}
         ${writebackSkippedHtml}
+        ${writesFailedHtml}
       </td>
     </tr>
     <tr>

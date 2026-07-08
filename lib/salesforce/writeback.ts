@@ -140,14 +140,14 @@ export async function writeSf(
       const errInfo = r?.errors?.[0];
       lastError = new Error(errInfo?.message ?? "Unknown SF error");
       lastErrorCode = errInfo?.statusCode ?? null;
-      if (lastErrorCode && /VALIDATION|FIELD_INTEGRITY|MALFORMED|DUPLICATE|REQUIRED_FIELD_MISSING/.test(lastErrorCode)) {
+      if (lastErrorCode && /VALIDATION|FIELD_INTEGRITY|MALFORMED|DUPLICATE|REQUIRED_FIELD_MISSING|CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY|INSUFFICIENT_ACCESS|ENTITY_IS_LOCKED|INVALID_CROSS_REFERENCE_KEY|INVALID_FIELD/.test(lastErrorCode)) {
         break; // bail — these don't fix themselves
       }
     } catch (err) {
       lastError = err;
       lastErrorCode = (err as { errorCode?: string })?.errorCode ?? null;
       // Only retry on network/5xx, NOT on validation errors
-      if (lastErrorCode && /VALIDATION|FIELD_INTEGRITY|MALFORMED|REQUIRED_FIELD_MISSING/.test(lastErrorCode)) {
+      if (lastErrorCode && /VALIDATION|FIELD_INTEGRITY|MALFORMED|DUPLICATE|REQUIRED_FIELD_MISSING|CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY|INSUFFICIENT_ACCESS|ENTITY_IS_LOCKED|INVALID_CROSS_REFERENCE_KEY|INVALID_FIELD/.test(lastErrorCode)) {
         break;
       }
     }
@@ -196,7 +196,7 @@ export async function writeSfBatch(
   for (const a of attempts) {
     const r = await writeSf(a, ctx);
     results.push(r);
-    if (!r.ok && r.errorCode && /VALIDATION|FIELD_INTEGRITY|MALFORMED|REQUIRED_FIELD_MISSING/.test(r.errorCode)) {
+    if (!r.ok && r.errorCode && /VALIDATION|FIELD_INTEGRITY|MALFORMED|DUPLICATE|REQUIRED_FIELD_MISSING|CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY|INSUFFICIENT_ACCESS|ENTITY_IS_LOCKED|INVALID_CROSS_REFERENCE_KEY|INVALID_FIELD/.test(r.errorCode)) {
       break;
     }
   }

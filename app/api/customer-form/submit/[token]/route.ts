@@ -476,6 +476,16 @@ export async function POST(
   let writesAttempted = 0;
   let writesSucceeded = 0;
   let writeSkippedReason: string | null = null;
+  // Katie 2026-07-08: captures SF-side rejection info so the sender-
+  // notification email can prominently show WHAT SF said. Populated by
+  // the writeSfBatch failure branch below. Null when writes succeeded
+  // OR when they weren't attempted at all.
+  let writesFailedInfo: {
+    attemptedCount: number;
+    failedCount: number;
+    sampleErrorCode: string | null;
+    sampleErrorMessage: string | null;
+  } | null = null;
   if (runWrites && attempts.length > 0) {
     if (!decision.shouldWrite) {
       writeSkippedReason = decision.reason;
@@ -497,6 +507,19 @@ export async function POST(
         const failed = writeResults.filter((r) => !r.ok);
         if (failed.length > 0) {
           console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl.slice(0, 8)}…:`, failed);
+          // Katie 2026-07-08: capture the first SF error so the sender
+          // notification email can surface it prominently. Prior to this
+          // the email said "colors submitted" even when SF rejected all
+          // writes; admin only found out via the diagnostic endpoint.
+          const firstFail = failed[0];
+          if (firstFail && !firstFail.ok) {
+            writesFailedInfo = {
+              attemptedCount: attempts.length,
+              failedCount: failed.length,
+              sampleErrorCode: firstFail.errorCode,
+              sampleErrorMessage: firstFail.error,
+            };
+          }
         }
         // The render-data cache (added 2026-06-06 for the speed pass) holds
         // the pre-submit WOLI shape. Successful writes invalidate it so the
@@ -566,11 +589,14 @@ export async function POST(
   const writebackSkipped = attempts.length > 0 && !decision.shouldWrite;
 
   if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission) {
-    // EMAIL — conservative gate: only fire when SF was actually updated.
-    // The email copy says "submitted" which implies SF state; firing on a
-    // writeback-skipped path would mislead admin to expect data in SF that
-    // isn't there. The bell below has no such promise so it fires regardless.
-    if (writebackHappened) {
+    // EMAIL — Katie 2026-07-08: previously gated on writebackHappened
+    // (skipped the email when SF was bypassed). Now also fires on
+    // SF-rejection paths so admin sees the error immediately. The
+    // writesFailed block in the email copy makes the state explicit —
+    // "SF rejected the write, here's why" instead of misleading
+    // "colors submitted."
+    const emailShouldFire = writebackHappened || !!writesFailedInfo;
+    if (emailShouldFire) {
       notifySenderOnSubmit({
         adminUserId: status.token.created_by_user_id,
         customerName: status.token.customer_name,
@@ -581,6 +607,7 @@ export async function POST(
         orderAlreadyPlaced,
         notesOnly: notifyNotesOnly,
         writebackSkipped,
+        writesFailed: writesFailedInfo,
       }).catch((err) => {
         console.warn(`[customer-form] sender notification failed for token ${tokenFromUrl.slice(0, 8)}…:`, err instanceof Error ? err.message : err);
       });
