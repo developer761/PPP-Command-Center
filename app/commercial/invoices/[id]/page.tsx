@@ -444,6 +444,22 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {/* New invoice for this opp — Karan 2026-07-07: "give the
+                ability to add another invoice even after the first one
+                is created." Only shown when the parent opp is Won +
+                exists (all created invoices satisfy that but be safe). */}
+            {opp && opp.status === "won" && (
+              <Link
+                href={`/commercial/invoices/new?opp=${opp.id}`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+                title={`Add another invoice for ${opp.title}. Progress-billing friendly.`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 5v14 M5 12h14" />
+                </svg>
+                New invoice for this opp
+              </Link>
+            )}
             <form action={deleteDraftAction} className="inline">
               <input type="hidden" name="invoice_id" value={invoice.id} />
               <button
@@ -631,44 +647,12 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </div>
         )}
 
-        {/* Add line item — editable at any non-void status.
-            Karan 2026-07-07: "update the total even if it's not the
-            full invoice". Line items can adjust after sending to
-            handle scope changes without void-and-recreate. */}
-        {!isVoid && (
-          <form action={addLineItemAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-12 gap-2">
-            <input type="hidden" name="invoice_id" value={invoice.id} />
-            <div className="sm:col-span-5">
-              <label htmlFor="li-description" className={LABEL_CLS}>Description *</label>
-              <input id="li-description" name="description" type="text" required maxLength={500} placeholder="e.g. Interior repaint — lobby + corridor" className={INPUT_CLS} />
-            </div>
-            <div className="sm:col-span-2">
-              <label htmlFor="li-quantity" className={LABEL_CLS}>Qty *</label>
-              <input id="li-quantity" name="quantity" type="number" required step="0.01" min="0.01" defaultValue="1" className={INPUT_CLS} />
-            </div>
-            <div className="sm:col-span-2">
-              <label htmlFor="li-unit" className={LABEL_CLS}>Unit</label>
-              <input id="li-unit" name="unit" type="text" maxLength={20} placeholder="hrs, sqft, ea" className={INPUT_CLS} />
-            </div>
-            <div className="sm:col-span-2">
-              <label htmlFor="li-price" className={LABEL_CLS}>Unit price *</label>
-              <input id="li-price" name="unit_price" type="text" required inputMode="decimal" placeholder="$1,500.00" className={INPUT_CLS} />
-            </div>
-            <div className="sm:col-span-1 flex items-end">
-              <button
-                type="submit"
-                className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
-              >
-                Add
-              </button>
-            </div>
-          </form>
-        )}
-        {!isDraft && !isVoid && (
-          <p className="mt-3 text-[11.5px] text-ppp-charcoal-500 italic">
-            Adding or removing a line item changes the total + rebalances the payment progress bar. Payments already recorded stay intact.
-          </p>
-        )}
+        {/* Karan 2026-07-07: dropped the "Add another line" form entirely.
+            The single-line-per-invoice model is cleaner — if you need to
+            bill for something else on this deal, use "+ New invoice for
+            this opp" in the hero above and it becomes its own row in
+            progress billing. Line-item edits (existing rows) still work
+            via the removeLineItemAction button next to each row. */}
       </section>
 
       {/* Payments */}
