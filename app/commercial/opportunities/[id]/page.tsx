@@ -24,9 +24,9 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from 
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { isTerminalOpportunityStatus } from "@/lib/commercial/opportunities/constants";
-import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus, invoiceStatusLabel, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
-import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween } from "@/lib/commercial/invoices/format";
+import { listCommercialInvoices, addPayment, getInvoiceContext } from "@/lib/commercial/invoices/db";
+import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import {
   allowedNextStatuses,
   changeOpportunityStatus,
@@ -115,6 +115,10 @@ type SP = Promise<{
   /** Set by /commercial/invoices/new after a batch create — count of drafts created. */
   invoices_created?: string;
   invoice_errors?: string;
+  /** Set by the inline "+ Record payment" action on the Invoices tab. */
+  paid_ok?: string;
+  paid_invoice?: string;
+  paid_capped?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
@@ -638,6 +642,73 @@ async function archiveAttachmentAction(formData: FormData) {
   // force-dynamic, but the list page can be cached for navigation.
   revalidatePath("/commercial/opportunities");
   redirect(`/commercial/opportunities/${opportunity_id}?tab=plans`);
+}
+
+/**
+ * Inline "+ Record payment" action from the opp Invoices tab.
+ *
+ * Karan 2026-07-07: the opp Invoices tab is meant to be a quiet
+ * breakdown with a single quick action per invoice (record a payment).
+ * Anything bigger (delete, status flip, line-item edit, details) sends
+ * the user to the actual invoice detail page. This action is the ONE
+ * inline path that stays on the opp view.
+ *
+ * Revalidates every surface the invoice touches so the panel refreshes
+ * on redirect + the invoice-detail + list + account + dashboard don't
+ * go stale.
+ */
+async function recordInvoicePaymentInlineAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(invoice_id)) {
+    redirect("/commercial/opportunities");
+  }
+  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  if (amount_cents === null || amount_cents <= 0) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("Enter a valid payment amount.")}`);
+  }
+  const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
+  const paid_at = paid_at_raw
+    ? new Date(paid_at_raw).toISOString()
+    : undefined;
+  const method = String(formData.get("method") ?? "").trim() || null;
+  const reference = String(formData.get("reference") ?? "").trim() || null;
+
+  const result = await addPayment(invoice_id, {
+    amount_cents: amount_cents!,
+    paid_at,
+    method,
+    reference,
+    recorded_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent(result.error ?? "Payment failed.")}`);
+  }
+  // Revalidate everything this payment touches — the opp panel, the
+  // invoice detail, the account 360 tiles, the list KPIs, and the
+  // dashboard AR tile.
+  const ctx = await getInvoiceContext(invoice_id);
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+  if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
+
+  // Land back on the invoices tab with a success flag anchored at the
+  // paid row so the user sees the updated progress bar immediately.
+  const flash = new URLSearchParams({
+    tab: "invoices",
+    paid_ok: "1",
+    paid_invoice: invoice_id,
+  });
+  if (result.capped) {
+    flash.set("paid_capped", "1");
+  }
+  redirect(`/commercial/opportunities/${opp_id}?${flash.toString()}#inv-${invoice_id}`);
 }
 
 async function deleteNoteAction(formData: FormData) {
@@ -1221,6 +1292,10 @@ export default async function OpportunityDetailPage({
           invoiceErrors={
             pickFirst(sp.invoice_errors) ? Number(pickFirst(sp.invoice_errors)) : 0
           }
+          paidOk={pickFirst(sp.paid_ok) === "1"}
+          paidInvoiceId={pickFirst(sp.paid_invoice) ?? null}
+          paidCapped={pickFirst(sp.paid_capped) === "1"}
+          errorMessage={pickFirst(sp.error)}
         />
       )}
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} assignedOk={pickFirst(sp.assigned) === "1"} />}
@@ -1256,12 +1331,20 @@ async function OpportunityInvoicesPanel({
   className,
   invoicesCreated,
   invoiceErrors,
+  paidOk,
+  paidInvoiceId,
+  paidCapped,
+  errorMessage,
 }: {
   oppId: string;
   bidMidpointCents: number | null;
   className?: string;
   invoicesCreated?: number;
   invoiceErrors?: number;
+  paidOk?: boolean;
+  paidInvoiceId?: string | null;
+  paidCapped?: boolean;
+  errorMessage?: string;
 }) {
   const invoices = await listCommercialInvoices({ opportunityId: oppId });
   // Roll-ups — exclude drafts + voids so the numbers reflect real billing.
@@ -1291,6 +1374,39 @@ async function OpportunityInvoicesPanel({
               <> {invoiceErrors} row{invoiceErrors === 1 ? "" : "s"} skipped due to input errors.</>
             )}
           </span>
+          <Link
+            href={`/commercial/opportunities/${oppId}?tab=invoices`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      ) : null}
+      {paidOk ? (
+        <div
+          className={`rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
+            paidCapped
+              ? "bg-amber-50 border border-amber-200 text-amber-900"
+              : "bg-blue-50 border border-blue-200 text-blue-700"
+          }`}
+        >
+          <span>
+            Payment recorded.
+            {paidCapped && (
+              <> Amount was capped to the remaining balance — invoice is fully paid.</>
+            )}
+          </span>
+          <Link
+            href={`/commercial/opportunities/${oppId}?tab=invoices`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      ) : null}
+      {errorMessage ? (
+        <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-rose-50 border border-rose-200 text-rose-700">
+          <span>{errorMessage}</span>
           <Link
             href={`/commercial/opportunities/${oppId}?tab=invoices`}
             className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
@@ -1378,12 +1494,28 @@ async function OpportunityInvoicesPanel({
                   : isOverdue
                   ? "bg-rose-500"
                   : "bg-ppp-charcoal-300";
+              const isVoid = inv.status === "void";
+              const isPaidInFull = inv.paid_cents >= inv.total_cents && inv.total_cents > 0;
+              const canRecordPayment = !isVoid && !isPaidInFull;
+              // Default the paid_at input to today's ET date so most bank/CC
+              // deposits (same-day) don't require the user to touch a picker.
+              const todayEtIso = new Date()
+                .toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+              const isFlashRow = paidInvoiceId === inv.id;
               return (
-                <li key={inv.id}>
+                <li
+                  key={inv.id}
+                  id={`inv-${inv.id}`}
+                  className={`scroll-mt-4 rounded-lg border transition-all ${
+                    isFlashRow
+                      ? "border-blue-300 bg-blue-50/60 ring-1 ring-blue-200"
+                      : "border-ppp-charcoal-100 hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm"
+                  }`}
+                >
                   <Link
                     href={`/commercial/invoices/${inv.id}`}
                     aria-label={`Open invoice ${inv.invoice_number}${inv.due_at ? `, due ${fmtEtDate(inv.due_at)}` : ""}`}
-                    className="group/inv block px-3 py-2.5 rounded-lg border border-ppp-charcoal-100 hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm transition-all touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                    className="group/inv block px-3 py-2.5 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded-lg"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -1420,7 +1552,7 @@ async function OpportunityInvoicesPanel({
                               </span>
                             </>
                           )}
-                          {inv.paid_at && inv.paid_cents >= inv.total_cents && (
+                          {inv.paid_at && isPaidInFull && (
                             <>
                               {" · "}
                               <span className="text-emerald-700 font-medium">
@@ -1448,6 +1580,113 @@ async function OpportunityInvoicesPanel({
                       </svg>
                     </div>
                   </Link>
+                  {canRecordPayment && (
+                    <details className="group/pay border-t border-ppp-charcoal-100">
+                      <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-blue-700 hover:bg-blue-50/60 rounded-b-lg min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                        <span className="inline-flex items-center gap-1.5">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M12 5v14 M5 12h14" />
+                          </svg>
+                          Record payment
+                          <span className="text-[11px] font-normal text-ppp-charcoal-500">
+                            · {formatCentsFull(inv.balance_cents)} outstanding
+                          </span>
+                        </span>
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="text-ppp-charcoal-400 transition-transform group-open/pay:rotate-180"
+                          aria-hidden
+                        >
+                          <path d="M6 9l6 6 6-6" />
+                        </svg>
+                      </summary>
+                      <form
+                        action={recordInvoicePaymentInlineAction}
+                        className="px-3 pb-3 pt-1 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2"
+                      >
+                        <input type="hidden" name="opp_id" value={oppId} />
+                        <input type="hidden" name="invoice_id" value={inv.id} />
+                        <label className="block">
+                          <span className="block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
+                            Amount
+                          </span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            name="amount"
+                            required
+                            defaultValue={(inv.balance_cents / 100).toFixed(2)}
+                            placeholder="0.00"
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
+                            Paid on
+                          </span>
+                          <input
+                            type="date"
+                            name="paid_at"
+                            defaultValue={todayEtIso}
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
+                            Method
+                          </span>
+                          <select
+                            name="method"
+                            defaultValue=""
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-[13px] bg-white min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                          >
+                            <option value="">— select —</option>
+                            {PAYMENT_METHODS.map((m) => (
+                              <option key={m.key} value={m.key}>
+                                {m.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="flex items-end">
+                          <button
+                            type="submit"
+                            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                          >
+                            Record
+                          </button>
+                        </div>
+                        <label className="block sm:col-span-4">
+                          <span className="block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
+                            Reference <span className="font-normal normal-case text-ppp-charcoal-400">(check #, txn ID — optional)</span>
+                          </span>
+                          <input
+                            type="text"
+                            name="reference"
+                            maxLength={128}
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                          />
+                        </label>
+                        <p className="sm:col-span-4 text-[11px] text-ppp-charcoal-500">
+                          Need to edit line items, change status, or delete this invoice?{" "}
+                          <Link
+                            href={`/commercial/invoices/${inv.id}`}
+                            className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                          >
+                            Open the full invoice
+                          </Link>
+                          .
+                        </p>
+                      </form>
+                    </details>
+                  )}
                 </li>
               );
             })}

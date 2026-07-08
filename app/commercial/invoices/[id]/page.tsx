@@ -479,9 +479,19 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             total width = total_cents. Emerald because "money in" is a
             semantic win. */}
         {invoice.total_cents > 0 && !isVoid && (
-          <div className="mt-5">
+          <a
+            href="#payments"
+            className="mt-5 block group/pb rounded-lg -mx-1 px-1 py-1 hover:bg-ppp-charcoal-50/60 transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+            title="Jump to Payments"
+            aria-label={`Payment progress ${Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))}%. Click to jump to Payments.`}
+          >
             <div className="flex items-baseline justify-between text-[11px] font-semibold uppercase tracking-wider mb-1">
-              <span className="text-ppp-charcoal-500">Payment progress</span>
+              <span className="text-ppp-charcoal-500 group-hover/pb:text-ppp-charcoal-700 inline-flex items-center gap-1">
+                Payment progress
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="opacity-40 group-hover/pb:opacity-100 transition-opacity">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </span>
               <span className="text-ppp-charcoal-700">
                 {Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))}%
               </span>
@@ -500,7 +510,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 }}
               />
             </div>
-          </div>
+          </a>
         )}
 
         {/* Big numbers */}
@@ -553,13 +563,15 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         </section>
       )}
 
-      {/* Line items */}
+      {/* What this charge is for. Karan 2026-07-07: renamed from "Line
+          items" — this platform's model is one bill per line, so "line
+          items" reads as accountant-speak. Clearer plain-English name. */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
-            <h2 className="text-sm font-bold text-ppp-charcoal">Line items</h2>
+            <h2 className="text-sm font-bold text-ppp-charcoal">What this charge is for</h2>
             <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-              {lineItems.length === 0 ? "No items yet. Add rows for labor, materials, or fixed-fee scope." : `${lineItems.length} row${lineItems.length === 1 ? "" : "s"} · Subtotal ${formatCentsFull(invoice.subtotal_cents)}`}
+              {lineItems.length === 0 ? "Nothing on this bill yet." : `Subtotal ${formatCentsFull(invoice.subtotal_cents)}`}
             </p>
           </div>
         </div>
@@ -656,7 +668,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       </section>
 
       {/* Payments */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section id="payments" className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 scroll-mt-4">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <h2 className="text-sm font-bold text-ppp-charcoal">Payments</h2>
@@ -751,19 +763,30 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       {/* Details — Karan 2026-07-07: due date + PO + terms + messages
           editable at ANY status (they're presentation fields). Only tax
           is draft-only because it changes the total (guarded server-side
-          in verifyEditable). Void/deleted invoices can't be edited at all. */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
-        <div className="mb-3">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Details</h2>
-          <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-            {isVoid
-              ? "This invoice is void. Restore it to draft to make changes."
-              : isDraft
-              ? "Due date, terms, tax rate, PO#, and customer message shown to the customer."
-              : "Due date, terms, PO#, and messages are editable anytime. Tax rate is draft-only (it changes the total)."}
-          </p>
-        </div>
-        <form action={updateCoreFieldsAction} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          in verifyEditable). Void/deleted invoices can't be edited at all.
+          Karan 2026-07-07 (follow-up): wrapped in <details> so the form
+          doesn't dominate the page — most viewers just want the hero +
+          progress; the form only opens when someone needs to change
+          the due date or add a note. */}
+      <details className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 group/details">
+        <summary className="list-none cursor-pointer flex items-center justify-between gap-3 min-h-[36px]">
+          <div>
+            <h2 className="text-sm font-bold text-ppp-charcoal inline-flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/details:rotate-90 text-ppp-charcoal-500">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+              Details
+            </h2>
+            <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 ml-[18px]">
+              {isVoid
+                ? "This invoice is void. Restore it to draft to make changes."
+                : "Due date, payment terms, PO#, tax %, customer message, internal notes."}
+            </p>
+          </div>
+          <span className="text-[11px] font-semibold text-blue-700 group-open/details:hidden">Edit</span>
+          <span className="text-[11px] font-semibold text-ppp-charcoal-500 hidden group-open/details:inline">Close</span>
+        </summary>
+        <form action={updateCoreFieldsAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input type="hidden" name="invoice_id" value={invoice.id} />
           <div>
             <label htmlFor="dt-due" className={LABEL_CLS}>Due date</label>
@@ -807,7 +830,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </div>
           )}
         </form>
-      </section>
+      </details>
 
       {/* Status history */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
