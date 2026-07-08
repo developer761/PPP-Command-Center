@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -3981,24 +3982,30 @@ function DealEditSheet({
       {/* Sheet — right-aligned slide-out. Full-width on mobile, 480px on
           desktop so the accounts page stays visible behind it. */}
       <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[520px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
-        {/* Header — title + status + close */}
+        {/* Karan 2026-07-08 simplification pass: killed the read-only KPI
+            band (redundant with the form field values below) and the
+            "status changes happen elsewhere" paragraph (users learn
+            once, then that copy adds noise on every edit). Header is
+            now just: eyebrow + title + status + close. */}
         <header className="px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-r from-cc-brand-50/50 to-white">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-cc-brand-700 mb-1">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700 mb-1.5">
                 Edit deal
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 id="deal-edit-title" className="text-lg font-bold text-ppp-charcoal break-words leading-tight">
+                <h2 id="deal-edit-title" className="text-lg font-bold text-ppp-charcoal break-words leading-tight tracking-tight">
                   {deal.title || "(untitled)"}
                 </h2>
                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${statusInfo.cls}`}>
                   {opportunityStatusLabel(deal.status)}
                 </span>
               </div>
-              <p className="text-[11px] text-ppp-charcoal-500 mt-1 leading-snug">
-                Status changes happen on the deal card&apos;s <strong>Move to next stage</strong> control below the list — the DAG + debrief flow live there so nothing bypasses them.
-              </p>
+              {primaryLead && (
+                <div className="mt-1 text-[11.5px] text-ppp-charcoal-500">
+                  <span aria-hidden>★</span> {primaryLead.user_full_name ?? primaryLead.user_email} lead
+                </div>
+              )}
             </div>
             <Link
               href={closeHref}
@@ -4012,38 +4019,31 @@ function DealEditSheet({
           </div>
         </header>
 
-        {/* Read-only KPI band — visual context for the edit form below. */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-5 pt-4">
-          <SheetKpi label="Bid" value={bidLabel !== "—" ? bidLabel : "—"} />
-          <SheetKpi label="Weighted" value={weighted > 0 ? formatCentsCompact(weighted) : "—"} />
-          <SheetKpi label="Probability" value={`${deal.probability_pct}%`} />
-          <SheetKpi label="Primary lead" value={primaryLead ? (primaryLead.user_full_name ?? primaryLead.user_email).split(" ")[0] : "—"} />
-        </div>
-
-        {/* Edit form — scrollable body. Submits to editDealFromAccountAction
-            which drops ?edit= on success + fires the ?saved=1 flash. */}
+        {/* Edit form — scrollable body. Sections separated by labeled
+            dividers instead of just spacing so the eye tracks where each
+            group of fields ends. */}
         <form
           action={editDealFromAccountAction}
           id={`edit-deal-form-${deal.id}`}
-          className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
+          className="flex-1 overflow-y-auto px-5 py-4 space-y-5"
         >
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="opp_id" value={deal.id} />
 
-          <div>
-            <label htmlFor="edit-title" className={labelCls}>Deal title *</label>
-            <input
-              id="edit-title"
-              name="title"
-              type="text"
-              required
-              maxLength={200}
-              defaultValue={deal.title ?? ""}
-              className={inputCls}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* ─── Section: Basics ─── */}
+          <SheetSection title="Basics">
+            <div>
+              <label htmlFor="edit-title" className={labelCls}>Deal title *</label>
+              <input
+                id="edit-title"
+                name="title"
+                type="text"
+                required
+                maxLength={200}
+                defaultValue={deal.title ?? ""}
+                className={inputCls}
+              />
+            </div>
             <div>
               <label htmlFor="edit-source" className={labelCls}>How did this come in?</label>
               <select
@@ -4059,6 +4059,36 @@ function DealEditSheet({
                 ))}
               </select>
             </div>
+          </SheetSection>
+
+          {/* ─── Section: Money ─── */}
+          <SheetSection title="Money">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="edit-bid-low" className={labelCls}>Bid low ($)</label>
+                <input
+                  id="edit-bid-low"
+                  name="bid_low"
+                  type="text"
+                  inputMode="decimal"
+                  defaultValue={deal.bid_value_low_cents ? (deal.bid_value_low_cents / 100).toFixed(2) : ""}
+                  placeholder="0.00"
+                  className={`${inputCls} tabular-nums`}
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-bid-high" className={labelCls}>Bid high ($)</label>
+                <input
+                  id="edit-bid-high"
+                  name="bid_high"
+                  type="text"
+                  inputMode="decimal"
+                  defaultValue={deal.bid_value_high_cents ? (deal.bid_value_high_cents / 100).toFixed(2) : ""}
+                  placeholder="0.00"
+                  className={`${inputCls} tabular-nums`}
+                />
+              </div>
+            </div>
             <div>
               <label htmlFor="edit-prob" className={labelCls}>Probability (%)</label>
               <input
@@ -4069,87 +4099,65 @@ function DealEditSheet({
                 max={100}
                 step={1}
                 defaultValue={deal.probability_pct}
-                className={`${inputCls} tabular-nums`}
+                className={`${inputCls} tabular-nums max-w-[140px]`}
               />
             </div>
-          </div>
+          </SheetSection>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* ─── Section: Schedule ─── */}
+          <SheetSection title="Schedule">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="edit-due" className={labelCls}>Proposal due</label>
+                <input id="edit-due" name="proposal_due_at" type="date" defaultValue={dueDateDefault} className={inputCls} />
+              </div>
+              <div>
+                <label htmlFor="edit-start" className={labelCls}>Proposed start</label>
+                <input id="edit-start" name="proposed_start_at" type="date" defaultValue={startDateDefault} className={inputCls} />
+              </div>
+              <div>
+                <label htmlFor="edit-end" className={labelCls}>Proposed end</label>
+                <input id="edit-end" name="proposed_end_at" type="date" defaultValue={endDateDefault} className={inputCls} />
+              </div>
+            </div>
+          </SheetSection>
+
+          {/* ─── Section: Project (address override + description) ─── */}
+          <SheetSection title="Project">
             <div>
-              <label htmlFor="edit-bid-low" className={labelCls}>Bid low ($)</label>
+              <div className={labelCls}>
+                Address override
+                <span className="ml-1 text-[9.5px] font-normal normal-case tracking-normal text-ppp-charcoal-400">
+                  — leave blank to use the account&apos;s site address
+                </span>
+              </div>
               <input
-                id="edit-bid-low"
-                name="bid_low"
+                name="property_street"
                 type="text"
-                inputMode="decimal"
-                defaultValue={deal.bid_value_low_cents ? (deal.bid_value_low_cents / 100).toFixed(2) : ""}
-                placeholder="0.00"
-                className={`${inputCls} tabular-nums`}
+                maxLength={200}
+                defaultValue={deal.property_street ?? ""}
+                placeholder="Street"
+                className={inputCls}
+              />
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                <input name="property_city" type="text" maxLength={80} defaultValue={deal.property_city ?? ""} placeholder="City" className={inputCls} />
+                <input name="property_state" type="text" maxLength={2} defaultValue={deal.property_state ?? ""} placeholder="ST" className={inputCls} />
+                <input name="property_zip" type="text" maxLength={10} defaultValue={deal.property_zip ?? ""} placeholder="ZIP" className={inputCls} />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="edit-desc" className={labelCls}>Description / scope summary</label>
+              <textarea
+                id="edit-desc"
+                name="description"
+                rows={4}
+                maxLength={2000}
+                defaultValue={deal.description ?? ""}
+                placeholder="Scope, existing paint system, access notes…"
+                className={`${inputCls} min-h-[92px] resize-y`}
               />
             </div>
-            <div>
-              <label htmlFor="edit-bid-high" className={labelCls}>Bid high ($)</label>
-              <input
-                id="edit-bid-high"
-                name="bid_high"
-                type="text"
-                inputMode="decimal"
-                defaultValue={deal.bid_value_high_cents ? (deal.bid_value_high_cents / 100).toFixed(2) : ""}
-                placeholder="0.00"
-                className={`${inputCls} tabular-nums`}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label htmlFor="edit-due" className={labelCls}>Proposal due</label>
-              <input id="edit-due" name="proposal_due_at" type="date" defaultValue={dueDateDefault} className={inputCls} />
-            </div>
-            <div>
-              <label htmlFor="edit-start" className={labelCls}>Proposed start</label>
-              <input id="edit-start" name="proposed_start_at" type="date" defaultValue={startDateDefault} className={inputCls} />
-            </div>
-            <div>
-              <label htmlFor="edit-end" className={labelCls}>Proposed end</label>
-              <input id="edit-end" name="proposed_end_at" type="date" defaultValue={endDateDefault} className={inputCls} />
-            </div>
-          </div>
-
-          <div>
-            <div className={labelCls}>
-              Property / project address
-              <span className="ml-1 text-[9.5px] font-normal normal-case tracking-normal text-ppp-charcoal-400">
-                — clear all four to fall back to the account&apos;s site address
-              </span>
-            </div>
-            <input
-              name="property_street"
-              type="text"
-              maxLength={200}
-              defaultValue={deal.property_street ?? ""}
-              placeholder="Street"
-              className={inputCls}
-            />
-            <div className="grid grid-cols-3 gap-2 mt-2">
-              <input name="property_city" type="text" maxLength={80} defaultValue={deal.property_city ?? ""} placeholder="City" className={inputCls} />
-              <input name="property_state" type="text" maxLength={2} defaultValue={deal.property_state ?? ""} placeholder="ST" className={inputCls} />
-              <input name="property_zip" type="text" maxLength={10} defaultValue={deal.property_zip ?? ""} placeholder="ZIP" className={inputCls} />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="edit-desc" className={labelCls}>Description / scope summary</label>
-            <textarea
-              id="edit-desc"
-              name="description"
-              rows={4}
-              maxLength={2000}
-              defaultValue={deal.description ?? ""}
-              placeholder="Scope, existing paint system, access notes…"
-              className={`${inputCls} min-h-[92px] resize-y`}
-            />
-          </div>
+          </SheetSection>
         </form>
 
         {/* Footer — Save + Cancel + Delete. Save fires the form above via
@@ -4202,11 +4210,16 @@ function DealEditSheet({
   );
 }
 
-function SheetKpi({ label, value }: { label: string; value: string }) {
+function SheetSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-2.5 py-1.5">
-      <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
-      <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums mt-0.5 truncate" title={value}>{value}</div>
-    </div>
+    <section className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
+          {title}
+        </div>
+        <div className="flex-1 h-px bg-ppp-charcoal-100" />
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
   );
 }

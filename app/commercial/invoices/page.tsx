@@ -833,10 +833,21 @@ function GroupedByOpp({
           // full-detail view (which has this opp visible + inline
           // Record payment + inline New invoice). Anchor to the opp
           // section so multi-opp accounts scroll to the right card.
-          // Safer fallback: "#" would refresh in place; go to the unfiltered
-          // list instead so users don't dead-end on a broken card.
+          //
+          // Karan 2026-07-08 orphan-invoice fix: when the parent deal
+          // is soft-deleted, `opp` is null but `account` still resolves.
+          // Previously the fallback was `/commercial/invoices` which just
+          // refreshed the current page — a dead click. Now: if account
+          // is known, route to the account-filtered view (users can
+          // still manage the orphaned invoices individually there);
+          // if both are missing, drill straight into the first invoice
+          // in the group so the click always does something useful.
           const rowHref = opp && account
             ? `/commercial/invoices?account_id=${account.id}#opp-${opp.id}`
+            : account
+            ? `/commercial/invoices?account_id=${account.id}`
+            : groupInvoices.length > 0
+            ? `/commercial/invoices/${groupInvoices[0].id}`
             : "/commercial/invoices";
           return (
             <li key={oppId}>
@@ -849,7 +860,17 @@ function GroupedByOpp({
                     {/* Row 1: title + account chip + N invoices + overdue badge */}
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                       <span className="font-semibold text-[14px] text-ppp-charcoal group-hover/oppInv:text-blue-800 truncate">
-                        {opp ? opp.title : <span className="text-ppp-charcoal-400 italic">Opportunity unavailable</span>}
+                        {opp ? opp.title : (
+  <span className="inline-flex items-center gap-1 text-ppp-charcoal-400 italic">
+    Deal deleted
+    <span
+      className="inline-flex items-center px-1 py-0 rounded text-[9px] font-semibold border bg-amber-50 text-amber-800 border-amber-200 not-italic"
+      title="This deal was soft-deleted. Invoices remain — click to manage them."
+    >
+      Orphan
+    </span>
+  </span>
+)}
                       </span>
                       {account && (
                         <span
@@ -1104,7 +1125,15 @@ function FullDetailByOpp({
                         {opp.title}
                       </Link>
                     ) : (
-                      <span className="text-[15px] font-bold text-ppp-charcoal-400 italic">Opportunity unavailable</span>
+                      <span className="inline-flex items-center gap-1.5 text-[15px] font-bold text-ppp-charcoal-400 italic">
+                      Deal deleted
+                      <span
+                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-200 not-italic uppercase tracking-wider"
+                        title="This deal was soft-deleted. Invoices remain — manage or delete them individually below."
+                      >
+                        Orphan
+                      </span>
+                    </span>
                     )}
                     <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
                       {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
