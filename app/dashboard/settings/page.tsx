@@ -47,6 +47,13 @@ const cards: Card[] = [
     icon: <IconPencil />,
   },
   {
+    href: "/dashboard/settings/writeback",
+    label: "Salesforce Writeback",
+    blurb:
+      "Control whether customer color-form submissions write back to Salesforce — Live, Test mode (allowlist), or Paused. Every submission is still saved in Command Center regardless.",
+    icon: <IconArrow />,
+  },
+  {
     href: "/dashboard/settings/suppliers",
     label: "Suppliers",
     blurb:
@@ -161,6 +168,14 @@ function IconSearch() {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="11" cy="11" r="8" />
       <path d="M21 21l-4.35-4.35" />
+    </svg>
+  );
+}
+function IconArrow() {
+  // Right-arrow-with-loop — signals the CC → SF writeback direction.
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 12h13 M13 6l6 6-6 6 M8 18a4 4 0 0 1 0-8" />
     </svg>
   );
 }
