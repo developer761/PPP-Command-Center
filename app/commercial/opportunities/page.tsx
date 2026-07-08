@@ -720,7 +720,7 @@ export default async function CommercialOpportunitiesPage({
             </svg>
           </div>
           <div className="text-sm font-semibold text-ppp-charcoal">
-            {anyFilterActive ? "No opportunities match these filters" : "No opportunities yet"}
+            {anyFilterActive ? "No deals match these filters" : "No deals yet"}
           </div>
           <p className="mt-1 text-sm text-ppp-charcoal-500">
             {anyFilterActive
@@ -862,10 +862,10 @@ function CustomerBoard({
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-bold text-ppp-charcoal">
-            {rows.length} customer{rows.length === 1 ? "" : "s"} with active work
+            {rows.length} customer{rows.length === 1 ? "" : "s"} on this list
           </h2>
           <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-            Biggest weighted pipeline first. Click a customer to open their account, or a deal to drill in.
+            Grouped by account, biggest weighted pipeline first. Click a customer to open their account, or a deal to drill in.
           </p>
         </div>
       </div>

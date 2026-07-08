@@ -1963,17 +1963,16 @@ async function OpportunitiesTab({
           </Link>
         </div>
       )}
-      {/* Karan 2026-07-08 Batch 1b: pipeline signal chip. The old
-          Account 360 strip had Open opps + Decided bids + win rate
-          as KpiTiles crammed alongside financials — those were pulled
-          in Batch 1a because they're a different category (pipeline,
-          not money). Now they live here at the top of the Deals tab
-          where they belong. Single clean dot-separated line, subtle
-          weight, wraps cleanly on mobile.
-
-          Structure: [N open · bid range]  ·  [Last activity]  ·
-                     [N won · N lost · X% win · ~Yd close] */}
+      {/* Karan 2026-07-08 Batch 1b: pipeline signal chip. Single clean
+          dot-separated line surfacing every deal-related signal Alex
+          reads at a glance. Batch 1d: the signal LINE hides when
+          there's no signal to show; the "+ New deal for this customer"
+          collapsible below stays visible on every account so users can
+          always start a new bid. Structure of the line:
+            [N open · bid range]  ·  [Last activity]  ·
+            [N won · N lost · X% win · ~Yd close]  */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        {(open.length > 0 || wonCount > 0 || lostCount > 0 || daysSinceLast !== null) && (
         <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
           <div className="text-[12px] text-ppp-charcoal-700 flex items-center gap-x-2 gap-y-1 flex-wrap">
             {open.length > 0 && (
@@ -2015,6 +2014,7 @@ async function OpportunitiesTab({
             )}
           </div>
         </div>
+        )}
         <details open={openNewDeal} className="group/newdeal border-t border-ppp-charcoal-100">
           <summary
             id="new-deal"
