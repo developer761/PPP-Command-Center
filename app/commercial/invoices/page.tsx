@@ -45,6 +45,11 @@ type SP = Promise<{
   error?: string;
   /** Set by createInvoiceInlineAction with the new invoice id (for flash + scroll). */
   created?: string;
+  /** Set by /commercial/invoices/new?opp=<id> redirect shim — auto-opens
+   *  the inline "+ New invoice" collapsible for the matching opp so
+   *  users landing here from the "New invoice ▾" picker see the form
+   *  already expanded (details elements don't respond to URL hashes). */
+  add?: string;
 }>;
 
 /** Server action for the inline "+ Record payment" collapsible on the
@@ -692,6 +697,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           paidCapped={pickFirst(sp.paid_capped) === "1"}
           createdInvoiceId={pickFirst(sp.created) ?? null}
           errorMessage={pickFirst(sp.error) ?? null}
+          openAddOppId={pickFirst(sp.add) ?? null}
         />
       ) : (
         // Grouped-by-opportunity compact list. Each row = one opp; click
@@ -940,6 +946,7 @@ function FullDetailByOpp({
   paidCapped,
   createdInvoiceId,
   errorMessage,
+  openAddOppId,
 }: {
   invoices: CommercialInvoice[];
   oppById: Map<string, { id: string; title: string; account_id: string; status: string }>;
@@ -951,6 +958,7 @@ function FullDetailByOpp({
   paidCapped?: boolean;
   createdInvoiceId?: string | null;
   errorMessage?: string | null;
+  openAddOppId?: string | null;
 }) {
   const groups = new Map<string, CommercialInvoice[]>();
   for (const inv of invoices) {
@@ -1202,7 +1210,30 @@ function FullDetailByOpp({
                         </svg>
                       </div>
                     </Link>
-                    {canRecordPayment && (
+                    {/* Karan 2026-07-07: consistency fix. Void + paid
+                        invoices used to show NOTHING below the header
+                        (canRecordPayment false), which made the list
+                        read as "some rows have a strip, some don't."
+                        Now every non-void-non-paid row has the record-
+                        payment collapsible; void + paid rows show a
+                        subtle muted status strip in the same slot so
+                        the vertical rhythm reads consistently. */}
+                    {isVoid ? (
+                      <div className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-500 bg-ppp-charcoal-50/40 min-h-[40px]">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M4.93 4.93l14.14 14.14" />
+                        </svg>
+                        Voided — no payments possible.
+                      </div>
+                    ) : isPaidInFull ? (
+                      <div className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-medium text-emerald-700 bg-emerald-50/40 min-h-[40px]">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                        Paid in full{inv.paid_at ? ` on ${fmtEtDate(inv.paid_at)}` : ""}.
+                      </div>
+                    ) : (
                       <details className="group/pay border-t border-ppp-charcoal-100">
                         <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-blue-700 hover:bg-blue-50/60 min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
                           <span className="inline-flex items-center gap-1.5">
@@ -1292,7 +1323,11 @@ function FullDetailByOpp({
                 createInvoiceInlineAction which redirects back here
                 with an anchor to the newly-created row. */}
             {opp && opp.status === "won" && (
-              <details id={`add-${oppId}`} className="group/add border-t border-ppp-charcoal-100">
+              <details
+                id={`add-${oppId}`}
+                open={openAddOppId === oppId}
+                className="group/add border-t border-ppp-charcoal-100"
+              >
                 <summary className="list-none cursor-pointer flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M12 5v14 M5 12h14" />

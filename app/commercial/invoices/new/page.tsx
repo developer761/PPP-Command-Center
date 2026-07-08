@@ -39,5 +39,11 @@ export default async function NewInvoiceRedirect({ searchParams }: { searchParam
         encodeURIComponent("Only Won opportunities can be invoiced")
     );
   }
-  redirect(`/commercial/invoices?account_id=${opp!.account_id}#add-${opp!.id}`);
+  // Karan 2026-07-07: use ?add=<opp_id> query param (NOT hash) so the
+  // server component can auto-open the inline "+ New invoice"
+  // collapsible for that opp. `<details>` elements don't respond to
+  // URL hash fragments; the query param is the only way to server-
+  // render `open={true}`. The #opp-<id> hash is still there for the
+  // browser's built-in scroll-into-view.
+  redirect(`/commercial/invoices?account_id=${opp!.account_id}&add=${opp!.id}#opp-${opp!.id}`);
 }
