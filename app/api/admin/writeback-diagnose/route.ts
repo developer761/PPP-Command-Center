@@ -391,18 +391,31 @@ export async function GET(request: Request) {
     payload_summary: payloadSummary,
     diagnostic_crumbs: diagnosticCrumbs,
     sf_writes_audit: auditRows,
-    // Katie 2026-07-08: sf_writes_audit is empty for the WO in question,
-    // but payload analysis shows the submit route should have produced 2
-    // valid write attempts. If sf_writes_audit is ALSO empty for every
-    // other WO, the SF connection itself is broken (getSalesforceClient
-    // throws before we can log audit — that path is outside the try/catch
-    // in writeSf). This block dumps the last 20 audit rows across the
-    // whole platform so we can tell the two failure modes apart.
-    sf_writes_audit_recent_all: (await sb
-      .from("sf_writes_audit")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(20)).data ?? [],
+    // Katie 2026-07-08 round 8: sf_writes_audit is still empty
+    // platform-wide even after SF reconnect + writeSf try/catch fix.
+    // Something is still swallowing errors before logAudit(). Expose
+    // the raw query error + row count so we can tell if the table is
+    // (a) missing/wrong-name/RLS-blocked (would surface as error here)
+    // or (b) really has never had a row inserted (would surface as
+    // count 0 + no error). Also dump COUNT via head:true which uses
+    // a different query path than .select("*").
+    ...(await (async () => {
+      const [full, headCount] = await Promise.all([
+        sb.from("sf_writes_audit").select("*").order("created_at", { ascending: false }).limit(20),
+        sb.from("sf_writes_audit").select("id", { count: "exact", head: true }),
+      ]);
+      return {
+        sf_writes_audit_recent_all: full.data ?? [],
+        sf_writes_audit_query_error: full.error ? {
+          message: full.error.message,
+          code: (full.error as { code?: string }).code ?? null,
+          details: (full.error as { details?: string }).details ?? null,
+          hint: (full.error as { hint?: string }).hint ?? null,
+        } : null,
+        sf_writes_audit_total_count: headCount.count ?? null,
+        sf_writes_audit_count_error: headCount.error ? headCount.error.message : null,
+      };
+    })()),
   }, {
     // Pretty-print for easy admin reading. `no-store` defeats any edge
     // cache that would otherwise serve stale diagnostic results between
