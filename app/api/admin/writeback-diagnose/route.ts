@@ -49,8 +49,12 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const woId = url.searchParams.get("wo");
-  const tokenParam = url.searchParams.get("token");
+  // Trim — URL params sometimes carry trailing whitespace from copy-paste
+  // (e.g. "?wo=0WOWj000007AwUvOAK   "). Untrimmed, that whitespace propagates
+  // into the .slice(0,15) prefix and every downstream comparison silently
+  // fails to match. Karan 2026-07-08.
+  const woId = url.searchParams.get("wo")?.trim() || null;
+  const tokenParam = url.searchParams.get("token")?.trim() || null;
   if (!woId && !tokenParam) {
     return NextResponse.json({
       error: "missing_param",
@@ -162,30 +166,34 @@ export async function GET(request: Request) {
   //    pull the last 100 tokens unfiltered, filter in JS. Also captures
   //    tokens with different id formats (15/18 char) without depending
   //    on LIKE case-sensitivity.
-  const { data: allRecentTokens } = await sb
+  // Karan 2026-07-08 round 5: earlier SELECT list included submitted_payload
+  // by name, but the column may live under a different name in this schema.
+  // Supabase returns null data (0 rows) when SELECT hits an unknown column
+  // — that made the previous diagnostic silently return zero tokens. Wildcard
+  // SELECT is the safest way to get everything without knowing the exact
+  // column names; we pluck payload out of whichever column has it below.
+  const { data: allRecentTokens, error: tokensError } = await sb
     .from("customer_form_tokens")
-    .select(
-      "token, kind, work_order_id, work_order_number, customer_name, created_at, submitted_at, resubmitted_at, vendor_email_sent_at, expires_at, created_by_user_id, submitted_payload"
-    )
+    .select("*")
     .order("created_at", { ascending: false })
     .limit(200);
-  const allTokens = allRecentTokens ?? [];
+  const allTokens = (allRecentTokens ?? []) as Array<Record<string, unknown>>;
   const tokens = allTokens.filter((t) => {
     const stored = (t.work_order_id as string | null) ?? "";
     if (!stored) return false;
-    // Match on 15-char prefix — handles both 15-char and 18-char SF ids
-    // referring to the same record. Case-insensitive so a stored
-    // '0wowj...' doesn't miss '0WOWj...' input.
     return stored.slice(0, 15).toLowerCase() === woPrefix.toLowerCase();
   });
-  // Diagnostic breadcrumbs — if the DB returned tokens but our filter
-  // matched none, dump raw work_order_id values so we can spot the
-  // mismatch (whitespace, unicode, alt casing) without hitting Supabase
-  // directly.
+  // Diagnostic breadcrumbs — surface the raw column names + query error
+  // (if any) so a silent SELECT failure is obvious in the response.
+  const firstRow = allTokens[0] ?? {};
   const diagnosticCrumbs = {
     total_tokens_fetched: allTokens.length,
     filter_wo_prefix: woPrefix,
     matched_tokens_count: tokens.length,
+    tokens_query_error: tokensError ? tokensError.message : null,
+    // Reveal which column actually stores the payload — could be
+    // submitted_payload, payload, submission, etc.
+    column_names_first_row: Object.keys(firstRow).sort(),
     distinct_wo_ids_in_last_200: Array.from(
       new Set(
         allTokens
@@ -194,7 +202,7 @@ export async function GET(request: Request) {
       )
     ).slice(0, 30),
     sample_first_5_stored_wo_ids: allTokens.slice(0, 5).map((t) => ({
-      token_head: (t.token as string).slice(0, 12) + "…",
+      token_head: ((t.token as string) ?? "").slice(0, 12) + "…",
       work_order_id: t.work_order_id ?? null,
       submitted_at: t.submitted_at ?? null,
       matches_filter:
@@ -267,20 +275,29 @@ export async function GET(request: Request) {
   // maps to a known SF field. If every surface has colorId === null, the
   // attempts array is empty and the submit path skips the write with no
   // audit row (silent skip).
-  const tokenRows = (tokens ?? []) as Array<{
-    token: string;
-    kind: string | null;
-    submitted_at: string | null;
-    resubmitted_at: string | null;
-    submitted_payload: unknown;
-  }>;
+  const tokenRows = tokens as Array<Record<string, unknown>>;
   type PayloadSurface = { surface?: unknown; colorId?: unknown; skipped?: unknown };
   type PayloadLine = { id?: unknown; surfaces?: PayloadSurface[] };
   const payloadSummary = tokenRows
     .filter((t) => t.submitted_at || t.resubmitted_at)
     .slice(0, 5)
     .map((t) => {
-      const p = t.submitted_payload as { lineItems?: PayloadLine[]; globalNotes?: string; materialType?: string | null; deliveryAddress?: unknown } | null;
+      // Try every reasonable column name so we find the payload wherever
+      // it's actually stored (schema might be submitted_payload, payload,
+      // submission, submission_payload, etc.).
+      const payloadRaw =
+        t.submitted_payload ??
+        t.payload ??
+        t.submission_payload ??
+        t.submission ??
+        t.resubmitted_payload ??
+        null;
+      const p = payloadRaw as {
+        lineItems?: PayloadLine[];
+        globalNotes?: string;
+        materialType?: string | null;
+        deliveryAddress?: unknown;
+      } | null;
       const lineItems = Array.isArray(p?.lineItems) ? p!.lineItems : [];
       let totalSurfaces = 0;
       let withColorId = 0;
@@ -302,10 +319,22 @@ export async function GET(request: Request) {
       const globalNotesLen = typeof p?.globalNotes === "string" ? p.globalNotes.length : 0;
       const materialType = typeof p?.materialType === "string" ? p.materialType : null;
       return {
-        token: t.token.slice(0, 12) + "…",
-        kind: t.kind,
-        submitted_at: t.submitted_at,
-        resubmitted_at: t.resubmitted_at,
+        token: ((t.token as string) ?? "").slice(0, 12) + "…",
+        kind: (t.kind as string | null) ?? null,
+        submitted_at: (t.submitted_at as string | null) ?? null,
+        resubmitted_at: (t.resubmitted_at as string | null) ?? null,
+        payload_column_used:
+          t.submitted_payload !== undefined
+            ? "submitted_payload"
+            : t.payload !== undefined
+            ? "payload"
+            : t.submission_payload !== undefined
+            ? "submission_payload"
+            : t.submission !== undefined
+            ? "submission"
+            : t.resubmitted_payload !== undefined
+            ? "resubmitted_payload"
+            : "NONE_FOUND",
         line_items_count: lineItems.length,
         total_surfaces: totalSurfaces,
         surfaces_with_colorId: withColorId,
