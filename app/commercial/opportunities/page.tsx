@@ -67,6 +67,25 @@ import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 const MS_PER_DAY = 86_400_000;
 
+/**
+ * Karan 2026-07-08 audit fix: every quick-flip form now posts a
+ * `return_href` hidden input containing the current pipeline URL
+ * (minus ?peek= so we don't reopen the drawer after the flip). The
+ * server action appends its own status_ok / status_error signal to
+ * that return_href instead of always redirecting to the naked
+ * /commercial/opportunities page — otherwise flipping status while
+ * filtered to "Hot" would dump the user back to the unfiltered list.
+ */
+function buildFlipReturnHref(rawReturn: string, param: "status_ok" | "status_error", value: string): string {
+  // rawReturn always starts with "/commercial/opportunities" and may
+  // or may not have a query string. Preserve everything, append the
+  // flash param. Any hash fragment is stripped since the flash banner
+  // lives at the top of the page anyway.
+  const cleaned = rawReturn.split("#")[0];
+  const joiner = cleaned.includes("?") ? "&" : "?";
+  return `${cleaned}${joiner}${param}=${encodeURIComponent(value)}`;
+}
+
 async function quickFlipStatusAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -74,9 +93,14 @@ async function quickFlipStatusAction(formData: FormData) {
   if (!user) redirect("/");
   const opp_id = String(formData.get("opp_id") ?? "");
   const to_status = String(formData.get("to_status") ?? "");
-  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  // Sanitize return_href: must start with /commercial/opportunities
+  // (open-redirect defense — a malicious form input could otherwise
+  // send the user to an off-domain URL after the action).
+  const returnRaw = String(formData.get("return_href") ?? "/commercial/opportunities");
+  const returnHref = returnRaw.startsWith("/commercial/opportunities") ? returnRaw : "/commercial/opportunities";
+  if (!UUID_RE.test(opp_id)) redirect(returnHref);
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
-    redirect("/commercial/opportunities?status_error=" + encodeURIComponent("Invalid status."));
+    redirect(buildFlipReturnHref(returnHref, "status_error", "Invalid status."));
   }
   if (to_status === "lost" || to_status === "no_bid") {
     redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
@@ -87,14 +111,14 @@ async function quickFlipStatusAction(formData: FormData) {
     acting_user_id: user.id,
   });
   if (!result.ok) {
-    redirect("/commercial/opportunities?status_error=" + encodeURIComponent(result.error));
+    redirect(buildFlipReturnHref(returnHref, "status_error", result.error));
   }
   if (to_status === "won") {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
     redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
   }
-  redirect("/commercial/opportunities?status_ok=1");
+  redirect(buildFlipReturnHref(returnHref, "status_ok", "1"));
 }
 
 export const dynamic = "force-dynamic";
@@ -370,6 +394,11 @@ export default async function CommercialOpportunitiesPage({
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   })();
+  // Karan 2026-07-08 audit fix: forms that use quickFlipStatusAction
+  // post this as a hidden input so the server action can redirect back
+  // to the current filtered view instead of the naked pipeline URL.
+  // Peek is stripped so the drawer doesn't reopen after the flip.
+  const flipReturnHref: string = peekCloseHref;
 
   return (
     <div className="space-y-5">
@@ -792,6 +821,7 @@ export default async function CommercialOpportunitiesPage({
           submittalCountMap={submittalCountMap}
           finishCountMap={finishCountMap}
           peekHref={peekHref}
+          flipReturnHref={flipReturnHref}
         />
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -819,6 +849,7 @@ export default async function CommercialOpportunitiesPage({
                 submittalStats={submittalCountMap.get(o.id) ?? null}
                 finishCount={finishCountMap.get(o.id) ?? 0}
                 peekHref={peekHref}
+                flipReturnHref={flipReturnHref}
               />
             ))}
           </ul>
@@ -846,6 +877,7 @@ export default async function CommercialOpportunitiesPage({
             submittalStats={submittalCountMap.get(peekOpp.id) ?? null}
             finishCount={finishCountMap.get(peekOpp.id) ?? 0}
             closeHref={peekCloseHref}
+            flipReturnHref={flipReturnHref}
           />
         );
       })()}
@@ -1092,6 +1124,7 @@ function KanbanBoard({
   submittalCountMap,
   finishCountMap,
   peekHref,
+  flipReturnHref,
 }: {
   opps: CommercialOpportunity[];
   accountById: Map<string, CommercialAccount>;
@@ -1102,6 +1135,7 @@ function KanbanBoard({
   submittalCountMap: Map<string, { total: number; awaiting_response: number }>;
   finishCountMap: Map<string, number>;
   peekHref: (oppId: string) => string;
+  flipReturnHref: string;
 }) {
   const OPEN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
   const TERMINAL_COLUMNS: readonly OpportunityStatus[] = ["won", "lost", "no_bid"];
@@ -1190,6 +1224,7 @@ function KanbanBoard({
                               submittalStats={submittalCountMap.get(opp.id) ?? null}
                               finishCount={finishCountMap.get(opp.id) ?? 0}
                               peekHref={peekHref}
+                              flipReturnHref={flipReturnHref}
                             />
                           </KanbanDnDCard>
                         ))
@@ -1264,6 +1299,7 @@ function KanbanBoard({
                                   submittalStats={submittalCountMap.get(opp.id) ?? null}
                                   finishCount={finishCountMap.get(opp.id) ?? 0}
                                   peekHref={peekHref}
+                                  flipReturnHref={flipReturnHref}
                                   compact
                                 />
                               </KanbanDnDCard>
@@ -1316,6 +1352,7 @@ function KanbanCard({
   submittalStats,
   finishCount,
   peekHref,
+  flipReturnHref,
   compact,
 }: {
   opp: CommercialOpportunity;
@@ -1327,6 +1364,7 @@ function KanbanCard({
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
   peekHref: (oppId: string) => string;
+  flipReturnHref: string;
   /** Compact mode — used inside the narrow "Closed" cluster where cards
    *  have half the horizontal space of the open pipeline. Hides quick-flip
    *  form + trims the meta band to just title + bid. */
@@ -1414,6 +1452,7 @@ function KanbanCard({
       {nextStatuses.length > 0 && (
         <form action={quickFlipStatusAction} className="mt-2 pt-2 border-t border-ppp-charcoal-100 flex items-center gap-1.5">
           <input type="hidden" name="opp_id" value={opp.id} />
+          <input type="hidden" name="return_href" value={flipReturnHref} />
           <select
             name="to_status"
             defaultValue=""
@@ -1594,6 +1633,7 @@ function OpportunityRow({
   submittalStats,
   finishCount,
   peekHref,
+  flipReturnHref,
 }: {
   opportunity: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -1605,6 +1645,7 @@ function OpportunityRow({
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
   peekHref: (oppId: string) => string;
+  flipReturnHref: string;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
   const dueChip = decisionChip(opportunity.proposal_due_at);
@@ -1786,6 +1827,7 @@ function OpportunityRow({
           className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap"
         >
           <input type="hidden" name="opp_id" value={opportunity.id} />
+          <input type="hidden" name="return_href" value={flipReturnHref} />
           <select
             id={`flip-${opportunity.id}`}
             name="to_status"
@@ -1946,6 +1988,7 @@ function PipelineDealPeek({
   submittalStats,
   finishCount,
   closeHref,
+  flipReturnHref,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -1956,6 +1999,7 @@ function PipelineDealPeek({
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
   closeHref: string;
+  flipReturnHref: string;
 }) {
   const daysHere = statusEnteredAt
     ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
@@ -2127,6 +2171,7 @@ function PipelineDealPeek({
               </div>
               <form action={quickFlipStatusAction} className="flex items-center gap-2">
                 <input type="hidden" name="opp_id" value={opp.id} />
+                <input type="hidden" name="return_href" value={flipReturnHref} />
                 <select
                   name="to_status"
                   defaultValue=""
