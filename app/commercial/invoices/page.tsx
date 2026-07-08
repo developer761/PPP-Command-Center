@@ -8,17 +8,21 @@
  *   - Clean row hierarchy
  */
 import Link from "next/link";
-import { listCommercialInvoices, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { listCommercialInvoices, addPayment, getInvoiceContext, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listCommercialAccounts, getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities } from "@/lib/commercial/opportunities/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
   deriveInvoiceStatus,
+  PAYMENT_METHODS,
   INVOICE_STATUSES,
   type InvoiceStatus,
 } from "@/lib/commercial/invoices/constants";
-import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween } from "@/lib/commercial/invoices/format";
+import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { pickFirst } from "@/lib/commercial/form-utils";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +38,65 @@ type SP = Promise<{
   invoices_created?: string;
   invoice_errors?: string;
   status_error?: string;
+  /** Set by recordInvoicePaymentFromListAction after a successful payment. */
+  paid_ok?: string;
+  paid_invoice?: string;
+  paid_capped?: string;
+  error?: string;
 }>;
+
+/** Server action for the inline "+ Record payment" collapsible on the
+ *  account-filtered detail view (Karan 2026-07-07: user wants to do
+ *  everything from this page — no jumping to opp detail). Mirrors the
+ *  opp-panel version but redirects back to the invoice list preserving
+ *  the account_id filter. */
+async function recordInvoicePaymentFromListAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(invoice_id) || !UUID_RE.test(account_id)) {
+    redirect("/commercial/invoices");
+  }
+  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  if (amount_cents === null || amount_cents <= 0) {
+    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a valid payment amount.")}`);
+  }
+  const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
+  const paid_at = paid_at_raw
+    ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at_raw)
+      ? `${paid_at_raw}T16:00:00.000Z`
+      : new Date(paid_at_raw).toISOString()
+    : undefined;
+  const method = String(formData.get("method") ?? "").trim() || null;
+  const reference = String(formData.get("reference") ?? "").trim() || null;
+  const result = await addPayment(invoice_id, {
+    amount_cents: amount_cents!,
+    paid_at,
+    method,
+    reference,
+    recorded_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent(result.error ?? "Payment failed.")}`);
+  }
+  const ctx = await getInvoiceContext(invoice_id);
+  if (ctx.opportunity_id) revalidatePath(`/commercial/opportunities/${ctx.opportunity_id}`);
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+  if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
+
+  const flash = new URLSearchParams({
+    account_id,
+    paid_ok: "1",
+    paid_invoice: invoice_id,
+  });
+  if (result.capped) flash.set("paid_capped", "1");
+  redirect(`/commercial/invoices?${flash.toString()}#inv-${invoice_id}`);
+}
 
 export default async function CommercialInvoicesPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
@@ -546,11 +608,25 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             </Link>
           )}
         </div>
+      ) : accountIdFilter ? (
+        // Karan 2026-07-07: when scoped to a specific account, render
+        // FULL detail (per-invoice rows + inline Record payment + Add
+        // invoice) so users can do everything from this one page
+        // without jumping to opp detail. Compact list is only for the
+        // unfiltered overview.
+        <FullDetailByOpp
+          invoices={sorted}
+          oppById={oppById}
+          accountById={accountById}
+          sortKey={sortKey}
+          accountId={accountIdFilter}
+          paidOk={pickFirst(sp.paid_ok) === "1"}
+          paidInvoiceId={pickFirst(sp.paid_invoice) ?? null}
+          paidCapped={pickFirst(sp.paid_capped) === "1"}
+        />
       ) : (
-        // Grouped-by-opportunity is now the only view (Karan 2026-07-07:
-        // the flat-list toggle was retired). Each opp card has its own
-        // roll-up + master progress bar + child invoices so the full
-        // progress-billing story reads top-down per deal.
+        // Grouped-by-opportunity compact list. Each row = one opp; click
+        // → jumps into opp detail. This is the overview surface.
         <GroupedByOpp
           invoices={sorted}
           oppById={oppById}
@@ -777,6 +853,357 @@ function GroupedByOpp({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** Full-detail grouped view — renders per-opp cards with roll-up + master
+ *  progress bar + per-invoice rows that carry an inline Record payment
+ *  collapsible. Used when the invoice list is scoped to a single account
+ *  so users can do everything from this one page without jumping to opp
+ *  detail. Karan 2026-07-07 no-jumping mandate. */
+function FullDetailByOpp({
+  invoices,
+  oppById,
+  accountById,
+  sortKey,
+  accountId,
+  paidOk,
+  paidInvoiceId,
+  paidCapped,
+}: {
+  invoices: CommercialInvoice[];
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string }>;
+  accountById: Map<string, { id: string; company_name: string }>;
+  sortKey: string;
+  accountId: string;
+  paidOk?: boolean;
+  paidInvoiceId?: string | null;
+  paidCapped?: boolean;
+}) {
+  const groups = new Map<string, CommercialInvoice[]>();
+  for (const inv of invoices) {
+    const arr = groups.get(inv.opportunity_id) ?? [];
+    arr.push(inv);
+    groups.set(inv.opportunity_id, arr);
+  }
+  const oppOrder = Array.from(groups.entries()).sort((a, b) => {
+    const aInvs = a[1];
+    const bInvs = b[1];
+    switch (sortKey) {
+      case "oldest": {
+        const aOldest = Math.min(...aInvs.map((i) => new Date(i.created_at).getTime()));
+        const bOldest = Math.min(...bInvs.map((i) => new Date(i.created_at).getTime()));
+        return aOldest - bOldest;
+      }
+      case "due_soon": {
+        const nextDue = (rows: typeof aInvs) => {
+          const dues = rows
+            .filter((i) => i.status !== "paid" && i.status !== "void" && i.due_at)
+            .map((i) => new Date(i.due_at as string).getTime());
+          return dues.length > 0 ? Math.min(...dues) : Infinity;
+        };
+        return nextDue(aInvs) - nextDue(bInvs);
+      }
+      case "amount_high": {
+        const sum = (rows: typeof aInvs) =>
+          rows.filter((i) => i.status !== "void").reduce((s, i) => s + i.total_cents, 0);
+        return sum(bInvs) - sum(aInvs);
+      }
+      case "balance_high": {
+        const bal = (rows: typeof aInvs) =>
+          rows.filter((i) => i.status !== "void").reduce((s, i) => s + i.balance_cents, 0);
+        return bal(bInvs) - bal(aInvs);
+      }
+      case "recent":
+      default: {
+        const aLatest = Math.max(...aInvs.map((i) => new Date(i.created_at).getTime()));
+        const bLatest = Math.max(...bInvs.map((i) => new Date(i.created_at).getTime()));
+        return bLatest - aLatest;
+      }
+    }
+  });
+
+  if (oppOrder.length === 0) {
+    return (
+      <div className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+        <p className="text-[13px] text-ppp-charcoal-600">No invoices for this account yet.</p>
+      </div>
+    );
+  }
+
+  const todayEtIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+
+  return (
+    <div className="space-y-4">
+      {paidOk && (
+        <div
+          className={`rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 ${
+            paidCapped
+              ? "bg-amber-50 border border-amber-200 text-amber-900"
+              : "bg-blue-50 border border-blue-200 text-blue-800"
+          }`}
+        >
+          <span>
+            Payment recorded.
+            {paidCapped && <> Amount was capped to the remaining balance — invoice is fully paid.</>}
+          </span>
+          <Link
+            href={`/commercial/invoices?account_id=${accountId}`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      {oppOrder.map(([oppId, groupInvoices]) => {
+        const opp = oppById.get(oppId);
+        const account = opp ? accountById.get(opp.account_id) : null;
+        const nonVoid = groupInvoices.filter((i) => i.status !== "void");
+        const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
+        const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
+        const totalBalance = totalInvoiced - totalPaid;
+        const draftInGroup = groupInvoices.filter((i) => i.status === "draft");
+        const draftGroupCount = draftInGroup.length;
+        const draftGroupCents = draftInGroup.reduce((s, i) => s + i.total_cents, 0);
+        const overduePresent = groupInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
+        const groupPct = totalInvoiced > 0 ? Math.min(100, Math.round((totalPaid / totalInvoiced) * 100)) : 0;
+        const groupBarTone =
+          totalInvoiced === 0
+            ? "bg-ppp-charcoal-200"
+            : totalPaid >= totalInvoiced
+            ? "bg-emerald-500"
+            : overduePresent
+            ? "bg-rose-500"
+            : totalPaid > 0
+            ? "bg-blue-500"
+            : "bg-ppp-charcoal-300";
+        const sortedGroup = [...groupInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
+        return (
+          <section
+            key={oppId}
+            className={`bg-white border rounded-xl overflow-hidden shadow-sm ${
+              overduePresent ? "border-rose-200" : "border-ppp-charcoal-100"
+            }`}
+          >
+            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-br from-white to-blue-50/30">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    {opp ? (
+                      <Link
+                        href={`/commercial/opportunities/${opp.id}?tab=invoices`}
+                        className="text-[15px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 truncate"
+                      >
+                        {opp.title}
+                      </Link>
+                    ) : (
+                      <span className="text-[15px] font-bold text-ppp-charcoal-400 italic">Opportunity unavailable</span>
+                    )}
+                    <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
+                      {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
+                    </span>
+                    {overduePresent && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-300 rounded px-1.5 py-0.5">
+                        Overdue
+                      </span>
+                    )}
+                  </div>
+                  {account && (
+                    <div className="text-[12px] text-ppp-charcoal-500 mt-0.5">{account.company_name}</div>
+                  )}
+                </div>
+                {opp && opp.status === "won" && (
+                  <Link
+                    href={`/commercial/invoices/new?opp=${opp.id}`}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-white text-cc-brand-700 text-[11.5px] font-semibold hover:bg-cc-brand-50 min-h-[36px] touch-manipulation"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M12 5v14 M5 12h14" />
+                    </svg>
+                    Add invoice
+                  </Link>
+                )}
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="border border-cc-brand-200 bg-cc-brand-50/40 rounded-lg px-2.5 py-1.5">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Invoiced</div>
+                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalInvoiced)}</div>
+                </div>
+                <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg px-2.5 py-1.5">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Paid</div>
+                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalPaid)}</div>
+                </div>
+                <div className={`border rounded-lg px-2.5 py-1.5 ${
+                  totalBalance > 0 ? "border-blue-200 bg-blue-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
+                }`}>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Balance</div>
+                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance)}</div>
+                </div>
+              </div>
+              {totalInvoiced > 0 && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Deal progress</div>
+                    <div className="text-[10.5px] text-ppp-charcoal-600 tabular-nums">
+                      <strong className="text-ppp-charcoal">{formatCentsFull(totalPaid)}</strong>
+                      <span className="text-ppp-charcoal-500"> of {formatCentsFull(totalInvoiced)}</span>
+                      <span className="text-ppp-charcoal-400"> · {groupPct}%</span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${groupBarTone}`} style={{ width: `${groupPct}%` }} />
+                  </div>
+                  {draftGroupCount > 0 && (
+                    <div className="mt-1 text-[10.5px] text-ppp-charcoal-500">
+                      Includes {draftGroupCount} draft{draftGroupCount === 1 ? "" : "s"} ({formatCentsFull(draftGroupCents)}) not yet sent.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <ul className="divide-y divide-ppp-charcoal-100">
+              {sortedGroup.map((inv) => {
+                const displayStatus = deriveInvoiceStatus(inv);
+                const isVoid = inv.status === "void";
+                const isPaidInFull = inv.paid_cents >= inv.total_cents && inv.total_cents > 0;
+                const canRecordPayment = !isVoid && !isPaidInFull;
+                const daysUntilDue = daysBetween(new Date().toISOString(), inv.due_at);
+                const isOverdue = displayStatus === "overdue";
+                const isFlashRow = paidInvoiceId === inv.id;
+                return (
+                  <li
+                    key={inv.id}
+                    id={`inv-${inv.id}`}
+                    className={`scroll-mt-4 ${isFlashRow ? "bg-blue-50/40" : ""}`}
+                  >
+                    <Link
+                      href={`/commercial/invoices/${inv.id}`}
+                      className="group/inv block px-4 sm:px-5 py-3 hover:bg-blue-50/30 transition-colors touch-manipulation"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-blue-800 group-hover/inv:underline">
+                              {inv.invoice_number}
+                            </span>
+                            <StatusPill status={displayStatus} />
+                            {inv.due_at && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+                                  isOverdue ? "text-rose-700" : daysUntilDue !== null && daysUntilDue <= 7 ? "text-amber-700" : "text-blue-700"
+                                }`}
+                              >
+                                Due {fmtEtDate(inv.due_at)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-[11.5px] text-ppp-charcoal-500">
+                            <strong className="text-ppp-charcoal">{formatCentsFull(inv.total_cents)}</strong>
+                            {inv.balance_cents > 0 && !isVoid && (
+                              <>
+                                {" · "}
+                                <span className="text-cc-brand-700 font-medium">{formatCentsFull(inv.balance_cents)} outstanding</span>
+                              </>
+                            )}
+                            {inv.paid_at && isPaidInFull && (
+                              <>
+                                {" · "}
+                                <span className="text-emerald-700 font-medium">Paid {fmtEtDate(inv.paid_at)}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/inv:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </div>
+                    </Link>
+                    {canRecordPayment && (
+                      <details className="group/pay border-t border-ppp-charcoal-100">
+                        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-blue-700 hover:bg-blue-50/60 min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                          <span className="inline-flex items-center gap-1.5">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M12 5v14 M5 12h14" />
+                            </svg>
+                            Record payment
+                            <span className="text-[11px] font-normal text-ppp-charcoal-500">· {formatCentsFull(inv.balance_cents)} outstanding</span>
+                          </span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-400 transition-transform group-open/pay:rotate-180" aria-hidden>
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
+                        </summary>
+                        <form
+                          action={recordInvoicePaymentFromListAction}
+                          className="px-4 sm:px-5 pb-3 pt-1 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2"
+                        >
+                          <input type="hidden" name="invoice_id" value={inv.id} />
+                          <input type="hidden" name="account_id" value={accountId} />
+                          <label className="block">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Amount</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              name="amount"
+                              required
+                              defaultValue={(inv.balance_cents / 100).toFixed(2)}
+                              placeholder="0.00"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Paid on</span>
+                            <input
+                              type="date"
+                              name="paid_at"
+                              defaultValue={todayEtIso}
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Method</span>
+                            <select
+                              name="method"
+                              defaultValue=""
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-white min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            >
+                              <option value="">— select —</option>
+                              {PAYMENT_METHODS.map((m) => (
+                                <option key={m.key} value={m.key}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className="flex items-end">
+                            <button
+                              type="submit"
+                              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                            >
+                              Record
+                            </button>
+                          </div>
+                          <label className="block sm:col-span-4">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                              Reference <span className="font-normal text-ppp-charcoal-400">(check #, txn ID — optional)</span>
+                            </span>
+                            <input
+                              type="text"
+                              name="reference"
+                              maxLength={128}
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            />
+                          </label>
+                        </form>
+                      </details>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }

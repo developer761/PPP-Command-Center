@@ -3,12 +3,23 @@
  * anywhere client or server-side).
  */
 
-/** Format cents as compact "$1.2M" / "$45k" / "$123" for KPI tiles. */
+/** Format cents as compact "$1.2M" / "$10.4k" / "$123" for KPI tiles.
+ *  Karan 2026-07-07: $10,400 was rounding to "$10k" — dropping the
+ *  $400 gave people a wrong at-a-glance number ("did they mean 10 or
+ *  10.4?"). Show 1 decimal for anything under $100k so the readout
+ *  matches the true value; drop the decimal above $100k where it
+ *  reads as noise ($123.4k instead of $123k on a small tile). */
 export function formatCentsCompact(cents: number): string {
   const dollars = cents / 100;
   if (dollars === 0) return "$0";
   if (Math.abs(dollars) >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(dollars) >= 1_000) return `$${Math.round(dollars / 1_000)}k`;
+  if (Math.abs(dollars) >= 100_000) return `$${Math.round(dollars / 1_000)}k`;
+  if (Math.abs(dollars) >= 1_000) {
+    const thousands = dollars / 1_000;
+    // Trim a trailing "0" so $10,000 reads as "$10k" (not "$10.0k").
+    const trimmed = thousands.toFixed(1).replace(/\.0$/, "");
+    return `$${trimmed}k`;
+  }
   return `$${Math.round(dollars).toLocaleString()}`;
 }
 
