@@ -1963,12 +1963,41 @@ async function OpportunitiesTab({
           </Link>
         </div>
       )}
+      {/* Karan 2026-07-08 Batch 1b: pipeline signal chip. The old
+          Account 360 strip had Open opps + Decided bids + win rate
+          as KpiTiles crammed alongside financials — those were pulled
+          in Batch 1a because they're a different category (pipeline,
+          not money). Now they live here at the top of the Deals tab
+          where they belong. Single clean dot-separated line, subtle
+          weight, wraps cleanly on mobile.
+
+          Structure: [N open · bid range]  ·  [Last activity]  ·
+                     [N won · N lost · X% win · ~Yd close] */}
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-[12px] text-ppp-charcoal-700 flex items-center gap-x-3 gap-y-1 flex-wrap">
+          <div className="text-[12px] text-ppp-charcoal-700 flex items-center gap-x-2 gap-y-1 flex-wrap">
+            {open.length > 0 && (
+              <>
+                <span className="text-ppp-charcoal font-semibold">
+                  {open.length} open bid{open.length === 1 ? "" : "s"}
+                </span>
+                {overview && (() => {
+                  const bidLabel = formatBidCents(
+                    overview.total_active_bid_low_cents,
+                    overview.total_active_bid_high_cents
+                  );
+                  return bidLabel !== "—" ? (
+                    <span className="text-ppp-charcoal-500">· {bidLabel}</span>
+                  ) : null;
+                })()}
+              </>
+            )}
+            {open.length > 0 && daysSinceLast !== null && (
+              <span aria-hidden className="text-ppp-charcoal-300">·</span>
+            )}
             {daysSinceLast !== null && (
               <span className={isStale ? "text-rose-700 font-medium" : "text-ppp-charcoal-700"}>
-                Last opp activity: {daysSinceLast === 0 ? "today" : daysSinceLast === 1 ? "yesterday" : `${daysSinceLast}d ago`}
+                Last activity {daysSinceLast === 0 ? "today" : daysSinceLast === 1 ? "yesterday" : `${daysSinceLast}d ago`}
                 {isStale && " (cooling)"}
               </span>
             )}
@@ -1977,6 +2006,10 @@ async function OpportunitiesTab({
                 <span aria-hidden className="text-ppp-charcoal-300">·</span>
                 <span className="text-ppp-charcoal-500">
                   {wonCount} won · {lostCount} lost
+                  {overview && (() => {
+                    const winRateStr = renderWinRateSub(overview);
+                    return winRateStr ? ` · ${winRateStr}` : "";
+                  })()}
                 </span>
               </>
             )}
