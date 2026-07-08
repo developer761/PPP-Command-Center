@@ -376,7 +376,7 @@ async function cloneOpportunityAction(formData: FormData) {
     .is("deleted_at", null)
     .maybeSingle();
   if (!source) {
-    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent("Source opportunity not found.")}`);
+    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent("Source deal not found.")}`);
   }
   const src = source as CommercialOpportunity;
 
@@ -1094,7 +1094,7 @@ export default async function OpportunityDetailPage({
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>
-            Cloned from another opportunity. Edit the title + bid range now, then
+            Cloned from another deal. Edit the title + bid range now, then
             update the rest as the bid progresses.
           </span>
         </div>
@@ -1231,7 +1231,7 @@ export default async function OpportunityDetailPage({
         <KpiTile
           label="Bid"
           value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
-          tooltip="Low–high range for this opportunity. Pulled from the bid_value_low_cents / bid_value_high_cents fields you set on the new-opp or edit form."
+          tooltip="Low–high range for this deal. Pulled from the bid range fields you set on the new-deal or edit form."
         />
         <KpiTile
           label="Probability"
@@ -1959,7 +1959,7 @@ async function InfoTab({
         <Field
           label="Source"
           value={opp.source ? opportunitySourceLabel(opp.source) : "—"}
-          tooltip="How this opportunity came in — phone, email, web form, plans room, repeat customer, referral, or other. Set once at create time."
+          tooltip="How this deal came in — phone, email, web form, plans room, repeat customer, referral, or other. Set once at create time."
         />
         <Field
           label="Probability"
@@ -1994,7 +1994,7 @@ async function InfoTab({
         <Field
           label="Decided"
           value={opp.decided_at?.slice(0, 10) ?? "—"}
-          tooltip="Date the opportunity closed — set automatically when status flips to Won, Lost, or No-bid. Used to compute average days-to-close on the Account 360."
+          tooltip="Date the deal closed — set automatically when status flips to Won, Lost, or No-bid. Used to compute average days-to-close on the customer's account."
         />
         <Field
           label="Proposed start"
@@ -2075,13 +2075,13 @@ async function InfoTab({
         {!confirmDelete ? (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-[12px] text-ppp-charcoal-500">
-              Wrong account? Duplicate? Delete this opportunity.
+              Wrong account? Duplicate? Delete this deal.
             </div>
             <Link
               href={`/commercial/opportunities/${opp.id}?tab=info&confirm_delete=1#danger-zone`}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
             >
-              Delete opportunity
+              Delete deal
             </Link>
           </div>
         ) : (
@@ -2090,7 +2090,7 @@ async function InfoTab({
               Delete {opp.title || "this opportunity"}?
             </div>
             <p className="text-[13px] text-rose-700 mb-3 leading-relaxed">
-              All notes, tasks, attachments, and team assignments tied to this opportunity will hide from list pages. The record stays in the database — an admin can restore it later from the audit log if needed.
+              All notes, tasks, attachments, and team assignments tied to this deal will hide from list pages. The record stays in the database — an admin can restore it later from the audit log if needed.
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               <form action={softDeleteOpportunityAction}>
@@ -3936,7 +3936,7 @@ function OppPropertyAddress({
   if (!hasFallback) {
     return (
       <p className="text-[12px] text-ppp-charcoal-500 italic">
-        No project address set. Add one when editing the opportunity, or set the
+        No project address set. Add one when editing the deal, or set the
         account&apos;s site address.
       </p>
     );

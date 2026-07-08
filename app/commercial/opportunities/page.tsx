@@ -584,7 +584,7 @@ export default async function CommercialOpportunitiesPage({
                       href={toggleSourceHref(s)}
                       active={sourceSet.has(s)}
                       label={opportunitySourceLabel(s)}
-                      description="How this opportunity came in."
+                      description="How this deal came in."
                     />
                   ))}
                 </div>
