@@ -481,22 +481,42 @@ export async function POST(
       writeSkippedReason = decision.reason;
       console.log(`[customer-form] SF writes SKIPPED for WO ${status.token.work_order_id.slice(0, 8)}… (mode=${decision.mode}, inAllowlist=${decision.isInAllowlist}): ${decision.reason}`);
     } else {
+      // Karan/Katie 2026-07-08: writeSfBatch used to bubble up connection
+      // errors (getSalesforceClient() throwing on expired OAuth). Even
+      // though writeSf now audit-logs those internally, wrap the batch
+      // call so a residual defect can never crash the submit route (which
+      // would leave the customer looking at a 500 while their token is
+      // already marked submitted — worst-of-both-worlds).
       writesAttempted = attempts.length;
-      const writeResults = await writeSfBatch(attempts, {
-        source: "customer_form_submit",
-        triggeredByToken: tokenFromUrl,
-      });
-      writesSucceeded = writeResults.filter((r) => r.ok).length;
-      const failed = writeResults.filter((r) => !r.ok);
-      if (failed.length > 0) {
-        console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl.slice(0, 8)}…:`, failed);
-      }
-      // The render-data cache (added 2026-06-06 for the speed pass) holds
-      // the pre-submit WOLI shape. Successful writes invalidate it so the
-      // next admin/customer view reads fresh state, not the stale 3-min
-      // snapshot we cached when admin sent the form.
-      if (writesSucceeded > 0) {
-        invalidateFormRenderData(status.token.work_order_id);
+      try {
+        const writeResults = await writeSfBatch(attempts, {
+          source: "customer_form_submit",
+          triggeredByToken: tokenFromUrl,
+        });
+        writesSucceeded = writeResults.filter((r) => r.ok).length;
+        const failed = writeResults.filter((r) => !r.ok);
+        if (failed.length > 0) {
+          console.error(`[customer-form] ${failed.length}/${writeResults.length} SF writes failed for token ${tokenFromUrl.slice(0, 8)}…:`, failed);
+        }
+        // The render-data cache (added 2026-06-06 for the speed pass) holds
+        // the pre-submit WOLI shape. Successful writes invalidate it so the
+        // next admin/customer view reads fresh state, not the stale 3-min
+        // snapshot we cached when admin sent the form.
+        if (writesSucceeded > 0) {
+          invalidateFormRenderData(status.token.work_order_id);
+        }
+      } catch (err) {
+        console.error(
+          `[customer-form] writeSfBatch threw for token ${tokenFromUrl.slice(0, 8)}…:`,
+          err instanceof Error ? err.message : err
+        );
+        // Report to the client but don't hide the token submission — the
+        // customer's picks are safe in Command Center + admin can replay
+        // from Mail Hub. writesSucceeded stays 0 so the response signals
+        // the failure honestly.
+        writeSkippedReason = `Salesforce write failed unexpectedly: ${
+          err instanceof Error ? err.message : String(err)
+        }. Submission is saved in Command Center.`;
       }
     }
   }

@@ -62,7 +62,47 @@ export async function writeSf(
   }
 ): Promise<SfWriteResult> {
   const t0 = Date.now();
-  const conn = await getSalesforceClient();
+
+  // Karan/Katie 2026-07-08: getSalesforceClient() used to live outside
+  // the try/catch, which meant an expired OAuth refresh token (or any
+  // other SF connection failure) would throw an uncaught exception —
+  // the caller returned 500 to Katie's form but no audit row got
+  // logged, so from the outside the write looked like it "silently
+  // never happened." That state lasted invisible until we built the
+  // /api/admin/writeback-diagnose endpoint and saw sf_writes_audit
+  // completely empty platform-wide. Wrap it now so connection failures
+  // always produce an audit row + surface as a clean SfWriteResult.
+  let conn: Awaited<ReturnType<typeof getSalesforceClient>>;
+  try {
+    conn = await getSalesforceClient();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const errorCode =
+      (err as { errorCode?: string })?.errorCode ??
+      "SF_CLIENT_INIT_FAILED";
+    await logAudit({
+      sObject: attempt.sObject,
+      recordId: attempt.recordId,
+      fields: attempt.fields,
+      priorValues: ctx.priorValues ?? null,
+      source: ctx.source,
+      triggeredByUserId: ctx.triggeredByUserId ?? null,
+      triggeredByToken: ctx.triggeredByToken ?? null,
+      succeeded: false,
+      errorCode,
+      errorMessage: `Salesforce connection failed before write could be attempted: ${message}. Likely cause: expired OAuth refresh token or disconnected integration. Reconnect Salesforce on /dashboard/integrations.`,
+      retryCount: 0,
+      durationMs: Date.now() - t0,
+    });
+    return {
+      ok: false,
+      recordId: attempt.recordId,
+      error: message,
+      errorCode,
+      attempts: 0,
+    };
+  }
+
   let attempts = 0;
   let lastError: unknown = null;
   let lastErrorCode: string | null = null;
