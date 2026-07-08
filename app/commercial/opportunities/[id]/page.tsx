@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   getCommercialOpportunity,
+  listCommercialOpportunities,
   opportunityStatusLabel,
   opportunitySourceLabel,
   opportunityLossReasonLabel,
@@ -1003,21 +1004,54 @@ export default async function OpportunityDetailPage({
   if (!opp) notFound();
   const account = await getCommercialAccount(opp.account_id);
 
+  // Karan 2026-07-08: Accounts+Deals merge — Invoices lives under the
+  // customer, not the deal. Any legacy URL that lands on the Invoices
+  // tab of a deal (bell notifications, bookmarks, "Convert to invoice"
+  // button, cascade redirects from server actions) bounces to the
+  // account-scoped invoicing surface with this deal's row scrolled +
+  // the quick-add form pre-opened for the deal. Preserves every
+  // deep-link + eliminates the overlap that had Invoices existing in
+  // two places.
+  const rawTab = pickFirst(sp.tab);
+  if ((rawTab === "invoices" || rawTab === "invoice") && account) {
+    const q = new URLSearchParams({
+      account_id: account.id,
+      add: opp.id,
+    });
+    // Preserve the toast-carrier params so a post-payment redirect
+    // that used to land on ?tab=invoices&paid_ok=1 still flashes the
+    // success banner on the new home.
+    const paidOk = pickFirst(sp.paid_ok);
+    const paidInvoice = pickFirst(sp.paid_invoice);
+    const paidCapped = pickFirst(sp.paid_capped);
+    const createdN = pickFirst(sp.invoices_created);
+    const errN = pickFirst(sp.invoice_errors);
+    const errMsg = pickFirst(sp.error);
+    if (paidOk) q.set("paid_ok", paidOk);
+    if (paidInvoice) q.set("paid_invoice", paidInvoice);
+    if (paidCapped) q.set("paid_capped", paidCapped);
+    if (createdN) q.set("invoices_created", createdN);
+    if (errN) q.set("invoice_errors", errN);
+    if (errMsg) q.set("error", errMsg);
+    redirect(`/commercial/invoices?${q.toString()}#opp-${opp.id}`);
+  }
+
   // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY
   // above. Debrief tab only appears on terminal opps + always slots
   // as the last primary tab (most important action on a closed deal
   // until filled in). Sub-tab keys come from URL `?sub=Y`; missing/
   // invalid falls back to the group's default.
+  //
+  // Karan 2026-07-08: Invoices tab retired from deal detail entirely —
+  // it now lives on the account-scoped invoicing surface (see redirect
+  // above). Deal detail's visible tabs are Overview / Docs / Activity
+  // (+ Debrief on closed deals).
   const isOppTerminal = isTerminalOpportunityStatus(opp.status);
   const isOppWon = opp.status === "won";
-  // Karan 2026-07-07: Invoices tab is Won-only. Slots after Activity so
-  // it reads chronologically (Overview → Docs → Activity → Invoices).
   const visibleTabs: { key: PrimaryTab; label: string }[] = [
     ...PRIMARY_TABS_BASE,
-    ...(isOppWon ? [{ key: "invoices" as PrimaryTab, label: "Invoices" }] : []),
     ...(isOppTerminal ? [{ key: "debrief" as PrimaryTab, label: "Debrief" }] : []),
   ];
-  const rawTab = pickFirst(sp.tab);
   const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
   // Only allow debrief primary on terminal opps.
   const primary: PrimaryTab =
@@ -1153,16 +1187,16 @@ export default async function OpportunityDetailPage({
                 invoices/new server route which spins up a draft in one
                 round-trip and lands the user on the invoice detail
                 page. Phase 3 primary conversion action. */}
-            {opp.status === "won" && (
+            {opp.status === "won" && account && (
               <Link
-                href={`/commercial/invoices/new?opp=${opp.id}`}
+                href={`/commercial/invoices?account_id=${account.id}&add=${opp.id}#opp-${opp.id}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
-                title="Create a draft invoice from this Won opportunity — you can edit line items + tax on the invoice detail page."
+                title={`Open ${account.company_name}'s invoicing surface with a fresh draft ready for this deal.`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                 </svg>
-                Convert to invoice
+                Bill this deal
               </Link>
             )}
             {/* Reopen — only surfaces for closed deals (won/lost/no_bid).

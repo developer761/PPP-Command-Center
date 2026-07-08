@@ -144,9 +144,13 @@ type SubTab =
   | "opportunities"
   | "documents";
 const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
-  { key: "overview", label: "Overview" },
+  // Karan 2026-07-08: Deals moved to first position (was 3rd) so the tab
+  // strip reads left-to-right in what-you-do order — deals first, then
+  // people, overview details, activity history. Deals is also the
+  // default landing tab (see resolveTabParam).
+  { key: "deals", label: "Deals" },
   { key: "people", label: "People" },
-  { key: "deals", label: "Deals & Docs" },
+  { key: "overview", label: "Details" },
   { key: "activity", label: "Activity" },
 ];
 const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "activity">, { key: SubTab; label: string }[]> = {
@@ -170,14 +174,19 @@ const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "activity">, SubTab> = 
   deals: "opportunities",
 };
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
-  if (!raw) return { primary: "overview", sub: null };
+  // Karan 2026-07-08: default landing tab flipped Overview → Deals so the
+  // FIRST thing anyone sees on an account is the deal pipeline (that's what
+  // Alex actually wants — "how many bids do we have with Suffolk?"). Info
+  // is still one click away and every existing URL with an explicit ?tab=
+  // still resolves the same way.
+  if (!raw) return { primary: "deals", sub: null };
   if (raw === "overview" || raw === "people" || raw === "deals" || raw === "activity") {
     return { primary: raw, sub: null };
   }
   if (raw === "info" || raw === "team" || raw === "performance") return { primary: "overview", sub: raw as SubTab };
   if (raw === "contacts" || raw === "notes") return { primary: "people", sub: raw as SubTab };
   if (raw === "opportunities" || raw === "documents") return { primary: "deals", sub: raw as SubTab };
-  return { primary: "overview", sub: null };
+  return { primary: "deals", sub: null };
 }
 
 export default async function CommercialAccountDetailPage({
