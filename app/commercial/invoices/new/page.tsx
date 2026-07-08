@@ -34,8 +34,12 @@ export default async function NewInvoiceRedirect({ searchParams }: { searchParam
     redirect("/commercial/invoices?status_error=" + encodeURIComponent("Opportunity not found"));
   }
   if (opp!.status !== "won") {
+    // Karan 2026-07-07: stay on the invoicing surface. Sending the user
+    // to the opp detail page would be a jump; the "no jumping" mandate
+    // says every invoice-adjacent error should land back on the invoice
+    // list where they can pick a different opp.
     redirect(
-      `/commercial/opportunities/${opp!.id}?tab=info&error=` +
+      `/commercial/invoices?error=` +
         encodeURIComponent("Only Won opportunities can be invoiced")
     );
   }

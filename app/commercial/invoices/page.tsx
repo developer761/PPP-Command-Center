@@ -79,11 +79,13 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
     : undefined;
   const method = String(formData.get("method") ?? "").trim() || null;
   const reference = String(formData.get("reference") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
   const result = await addPayment(invoice_id, {
     amount_cents: amount_cents!,
     paid_at,
     method,
     reference,
+    notes,
     recorded_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -831,9 +833,11 @@ function GroupedByOpp({
           // full-detail view (which has this opp visible + inline
           // Record payment + inline New invoice). Anchor to the opp
           // section so multi-opp accounts scroll to the right card.
+          // Safer fallback: "#" would refresh in place; go to the unfiltered
+          // list instead so users don't dead-end on a broken card.
           const rowHref = opp && account
             ? `/commercial/invoices?account_id=${account.id}#opp-${opp.id}`
-            : "#";
+            : "/commercial/invoices";
           return (
             <li key={oppId}>
               <Link
@@ -1084,7 +1088,7 @@ function FullDetailByOpp({
           <section
             key={oppId}
             id={`opp-${oppId}`}
-            className={`scroll-mt-4 bg-white border rounded-xl overflow-hidden shadow-sm ${
+            className={`scroll-mt-20 bg-white border rounded-xl overflow-hidden shadow-sm ${
               overduePresent ? "border-rose-200" : "border-ppp-charcoal-100"
             }`}
           >
@@ -1306,6 +1310,22 @@ function FullDetailByOpp({
                               name="reference"
                               maxLength={128}
                               className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            />
+                          </label>
+                          {/* Karan 2026-07-07: Notes field parity with the
+                              invoice detail page's payment form. Previously
+                              missing on the list — users had to jump to
+                              /commercial/invoices/<id> to attach a note,
+                              which violated the "no jumping" mandate. */}
+                          <label className="block sm:col-span-4">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                              Notes <span className="font-normal text-ppp-charcoal-400">(internal — never on the customer copy — optional)</span>
+                            </span>
+                            <textarea
+                              name="notes"
+                              rows={2}
+                              maxLength={500}
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                             />
                           </label>
                         </form>
