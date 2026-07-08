@@ -48,6 +48,7 @@ import {
   HOT_DEAL_BID_CENTS,
   HOT_DEAL_DECISION_DAYS,
   HOT_DEAL_ACTIVE_STATUSES,
+  TERMINAL_STATUSES,
   isTerminalOpportunityStatus,
 } from "@/lib/commercial/opportunities/constants";
 import {
@@ -121,8 +122,17 @@ export default async function CommercialOpportunitiesPage({
   const hotFilter = pickFirst(sp.hot) === "1";
   const sourcesRaw = pickFirst(sp.sources);
 
+  // Karan 2026-07-08 Batch 1c: added "customer" as a new view mode +
+  // made it the DEFAULT. Rationale: Alex reads Pipeline as "which of my
+  // customers has active work?" not "which of my deals are in stage X?"
+  // Customer-first collapses N deals per company into one card, tells
+  // the whole customer story (deals + money) in one row, and clicking
+  // the customer name lands on their account page. Kanban + list stay
+  // as alternate views (?view=kanban / ?view=list) so the deal-first
+  // workflows (drag-through-stage, CSV export) don't disappear.
   const viewRaw = pickFirst(sp.view);
-  const viewMode: "list" | "kanban" = viewRaw === "list" ? "list" : "kanban";
+  const viewMode: "list" | "kanban" | "customer" =
+    viewRaw === "list" ? "list" : viewRaw === "kanban" ? "kanban" : "customer";
 
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently updated" },
@@ -236,11 +246,14 @@ export default async function CommercialOpportunitiesPage({
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
   if (viewMode === "list") baseParams.set("view", "list");
+  else if (viewMode === "kanban") baseParams.set("view", "kanban");
 
-  const viewToggleHref = (target: "list" | "kanban") => {
+  const viewToggleHref = (target: "list" | "kanban" | "customer") => {
     const p = new URLSearchParams(baseParams);
+    p.delete("view");
     if (target === "list") p.set("view", "list");
-    else p.delete("view");
+    else if (target === "kanban") p.set("view", "kanban");
+    // "customer" is the default; no ?view= param.
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
     const qs = p.toString();
@@ -465,6 +478,7 @@ export default async function CommercialOpportunitiesPage({
           </div>
           {validStatus && <input type="hidden" name="status" value={validStatus} />}
           {viewMode === "list" && <input type="hidden" name="view" value="list" />}
+          {viewMode === "kanban" && <input type="hidden" name="view" value="kanban" />}
           {hotFilter && <input type="hidden" name="hot" value="1" />}
           {staleFilter && <input type="hidden" name="stale" value="1" />}
           {sourceSet.size > 0 && (
@@ -472,12 +486,27 @@ export default async function CommercialOpportunitiesPage({
           )}
           {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
 
-          {/* View toggle — segmented control. Kanban is default, list
-              is the explicit opt-out. */}
+          {/* View toggle — segmented control. Customer-first is the
+              default (Karan 2026-07-08 Batch 1c). Kanban + List remain
+              as opt-in alternate views for deal-first workflows. */}
           <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden shrink-0">
             <Link
-              href={viewToggleHref("kanban")}
+              href={viewToggleHref("customer")}
               className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1.5 touch-manipulation ${
+                viewMode === "customer"
+                  ? "bg-cc-brand-50 text-cc-brand-700"
+                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+              }`}
+              title="By customer — one card per account with all their deals + money summary"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 21h18 M6 21V7l6-4 6 4v14 M10 9h4 M10 13h4 M10 17h4" />
+              </svg>
+              By customer
+            </Link>
+            <Link
+              href={viewToggleHref("kanban")}
+              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1.5 touch-manipulation border-l border-ppp-charcoal-200 ${
                 viewMode === "kanban"
                   ? "bg-cc-brand-50 text-cc-brand-700"
                   : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
@@ -717,6 +746,11 @@ export default async function CommercialOpportunitiesPage({
             </Link>
           )}
         </div>
+      ) : viewMode === "customer" ? (
+        <CustomerBoard
+          opps={opps}
+          accountById={accountById}
+        />
       ) : viewMode === "kanban" ? (
         <KanbanBoard
           opps={opps}
@@ -759,6 +793,218 @@ export default async function CommercialOpportunitiesPage({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Customer-first view — Karan 2026-07-08 Batch 1c. One card per account
+ * with active work, ordered by weighted pipeline value descending (biggest
+ * first). Alex's mental model: "show me every customer we're working with
+ * right now." Each card exposes the customer name (clickable → account
+ * page's Deals tab), key relationship pill, N open + N decided counts,
+ * weighted pipeline, latest activity, plus a subtle deal chip strip
+ * showing every deal title as a pill. Clicking a deal chip drills into
+ * the deal detail. Empty state falls back to a helpful hint.
+ */
+function CustomerBoard({
+  opps,
+  accountById,
+}: {
+  opps: CommercialOpportunity[];
+  accountById: Map<string, CommercialAccount>;
+}) {
+  // Group opps by account_id, then compute per-account rollups.
+  const byAccount = new Map<string, CommercialOpportunity[]>();
+  for (const o of opps) {
+    const existing = byAccount.get(o.account_id) ?? [];
+    existing.push(o);
+    byAccount.set(o.account_id, existing);
+  }
+
+  type Row = {
+    account: CommercialAccount;
+    open: CommercialOpportunity[];
+    closed: CommercialOpportunity[];
+    weightedCents: number;
+    latestUpdate: string;
+  };
+
+  const rows: Row[] = Array.from(byAccount.entries())
+    .map(([accountId, oppsForAccount]) => {
+      const account = accountById.get(accountId);
+      if (!account) return null; // filtered by account soft-delete, skip
+      const open = oppsForAccount.filter(
+        (o) => !TERMINAL_STATUSES.has(o.status)
+      );
+      const closed = oppsForAccount.filter((o) =>
+        TERMINAL_STATUSES.has(o.status)
+      );
+      const weightedCents = open.reduce(
+        (sum, o) => sum + weightedPipelineCents(o),
+        0
+      );
+      const latestUpdate = oppsForAccount
+        .map((o) => o.updated_at ?? "")
+        .filter(Boolean)
+        .sort()
+        .reverse()[0] ?? "";
+      return { account, open, closed, weightedCents, latestUpdate };
+    })
+    .filter((r): r is Row => r !== null)
+    .sort((a, b) => {
+      // Sort: biggest weighted pipeline first, then most recently active.
+      if (a.weightedCents !== b.weightedCents) return b.weightedCents - a.weightedCents;
+      return b.latestUpdate.localeCompare(a.latestUpdate);
+    });
+
+  return (
+    <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-sm font-bold text-ppp-charcoal">
+            {rows.length} customer{rows.length === 1 ? "" : "s"} with active work
+          </h2>
+          <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+            Biggest weighted pipeline first. Click a customer to open their account, or a deal to drill in.
+          </p>
+        </div>
+      </div>
+      <ul className="divide-y divide-ppp-charcoal-100">
+        {rows.map((row) => (
+          <CustomerBoardRow key={row.account.id} row={row} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function CustomerBoardRow({
+  row,
+}: {
+  row: {
+    account: CommercialAccount;
+    open: CommercialOpportunity[];
+    closed: CommercialOpportunity[];
+    weightedCents: number;
+    latestUpdate: string;
+  };
+}) {
+  const { account, open, closed, weightedCents, latestUpdate } = row;
+  // Latest activity relative label — "today", "5h ago", "3d ago", etc.
+  // Uses updated_at which every mutation touches, so it's a real signal.
+  const daysAgo = latestUpdate
+    ? Math.max(0, Math.floor((Date.now() - new Date(latestUpdate).getTime()) / 86400000))
+    : null;
+  const activityLabel =
+    daysAgo === null
+      ? "—"
+      : daysAgo === 0
+      ? "today"
+      : daysAgo === 1
+      ? "yesterday"
+      : `${daysAgo}d ago`;
+
+  return (
+    <li className="p-4 hover:bg-ppp-charcoal-50/40 transition-colors">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        {/* Left column — customer identity + signal metadata. */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href={`/commercial/accounts/${account.id}`}
+              className="text-sm font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 break-words"
+              title={`Open ${account.company_name}'s account`}
+            >
+              {account.company_name}
+            </Link>
+            {account.is_key_relationship && (
+              <span
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200"
+                title="Key relationship — flagged by admin"
+              >
+                <span aria-hidden>★</span> Key
+              </span>
+            )}
+            {account.industry && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200">
+                {account.industry}
+              </span>
+            )}
+          </div>
+          <div className="mt-1.5 text-[12px] text-ppp-charcoal-600 flex items-center gap-x-2 gap-y-1 flex-wrap">
+            <span className="font-semibold text-ppp-charcoal">
+              {open.length} open bid{open.length === 1 ? "" : "s"}
+            </span>
+            {weightedCents > 0 && (
+              <>
+                <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                <span className="text-ppp-charcoal-500">
+                  <strong className="text-ppp-charcoal">{formatCents(weightedCents)}</strong> weighted
+                </span>
+              </>
+            )}
+            {closed.length > 0 && (
+              <>
+                <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                <span className="text-ppp-charcoal-500">
+                  {closed.length} closed
+                </span>
+              </>
+            )}
+            <span aria-hidden className="text-ppp-charcoal-300">·</span>
+            <span className="text-ppp-charcoal-500">Active {activityLabel}</span>
+          </div>
+        </div>
+        {/* Right column — quick jump. */}
+        <Link
+          href={`/commercial/accounts/${account.id}`}
+          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800 min-h-[36px] touch-manipulation transition-colors"
+          title={`Open ${account.company_name}'s full account view`}
+        >
+          Open
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 12h14 M13 5l7 7-7 7" />
+          </svg>
+        </Link>
+      </div>
+      {/* Deal chip strip — subtle pills for each deal so users can drill
+          straight into a specific deal without opening the account first.
+          Open bids show as blue pills; closed dim to charcoal so the eye
+          reads open-work first. */}
+      {(open.length > 0 || closed.length > 0) && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {open.map((o) => (
+            <Link
+              key={o.id}
+              href={`/commercial/opportunities/${o.id}`}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-blue-200 bg-blue-50 text-blue-800 text-[11.5px] font-medium hover:bg-blue-100 hover:border-blue-300 max-w-[280px] truncate"
+              title={`${o.title} — ${opportunityStatusLabel(o.status)}`}
+            >
+              <span className="truncate">{o.title}</span>
+            </Link>
+          ))}
+          {closed.slice(0, 3).map((o) => (
+            <Link
+              key={o.id}
+              href={`/commercial/opportunities/${o.id}`}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600 text-[11.5px] font-medium hover:bg-ppp-charcoal-100 max-w-[280px] truncate"
+              title={`${o.title} — ${opportunityStatusLabel(o.status)}`}
+            >
+              <span className="truncate">{o.title}</span>
+            </Link>
+          ))}
+          {closed.length > 3 && (
+            <Link
+              href={`/commercial/accounts/${account.id}`}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-200 bg-white text-ppp-charcoal-500 text-[11.5px] font-medium hover:bg-ppp-charcoal-50"
+              title={`See all ${closed.length} closed deals`}
+            >
+              +{closed.length - 3} more
+            </Link>
+          )}
+        </div>
+      )}
+    </li>
   );
 }
 
