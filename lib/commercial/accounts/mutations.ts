@@ -114,10 +114,29 @@ export async function updateCommercialAccount(
 export async function softDeleteCommercialAccount(
   id: string,
   deletedByUserId?: string | null
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; error: string; blockingCount?: number }> {
   const sb = commercialDb();
   const { data: before } = await sb.from("commercial_accounts").select("*").eq("id", id).maybeSingle();
   if (!before) return { ok: false, error: "Account not found." };
+
+  // Karan 2026-07-08 cascade guard: refuse to delete an account that
+  // has any invoice with money on it. That money is real — the deal
+  // history stays with the account; if the user really wants it gone,
+  // they must void the invoices first.
+  const { data: invoiceRows } = await sb
+    .from("commercial_invoices")
+    .select("id, paid_cents")
+    .eq("account_id", id)
+    .is("deleted_at", null);
+  const invoices = (invoiceRows ?? []) as { id: string; paid_cents: number }[];
+  const paidInvoices = invoices.filter((i) => (i.paid_cents ?? 0) > 0);
+  if (paidInvoices.length > 0) {
+    return {
+      ok: false,
+      error: `Can't delete — this account has ${paidInvoices.length} invoice${paidInvoices.length === 1 ? "" : "s"} with recorded payments. Void those first.`,
+      blockingCount: paidInvoices.length,
+    };
+  }
 
   const { error } = await sb
     .from("commercial_accounts")

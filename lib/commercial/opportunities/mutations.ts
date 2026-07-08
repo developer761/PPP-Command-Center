@@ -209,11 +209,18 @@ export async function updateCommercialOpportunity(
 }
 
 /** Soft-delete via deleted_at. Lost / no_bid are STATUS values, not
- *  deletion — this is only for "I created this by mistake." */
+ *  deletion — this is only for "I created this by mistake."
+ *
+ *  Karan 2026-07-08 cascade guard: block deletion if the deal has any
+ *  invoice with money on it (paid_cents > 0) — that money changed hands
+ *  and can't just vanish. Cleanly cascade non-paid invoices (draft /
+ *  sent / void) into soft-delete alongside the deal so they don't
+ *  orphan on the invoices list.
+ */
 export async function softDeleteCommercialOpportunity(
   id: string,
   deletedByUserId?: string | null
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; error: string; blockingCount?: number }> {
   const sb = commercialDb();
   const { data: before } = await sb
     .from("commercial_opportunities")
@@ -222,6 +229,23 @@ export async function softDeleteCommercialOpportunity(
     .is("deleted_at", null)
     .maybeSingle();
   if (!before) return { ok: false, error: "Opportunity not found." };
+
+  // Look up invoices that would orphan. Filter out ones that are already
+  // soft-deleted so re-deleting a deal doesn't count historical noise.
+  const { data: invoiceRows } = await sb
+    .from("commercial_invoices")
+    .select("id, paid_cents, status")
+    .eq("opportunity_id", id)
+    .is("deleted_at", null);
+  const invoices = (invoiceRows ?? []) as { id: string; paid_cents: number; status: string }[];
+  const paidInvoices = invoices.filter((i) => (i.paid_cents ?? 0) > 0);
+  if (paidInvoices.length > 0) {
+    return {
+      ok: false,
+      error: `Can't delete — ${paidInvoices.length} invoice${paidInvoices.length === 1 ? " has" : "s have"} recorded payments. Void those first, then delete the deal.`,
+      blockingCount: paidInvoices.length,
+    };
+  }
 
   const { data: after, error } = await sb
     .from("commercial_opportunities")
@@ -234,6 +258,19 @@ export async function softDeleteCommercialOpportunity(
     .single();
 
   if (error) return { ok: false, error: error.message };
+
+  // Cascade: soft-delete the (unpaid) invoices attached to this deal so
+  // they don't linger as orphans on the invoices list. Best-effort — if
+  // this fails the deal is already deleted; the orphaned-invoice fallback
+  // handling on /commercial/invoices keeps the UI navigable.
+  if (invoices.length > 0) {
+    const now = new Date().toISOString();
+    await sb
+      .from("commercial_invoices")
+      .update({ deleted_at: now })
+      .in("id", invoices.map((i) => i.id));
+  }
+
   await logDelete("commercial_opportunities", id, before, deletedByUserId);
   void after; // logDelete captures the row
   return { ok: true };

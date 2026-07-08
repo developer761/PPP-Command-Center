@@ -835,19 +835,20 @@ function GroupedByOpp({
           // section so multi-opp accounts scroll to the right card.
           //
           // Karan 2026-07-08 orphan-invoice fix: when the parent deal
-          // is soft-deleted, `opp` is null but `account` still resolves.
-          // Previously the fallback was `/commercial/invoices` which just
-          // refreshed the current page — a dead click. Now: if account
-          // is known, route to the account-filtered view (users can
-          // still manage the orphaned invoices individually there);
-          // if both are missing, drill straight into the first invoice
-          // in the group so the click always does something useful.
+          // is soft-deleted the row would fall back to `/commercial/invoices`
+          // which just refreshes the current page — a dead click and no
+          // way to void/delete the orphan. Priority:
+          //   1. Live opp + account → account-filtered view + anchor to opp
+          //   2. Orphan with N invoices → first invoice detail so user
+          //      can void / delete / reassign it
+          //   3. Live opp, no account (shouldn't happen) → account view
+          //   4. Absolute fallback → list
           const rowHref = opp && account
             ? `/commercial/invoices?account_id=${account.id}#opp-${opp.id}`
+            : !opp && groupInvoices.length > 0
+            ? `/commercial/invoices/${groupInvoices[0].id}`
             : account
             ? `/commercial/invoices?account_id=${account.id}`
-            : groupInvoices.length > 0
-            ? `/commercial/invoices/${groupInvoices[0].id}`
             : "/commercial/invoices";
           return (
             <li key={oppId}>
