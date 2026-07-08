@@ -408,7 +408,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const scopedInvoiceCount = scopedInvoices.length;
   const scopedHasPaid = scopedInvoices.some((i) => (i.paid_cents ?? 0) > 0);
   const scopedIsOrphan = opportunityIdFilter && !oppById.has(opportunityIdFilter);
-  const bulkDeletedFlash = Number(pickFirst(sp.bulk_deleted) ?? 0);
+  // NaN-safe: malformed ?bulk_deleted=abc would render "NaN invoices deleted."
+  const bulkDeletedParsed = Number(pickFirst(sp.bulk_deleted) ?? 0);
+  const bulkDeletedFlash = Number.isFinite(bulkDeletedParsed) && bulkDeletedParsed > 0 ? bulkDeletedParsed : 0;
   const errorFlash = pickFirst(sp.error);
 
   return (

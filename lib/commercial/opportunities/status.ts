@@ -114,17 +114,24 @@ export async function changeOpportunityStatus(
   // account depends on this deal being Won. Force the user to void the
   // invoices first so the money side and the pipeline side stay in sync.
   if (beforeRow.status === "won" && input.to_status !== "won") {
+    // Karan 2026-07-08 refinement: only customer-visible invoices block
+    // the reversal. Drafts haven't been sent — safe to un-win a deal
+    // that only has drafts attached (drafts can be manually cleaned up
+    // or simply left on the (now-Lost) deal for audit history). Sent /
+    // viewed / partial / paid all mean the customer knows about the
+    // invoice, so reversing Won without voiding those first would be
+    // a data-integrity break.
     const { data: liveInvoices } = await sb
       .from("commercial_invoices")
       .select("id, status")
       .eq("opportunity_id", input.opp_id)
       .is("deleted_at", null)
-      .neq("status", "void");
+      .in("status", ["sent", "viewed", "partial", "paid"]);
     const blocking = (liveInvoices ?? []) as { id: string; status: string }[];
     if (blocking.length > 0) {
       return {
         ok: false,
-        error: `Can't move this off Won — ${blocking.length} live invoice${blocking.length === 1 ? "" : "s"} still on the deal. Void those first.`,
+        error: `Can't move this off Won — ${blocking.length} customer-visible invoice${blocking.length === 1 ? "" : "s"} still on the deal. Void those first.`,
       };
     }
   }

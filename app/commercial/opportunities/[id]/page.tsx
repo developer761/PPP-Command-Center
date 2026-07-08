@@ -2019,6 +2019,11 @@ async function OpportunityInvoicesPanel({
       {editInvoiceId && (() => {
         const editing = invoices.find((i) => i.id === editInvoiceId);
         if (!editing) return null;
+        // Karan 2026-07-08: void invoices are immutable per the lib gate
+        // (updateInvoiceCoreFields refuses status='void'). Silently close
+        // the sheet if the URL param points at a voided invoice — no row
+        // trigger renders for void anyway; this catches URL hacks.
+        if (editing.status === "void") return null;
         const dueDefault = editing.due_at
           ? new Date(editing.due_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" })
           : "";
