@@ -50,19 +50,20 @@ import {
   type AccountInvoiceRollup,
 } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
-import { listCommercialInvoices, type CommercialInvoice } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus, invoiceStatusLabel } from "@/lib/commercial/invoices/constants";
+import { listCommercialInvoices, addPayment, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
 import {
   listCommercialOpportunities,
   opportunityStatusLabel,
   formatBidRange,
+  weightedPipelineCents,
   OPPORTUNITY_STATUSES,
   OPPORTUNITY_SOURCES,
   opportunitySourceLabel,
   type CommercialOpportunity,
   type OpportunityStatus,
 } from "@/lib/commercial/opportunities/db";
-import { createCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
+import { createCommercialOpportunity, softDeleteCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -111,6 +112,22 @@ type SP = Promise<{
   team_added?: string;
   team_skipped?: string;
   saved?: string;
+  /** Karan 2026-07-08: per-deal drill-in section. When `?deal=<uuid>` is
+   *  set AND the deal belongs to this account, OpportunitiesTab renders
+   *  the DealDrillIn card at the top. Set by /opportunities/[id] redirect
+   *  shim, by Edit-save redirects, and by the pipeline sheet's deep links. */
+  deal?: string;
+  /** Toast surface after softDeleteOpportunityAction fires on this account.
+   *  URL-encoded deal title. */
+  deleted?: string;
+  /** Karan 2026-07-08: inline Record-payment flash surface on the
+   *  Invoices tab. `payment_ok=1` fires the emerald success banner;
+   *  `capped=1` with `requested` + `applied` cents fires the amber
+   *  "overpayment capped" copy that mirrors the invoice-detail flow. */
+  payment_ok?: string;
+  capped?: string;
+  requested?: string;
+  applied?: string;
   /** Karan 2026-07-08: inline "+ New deal" collapsible state. Set from
    *  the retired /commercial/opportunities/new redirect (auto-opens the
    *  form) OR from a redirect after error. `created=1` + `created_title`
@@ -443,13 +460,30 @@ export default async function CommercialAccountDetailPage({
           overview={overview}
           openNewDeal={sp.new_deal === "1"}
           createdTitle={sp.created === "1" ? sp.created_title ?? null : null}
+          focusDealId={
+            typeof sp.deal === "string" && /^[0-9a-f-]{36}$/i.test(sp.deal)
+              ? sp.deal
+              : null
+          }
+          savedFlash={sp.saved === "1"}
+          deletedFlash={typeof sp.deleted === "string" ? sp.deleted : null}
           errorMessage={sp.error}
         />
       )}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "notes" && <NotesTab accountId={account.id} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
-      {tab === "invoices" && <AccountInvoicesTab accountId={account.id} rollup={invoiceRollup} />}
+      {tab === "invoices" && (
+        <AccountInvoicesTab
+          accountId={account.id}
+          rollup={invoiceRollup}
+          paymentOk={sp.payment_ok === "1"}
+          paymentCapped={sp.capped === "1"}
+          paymentRequested={typeof sp.requested === "string" ? Number(sp.requested) || null : null}
+          paymentApplied={typeof sp.applied === "string" ? Number(sp.applied) || null : null}
+          errorMessage={sp.error}
+        />
+      )}
       {tab === "kpis" && <AccountKpisTab accountId={account.id} overview={overview} rollup={invoiceRollup} />}
     </div>
   );
@@ -586,6 +620,103 @@ async function createDealInlineAction(formData: FormData) {
   revalidatePath("/commercial");
   const createdTitle = encodeURIComponent(result.opportunity.title);
   redirect(`/commercial/accounts/${account_id}?tab=opportunities&created=1&created_title=${createdTitle}#deal-${result.opportunity.id}`);
+}
+
+/**
+ * Karan 2026-07-08: soft-delete a deal from the account-page drill-in.
+ * Cross-account defense: the mutation lib re-fetches by id, but we
+ * validate the account_id in the redirect target so a malicious form
+ * post can't smuggle a redirect to a different customer's page.
+ */
+async function deleteDealFromAccountAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const confirm = formData.get("confirm") === "yes";
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+  if (!confirm) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&deal=${opp_id}&error=${encodeURIComponent("Confirmation required to delete.")}#deal-${opp_id}`);
+  }
+  // Peek the title BEFORE deleting so we can surface it in the toast.
+  // Lazy import to keep the top-of-module bundle lean (this action fires
+  // once per manual delete, not on every account-page render).
+  const { commercialDb: _cdb } = await import("@/lib/commercial/db");
+  const sb = _cdb();
+  const { data: pre } = await sb
+    .from("commercial_opportunities")
+    .select("title, account_id")
+    .eq("id", opp_id)
+    .eq("account_id", account_id)
+    .maybeSingle();
+  if (!pre) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Deal not found on this account.")}`);
+  }
+  const title = ((pre as { title?: string }).title || "Deal");
+  const result = await softDeleteCommercialOpportunity(opp_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&deal=${opp_id}&error=${encodeURIComponent(result.error)}#deal-${opp_id}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  revalidatePath("/commercial/opportunities");
+  revalidatePath("/commercial");
+  redirect(`/commercial/accounts/${account_id}?tab=opportunities&deleted=${encodeURIComponent(title)}`);
+}
+
+/**
+ * Karan 2026-07-08: inline "Record payment" for the Invoices tab.
+ * Per user "let me do quick actions straight onto this page just like
+ * adding a payment to a specific invoice but everything else they can
+ * do on the invoice page by click on the actual invoice". Everything
+ * except the payment record still routes to the full invoice page.
+ *
+ * The addPayment lib is the same one the invoice detail page uses so
+ * the state machine (draft → partial → paid) fires identically and the
+ * account's Financial Snapshot rolls up on the very next render.
+ */
+async function recordPaymentInlineAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  const returnUrl = `/commercial/accounts/${account_id}?tab=invoices`;
+  if (!UUID_RE.test(invoice_id)) redirect(`${returnUrl}&error=${encodeURIComponent("Invalid invoice.")}`);
+  const amountRaw = String(formData.get("amount") ?? "").trim();
+  const cents = parseDollarsToCents(amountRaw);
+  if (cents === null || cents <= 0) {
+    redirect(`${returnUrl}&error=${encodeURIComponent("Enter a positive dollar amount.")}#inv-${invoice_id}`);
+  }
+  const paidAtRaw = String(formData.get("paid_at") ?? "").trim();
+  const paid_at = paidAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(paidAtRaw)
+    ? `${paidAtRaw}T12:00:00.000Z`
+    : new Date().toISOString();
+  const method = String(formData.get("method") ?? "").trim() || null;
+  const reference = String(formData.get("reference") ?? "").trim() || null;
+  const result = await addPayment(invoice_id, {
+    amount_cents: cents,
+    paid_at,
+    method,
+    reference,
+    notes: null,
+    recorded_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`${returnUrl}&error=${encodeURIComponent(result.error ?? "Failed to record payment.")}#inv-${invoice_id}`);
+  }
+  // Same revalidations the invoice-detail action fires — every surface
+  // that surfaces this invoice or its parent account's rollup refreshes.
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  revalidatePath(`/commercial/invoices/${invoice_id}`);
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+  const cappedMsg = result.capped ? `&capped=1&requested=${cents}&applied=${result.applied_cents ?? cents}` : "";
+  redirect(`${returnUrl}&payment_ok=1${cappedMsg}#inv-${invoice_id}`);
 }
 
 async function addTagAction(formData: FormData) {
@@ -1951,12 +2082,24 @@ async function OpportunitiesTab({
   overview,
   openNewDeal,
   createdTitle,
+  focusDealId,
+  savedFlash,
+  deletedFlash,
   errorMessage,
 }: {
   accountId: string;
   overview: AccountOverview | null;
   openNewDeal?: boolean;
   createdTitle?: string | null;
+  /** When set, expand a per-deal drill-in section at the top of the tab.
+   *  Loaded from `?deal=<uuid>` on the URL — set by edit/save redirects,
+   *  by the pipeline sheet's deep-links, and by the deprecated deal-detail
+   *  page's shim redirect. Cross-account access blocked by the
+   *  account_id-scoped fetch below (the deal only expands when it belongs
+   *  to `accountId`; a mismatched pair silently ignores the param). */
+  focusDealId?: string | null;
+  savedFlash?: boolean;
+  deletedFlash?: string | null;
   errorMessage?: string;
 }) {
   const all = await listCommercialOpportunities({ accountId });
@@ -2031,6 +2174,33 @@ async function OpportunitiesTab({
           </Link>
         </div>
       )}
+      {savedFlash && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden>✓</span>
+            <span>Changes saved.</span>
+          </span>
+          <Link
+            href={`/commercial/accounts/${accountId}?tab=opportunities`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      {deletedFlash && (
+        <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-start justify-between gap-3">
+          <span>
+            <strong className="text-ppp-charcoal">{decodeURIComponent(deletedFlash)}</strong> deleted. Soft-delete — restorable by admin from the audit log.
+          </span>
+          <Link
+            href={`/commercial/accounts/${accountId}?tab=opportunities`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
       {errorMessage && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800 flex items-start justify-between gap-3">
           <span>{errorMessage}</span>
@@ -2048,6 +2218,31 @@ async function OpportunitiesTab({
           action, not a nested collapsible chevron. When open exists the
           card stays collapsed; when it's the customer's only next move
           it opens by default with a "Start the next bid" label change. */}
+      {/* Karan 2026-07-08: per-deal drill-in section. Renders when the
+          URL carries ?deal=<uuid> AND the deal actually belongs to this
+          account (cross-account defense — `all` is already filtered by
+          accountId at the top of the tab). Full deal detail lives here
+          under a collapsible header with Edit + Delete + status flip
+          actions so users never leave the account page for routine
+          deal management. Auto-scrolled to via #deal-<id>. */}
+      {focusDealId && (() => {
+        const dealRow = all.find((d) => d.id === focusDealId);
+        if (!dealRow) return null;
+        return (
+          <DealDrillIn
+            deal={dealRow}
+            accountId={accountId}
+            statusEnteredAt={statusEnteredMap.get(dealRow.id) ?? null}
+            taskStats={taskStatsMap.get(dealRow.id) ?? null}
+            lastNote={lastNoteMap.get(dealRow.id) ?? null}
+            primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
+            fileCount={attachmentMap.get(dealRow.id) ?? 0}
+            submittalStats={submittalMap.get(dealRow.id) ?? null}
+            finishCount={finishMap.get(dealRow.id) ?? 0}
+          />
+        );
+      })()}
+
       <details
         open={openNewDeal || open.length === 0}
         className="group/newdeal bg-white border border-cc-brand-200 rounded-xl overflow-hidden shadow-sm shadow-cc-brand-100/40"
@@ -2973,23 +3168,11 @@ function AccountOverviewStrip({
         </div>
       )}
 
-      {/* View-statement CTA — INSIDE the container, right-aligned, only
-          when there's a statement worth viewing. Kept quiet (ghost link,
-          not a button) since the money numbers above are the primary
-          story. */}
-      {invoiceRollup.invoice_count > 0 && (
-        <div className="mt-4 pt-3 border-t border-ppp-charcoal-100 flex items-center justify-end">
-          <Link
-            href={`/commercial/invoices?account_id=${accountId}&view=grouped`}
-            className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-blue-700 hover:text-blue-900 hover:underline underline-offset-2 min-h-[32px] touch-manipulation"
-          >
-            View full statement
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M5 12h14 M13 5l7 7-7 7" />
-            </svg>
-          </Link>
-        </div>
-      )}
+      {/* Karan 2026-07-08: dropped the "View full statement" CTA that
+          used to live here. The account page now has a dedicated
+          Invoices tab (top nav) that covers the same drill-down, so
+          this button was duplicating destinations. Users click Invoices
+          in the tab strip. */}
     </section>
   );
 }
@@ -3181,9 +3364,19 @@ function prequalLabel(s: "not_started" | "pending" | "approved" | "rejected"): s
 async function AccountInvoicesTab({
   accountId,
   rollup,
+  paymentOk,
+  paymentCapped,
+  paymentRequested,
+  paymentApplied,
+  errorMessage,
 }: {
   accountId: string;
   rollup: AccountInvoiceRollup;
+  paymentOk?: boolean;
+  paymentCapped?: boolean;
+  paymentRequested?: number | null;
+  paymentApplied?: number | null;
+  errorMessage?: string;
 }) {
   const invoices = await listCommercialInvoices({ accountId });
   const paidPct =
@@ -3210,6 +3403,47 @@ async function AccountInvoicesTab({
   ];
   return (
     <div className="space-y-4">
+      {/* Flash toasts from the inline "Record payment" action. Same
+          shape as the invoice-detail flash — emerald for success,
+          amber for the overpayment-capped edge case. */}
+      {paymentOk && !paymentCapped && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden>✓</span>
+            <span>Payment recorded.</span>
+          </span>
+          <Link
+            href={`/commercial/accounts/${accountId}?tab=invoices`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      {paymentOk && paymentCapped && paymentRequested !== null && paymentApplied !== null && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900">
+          <div className="flex items-center gap-2 font-semibold">
+            <span aria-hidden>✓</span>
+            <span>Payment recorded — capped to invoice balance</span>
+          </div>
+          <div className="mt-1 text-[12.5px] text-amber-800">
+            You entered <span className="font-mono">${((paymentRequested ?? 0) / 100).toFixed(2)}</span>{" "}
+            but only <span className="font-mono">${((paymentApplied ?? 0) / 100).toFixed(2)}</span> was owed. The extra{" "}
+            <span className="font-mono">${(((paymentRequested ?? 0) - (paymentApplied ?? 0)) / 100).toFixed(2)}</span> was not recorded.
+          </div>
+        </div>
+      )}
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800 flex items-start justify-between gap-3">
+          <span>{errorMessage}</span>
+          <Link
+            href={`/commercial/accounts/${accountId}?tab=invoices`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
       {/* Rollup strip */}
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
@@ -3267,7 +3501,7 @@ async function AccountInvoicesTab({
                 </div>
                 <ul className="divide-y divide-ppp-charcoal-100">
                   {arr.map((inv) => (
-                    <AccountInvoiceRow key={inv.id} invoice={inv} />
+                    <AccountInvoiceRow key={inv.id} invoice={inv} accountId={accountId} />
                   ))}
                 </ul>
               </section>
@@ -3279,7 +3513,7 @@ async function AccountInvoicesTab({
   );
 }
 
-function AccountInvoiceRow({ invoice }: { invoice: CommercialInvoice }) {
+function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice; accountId: string }) {
   const derived = deriveInvoiceStatus(invoice);
   const toneCls =
     derived === "paid"
@@ -3293,14 +3527,19 @@ function AccountInvoiceRow({ invoice }: { invoice: CommercialInvoice }) {
     invoice.total_cents > 0
       ? Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))
       : 0;
+  // Karan 2026-07-08: "Record payment" surfaces only when payment is
+  // actually meaningful — invoice has a balance owed AND isn't void.
+  // Paid/void invoices show a static state; drill into the full page
+  // for refunds / adjustments (per user "everything else on invoice page").
+  const canRecordPayment = derived !== "paid" && derived !== "void" && invoice.balance_cents > 0;
   return (
-    <li>
-      <Link
-        href={`/commercial/invoices/${invoice.id}`}
-        className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-blue-50/40 transition-colors min-h-[52px] touch-manipulation"
-        title={`Open ${invoice.invoice_number}`}
-      >
-        <div className="min-w-0 flex-1">
+    <li id={`inv-${invoice.id}`} className="scroll-mt-4">
+      <div className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-blue-50/40 transition-colors">
+        <Link
+          href={`/commercial/invoices/${invoice.id}`}
+          className="flex-1 min-w-0 min-h-[52px] touch-manipulation"
+          title={`Open ${invoice.invoice_number}`}
+        >
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-mono font-semibold text-ppp-charcoal">
               {invoice.invoice_number}
@@ -3331,18 +3570,96 @@ function AccountInvoiceRow({ invoice }: { invoice: CommercialInvoice }) {
               </div>
             </div>
           )}
-        </div>
-        <div className="text-right shrink-0">
-          <div className="text-sm font-bold text-ppp-charcoal">
-            {formatCentsFull(invoice.total_cents)}
-          </div>
-          {invoice.balance_cents > 0 && invoice.balance_cents !== invoice.total_cents && (
-            <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-              {formatCentsFull(invoice.balance_cents)} owed
+        </Link>
+        <div className="text-right shrink-0 flex flex-col items-end gap-1">
+          <Link
+            href={`/commercial/invoices/${invoice.id}`}
+            className="block"
+            title={`Open ${invoice.invoice_number}`}
+          >
+            <div className="text-sm font-bold text-ppp-charcoal">
+              {formatCentsFull(invoice.total_cents)}
             </div>
+            {invoice.balance_cents > 0 && invoice.balance_cents !== invoice.total_cents && (
+              <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                {formatCentsFull(invoice.balance_cents)} owed
+              </div>
+            )}
+          </Link>
+          {canRecordPayment && (
+            <details className="text-right">
+              <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[28px] touch-manipulation">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 5v14 M5 12h14" />
+                </svg>
+                Record payment
+              </summary>
+              <form
+                action={recordPaymentInlineAction}
+                className="mt-2 bg-white border border-ppp-charcoal-100 rounded-lg shadow-sm p-3 space-y-2 w-[260px] text-left"
+              >
+                <input type="hidden" name="account_id" value={accountId} />
+                <input type="hidden" name="invoice_id" value={invoice.id} />
+                <div className="text-[10.5px] text-ppp-charcoal-500">
+                  Balance owed: <strong className="text-ppp-charcoal">{formatCentsFull(invoice.balance_cents)}</strong>
+                </div>
+                <label className="block">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Amount</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    name="amount"
+                    required
+                    placeholder="0.00"
+                    defaultValue={(invoice.balance_cents / 100).toFixed(2)}
+                    className="w-full mt-0.5 px-2 py-1.5 text-sm border border-ppp-charcoal-200 rounded-md tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Date</span>
+                    <input
+                      type="date"
+                      name="paid_at"
+                      defaultValue={new Date().toISOString().slice(0, 10)}
+                      className="w-full mt-0.5 px-2 py-1.5 text-[13px] border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Method</span>
+                    <select
+                      name="method"
+                      defaultValue=""
+                      className="w-full mt-0.5 px-2 py-1.5 text-[13px] bg-white border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    >
+                      <option value="">—</option>
+                      {PAYMENT_METHODS.map((m) => (
+                        <option key={m.key} value={m.key}>{m.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Reference (optional)</span>
+                  <input
+                    type="text"
+                    name="reference"
+                    maxLength={120}
+                    placeholder="Check #, transaction ID…"
+                    className="w-full mt-0.5 px-2 py-1.5 text-[13px] border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="w-full inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[36px] touch-manipulation"
+                >
+                  Record payment
+                </button>
+              </form>
+            </details>
           )}
         </div>
-      </Link>
+      </div>
     </li>
   );
 }
@@ -3504,6 +3821,258 @@ function AccountKpisTab({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+/**
+ * DealDrillIn — Karan 2026-07-08. Per-deal detail section on the account
+ * page. Opens when the URL has ?deal=<uuid> matching one of this
+ * account's deals. Contents:
+ *   1. Header — anchor id, deal title, status pill, Edit + Delete
+ *   2. KPI strip — Bid / Probability / Weighted / Decision countdown
+ *   3. Info grid — status, source, dates, description, project address
+ *   4. Move-to-next-stage form (same DAG as elsewhere)
+ *   5. Collapse link (drops ?deal= from URL)
+ *
+ * Users can still click into full-detail workflows via deep links:
+ * ?tab=debrief (for closed deals) and ?tab=documents survive on
+ * /commercial/opportunities/{id} for structured forms.
+ */
+function DealDrillIn({
+  deal,
+  accountId,
+  statusEnteredAt,
+  taskStats,
+  primaryLead,
+  fileCount,
+  submittalStats,
+  finishCount,
+}: {
+  deal: CommercialOpportunity;
+  accountId: string;
+  statusEnteredAt: string | null;
+  taskStats: { open: number; overdue: number; due_soon: number } | null;
+  lastNote: { created_at: string; author_label: string | null } | null;
+  primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
+  fileCount: number;
+  submittalStats: { total: number; awaiting_response: number } | null;
+  finishCount: number;
+}) {
+  const bidLabel = formatBidRange(deal.bid_value_low_cents, deal.bid_value_high_cents);
+  const weighted = weightedPipelineCents(deal);
+  const daysInStatus = daysSinceIso(statusEnteredAt);
+  const daysTone =
+    daysInStatus === null
+      ? "text-ppp-charcoal-500"
+      : daysInStatus > 14
+      ? "text-rose-700"
+      : daysInStatus > 7
+      ? "text-amber-700"
+      : "text-blue-700";
+  const nextStatuses = allowedNextStatuses(deal.status);
+  const isTerminal = TERMINAL_STATUSES.has(deal.status);
+  const statusInfo = statusPillTone(deal.status);
+  const proposalDue = deal.proposal_due_at ? new Date(deal.proposal_due_at) : null;
+  const daysUntilDue = proposalDue ? Math.ceil((proposalDue.getTime() - Date.now()) / 86_400_000) : null;
+  const dueLabel = daysUntilDue === null
+    ? "—"
+    : daysUntilDue < 0
+    ? `${Math.abs(daysUntilDue)}d overdue`
+    : daysUntilDue === 0
+    ? "today"
+    : `${daysUntilDue}d`;
+  const dueTone = daysUntilDue === null
+    ? "text-ppp-charcoal-500"
+    : daysUntilDue < 0
+    ? "text-rose-700"
+    : daysUntilDue <= 3
+    ? "text-amber-700"
+    : "text-ppp-charcoal";
+  return (
+    <section
+      id={`deal-${deal.id}`}
+      className="bg-white border-2 border-cc-brand-300 rounded-xl overflow-hidden shadow-sm ring-1 ring-cc-brand-100 scroll-mt-4"
+    >
+      {/* Header row — title, status pill, action buttons */}
+      <header className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-r from-cc-brand-50/40 to-white">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-cc-brand-700 mb-1">
+              Focused deal
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base sm:text-lg font-bold text-ppp-charcoal break-words leading-tight">
+                {deal.title || "(untitled)"}
+              </h3>
+              <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border shrink-0 ${statusInfo.cls}`}>
+                {opportunityStatusLabel(deal.status)}
+              </span>
+            </div>
+            {daysInStatus !== null && !isTerminal && (
+              <div className={`text-[11.5px] font-medium mt-1 ${daysTone}`}>
+                {daysInStatus === 0 ? "just entered this stage" : `${daysInStatus}d in ${opportunityStatusLabel(deal.status).toLowerCase()}`}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+            <Link
+              href={`/commercial/opportunities/${deal.id}/edit`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[40px] touch-manipulation"
+              title="Open the full deal-edit form"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Edit
+            </Link>
+            <Link
+              href={`/commercial/accounts/${accountId}?tab=opportunities`}
+              className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 text-[12px] font-semibold min-h-[40px] touch-manipulation"
+              title="Close this detail view"
+              aria-label="Close deal drill-in"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M18 6L6 18 M6 6l12 12" />
+              </svg>
+              Close
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      {/* KPI strip — bid / probability / weighted / decision countdown */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-4 sm:p-5">
+        <DrillTile label="Bid" value={bidLabel !== "—" ? bidLabel : "Not set"} />
+        <DrillTile label="Probability" value={`${deal.probability_pct}%`} />
+        <DrillTile label="Weighted" value={weighted > 0 ? formatCentsCompact(weighted) : "—"} />
+        <DrillTile label="Decision in" value={dueLabel} tone={dueTone} />
+      </div>
+
+      {/* Info grid — status meta, timeline, description, address */}
+      <div className="px-4 sm:px-5 pb-4 space-y-3 border-t border-ppp-charcoal-100 pt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <DrillField label="Source" value={deal.source ? opportunitySourceLabel(deal.source) : "Not set"} />
+          <DrillField label="Primary lead" value={primaryLead ? primaryLead.user_full_name ?? primaryLead.user_email : "Unassigned"} />
+          <DrillField label="Proposal due" value={deal.proposal_due_at ? new Date(deal.proposal_due_at).toLocaleDateString() : "Not set"} />
+          <DrillField label="Decided" value={deal.decided_at ? new Date(deal.decided_at).toLocaleDateString() : "Not set"} />
+          <DrillField label="Proposed start" value={deal.proposed_start_at ? new Date(deal.proposed_start_at).toLocaleDateString() : "Not set"} />
+          <DrillField label="Proposed end" value={deal.proposed_end_at ? new Date(deal.proposed_end_at).toLocaleDateString() : "Not set"} />
+        </div>
+        {deal.description && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Description</div>
+            <p className="text-[13px] text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+              {deal.description}
+            </p>
+          </div>
+        )}
+        {(deal.property_street || deal.property_city || deal.property_state) && (
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Project address</div>
+            <p className="text-[13px] text-ppp-charcoal-700">
+              {[deal.property_street, deal.property_city, deal.property_state, deal.property_zip].filter(Boolean).join(", ")}
+            </p>
+          </div>
+        )}
+        {(taskStats && (taskStats.open > 0 || taskStats.overdue > 0)) || fileCount > 0 || finishCount > 0 || (submittalStats && submittalStats.total > 0) ? (
+          <div className="text-[11.5px] flex items-center gap-x-3 gap-y-1 flex-wrap text-ppp-charcoal-600 pt-1">
+            {taskStats && taskStats.overdue > 0 && (
+              <span className="text-rose-700 font-medium">
+                <span aria-hidden>⚠</span> {taskStats.overdue} overdue task{taskStats.overdue === 1 ? "" : "s"}
+              </span>
+            )}
+            {taskStats && taskStats.overdue === 0 && taskStats.open > 0 && (
+              <span>{taskStats.open} open task{taskStats.open === 1 ? "" : "s"}</span>
+            )}
+            {fileCount > 0 && <span><span aria-hidden>📎</span> {fileCount} attachment{fileCount === 1 ? "" : "s"}</span>}
+            {finishCount > 0 && <span><span aria-hidden>🎨</span> {finishCount} finish{finishCount === 1 ? "" : "es"}</span>}
+            {submittalStats && submittalStats.total > 0 && (
+              <span className={submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : undefined}>
+                <span aria-hidden>📋</span> {submittalStats.total} submittal{submittalStats.total === 1 ? "" : "s"}
+                {submittalStats.awaiting_response > 0 && ` · ${submittalStats.awaiting_response} awaiting GC`}
+              </span>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Move-to-next-stage form + delete action, side-by-side on desktop */}
+      <div className="px-4 sm:px-5 pb-4 border-t border-ppp-charcoal-100 pt-4 flex items-center gap-2 flex-wrap">
+        {nextStatuses.length > 0 && (
+          <form action={quickFlipFromAccountAction} className="flex items-center gap-2 flex-wrap flex-1 min-w-[240px]">
+            <input type="hidden" name="account_id" value={accountId} />
+            <input type="hidden" name="opp_id" value={deal.id} />
+            <select
+              name="to_status"
+              defaultValue=""
+              required
+              aria-label={`Move ${deal.title} to next stage`}
+              className={`${SELECT_CLS} text-base sm:text-sm py-2 min-h-[40px] flex-1 min-w-[180px]`}
+              style={SELECT_BG_STYLE}
+            >
+              <option value="" disabled>Move to next stage…</option>
+              {nextStatuses.map((s) => {
+                const isT = isTerminalOpportunityStatus(s);
+                return (
+                  <option key={s} value={s}>
+                    {isT ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
+                  </option>
+                );
+              })}
+            </select>
+            <button
+              type="submit"
+              className="px-3.5 py-2 text-[12px] font-semibold rounded-lg bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+            >
+              Go
+            </button>
+          </form>
+        )}
+        {/* Delete — native <details> confirm. No client JS; native
+            controls only. First click expands the confirm form; second
+            click (submit with confirm=yes) fires the delete. */}
+        <details className="relative group/del">
+          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-white text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[40px] touch-manipulation">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            </svg>
+            Delete
+          </summary>
+          <form action={deleteDealFromAccountAction} className="absolute right-0 top-full mt-1.5 z-10 bg-white border border-rose-200 rounded-lg shadow-xl p-3 w-[280px] space-y-2.5">
+            <input type="hidden" name="account_id" value={accountId} />
+            <input type="hidden" name="opp_id" value={deal.id} />
+            <input type="hidden" name="confirm" value="yes" />
+            <p className="text-[12px] text-rose-800 leading-relaxed">
+              Soft-delete <strong>{deal.title}</strong>. Rows tied to the deal hide from lists — an admin can restore from the audit log.
+            </p>
+            <button
+              type="submit"
+              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+            >
+              Yes, delete this deal
+            </button>
+          </form>
+        </details>
+      </div>
+    </section>
+  );
+}
+
+function DrillTile({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className={`text-sm sm:text-base font-bold mt-0.5 tabular-nums ${tone ?? "text-ppp-charcoal"}`}>{value}</div>
+    </div>
+  );
+}
+
+function DrillField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="text-[12.5px]">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className="text-ppp-charcoal-800 mt-0.5">{value}</div>
     </div>
   );
 }
