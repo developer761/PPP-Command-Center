@@ -19,7 +19,7 @@ import {
 import { OPEN_OPP_STATUSES, TERMINAL_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { BILLABLE_INVOICE_STATUSES, deriveInvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { deriveInvoiceStatus } from "@/lib/commercial/invoices/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -53,13 +53,19 @@ export default async function CommercialDashboardPage() {
     listCommercialAccounts({}),
     listCommercialInvoices({}),
   ]);
-  // Outstanding AR: sum of balance across all currently-billable invoices
-  // (sent + viewed + partial + overdue). Excludes drafts (not sent yet)
-  // and paid/void (settled). Overdue is a derived state (due_at < now +
-  // balance > 0), so we route the click to the overdue-filtered list
-  // when any overdue exists — otherwise to the sent list.
+  // Karan 2026-07-08 reconciliation fix: previously the dashboard used
+  // BILLABLE_INVOICE_STATUSES (sent/viewed/partial/overdue), which
+  // EXCLUDED drafts. Every other surface (/commercial/invoices KPI,
+  // Account 360 MoneyTiles, per-opp Invoices panel) uses "all non-void"
+  // and INCLUDES drafts. That divergence gave the classic "why does
+  // the dashboard say $9K but /commercial/invoices say $9.2K" mismatch
+  // — same word "Outstanding," two different definitions. Now unified:
+  // dashboard tracks the same all-non-void rule as everywhere else,
+  // so the number reconciles across the platform. Overdue is a
+  // derived state (due_at < now + balance > 0); the click still routes
+  // to the overdue-filtered list when any overdue exists.
   const arOutstandingCents = invoices
-    .filter((i) => BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)))
+    .filter((i) => i.status !== "void")
     .reduce((acc, i) => acc + i.balance_cents, 0);
   const arOverdueCount = invoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
 
