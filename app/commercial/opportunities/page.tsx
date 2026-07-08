@@ -39,6 +39,11 @@ import {
   type OpportunitySource,
 } from "@/lib/commercial/opportunities/db";
 import { listCommercialAccounts, type CommercialAccount, type CommercialAccountRating, type CommercialPrequalStatus } from "@/lib/commercial/accounts/db";
+import { listAccountTeam, assignmentRoleLabel } from "@/lib/commercial/accounts/assignments";
+import { getInvoiceRollupForAccount, type AccountInvoiceRollup } from "@/lib/commercial/invoices/rollup";
+import { listCommercialInvoices, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { deriveInvoiceStatus, invoiceStatusLabel } from "@/lib/commercial/invoices/constants";
+import { formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
@@ -145,13 +150,21 @@ export default async function CommercialOpportunitiesPage({
   const staleFilter = pickFirst(sp.stale) === "1";
   const hotFilter = pickFirst(sp.hot) === "1";
   const sourcesRaw = pickFirst(sp.sources);
-  // Karan 2026-07-08 Batch 2 rewrite: ?peek=<uuid> opens a right-side
-  // slide-out quick-view drawer for one deal instead of navigating to
-  // the full detail page. The pipeline page is a *status-mover* — click
-  // a deal, peek at the essentials, flip status, jump to the account
-  // for the full story. Kanban / list / customer views all use this.
-  const peekOppId = (() => {
-    const raw = pickFirst(sp.peek);
+  // Karan 2026-07-08 rewrite: the drawer is *customer-scoped*, not
+  // deal-scoped. Clicking anywhere on the pipeline (customer row's
+  // "View" button, kanban card, list row, deal chip) opens the same
+  // sheet for that deal's parent customer — because the user's mental
+  // model is "look at Suffolk Concrete", not "look at deal #1234".
+  //   ?customer=<account_uuid>        opens the sheet for that account
+  //   ?customer=<uuid>&focus=<opp_id> optional highlighted deal +
+  //                                    inline status-flip target
+  const peekAccountId = (() => {
+    const raw = pickFirst(sp.customer);
+    if (!raw || !UUID_RE.test(raw)) return null;
+    return raw;
+  })();
+  const focusOppId = (() => {
+    const raw = pickFirst(sp.focus);
     if (!raw || !UUID_RE.test(raw)) return null;
     return raw;
   })();
@@ -376,29 +389,31 @@ export default async function CommercialOpportunitiesPage({
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
 
-  // Karan 2026-07-08 Batch 2 rewrite: peek-drawer URL builders.
-  //   peekHref(oppId) — open the drawer for this deal
-  //   peekCloseHref  — drop ?peek= (used by drawer's close/backdrop)
-  const peekHref = (oppId: string): string => {
+  // Karan 2026-07-08 rewrite: customer-sheet URL builders.
+  //   customerSheetHref(accountId, focusOppId?) — open the sheet
+  //   customerSheetCloseHref — drop ?customer= and ?focus=
+  const customerSheetHref = (accountId: string, focus?: string): string => {
     const p = new URLSearchParams(baseParams);
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
-    p.set("peek", oppId);
-    return `/commercial/opportunities?${p.toString()}#deal-peek`;
+    p.set("customer", accountId);
+    if (focus) p.set("focus", focus);
+    return `/commercial/opportunities?${p.toString()}#customer-sheet`;
   };
-  const peekCloseHref: string = (() => {
+  const customerSheetCloseHref: string = (() => {
     const p = new URLSearchParams(baseParams);
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
-    p.delete("peek");
+    p.delete("customer");
+    p.delete("focus");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   })();
   // Karan 2026-07-08 audit fix: forms that use quickFlipStatusAction
   // post this as a hidden input so the server action can redirect back
   // to the current filtered view instead of the naked pipeline URL.
-  // Peek is stripped so the drawer doesn't reopen after the flip.
-  const flipReturnHref: string = peekCloseHref;
+  // Customer/focus are stripped so the sheet doesn't reopen post-flip.
+  const flipReturnHref: string = customerSheetCloseHref;
 
   return (
     <div className="space-y-5">
@@ -808,7 +823,7 @@ export default async function CommercialOpportunitiesPage({
         <CustomerBoard
           opps={opps}
           accountById={accountById}
-          peekHref={peekHref}
+          sheetHref={customerSheetHref}
         />
       ) : viewMode === "kanban" ? (
         <KanbanBoard
@@ -820,7 +835,7 @@ export default async function CommercialOpportunitiesPage({
           fileCountMap={fileCountMap}
           submittalCountMap={submittalCountMap}
           finishCountMap={finishCountMap}
-          peekHref={peekHref}
+          sheetHref={customerSheetHref}
           flipReturnHref={flipReturnHref}
         />
       ) : (
@@ -848,7 +863,7 @@ export default async function CommercialOpportunitiesPage({
                 fileCount={fileCountMap.get(o.id) ?? 0}
                 submittalStats={submittalCountMap.get(o.id) ?? null}
                 finishCount={finishCountMap.get(o.id) ?? 0}
-                peekHref={peekHref}
+                sheetHref={customerSheetHref}
                 flipReturnHref={flipReturnHref}
               />
             ))}
@@ -856,32 +871,65 @@ export default async function CommercialOpportunitiesPage({
         </div>
       )}
 
-      {/* ─── Karan 2026-07-08 Batch 2: Quick-view drawer.
-          When ?peek=<uuid> resolves to a loaded opp, render a fixed
-          right-side sheet with the essentials — customer, status
-          changer, bid, signals — plus a prominent "View full account"
-          link that jumps to the account page. Everything else lives
-          under the account. Backdrop link closes by dropping ?peek. */}
-      {peekOppId && (() => {
-        const peekOpp = opps.find((o) => o.id === peekOppId);
-        if (!peekOpp) return null;
-        const peekAccount = accountById.get(peekOpp.account_id) ?? null;
-        return (
-          <PipelineDealPeek
-            opp={peekOpp}
-            account={peekAccount}
-            statusEnteredAt={statusEnteredAtMap.get(peekOpp.id) ?? null}
-            taskStats={taskStatsMap.get(peekOpp.id) ?? null}
-            primaryLead={primaryLeadMap.get(peekOpp.id) ?? null}
-            fileCount={fileCountMap.get(peekOpp.id) ?? 0}
-            submittalStats={submittalCountMap.get(peekOpp.id) ?? null}
-            finishCount={finishCountMap.get(peekOpp.id) ?? 0}
-            closeHref={peekCloseHref}
-            flipReturnHref={flipReturnHref}
-          />
-        );
-      })()}
+      {/* ─── Karan 2026-07-08 rewrite: customer-scoped quick sheet.
+          When ?customer=<account_uuid> is set, we fetch the account's
+          team + invoice rollup + invoice list + all deals, and render
+          a right-side sheet (GoHighLevel-style) with company info,
+          team members, financials with progress bars, invoice list,
+          and active/closed deals. Top-right "View account →" link.
+          Backdrop link closes by dropping ?customer + ?focus. */}
+      {peekAccountId && accountById.has(peekAccountId) && (
+        <CustomerQuickSheetLoader
+          accountId={peekAccountId}
+          account={accountById.get(peekAccountId)!}
+          focusOppId={focusOppId}
+          allOppsForAccount={opps.filter((o) => o.account_id === peekAccountId)}
+          closeHref={customerSheetCloseHref}
+          flipReturnHref={flipReturnHref}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Customer sheet data loader — server-fetches team + invoice rollup +
+ * per-account invoices only when the sheet is open. Isolating the
+ * fetches inside this component keeps them off the hot pipeline-list
+ * render path (one customer at a time when peeking, zero fetches when
+ * no ?customer= param).
+ */
+async function CustomerQuickSheetLoader({
+  accountId,
+  account,
+  focusOppId,
+  allOppsForAccount,
+  closeHref,
+  flipReturnHref,
+}: {
+  accountId: string;
+  account: CommercialAccount;
+  focusOppId: string | null;
+  allOppsForAccount: CommercialOpportunity[];
+  closeHref: string;
+  flipReturnHref: string;
+}) {
+  const [team, rollup, invoices] = await Promise.all([
+    listAccountTeam(accountId),
+    getInvoiceRollupForAccount(accountId),
+    listCommercialInvoices({ accountId }),
+  ]);
+  return (
+    <CustomerQuickSheet
+      account={account}
+      team={team}
+      rollup={rollup}
+      invoices={invoices}
+      allDeals={allOppsForAccount}
+      focusOppId={focusOppId}
+      closeHref={closeHref}
+      flipReturnHref={flipReturnHref}
+    />
   );
 }
 
@@ -898,11 +946,11 @@ export default async function CommercialOpportunitiesPage({
 function CustomerBoard({
   opps,
   accountById,
-  peekHref,
+  sheetHref,
 }: {
   opps: CommercialOpportunity[];
   accountById: Map<string, CommercialAccount>;
-  peekHref: (oppId: string) => string;
+  sheetHref: (accountId: string, focus?: string) => string;
 }) {
   // Group opps by account_id, then compute per-account rollups.
   const byAccount = new Map<string, CommercialOpportunity[]>();
@@ -962,7 +1010,7 @@ function CustomerBoard({
       </div>
       <ul className="divide-y divide-ppp-charcoal-100">
         {rows.map((row) => (
-          <CustomerBoardRow key={row.account.id} row={row} peekHref={peekHref} />
+          <CustomerBoardRow key={row.account.id} row={row} sheetHref={sheetHref} />
         ))}
       </ul>
     </div>
@@ -971,7 +1019,7 @@ function CustomerBoard({
 
 function CustomerBoardRow({
   row,
-  peekHref,
+  sheetHref,
 }: {
   row: {
     account: CommercialAccount;
@@ -980,7 +1028,7 @@ function CustomerBoardRow({
     weightedCents: number;
     latestUpdate: string;
   };
-  peekHref: (oppId: string) => string;
+  sheetHref: (accountId: string, focus?: string) => string;
 }) {
   const { account, open, closed, weightedCents, latestUpdate } = row;
   // Latest activity relative label — "today", "5h ago", "3d ago", etc.
@@ -1048,16 +1096,22 @@ function CustomerBoardRow({
             <span className="text-ppp-charcoal-500">Active {activityLabel}</span>
           </div>
         </div>
-        {/* Right column — quick jump. */}
+        {/* Right column — "View" button that opens the customer quick
+            sheet on the right (per user 2026-07-08: "there should be a
+            view button, and that view button is a quick view customer
+            sheet"). The account name itself still links to the account
+            page for users who want the deep dive; this shows the
+            GoHighLevel-style sheet with team + invoices + progress. */}
         <Link
-          href={`/commercial/accounts/${account.id}`}
+          href={sheetHref(account.id)}
           className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800 min-h-[36px] touch-manipulation transition-colors"
-          title={`Open ${account.company_name}'s full account view`}
+          title={`Quick view of ${account.company_name}`}
         >
-          Open
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M5 12h14 M13 5l7 7-7 7" />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
           </svg>
+          View
         </Link>
       </div>
       {/* Deal chip strip — subtle pills for each deal so users can drill
@@ -1069,9 +1123,9 @@ function CustomerBoardRow({
           {open.map((o) => (
             <Link
               key={o.id}
-              href={peekHref(o.id)}
+              href={sheetHref(account.id, o.id)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-blue-200 bg-blue-50 text-blue-800 text-[11.5px] font-medium hover:bg-blue-100 hover:border-blue-300 max-w-[280px] truncate"
-              title={`Peek at ${o.title} — ${opportunityStatusLabel(o.status)}`}
+              title={`View ${account.company_name} · ${o.title} — ${opportunityStatusLabel(o.status)}`}
             >
               <span className="truncate">{o.title}</span>
             </Link>
@@ -1079,9 +1133,9 @@ function CustomerBoardRow({
           {closed.slice(0, 3).map((o) => (
             <Link
               key={o.id}
-              href={peekHref(o.id)}
+              href={sheetHref(account.id, o.id)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600 text-[11.5px] font-medium hover:bg-ppp-charcoal-100 max-w-[280px] truncate"
-              title={`Peek at ${o.title} — ${opportunityStatusLabel(o.status)}`}
+              title={`View ${account.company_name} · ${o.title} — ${opportunityStatusLabel(o.status)}`}
             >
               <span className="truncate">{o.title}</span>
             </Link>
@@ -1123,7 +1177,7 @@ function KanbanBoard({
   fileCountMap,
   submittalCountMap,
   finishCountMap,
-  peekHref,
+  sheetHref,
   flipReturnHref,
 }: {
   opps: CommercialOpportunity[];
@@ -1134,7 +1188,7 @@ function KanbanBoard({
   fileCountMap: Map<string, number>;
   submittalCountMap: Map<string, { total: number; awaiting_response: number }>;
   finishCountMap: Map<string, number>;
-  peekHref: (oppId: string) => string;
+  sheetHref: (accountId: string, focus?: string) => string;
   flipReturnHref: string;
 }) {
   const OPEN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
@@ -1223,7 +1277,7 @@ function KanbanBoard({
                               fileCount={fileCountMap.get(opp.id) ?? 0}
                               submittalStats={submittalCountMap.get(opp.id) ?? null}
                               finishCount={finishCountMap.get(opp.id) ?? 0}
-                              peekHref={peekHref}
+                              sheetHref={sheetHref}
                               flipReturnHref={flipReturnHref}
                             />
                           </KanbanDnDCard>
@@ -1298,7 +1352,7 @@ function KanbanBoard({
                                   fileCount={fileCountMap.get(opp.id) ?? 0}
                                   submittalStats={submittalCountMap.get(opp.id) ?? null}
                                   finishCount={finishCountMap.get(opp.id) ?? 0}
-                                  peekHref={peekHref}
+                                  sheetHref={sheetHref}
                                   flipReturnHref={flipReturnHref}
                                   compact
                                 />
@@ -1324,7 +1378,7 @@ function KanbanBoard({
               {overflowClosed.map((opp) => (
                 <li key={opp.id} className="py-2">
                   <Link
-                    href={peekHref(opp.id)}
+                    href={sheetHref(opp.account_id, opp.id)}
                     className="text-[13px] text-blue-700 hover:text-blue-800 underline"
                   >
                     {opp.title}
@@ -1351,7 +1405,7 @@ function KanbanCard({
   fileCount,
   submittalStats,
   finishCount,
-  peekHref,
+  sheetHref,
   flipReturnHref,
   compact,
 }: {
@@ -1363,7 +1417,7 @@ function KanbanCard({
   fileCount: number;
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
-  peekHref: (oppId: string) => string;
+  sheetHref: (accountId: string, focus?: string) => string;
   flipReturnHref: string;
   /** Compact mode — used inside the narrow "Closed" cluster where cards
    *  have half the horizontal space of the open pipeline. Hides quick-flip
@@ -1391,7 +1445,7 @@ function KanbanCard({
     // be re-routed by drag, they go through the Reopen action instead).
     return (
       <li className="bg-white border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
-        <Link href={peekHref(opp.id)} className="block">
+        <Link href={sheetHref(opp.account_id, opp.id)} className="block">
           <div className="text-[11px] font-semibold text-ppp-charcoal leading-snug break-words line-clamp-2">
             {opp.title || "(untitled)"}
           </div>
@@ -1410,7 +1464,7 @@ function KanbanCard({
   return (
     <li className="bg-white border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 transition-colors">
       <Link
-        href={peekHref(opp.id)}
+        href={sheetHref(opp.account_id, opp.id)}
         className="block"
       >
         <div className="text-[13px] font-semibold text-ppp-charcoal leading-snug mb-1 break-words">
@@ -1632,7 +1686,7 @@ function OpportunityRow({
   fileCount,
   submittalStats,
   finishCount,
-  peekHref,
+  sheetHref,
   flipReturnHref,
 }: {
   opportunity: CommercialOpportunity;
@@ -1644,7 +1698,7 @@ function OpportunityRow({
   fileCount: number;
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
-  peekHref: (oppId: string) => string;
+  sheetHref: (accountId: string, focus?: string) => string;
   flipReturnHref: string;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
@@ -1658,7 +1712,7 @@ function OpportunityRow({
   return (
     <li className="relative group/row hover:bg-blue-50/30 transition-colors">
       <Link
-        href={peekHref(opportunity.id)}
+        href={sheetHref(opportunity.account_id, opportunity.id)}
         className="block px-4 py-4 touch-manipulation"
       >
         <div className="flex items-start justify-between gap-3">
@@ -1859,7 +1913,7 @@ function OpportunityRow({
       ) : (
         <p className="px-4 pb-3 -mt-1 text-[11px] text-ppp-charcoal-500">
           <Link
-            href={peekHref(opportunity.id)}
+            href={sheetHref(opportunity.account_id, opportunity.id)}
             className="underline hover:text-ppp-charcoal-700"
           >
             Peek to reopen
@@ -1959,124 +2013,83 @@ function StatusPill({ status }: { status: OpportunityStatus }) {
 }
 
 /**
- * PipelineDealPeek — Karan 2026-07-08 Batch 2 rewrite.
+ * CustomerQuickSheet — Karan 2026-07-08 rewrite.
  *
- * GoHighLevel-style slide-out drawer that opens when a deal is clicked
- * from any pipeline view (customer / kanban / list). Renders on top of
- * the pipeline page as a fixed right-aligned sheet. Pipeline stays the
- * status-mover; the account page is the source of truth for the deal's
- * full detail (Overview / Documents / Activity / Debrief tabs).
+ * GoHighLevel-style slide-out sheet, CUSTOMER-scoped (not deal-scoped).
+ * Opened by ?customer=<account_uuid> from any pipeline view — customer
+ * row's "View" button, kanban card, list row, deal chip. The user's
+ * mental model is "look at Suffolk Concrete" not "look at deal #1234";
+ * this sheet mirrors that.
  *
  * Contents (top-to-bottom):
- *   1. Header — Deal title + status pill · [X close]
- *   2. Customer — company name (linked to account) + industry chip
- *   3. Financials — bid range + probability + weighted value
- *   4. Signals — days-in-status, primary lead, tasks, files, submittals
- *   5. Status-flip form — DAG-filtered "Move to…" select
- *   6. CTA row — "View full account →" (primary), "Full deal detail →"
+ *   1. Header — company name + industry chip + Key badge + [X close]
+ *   2. Team — assigned staff members with roles
+ *   3. Financials — invoiced / paid / balance tiles + progress bar
+ *   4. Invoices — per-invoice rows with status pills (drill-in link)
+ *   5. Active deals — inline status-flip for each (focus-highlighted)
+ *   6. Closed deals — compact list
+ *   7. Footer — big "View account →" CTA (top-right per user ask)
  *
- * URL-driven (no client JS) — ?peek=<uuid> opens; close link drops it.
- * Backdrop is a full-viewport <Link> that also drops ?peek.
+ * URL-driven (no client JS). Backdrop closes by dropping ?customer.
  */
-function PipelineDealPeek({
-  opp,
+function CustomerQuickSheet({
   account,
-  statusEnteredAt,
-  taskStats,
-  primaryLead,
-  fileCount,
-  submittalStats,
-  finishCount,
+  team,
+  rollup,
+  invoices,
+  allDeals,
+  focusOppId,
   closeHref,
   flipReturnHref,
 }: {
-  opp: CommercialOpportunity;
-  account: CommercialAccount | null;
-  statusEnteredAt: string | null;
-  taskStats: { open: number; overdue: number; due_soon: number } | null;
-  primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
-  fileCount: number;
-  submittalStats: { total: number; awaiting_response: number } | null;
-  finishCount: number;
+  account: CommercialAccount;
+  team: Awaited<ReturnType<typeof listAccountTeam>>;
+  rollup: AccountInvoiceRollup;
+  invoices: CommercialInvoice[];
+  allDeals: CommercialOpportunity[];
+  focusOppId: string | null;
   closeHref: string;
   flipReturnHref: string;
 }) {
-  const daysHere = statusEnteredAt
-    ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
-    : null;
-  const daysHereTone =
-    daysHere === null
-      ? "text-ppp-charcoal-500"
-      : daysHere > 14
-      ? "text-rose-700"
-      : daysHere > 7
-      ? "text-amber-700"
-      : "text-blue-700";
-  const nextStatuses = allowedNextStatuses(opp.status);
-  const bid = formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents);
-  const weighted = weightedPipelineCents(opp);
-  const leadLabel = primaryLead
-    ? primaryLead.user_full_name ?? primaryLead.user_email
-    : null;
-
+  const openDeals = allDeals.filter((o) => !TERMINAL_STATUSES.has(o.status));
+  const closedDeals = allDeals.filter((o) => TERMINAL_STATUSES.has(o.status));
+  const paidPct =
+    rollup.invoiced_cents > 0
+      ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))
+      : 0;
   return (
-    <div id="deal-peek" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="deal-peek-title">
-      {/* Backdrop — full-viewport link that closes the drawer. */}
+    <div id="customer-sheet" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="customer-sheet-title">
+      {/* Backdrop — full-viewport link that closes the sheet. */}
       <Link
         href={closeHref}
-        aria-label="Close deal peek"
+        aria-label="Close customer sheet"
         className="absolute inset-0 bg-ppp-charcoal/40 backdrop-blur-[1px]"
       />
-      {/* Sheet — right-aligned slide-out. Full width on mobile, capped
-          on larger screens so the pipeline stays visible behind it. */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[440px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
-        {/* Header row — title + status + close */}
-        <header className="px-5 py-4 border-b border-ppp-charcoal-100 flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <StatusPill status={opp.status} />
-              {daysHere !== null && (
-                <span className={`text-[11px] font-medium ${daysHereTone}`}>
-                  {daysHere === 0 ? "just entered" : `${daysHere}d in stage`}
-                </span>
-              )}
-            </div>
-            <h2 id="deal-peek-title" className="text-lg font-bold text-ppp-charcoal leading-tight break-words mt-1">
-              {opp.title || "(untitled deal)"}
-            </h2>
-          </div>
-          <Link
-            href={closeHref}
-            aria-label="Close"
-            className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 hover:text-ppp-charcoal-800 touch-manipulation"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M18 6L6 18 M6 6l12 12" />
-            </svg>
-          </Link>
-        </header>
-
-        {/* Body — scrollable */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {/* Customer section */}
-          {account ? (
-            <section>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
+      {/* Sheet — right-aligned slide-out. Wider than deal peek (480px)
+          because it carries more content: team, financials, invoices,
+          deals. Full width on mobile. */}
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
+        {/* Header — company name + close + right-aligned View Account CTA
+            per user's explicit ask ("top right of the sheet it says view
+            full account button and brings the user to the account"). */}
+        <header className="px-5 py-4 border-b border-ppp-charcoal-100 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
                 Customer
               </div>
-              <Link
-                href={`/commercial/accounts/${account.id}`}
-                className="block group/customer"
-                title={`Open ${account.company_name}'s account`}
-              >
-                <div className="text-[15px] font-bold text-ppp-charcoal group-hover/customer:text-blue-800 group-hover/customer:underline underline-offset-2 break-words">
-                  {account.company_name}
-                </div>
-              </Link>
-              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+              <h2 id="customer-sheet-title" className="text-xl font-bold text-ppp-charcoal leading-tight break-words">
+                {account.company_name}
+              </h2>
+              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                 {account.industry && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200">
                     {account.industry}
+                  </span>
+                )}
+                {account.rating && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-blue-50 text-blue-800 border-blue-200 capitalize">
+                    {account.rating.replace(/_/g, " ")}
                   </span>
                 )}
                 {account.is_key_relationship && (
@@ -2085,146 +2098,274 @@ function PipelineDealPeek({
                   </span>
                 )}
               </div>
-            </section>
-          ) : (
-            <section className="text-[12px] text-ppp-charcoal-500 italic">
-              Customer record missing.
-            </section>
-          )}
+            </div>
+            <Link
+              href={closeHref}
+              aria-label="Close"
+              className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 hover:text-ppp-charcoal-800 touch-manipulation"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M18 6L6 18 M6 6l12 12" />
+              </svg>
+            </Link>
+          </div>
+          {/* Top-right "View account" CTA — user asked for this in the
+              header ("on top right of the sheet there should be a view
+              account button"). Full-width for tap-friendly on mobile;
+              right-aligned inline on desktop. */}
+          <Link
+            href={`/commercial/accounts/${account.id}`}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 w-full sm:w-auto"
+          >
+            View full account
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 12h14 M13 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </header>
 
-          {/* Financial snapshot */}
+        {/* Body — scrollable sections */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* ─── Team ─── */}
           <section>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
-              Deal value
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2 flex items-center justify-between">
+              <span>Team ({team.length})</span>
+              <Link
+                href={`/commercial/accounts/${account.id}?tab=overview&sub=team`}
+                className="text-[10px] font-semibold text-blue-700 hover:text-blue-800 normal-case tracking-normal"
+              >
+                Manage →
+              </Link>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2">
-                <div className="text-[10px] text-ppp-charcoal-500 font-medium">Bid range</div>
-                <div className="text-sm font-bold text-ppp-charcoal mt-0.5">{bid}</div>
+            {team.length === 0 ? (
+              <p className="text-[12px] text-ppp-charcoal-500 italic">
+                No one assigned yet. Manage from the account page.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {team.map((m) => {
+                  const primary = m.assignments.find((a) => a.is_primary) ?? m.assignments[0];
+                  return (
+                    <li key={m.user_id} className="flex items-center gap-2 text-[12.5px]">
+                      <span aria-hidden className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-cc-brand-100 text-cc-brand-800 text-[10px] font-bold uppercase">
+                        {(m.user_full_name ?? m.user_email).slice(0, 1)}
+                      </span>
+                      <span className="font-medium text-ppp-charcoal truncate">
+                        {m.user_full_name ?? m.user_email}
+                      </span>
+                      <span className="text-ppp-charcoal-500 text-[11px] truncate">
+                        · {assignmentRoleLabel(primary.role)}
+                        {m.assignments.length > 1 && ` +${m.assignments.length - 1}`}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          {/* ─── Financials — invoiced / paid / balance + progress bar ─── */}
+          <section>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
+              Financials
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-2.5 py-2">
+                <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Invoiced</div>
+                <div className="text-sm font-bold text-ppp-charcoal mt-0.5">{formatCentsFull(rollup.invoiced_cents)}</div>
               </div>
-              <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2">
-                <div className="text-[10px] text-ppp-charcoal-500 font-medium">Weighted</div>
-                <div className="text-sm font-bold text-ppp-charcoal mt-0.5">
-                  {weighted > 0 ? formatCents(weighted) : "—"}
-                </div>
-                <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
-                  at {opp.probability_pct}% confidence
-                </div>
+              <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-2.5 py-2">
+                <div className="text-[9.5px] text-blue-800 font-medium uppercase tracking-wide">Paid</div>
+                <div className="text-sm font-bold text-blue-900 mt-0.5">{formatCentsFull(rollup.paid_cents)}</div>
+              </div>
+              <div className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-white"}`}>
+                <div className={`text-[9.5px] font-medium uppercase tracking-wide ${rollup.overdue_count > 0 ? "text-rose-800" : "text-ppp-charcoal-500"}`}>Balance</div>
+                <div className={`text-sm font-bold mt-0.5 ${rollup.overdue_count > 0 ? "text-rose-900" : "text-ppp-charcoal"}`}>{formatCentsFull(rollup.balance_cents)}</div>
               </div>
             </div>
-            {opp.proposal_due_at && (
-              <div className="mt-2 text-[12px] text-ppp-charcoal-700">
-                <span className="text-ppp-charcoal-500">Proposal due</span>{" "}
-                <strong>{new Date(opp.proposal_due_at).toLocaleDateString()}</strong>
+            {rollup.invoiced_cents > 0 && (
+              <div className="mt-2.5">
+                <div className="h-1.5 rounded-full bg-ppp-charcoal-100 overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+                    style={{ width: `${paidPct}%` }}
+                    aria-label={`${paidPct}% of invoiced amount paid`}
+                  />
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[10.5px] text-ppp-charcoal-500">
+                  <span>{paidPct}% collected</span>
+                  {rollup.overdue_count > 0 && (
+                    <span className="text-rose-700 font-semibold">
+                      {rollup.overdue_count} overdue
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </section>
 
-          {/* Signals */}
-          {(leadLabel || (taskStats && (taskStats.open > 0 || taskStats.overdue > 0)) || fileCount > 0 || finishCount > 0 || (submittalStats && submittalStats.total > 0)) && (
+          {/* ─── Invoices list — click to full detail ─── */}
+          {invoices.length > 0 && (
             <section>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
-                Signals
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2 flex items-center justify-between">
+                <span>Invoices ({invoices.length})</span>
+                <Link
+                  href={`/commercial/invoices?account_id=${account.id}`}
+                  className="text-[10px] font-semibold text-blue-700 hover:text-blue-800 normal-case tracking-normal"
+                >
+                  Manage →
+                </Link>
               </div>
-              <ul className="text-[13px] text-ppp-charcoal-700 space-y-1.5">
-                {leadLabel && (
-                  <li>
-                    <span aria-hidden>★</span> <span className="font-medium">{leadLabel}</span>{" "}
-                    <span className="text-ppp-charcoal-500">lead</span>
-                  </li>
-                )}
-                {taskStats && (taskStats.open > 0 || taskStats.overdue > 0) && (
-                  <li className={taskStats.overdue > 0 ? "text-rose-700" : undefined}>
-                    <span aria-hidden>✓</span>{" "}
-                    {taskStats.overdue > 0 ? (
-                      <><strong>{taskStats.overdue} overdue</strong> · {taskStats.open} open task{taskStats.open === 1 ? "" : "s"}</>
-                    ) : (
-                      <>{taskStats.open} open task{taskStats.open === 1 ? "" : "s"}{taskStats.due_soon > 0 ? ` · ${taskStats.due_soon} due soon` : ""}</>
-                    )}
-                  </li>
-                )}
-                {fileCount > 0 && (
-                  <li>
-                    <span aria-hidden>📎</span> {fileCount} {fileCount === 1 ? "attachment" : "attachments"}
-                  </li>
-                )}
-                {finishCount > 0 && (
-                  <li>
-                    <span aria-hidden>🎨</span> {finishCount} finish{finishCount === 1 ? "" : "es"} specified
-                  </li>
-                )}
-                {submittalStats && submittalStats.total > 0 && (
-                  <li className={submittalStats.awaiting_response > 0 ? "text-sky-800 font-medium" : undefined}>
-                    <span aria-hidden>📋</span> {submittalStats.total} submittal{submittalStats.total === 1 ? "" : "s"}
-                    {submittalStats.awaiting_response > 0 && ` · ${submittalStats.awaiting_response} awaiting GC`}
+              <ul className="rounded-lg border border-ppp-charcoal-100 divide-y divide-ppp-charcoal-100 overflow-hidden">
+                {invoices.slice(0, 5).map((inv) => {
+                  const derived = deriveInvoiceStatus(inv);
+                  const toneCls =
+                    derived === "paid"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                      : derived === "overdue"
+                      ? "bg-rose-50 text-rose-800 border-rose-200"
+                      : derived === "void"
+                      ? "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200"
+                      : "bg-blue-50 text-blue-800 border-blue-200";
+                  return (
+                    <li key={inv.id}>
+                      <Link
+                        href={`/commercial/invoices/${inv.id}`}
+                        className="flex items-center gap-3 px-3 py-2 hover:bg-blue-50/40 transition-colors min-h-[44px] touch-manipulation"
+                        title={`Open ${inv.invoice_number}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[12.5px] font-mono font-semibold text-ppp-charcoal truncate">
+                            {inv.invoice_number}
+                          </div>
+                          <div className="text-[10.5px] text-ppp-charcoal-500">
+                            {inv.due_at ? `Due ${fmtEtDate(inv.due_at)}` : `Created ${fmtEtDate(inv.created_at)}`}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-[12.5px] font-bold text-ppp-charcoal">
+                            {formatCentsFull(inv.total_cents)}
+                          </div>
+                          <span className={`inline-flex items-center px-1.5 py-0 rounded text-[9.5px] font-semibold border mt-0.5 ${toneCls}`}>
+                            {invoiceStatusLabel(derived)}
+                          </span>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+                {invoices.length > 5 && (
+                  <li className="px-3 py-2 text-center">
+                    <Link
+                      href={`/commercial/invoices?account_id=${account.id}`}
+                      className="text-[11.5px] font-semibold text-blue-700 hover:text-blue-800"
+                    >
+                      +{invoices.length - 5} more invoices →
+                    </Link>
                   </li>
                 )}
               </ul>
             </section>
           )}
 
-          {/* Status flip — DAG-filtered */}
-          {nextStatuses.length > 0 && (
+          {/* ─── Active deals — inline status-flip on each ─── */}
+          {openDeals.length > 0 && (
             <section>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
-                Move to next stage
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
+                Active deals ({openDeals.length})
               </div>
-              <form action={quickFlipStatusAction} className="flex items-center gap-2">
-                <input type="hidden" name="opp_id" value={opp.id} />
-                <input type="hidden" name="return_href" value={flipReturnHref} />
-                <select
-                  name="to_status"
-                  defaultValue=""
-                  required
-                  aria-label={`Move ${opp.title} to next stage`}
-                  className={`${SELECT_CLS} flex-1 text-base sm:text-sm py-2 min-h-[44px]`}
-                  style={SELECT_BG_STYLE}
-                >
-                  <option value="" disabled>
-                    Move to…
-                  </option>
-                  {nextStatuses.map((s) => {
-                    const isTerminal = isTerminalOpportunityStatus(s);
-                    return (
-                      <option key={s} value={s}>
-                        {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
-                      </option>
-                    );
-                  })}
-                </select>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
-                >
-                  Go
-                </button>
-              </form>
+              <ul className="space-y-2">
+                {openDeals.map((d) => {
+                  const isFocused = d.id === focusOppId;
+                  const nextStatuses = allowedNextStatuses(d.status);
+                  return (
+                    <li
+                      key={d.id}
+                      className={`rounded-lg border px-3 py-2 ${
+                        isFocused ? "border-cc-brand-300 bg-cc-brand-50/40 ring-1 ring-cc-brand-200" : "border-ppp-charcoal-100 bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
+                            {d.title || "(untitled)"}
+                          </div>
+                          <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+                            <StatusPill status={d.status} />
+                            <span>{formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}</span>
+                            <span>· {d.probability_pct}%</span>
+                          </div>
+                        </div>
+                      </div>
+                      {nextStatuses.length > 0 && (
+                        <form action={quickFlipStatusAction} className="mt-2 flex items-center gap-1.5">
+                          <input type="hidden" name="opp_id" value={d.id} />
+                          <input type="hidden" name="return_href" value={flipReturnHref} />
+                          <select
+                            name="to_status"
+                            defaultValue=""
+                            required
+                            aria-label={`Move ${d.title} to next stage`}
+                            className={`${SELECT_CLS} flex-1 text-base sm:text-xs py-1.5 min-h-[36px]`}
+                            style={SELECT_BG_STYLE}
+                          >
+                            <option value="" disabled>Move to…</option>
+                            {nextStatuses.map((s) => {
+                              const isTerminal = isTerminalOpportunityStatus(s);
+                              return (
+                                <option key={s} value={s}>
+                                  {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
+                                </option>
+                              );
+                            })}
+                          </select>
+                          <button
+                            type="submit"
+                            className="px-2.5 py-1.5 text-[11px] font-semibold rounded-md bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[36px] touch-manipulation"
+                          >
+                            Go
+                          </button>
+                        </form>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
+          {/* ─── Closed deals — compact list ─── */}
+          {closedDeals.length > 0 && (
+            <section>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
+                Closed ({closedDeals.length})
+              </div>
+              <ul className="space-y-1">
+                {closedDeals.slice(0, 5).map((d) => (
+                  <li key={d.id} className="flex items-center gap-2 text-[12px] text-ppp-charcoal-700">
+                    <StatusPill status={d.status} />
+                    <span className="truncate flex-1">{d.title || "(untitled)"}</span>
+                    <span className="text-ppp-charcoal-500 shrink-0">
+                      {formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}
+                    </span>
+                  </li>
+                ))}
+                {closedDeals.length > 5 && (
+                  <li className="text-[11px] text-ppp-charcoal-500 italic pt-1">
+                    +{closedDeals.length - 5} more in account history
+                  </li>
+                )}
+              </ul>
+            </section>
+          )}
+
+          {/* Empty state — no deals at all */}
+          {allDeals.length === 0 && (
+            <section className="text-[12px] text-ppp-charcoal-500 italic text-center py-4">
+              No deals on this customer yet. Start one from the account page.
             </section>
           )}
         </div>
-
-        {/* Footer CTA — primary "View full account" (that's where the
-            deal detail lives now), secondary "Full deal view" for the
-            legacy /commercial/opportunities/[id] tab shell. */}
-        <footer className="px-5 py-3 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/50 flex items-center gap-2 flex-wrap">
-          {account && (
-            <Link
-              href={`/commercial/accounts/${account.id}?tab=opportunities`}
-              className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
-            >
-              View full account
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M5 12h14 M13 5l7 7-7 7" />
-              </svg>
-            </Link>
-          )}
-          <Link
-            href={`/commercial/opportunities/${opp.id}`}
-            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
-          >
-            Full deal view
-          </Link>
-        </footer>
       </aside>
     </div>
   );
