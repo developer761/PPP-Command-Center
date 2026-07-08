@@ -516,7 +516,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <Link
             href="/commercial/invoices"
             aria-label="Back to all invoices"
-            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ppp-charcoal-600 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 shrink-0"
+            className="inline-flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-md text-ppp-charcoal-600 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 shrink-0"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M15 18l-6-6 6-6" />
@@ -550,7 +550,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   </svg>
                   Delete all {scopedInvoiceCount}
                 </summary>
-                <div className="absolute right-0 top-full mt-1.5 w-72 bg-white border border-rose-200 rounded-lg shadow-lg p-3 z-10">
+                <div className="absolute right-0 top-full mt-1.5 w-[calc(100vw-2rem)] max-w-xs sm:w-72 bg-white border border-rose-200 rounded-lg shadow-lg p-3 z-10">
                   <div className="text-[12px] text-ppp-charcoal-700 mb-2 leading-snug">
                     Permanently hide all <strong>{scopedInvoiceCount}</strong> invoice{scopedInvoiceCount === 1 ? "" : "s"} from lists. Data stays in the DB for audit history.
                   </div>

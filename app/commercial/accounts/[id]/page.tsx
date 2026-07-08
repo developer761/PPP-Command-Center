@@ -2766,7 +2766,11 @@ function DocumentCategoryCard({
 }) {
   const { category, active, history } = group;
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+    // Karan 2026-07-08: id + scroll-mt so the compliance checklist's
+    // "Upload →" quick-links (href=?tab=documents#upload-{category})
+    // land on the right card with breathing room from the sticky tab
+    // bar. Without this, the anchor pointed at a non-existent DOM node.
+    <section id={`upload-${category}`} className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden scroll-mt-24">
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
         <h3 className="text-sm font-bold text-ppp-charcoal">{documentCategoryLabel(category)}</h3>
       </div>

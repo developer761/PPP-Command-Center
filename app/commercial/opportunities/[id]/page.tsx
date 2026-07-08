@@ -2035,7 +2035,7 @@ async function OpportunityInvoicesPanel({
               aria-label="Close edit panel"
               className="absolute inset-0 bg-ppp-charcoal-900/40 backdrop-blur-[1px]"
             />
-            <aside className="relative z-10 w-full max-w-md h-full bg-white shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
+            <aside className="relative z-10 w-full max-w-[92vw] sm:max-w-md h-full bg-white shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
               <header className="px-5 pt-5 pb-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-500">
