@@ -301,10 +301,14 @@ export default async function CommercialAccountDetailPage({
           Relationship — avoids the "two stars" audit finding). Primary
           CTA is "+ New deal" for direct action; Edit is a quieter
           secondary link. Everything wraps cleanly on mobile. */}
-      <header>
-        <div className="flex items-start justify-between gap-3 flex-wrap">
+      {/* Karan 2026-07-08 polish: hero wrapped in a subtle gradient card
+          so the account name has a distinct visual home. Same treatment
+          as the dashboard hero for consistent design language. */}
+      <header className="relative bg-gradient-to-br from-cc-brand-50/40 via-white to-white border border-cc-brand-100 rounded-2xl p-5 sm:p-6 overflow-hidden">
+        <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
+        <div className="relative flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal break-words">
+            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal break-words tracking-tight">
               {account.company_name}
             </h1>
             {account.dba && (

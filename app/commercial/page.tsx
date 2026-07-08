@@ -81,23 +81,28 @@ export default async function CommercialDashboardPage() {
     decidedOpps.length > 0 ? Math.round((wonOpps.length / decidedOpps.length) * 100) : null;
 
   return (
-    <div className="space-y-8">
-      {/* Hero — same clean shape as PageHeader (3px×40px red accent bar
-          → title → subtitle) so the landing sits inside the same visual
-          vocabulary as every other Commercial CC surface. */}
-      <header>
-        <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
-            Commercial Command Center
-          </h1>
-          <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-            Phase 3 · Invoicing Live
-          </span>
+    <div className="space-y-6 sm:space-y-8">
+      {/* Karan 2026-07-08 polish: hero got a subtle red-tinted gradient
+          card so the landing has more energy without shouting. Title
+          scale bumped one step for anchor weight. Live badge shifted
+          to the phase pill's role — the "Live" state is what matters,
+          not the phase number. */}
+      <header className="relative bg-gradient-to-br from-cc-brand-50/60 via-white to-white border border-cc-brand-100 rounded-2xl p-5 sm:p-6 overflow-hidden">
+        <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
+        <div className="relative">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
+              Commercial Command Center
+            </h1>
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-widest uppercase text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+              <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live
+            </span>
+          </div>
+          <p className="text-sm text-ppp-charcoal-600 leading-relaxed max-w-2xl">
+            From bid intake to closeout, all in one record. Numbers below refresh live from Postgres.
+          </p>
         </div>
-        <p className="text-sm text-ppp-charcoal-500">
-          From bid intake to closeout, all in one record. Real numbers below — live from Postgres.
-        </p>
       </header>
 
       {/* Live KPI strip. Red-accent tile = primary metric (open pipeline
@@ -248,43 +253,56 @@ function KpiTile({
   href: string;
   icon: React.ReactNode;
 }) {
-  // Left accent stripe + soft-tinted gradient background. The stripe
-  // is the "signature" — same shape as PageHeader's 3px accent bar.
-  // Rose tone reserved for "attention needed" (overdue AR) so the eye
-  // catches it without shouting like an error banner would.
+  // Karan 2026-07-08 polish: tiles got a subtle radial gradient in the
+  // top-right corner tinted by tone — adds depth without visual noise.
+  // Hover lifts more decisively (shadow-lg + -translate-y-1) and the
+  // stripe brightens on hover so users feel the interaction.
   const ring =
     tone === "cc-brand"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/60"
+      ? "border-cc-brand-100 bg-white hover:border-cc-brand-300"
       : tone === "rose"
-      ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/60"
-      : "border-blue-200 bg-gradient-to-br from-white to-blue-50/60";
+      ? "border-rose-100 bg-white hover:border-rose-300"
+      : "border-blue-100 bg-white hover:border-blue-300";
+  const glow =
+    tone === "cc-brand"
+      ? "bg-cc-brand-100/50"
+      : tone === "rose"
+      ? "bg-rose-100/50"
+      : "bg-blue-100/50";
   const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "rose" ? "bg-rose-500" : "bg-blue-500";
+    tone === "cc-brand" ? "bg-gradient-to-b from-cc-brand-600 to-cc-brand-500"
+    : tone === "rose" ? "bg-gradient-to-b from-rose-600 to-rose-500"
+    : "bg-gradient-to-b from-blue-600 to-blue-500";
   const iconCls =
     tone === "cc-brand"
-      ? "bg-cc-brand-100 text-cc-brand-700"
+      ? "bg-cc-brand-100 text-cc-brand-700 group-hover/kpi:bg-cc-brand-600 group-hover/kpi:text-white"
       : tone === "rose"
-      ? "bg-rose-100 text-rose-700"
-      : "bg-blue-100 text-blue-700";
+      ? "bg-rose-100 text-rose-700 group-hover/kpi:bg-rose-600 group-hover/kpi:text-white"
+      : "bg-blue-100 text-blue-700 group-hover/kpi:bg-blue-600 group-hover/kpi:text-white";
   return (
     <Link
       href={href}
-      className={`relative block border rounded-xl px-4 py-4 overflow-hidden shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 touch-manipulation ${ring}`}
+      className={`group/kpi relative block border rounded-xl px-4 py-4 overflow-hidden shadow-sm transition-all hover:shadow-lg hover:-translate-y-1 touch-manipulation ${ring}`}
     >
+      {/* Corner glow — subtle radial tint that reinforces the tone
+          without cluttering the main content area. */}
+      <span aria-hidden className={`pointer-events-none absolute -top-8 -right-8 w-24 h-24 rounded-full blur-xl opacity-70 ${glow}`} />
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
-          {label}
-        </span>
-        <span aria-hidden className={`inline-flex items-center justify-center h-7 w-7 rounded-lg ${iconCls}`}>
-          {icon}
-        </span>
-      </div>
-      <div className="text-2xl sm:text-3xl font-bold text-ppp-charcoal leading-none">
-        {value}
-      </div>
-      <div className="mt-1.5 text-[11px] text-ppp-charcoal-500 leading-snug">
-        {sub}
+      <div className="relative">
+        <div className="flex items-start justify-between gap-2 mb-2.5">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+            {label}
+          </span>
+          <span aria-hidden className={`inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors ${iconCls}`}>
+            {icon}
+          </span>
+        </div>
+        <div className="text-2xl sm:text-3xl font-bold text-ppp-charcoal leading-none tracking-tight">
+          {value}
+        </div>
+        <div className="mt-2 text-[11px] text-ppp-charcoal-500 leading-snug">
+          {sub}
+        </div>
       </div>
     </Link>
   );
@@ -303,29 +321,29 @@ function QuickAction({
   sub: string;
   icon: React.ReactNode;
 }) {
-  // Karan 2026-07-07: primary card was too bold as solid red — softened
-  // to a white card with a red left-stripe + red icon puck. Still reads
-  // as "the main action" (icon color, subtle red glow) but doesn't
-  // dominate the row. Matches the KPI-tile signature above.
+  // Karan 2026-07-08 polish: primary card gets red-tinted gradient
+  // + icon puck flips color on hover. All cards hover with a stronger
+  // lift + shadow so they feel truly clickable, and the icon puck
+  // reverses (fill → white on brand) to reinforce the click affordance.
   const shell = primary
-    ? "bg-white border-cc-brand-200 text-ppp-charcoal hover:border-cc-brand-300 shadow-sm shadow-cc-brand-100/40 relative overflow-hidden"
-    : "bg-white border-ppp-charcoal-100 text-ppp-charcoal hover:border-cc-brand-200";
+    ? "group/qa bg-gradient-to-br from-cc-brand-50/40 via-white to-white border-cc-brand-200 text-ppp-charcoal hover:border-cc-brand-400 shadow-sm shadow-cc-brand-100/50 relative overflow-hidden"
+    : "group/qa bg-white border-ppp-charcoal-100 text-ppp-charcoal hover:border-cc-brand-300 shadow-sm relative overflow-hidden";
   const iconCls = primary
-    ? "bg-cc-brand-100 text-cc-brand-700"
-    : "bg-cc-brand-50 text-cc-brand-700";
+    ? "bg-cc-brand-100 text-cc-brand-700 group-hover/qa:bg-cc-brand-600 group-hover/qa:text-white"
+    : "bg-cc-brand-50 text-cc-brand-700 group-hover/qa:bg-cc-brand-600 group-hover/qa:text-white";
   const subCls = "text-ppp-charcoal-500";
   return (
     <Link
       href={href}
-      className={`block border rounded-xl px-4 py-4 transition-all hover:shadow-md hover:-translate-y-0.5 touch-manipulation ${shell}`}
+      className={`block border rounded-xl px-4 py-4 transition-all hover:shadow-lg hover:-translate-y-1 touch-manipulation ${shell}`}
     >
       {primary && (
-        <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600" />
+        <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-cc-brand-600 to-cc-brand-500" />
       )}
-      <span aria-hidden className={`inline-flex items-center justify-center h-9 w-9 rounded-lg mb-3 ${iconCls}`}>
+      <span aria-hidden className={`inline-flex items-center justify-center h-10 w-10 rounded-xl mb-3 transition-colors ${iconCls}`}>
         {icon}
       </span>
-      <div className="text-sm font-bold leading-tight">{title}</div>
+      <div className="text-sm font-bold leading-tight tracking-tight">{title}</div>
       <div className={`mt-1 text-[12px] leading-snug ${subCls}`}>{sub}</div>
     </Link>
   );
