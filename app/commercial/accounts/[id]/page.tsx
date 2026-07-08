@@ -95,7 +95,8 @@ import {
   MAX_TAG_LENGTH,
   type AccountTag,
 } from "@/lib/commercial/accounts/tags";
-import InfoDot from "@/components/info-dot";
+// InfoDot import removed 2026-07-08 Batch 2b — labels use native `title`
+// attribute for hover tooltips instead of the visible `?` badge.
 
 export const dynamic = "force-dynamic";
 
@@ -3055,9 +3056,11 @@ function KpiTile({
         )}
       </div>
       <div className="mt-1.5 flex items-baseline justify-between gap-1">
-        <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 inline-flex items-center gap-1">
+        <span
+          className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500"
+          title={tooltip}
+        >
           {label}
-          {tooltip && <InfoDot text={tooltip} />}
         </span>
         {sub && (
           <span className={`text-[10px] sm:text-[11px] font-medium ${subCls ?? "text-ppp-charcoal-500"}`}>

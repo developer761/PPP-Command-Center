@@ -92,7 +92,8 @@ import {
 import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
-import InfoDot from "@/components/info-dot";
+// InfoDot import removed 2026-07-08 Batch 2b — labels now use native
+// `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
 
 export const dynamic = "force-dynamic";
@@ -3968,11 +3969,18 @@ function Field({
   // missing. Present values are bold-charcoal so they visually dominate
   // the muted label. Karan 2026-07-06: "so much room for improvement."
   const hasValue = value !== undefined && value !== null && value !== "" && value !== "—";
+  // Karan 2026-07-08 Batch 2b: dropped the visible <InfoDot /> "?" pip
+  // in favor of a native browser tooltip on the label. The `?` on every
+  // field read as noise; the info is still accessible via hover on
+  // desktop + long-press on mobile. Users who know the platform don't
+  // need to be told what "Bid range" means.
   return (
     <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 py-1">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 shrink-0 sm:w-32 inline-flex items-center gap-1">
+      <span
+        className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400 shrink-0 sm:w-32"
+        title={tooltip}
+      >
         {label}
-        {tooltip && <InfoDot text={tooltip} />}
       </span>
       {hasValue ? (
         <span className="text-sm font-semibold text-ppp-charcoal min-w-0 break-words leading-snug">
@@ -3996,16 +4004,17 @@ function KpiTile({
   value: string;
   tooltip?: string;
 }) {
-  // Karan 2026-06-24: tinted top-bar + gradient bg so the KPI strip
-  // pops instead of looking like four white squares. Sky/cyan accent
-  // matches PPP CC's signature blue. Built-in Tailwind palette only —
-  // the earlier ppp-blue-50/40 attempt broke the CSS build silently.
+  // Karan 2026-07-08 Batch 2b: dropped the inline InfoDot "?" — tooltip
+  // now lives as a native title attribute on the tile so the label
+  // reads cleanly. Tinted top-bar + gradient background unchanged.
   return (
-    <div className="relative border border-ppp-charcoal-100 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-white to-sky-50 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden">
+    <div
+      className="relative border border-ppp-charcoal-100 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-white to-sky-50 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden"
+      title={tooltip}
+    >
       <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-sky-500 to-cyan-400" aria-hidden />
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 flex items-center gap-1">
-        <span>{label}</span>
-        {tooltip && <InfoDot text={tooltip} />}
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+        {label}
       </div>
       <div className="text-base sm:text-lg font-bold text-ppp-charcoal mt-1 truncate">
         {value}
