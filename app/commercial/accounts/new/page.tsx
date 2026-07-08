@@ -60,6 +60,7 @@ async function createAction(formData: FormData) {
     dba: get("dba"),
     industry: get("industry"),
     rating: (get("rating") as "A" | "B" | "C" | null) ?? null,
+    is_key_relationship: formData.get("is_key_relationship") === "on",
     billing_street: get("billing_street"),
     billing_city: get("billing_city"),
     billing_state: get("billing_state"),
@@ -284,6 +285,22 @@ export default async function NewCommercialAccountPage({
           <Field id="dba" label="DBA (doing business as)" />
           <Field id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" />
           <SelectField id="rating" label="Rating" options={[["", "—"], ["A", "A"], ["B", "B"], ["C", "C"]]} />
+          {/* Karan 2026-07-08: is_key_relationship parity with the Edit
+              form. Was create→edit round-trip; now flagging a key
+              account at create time works from one place. */}
+          <label className="flex items-start gap-2 text-sm pt-1 cursor-pointer">
+            <input
+              type="checkbox"
+              name="is_key_relationship"
+              className="h-4 w-4 mt-0.5 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
+            />
+            <span className="flex flex-col">
+              <span className="font-medium text-ppp-charcoal">Key relationship</span>
+              <span className="text-[11.5px] text-ppp-charcoal-500 leading-snug">
+                Star this account so it surfaces with a Key badge on lists + drawers.
+              </span>
+            </span>
+          </label>
         </Section>
 
         <Section title="Billing address">
