@@ -49,7 +49,9 @@ import {
   getInvoiceRollupForAccount,
   type AccountInvoiceRollup,
 } from "@/lib/commercial/invoices/rollup";
-import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { listCommercialInvoices, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { deriveInvoiceStatus, invoiceStatusLabel } from "@/lib/commercial/invoices/constants";
 import {
   listCommercialOpportunities,
   opportunityStatusLabel,
@@ -61,7 +63,6 @@ import {
   type OpportunityStatus,
 } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
-import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -132,7 +133,10 @@ type SP = Promise<{
 // Sub-nav uses URL `?tab=X&sub=Y`; missing/invalid sub falls back to the
 // group's default. Legacy `?tab=info|team|contacts|...` deep links still
 // resolve via `resolveTabParam` so old bookmarks + bell links work.
-type PrimaryTab = "overview" | "people" | "deals" | "activity";
+// Karan 2026-07-08: added "invoices" + "kpis" as top-level tabs per user
+// ask ("add KPIs tab here as well" + "invoices tab where me kate katie or
+// alex or whoever can quick edit"). Both are leaves — no sub-tabs.
+type PrimaryTab = "overview" | "people" | "deals" | "invoices" | "activity" | "kpis";
 type SubTab =
   | "info"
   | "team"
@@ -142,16 +146,17 @@ type SubTab =
   | "opportunities"
   | "documents";
 const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
-  // Karan 2026-07-08: Deals moved to first position (was 3rd) so the tab
-  // strip reads left-to-right in what-you-do order — deals first, then
-  // people, overview details, activity history. Deals is also the
-  // default landing tab (see resolveTabParam).
+  // Deals first (primary read), Invoices next (Alex's money question),
+  // KPIs (account-level scoreboard), People, Details, Activity.
   { key: "deals", label: "Deals" },
+  { key: "invoices", label: "Invoices" },
+  { key: "kpis", label: "KPIs" },
   { key: "people", label: "People" },
   { key: "overview", label: "Details" },
   { key: "activity", label: "Activity" },
 ];
-const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "activity">, { key: SubTab; label: string }[]> = {
+type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "kpis">;
+const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
     { key: "team", label: "Team" },
@@ -166,19 +171,14 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "activity">, { key: SubTab
     { key: "documents", label: "Documents" },
   ],
 };
-const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "activity">, SubTab> = {
+const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
   overview: "info",
   people: "contacts",
   deals: "opportunities",
 };
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
-  // Karan 2026-07-08: default landing tab flipped Overview → Deals so the
-  // FIRST thing anyone sees on an account is the deal pipeline (that's what
-  // Alex actually wants — "how many bids do we have with Suffolk?"). Info
-  // is still one click away and every existing URL with an explicit ?tab=
-  // still resolves the same way.
   if (!raw) return { primary: "deals", sub: null };
-  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "activity") {
+  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "activity" || raw === "invoices" || raw === "kpis") {
     return { primary: raw, sub: null };
   }
   if (raw === "info" || raw === "team" || raw === "performance") return { primary: "overview", sub: raw as SubTab };
@@ -204,17 +204,23 @@ export default async function CommercialAccountDetailPage({
   // Named `primaryTab` here to avoid collision with the `primary` local
   // below that refers to the primary contact record.
   const primaryTab: PrimaryTab = resolvedPrimary;
-  const sub: SubTab | null =
-    primaryTab === "activity"
-      ? null
-      : (rawSub && SUB_TABS_BY_PRIMARY[primaryTab].some((s) => s.key === rawSub))
-      ? (rawSub as SubTab)
-      : resolvedSub && SUB_TABS_BY_PRIMARY[primaryTab].some((s) => s.key === resolvedSub)
-      ? resolvedSub
-      : DEFAULT_SUB_BY_PRIMARY[primaryTab];
+  // Karan 2026-07-08: invoices + kpis + activity are LEAF tabs — no sub-navigation.
+  // Only overview / people / deals carry sub-tabs.
+  const hasSubTabs = primaryTab === "overview" || primaryTab === "people" || primaryTab === "deals";
+  const sub: SubTab | null = !hasSubTabs
+    ? null
+    : (rawSub && SUB_TABS_BY_PRIMARY[primaryTab].some((s) => s.key === rawSub))
+    ? (rawSub as SubTab)
+    : resolvedSub && SUB_TABS_BY_PRIMARY[primaryTab].some((s) => s.key === resolvedSub)
+    ? resolvedSub
+    : DEFAULT_SUB_BY_PRIMARY[primaryTab];
   // Legacy compat: existing tab dispatchers below check `tab === "info"`
   // etc. Preserve that shape so the sub-tabs still route correctly.
-  const tab: SubTab | "activity" = primaryTab === "activity" ? "activity" : sub!;
+  const tab: SubTab | "activity" | "invoices" | "kpis" =
+    primaryTab === "activity" ? "activity"
+    : primaryTab === "invoices" ? "invoices"
+    : primaryTab === "kpis" ? "kpis"
+    : sub!;
 
   const account = await getCommercialAccount(id);
   if (!account) notFound();
@@ -404,10 +410,10 @@ export default async function CommercialAccountDetailPage({
       </nav>
 
       {/* Sub-tab pill row — only when the primary has sub-tabs.
-          Activity is a single-view feed with no sub-nav. */}
-      {primaryTab !== "activity" && (
+          Activity / Invoices / KPIs are single-view leaves with no sub-nav. */}
+      {hasSubTabs && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {SUB_TABS_BY_PRIMARY[primaryTab].map((s) => {
+          {SUB_TABS_BY_PRIMARY[primaryTab as PrimaryWithSubs].map((s) => {
             const active = s.key === sub;
             return (
               <Link
@@ -426,8 +432,7 @@ export default async function CommercialAccountDetailPage({
         </div>
       )}
 
-      {/* Tab content — dispatches on the flat `tab` key (SubTab | "activity")
-          so all existing tab === "info" etc. lookups keep working. */}
+      {/* Tab content — dispatches on the flat `tab` key. */}
       {tab === "info" && <InfoTab account={account} errorMessage={sp.error} />}
       {tab === "activity" && <ActivityTab accountId={account.id} />}
       {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
@@ -444,6 +449,8 @@ export default async function CommercialAccountDetailPage({
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "notes" && <NotesTab accountId={account.id} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
+      {tab === "invoices" && <AccountInvoicesTab accountId={account.id} rollup={invoiceRollup} />}
+      {tab === "kpis" && <AccountKpisTab accountId={account.id} overview={overview} rollup={invoiceRollup} />}
     </div>
   );
 }
@@ -1979,28 +1986,42 @@ async function OpportunitiesTab({
           </Link>
         </div>
       )}
-      {/* Karan 2026-07-08 Batch 2 rewrite: killed the mid-page "1 won ·
-          0 lost · 100% win · ~12d close" signal line + "No active bids
-          right now. Start the next bid →" banner. That data lives in
-          the account hero's Financial Snapshot + roll-up stats now; the
-          Deals tab is a pure list of deals with a single primary "+ New
-          deal" CTA. */}
-      <details open={openNewDeal} className="group/newdeal bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      {/* Karan 2026-07-08 rewrite: primary "+ New deal" CTA is now a
+          proper red-accent card (matches the pipeline "New deal" +
+          "New account" CTAs on the list pages). Reads as the primary
+          action, not a nested collapsible chevron. When open exists the
+          card stays collapsed; when it's the customer's only next move
+          it opens by default with a "Start the next bid" label change. */}
+      <details
+        open={openNewDeal || (open.length === 0 && decided.length > 0)}
+        className="group/newdeal bg-white border border-cc-brand-200 rounded-xl overflow-hidden shadow-sm shadow-cc-brand-100/40"
+      >
         <summary
           id="new-deal"
-          className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-3 text-[13px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+          className="list-none cursor-pointer flex items-center justify-between gap-3 px-4 py-3.5 min-h-[52px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 hover:bg-cc-brand-50/40"
         >
-          <span className="inline-flex items-center gap-1.5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 5v14 M5 12h14" />
-            </svg>
-            {open.length === 0 && decided.length > 0
-              ? "Start the next bid"
-              : "New deal for this customer"}
+          <span className="inline-flex items-center gap-2.5">
+            <span aria-hidden className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-cc-brand-100 text-cc-brand-700 shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 5v14 M5 12h14" />
+              </svg>
+            </span>
+            <span className="flex flex-col">
+              <span className="text-[14px] font-bold text-cc-brand-700 leading-tight">
+                {open.length === 0 && decided.length > 0
+                  ? "Start the next bid"
+                  : "New deal for this customer"}
+              </span>
+              <span className="text-[11px] text-ppp-charcoal-500 leading-tight mt-0.5">
+                {open.length === 0 && decided.length > 0
+                  ? "Log the next opportunity — repeat customer, warm lead."
+                  : "Title + bid range gets you moving; details later."}
+              </span>
+            </span>
           </span>
-          <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/newdeal:rotate-180">▾</span>
+          <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0">▾</span>
         </summary>
-        <div className="p-4 border-t border-ppp-charcoal-100">
+        <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
           <NewDealForm accountId={accountId} />
         </div>
       </details>
@@ -2115,72 +2136,96 @@ function AccountOpportunityRow({
   // dropdown hides (terminal states have no forward motion; reopened
   // is the only legal exit and that's handled on the detail page).
   const nextStatuses = allowedNextStatuses(opp.status);
+  const isTerminal = TERMINAL_STATUSES.has(opp.status);
+  const bidLabel = formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents);
   return (
     <li>
+      {/* Karan 2026-07-08 rewrite: cleaner 2-line hierarchy.
+          Line 1: [title] [status pill]
+          Line 2: [bid] · [probability]  (compact, muted)
+          Signal row (line 3, only when there's something to say): overdue tasks,
+          submittals awaiting, primary lead, days-stuck. No cluttered 6-chip soup
+          on every row — the empty state is quiet. */}
       <Link
         href={`/commercial/opportunities/${opp.id}`}
         className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px] touch-manipulation"
       >
-        <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="text-sm font-semibold text-ppp-charcoal break-words">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[14px] font-semibold text-ppp-charcoal break-words leading-snug">
                 {opp.title || "(untitled)"}
               </span>
               <span
-                className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${statusInfo.cls}`}
+                className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border shrink-0 ${statusInfo.cls}`}
               >
                 {opportunityStatusLabel(opp.status)}
               </span>
             </div>
-            <div className="text-[12px] text-ppp-charcoal-600 flex items-center gap-x-3 gap-y-1 flex-wrap">
-              <span className="font-medium text-ppp-charcoal-800">
-                {formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
+            <div className="mt-1 text-[12.5px] text-ppp-charcoal-600 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+              <span className="font-semibold text-ppp-charcoal-800">
+                {bidLabel !== "—" ? bidLabel : "No bid set"}
               </span>
-              <span className="text-ppp-charcoal-500">
-                {opp.probability_pct}% likely
-              </span>
-              {daysInStatus !== null && (
-                <span className={daysTone}>
-                  {daysInStatus === 0 ? "just entered" : `${daysInStatus}d in status`}
-                </span>
+              {!isTerminal && (
+                <>
+                  <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                  <span className="text-ppp-charcoal-500">
+                    {opp.probability_pct}% likely
+                  </span>
+                </>
               )}
-              {leadLabel && (
-                <span className="text-ppp-charcoal-700">
-                  <span aria-hidden>★</span> {leadLabel}
-                </span>
-              )}
-              {taskStats && (taskStats.open > 0 || taskStats.overdue > 0) && (
-                <span className={taskStats.overdue > 0 ? "text-rose-700" : "text-ppp-charcoal-700"}>
-                  {taskStats.overdue > 0 ? `${taskStats.overdue} overdue` : `${taskStats.open} open`}
-                </span>
-              )}
-              {fileCount > 0 && (
-                <span className="text-ppp-charcoal-500" aria-label={`${fileCount} files`}>
-                  <span aria-hidden>📎</span> {fileCount}
-                </span>
-              )}
-              {finishCount > 0 && (
-                <span className="text-ppp-charcoal-500" aria-label={`${finishCount} finishes`}>
-                  <span aria-hidden>🎨</span> {finishCount}
-                </span>
-              )}
-              {submittalStats && submittalStats.total > 0 && (
-                <span
-                  className={submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : "text-ppp-charcoal-500"}
-                  aria-label={`${submittalStats.total} submittals${submittalStats.awaiting_response > 0 ? `, ${submittalStats.awaiting_response} awaiting GC response` : ""}`}
-                >
-                  <span aria-hidden>📋</span> {submittalStats.total}
-                  {submittalStats.awaiting_response > 0 && ` (${submittalStats.awaiting_response} awaiting)`}
-                </span>
-              )}
-              {lastNote && (
-                <span className="text-ppp-charcoal-500 truncate max-w-[180px]">
-                  <span aria-hidden>📝</span> {relativeActivity(lastNote.created_at)}
-                </span>
+              {isTerminal && daysInStatus !== null && (
+                <>
+                  <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                  <span className="text-ppp-charcoal-500">
+                    {daysInStatus === 0 ? "closed today" : daysInStatus === 1 ? "closed yesterday" : `closed ${daysInStatus}d ago`}
+                  </span>
+                </>
               )}
             </div>
+            {/* Signal row — only renders when there's a signal to show.
+                No overwhelming chip soup on every row; the eye lands on
+                titles first. Order: urgent (overdue) → primary lead →
+                stuck-days → docs summary. */}
+            {(
+              (taskStats && (taskStats.overdue > 0 || taskStats.open > 0)) ||
+              (submittalStats && submittalStats.awaiting_response > 0) ||
+              leadLabel ||
+              (!isTerminal && daysInStatus !== null && daysInStatus > 7) ||
+              lastNote
+            ) && (
+              <div className="mt-1.5 text-[11.5px] flex items-center gap-x-3 gap-y-0.5 flex-wrap text-ppp-charcoal-500">
+                {taskStats && taskStats.overdue > 0 && (
+                  <span className="text-rose-700 font-medium">
+                    <span aria-hidden>⚠</span> {taskStats.overdue} overdue task{taskStats.overdue === 1 ? "" : "s"}
+                  </span>
+                )}
+                {submittalStats && submittalStats.awaiting_response > 0 && (
+                  <span className="text-sky-700 font-medium">
+                    <span aria-hidden>📋</span> {submittalStats.awaiting_response} awaiting GC
+                  </span>
+                )}
+                {leadLabel && (
+                  <span>
+                    <span aria-hidden>★</span> {leadLabel} lead
+                  </span>
+                )}
+                {!isTerminal && daysInStatus !== null && daysInStatus > 7 && (
+                  <span className={daysTone}>
+                    {daysInStatus}d in stage
+                  </span>
+                )}
+                {lastNote && (
+                  <span className="truncate max-w-[180px]">
+                    Last note {relativeActivity(lastNote.created_at)}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 shrink-0 mt-1" aria-hidden>
+            <path d="M9 18l6-6-6-6" />
+          </svg>
         </div>
       </Link>
       {/* Karan 2026-07-08 Batch 2: dropped the "QUICK FLIP" caps label —
@@ -3060,4 +3105,345 @@ function complianceLabel(s: "green" | "yellow" | "red" | "not_started"): string 
 
 function prequalLabel(s: "not_started" | "pending" | "approved" | "rejected"): string {
   return s === "not_started" ? "Not started" : s === "pending" ? "Pending" : s === "approved" ? "Approved" : "Rejected";
+}
+
+/**
+ * AccountInvoicesTab — Karan 2026-07-08 rewrite.
+ *
+ * Customer-scoped invoice list per user's ask: "an invoice tab where me
+ * kate katie or alex or whoever can quick edit the invoices if needed
+ * and if we click on the invoice it redirects us to the invoice page
+ * under that user's invoice for a full view".
+ *
+ * Layout:
+ *   1. Top rollup strip — Invoiced / Paid / Balance / Overdue count
+ *   2. "+ New invoice" CTA (deep-links to the invoicing surface with the
+ *      quick-add form pre-opened for this account)
+ *   3. Grouped invoice list by status (Overdue → Sent → Draft → Paid →
+ *      Void), each row clickable → full invoice detail page
+ */
+async function AccountInvoicesTab({
+  accountId,
+  rollup,
+}: {
+  accountId: string;
+  rollup: AccountInvoiceRollup;
+}) {
+  const invoices = await listCommercialInvoices({ accountId });
+  const paidPct =
+    rollup.invoiced_cents > 0
+      ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))
+      : 0;
+  // Group by derived status; keep insertion order (most recent first
+  // since the underlying query orders by created_at DESC).
+  const buckets = new Map<ReturnType<typeof deriveInvoiceStatus>, CommercialInvoice[]>();
+  for (const inv of invoices) {
+    const s = deriveInvoiceStatus(inv);
+    const arr = buckets.get(s) ?? [];
+    arr.push(inv);
+    buckets.set(s, arr);
+  }
+  const ORDER: ReadonlyArray<ReturnType<typeof deriveInvoiceStatus>> = [
+    "overdue",
+    "sent",
+    "viewed",
+    "partial",
+    "draft",
+    "paid",
+    "void",
+  ];
+  return (
+    <div className="space-y-4">
+      {/* Rollup strip */}
+      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
+        <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="blue" />
+        <RollupTile label="Balance" value={formatCentsFull(rollup.balance_cents)} sub={rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents > 0 ? "warn" : "neutral"} />
+        <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : rollup.overdue_count === 1 ? "invoice past due" : "invoices past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
+      </section>
+
+      {/* Primary CTAs — new invoice + drill to full list */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link
+          href={`/commercial/invoices?account_id=${accountId}`}
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 5v14 M5 12h14" />
+          </svg>
+          New invoice
+        </Link>
+        <Link
+          href={`/commercial/invoices?account_id=${accountId}`}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+        >
+          Full invoicing surface →
+        </Link>
+      </div>
+
+      {/* Empty state */}
+      {invoices.length === 0 && (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+          <div className="text-[36px] mb-2" aria-hidden>📄</div>
+          <div className="text-sm font-semibold text-ppp-charcoal">No invoices yet</div>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto">
+            Convert a Won deal into an invoice from the Deals tab, or start a new one above.
+          </p>
+        </div>
+      )}
+
+      {/* Grouped invoice list */}
+      {invoices.length > 0 && (
+        <div className="space-y-4">
+          {ORDER.map((status) => {
+            const arr = buckets.get(status) ?? [];
+            if (arr.length === 0) return null;
+            const isDanger = status === "overdue";
+            return (
+              <section
+                key={status}
+                className={`rounded-xl overflow-hidden border ${isDanger ? "border-rose-200 bg-rose-50/20" : "border-ppp-charcoal-100 bg-white"}`}
+              >
+                <div className={`px-4 py-2.5 border-b ${isDanger ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-ppp-charcoal-50/40"}`}>
+                  <h3 className={`text-[13px] font-bold ${isDanger ? "text-rose-800" : "text-ppp-charcoal"}`}>
+                    {invoiceStatusLabel(status)} · {arr.length}
+                  </h3>
+                </div>
+                <ul className="divide-y divide-ppp-charcoal-100">
+                  {arr.map((inv) => (
+                    <AccountInvoiceRow key={inv.id} invoice={inv} />
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountInvoiceRow({ invoice }: { invoice: CommercialInvoice }) {
+  const derived = deriveInvoiceStatus(invoice);
+  const toneCls =
+    derived === "paid"
+      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+      : derived === "overdue"
+      ? "bg-rose-50 text-rose-800 border-rose-200"
+      : derived === "void"
+      ? "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200"
+      : "bg-blue-50 text-blue-800 border-blue-200";
+  const paidPct =
+    invoice.total_cents > 0
+      ? Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))
+      : 0;
+  return (
+    <li>
+      <Link
+        href={`/commercial/invoices/${invoice.id}`}
+        className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-blue-50/40 transition-colors min-h-[52px] touch-manipulation"
+        title={`Open ${invoice.invoice_number}`}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-mono font-semibold text-ppp-charcoal">
+              {invoice.invoice_number}
+            </span>
+            <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${toneCls}`}>
+              {invoiceStatusLabel(derived)}
+            </span>
+          </div>
+          <div className="mt-1 text-[12px] text-ppp-charcoal-500 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
+            <span>Created {fmtEtDate(invoice.created_at)}</span>
+            {invoice.due_at && (
+              <>
+                <span aria-hidden>·</span>
+                <span>Due {fmtEtDate(invoice.due_at)}</span>
+              </>
+            )}
+            {invoice.sent_at && (
+              <>
+                <span aria-hidden>·</span>
+                <span>Sent {fmtEtDate(invoice.sent_at)}</span>
+              </>
+            )}
+          </div>
+          {invoice.total_cents > 0 && invoice.paid_cents > 0 && invoice.paid_cents < invoice.total_cents && (
+            <div className="mt-1.5 max-w-[240px]">
+              <div className="h-1 rounded-full bg-ppp-charcoal-100 overflow-hidden">
+                <div className="h-full bg-blue-500" style={{ width: `${paidPct}%` }} aria-label={`${paidPct}% paid`} />
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-sm font-bold text-ppp-charcoal">
+            {formatCentsFull(invoice.total_cents)}
+          </div>
+          {invoice.balance_cents > 0 && invoice.balance_cents !== invoice.total_cents && (
+            <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+              {formatCentsFull(invoice.balance_cents)} owed
+            </div>
+          )}
+        </div>
+      </Link>
+    </li>
+  );
+}
+
+function RollupTile({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  tone: "neutral" | "blue" | "warn" | "danger";
+}) {
+  const ring =
+    tone === "blue"
+      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
+      : tone === "warn"
+      ? "border-amber-200 bg-gradient-to-br from-white to-amber-50/40"
+      : tone === "danger"
+      ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
+      : "border-ppp-charcoal-100 bg-white";
+  const stripe =
+    tone === "blue" ? "bg-blue-500" : tone === "warn" ? "bg-amber-500" : tone === "danger" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+  return (
+    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+        {label}
+      </div>
+      <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1 leading-none">
+        {value}
+      </div>
+      <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>
+    </div>
+  );
+}
+
+/**
+ * AccountKpisTab — Karan 2026-07-08 rewrite.
+ *
+ * Customer-scoped scoreboard. Numbers pulled from the same libs the
+ * Financial Snapshot + Deals tab use, so drift can't happen between
+ * surfaces. Read-only tiles + rolled-up progress bars.
+ */
+function AccountKpisTab({
+  overview,
+  rollup,
+}: {
+  accountId: string;
+  overview: AccountOverview | null;
+  rollup: AccountInvoiceRollup;
+}) {
+  const winRatePct = overview ? winRate(overview) : null;
+  const paidPct =
+    rollup.invoiced_cents > 0
+      ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))
+      : 0;
+  const decidedCount =
+    (overview?.won_opps_count ?? 0) + (overview?.lost_opps_count ?? 0);
+  const bidLow = overview?.total_active_bid_low_cents ?? 0;
+  const bidHigh = overview?.total_active_bid_high_cents ?? 0;
+  const bidRangeLabel = bidLow > 0 || bidHigh > 0
+    ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}`
+    : "—";
+  return (
+    <div className="space-y-5">
+      {/* Financials group */}
+      <section>
+        <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
+          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+          Financials
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
+          <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="blue" />
+          <RollupTile label="Balance" value={formatCentsFull(rollup.balance_cents)} sub={rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents > 0 ? "warn" : "neutral"} />
+          <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : "past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
+        </div>
+      </section>
+
+      {/* Pipeline group */}
+      <section>
+        <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
+          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+          Pipeline
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <RollupTile
+            label="Open bids"
+            value={(overview?.open_opps_count ?? 0).toString()}
+            sub={(overview?.open_opps_count ?? 0) === 0 ? "no live bids" : "in progress"}
+            tone="blue"
+          />
+          <RollupTile
+            label="Bid range"
+            value={bidRangeLabel}
+            sub="low – high (open)"
+            tone="neutral"
+          />
+          <RollupTile
+            label="Won"
+            value={(overview?.won_opps_count ?? 0).toString()}
+            sub={decidedCount === 0 ? "no history" : `of ${decidedCount} decided`}
+            tone="blue"
+          />
+          <RollupTile
+            label="Win rate"
+            value={winRatePct === null ? "—" : `${winRatePct}%`}
+            sub={decidedCount === 0 ? "no history" : "won ÷ decided"}
+            tone="neutral"
+          />
+        </div>
+      </section>
+
+      {/* Progress bars — collections + wins */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 space-y-4">
+        <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+          Health
+        </h3>
+        <div>
+          <div className="flex items-center justify-between text-[11px] font-semibold text-ppp-charcoal mb-1">
+            <span>Collections</span>
+            <span>{paidPct}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
+            <div
+              className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+              style={{ width: `${paidPct}%` }}
+              aria-label={`${paidPct}% of invoiced amount collected`}
+            />
+          </div>
+          <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+            {formatCentsFull(rollup.paid_cents)} of {formatCentsFull(rollup.invoiced_cents)} collected
+          </p>
+        </div>
+        {decidedCount > 0 && (
+          <div>
+            <div className="flex items-center justify-between text-[11px] font-semibold text-ppp-charcoal mb-1">
+              <span>Win rate</span>
+              <span>{winRatePct}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
+              <div
+                className="h-full bg-cc-brand-600 transition-all"
+                style={{ width: `${winRatePct ?? 0}%` }}
+                aria-label={`${winRatePct}% deals won of ${decidedCount} decided`}
+              />
+            </div>
+            <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+              {overview?.won_opps_count ?? 0} won · {overview?.lost_opps_count ?? 0} lost across {decidedCount} decided deal{decidedCount === 1 ? "" : "s"}
+            </p>
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }
