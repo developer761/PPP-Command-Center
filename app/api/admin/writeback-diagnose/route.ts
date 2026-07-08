@@ -153,13 +153,15 @@ export async function GET(request: Request) {
 
   // 3. Tokens for this WO — also fuzzy-match on 15-char prefix so a WO id
   //    stored differently between the token table and the allowlist still
-  //    shows up here. Katie 2026-07-08: her token wasn't found via exact
-  //    match but was on the allowlist — different id format between the
-  //    tables was the smoking gun for the first round of diagnosis.
+  //    shows up here. Katie 2026-07-08 round 1: her token wasn't found via
+  //    exact match but was on the allowlist — different id format between
+  //    the tables was the smoking gun for the first round of diagnosis.
+  //    Round 2: pull submitted_payload to see WHAT she actually submitted
+  //    (empty surfaces? missing colorId? — that's why writes don't fire).
   const { data: tokens } = await sb
     .from("customer_form_tokens")
     .select(
-      "token, kind, work_order_id, work_order_number, customer_name, created_at, submitted_at, resubmitted_at, vendor_email_sent_at, expires_at, created_by_user_id"
+      "token, kind, work_order_id, work_order_number, customer_name, created_at, submitted_at, resubmitted_at, vendor_email_sent_at, expires_at, created_by_user_id, submitted_payload"
     )
     .like("work_order_id", `${woPrefix}%`)
     .order("created_at", { ascending: false })
@@ -223,13 +225,78 @@ export async function GET(request: Request) {
   const recentFailure = auditRows.find((r) => !r.succeeded);
   const shouldWrite = mode === "all" || (mode === "test_only" && onAllowlist);
 
+  // Analyze submitted payloads — for tokens that have submitted_at set but
+  // no audit rows, this tells us WHY writes weren't fired. attempts is
+  // built from surfaces whose s.colorId is truthy AND whose surface name
+  // maps to a known SF field. If every surface has colorId === null, the
+  // attempts array is empty and the submit path skips the write with no
+  // audit row (silent skip).
+  const tokenRows = (tokens ?? []) as Array<{
+    token: string;
+    kind: string | null;
+    submitted_at: string | null;
+    resubmitted_at: string | null;
+    submitted_payload: unknown;
+  }>;
+  type PayloadSurface = { surface?: unknown; colorId?: unknown; skipped?: unknown };
+  type PayloadLine = { id?: unknown; surfaces?: PayloadSurface[] };
+  const payloadSummary = tokenRows
+    .filter((t) => t.submitted_at || t.resubmitted_at)
+    .slice(0, 5)
+    .map((t) => {
+      const p = t.submitted_payload as { lineItems?: PayloadLine[]; globalNotes?: string; materialType?: string | null; deliveryAddress?: unknown } | null;
+      const lineItems = Array.isArray(p?.lineItems) ? p!.lineItems : [];
+      let totalSurfaces = 0;
+      let withColorId = 0;
+      let withColorIdAndFinish = 0;
+      let skippedFlag = 0;
+      const knownFields = new Set(["walls", "wall", "ceiling", "trim", "floor", "other"]);
+      let knownSurfaces = 0;
+      for (const li of lineItems) {
+        const surfaces = Array.isArray(li.surfaces) ? li.surfaces : [];
+        for (const s of surfaces) {
+          totalSurfaces++;
+          const sname = typeof s?.surface === "string" ? s.surface.toLowerCase() : "";
+          if (knownFields.has(sname)) knownSurfaces++;
+          if (s?.colorId) withColorId++;
+          if (s?.colorId && (s as { finish?: string }).finish) withColorIdAndFinish++;
+          if (s?.skipped) skippedFlag++;
+        }
+      }
+      const globalNotesLen = typeof p?.globalNotes === "string" ? p.globalNotes.length : 0;
+      const materialType = typeof p?.materialType === "string" ? p.materialType : null;
+      return {
+        token: t.token.slice(0, 12) + "…",
+        kind: t.kind,
+        submitted_at: t.submitted_at,
+        resubmitted_at: t.resubmitted_at,
+        line_items_count: lineItems.length,
+        total_surfaces: totalSurfaces,
+        surfaces_with_colorId: withColorId,
+        surfaces_with_colorId_and_finish: withColorIdAndFinish,
+        surfaces_marked_skipped: skippedFlag,
+        surfaces_with_known_field_name: knownSurfaces,
+        global_notes_length: globalNotesLen,
+        material_type: materialType,
+        // Would attempts array be empty? Every WOLI update requires at
+        // least one surface with a colorId AND a known-field mapping.
+        would_produce_zero_attempts: withColorId === 0 || knownSurfaces === 0,
+      };
+    });
+
+  const submittedTokens = tokenRows.filter((t) => t.submitted_at || t.resubmitted_at);
+  const allPayloadsEmpty = payloadSummary.length > 0 && payloadSummary.every((s) => s.would_produce_zero_attempts);
+
   let verdict: string;
   if (mode === "off") {
     verdict = "❌ MODE IS OFF — writeback disabled globally. Flip to 'all' or 'test_only' on /dashboard/settings/writeback to re-enable.";
   } else if (mode === "test_only" && !onAllowlist) {
     verdict = `❌ WO NOT ON ALLOWLIST — mode is test_only and this specific WO ('${resolvedWoId}') isn't listed. The customer form saves the submission but skips SF. Either add this WO on /dashboard/settings/writeback OR flip mode to 'all'.`;
+  } else if (submittedTokens.length > 0 && auditRows.length === 0 && allPayloadsEmpty) {
+    const first = payloadSummary[0];
+    verdict = `❌ CUSTOMER SUBMITTED BUT PAYLOAD IS EMPTY — ${submittedTokens.length} token(s) submitted for this WO, but every submission has zero surfaces with a valid colorId + known field mapping. That's why no SF writes fire (the submit route builds an empty attempts array and skips silently). Most recent submission: ${first.line_items_count} line item(s), ${first.total_surfaces} surface(s), ${first.surfaces_with_colorId} with colorId, ${first.surfaces_with_known_field_name} with a known field name (walls/ceiling/trim/floor/other). Likely causes: (a) the customer picked colors in the UI but the form's JSON body isn't including colorId in each surface, (b) surface names in the payload don't match the SURFACE_TO_FIELD map (case sensitive on 'walls', 'ceiling', etc.), or (c) the form UI regressed and stopped attaching color IDs. Inspect payload_summary[0] below + compare against the customer-form-view.tsx onSubmit builder.`;
   } else if (auditRows.length === 0) {
-    verdict = `⚠ NO WRITE ATTEMPTS LOGGED — mode + allowlist look good (${mode}, on-allowlist=${onAllowlist}) but no SF writes have been attempted for this WO. Either the customer never actually submitted the form OR the submit route bailed before reaching the write path. Check tokens[].submitted_at above — if that's populated but no audit rows exist, there's a code-path bug (route hitting an early return). If submitted_at is null, the customer never actually clicked submit.`;
+    verdict = `⚠ NO WRITE ATTEMPTS LOGGED — mode + allowlist look good (${mode}, on-allowlist=${onAllowlist}) but no SF writes have been attempted for this WO. Tokens submitted count: ${submittedTokens.length}. If that's 0 — customer never actually clicked submit. If >0 — the submit route bailed before reaching the write path. Read payload_summary[0] below to see what was actually submitted.`;
   } else if (recentSuccess) {
     verdict = `✅ RECENT SUCCESS — most recent write to this WO succeeded at ${recentSuccess.created_at}. If SF still shows nothing, check the specific field (e.g. ColorWall__c) via /api/admin/wo-debug?wo=<number>, or check SF field-level permissions (integration user might lack visibility on the specific field).`;
   } else if (recentFailure) {
@@ -256,6 +323,7 @@ export async function GET(request: Request) {
       total_wos_on_allowlist: allowCount ?? 0,
     },
     tokens: tokens ?? [],
+    payload_summary: payloadSummary,
     sf_writes_audit: auditRows,
   }, {
     // Pretty-print for easy admin reading.
