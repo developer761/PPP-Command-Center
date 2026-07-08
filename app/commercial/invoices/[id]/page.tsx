@@ -370,6 +370,12 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <span>Details saved.</span>
         </div>
       )}
+      {savedTarget === "created" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+          <span aria-hidden>✓</span>
+          <span>Invoice created.</span>
+        </div>
+      )}
       {savedTarget === "status" && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
           <span aria-hidden>✓</span>

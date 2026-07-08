@@ -407,7 +407,20 @@ export async function removeLineItem(
 }
 
 /** Re-sum line items into the parent's subtotal_cents (total + balance
- *  are GENERATED, so they follow automatically via the DB). */
+ *  are GENERATED, so they follow automatically via the DB). Then
+ *  reconcile status.
+ *
+ *  Karan 2026-07-07: since verifyEditable now allows line-item changes
+ *  on any non-void invoice, the total can shift AFTER a payment lands.
+ *  The payment trigger only fires on payment mutations, not line-item
+ *  changes, so we manually re-run the paid/partial/sent decision here.
+ *
+ *  Rules mirror the trigger:
+ *   - void invoices are immutable (verifyEditable rejects; unreachable)
+ *   - paid_cents >= total_cents (and total>0) → paid
+ *   - paid_cents > 0 → partial
+ *   - paid_cents = 0 AND status IN (paid,partial) → sent
+ *   - else unchanged */
 async function recomputeSubtotal(invoice_id: string): Promise<void> {
   const sb = commercialDb();
   const { data: items } = await sb
@@ -419,6 +432,39 @@ async function recomputeSubtotal(invoice_id: string): Promise<void> {
     .from("commercial_invoices")
     .update({ subtotal_cents: subtotal, updated_at: new Date().toISOString() })
     .eq("id", invoice_id);
+  // Re-read the row so we see the GENERATED total_cents post-update,
+  // then reconcile status if the change moved the paid/balance line.
+  const { data: after } = await sb
+    .from("commercial_invoices")
+    .select("status, total_cents, paid_cents, paid_at")
+    .eq("id", invoice_id)
+    .maybeSingle();
+  if (!after) return;
+  const status = after.status as InvoiceStatus;
+  const total = after.total_cents as number;
+  const paid = after.paid_cents as number;
+  let nextStatus: InvoiceStatus | null = null;
+  let nextPaidAt: string | null | undefined = undefined;
+  if (status === "void") return;
+  if (paid >= total && total > 0 && status !== "paid") {
+    nextStatus = "paid";
+    if (!after.paid_at) nextPaidAt = new Date().toISOString();
+  } else if (paid > 0 && paid < total && status === "paid") {
+    // Total went up (line item added) beyond what's been paid — regress
+    // to partial so the balance surfaces again.
+    nextStatus = "partial";
+    nextPaidAt = null;
+  } else if (paid === 0 && (status === "paid" || status === "partial")) {
+    // Line item added on an invoice with no payments recorded (rare;
+    // more likely on a fresh draft that had status flipped manually).
+    nextStatus = "sent";
+    nextPaidAt = null;
+  }
+  if (nextStatus) {
+    const patch: Record<string, unknown> = { status: nextStatus, updated_at: new Date().toISOString() };
+    if (nextPaidAt !== undefined) patch.paid_at = nextPaidAt;
+    await sb.from("commercial_invoices").update(patch).eq("id", invoice_id);
+  }
 }
 
 // ────────────── Payments ──────────────

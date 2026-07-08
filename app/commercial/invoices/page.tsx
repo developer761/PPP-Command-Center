@@ -31,6 +31,10 @@ type SP = Promise<{
   account_id?: string;
   deleted?: string;
   view?: string;
+  /** Set by /commercial/invoices/new when a multi-row batch lands here. */
+  invoices_created?: string;
+  invoice_errors?: string;
+  status_error?: string;
 }>;
 
 type ViewMode = "list" | "grouped";
@@ -50,6 +54,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const accountIdRaw = pickFirst(sp.account_id);
   const accountIdFilter = accountIdRaw && UUID_RE.test(accountIdRaw) ? accountIdRaw : undefined;
   const deletedFlash = pickFirst(sp.deleted) === "1";
+  const invoicesCreatedFlash = Number(pickFirst(sp.invoices_created) ?? 0);
+  const invoiceErrorsFlash = Number(pickFirst(sp.invoice_errors) ?? 0);
+  const statusErrorFlash = pickFirst(sp.status_error);
 
   const [invoices, accounts, accountFilter, allOpps] = await Promise.all([
     listCommercialInvoices({ search, status: statusFilter, accountId: accountIdFilter }),
@@ -161,6 +168,32 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Invoice deleted.</span>
+        </div>
+      )}
+      {invoicesCreatedFlash > 0 && (
+        <div className={`rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 ${
+          invoiceErrorsFlash > 0
+            ? "bg-amber-50 border border-amber-200 text-amber-900"
+            : "bg-blue-50 border border-blue-200 text-blue-800"
+        }`}>
+          <span>
+            <strong>{invoicesCreatedFlash}</strong> invoice{invoicesCreatedFlash === 1 ? "" : "s"} created.
+            {invoiceErrorsFlash > 0 && (
+              <> {invoiceErrorsFlash} row{invoiceErrorsFlash === 1 ? "" : "s"} skipped due to input errors.</>
+            )}
+            {" Shown grouped by opportunity below."}
+          </span>
+          <Link
+            href="/commercial/invoices"
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      {statusErrorFlash && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800">
+          {statusErrorFlash}
         </div>
       )}
       {accountFilter && (
