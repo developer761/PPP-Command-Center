@@ -172,6 +172,63 @@ async function createInvoiceInlineAction(formData: FormData) {
   redirect(`/commercial/invoices?account_id=${account_id}&created=${result.invoice.id}#inv-${result.invoice.id}`);
 }
 
+/**
+ * Karan 2026-07-08: bulk-delete every invoice attached to a specific
+ * (deleted) deal. Two-step confirm: the button renders a form with a
+ * hidden `confirm` field the user must click a second time. Safety
+ * checks:
+ *   - Refuse if any invoice has paid_cents > 0 (money already changed
+ *     hands; the user has to void those individually first — matches
+ *     the deal soft-delete cascade guard shipped earlier today)
+ *   - Only allowed when the parent opportunity is soft-deleted (this
+ *     is a reconcile-orphan flow, not a general purge)
+ */
+async function bulkDeleteInvoicesForOppAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/invoices");
+  const confirmed = formData.get("confirm") === "yes";
+  if (!confirmed) {
+    redirect(`/commercial/invoices?opportunity_id=${opp_id}&error=${encodeURIComponent("Confirm required to bulk-delete.")}`);
+  }
+  const { commercialDb } = await import("@/lib/commercial/db");
+  const sb = commercialDb();
+  // Guard 1: parent must be deleted (this is an orphan-cleanup flow).
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("id, deleted_at")
+    .eq("id", opp_id)
+    .maybeSingle();
+  if (!oppRow) redirect("/commercial/invoices");
+  if (!(oppRow as { deleted_at: string | null }).deleted_at) {
+    redirect(`/commercial/invoices?opportunity_id=${opp_id}&error=${encodeURIComponent("Bulk delete only allowed on deleted deals — void or delete individual invoices instead.")}`);
+  }
+  // Guard 2: block if any invoice has recorded payments.
+  const { data: invRows } = await sb
+    .from("commercial_invoices")
+    .select("id, paid_cents")
+    .eq("opportunity_id", opp_id)
+    .is("deleted_at", null);
+  const rows = (invRows ?? []) as { id: string; paid_cents: number }[];
+  const paidRows = rows.filter((r) => (r.paid_cents ?? 0) > 0);
+  if (paidRows.length > 0) {
+    redirect(`/commercial/invoices?opportunity_id=${opp_id}&error=${encodeURIComponent(`${paidRows.length} invoice${paidRows.length === 1 ? " has" : "s have"} recorded payments. Void those individually first.`)}`);
+  }
+  const now = new Date().toISOString();
+  if (rows.length > 0) {
+    await sb
+      .from("commercial_invoices")
+      .update({ deleted_at: now })
+      .in("id", rows.map((r) => r.id));
+  }
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+  redirect(`/commercial/invoices?bulk_deleted=${rows.length}`);
+}
+
 export default async function CommercialInvoicesPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const search = pickFirst(sp.q);
@@ -190,6 +247,12 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // there was no meaningful behavior loss).
   const accountIdRaw = pickFirst(sp.account_id);
   const accountIdFilter = accountIdRaw && UUID_RE.test(accountIdRaw) ? accountIdRaw : undefined;
+  // Karan 2026-07-08: single-deal focus. Clicking the deleted-deal
+  // header on the compact list drops you here with ?opportunity_id=<id>
+  // so all N invoices for that (possibly deleted) deal render on the
+  // invoicing surface — not the pipeline detail page.
+  const opportunityIdRaw = pickFirst(sp.opportunity_id);
+  const opportunityIdFilter = opportunityIdRaw && UUID_RE.test(opportunityIdRaw) ? opportunityIdRaw : undefined;
   const deletedFlash = pickFirst(sp.deleted) === "1";
   const invoicesCreatedFlash = Number(pickFirst(sp.invoices_created) ?? 0);
   const invoiceErrorsFlash = Number(pickFirst(sp.invoice_errors) ?? 0);
@@ -202,7 +265,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // to be worth the simplicity. If we hit scale we swap in an RPC that
   // joins commercial_invoices to commercial_opportunities server-side.
   const [invoicesRaw, accounts, accountFilter, allOpps] = await Promise.all([
-    listCommercialInvoices({ status: statusFilter, accountId: accountIdFilter }),
+    listCommercialInvoices({ status: statusFilter, accountId: accountIdFilter, opportunityId: opportunityIdFilter }),
     listCommercialAccounts(),
     accountIdFilter ? getCommercialAccount(accountIdFilter) : Promise.resolve(null),
     listCommercialOpportunities({}),
@@ -332,12 +395,99 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
   };
 
+  // Karan 2026-07-08: single-deal focus banner. When ?opportunity_id
+  // is set, show a compact strip with back-to-all-invoices + a bulk
+  // "Delete all N invoices" button (deleted deals only — server action
+  // enforces this and blocks any invoice with recorded payments).
+  const scopedInvoices = opportunityIdFilter
+    ? invoicesRaw.filter((i) => i.opportunity_id === opportunityIdFilter)
+    : [];
+  const scopedInvoiceCount = scopedInvoices.length;
+  const scopedHasPaid = scopedInvoices.some((i) => (i.paid_cents ?? 0) > 0);
+  const scopedIsOrphan = opportunityIdFilter && !oppById.has(opportunityIdFilter);
+  const bulkDeletedFlash = Number(pickFirst(sp.bulk_deleted) ?? 0);
+  const errorFlash = pickFirst(sp.error);
+
   return (
     <div className="space-y-5">
       {deletedFlash && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Invoice deleted.</span>
+        </div>
+      )}
+      {bulkDeletedFlash > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+          <span aria-hidden>✓</span>
+          <span><strong>{bulkDeletedFlash}</strong> invoice{bulkDeletedFlash === 1 ? "" : "s"} deleted.</span>
+        </div>
+      )}
+      {opportunityIdFilter && errorFlash && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800 flex items-start gap-2">
+          <span aria-hidden>!</span>
+          <span>{errorFlash}</span>
+        </div>
+      )}
+      {opportunityIdFilter && (
+        <div className="bg-white border-l-4 border-amber-400 border-y border-r border-y-ppp-charcoal-100 border-r-ppp-charcoal-100 rounded-xl px-4 py-3 flex items-start gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600 shrink-0">
+                <path d="M12 9v4M12 17h.01" />
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              </svg>
+              <div className="text-[13.5px] font-bold text-ppp-charcoal">
+                {scopedIsOrphan ? "Deleted deal — invoices still on file" : "Focused on a single deal"}
+              </div>
+              <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 rounded px-1.5 py-0.5">
+                {scopedInvoiceCount} invoice{scopedInvoiceCount === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
+              Showing only invoices for this deal. Click any row to open it — Void or Delete lives inside.
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href="/commercial/invoices"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[36px] touch-manipulation"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              All invoices
+            </Link>
+            {scopedIsOrphan && scopedInvoiceCount > 0 && !scopedHasPaid && (
+              <details className="relative">
+                <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  </svg>
+                  Delete all {scopedInvoiceCount}
+                </summary>
+                <div className="absolute right-0 top-full mt-1.5 w-72 bg-white border border-rose-200 rounded-lg shadow-lg p-3 z-10">
+                  <div className="text-[12px] text-ppp-charcoal-700 mb-2 leading-snug">
+                    Permanently hide all <strong>{scopedInvoiceCount}</strong> invoice{scopedInvoiceCount === 1 ? "" : "s"} from lists. Data stays in the DB for audit history.
+                  </div>
+                  <form action={bulkDeleteInvoicesForOppAction}>
+                    <input type="hidden" name="opp_id" value={opportunityIdFilter} />
+                    <input type="hidden" name="confirm" value="yes" />
+                    <button
+                      type="submit"
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+                    >
+                      Yes, delete all {scopedInvoiceCount}
+                    </button>
+                  </form>
+                </div>
+              </details>
+            )}
+            {scopedIsOrphan && scopedHasPaid && (
+              <span className="text-[10.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                Some invoices have payments — void those individually
+              </span>
+            )}
+          </div>
         </div>
       )}
       {invoicesCreatedFlash > 0 && (
@@ -946,9 +1096,9 @@ function GroupedByOpp({
               {isOrphan ? (
                 <div className="border-l-2 border-amber-300 bg-amber-50/30">
                   <Link
-                    href={`/commercial/opportunities/${oppId}?tab=invoices`}
+                    href={`/commercial/invoices?opportunity_id=${oppId}`}
                     className="group/orphanHead block px-4 sm:px-5 py-3.5 hover:bg-amber-50 focus:outline-none focus:bg-amber-50 transition-colors touch-manipulation"
-                    title="Open this deleted deal's invoice manager"
+                    title="Focus just this deleted deal's invoices"
                   >
                     {headerBody}
                   </Link>

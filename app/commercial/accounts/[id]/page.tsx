@@ -164,13 +164,15 @@ type SubTab =
   | "opportunities"
   | "documents";
 const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
-  // Deals first (primary read), Invoices next (Alex's money question),
-  // KPIs (account-level scoreboard), People, Details, Activity.
+  // Karan 2026-07-08 reorder: Overview leads (at-a-glance summary),
+  // then Deals (pipeline read), Invoices (money question), KPIs
+  // (scoreboard), People, Activity. Landing on Overview by default
+  // gives an easy-read snapshot before drilling in.
+  { key: "overview", label: "Overview" },
   { key: "deals", label: "Deals" },
   { key: "invoices", label: "Invoices" },
   { key: "kpis", label: "KPIs" },
   { key: "people", label: "People" },
-  { key: "overview", label: "Details" },
   { key: "activity", label: "Activity" },
 ];
 type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "kpis">;
@@ -195,14 +197,15 @@ const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
   deals: "opportunities",
 };
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
-  if (!raw) return { primary: "deals", sub: null };
+  // Karan 2026-07-08: Overview is the default landing tab.
+  if (!raw) return { primary: "overview", sub: null };
   if (raw === "overview" || raw === "people" || raw === "deals" || raw === "activity" || raw === "invoices" || raw === "kpis") {
     return { primary: raw, sub: null };
   }
   if (raw === "info" || raw === "team" || raw === "performance") return { primary: "overview", sub: raw as SubTab };
   if (raw === "contacts" || raw === "notes") return { primary: "people", sub: raw as SubTab };
   if (raw === "opportunities" || raw === "documents") return { primary: "deals", sub: raw as SubTab };
-  return { primary: "deals", sub: null };
+  return { primary: "overview", sub: null };
 }
 
 export default async function CommercialAccountDetailPage({
