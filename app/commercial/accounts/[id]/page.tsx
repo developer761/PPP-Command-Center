@@ -1993,7 +1993,7 @@ async function OpportunitiesTab({
           card stays collapsed; when it's the customer's only next move
           it opens by default with a "Start the next bid" label change. */}
       <details
-        open={openNewDeal || (open.length === 0 && decided.length > 0)}
+        open={openNewDeal || open.length === 0}
         className="group/newdeal bg-white border border-cc-brand-200 rounded-xl overflow-hidden shadow-sm shadow-cc-brand-100/40"
       >
         <summary
@@ -3341,7 +3341,11 @@ function AccountKpisTab({
   overview: AccountOverview | null;
   rollup: AccountInvoiceRollup;
 }) {
-  const winRatePct = overview ? winRate(overview) : null;
+  // Audit fix 2026-07-08: winRate() returns a 0..1 decimal (won/total),
+  // NOT a percentage. Previously the tab was rendering ".67%" instead
+  // of "67%" — multiply by 100 + round for display.
+  const winRateRaw = overview ? winRate(overview) : null;
+  const winRatePct = winRateRaw === null ? null : Math.round(winRateRaw * 100);
   const paidPct =
     rollup.invoiced_cents > 0
       ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))

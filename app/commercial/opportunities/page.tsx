@@ -75,7 +75,7 @@ const MS_PER_DAY = 86_400_000;
 /**
  * Karan 2026-07-08 audit fix: every quick-flip form now posts a
  * `return_href` hidden input containing the current pipeline URL
- * (minus ?peek= so we don't reopen the drawer after the flip). The
+ * (minus ?customer= so the sheet doesn't reopen after the flip). The
  * server action appends its own status_ok / status_error signal to
  * that return_href instead of always redirecting to the naked
  * /commercial/opportunities page — otherwise flipping status while
@@ -2334,22 +2334,36 @@ function CustomerQuickSheet({
             </section>
           )}
 
-          {/* ─── Closed deals — compact list ─── */}
+          {/* ─── Closed deals — compact list. Audit fix 2026-07-08:
+              when the sheet is opened from a closed deal chip (?focus
+              matches a terminal-status opp), highlight that row so
+              users know which one they clicked, matching the active-
+              deals section's focused-ring treatment. */}
           {closedDeals.length > 0 && (
             <section>
               <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
                 Closed ({closedDeals.length})
               </div>
               <ul className="space-y-1">
-                {closedDeals.slice(0, 5).map((d) => (
-                  <li key={d.id} className="flex items-center gap-2 text-[12px] text-ppp-charcoal-700">
-                    <StatusPill status={d.status} />
-                    <span className="truncate flex-1">{d.title || "(untitled)"}</span>
-                    <span className="text-ppp-charcoal-500 shrink-0">
-                      {formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}
-                    </span>
-                  </li>
-                ))}
+                {closedDeals.slice(0, 5).map((d) => {
+                  const isFocused = d.id === focusOppId;
+                  return (
+                    <li
+                      key={d.id}
+                      className={`flex items-center gap-2 text-[12px] text-ppp-charcoal-700 ${
+                        isFocused
+                          ? "rounded-md border border-cc-brand-300 bg-cc-brand-50/40 ring-1 ring-cc-brand-200 px-2 py-1"
+                          : "px-2 py-0.5"
+                      }`}
+                    >
+                      <StatusPill status={d.status} />
+                      <span className="truncate flex-1">{d.title || "(untitled)"}</span>
+                      <span className="text-ppp-charcoal-500 shrink-0">
+                        {formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}
+                      </span>
+                    </li>
+                  );
+                })}
                 {closedDeals.length > 5 && (
                   <li className="text-[11px] text-ppp-charcoal-500 italic pt-1">
                     +{closedDeals.length - 5} more in account history
