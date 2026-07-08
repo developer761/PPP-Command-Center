@@ -63,7 +63,6 @@ import {
   clearDebriefFlagOnReopen,
 } from "@/lib/commercial/win-loss/debrief";
 import DebriefFields from "@/components/commercial/debrief-fields";
-import { Banner, BannerActions, BannerCta } from "@/components/commercial/banner";
 import {
   listOpportunityAttachments,
   archiveOpportunityAttachment,
@@ -1065,21 +1064,14 @@ export default async function OpportunityDetailPage({
           </span>
         </div>
       )}
-      {/* Karan 2026-07-07 UI polish: replaced the loud "amber-50 border
-          amber-200 with amber-900 text" banner with the shared Banner
-          primitive so all attention banners look consistent (3px stripe,
-          gradient tint, icon puck, tight two-line body). */}
-      {(isTerminalOpportunityStatus(opp.status)) &&
-        !opp.win_loss_debriefed_at && (
-        <Banner variant="warn" title="Debrief this deal">
-          A quick note on the competitor + what tipped the outcome feeds the quarterly review.
-          <BannerActions>
-            <BannerCta href={`/commercial/opportunities/${opp.id}?tab=debrief`}>
-              Add debrief
-            </BannerCta>
-          </BannerActions>
-        </Banner>
-      )}
+      {/* Karan 2026-07-07: banner removed entirely. The Debrief tab
+          already carries an amber dot (see needsAttention in the tab
+          bar below) when a debrief is pending — a full-width banner
+          repeating the same message is redundant noise. The tab dot +
+          the "Won"/"Lost" status pill in the header are enough. Same
+          reasoning for the previous "This deal is Won" blue banner —
+          the Invoices tab in the tab bar + the "Won" status pill
+          already signal the state. */}
       <header>
         <Link
           href="/commercial/opportunities"
@@ -1219,7 +1211,15 @@ export default async function OpportunityDetailPage({
                 >
                   {t.label}
                   {needsAttention && (
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" aria-label="Debrief pending" />
+                    // Karan 2026-07-07: bumped from w-1.5 dot to a small
+                    // amber ring badge so it's visible without a banner
+                    // shouting at the user. The tab label + dot combo
+                    // now carries all the "debrief pending" signal.
+                    <span
+                      className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-amber-500 ring-2 ring-amber-100"
+                      aria-label="Debrief pending"
+                      title="This deal closed without a debrief — click to add one."
+                    />
                   )}
                 </Link>
               </li>
@@ -1879,18 +1879,10 @@ async function InfoTab({
           className="lg:col-span-2"
         />
       )}
-      {opp.status === "won" && (
-        <div className="lg:col-span-2">
-          <Banner variant="success" title="This deal is Won — ready to bill">
-            The Invoices tab has the progress bars, roll-up, and per-invoice history for this deal.
-            <BannerActions>
-              <BannerCta href={`/commercial/opportunities/${opp.id}?tab=invoices`}>
-                Open Invoices
-              </BannerCta>
-            </BannerActions>
-          </Banner>
-        </div>
-      )}
+      {/* Karan 2026-07-07: "This deal is Won — ready to bill" banner
+          deleted. The Won status pill in the page header + the
+          Invoices tab in the tab bar already signal what needs doing.
+          A banner repeating the same message is noise. */}
       <Card
         title="Deal"
         tone="cc-brand"
