@@ -2234,7 +2234,6 @@ async function OpportunitiesTab({
             accountId={accountId}
             statusEnteredAt={statusEnteredMap.get(dealRow.id) ?? null}
             taskStats={taskStatsMap.get(dealRow.id) ?? null}
-            lastNote={lastNoteMap.get(dealRow.id) ?? null}
             primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
             fileCount={attachmentMap.get(dealRow.id) ?? 0}
             submittalStats={submittalMap.get(dealRow.id) ?? null}
@@ -3853,7 +3852,6 @@ function DealDrillIn({
   accountId: string;
   statusEnteredAt: string | null;
   taskStats: { open: number; overdue: number; due_soon: number } | null;
-  lastNote: { created_at: string; author_label: string | null } | null;
   primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
   fileCount: number;
   submittalStats: { total: number; awaiting_response: number } | null;
