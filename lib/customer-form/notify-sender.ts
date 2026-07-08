@@ -43,6 +43,18 @@ type NotifyInput = {
   writebackSkipped?: boolean;
 };
 
+/** Human-readable reason the submission produced no color writes. Katie
+ *  2026-07-08: "Notes-only submission" was ambiguous — did the WO have no
+ *  rooms (exterior)? Did the customer skip all colors on a WO that DID
+ *  have rooms? These are very different states and admin needs to know
+ *  which. Determined at email build time from lineItemCount alone. */
+function notesOnlyDetailCopy(lineItemCount: number): string {
+  if (lineItemCount === 0) {
+    return "This work order has no interior rooms in Salesforce — the customer only had a notes field to fill in (typical for exterior-only WOs). Open Mail Hub to read what they wrote.";
+  }
+  return `This work order has ${lineItemCount} room${lineItemCount === 1 ? "" : "s"} in Salesforce, but the customer submitted without picking any colors — only project notes came through. Follow up with them if colors are still needed. Open Mail Hub to read the notes.`;
+}
+
 function adminClient() {
   return createSupabaseAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -130,12 +142,14 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
       } for this work order (test mode or paused). Open Mail Hub to review + manually reconcile with SF if needed.`
     : "";
 
-  // Body line about "N rooms": doesn't apply when the customer submitted
-  // notes-only on a WO with zero line items — call that out explicitly so
-  // the admin opens Mail Hub for the actual notes instead of expecting
-  // structured per-room data.
+  // Body line about "N rooms": doesn't apply when no color writes fired.
+  // Katie 2026-07-08: distinguish two very different notes-only cases —
+  // (a) exterior WO with zero rooms in SF, and (b) rooms exist but the
+  // customer skipped all color picks. Both used to say "Notes-only
+  // submission" ambiguously; now the copy names the actual state so
+  // admin knows whether to expect colors or not.
   const lineItemsLine = input.notesOnly
-    ? "No room breakdown — the customer's notes are the whole submission. Open Mail Hub to read what they wrote."
+    ? notesOnlyDetailCopy(input.lineItemCount)
     : `${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"} on this submission.`;
   const text = [
     `${customer} ${verb}${input.workOrderNumber ? ` for WO #${input.workOrderNumber}` : ""}.`,
@@ -172,7 +186,10 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
         </p>
         ${
           input.notesOnly
-            ? `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">${input.workOrderNumber ? `WO #${escapeHtml(input.workOrderNumber)} · ` : ""}Notes-only submission — open Mail Hub for what they wrote.</p>`
+            ? `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">${input.workOrderNumber ? `WO #${escapeHtml(input.workOrderNumber)} · ` : ""}${input.lineItemCount === 0 ? "No interior rooms on this WO" : "Rooms existed but no colors picked"}</p>
+             <p style="margin:8px 0 0 0; padding:10px; background:#fffbeb; border-left:3px solid #d97706; color:#78350f; font-size:10pt;">
+                ${escapeHtml(notesOnlyDetailCopy(input.lineItemCount))}
+             </p>`
             : input.workOrderNumber
             ? `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">WO #${escapeHtml(input.workOrderNumber)} · ${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"}</p>`
             : `<p style="margin:4px 0 0 0; color:#666; font-size:10pt;">${input.lineItemCount} room${input.lineItemCount === 1 ? "" : "s"} on this submission</p>`
