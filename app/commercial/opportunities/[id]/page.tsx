@@ -1347,11 +1347,41 @@ async function OpportunityInvoicesPanel({
   errorMessage?: string;
 }) {
   const invoices = await listCommercialInvoices({ opportunityId: oppId });
-  // Roll-ups — exclude drafts + voids so the numbers reflect real billing.
-  const billable = invoices.filter((i) => i.status !== "draft" && i.status !== "void");
-  const totalInvoicedCents = billable.reduce((acc, i) => acc + i.total_cents, 0);
-  const totalPaidCents = billable.reduce((acc, i) => acc + i.paid_cents, 0);
+  // Roll-ups (Karan 2026-07-07 bug fix): earlier version excluded drafts
+  // from the totals, so a $9K sent + $1.2K draft + $200 draft opp showed
+  // "$9K invoiced" and confused the operator. Fix: include EVERY non-void
+  // invoice in the totals — this matches the mental model "these are all
+  // the invoices I made for this deal." Drafts still contribute $0 to
+  // Paid (by definition — you can't record a payment against a draft
+  // that no one's seen), so Balance = Invoiced - Paid stays accurate.
+  // Also expose a draftCount + draftTotalCents so we can render a small
+  // "N drafts, $X pending — not yet sent" hint under the strip.
+  const nonVoid = invoices.filter((i) => i.status !== "void");
+  const totalInvoicedCents = nonVoid.reduce((acc, i) => acc + i.total_cents, 0);
+  const totalPaidCents = nonVoid.reduce((acc, i) => acc + i.paid_cents, 0);
   const totalBalanceCents = totalInvoicedCents - totalPaidCents;
+  const draftInvoices = invoices.filter((i) => i.status === "draft");
+  const draftCount = draftInvoices.length;
+  const draftTotalCents = draftInvoices.reduce((acc, i) => acc + i.total_cents, 0);
+  const anyOverdue = invoices.some((i) => deriveInvoiceStatus(i) === "overdue");
+  // Master progress bar tone follows the same rule the individual rows do:
+  // fully paid → emerald, some paid → blue, any overdue → rose, otherwise
+  // neutral. Rose beats blue when both apply because overdue is the more
+  // urgent signal.
+  const masterPct =
+    totalInvoicedCents > 0
+      ? Math.min(100, Math.round((totalPaidCents / totalInvoicedCents) * 100))
+      : 0;
+  const masterBarTone =
+    totalInvoicedCents === 0
+      ? "bg-ppp-charcoal-200"
+      : totalPaidCents >= totalInvoicedCents
+      ? "bg-emerald-500"
+      : anyOverdue
+      ? "bg-rose-500"
+      : totalPaidCents > 0
+      ? "bg-blue-500"
+      : "bg-ppp-charcoal-300";
   // % of contract billed — how much of the estimated deal value have we
   // actually invoiced? Above 100% = we billed for more than we estimated
   // (change orders, scope creep, or the estimate was low). Below = still
@@ -1475,6 +1505,48 @@ async function OpportunityInvoicesPanel({
               />
             )}
           </div>
+
+          {/* Master progress bar — Karan 2026-07-07: "there should be a
+              master progress bar with all the invoices combined." Fills
+              from 0 → 100% of paid_cents / invoiced_cents across the
+              whole deal. Tone escalates emerald (paid) > rose (overdue) >
+              blue (partial) > neutral (unpaid). Sits between the mini-
+              stat strip and the per-invoice list so the whole deal reads
+              top-down: totals → progress → per-invoice detail. */}
+          {totalInvoicedCents > 0 && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+                  Deal progress
+                </div>
+                <div className="text-[11px] text-ppp-charcoal-600 tabular-nums">
+                  <strong className="text-ppp-charcoal">{formatCentsFull(totalPaidCents)}</strong>
+                  <span className="text-ppp-charcoal-500"> of {formatCentsFull(totalInvoicedCents)} paid</span>
+                  <span className="text-ppp-charcoal-400"> · {masterPct}%</span>
+                </div>
+              </div>
+              <div className="h-2.5 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${masterBarTone}`}
+                  style={{ width: `${masterPct}%` }}
+                />
+              </div>
+              {draftCount > 0 && (
+                <div className="mt-1.5 text-[11px] text-ppp-charcoal-500 flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className="inline-flex items-center justify-center h-4 w-4 rounded bg-ppp-charcoal-100 text-ppp-charcoal-500"
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M12 8v4M12 16h.01" />
+                      <circle cx="12" cy="12" r="10" />
+                    </svg>
+                  </span>
+                  Includes {draftCount} draft{draftCount === 1 ? "" : "s"} ({formatCentsFull(draftTotalCents)}) not yet sent to the customer.
+                </div>
+              )}
+            </div>
+          )}
           <ul className="space-y-1.5">
             {invoices.map((inv) => {
               const displayStatus = deriveInvoiceStatus(inv);

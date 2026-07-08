@@ -792,66 +792,81 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <span className="text-[11px] font-semibold text-blue-700 group-open/details:hidden">Edit</span>
           <span className="text-[11px] font-semibold text-ppp-charcoal-500 hidden group-open/details:inline">Close</span>
         </summary>
-        <form action={updateCoreFieldsAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Karan 2026-07-07: Details form used to render as 6 fields
+            stacked in 2 loud ALL-CAPS columns — got crowded fast when a
+            deal had multiple invoices. New layout uses softer sentence-
+            case labels (SOFT_LABEL_CLS below) and puts the 4 short fields
+            on a single 4-col row when width allows, then Message + Notes
+            span full-width. Same fields, half the vertical footprint. */}
+        <form action={updateCoreFieldsAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 space-y-3">
           <input type="hidden" name="invoice_id" value={invoice.id} />
-          <div>
-            <label htmlFor="dt-due" className={LABEL_CLS}>Due date</label>
-            <DueDatePickerWithPresets
-              id="dt-due"
-              name="due_at"
-              defaultValue={invoice.due_at ? invoice.due_at.slice(0, 10) : ""}
-              disabled={isVoid}
-            />
+          {/* Row 1 — 4 short fields side-by-side on md+, 2 per row on sm,
+              stacked on mobile. Due-date presets keep the taller footprint
+              but fit within the same 4-col track. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <label htmlFor="dt-due" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Due date</label>
+              <DueDatePickerWithPresets
+                id="dt-due"
+                name="due_at"
+                defaultValue={invoice.due_at ? invoice.due_at.slice(0, 10) : ""}
+                disabled={isVoid}
+              />
+            </div>
+            <div>
+              <label htmlFor="dt-terms" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Payment terms</label>
+              {/* Karan 2026-07-07 Alex-love: datalist gives Alex a picker
+                  (Net 15/30/45/60/EOM) but keeps the free-text field so
+                  custom wording like "Net 30 upon delivery" still works. */}
+              <input
+                id="dt-terms"
+                name="payment_terms"
+                type="text"
+                maxLength={60}
+                list="dt-terms-presets"
+                defaultValue={invoice.payment_terms ?? ""}
+                disabled={isVoid}
+                placeholder="Net 30"
+                className={INPUT_CLS}
+              />
+              <datalist id="dt-terms-presets">
+                <option value="Due on receipt" />
+                <option value="Net 15" />
+                <option value="Net 30" />
+                <option value="Net 45" />
+                <option value="Net 60" />
+                <option value="Net 90" />
+                <option value="End of month" />
+                <option value="50% deposit, 50% on completion" />
+                <option value="Progress billing per contract" />
+              </datalist>
+            </div>
+            <div>
+              <label htmlFor="dt-tax" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">
+                Tax % (flat)
+                {!isDraft && !isVoid && <span className="ml-1 text-[10px] font-normal text-ppp-charcoal-400">(draft-only)</span>}
+              </label>
+              <input id="dt-tax" name="tax_pct" type="number" step="0.001" min="0" max="100" defaultValue={invoice.tax_pct} disabled={!isDraft} className={INPUT_CLS} />
+            </div>
+            <div>
+              <label htmlFor="dt-po" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">PO number</label>
+              <input id="dt-po" name="po_number" type="text" maxLength={80} defaultValue={invoice.po_number ?? ""} disabled={isVoid} className={INPUT_CLS} />
+            </div>
           </div>
-          <div>
-            <label htmlFor="dt-terms" className={LABEL_CLS}>Payment terms</label>
-            {/* Karan 2026-07-07 Alex-love: datalist gives Alex a picker
-                (Net 15/30/45/60/EOM) but keeps the free-text field so
-                custom wording like "Net 30 upon delivery" still works. */}
-            <input
-              id="dt-terms"
-              name="payment_terms"
-              type="text"
-              maxLength={60}
-              list="dt-terms-presets"
-              defaultValue={invoice.payment_terms ?? ""}
-              disabled={isVoid}
-              placeholder="Net 30"
-              className={INPUT_CLS}
-            />
-            <datalist id="dt-terms-presets">
-              <option value="Due on receipt" />
-              <option value="Net 15" />
-              <option value="Net 30" />
-              <option value="Net 45" />
-              <option value="Net 60" />
-              <option value="Net 90" />
-              <option value="End of month" />
-              <option value="50% deposit, 50% on completion" />
-              <option value="Progress billing per contract" />
-            </datalist>
-          </div>
-          <div>
-            <label htmlFor="dt-tax" className={LABEL_CLS}>
-              Tax % (flat)
-              {!isDraft && !isVoid && <span className="ml-1 text-[10px] font-medium text-ppp-charcoal-400">(draft-only)</span>}
-            </label>
-            <input id="dt-tax" name="tax_pct" type="number" step="0.001" min="0" max="100" defaultValue={invoice.tax_pct} disabled={!isDraft} className={INPUT_CLS} />
-          </div>
-          <div>
-            <label htmlFor="dt-po" className={LABEL_CLS}>PO number</label>
-            <input id="dt-po" name="po_number" type="text" maxLength={80} defaultValue={invoice.po_number ?? ""} disabled={isVoid} className={INPUT_CLS} />
-          </div>
-          <div className="sm:col-span-2">
-            <label htmlFor="dt-msg" className={LABEL_CLS}>Message to customer</label>
-            <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={isVoid} placeholder="Optional — appears above line items on the customer's copy." className={TEXTAREA_CLS} />
-          </div>
-          <div className="sm:col-span-2">
-            <label htmlFor="dt-notes" className={LABEL_CLS}>Internal notes</label>
-            <textarea id="dt-notes" name="notes" rows={2} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={isVoid} placeholder="Never on the customer copy." className={TEXTAREA_CLS} />
+          {/* Row 2 — full-width text areas, 2-col grid on md+ so message
+              and internal notes sit side-by-side without wrapping. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="dt-msg" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Message to customer</label>
+              <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={isVoid} placeholder="Optional — appears above line items on the customer's copy." className={TEXTAREA_CLS} />
+            </div>
+            <div>
+              <label htmlFor="dt-notes" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Internal notes</label>
+              <textarea id="dt-notes" name="notes" rows={2} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={isVoid} placeholder="Never on the customer copy." className={TEXTAREA_CLS} />
+            </div>
           </div>
           {!isVoid && (
-            <div className="sm:col-span-2 flex justify-end">
+            <div className="flex justify-end">
               <button type="submit" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px]">
                 Save details
               </button>

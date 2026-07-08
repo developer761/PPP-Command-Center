@@ -37,8 +37,6 @@ type SP = Promise<{
   status_error?: string;
 }>;
 
-type ViewMode = "list" | "grouped";
-
 export default async function CommercialInvoicesPage({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const search = pickFirst(sp.q);
@@ -49,8 +47,12 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     ? ("overdue" as InvoiceStatus)
     : undefined;
   const sortKey = pickFirst(sp.sort) ?? "recent";
-  const viewRaw = pickFirst(sp.view);
-  const viewMode: ViewMode = viewRaw === "grouped" ? "grouped" : "list";
+  // Karan 2026-07-07: grouped-by-opp is the ONLY view now. The old flat
+  // list toggle is retired — it made the "which invoices belong to what
+  // deal" question much harder to answer at a glance and clashed with
+  // the new master progress bar per opp. Any legacy ?view=list URL
+  // params silently fall through to grouped (no redirect needed since
+  // there was no meaningful behavior loss).
   const accountIdRaw = pickFirst(sp.account_id);
   const accountIdFilter = accountIdRaw && UUID_RE.test(accountIdRaw) ? accountIdRaw : undefined;
   const deletedFlash = pickFirst(sp.deleted) === "1";
@@ -58,14 +60,31 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const invoiceErrorsFlash = Number(pickFirst(sp.invoice_errors) ?? 0);
   const statusErrorFlash = pickFirst(sp.status_error);
 
-  const [invoices, accounts, accountFilter, allOpps] = await Promise.all([
-    listCommercialInvoices({ search, status: statusFilter, accountId: accountIdFilter }),
+  // Karan 2026-07-07: search now matches invoice_number OR opp title.
+  // The DB layer only does invoice_number ilike, so we fetch without a
+  // search filter and post-filter here using the loaded oppById map.
+  // At current volumes (< 5K invoices per workspace) this is fast enough
+  // to be worth the simplicity. If we hit scale we swap in an RPC that
+  // joins commercial_invoices to commercial_opportunities server-side.
+  const [invoicesRaw, accounts, accountFilter, allOpps] = await Promise.all([
+    listCommercialInvoices({ status: statusFilter, accountId: accountIdFilter }),
     listCommercialAccounts(),
     accountIdFilter ? getCommercialAccount(accountIdFilter) : Promise.resolve(null),
     listCommercialOpportunities({}),
   ]);
   const accountById = new Map(accounts.map((a) => [a.id, a]));
   const oppById = new Map(allOpps.map((o) => [o.id, o]));
+  const invoices = search
+    ? (() => {
+        const q = search.toLowerCase();
+        return invoicesRaw.filter((inv) => {
+          if (inv.invoice_number.toLowerCase().includes(q)) return true;
+          const opp = oppById.get(inv.opportunity_id);
+          if (opp && opp.title.toLowerCase().includes(q)) return true;
+          return false;
+        });
+      })()
+    : invoicesRaw;
   // Only Won opps can be invoiced; sort newest first so the picker shows
   // the most recent wins on top (Karan's typical flow after a Win/Loss
   // Debrief lands).
@@ -163,7 +182,6 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     if (statusFilter) p.set("status", statusFilter);
     if (newSort !== "recent") p.set("sort", newSort);
     if (accountIdFilter) p.set("account_id", accountIdFilter);
-    if (viewMode !== "list") p.set("view", viewMode);
     return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
   };
   const setStatusHref = (newStatus: InvoiceStatus | null): string => {
@@ -172,16 +190,6 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     if (newStatus) p.set("status", newStatus);
     if (sortKey !== "recent") p.set("sort", sortKey);
     if (accountIdFilter) p.set("account_id", accountIdFilter);
-    if (viewMode !== "list") p.set("view", viewMode);
-    return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
-  };
-  const setViewHref = (newView: ViewMode): string => {
-    const p = new URLSearchParams();
-    if (search) p.set("q", search);
-    if (statusFilter) p.set("status", statusFilter);
-    if (sortKey !== "recent") p.set("sort", sortKey);
-    if (accountIdFilter) p.set("account_id", accountIdFilter);
-    if (newView !== "list") p.set("view", newView);
     return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
   };
 
@@ -392,7 +400,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               name="q"
               type="search"
               defaultValue={search ?? ""}
-              placeholder="Search by invoice number…"
+              placeholder="Search by invoice # or opportunity title…"
               className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
             />
           </div>
@@ -419,44 +427,6 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                 </Link>
               );
             })}
-          </div>
-
-          {/* View toggle — List (default flat) vs Grouped (per opp).
-              Karan 2026-07-07: "have the invoices for those in the
-              invoice tab itself and don't automatically direct them to
-              the opportunities tab, leave them in the invoices tab
-              with the new layout for that specific opportunity." */}
-          <div className="hidden md:inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden shrink-0">
-            <Link
-              href={setViewHref("list")}
-              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1 touch-manipulation ${
-                viewMode === "list"
-                  ? "bg-cc-brand-50 text-cc-brand-700"
-                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-              }`}
-              title="Show every invoice in one flat list"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M3 6h18 M3 12h18 M3 18h18" />
-              </svg>
-              List
-            </Link>
-            <Link
-              href={setViewHref("grouped")}
-              className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1 touch-manipulation border-l border-ppp-charcoal-200 ${
-                viewMode === "grouped"
-                  ? "bg-cc-brand-50 text-cc-brand-700"
-                  : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-              }`}
-              title="Group invoices under their parent opportunity — see roll-up + progress across the whole deal"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <rect x="3" y="3" width="18" height="6" rx="1" />
-                <rect x="3" y="11" width="12" height="4" rx="1" />
-                <rect x="3" y="17" width="12" height="4" rx="1" />
-              </svg>
-              By opp
-            </Link>
           </div>
 
           {/* Sort popover */}
@@ -533,7 +503,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           </div>
           <p className="mt-1 text-sm text-ppp-charcoal-500">
             {anyFilterActive
-              ? "Try clearing filters or searching by invoice number."
+              ? "Try clearing filters or searching by invoice number or opportunity title."
               : "Convert a Won opportunity into an invoice to get started."}
           </p>
           {anyFilterActive ? (
@@ -552,38 +522,16 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             </Link>
           )}
         </div>
-      ) : viewMode === "grouped" ? (
-        // Grouped-by-opportunity view. Each opp becomes a card with its
-        // own roll-up + child invoices, so users can see the full
-        // progress-billing story per deal without leaving the invoices
-        // page. Karan 2026-07-07: "don't automatically direct them to
-        // the opportunities tab, leave them in the invoices tab with the
-        // new layout for that specific opportunity."
+      ) : (
+        // Grouped-by-opportunity is now the only view (Karan 2026-07-07:
+        // the flat-list toggle was retired). Each opp card has its own
+        // roll-up + master progress bar + child invoices so the full
+        // progress-billing story reads top-down per deal.
         <GroupedByOpp
           invoices={sorted}
           oppById={oppById}
           accountById={accountById}
         />
-      ) : (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm">
-          <div className="px-4 py-3 border-b border-ppp-charcoal-100">
-            <h2 className="text-sm font-bold text-ppp-charcoal">
-              {sorted.length} invoice{sorted.length === 1 ? "" : "s"}
-            </h2>
-            <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-              Sorted by {currentSortLabel.toLowerCase()}
-            </p>
-          </div>
-          <ul className="divide-y divide-ppp-charcoal-100">
-            {sorted.map((inv) => (
-              <InvoiceRow
-                key={inv.id}
-                invoice={inv}
-                accountName={accountById.get(inv.account_id)?.company_name ?? "—"}
-              />
-            ))}
-          </ul>
-        </div>
       )}
     </div>
   );
@@ -627,14 +575,34 @@ function GroupedByOpp({
       {oppOrder.map(([oppId, groupInvoices]) => {
         const opp = oppById.get(oppId);
         const account = opp ? accountById.get(opp.account_id) : null;
-        // Roll-up per opp — same rules as OpportunityInvoicesPanel:
-        // exclude drafts + voids from billable totals so numbers reflect
-        // real customer-facing billing.
-        const billable = groupInvoices.filter((i) => i.status !== "draft" && i.status !== "void");
-        const totalInvoiced = billable.reduce((s, i) => s + i.total_cents, 0);
-        const totalPaid = billable.reduce((s, i) => s + i.paid_cents, 0);
+        // Roll-up per opp — Karan 2026-07-07 bug fix: earlier version
+        // excluded drafts from Invoiced total, so a $9K sent + $1.2K
+        // draft opp showed "$9K invoiced" and confused the operator.
+        // Include every non-void invoice so the total matches "all the
+        // invoices I've created for this deal." Drafts contribute $0 to
+        // Paid by definition, so Balance stays accurate.
+        const nonVoid = groupInvoices.filter((i) => i.status !== "void");
+        const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
+        const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
         const totalBalance = totalInvoiced - totalPaid;
+        const draftInGroup = groupInvoices.filter((i) => i.status === "draft");
+        const draftGroupCount = draftInGroup.length;
+        const draftGroupCents = draftInGroup.reduce((s, i) => s + i.total_cents, 0);
         const overduePresent = groupInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
+        const groupPct =
+          totalInvoiced > 0
+            ? Math.min(100, Math.round((totalPaid / totalInvoiced) * 100))
+            : 0;
+        const groupBarTone =
+          totalInvoiced === 0
+            ? "bg-ppp-charcoal-200"
+            : totalPaid >= totalInvoiced
+            ? "bg-emerald-500"
+            : overduePresent
+            ? "bg-rose-500"
+            : totalPaid > 0
+            ? "bg-blue-500"
+            : "bg-ppp-charcoal-300";
         // Sort inside a group chronologically so progress-billing reads
         // in the order the invoices were issued.
         const sortedGroup = [...groupInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -706,6 +674,37 @@ function GroupedByOpp({
                   <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance)}</div>
                 </div>
               </div>
+              {/* Master progress bar per opp group. Same tone rules as
+                  the opp-detail Invoices panel: emerald=paid, blue=partial,
+                  rose=any overdue, neutral=unpaid. Sits below the roll-up
+                  strip so the deal reads: totals → progress → per-invoice
+                  detail. Draft caption clarifies why Invoiced looks bigger
+                  than what's actually been sent to the customer. */}
+              {totalInvoiced > 0 && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+                      Deal progress
+                    </div>
+                    <div className="text-[10.5px] text-ppp-charcoal-600 tabular-nums">
+                      <strong className="text-ppp-charcoal">{formatCentsFull(totalPaid)}</strong>
+                      <span className="text-ppp-charcoal-500"> of {formatCentsFull(totalInvoiced)}</span>
+                      <span className="text-ppp-charcoal-400"> · {groupPct}%</span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${groupBarTone}`}
+                      style={{ width: `${groupPct}%` }}
+                    />
+                  </div>
+                  {draftGroupCount > 0 && (
+                    <div className="mt-1 text-[10.5px] text-ppp-charcoal-500">
+                      Includes {draftGroupCount} draft{draftGroupCount === 1 ? "" : "s"} ({formatCentsFull(draftGroupCents)}) not yet sent.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {/* Child invoices */}
             <ul className="divide-y divide-ppp-charcoal-100">
