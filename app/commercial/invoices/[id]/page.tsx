@@ -290,6 +290,11 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   const daysUntilDue = daysBetween(new Date().toISOString(), invoice.due_at);
   const isDraft = invoice.status === "draft";
   const isVoid = invoice.status === "void";
+  // Karan 2026-07-08: orphan detection. If the parent deal or account
+  // was soft-deleted before the cascade guard shipped, this invoice can
+  // exist without a live parent. Surface a clear "Orphan" affordance
+  // so the user knows their options are Void or Delete.
+  const isOrphan = !opp || !account;
 
   return (
     <div className="space-y-5">
@@ -337,6 +342,27 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           {invoice.invoice_number}
         </span>
       </nav>
+
+      {isOrphan && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 flex items-start gap-2.5">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-700 mt-0.5 flex-shrink-0">
+            <path d="M12 9v4M12 17h.01" />
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          </svg>
+          <div className="min-w-0 flex-1">
+            <div className="text-[12.5px] font-bold text-amber-900">
+              {!opp && !account
+                ? "Orphaned — parent deal and account were deleted"
+                : !opp
+                ? "Orphaned — parent deal was deleted"
+                : "Orphaned — parent account was deleted"}
+            </div>
+            <div className="text-[11.5px] text-amber-800 mt-0.5 leading-snug">
+              This invoice still exists but its parent record is gone. Void it (keeps history) or delete it (removes it from lists) using the actions below.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sibling nav — only shown when this opp has multiple invoices
           (progress billing). Prev/Next hops + "N of M" counter + link
