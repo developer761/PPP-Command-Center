@@ -121,83 +121,73 @@ export default function DebriefFields(props: Props) {
   // doesn't) based on terminal status.
   if (!terminal) return null;
 
-  const headerCopy = terminal === "won"
-    ? { title: "Win Debrief", sub: "Capture what sealed it." }
-    : terminal === "lost"
-    ? { title: "Loss Debrief", sub: "Capture who won + why. Feeds the quarterly review." }
-    : { title: "No-Bid Debrief", sub: "Why we passed on this one." };
-
   const factorRequired = terminal !== "won";
-
+  // Karan 2026-07-07 UI overhaul: dropped the emerald wrapper section +
+  // ALL-CAPS labels in favor of an inline space-y-4 group with softer
+  // sentence-case labels (matching the Details form pattern on the
+  // invoice detail). No more "double-nested card" feeling when this
+  // renders inside DebriefFormCard.
+  const softLabel = "block text-[12px] font-semibold text-ppp-charcoal-700 mb-1";
   return (
     <section
       ref={sectionRef}
       data-debrief
-      className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/30 overflow-hidden animate-fade-up scroll-mt-20"
+      className="space-y-4 animate-fade-up scroll-mt-20"
       aria-label="Win/Loss debrief"
     >
-      <header className="px-4 sm:px-5 pt-4 pb-3 border-b border-emerald-100 bg-emerald-50/60">
-        <h3 className="text-sm font-semibold text-ppp-charcoal">
-          {headerCopy.title}
-        </h3>
-        <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-          {headerCopy.sub}
-        </p>
-      </header>
+      <CompetitorTypeahead
+        outcome={terminal}
+        initialValue={props.initialCompetitor ?? ""}
+        softLabelCls={softLabel}
+      />
 
-      <div className="px-4 sm:px-5 py-4 space-y-4">
-        <CompetitorTypeahead
-          outcome={terminal}
-          initialValue={props.initialCompetitor ?? ""}
+      <div>
+        <label className={softLabel}>
+          {terminal === "won" ? "What sealed it?" : "Deciding factor"}
+          {factorRequired && <span className="text-rose-700 ml-1">*</span>}
+        </label>
+        <FactorButtonGrid
+          initialValue={props.initialDecidingFactor ?? ""}
+          required={factorRequired}
         />
-
-        <div>
-          <label className={LABEL_CLS}>
-            {terminal === "won" ? "What sealed it?" : "Deciding factor"}
-            {factorRequired && <span className="text-rose-700 ml-1">*</span>}
-          </label>
-          <FactorButtonGrid
-            initialValue={props.initialDecidingFactor ?? ""}
-            required={factorRequired}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="debrief_lessons" className={LABEL_CLS}>
-            {terminal === "won" ? "What worked? (optional)" : "What would we do differently? (optional)"}
-          </label>
-          <textarea
-            id="debrief_lessons"
-            name="debrief_lessons"
-            defaultValue={props.initialLessons ?? ""}
-            rows={3}
-            maxLength={2000}
-            placeholder={
-              terminal === "won"
-                ? "e.g. Our portfolio sold them — lean harder on portfolio in pitches."
-                : "e.g. We quoted 6 months but they wanted 4. Stop padding K-12 timelines."
-            }
-            className={`${TEXTAREA_CLS} min-h-[88px]`}
-          />
-        </div>
-
-        <details className="group">
-          <summary className="cursor-pointer text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none min-h-[28px] flex items-center gap-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-            Add internal notes
-          </summary>
-          <textarea
-            name="debrief_internal_notes"
-            defaultValue={props.initialInternalNotes ?? ""}
-            rows={2}
-            maxLength={2000}
-            placeholder="Anything else not captured above — private to the team."
-            className={`mt-2 ${TEXTAREA_CLS} min-h-[66px]`}
-          />
-        </details>
       </div>
+
+      <div>
+        <label htmlFor="debrief_lessons" className={softLabel}>
+          {terminal === "won" ? "What worked?" : "What would we do differently?"}
+          <span className="ml-1 text-[11px] font-normal text-ppp-charcoal-400">(optional)</span>
+        </label>
+        <textarea
+          id="debrief_lessons"
+          name="debrief_lessons"
+          defaultValue={props.initialLessons ?? ""}
+          rows={3}
+          maxLength={2000}
+          placeholder={
+            terminal === "won"
+              ? "e.g. Our portfolio sold them — lean harder on portfolio in pitches."
+              : "e.g. We quoted 6 months but they wanted 4. Stop padding K-12 timelines."
+          }
+          className={`${TEXTAREA_CLS} min-h-[88px]`}
+        />
+      </div>
+
+      <details className="group">
+        <summary className="cursor-pointer text-[12px] font-medium text-ppp-charcoal-500 hover:text-ppp-charcoal select-none min-h-[28px] flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+          Add internal notes
+        </summary>
+        <textarea
+          name="debrief_internal_notes"
+          defaultValue={props.initialInternalNotes ?? ""}
+          rows={2}
+          maxLength={2000}
+          placeholder="Anything not captured above — private to the team."
+          className={`mt-2 ${TEXTAREA_CLS} min-h-[66px]`}
+        />
+      </details>
     </section>
   );
 }
@@ -231,10 +221,10 @@ function FactorButtonGrid({
               key={f.value}
               type="button"
               onClick={() => setPicked(active ? "" : f.value)}
-              className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-colors min-h-[44px] touch-manipulation ${
+              className={`px-3 py-2.5 rounded-lg text-[13px] font-semibold border transition-all min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 ${
                 active
-                  ? "bg-cc-brand-600 text-white border-cc-brand-600 shadow-sm shadow-emerald-600/20"
-                  : "bg-white text-ppp-charcoal border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+                  ? "bg-cc-brand-600 text-white border-cc-brand-600 shadow-sm shadow-cc-brand-600/25"
+                  : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 hover:text-cc-brand-700"
               }`}
               aria-pressed={active}
             >
@@ -255,9 +245,11 @@ function FactorButtonGrid({
 function CompetitorTypeahead({
   outcome,
   initialValue,
+  softLabelCls,
 }: {
   outcome: "won" | "lost" | "no_bid";
   initialValue: string;
+  softLabelCls?: string;
 }) {
   const [query, setQuery] = useState(initialValue);
   const [open, setOpen] = useState(false);
@@ -314,14 +306,15 @@ function CompetitorTypeahead({
   }, [query, suggestions]);
 
   const label =
-    outcome === "won" ? "Who'd we beat? (optional)" : "Who won it?";
+    outcome === "won" ? "Who'd we beat?" : "Who won it?";
   const required = outcome === "lost"; // lost requires; won + no_bid optional
 
   return (
     <div ref={wrapperRef} className="relative">
-      <label htmlFor="debrief_competitor" className={LABEL_CLS}>
+      <label htmlFor="debrief_competitor" className={softLabelCls ?? LABEL_CLS}>
         {label}
         {required && <span className="text-rose-700 ml-1">*</span>}
+        {!required && <span className="ml-1 text-[11px] font-normal text-ppp-charcoal-400">(optional)</span>}
       </label>
       <input
         ref={inputRef}

@@ -63,6 +63,7 @@ import {
   clearDebriefFlagOnReopen,
 } from "@/lib/commercial/win-loss/debrief";
 import DebriefFields from "@/components/commercial/debrief-fields";
+import { Banner, BannerActions, BannerCta } from "@/components/commercial/banner";
 import {
   listOpportunityAttachments,
   archiveOpportunityAttachment,
@@ -1064,30 +1065,20 @@ export default async function OpportunityDetailPage({
           </span>
         </div>
       )}
-      {/* Amber "Debrief needed" banner — surfaces when an opp is in a
-          terminal state (won/lost/no_bid) but win_loss_debriefed_at is
-          NULL. Quarterly report quality + Alex follow-through depend on
-          this; banner only goes away when the structured debrief lands. */}
+      {/* Karan 2026-07-07 UI polish: replaced the loud "amber-50 border
+          amber-200 with amber-900 text" banner with the shared Banner
+          primitive so all attention banners look consistent (3px stripe,
+          gradient tint, icon puck, tight two-line body). */}
       {(isTerminalOpportunityStatus(opp.status)) &&
         !opp.win_loss_debriefed_at && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="flex items-start gap-2 flex-1 min-w-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-700 shrink-0 mt-0.5" aria-hidden>
-              <path d="M12 9v3.5 M12 16h.01 M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-            </svg>
-            <div className="text-sm text-amber-900">
-              <strong>Debrief needed.</strong>{" "}
-              This opportunity closed without a Win/Loss Debrief.
-              Capturing competitor + deciding factor feeds the quarterly review and helps Alex pattern-match what&apos;s working.
-            </div>
-          </div>
-          <Link
-            href={`/commercial/opportunities/${opp.id}?tab=debrief`}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-700 text-white text-[12px] font-semibold hover:bg-amber-800 active:bg-amber-900 min-h-[44px] touch-manipulation shrink-0"
-          >
-            Add debrief
-          </Link>
-        </div>
+        <Banner variant="warn" title="Debrief this deal">
+          A quick note on the competitor + what tipped the outcome feeds the quarterly review.
+          <BannerActions>
+            <BannerCta href={`/commercial/opportunities/${opp.id}?tab=debrief`}>
+              Add debrief
+            </BannerCta>
+          </BannerActions>
+        </Banner>
       )}
       <header>
         <Link
@@ -1889,24 +1880,15 @@ async function InfoTab({
         />
       )}
       {opp.status === "won" && (
-        <div className="lg:col-span-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 flex items-center justify-between gap-3 flex-wrap">
-          <span>
-            💰 <strong>This deal is Won.</strong> Bill it from the{" "}
-            <Link
-              href={`/commercial/opportunities/${opp.id}?tab=invoices`}
-              className="font-semibold underline underline-offset-2 hover:text-blue-900"
-            >
-              Invoices tab
-            </Link>{" "}
-            — progress bars, roll-up, % of contract, all in one place.
-          </span>
-          <Link
-            href={`/commercial/opportunities/${opp.id}?tab=invoices`}
-            className="inline-flex items-center gap-1 text-[12px] font-semibold text-blue-700 hover:text-blue-900 min-h-[36px] px-3"
-          >
-            Go to Invoices
-            <span aria-hidden>→</span>
-          </Link>
+        <div className="lg:col-span-2">
+          <Banner variant="success" title="This deal is Won — ready to bill">
+            The Invoices tab has the progress bars, roll-up, and per-invoice history for this deal.
+            <BannerActions>
+              <BannerCta href={`/commercial/opportunities/${opp.id}?tab=invoices`}>
+                Open Invoices
+              </BannerCta>
+            </BannerActions>
+          </Banner>
         </div>
       )}
       <Card
@@ -2282,22 +2264,27 @@ function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
   const outcomeLabel =
     opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid";
   const subhead = opp.status === "won"
-    ? "Capture what sealed it — competitor, deciding factor, and what worked. Feeds the quarterly Win/Loss report."
+    ? "Two quick fields — who you beat and what tipped it your way. Feeds the quarterly Win/Loss report."
     : opp.status === "lost"
-    ? "Capture who we lost to and why. Two minutes now pays back across the quarterly review."
-    : "Capture why we passed. Helps Alex pattern-match the bids worth declining versus chasing.";
+    ? "Two quick fields — who won and why. Feeds the quarterly Win/Loss report."
+    : "Two quick fields — who took it and why you passed. Feeds the quarterly Win/Loss report.";
+  // Karan 2026-07-07 UI overhaul: replaced the amber border-2 shouty
+  // card with a calm white card using the platform-standard 3px red
+  // left-accent stripe. Sentence-case header, softer subhead, softer
+  // sub-labels inside the form (see DebriefFields).
   return (
-    <section className="bg-white border-2 border-amber-300 rounded-xl p-5 shadow-sm">
+    <section className="relative bg-white border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600" />
       <div className="flex items-start gap-3 mb-4">
-        <div className="shrink-0 w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center" aria-hidden>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-700">
+        <div className="shrink-0 w-9 h-9 rounded-lg bg-cc-brand-50 border border-cc-brand-100 flex items-center justify-center" aria-hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cc-brand-700">
             <path d="M9 11l3 3L22 4" />
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-ppp-charcoal">Add the {outcomeLabel} debrief</h2>
-          <p className="text-[13px] text-ppp-charcoal-600 mt-1 leading-relaxed">{subhead}</p>
+          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">{outcomeLabel} debrief</h2>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 leading-relaxed">{subhead}</p>
         </div>
       </div>
       <form action={submitDebriefOnlyAction} className="space-y-3">
@@ -2306,12 +2293,12 @@ function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
             Here the status is already terminal — passing initialStatus
             renders the form fully open without a sibling select. */}
         <DebriefFields initialStatus={opp.status} />
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-3 border-t border-ppp-charcoal-100 mt-4">
           <Link
             href="/commercial/opportunities"
             className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-medium hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 transition-colors min-h-[44px] touch-manipulation"
           >
-            Skip — debrief later
+            Skip for now
           </Link>
           <button
             type="submit"
@@ -2335,15 +2322,16 @@ function DebriefReadOnlyView({
   debriefCount: number;
 }) {
   return (
-    <section className="bg-white border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50">
+    <section className="relative bg-white border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500" />
       <div className="flex items-start gap-3 mb-4">
-        <div className="shrink-0 w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center" aria-hidden>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-700">
+        <div className="shrink-0 w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center" aria-hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-700">
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-ppp-charcoal">{opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid"} Debrief</h2>
+          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">{opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid"} debrief on file</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1">
             Recorded {new Date(debrief.debriefed_at).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "America/New_York" })}
             {debriefCount > 1 && ` · ${debriefCount} debriefs on file (this is the most recent)`}
@@ -2364,10 +2352,10 @@ function DebriefReadOnlyView({
       </div>
       {debrief.lessons_learned && (
         <div className="mt-4">
-          <div className={LABEL_CLS}>
+          <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
             {opp.status === "won" ? "What worked" : "What we'd do differently"}
           </div>
-          <p className="mt-1 text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+          <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
             {debrief.lessons_learned}
           </p>
         </div>
