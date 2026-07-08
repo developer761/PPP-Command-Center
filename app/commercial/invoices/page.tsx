@@ -118,6 +118,29 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     .filter((i) => BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)))
     .reduce((acc, i) => acc + i.balance_cents, 0);
   const overdueCount = kpiSource.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
+  // AR aging buckets (Karan 2026-07-07 Alex-love feature). GCs prioritize
+  // collection effort by which invoices are furthest past due. Only compute
+  // when there's overdue balance; otherwise we skip rendering the strip.
+  const nowMs = Date.now();
+  const overdueRows = kpiSource.filter((i) => deriveInvoiceStatus(i) === "overdue" && i.due_at);
+  const agingBuckets = overdueRows.reduce(
+    (acc, i) => {
+      const days = Math.floor((nowMs - new Date(i.due_at as string).getTime()) / 86_400_000);
+      if (days <= 30) {
+        acc.b0_30_cents += i.balance_cents;
+        acc.b0_30_count += 1;
+      } else if (days <= 60) {
+        acc.b30_60_cents += i.balance_cents;
+        acc.b30_60_count += 1;
+      } else {
+        acc.b60_plus_cents += i.balance_cents;
+        acc.b60_plus_count += 1;
+      }
+      return acc;
+    },
+    { b0_30_cents: 0, b0_30_count: 0, b30_60_cents: 0, b30_60_count: 0, b60_plus_cents: 0, b60_plus_count: 0 }
+  );
+  const hasAging = agingBuckets.b0_30_cents + agingBuckets.b30_60_cents + agingBuckets.b60_plus_cents > 0;
   const paidThisMonthCents = kpiSource
     .filter((i) => i.paid_at && i.paid_at >= monthStartEtIso)
     .reduce((acc, i) => acc + i.paid_cents, 0);
@@ -322,6 +345,34 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             sub={draftCount === 0 ? "no unsent drafts" : "waiting to be sent"}
           />
         </div>
+
+        {/* AR aging breakdown — only renders when there IS overdue balance
+            so the invoice list stays quiet in the happy case. Each bucket
+            is a link into the filtered overdue list (status=overdue drills
+            all three; Alex still gets aging visibility on that page via
+            due date column). Colors escalate: amber → rose → deep-rose. */}
+        {hasAging && (
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            <AgingTile
+              label="0–30 days overdue"
+              count={agingBuckets.b0_30_count}
+              cents={agingBuckets.b0_30_cents}
+              tone="amber"
+            />
+            <AgingTile
+              label="30–60 days overdue"
+              count={agingBuckets.b30_60_count}
+              cents={agingBuckets.b30_60_cents}
+              tone="rose"
+            />
+            <AgingTile
+              label="60+ days overdue"
+              count={agingBuckets.b60_plus_count}
+              cents={agingBuckets.b60_plus_cents}
+              tone="rose-deep"
+            />
+          </div>
+        )}
       </header>
 
       {/* Toolbar */}
@@ -818,6 +869,47 @@ function KpiCard({
       </div>
       <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>
     </div>
+  );
+}
+
+/** Compact AR-aging tile — only renders when overdue balance is present.
+ *  Clicking the tile drills into the overdue-status filtered list so Alex
+ *  can chase collections from the exact bucket. */
+function AgingTile({
+  label,
+  count,
+  cents,
+  tone,
+}: {
+  label: string;
+  count: number;
+  cents: number;
+  tone: "amber" | "rose" | "rose-deep";
+}) {
+  const cls =
+    tone === "amber"
+      ? "border-amber-200 bg-amber-50/60 text-amber-900"
+      : tone === "rose"
+      ? "border-rose-200 bg-rose-50/60 text-rose-900"
+      : "border-rose-300 bg-rose-100/70 text-rose-900";
+  const stripe =
+    tone === "amber" ? "bg-amber-500" : tone === "rose" ? "bg-rose-500" : "bg-rose-700";
+  return (
+    <Link
+      href="/commercial/invoices?status=overdue"
+      className={`group/aging relative border rounded-lg px-3 py-2 overflow-hidden hover:shadow-sm transition-shadow ${cls}`}
+    >
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
+      <div className="text-[9.5px] font-bold uppercase tracking-wider opacity-90">
+        {label}
+      </div>
+      <div className="text-base sm:text-lg font-bold tabular-nums mt-0.5">
+        {formatCentsCompact(cents)}
+        <span className="text-[10.5px] font-medium opacity-70 ml-1.5 group-hover/aging:underline">
+          · {count} {count === 1 ? "invoice" : "invoices"}
+        </span>
+      </div>
+    </Link>
   );
 }
 

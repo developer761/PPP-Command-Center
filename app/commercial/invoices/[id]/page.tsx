@@ -44,6 +44,8 @@ import { getCommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import DueDatePickerWithPresets from "@/components/commercial/due-date-picker-with-presets";
+import CopyInvoiceLinkButton from "@/components/commercial/copy-invoice-link";
 
 export const dynamic = "force-dynamic";
 
@@ -444,6 +446,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <CopyInvoiceLinkButton />
             {/* New invoice for this opp — Karan 2026-07-07: "give the
                 ability to add another invoice even after the first one
                 is created." Only shown when the parent opp is Won +
@@ -793,18 +796,40 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <input type="hidden" name="invoice_id" value={invoice.id} />
           <div>
             <label htmlFor="dt-due" className={LABEL_CLS}>Due date</label>
-            <input
+            <DueDatePickerWithPresets
               id="dt-due"
               name="due_at"
-              type="date"
               defaultValue={invoice.due_at ? invoice.due_at.slice(0, 10) : ""}
               disabled={isVoid}
-              className={INPUT_CLS}
             />
           </div>
           <div>
             <label htmlFor="dt-terms" className={LABEL_CLS}>Payment terms</label>
-            <input id="dt-terms" name="payment_terms" type="text" maxLength={60} defaultValue={invoice.payment_terms ?? ""} disabled={isVoid} className={INPUT_CLS} />
+            {/* Karan 2026-07-07 Alex-love: datalist gives Alex a picker
+                (Net 15/30/45/60/EOM) but keeps the free-text field so
+                custom wording like "Net 30 upon delivery" still works. */}
+            <input
+              id="dt-terms"
+              name="payment_terms"
+              type="text"
+              maxLength={60}
+              list="dt-terms-presets"
+              defaultValue={invoice.payment_terms ?? ""}
+              disabled={isVoid}
+              placeholder="Net 30"
+              className={INPUT_CLS}
+            />
+            <datalist id="dt-terms-presets">
+              <option value="Due on receipt" />
+              <option value="Net 15" />
+              <option value="Net 30" />
+              <option value="Net 45" />
+              <option value="Net 60" />
+              <option value="Net 90" />
+              <option value="End of month" />
+              <option value="50% deposit, 50% on completion" />
+              <option value="Progress billing per contract" />
+            </datalist>
           </div>
           <div>
             <label htmlFor="dt-tax" className={LABEL_CLS}>

@@ -2593,6 +2593,29 @@ function AccountOverviewStrip({
           tooltip="Opportunities with a final outcome — Won + Lost + No-bid. The sub-text shows win rate (Won ÷ total decided) and average days from create → decided across Won opps."
         />
       </div>
+      {/* Statement CTA — Alex-love (Karan 2026-07-07): GCs and AP clerks
+          call asking "show me every invoice + payment for the year." The
+          KPI tiles above give the totals; this link jumps to the full
+          per-opp grouped invoice ledger so the answer is one click away
+          instead of a URL hack. Only render when there's at least one
+          invoice — otherwise it points at an empty page. */}
+      {invoiceRollup.invoice_count > 0 && (
+        <div className="mt-3 pt-3 border-t border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-[11.5px] text-ppp-charcoal-500">
+            Need the full transaction history? View the statement — every invoice + payment grouped by opportunity.
+          </div>
+          <Link
+            href={`/commercial/invoices?account_id=${accountId}&view=grouped`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800 min-h-[36px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6M9 13h6M9 17h6" />
+            </svg>
+            View statement
+          </Link>
+        </div>
+      )}
     </section>
   );
 }

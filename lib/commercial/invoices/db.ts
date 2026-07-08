@@ -15,6 +15,42 @@ import {
   deriveInvoiceStatus,
   type InvoiceStatus,
 } from "./constants";
+import {
+  insertCommercialInvoiceCreatedNotifications,
+  insertCommercialInvoicePaymentRecordedNotifications,
+  insertCommercialInvoicePaidNotifications,
+} from "@/lib/notifications/commercial-events";
+
+/** Resolve the actor's display name from profiles.sf_user_name (falls
+ *  back to email → "PPP admin"). Every invoicing notification uses this
+ *  so the bell body reads "Alex Chen recorded a payment" instead of a
+ *  raw UUID. Failure is silent — worst case we send "PPP admin". */
+async function resolveActorName(user_id: string | null | undefined): Promise<string> {
+  if (!user_id) return "PPP admin";
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("profiles")
+    .select("sf_user_name, email")
+    .eq("user_id", user_id)
+    .maybeSingle();
+  const a = data as { sf_user_name?: string | null; email?: string | null } | null;
+  return a?.sf_user_name || a?.email || "PPP admin";
+}
+
+/** Fetch the parent opp's title in one round-trip. Used by the invoice
+ *  notification fanouts so the bell/email body reads "Lobby Repaint Q3"
+ *  instead of a UUID. Returns null on any lookup miss — helpers fall
+ *  back to "the opportunity" copy in that case. */
+async function fetchOppTitle(opp_id: string): Promise<string | null> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_opportunities")
+    .select("title")
+    .eq("id", opp_id)
+    .maybeSingle();
+  const row = data as { title?: string | null } | null;
+  return row?.title ?? null;
+}
 
 // ────────────── Types ──────────────
 
@@ -284,6 +320,34 @@ export async function createCommercialInvoice(
   }
 
   await logStatusChange(inserted.id, null, "draft", input.created_by_user_id, "Created");
+
+  // Bell + email fanout — fire-and-forget. Team members on the parent
+  // opp see the new invoice in their bell without polling. Errors caught
+  // + logged inside the helper; never blocks the ok:true return.
+  void (async () => {
+    try {
+      const [actorName, oppTitle] = await Promise.all([
+        resolveActorName(input.created_by_user_id),
+        fetchOppTitle(input.opportunity_id),
+      ]);
+      const insertedRow = inserted as CommercialInvoice;
+      await insertCommercialInvoiceCreatedNotifications({
+        invoiceId: insertedRow.id,
+        invoiceNumber: insertedRow.invoice_number,
+        opportunityId: input.opportunity_id,
+        oppTitle: oppTitle ?? "the opportunity",
+        totalCents: insertedRow.total_cents,
+        actingUserId: input.created_by_user_id,
+        actorName,
+      });
+    } catch (err) {
+      console.warn(
+        "[commercial/invoices] invoice_created notify failed:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  })();
+
   return { ok: true, invoice: inserted as CommercialInvoice };
 }
 
@@ -512,15 +576,68 @@ export async function addPayment(
     recorded_by_user_id: input.recorded_by_user_id,
   });
   if (error) return { ok: false, error: error.message };
-  // Trigger auto-flips status to partial/paid. Log the status change.
+  // Trigger auto-flips status to partial/paid. Log the status change +
+  // re-fetch the after-row so we know the fresh balance / status / opp
+  // context for the fanout notification.
   const { data: after } = await sb
     .from("commercial_invoices")
-    .select("status")
+    .select("status, balance_cents, total_cents, invoice_number, opportunity_id")
     .eq("id", invoice_id)
     .maybeSingle();
   if (after?.status && after.status !== inv.status) {
     await logStatusChange(invoice_id, inv.status as InvoiceStatus, after.status as InvoiceStatus, input.recorded_by_user_id, "Payment received");
   }
+
+  // Bell + email fanout — fire-and-forget. If the payment brought the
+  // balance to zero, fire the celebratory "PAID" variant. Otherwise fire
+  // the partial "payment recorded" variant. Team members on the parent
+  // opp see the cash-flow moment in their bell without polling.
+  if (after) {
+    const afterRow = after as {
+      status: InvoiceStatus;
+      balance_cents: number;
+      total_cents: number;
+      invoice_number: string;
+      opportunity_id: string;
+    };
+    void (async () => {
+      try {
+        const [actorName, oppTitle] = await Promise.all([
+          resolveActorName(input.recorded_by_user_id),
+          fetchOppTitle(afterRow.opportunity_id),
+        ]);
+        const isPaidInFull = afterRow.status === "paid" || afterRow.balance_cents <= 0;
+        if (isPaidInFull) {
+          await insertCommercialInvoicePaidNotifications({
+            invoiceId: invoice_id,
+            invoiceNumber: afterRow.invoice_number,
+            opportunityId: afterRow.opportunity_id,
+            oppTitle: oppTitle ?? "the opportunity",
+            totalCents: afterRow.total_cents,
+            actingUserId: input.recorded_by_user_id,
+            actorName,
+          });
+        } else {
+          await insertCommercialInvoicePaymentRecordedNotifications({
+            invoiceId: invoice_id,
+            invoiceNumber: afterRow.invoice_number,
+            opportunityId: afterRow.opportunity_id,
+            oppTitle: oppTitle ?? "the opportunity",
+            amountCents: cappedAmount,
+            balanceRemainingCents: afterRow.balance_cents,
+            actingUserId: input.recorded_by_user_id,
+            actorName,
+          });
+        }
+      } catch (err) {
+        console.warn(
+          "[commercial/invoices] payment notify failed:",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
+    })();
+  }
+
   return { ok: true, applied_cents: cappedAmount, requested_cents: input.amount_cents, capped };
 }
 

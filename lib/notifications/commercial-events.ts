@@ -56,7 +56,14 @@ export type CommercialNotificationKind =
   | "commercial_opp_note_added"
   | "commercial_note_mention"
   | "commercial_document_expiring"
-  | "commercial_hot_deal_cooling";
+  | "commercial_hot_deal_cooling"
+  // Phase 3 (Karan 2026-07-07): invoicing events fan out to the opp team so
+  // Alex + team see cash-flow moments (created / partial payment / paid in
+  // full) without opening the app. Overdue detection lives in a separate
+  // daily cron; that fires the same "invoice_paid_full" pattern in reverse.
+  | "commercial_invoice_created"
+  | "commercial_invoice_payment_recorded"
+  | "commercial_invoice_paid_full";
 
 function adminClient() {
   return createSupabaseAdminClient(
@@ -804,4 +811,245 @@ export async function hasRecentNotification(
     return true;
   }
   return (data ?? []).length > 0;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Invoicing (Phase 3, Karan 2026-07-07)
+//
+// Three fanout helpers for the invoicing lifecycle. Each fans out to the
+// full opp team (minus the actor). The bell links directly to the invoice
+// detail page — Alex + team can jump from bell → invoice → record
+// payment / mark sent in one click.
+//
+// Recipient resolution mirrors the opp-status fanout: every active team
+// member on the parent opp with has_new_platform_access=true, actor
+// excluded via dispatchCommercialNotification's self-skip.
+//
+// Money formatting: cents → $X,XXX.00 via a local helper (avoids adding a
+// server-only import cycle into lib/commercial/invoices/format.ts).
+// ════════════════════════════════════════════════════════════════════
+
+function formatMoneyCents(cents: number): string {
+  const dollars = cents / 100;
+  return dollars.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+async function resolveOppTeamRecipients(
+  opportunityId: string,
+  actingUserId: string | null
+): Promise<string[]> {
+  const sb = adminClient();
+  const { data: rows } = await sb
+    .from("commercial_opportunity_assignments")
+    .select(
+      "user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(user_id, email, is_active, has_new_platform_access)"
+    )
+    .eq("opportunity_id", opportunityId)
+    .is("removed_at", null);
+  type Row = {
+    user_id: string;
+    user:
+      | { user_id: string; email: string; is_active: boolean | null; has_new_platform_access: boolean | null }
+      | Array<{ user_id: string; email: string; is_active: boolean | null; has_new_platform_access: boolean | null }>
+      | null;
+  };
+  const recipientIds = new Set<string>();
+  for (const raw of (rows ?? []) as unknown as Row[]) {
+    const u = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
+    if (!u) continue;
+    if (u.is_active === false) continue;
+    if (u.has_new_platform_access === false) continue;
+    if (actingUserId && u.user_id === actingUserId) continue;
+    recipientIds.add(u.user_id);
+  }
+  return Array.from(recipientIds);
+}
+
+/** Fired by lib/commercial/invoices/db.ts createCommercialInvoice on
+ *  successful insert. Fans out to the opp team so anyone tracking the
+ *  deal knows billing has started. */
+export async function insertCommercialInvoiceCreatedNotifications(input: {
+  invoiceId: string;
+  invoiceNumber: string;
+  opportunityId: string;
+  oppTitle: string;
+  totalCents: number;
+  actingUserId: string | null;
+  actorName: string;
+}): Promise<{ fanout: number }> {
+  const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
+  if (recipients.length === 0) return { fanout: 0 };
+
+  const relativeLink = `/commercial/invoices/${input.invoiceId}`;
+  const emailLink = appendBase(relativeLink);
+  const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
+  const money = formatMoneyCents(input.totalCents);
+  const title = `New invoice: ${input.invoiceNumber} · ${money}`;
+  const body = `${input.actorName} drafted ${input.invoiceNumber} on ${shortOppTitle}.`;
+
+  const subject = `New invoice ${input.invoiceNumber} · ${money} · ${input.oppTitle}`;
+  const text = [
+    `Hi,`,
+    ``,
+    `${input.actorName} created invoice ${input.invoiceNumber} on ${input.oppTitle}:`,
+    `  Total: ${money}`,
+    ``,
+    `Open the invoice: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(input.actorName)}</strong> created invoice <strong>${escape(input.invoiceNumber)}</strong> on <strong>${escape(input.oppTitle)}</strong>:</p>
+  <p style="margin:16px 0;padding:12px 16px;background:#f6f7f8;border-radius:8px;"><span style="color:#666;">Total:</span> <strong>${escape(money)}</strong></p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the invoice →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  let fanout = 0;
+  await Promise.allSettled(
+    recipients.map(async (uid) => {
+      const r = await dispatchCommercialNotification({
+        kind: "commercial_invoice_created",
+        recipientUserId: uid,
+        actingUserId: input.actingUserId,
+        sourceId: input.invoiceId,
+        title,
+        body,
+        link: relativeLink,
+        email: { subject, text, html },
+      });
+      if (r.ok && r.written) fanout += 1;
+    })
+  );
+  return { fanout };
+}
+
+/** Fired by lib/commercial/invoices/db.ts addPayment when the payment
+ *  landed but did NOT fully close the invoice (partial). Fans out to
+ *  the opp team. */
+export async function insertCommercialInvoicePaymentRecordedNotifications(input: {
+  invoiceId: string;
+  invoiceNumber: string;
+  opportunityId: string;
+  oppTitle: string;
+  amountCents: number;
+  balanceRemainingCents: number;
+  actingUserId: string | null;
+  actorName: string;
+}): Promise<{ fanout: number }> {
+  const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
+  if (recipients.length === 0) return { fanout: 0 };
+
+  const relativeLink = `/commercial/invoices/${input.invoiceId}#payments`;
+  const emailLink = appendBase(relativeLink);
+  const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
+  const paidMoney = formatMoneyCents(input.amountCents);
+  const remainingMoney = formatMoneyCents(input.balanceRemainingCents);
+  const title = `Payment ${paidMoney} · ${input.invoiceNumber}`;
+  const body = `${input.actorName} recorded a payment on ${shortOppTitle}. ${remainingMoney} remaining.`;
+
+  const subject = `Payment ${paidMoney} recorded · ${input.invoiceNumber} · ${input.oppTitle}`;
+  const text = [
+    `Hi,`,
+    ``,
+    `${input.actorName} recorded a payment on ${input.invoiceNumber} (${input.oppTitle}):`,
+    `  Amount: ${paidMoney}`,
+    `  Balance remaining: ${remainingMoney}`,
+    ``,
+    `See the invoice: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(input.actorName)}</strong> recorded a payment on <strong>${escape(input.invoiceNumber)}</strong> (${escape(input.oppTitle)}):</p>
+  <p style="margin:16px 0;padding:12px 16px;background:#eff6ff;border-radius:8px;">
+    <span style="color:#666;">Amount:</span> <strong>${escape(paidMoney)}</strong><br />
+    <span style="color:#666;">Balance remaining:</span> <strong>${escape(remainingMoney)}</strong>
+  </p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">See the invoice →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  let fanout = 0;
+  await Promise.allSettled(
+    recipients.map(async (uid) => {
+      const r = await dispatchCommercialNotification({
+        kind: "commercial_invoice_payment_recorded",
+        recipientUserId: uid,
+        actingUserId: input.actingUserId,
+        sourceId: input.invoiceId,
+        title,
+        body,
+        link: relativeLink,
+        email: { subject, text, html },
+      });
+      if (r.ok && r.written) fanout += 1;
+    })
+  );
+  return { fanout };
+}
+
+/** Fired by lib/commercial/invoices/db.ts addPayment (or the daily
+ *  status-drift cron) when a payment brings paid_cents >= total_cents.
+ *  Emerald tone in the email + celebratory copy — this is the moment
+ *  Alex cares about. Fans out to the opp team. */
+export async function insertCommercialInvoicePaidNotifications(input: {
+  invoiceId: string;
+  invoiceNumber: string;
+  opportunityId: string;
+  oppTitle: string;
+  totalCents: number;
+  actingUserId: string | null;
+  actorName: string;
+}): Promise<{ fanout: number }> {
+  const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
+  if (recipients.length === 0) return { fanout: 0 };
+
+  const relativeLink = `/commercial/invoices/${input.invoiceId}`;
+  const emailLink = appendBase(relativeLink);
+  const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
+  const money = formatMoneyCents(input.totalCents);
+  const title = `PAID · ${input.invoiceNumber} · ${money}`;
+  const body = `${shortOppTitle} is paid in full.`;
+
+  const subject = `PAID · ${input.invoiceNumber} · ${money} · ${input.oppTitle}`;
+  const text = [
+    `Hi,`,
+    ``,
+    `${input.invoiceNumber} on ${input.oppTitle} is paid in full.`,
+    `  Total collected: ${money}`,
+    ``,
+    `Open the invoice: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(input.invoiceNumber)}</strong> on <strong>${escape(input.oppTitle)}</strong> is paid in full.</p>
+  <p style="margin:16px 0;padding:12px 16px;background:#ecfdf5;border-left:4px solid #059669;border-radius:8px;">
+    <span style="color:#666;">Total collected:</span> <strong>${escape(money)}</strong>
+  </p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the invoice →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  let fanout = 0;
+  await Promise.allSettled(
+    recipients.map(async (uid) => {
+      const r = await dispatchCommercialNotification({
+        kind: "commercial_invoice_paid_full",
+        recipientUserId: uid,
+        actingUserId: input.actingUserId,
+        sourceId: input.invoiceId,
+        title,
+        body,
+        link: relativeLink,
+        email: { subject, text, html },
+      });
+      if (r.ok && r.written) fanout += 1;
+    })
+  );
+  return { fanout };
 }
