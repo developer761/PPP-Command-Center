@@ -27,11 +27,11 @@ export default async function NewInvoiceRedirect({ searchParams }: { searchParam
   const sp = await searchParams;
   const opp_id = pickFirst(sp.opp);
   if (!opp_id || !UUID_RE.test(opp_id)) {
-    redirect("/commercial/invoices?status_error=" + encodeURIComponent("Pick an opportunity first"));
+    redirect("/commercial/invoices?status_error=" + encodeURIComponent("Pick a deal first"));
   }
   const opp = await getCommercialOpportunity(opp_id!);
   if (!opp) {
-    redirect("/commercial/invoices?status_error=" + encodeURIComponent("Opportunity not found"));
+    redirect("/commercial/invoices?status_error=" + encodeURIComponent("Deal not found"));
   }
   if (opp!.status !== "won") {
     // Karan 2026-07-07: stay on the invoicing surface. Sending the user
@@ -40,7 +40,7 @@ export default async function NewInvoiceRedirect({ searchParams }: { searchParam
     // list where they can pick a different opp.
     redirect(
       `/commercial/invoices?error=` +
-        encodeURIComponent("Only Won opportunities can be invoiced")
+        encodeURIComponent("Only Won deals can be invoiced")
     );
   }
   // Karan 2026-07-07: use ?add=<opp_id> query param (NOT hash) so the

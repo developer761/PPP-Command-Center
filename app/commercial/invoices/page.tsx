@@ -351,7 +351,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             {invoiceErrorsFlash > 0 && (
               <> {invoiceErrorsFlash} row{invoiceErrorsFlash === 1 ? "" : "s"} skipped due to input errors.</>
             )}
-            {" Shown grouped by opportunity below."}
+            {" Shown grouped by deal below."}
           </span>
           <Link
             href="/commercial/invoices"
@@ -416,7 +416,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               Invoices
             </h1>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
-              Bill for Won opportunities. Track sent · viewed · paid · overdue.
+              Bill for Won deals. Track sent · viewed · paid · overdue.
             </p>
           </div>
           {/* New invoice CTA — right-aligned so it sits next to the title
@@ -435,11 +435,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             </summary>
             <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[300px] max-w-[calc(100vw-1rem)]">
               <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-1 pb-2">
-                Pick a Won opportunity to bill
+                Pick a Won deal to bill
               </div>
               {wonOpps.length === 0 ? (
                 <div className="px-2 py-3 text-[12.5px] text-ppp-charcoal-500">
-                  No Won opportunities yet.{" "}
+                  No Won deals yet.{" "}
                   <Link href="/commercial/opportunities" className="text-blue-700 font-semibold hover:underline">
                     Go to pipeline →
                   </Link>
@@ -480,7 +480,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                 </div>
               )}
               <div className="mt-2 pt-2 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500 px-1">
-                Multiple invoices per opportunity are allowed (progress billing).
+                Multiple invoices per deal are allowed (progress billing).
               </div>
             </div>
           </details>
@@ -560,7 +560,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               name="q"
               type="search"
               defaultValue={search ?? ""}
-              placeholder="Search by invoice # or opportunity title…"
+              placeholder="Search by invoice # or deal title…"
               className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
             />
           </div>
@@ -663,8 +663,8 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           </div>
           <p className="mt-1 text-sm text-ppp-charcoal-500">
             {anyFilterActive
-              ? "Try clearing filters or searching by invoice number or opportunity title."
-              : "Convert a Won opportunity into an invoice to get started."}
+              ? "Try clearing filters or searching by invoice number or deal title."
+              : "Convert a Won deal into an invoice to get started."}
           </p>
           {anyFilterActive ? (
             <Link
@@ -678,7 +678,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               href="/commercial/opportunities"
               className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
             >
-              Go to opportunities
+              Go to pipeline
             </Link>
           )}
         </div>

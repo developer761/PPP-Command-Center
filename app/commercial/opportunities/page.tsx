@@ -121,6 +121,16 @@ export default async function CommercialOpportunitiesPage({
   const staleFilter = pickFirst(sp.stale) === "1";
   const hotFilter = pickFirst(sp.hot) === "1";
   const sourcesRaw = pickFirst(sp.sources);
+  // Karan 2026-07-08 Batch 2 rewrite: ?peek=<uuid> opens a right-side
+  // slide-out quick-view drawer for one deal instead of navigating to
+  // the full detail page. The pipeline page is a *status-mover* — click
+  // a deal, peek at the essentials, flip status, jump to the account
+  // for the full story. Kanban / list / customer views all use this.
+  const peekOppId = (() => {
+    const raw = pickFirst(sp.peek);
+    if (!raw || !UUID_RE.test(raw)) return null;
+    return raw;
+  })();
 
   // Karan 2026-07-08 Batch 1c: added "customer" as a new view mode +
   // made it the DEFAULT. Rationale: Alex reads Pipeline as "which of my
@@ -342,6 +352,25 @@ export default async function CommercialOpportunitiesPage({
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
 
+  // Karan 2026-07-08 Batch 2 rewrite: peek-drawer URL builders.
+  //   peekHref(oppId) — open the drawer for this deal
+  //   peekCloseHref  — drop ?peek= (used by drawer's close/backdrop)
+  const peekHref = (oppId: string): string => {
+    const p = new URLSearchParams(baseParams);
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    p.set("peek", oppId);
+    return `/commercial/opportunities?${p.toString()}#deal-peek`;
+  };
+  const peekCloseHref: string = (() => {
+    const p = new URLSearchParams(baseParams);
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    p.delete("peek");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  })();
+
   return (
     <div className="space-y-5">
       {/* ─── Hero + slim KPI strip ─── */}
@@ -372,7 +401,7 @@ export default async function CommercialOpportunitiesPage({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             tone="cc-brand"
-            label="Open opportunities"
+            label="Open deals"
             value={openOpps.length.toString()}
             sub={`${opps.length - openOpps.length} closed`}
           />
@@ -472,7 +501,7 @@ export default async function CommercialOpportunitiesPage({
               name="q"
               type="search"
               defaultValue={search ?? ""}
-              placeholder="Search opportunities by title…"
+              placeholder="Search deals by title…"
               className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
             />
           </div>
@@ -750,6 +779,7 @@ export default async function CommercialOpportunitiesPage({
         <CustomerBoard
           opps={opps}
           accountById={accountById}
+          peekHref={peekHref}
         />
       ) : viewMode === "kanban" ? (
         <KanbanBoard
@@ -761,13 +791,14 @@ export default async function CommercialOpportunitiesPage({
           fileCountMap={fileCountMap}
           submittalCountMap={submittalCountMap}
           finishCountMap={finishCountMap}
+          peekHref={peekHref}
         />
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
             <div>
               <h2 className="text-sm font-bold text-ppp-charcoal">
-                {opps.length} opportunit{opps.length === 1 ? "y" : "ies"}
+                {opps.length} deal{opps.length === 1 ? "" : "s"}
               </h2>
               <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                 Sorted by {currentSortLabel.toLowerCase()}
@@ -787,11 +818,37 @@ export default async function CommercialOpportunitiesPage({
                 fileCount={fileCountMap.get(o.id) ?? 0}
                 submittalStats={submittalCountMap.get(o.id) ?? null}
                 finishCount={finishCountMap.get(o.id) ?? 0}
+                peekHref={peekHref}
               />
             ))}
           </ul>
         </div>
       )}
+
+      {/* ─── Karan 2026-07-08 Batch 2: Quick-view drawer.
+          When ?peek=<uuid> resolves to a loaded opp, render a fixed
+          right-side sheet with the essentials — customer, status
+          changer, bid, signals — plus a prominent "View full account"
+          link that jumps to the account page. Everything else lives
+          under the account. Backdrop link closes by dropping ?peek. */}
+      {peekOppId && (() => {
+        const peekOpp = opps.find((o) => o.id === peekOppId);
+        if (!peekOpp) return null;
+        const peekAccount = accountById.get(peekOpp.account_id) ?? null;
+        return (
+          <PipelineDealPeek
+            opp={peekOpp}
+            account={peekAccount}
+            statusEnteredAt={statusEnteredAtMap.get(peekOpp.id) ?? null}
+            taskStats={taskStatsMap.get(peekOpp.id) ?? null}
+            primaryLead={primaryLeadMap.get(peekOpp.id) ?? null}
+            fileCount={fileCountMap.get(peekOpp.id) ?? 0}
+            submittalStats={submittalCountMap.get(peekOpp.id) ?? null}
+            finishCount={finishCountMap.get(peekOpp.id) ?? 0}
+            closeHref={peekCloseHref}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -809,9 +866,11 @@ export default async function CommercialOpportunitiesPage({
 function CustomerBoard({
   opps,
   accountById,
+  peekHref,
 }: {
   opps: CommercialOpportunity[];
   accountById: Map<string, CommercialAccount>;
+  peekHref: (oppId: string) => string;
 }) {
   // Group opps by account_id, then compute per-account rollups.
   const byAccount = new Map<string, CommercialOpportunity[]>();
@@ -871,7 +930,7 @@ function CustomerBoard({
       </div>
       <ul className="divide-y divide-ppp-charcoal-100">
         {rows.map((row) => (
-          <CustomerBoardRow key={row.account.id} row={row} />
+          <CustomerBoardRow key={row.account.id} row={row} peekHref={peekHref} />
         ))}
       </ul>
     </div>
@@ -880,6 +939,7 @@ function CustomerBoard({
 
 function CustomerBoardRow({
   row,
+  peekHref,
 }: {
   row: {
     account: CommercialAccount;
@@ -888,6 +948,7 @@ function CustomerBoardRow({
     weightedCents: number;
     latestUpdate: string;
   };
+  peekHref: (oppId: string) => string;
 }) {
   const { account, open, closed, weightedCents, latestUpdate } = row;
   // Latest activity relative label — "today", "5h ago", "3d ago", etc.
@@ -976,9 +1037,9 @@ function CustomerBoardRow({
           {open.map((o) => (
             <Link
               key={o.id}
-              href={`/commercial/opportunities/${o.id}`}
+              href={peekHref(o.id)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-blue-200 bg-blue-50 text-blue-800 text-[11.5px] font-medium hover:bg-blue-100 hover:border-blue-300 max-w-[280px] truncate"
-              title={`${o.title} — ${opportunityStatusLabel(o.status)}`}
+              title={`Peek at ${o.title} — ${opportunityStatusLabel(o.status)}`}
             >
               <span className="truncate">{o.title}</span>
             </Link>
@@ -986,9 +1047,9 @@ function CustomerBoardRow({
           {closed.slice(0, 3).map((o) => (
             <Link
               key={o.id}
-              href={`/commercial/opportunities/${o.id}`}
+              href={peekHref(o.id)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600 text-[11.5px] font-medium hover:bg-ppp-charcoal-100 max-w-[280px] truncate"
-              title={`${o.title} — ${opportunityStatusLabel(o.status)}`}
+              title={`Peek at ${o.title} — ${opportunityStatusLabel(o.status)}`}
             >
               <span className="truncate">{o.title}</span>
             </Link>
@@ -1030,6 +1091,7 @@ function KanbanBoard({
   fileCountMap,
   submittalCountMap,
   finishCountMap,
+  peekHref,
 }: {
   opps: CommercialOpportunity[];
   accountById: Map<string, CommercialAccount>;
@@ -1039,6 +1101,7 @@ function KanbanBoard({
   fileCountMap: Map<string, number>;
   submittalCountMap: Map<string, { total: number; awaiting_response: number }>;
   finishCountMap: Map<string, number>;
+  peekHref: (oppId: string) => string;
 }) {
   const OPEN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
   const TERMINAL_COLUMNS: readonly OpportunityStatus[] = ["won", "lost", "no_bid"];
@@ -1126,6 +1189,7 @@ function KanbanBoard({
                               fileCount={fileCountMap.get(opp.id) ?? 0}
                               submittalStats={submittalCountMap.get(opp.id) ?? null}
                               finishCount={finishCountMap.get(opp.id) ?? 0}
+                              peekHref={peekHref}
                             />
                           </KanbanDnDCard>
                         ))
@@ -1199,6 +1263,7 @@ function KanbanBoard({
                                   fileCount={fileCountMap.get(opp.id) ?? 0}
                                   submittalStats={submittalCountMap.get(opp.id) ?? null}
                                   finishCount={finishCountMap.get(opp.id) ?? 0}
+                                  peekHref={peekHref}
                                   compact
                                 />
                               </KanbanDnDCard>
@@ -1223,7 +1288,7 @@ function KanbanBoard({
               {overflowClosed.map((opp) => (
                 <li key={opp.id} className="py-2">
                   <Link
-                    href={`/commercial/opportunities/${opp.id}`}
+                    href={peekHref(opp.id)}
                     className="text-[13px] text-blue-700 hover:text-blue-800 underline"
                   >
                     {opp.title}
@@ -1250,6 +1315,7 @@ function KanbanCard({
   fileCount,
   submittalStats,
   finishCount,
+  peekHref,
   compact,
 }: {
   opp: CommercialOpportunity;
@@ -1260,6 +1326,7 @@ function KanbanCard({
   fileCount: number;
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
+  peekHref: (oppId: string) => string;
   /** Compact mode — used inside the narrow "Closed" cluster where cards
    *  have half the horizontal space of the open pipeline. Hides quick-flip
    *  form + trims the meta band to just title + bid. */
@@ -1286,7 +1353,7 @@ function KanbanCard({
     // be re-routed by drag, they go through the Reopen action instead).
     return (
       <li className="bg-white border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
-        <Link href={`/commercial/opportunities/${opp.id}`} className="block">
+        <Link href={peekHref(opp.id)} className="block">
           <div className="text-[11px] font-semibold text-ppp-charcoal leading-snug break-words line-clamp-2">
             {opp.title || "(untitled)"}
           </div>
@@ -1305,7 +1372,7 @@ function KanbanCard({
   return (
     <li className="bg-white border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 transition-colors">
       <Link
-        href={`/commercial/opportunities/${opp.id}`}
+        href={peekHref(opp.id)}
         className="block"
       >
         <div className="text-[13px] font-semibold text-ppp-charcoal leading-snug mb-1 break-words">
@@ -1526,6 +1593,7 @@ function OpportunityRow({
   fileCount,
   submittalStats,
   finishCount,
+  peekHref,
 }: {
   opportunity: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -1536,6 +1604,7 @@ function OpportunityRow({
   fileCount: number;
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
+  peekHref: (oppId: string) => string;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
   const dueChip = decisionChip(opportunity.proposal_due_at);
@@ -1548,7 +1617,7 @@ function OpportunityRow({
   return (
     <li className="relative group/row hover:bg-blue-50/30 transition-colors">
       <Link
-        href={`/commercial/opportunities/${opportunity.id}`}
+        href={peekHref(opportunity.id)}
         className="block px-4 py-4 touch-manipulation"
       >
         <div className="flex items-start justify-between gap-3">
@@ -1709,27 +1778,25 @@ function OpportunityRow({
         </div>
       )}
 
-      {/* Quick status-flip form — outside Link so form controls don't
-          trigger nav. Same server action + form fields as before. */}
+      {/* Inline status flip — placeholder text carries the meaning
+          (Karan 2026-07-08 Batch 2: killed the shouty "QUICK FLIP" label). */}
       {nextStatuses.length > 0 ? (
         <form
           action={quickFlipStatusAction}
           className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap"
         >
           <input type="hidden" name="opp_id" value={opportunity.id} />
-          <label htmlFor={`flip-${opportunity.id}`} className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
-            Quick flip
-          </label>
           <select
             id={`flip-${opportunity.id}`}
             name="to_status"
             defaultValue=""
             required
-            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
+            aria-label={`Move ${opportunity.title} to next stage`}
+            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[36px]`}
             style={SELECT_BG_STYLE}
           >
             <option value="" disabled>
-              Next status…
+              Move to…
             </option>
             {nextStatuses.map((s) => {
               const isTerminal = isTerminalOpportunityStatus(s);
@@ -1742,18 +1809,18 @@ function OpportunityRow({
           </select>
           <button
             type="submit"
-            className="px-3 py-1 rounded-md bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+            className="px-3 py-1.5 rounded-md bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[36px] touch-manipulation"
           >
-            Apply
+            Go
           </button>
         </form>
       ) : (
         <p className="px-4 pb-3 -mt-1 text-[11px] text-ppp-charcoal-500">
           <Link
-            href={`/commercial/opportunities/${opportunity.id}?tab=info`}
+            href={peekHref(opportunity.id)}
             className="underline hover:text-ppp-charcoal-700"
           >
-            Open to change status
+            Peek to reopen
           </Link>
         </p>
       )}
@@ -1846,5 +1913,274 @@ function StatusPill({ status }: { status: OpportunityStatus }) {
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${map[status]}`}>
       {opportunityStatusLabel(status)}
     </span>
+  );
+}
+
+/**
+ * PipelineDealPeek — Karan 2026-07-08 Batch 2 rewrite.
+ *
+ * GoHighLevel-style slide-out drawer that opens when a deal is clicked
+ * from any pipeline view (customer / kanban / list). Renders on top of
+ * the pipeline page as a fixed right-aligned sheet. Pipeline stays the
+ * status-mover; the account page is the source of truth for the deal's
+ * full detail (Overview / Documents / Activity / Debrief tabs).
+ *
+ * Contents (top-to-bottom):
+ *   1. Header — Deal title + status pill · [X close]
+ *   2. Customer — company name (linked to account) + industry chip
+ *   3. Financials — bid range + probability + weighted value
+ *   4. Signals — days-in-status, primary lead, tasks, files, submittals
+ *   5. Status-flip form — DAG-filtered "Move to…" select
+ *   6. CTA row — "View full account →" (primary), "Full deal detail →"
+ *
+ * URL-driven (no client JS) — ?peek=<uuid> opens; close link drops it.
+ * Backdrop is a full-viewport <Link> that also drops ?peek.
+ */
+function PipelineDealPeek({
+  opp,
+  account,
+  statusEnteredAt,
+  taskStats,
+  primaryLead,
+  fileCount,
+  submittalStats,
+  finishCount,
+  closeHref,
+}: {
+  opp: CommercialOpportunity;
+  account: CommercialAccount | null;
+  statusEnteredAt: string | null;
+  taskStats: { open: number; overdue: number; due_soon: number } | null;
+  primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
+  fileCount: number;
+  submittalStats: { total: number; awaiting_response: number } | null;
+  finishCount: number;
+  closeHref: string;
+}) {
+  const daysHere = statusEnteredAt
+    ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
+    : null;
+  const daysHereTone =
+    daysHere === null
+      ? "text-ppp-charcoal-500"
+      : daysHere > 14
+      ? "text-rose-700"
+      : daysHere > 7
+      ? "text-amber-700"
+      : "text-blue-700";
+  const nextStatuses = allowedNextStatuses(opp.status);
+  const bid = formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents);
+  const weighted = weightedPipelineCents(opp);
+  const leadLabel = primaryLead
+    ? primaryLead.user_full_name ?? primaryLead.user_email
+    : null;
+
+  return (
+    <div id="deal-peek" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="deal-peek-title">
+      {/* Backdrop — full-viewport link that closes the drawer. */}
+      <Link
+        href={closeHref}
+        aria-label="Close deal peek"
+        className="absolute inset-0 bg-ppp-charcoal/40 backdrop-blur-[1px]"
+      />
+      {/* Sheet — right-aligned slide-out. Full width on mobile, capped
+          on larger screens so the pipeline stays visible behind it. */}
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[440px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
+        {/* Header row — title + status + close */}
+        <header className="px-5 py-4 border-b border-ppp-charcoal-100 flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <StatusPill status={opp.status} />
+              {daysHere !== null && (
+                <span className={`text-[11px] font-medium ${daysHereTone}`}>
+                  {daysHere === 0 ? "just entered" : `${daysHere}d in stage`}
+                </span>
+              )}
+            </div>
+            <h2 id="deal-peek-title" className="text-lg font-bold text-ppp-charcoal leading-tight break-words mt-1">
+              {opp.title || "(untitled deal)"}
+            </h2>
+          </div>
+          <Link
+            href={closeHref}
+            aria-label="Close"
+            className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 hover:text-ppp-charcoal-800 touch-manipulation"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M18 6L6 18 M6 6l12 12" />
+            </svg>
+          </Link>
+        </header>
+
+        {/* Body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* Customer section */}
+          {account ? (
+            <section>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
+                Customer
+              </div>
+              <Link
+                href={`/commercial/accounts/${account.id}`}
+                className="block group/customer"
+                title={`Open ${account.company_name}'s account`}
+              >
+                <div className="text-[15px] font-bold text-ppp-charcoal group-hover/customer:text-blue-800 group-hover/customer:underline underline-offset-2 break-words">
+                  {account.company_name}
+                </div>
+              </Link>
+              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                {account.industry && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200">
+                    {account.industry}
+                  </span>
+                )}
+                {account.is_key_relationship && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200">
+                    <span aria-hidden>★</span> Key
+                  </span>
+                )}
+              </div>
+            </section>
+          ) : (
+            <section className="text-[12px] text-ppp-charcoal-500 italic">
+              Customer record missing.
+            </section>
+          )}
+
+          {/* Financial snapshot */}
+          <section>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
+              Deal value
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2">
+                <div className="text-[10px] text-ppp-charcoal-500 font-medium">Bid range</div>
+                <div className="text-sm font-bold text-ppp-charcoal mt-0.5">{bid}</div>
+              </div>
+              <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2">
+                <div className="text-[10px] text-ppp-charcoal-500 font-medium">Weighted</div>
+                <div className="text-sm font-bold text-ppp-charcoal mt-0.5">
+                  {weighted > 0 ? formatCents(weighted) : "—"}
+                </div>
+                <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                  at {opp.probability_pct}% confidence
+                </div>
+              </div>
+            </div>
+            {opp.proposal_due_at && (
+              <div className="mt-2 text-[12px] text-ppp-charcoal-700">
+                <span className="text-ppp-charcoal-500">Proposal due</span>{" "}
+                <strong>{new Date(opp.proposal_due_at).toLocaleDateString()}</strong>
+              </div>
+            )}
+          </section>
+
+          {/* Signals */}
+          {(leadLabel || (taskStats && (taskStats.open > 0 || taskStats.overdue > 0)) || fileCount > 0 || finishCount > 0 || (submittalStats && submittalStats.total > 0)) && (
+            <section>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
+                Signals
+              </div>
+              <ul className="text-[13px] text-ppp-charcoal-700 space-y-1.5">
+                {leadLabel && (
+                  <li>
+                    <span aria-hidden>★</span> <span className="font-medium">{leadLabel}</span>{" "}
+                    <span className="text-ppp-charcoal-500">lead</span>
+                  </li>
+                )}
+                {taskStats && (taskStats.open > 0 || taskStats.overdue > 0) && (
+                  <li className={taskStats.overdue > 0 ? "text-rose-700" : undefined}>
+                    <span aria-hidden>✓</span>{" "}
+                    {taskStats.overdue > 0 ? (
+                      <><strong>{taskStats.overdue} overdue</strong> · {taskStats.open} open task{taskStats.open === 1 ? "" : "s"}</>
+                    ) : (
+                      <>{taskStats.open} open task{taskStats.open === 1 ? "" : "s"}{taskStats.due_soon > 0 ? ` · ${taskStats.due_soon} due soon` : ""}</>
+                    )}
+                  </li>
+                )}
+                {fileCount > 0 && (
+                  <li>
+                    <span aria-hidden>📎</span> {fileCount} {fileCount === 1 ? "attachment" : "attachments"}
+                  </li>
+                )}
+                {finishCount > 0 && (
+                  <li>
+                    <span aria-hidden>🎨</span> {finishCount} finish{finishCount === 1 ? "" : "es"} specified
+                  </li>
+                )}
+                {submittalStats && submittalStats.total > 0 && (
+                  <li className={submittalStats.awaiting_response > 0 ? "text-sky-800 font-medium" : undefined}>
+                    <span aria-hidden>📋</span> {submittalStats.total} submittal{submittalStats.total === 1 ? "" : "s"}
+                    {submittalStats.awaiting_response > 0 && ` · ${submittalStats.awaiting_response} awaiting GC`}
+                  </li>
+                )}
+              </ul>
+            </section>
+          )}
+
+          {/* Status flip — DAG-filtered */}
+          {nextStatuses.length > 0 && (
+            <section>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1.5">
+                Move to next stage
+              </div>
+              <form action={quickFlipStatusAction} className="flex items-center gap-2">
+                <input type="hidden" name="opp_id" value={opp.id} />
+                <select
+                  name="to_status"
+                  defaultValue=""
+                  required
+                  aria-label={`Move ${opp.title} to next stage`}
+                  className={`${SELECT_CLS} flex-1 text-base sm:text-sm py-2 min-h-[44px]`}
+                  style={SELECT_BG_STYLE}
+                >
+                  <option value="" disabled>
+                    Move to…
+                  </option>
+                  {nextStatuses.map((s) => {
+                    const isTerminal = isTerminalOpportunityStatus(s);
+                    return (
+                      <option key={s} value={s}>
+                        {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
+                      </option>
+                    );
+                  })}
+                </select>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
+                >
+                  Go
+                </button>
+              </form>
+            </section>
+          )}
+        </div>
+
+        {/* Footer CTA — primary "View full account" (that's where the
+            deal detail lives now), secondary "Full deal view" for the
+            legacy /commercial/opportunities/[id] tab shell. */}
+        <footer className="px-5 py-3 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/50 flex items-center gap-2 flex-wrap">
+          {account && (
+            <Link
+              href={`/commercial/accounts/${account.id}?tab=opportunities`}
+              className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+            >
+              View full account
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M5 12h14 M13 5l7 7-7 7" />
+              </svg>
+            </Link>
+          )}
+          <Link
+            href={`/commercial/opportunities/${opp.id}`}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+          >
+            Full deal view
+          </Link>
+        </footer>
+      </aside>
+    </div>
   );
 }

@@ -107,7 +107,7 @@ export default async function CommercialDashboardPage() {
         <KpiTile
           tone="cc-brand"
           value={openOpps.length.toLocaleString()}
-          label="Open opportunities"
+          label="Open deals"
           sub={`${decidedOpps.length} decided`}
           href="/commercial/opportunities"
           icon={<IconTarget />}
@@ -194,30 +194,39 @@ export default async function CommercialDashboardPage() {
         </div>
       </section>
 
-      {/* Roadmap — condensed to a single strip so it's context, not
-          the main event. Was the whole landing before; now sits at the
-          bottom as a "what's next" reminder. */}
-      <section>
-        <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
-          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-          Build roadmap
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          {PHASES.map((p) => (
-            <div key={String(p.num)} className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-ppp-charcoal text-white text-[10px] font-bold">
-                  {p.num}
-                </span>
-                <span className={`text-[9px] font-bold tracking-widest uppercase border px-1.5 py-0.5 rounded ${p.color}`}>
-                  {p.status}
-                </span>
+      {/* Roadmap — Karan 2026-07-08 Batch 3: collapsed into a <details>
+          so it stops burning above-the-fold real estate. A working
+          operator doesn't need to see the build plan every session; a
+          product/stakeholder viewer can click to expand. */}
+      <details className="group/roadmap bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-3 min-h-[44px] hover:bg-ppp-charcoal-50/60 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30">
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            <span className="text-sm font-bold text-ppp-charcoal">Build roadmap</span>
+            <span className="text-[11px] text-ppp-charcoal-500">
+              — {PHASES.filter((p) => p.status === "Shipped").length}/{PHASES.length} phases live
+            </span>
+          </span>
+          <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/roadmap:rotate-180">▾</span>
+        </summary>
+        <div className="p-4 border-t border-ppp-charcoal-100">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {PHASES.map((p) => (
+              <div key={String(p.num)} className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-ppp-charcoal text-white text-[10px] font-bold">
+                    {p.num}
+                  </span>
+                  <span className={`text-[9px] font-bold tracking-widest uppercase border px-1.5 py-0.5 rounded ${p.color}`}>
+                    {p.status}
+                  </span>
+                </div>
+                <div className="text-[12px] font-semibold text-ppp-charcoal leading-snug">{p.name}</div>
               </div>
-              <div className="text-[12px] font-semibold text-ppp-charcoal leading-snug">{p.name}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </section>
+      </details>
     </div>
   );
 }

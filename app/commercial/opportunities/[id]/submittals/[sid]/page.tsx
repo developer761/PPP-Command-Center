@@ -1488,8 +1488,8 @@ function StatusActionsPanel({
         </h2>
         <p className={`text-[12px] mt-1 ${isVoid ? "text-rose-800" : "text-ppp-charcoal-600"}`}>
           {isVoid
-            ? "This submittal won't appear in the opp's badge count. The PDF is preserved with a VOIDED watermark for the audit trail. Start a new submittal from the opportunity if you need to send a replacement."
-            : "Status log + items are locked. To send another package on this opp, start a new submittal from the Submittals tab."}
+            ? "This submittal won't appear in the deal's badge count. The PDF is preserved with a VOIDED watermark for the audit trail. Start a new submittal from the deal if you need to send a replacement."
+            : "Status log + items are locked. To send another package on this deal, start a new submittal from the Submittals tab."}
         </p>
         {/* No back-link button — the page already has a "← Back to
             submittals" link at the top of every state (line ~597),
@@ -1720,7 +1720,7 @@ function StatusActionsPanel({
               <strong className="font-semibold">Heads up — voiding is irreversible.</strong>{" "}
               Voiding marks the submittal as &ldquo;sent in error&rdquo;. The PDF gets a VOIDED
               watermark, the row stays in history with the reason below, and the badge count
-              on the opportunity drops. Use this when the wrong package went out, not for
+              on the deal drops. Use this when the wrong package went out, not for
               revisions (use Revise &amp; Resubmit → Create revision for that).
             </p>
             <div>

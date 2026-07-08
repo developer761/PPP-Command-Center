@@ -42,7 +42,6 @@ import {
   relativeActivity,
   activityTone,
   winRate,
-  formatBidCents,
   daysSinceIso,
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
@@ -78,8 +77,6 @@ import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import {
   OPEN_OPP_STATUSES,
   TERMINAL_STATUSES,
-  STALE_OPP_DAYS,
-  STALE_ACCOUNT_OPP_COOLING_MULTIPLIER,
   QUICK_FLIP_BLOCKED_STATUSES,
   isTerminalOpportunityStatus,
 } from "@/lib/commercial/opportunities/constants";
@@ -659,7 +656,7 @@ function RecentActivityCard({
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ppp-charcoal">Recent activity</h2>
         <span className="text-[11px] text-ppp-charcoal-500">
-          Across {entries.length === 1 ? "this opportunity" : "this account's opportunities"}
+          Across {entries.length === 1 ? "this deal" : "this account's deals"}
         </span>
       </div>
       <ol className="divide-y divide-ppp-charcoal-100">
@@ -726,7 +723,7 @@ async function ActivityTab({ accountId }: { accountId: string }) {
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
         <div className="text-sm font-semibold text-ppp-charcoal mb-1">No activity yet</div>
         <p className="text-[12px] text-ppp-charcoal-500 max-w-md mx-auto leading-relaxed">
-          Status changes, notes, and completed tasks on this account&apos;s opportunities show up here as a chronological feed.
+          Status changes, notes, and completed tasks on this account&apos;s deals show up here as a chronological feed.
         </p>
       </div>
     );
@@ -1950,15 +1947,6 @@ async function OpportunitiesTab({
     );
   }
 
-  // Bid-history footer line — "Last bid 21d ago · 5 won · 2 lost" — gives
-  // Alex an at-a-glance momentum read at the top of the tab.
-  const daysSinceLast = daysSinceIso(overview?.last_opp_activity_at);
-  const wonCount = overview?.won_opps_count ?? 0;
-  const lostCount = overview?.lost_opps_count ?? 0;
-  const isStale =
-    daysSinceLast !== null &&
-    daysSinceLast > STALE_OPP_DAYS * STALE_ACCOUNT_OPP_COOLING_MULTIPLIER;
-
   return (
     <div className="space-y-5">
       {/* Karan 2026-07-08: header-strip "+ New opportunity" Link →
@@ -1991,91 +1979,31 @@ async function OpportunitiesTab({
           </Link>
         </div>
       )}
-      {/* Karan 2026-07-08 Batch 1b: pipeline signal chip. Single clean
-          dot-separated line surfacing every deal-related signal Alex
-          reads at a glance. Batch 1d: the signal LINE hides when
-          there's no signal to show; the "+ New deal for this customer"
-          collapsible below stays visible on every account so users can
-          always start a new bid. Structure of the line:
-            [N open · bid range]  ·  [Last activity]  ·
-            [N won · N lost · X% win · ~Yd close]  */}
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-        {(open.length > 0 || wonCount > 0 || lostCount > 0 || daysSinceLast !== null) && (
-        <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-[12px] text-ppp-charcoal-700 flex items-center gap-x-2 gap-y-1 flex-wrap">
-            {open.length > 0 && (
-              <>
-                <span className="text-ppp-charcoal font-semibold">
-                  {open.length} open bid{open.length === 1 ? "" : "s"}
-                </span>
-                {overview && (() => {
-                  const bidLabel = formatBidCents(
-                    overview.total_active_bid_low_cents,
-                    overview.total_active_bid_high_cents
-                  );
-                  return bidLabel !== "—" ? (
-                    <span className="text-ppp-charcoal-500">· {bidLabel}</span>
-                  ) : null;
-                })()}
-              </>
-            )}
-            {open.length > 0 && daysSinceLast !== null && (
-              <span aria-hidden className="text-ppp-charcoal-300">·</span>
-            )}
-            {daysSinceLast !== null && (
-              <span className={isStale ? "text-rose-700 font-medium" : "text-ppp-charcoal-700"}>
-                Last activity {daysSinceLast === 0 ? "today" : daysSinceLast === 1 ? "yesterday" : `${daysSinceLast}d ago`}
-                {isStale && " (cooling)"}
-              </span>
-            )}
-            {(wonCount > 0 || lostCount > 0) && (
-              <>
-                <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                <span className="text-ppp-charcoal-500">
-                  {wonCount} won · {lostCount} lost
-                  {overview && (() => {
-                    const winRateStr = renderWinRateSub(overview);
-                    return winRateStr ? ` · ${winRateStr}` : "";
-                  })()}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-        )}
-        <details open={openNewDeal} className="group/newdeal border-t border-ppp-charcoal-100">
-          <summary
-            id="new-deal"
-            className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-2.5 text-[13px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M12 5v14 M5 12h14" />
-              </svg>
-              New deal for this customer
-            </span>
-            <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/newdeal:rotate-180">▾</span>
-          </summary>
-          <div className="p-4 border-t border-ppp-charcoal-100">
-            <NewDealForm accountId={accountId} />
-          </div>
-        </details>
-      </div>
-
-      {open.length === 0 && decided.length > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-[12px] text-blue-800 flex items-center justify-between gap-3 flex-wrap">
-          <span>
-            No active bids right now. Last opp closed
-            {daysSinceLast !== null ? ` ${daysSinceLast}d ago` : ""}.
+      {/* Karan 2026-07-08 Batch 2 rewrite: killed the mid-page "1 won ·
+          0 lost · 100% win · ~12d close" signal line + "No active bids
+          right now. Start the next bid →" banner. That data lives in
+          the account hero's Financial Snapshot + roll-up stats now; the
+          Deals tab is a pure list of deals with a single primary "+ New
+          deal" CTA. */}
+      <details open={openNewDeal} className="group/newdeal bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <summary
+          id="new-deal"
+          className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-3 text-[13px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+        >
+          <span className="inline-flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            {open.length === 0 && decided.length > 0
+              ? "Start the next bid"
+              : "New deal for this customer"}
           </span>
-          <Link
-            href={`/commercial/accounts/${accountId}?tab=opportunities&new_deal=1#new-deal`}
-            className="font-semibold underline hover:text-blue-900 min-h-[44px] inline-flex items-center"
-          >
-            Start the next bid →
-          </Link>
+          <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/newdeal:rotate-180">▾</span>
+        </summary>
+        <div className="p-4 border-t border-ppp-charcoal-100">
+          <NewDealForm accountId={accountId} />
         </div>
-      )}
+      </details>
 
       {open.length > 0 && (
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -2103,14 +2031,23 @@ async function OpportunitiesTab({
         </section>
       )}
 
+      {/* Karan 2026-07-08 Batch 2: Decided section is collapsed by
+          default when there are open deals — closed history is
+          reference-only, not the primary read. Expanded by default when
+          this is the customer's only deal history (no open bids), since
+          then it IS the read. */}
       {decided.length > 0 && (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
+        <details
+          open={open.length === 0}
+          className="group/decided bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden"
+        >
+          <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-3 min-h-[44px] hover:bg-ppp-charcoal-50/60 touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-charcoal-300/40">
             <h2 className="text-sm font-semibold text-ppp-charcoal-700">
               Decided · {decided.length}
             </h2>
-          </div>
-          <ul className="divide-y divide-ppp-charcoal-100">
+            <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/decided:rotate-180">▾</span>
+          </summary>
+          <ul className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
             {decided.map((opp) => (
               <AccountOpportunityRow
                 key={opp.id}
@@ -2126,7 +2063,7 @@ async function OpportunitiesTab({
               />
             ))}
           </ul>
-        </section>
+        </details>
       )}
     </div>
   );
@@ -2246,11 +2183,10 @@ function AccountOpportunityRow({
           </div>
         </div>
       </Link>
-      {/* Quick-flip dropdown — DAG-filtered next statuses live on the
-          same row so Alex moves the deal forward without opening
-          detail. Terminal states still route to the detail page since
-          they need loss_reason + note capture. Hidden when no legal
-          next status (terminal opps or reopened-only paths). */}
+      {/* Karan 2026-07-08 Batch 2: dropped the "QUICK FLIP" caps label —
+          the placeholder text inside the select tells the same story
+          without shouting. Terminal states still route to detail for
+          loss_reason + note capture. */}
       {nextStatuses.length > 0 && (
         <form
           action={quickFlipFromAccountAction}
@@ -2258,19 +2194,17 @@ function AccountOpportunityRow({
         >
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="opp_id" value={opp.id} />
-          <label htmlFor={`account-flip-${opp.id}`} className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
-            Quick flip
-          </label>
           <select
             id={`account-flip-${opp.id}`}
             name="to_status"
             defaultValue=""
             required
-            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
+            aria-label={`Move ${opp.title} to next stage`}
+            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[36px]`}
             style={SELECT_BG_STYLE}
           >
             <option value="" disabled>
-              Next status…
+              Move to…
             </option>
             {nextStatuses.map((s) => {
               const isTerminal = isTerminalOpportunityStatus(s);
@@ -2283,9 +2217,9 @@ function AccountOpportunityRow({
           </select>
           <button
             type="submit"
-            className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+            className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[36px] touch-manipulation"
           >
-            Move
+            Go
           </button>
         </form>
       )}

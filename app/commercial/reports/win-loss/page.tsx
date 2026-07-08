@@ -280,8 +280,8 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
             No debriefs in this period yet
           </h2>
           <p className="text-sm text-ppp-charcoal-500">
-            As opportunities close with completed debriefs, they&apos;ll show up here.
-            See <Link href="/commercial/opportunities" className="text-blue-700 underline">opportunities</Link> for active deals.
+            As deals close with completed debriefs, they&apos;ll show up here.
+            See <Link href="/commercial/opportunities" className="text-blue-700 underline">pipeline</Link> for active deals.
           </p>
         </section>
       ) : (

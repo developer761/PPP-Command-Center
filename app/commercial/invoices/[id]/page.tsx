@@ -293,16 +293,50 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
   return (
     <div className="space-y-5">
-      {/* Back link */}
-      <Link
-        href="/commercial/invoices"
-        className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800 min-h-[44px] touch-manipulation -ml-1 px-1"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M19 12H5 M12 19l-7-7 7-7" />
-        </svg>
-        All invoices
-      </Link>
+      {/* Karan 2026-07-08 Batch 3: swapped the "← All invoices" back
+          link for a proper breadcrumb — Invoices / [Account] / [Deal] /
+          [Invoice #]. Mirrors the deal-detail breadcrumb so users learn
+          one hierarchy pattern across the platform. Each hop is
+          keyboard/tap-friendly at 32px min-height. */}
+      <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
+        <Link
+          href="/commercial/invoices"
+          className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+          Invoices
+        </Link>
+        {account && (
+          <>
+            <span aria-hidden className="text-ppp-charcoal-300">/</span>
+            <Link
+              href={`/commercial/accounts/${account.id}`}
+              className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+              title={account.company_name}
+            >
+              {account.company_name}
+            </Link>
+          </>
+        )}
+        {opp && (
+          <>
+            <span aria-hidden className="text-ppp-charcoal-300">/</span>
+            <Link
+              href={`/commercial/opportunities/${opp.id}`}
+              className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+              title={opp.title}
+            >
+              {opp.title}
+            </Link>
+          </>
+        )}
+        <span aria-hidden className="text-ppp-charcoal-300">/</span>
+        <span className="inline-flex items-center min-h-[32px] px-1 text-ppp-charcoal-700 font-mono truncate max-w-[220px]" title={invoice.invoice_number}>
+          {invoice.invoice_number}
+        </span>
+      </nav>
 
       {/* Sibling nav — only shown when this opp has multiple invoices
           (progress billing). Prev/Next hops + "N of M" counter + link
