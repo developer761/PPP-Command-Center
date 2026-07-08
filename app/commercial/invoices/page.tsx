@@ -15,7 +15,6 @@ import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
   deriveInvoiceStatus,
-  BILLABLE_INVOICE_STATUSES,
   INVOICE_STATUSES,
   type InvoiceStatus,
 } from "@/lib/commercial/invoices/constants";
@@ -133,8 +132,12 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     .formatToParts(now)
     .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
   const monthStartEtIso = `${etYear}-${etMonth}-01T00:00:00${offsetToken.replace("GMT", "")}`;
+  // Karan 2026-07-07: include drafts in Outstanding so it stays
+  // consistent with the opp panel + Account 360 tiles ("all the money
+  // that could be owed once these invoices are sent"). Void is still
+  // excluded (a voided invoice will never be paid).
   const outstandingCents = kpiSource
-    .filter((i) => BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)))
+    .filter((i) => i.status !== "void")
     .reduce((acc, i) => acc + i.balance_cents, 0);
   const overdueCount = kpiSource.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
   // AR aging buckets (Karan 2026-07-07 Alex-love feature). GCs prioritize
@@ -636,155 +639,144 @@ function GroupedByOpp({
     );
   }
 
+  // Karan 2026-07-07 redesign: grouped view collapsed to a compact list
+  // of opp ROWS instead of per-opp expanded cards. Each row = opp title +
+  // account chip + summary tiles + Open button that jumps into the opp
+  // Invoices tab (which owns the master progress bar + per-invoice detail
+  // + Record payment collapsibles + Add invoice). Kept: total-invoiced,
+  // outstanding, N invoices, overdue flag. Dropped: per-invoice inline
+  // rows, master progress bar (moved to opp Invoices tab), Add invoice
+  // button per row (moved to opp Invoices tab). Account name click goes
+  // to a filtered invoice list, NOT the accounts page.
   return (
-    <div className="space-y-4">
-      {oppOrder.map(([oppId, groupInvoices]) => {
-        const opp = oppById.get(oppId);
-        const account = opp ? accountById.get(opp.account_id) : null;
-        // Roll-up per opp — Karan 2026-07-07 bug fix: earlier version
-        // excluded drafts from Invoiced total, so a $9K sent + $1.2K
-        // draft opp showed "$9K invoiced" and confused the operator.
-        // Include every non-void invoice so the total matches "all the
-        // invoices I've created for this deal." Drafts contribute $0 to
-        // Paid by definition, so Balance stays accurate.
-        const nonVoid = groupInvoices.filter((i) => i.status !== "void");
-        const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
-        const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
-        const totalBalance = totalInvoiced - totalPaid;
-        const draftInGroup = groupInvoices.filter((i) => i.status === "draft");
-        const draftGroupCount = draftInGroup.length;
-        const draftGroupCents = draftInGroup.reduce((s, i) => s + i.total_cents, 0);
-        const overduePresent = groupInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
-        const groupPct =
-          totalInvoiced > 0
-            ? Math.min(100, Math.round((totalPaid / totalInvoiced) * 100))
-            : 0;
-        const groupBarTone =
-          totalInvoiced === 0
-            ? "bg-ppp-charcoal-200"
-            : totalPaid >= totalInvoiced
-            ? "bg-emerald-500"
-            : overduePresent
-            ? "bg-rose-500"
-            : totalPaid > 0
-            ? "bg-blue-500"
-            : "bg-ppp-charcoal-300";
-        // Sort inside a group chronologically so progress-billing reads
-        // in the order the invoices were issued.
-        const sortedGroup = [...groupInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
-        return (
-          <section
-            key={oppId}
-            className={`bg-white border rounded-xl overflow-hidden shadow-sm ${
-              overduePresent ? "border-rose-200" : "border-ppp-charcoal-100"
-            }`}
-          >
-            {/* Opp header — title + account + roll-up strip */}
-            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-br from-white to-blue-50/30">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2 flex-wrap">
-                    {opp ? (
-                      <Link
-                        href={`/commercial/opportunities/${opp.id}?tab=invoices`}
-                        className="text-[15px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 truncate"
-                      >
-                        {opp.title}
-                      </Link>
-                    ) : (
-                      <span className="text-[15px] font-bold text-ppp-charcoal-400 italic">Opportunity unavailable</span>
-                    )}
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
-                      {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
-                    </span>
-                    {overduePresent && (
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-300 rounded px-1.5 py-0.5">
-                        Overdue
+    <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm">
+      <ul className="divide-y divide-ppp-charcoal-100">
+        {oppOrder.map(([oppId, groupInvoices]) => {
+          const opp = oppById.get(oppId);
+          const account = opp ? accountById.get(opp.account_id) : null;
+          const nonVoid = groupInvoices.filter((i) => i.status !== "void");
+          const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
+          const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
+          const totalBalance = totalInvoiced - totalPaid;
+          const overduePresent = groupInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
+          const draftCount = groupInvoices.filter((i) => i.status === "draft").length;
+          const groupPct =
+            totalInvoiced > 0
+              ? Math.min(100, Math.round((totalPaid / totalInvoiced) * 100))
+              : 0;
+          const groupBarTone =
+            totalInvoiced === 0
+              ? "bg-ppp-charcoal-200"
+              : totalPaid >= totalInvoiced
+              ? "bg-emerald-500"
+              : overduePresent
+              ? "bg-rose-500"
+              : totalPaid > 0
+              ? "bg-blue-500"
+              : "bg-ppp-charcoal-300";
+          const rowHref = opp ? `/commercial/opportunities/${opp.id}?tab=invoices` : "#";
+          return (
+            <li key={oppId}>
+              <Link
+                href={rowHref}
+                className="group/oppInv block px-4 sm:px-5 py-3.5 hover:bg-blue-50/40 focus:outline-none focus:bg-blue-50/60 transition-colors touch-manipulation"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    {/* Row 1: title + account chip + N invoices + overdue badge */}
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <span className="font-semibold text-[14px] text-ppp-charcoal group-hover/oppInv:text-blue-800 truncate">
+                        {opp ? opp.title : <span className="text-ppp-charcoal-400 italic">Opportunity unavailable</span>}
                       </span>
+                      {account && (
+                        <span
+                          className="text-[11px] text-ppp-charcoal-500 truncate max-w-[180px]"
+                          title={account.company_name}
+                        >
+                          · {account.company_name}
+                        </span>
+                      )}
+                      <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 rounded px-1.5 py-0.5 shrink-0">
+                        {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
+                      </span>
+                      {overduePresent && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-200 rounded px-1.5 py-0.5 shrink-0">
+                          Overdue
+                        </span>
+                      )}
+                    </div>
+                    {/* Row 2: money summary */}
+                    <div className="mt-1 text-[12px] text-ppp-charcoal-600 tabular-nums">
+                      <strong className="text-ppp-charcoal">{formatCentsFull(totalInvoiced)}</strong> invoiced
+                      {totalBalance > 0 && (
+                        <>
+                          <span className="text-ppp-charcoal-300"> · </span>
+                          <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
+                        </>
+                      )}
+                      {totalPaid > 0 && (
+                        <>
+                          <span className="text-ppp-charcoal-300"> · </span>
+                          <span className="text-emerald-700 font-medium">{formatCentsFull(totalPaid)} paid</span>
+                        </>
+                      )}
+                      {draftCount > 0 && (
+                        <>
+                          <span className="text-ppp-charcoal-300"> · </span>
+                          <span className="text-ppp-charcoal-500">{draftCount} draft{draftCount === 1 ? "" : "s"}</span>
+                        </>
+                      )}
+                    </div>
+                    {/* Row 3: compact progress bar */}
+                    {totalInvoiced > 0 && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="h-1.5 flex-1 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${groupBarTone}`}
+                            style={{ width: `${groupPct}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-semibold text-ppp-charcoal-500 tabular-nums shrink-0 w-9 text-right">
+                          {groupPct}%
+                        </span>
+                      </div>
                     )}
                   </div>
-                  {account && (
-                    <div className="text-[12px] text-ppp-charcoal-600 mt-0.5">
-                      <Link href={`/commercial/accounts/${account.id}`} className="text-blue-700 hover:text-blue-800 underline underline-offset-2">
-                        {account.company_name}
-                      </Link>
-                    </div>
-                  )}
-                </div>
-                {opp && opp.status === "won" && (
-                  <Link
-                    href={`/commercial/invoices/new?opp=${opp.id}`}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-white text-cc-brand-700 text-[11.5px] font-semibold hover:bg-cc-brand-50 min-h-[36px] touch-manipulation"
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="shrink-0 mt-1 text-ppp-charcoal-300 group-hover/oppInv:text-cc-brand-600 transition-colors"
+                    aria-hidden
                   >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M12 5v14 M5 12h14" />
-                    </svg>
-                    Add invoice
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </div>
+              </Link>
+              {/* Account chip below the row — separate from the main
+                  <Link> so clicking it doesn't teleport to the opp page.
+                  Goes to a filtered invoice list scoped to the account
+                  (all opps for that customer with their invoices). */}
+              {account && (
+                <div className="px-4 sm:px-5 pb-3 -mt-1">
+                  <Link
+                    href={`/commercial/invoices?account_id=${account.id}`}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 hover:text-blue-900 hover:underline"
+                  >
+                    View all invoices for {account.company_name}
+                    <span aria-hidden>→</span>
                   </Link>
-                )}
-              </div>
-              {/* Mini roll-up strip */}
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <div className="border border-cc-brand-200 bg-cc-brand-50/40 rounded-lg px-2.5 py-1.5">
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Invoiced</div>
-                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalInvoiced)}</div>
-                </div>
-                <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg px-2.5 py-1.5">
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Paid</div>
-                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalPaid)}</div>
-                </div>
-                <div className={`border rounded-lg px-2.5 py-1.5 ${
-                  totalBalance > 0 ? "border-blue-200 bg-blue-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
-                }`}>
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Balance</div>
-                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance)}</div>
-                </div>
-              </div>
-              {/* Master progress bar per opp group. Same tone rules as
-                  the opp-detail Invoices panel: emerald=paid, blue=partial,
-                  rose=any overdue, neutral=unpaid. Sits below the roll-up
-                  strip so the deal reads: totals → progress → per-invoice
-                  detail. Draft caption clarifies why Invoiced looks bigger
-                  than what's actually been sent to the customer. */}
-              {totalInvoiced > 0 && (
-                <div className="mt-3">
-                  <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
-                      Deal progress
-                    </div>
-                    <div className="text-[10.5px] text-ppp-charcoal-600 tabular-nums">
-                      <strong className="text-ppp-charcoal">{formatCentsFull(totalPaid)}</strong>
-                      <span className="text-ppp-charcoal-500"> of {formatCentsFull(totalInvoiced)}</span>
-                      <span className="text-ppp-charcoal-400"> · {groupPct}%</span>
-                    </div>
-                  </div>
-                  <div className="h-2 bg-ppp-charcoal-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${groupBarTone}`}
-                      style={{ width: `${groupPct}%` }}
-                    />
-                  </div>
-                  {draftGroupCount > 0 && (
-                    <div className="mt-1 text-[10.5px] text-ppp-charcoal-500">
-                      Includes {draftGroupCount} draft{draftGroupCount === 1 ? "" : "s"} ({formatCentsFull(draftGroupCents)}) not yet sent.
-                    </div>
-                  )}
                 </div>
               )}
-            </div>
-            {/* Child invoices */}
-            <ul className="divide-y divide-ppp-charcoal-100">
-              {sortedGroup.map((inv) => (
-                <InvoiceRow
-                  key={inv.id}
-                  invoice={inv}
-                  accountName={account?.company_name ?? "—"}
-                />
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

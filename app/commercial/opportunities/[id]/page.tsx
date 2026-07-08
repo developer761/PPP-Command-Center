@@ -2285,13 +2285,10 @@ function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
             Here the status is already terminal — passing initialStatus
             renders the form fully open without a sibling select. */}
         <DebriefFields initialStatus={opp.status} />
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-3 border-t border-ppp-charcoal-100 mt-4">
-          <Link
-            href="/commercial/opportunities"
-            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-medium hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 transition-colors min-h-[44px] touch-manipulation"
-          >
-            Skip for now
-          </Link>
+        <div className="flex justify-end pt-3 border-t border-ppp-charcoal-100 mt-4">
+          {/* Karan 2026-07-07: "Skip for now" removed — the user is
+              already on the Debrief tab intentionally + can just click
+              any other tab to skip. A dedicated Skip button was noise. */}
           <button
             type="submit"
             className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
