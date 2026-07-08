@@ -911,21 +911,11 @@ function GroupedByOpp({
                   </svg>
                 </div>
               </Link>
-              {/* Account chip below the row — separate from the main
-                  <Link> so clicking it doesn't teleport to the opp page.
-                  Goes to a filtered invoice list scoped to the account
-                  (all opps for that customer with their invoices). */}
-              {account && (
-                <div className="px-4 sm:px-5 pb-3 -mt-1">
-                  <Link
-                    href={`/commercial/invoices?account_id=${account.id}`}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 hover:text-blue-900 hover:underline"
-                  >
-                    View all invoices for {account.company_name}
-                    <span aria-hidden>→</span>
-                  </Link>
-                </div>
-              )}
+              {/* Karan 2026-07-07: "View all invoices for X" chip removed
+                  — the whole row now links to the same filtered detail
+                  target (account_id=<X>#opp-<Y>) so the chip was
+                  redundant. Fewer clickable areas per row + zero
+                  jumping. */}
             </li>
           );
         })}
