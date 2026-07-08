@@ -227,7 +227,6 @@ export async function GET(request: Request) {
           "id, created_at, triggered_by, triggered_by_token, sf_object, sf_record_id, field_writes, succeeded, error_code, error_message, retry_count, duration_ms"
         )
         .in("triggered_by_token", tokenList)
-        .order("created_at", { ascending: false })
         .limit(100);
       if (byToken) rows.push(...byToken);
     }
