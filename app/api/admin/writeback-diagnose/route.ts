@@ -223,9 +223,7 @@ export async function GET(request: Request) {
     if (tokenList.length > 0) {
       const { data: byToken } = await sb
         .from("sf_writes_audit")
-        .select(
-          "id, created_at, triggered_by, triggered_by_token, sf_object, sf_record_id, field_writes, succeeded, error_code, error_message, retry_count, duration_ms"
-        )
+        .select("*")
         .in("triggered_by_token", tokenList)
         .limit(100);
       if (byToken) rows.push(...byToken);
@@ -234,11 +232,8 @@ export async function GET(request: Request) {
     // MaterialType__c writes) in case the token linkage is missing.
     const { data: byRecord } = await sb
       .from("sf_writes_audit")
-      .select(
-        "id, created_at, triggered_by, triggered_by_token, sf_object, sf_record_id, field_writes, succeeded, error_code, error_message, retry_count, duration_ms"
-      )
+      .select("*")
       .like("sf_record_id", `${prefix}%`)
-      .order("created_at", { ascending: false })
       .limit(50);
     if (byRecord) {
       for (const r of byRecord) {
@@ -400,7 +395,7 @@ export async function GET(request: Request) {
     // a different query path than .select("*").
     ...(await (async () => {
       const [full, headCount] = await Promise.all([
-        sb.from("sf_writes_audit").select("*").order("created_at", { ascending: false }).limit(20),
+        sb.from("sf_writes_audit").select("*").limit(20),
         sb.from("sf_writes_audit").select("id", { count: "exact", head: true }),
       ]);
       return {
