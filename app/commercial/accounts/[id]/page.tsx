@@ -112,6 +112,11 @@ type SP = Promise<{
   error?: string;
   team_added?: string;
   team_skipped?: string;
+  /** Karan 2026-07-08: on-create tags + docs flashes from /new. */
+  tags_added?: string;
+  tag_skipped?: string;
+  docs_added?: string;
+  doc_skipped?: string;
   saved?: string;
   /** Karan 2026-07-08: right-side slide-out edit sheet for a specific
    *  deal. Replaces the DealDrillIn auto-focus behavior. Any surface
@@ -259,6 +264,10 @@ export default async function CommercialAccountDetailPage({
 
   const teamAddedCount = sp.team_added ? Number(sp.team_added) : 0;
   const teamSkippedMsg = sp.team_skipped ?? null;
+  const tagsAddedCount = sp.tags_added ? Number(sp.tags_added) : 0;
+  const tagSkippedMsg = sp.tag_skipped ?? null;
+  const docsAddedCount = sp.docs_added ? Number(sp.docs_added) : 0;
+  const docSkippedMsg = sp.doc_skipped ?? null;
   const savedOk = sp.saved === "1";
 
   return (
@@ -294,6 +303,30 @@ export default async function CommercialAccountDetailPage({
           <span>
             Some team members couldn&apos;t be added — {teamSkippedMsg}. Try again from
             the Team tab below.
+          </span>
+        </div>
+      )}
+      {(docsAddedCount > 0 || tagsAddedCount > 0) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2 flex-wrap">
+          <span aria-hidden>✓</span>
+          <span className="flex-1 min-w-0">
+            {docsAddedCount > 0 && (
+              <>Uploaded {docsAddedCount} document{docsAddedCount === 1 ? "" : "s"}.</>
+            )}
+            {docsAddedCount > 0 && tagsAddedCount > 0 && " "}
+            {tagsAddedCount > 0 && (
+              <>Attached {tagsAddedCount} tag{tagsAddedCount === 1 ? "" : "s"}.</>
+            )}
+          </span>
+        </div>
+      )}
+      {(docSkippedMsg || tagSkippedMsg) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
+          <span aria-hidden>⚠</span>
+          <span>
+            {docSkippedMsg && <>Some documents couldn&apos;t be uploaded: {docSkippedMsg}. Try again from the Documents tab.</>}
+            {docSkippedMsg && tagSkippedMsg && <br />}
+            {tagSkippedMsg && <>Some tags couldn&apos;t be attached: {tagSkippedMsg}. Add them from the Tags card.</>}
           </span>
         </div>
       )}

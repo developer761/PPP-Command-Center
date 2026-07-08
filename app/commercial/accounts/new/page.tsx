@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createCommercialAccount } from "@/lib/commercial/accounts/mutations";
@@ -9,12 +10,31 @@ import {
   ASSIGNMENT_ROLES,
   type AssignmentRole,
 } from "@/lib/commercial/accounts/assignments";
+import {
+  DOCUMENT_CATEGORIES,
+  documentCategoryLabel,
+  uploadDocument,
+  ALLOWED_MIME_TYPES,
+  type DocumentCategory,
+} from "@/lib/commercial/accounts/documents";
+import { addAccountTag } from "@/lib/commercial/accounts/tags";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import CommercialSiteAddressToggle from "@/components/commercial-site-address-toggle";
 import CommercialNewAccountTeamPicker from "@/components/commercial-new-account-team-picker";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 const VALID_ROLES = new Set<AssignmentRole>(ASSIGNMENT_ROLES);
+
+// Karan 2026-07-08: on-create doc upload categories. Skips "other" —
+// only the compliance-critical 5 that appear in the checklist. Alex
+// can upload "other" from the Documents tab after landing.
+const ON_CREATE_DOC_CATEGORIES: DocumentCategory[] = [
+  "coi",
+  "w9",
+  "master_agreement",
+  "vendor_onboarding",
+  "safety",
+];
 
 export const dynamic = "force-dynamic";
 
@@ -182,6 +202,55 @@ async function createAction(formData: FormData) {
     }
   }
 
+  // Karan 2026-07-08: process any tags typed into the "Tags" field
+  // (comma-separated). Fail-soft — a bad tag doesn't roll back the
+  // account, just gets tallied in the flash so Alex knows which ones
+  // to retype from the Tags card.
+  const rawTags = String(formData.get("tags") ?? "").trim();
+  let tagsAddedCount = 0;
+  const tagSkipReasons: string[] = [];
+  if (rawTags) {
+    const tags = rawTags
+      .split(/[,\n]/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    for (const t of tags) {
+      const r = await addAccountTag(newAccountId, t, user.id);
+      if (r.ok) tagsAddedCount += 1;
+      else tagSkipReasons.push(`${t}: ${r.error}`);
+    }
+  }
+
+  // Karan 2026-07-08: process any compliance docs Alex uploaded on
+  // the New Account form. Fail-soft — an oversized/rejected file
+  // surfaces in the flash and Alex can retry from the Documents tab.
+  // Same 50MB / MIME allowlist gates that live in the API upload path.
+  let docsUploadedCount = 0;
+  const docSkipReasons: string[] = [];
+  for (const category of ON_CREATE_DOC_CATEGORIES) {
+    const f = formData.get(`doc_${category}`);
+    if (!(f instanceof File) || f.size === 0) continue;
+    if (!ALLOWED_MIME_TYPES.has(f.type)) {
+      docSkipReasons.push(`${documentCategoryLabel(category)}: file type not allowed`);
+      continue;
+    }
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const up = await uploadDocument({
+      account_id: newAccountId,
+      category,
+      file_name: f.name,
+      size_bytes: f.size,
+      mime_type: f.type,
+      expires_at: null,
+      notes: null,
+      data: bytes,
+      uploaded_by_user_id: user.id,
+    });
+    if (up.ok) docsUploadedCount += 1;
+    else docSkipReasons.push(`${documentCategoryLabel(category)}: ${up.error}`);
+  }
+
   const params = new URLSearchParams();
   if (teamAddedCount > 0) params.set("team_added", String(teamAddedCount));
   if (teamSkipReasons.length > 0) {
@@ -195,6 +264,24 @@ async function createAction(formData: FormData) {
       .join(" · ");
     params.set("team_skipped", sanitized);
   }
+  if (tagsAddedCount > 0) params.set("tags_added", String(tagsAddedCount));
+  if (tagSkipReasons.length > 0) {
+    params.set(
+      "tag_skipped",
+      tagSkipReasons.map((s) => s.replace(/[<>"'`]/g, "").slice(0, 120)).slice(0, 3).join(" · ")
+    );
+  }
+  if (docsUploadedCount > 0) params.set("docs_added", String(docsUploadedCount));
+  if (docSkipReasons.length > 0) {
+    params.set(
+      "doc_skipped",
+      docSkipReasons.map((s) => s.replace(/[<>"'`]/g, "").slice(0, 120)).slice(0, 5).join(" · ")
+    );
+  }
+  // Flush the detail page + list so uploaded docs and tags render
+  // immediately on the redirect landing.
+  revalidatePath(`/commercial/accounts/${newAccountId}`);
+  revalidatePath("/commercial/accounts");
   const qs = params.toString();
   redirect(`/commercial/accounts/${newAccountId}${qs ? `?${qs}` : ""}`);
 }
@@ -240,7 +327,8 @@ export default async function NewCommercialAccountPage({
         <span aria-hidden className="block h-[3px] w-10 rounded-full mt-2 mb-3 bg-cc-brand-600" />
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">New account</h1>
         <p className="mt-1 text-sm text-ppp-charcoal-500">
-          The basics — add documents, contacts, and other detail after saving.
+          The essentials. If you have compliance docs or tags in hand, add them below —
+          everything is optional and can be edited from the account&apos;s tabs later.
         </p>
       </header>
 
@@ -276,7 +364,7 @@ export default async function NewCommercialAccountPage({
         </div>
       )}
 
-      <form action={createAction} className="space-y-5 max-w-2xl">
+      <form action={createAction} encType="multipart/form-data" className="space-y-5 max-w-2xl">
         {/* Pass-through flag so a second submit after the warning skips
             the duplicate check. */}
         {duplicateCandidates.length > 0 && <input type="hidden" name="confirm_duplicate" value="1" />}
@@ -359,6 +447,48 @@ export default async function NewCommercialAccountPage({
             roles + primaries later from the Team tab.
           </p>
           <CommercialNewAccountTeamPicker assignableStaff={assignableStaff} />
+        </Section>
+
+        {/* Karan 2026-07-08: Tags + Documents on create. Skip the trip
+            through the detail page if the operator has the info in
+            hand. Both sections are optional — the form still submits
+            with empty values so nothing here can block the create. */}
+        <Section title="Tags">
+          <p className="text-[12px] text-ppp-charcoal-500 -mt-1 leading-relaxed">
+            Free-form labels (Hospitality, Healthcare, Property Mgmt) — different from Industry.
+            Use them to group accounts on the list page. Comma-separated.
+          </p>
+          <input
+            id="tags"
+            name="tags"
+            type="text"
+            placeholder="e.g. Hospitality, Long Island, Repeat"
+            className={INPUT_CLS}
+            maxLength={500}
+          />
+        </Section>
+
+        <Section title="Documents">
+          <p className="text-[12px] text-ppp-charcoal-500 -mt-1 leading-relaxed">
+            Upload any compliance docs you have in hand. All optional —
+            you can add more from the Documents tab later. Max 50 MB per file (PDF, image, or Word).
+          </p>
+          <div className="space-y-3">
+            {ON_CREATE_DOC_CATEGORIES.map((c) => (
+              <div key={c} className="border border-ppp-charcoal-100 rounded-lg p-3">
+                <label htmlFor={`doc_${c}`} className="block text-[12.5px] font-semibold text-ppp-charcoal mb-1.5">
+                  {documentCategoryLabel(c)}
+                </label>
+                <input
+                  id={`doc_${c}`}
+                  name={`doc_${c}`}
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                  className="block w-full text-[12px] text-ppp-charcoal-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:cursor-pointer min-h-[44px] touch-manipulation"
+                />
+              </div>
+            ))}
+          </div>
         </Section>
 
         <Section title="Notes">
