@@ -2742,169 +2742,219 @@ function AccountOverviewStrip({
   invoiceRollup: AccountInvoiceRollup;
   accountId: string;
 }) {
-  // Graceful no-op if the view migration hasn't been applied yet. The page
-  // still renders — the strip just hides until 024 is pasted.
+  // Karan 2026-07-08 Batch 1: total rewrite. Old strip crammed 8 tiles
+  // across 3 unrelated categories (people + documents + pipeline +
+  // financials) into one grid + hung a "View statement" CTA orphaned
+  // at the bottom + littered every label with an inline (?) info-dot.
+  // New shape: money-only, clean.
+  //
+  //   ┌─────────────────────────────── Activity chip ┐
+  //   │  $INVOICED    $PAID    $BALANCE               │
+  //   │  ██░░░░░░ N% collected                        │
+  //   │                    View statement →           │
+  //   └───────────────────────────────────────────────┘
+  //
+  // Non-money counts (Contacts / Team / Documents / Open opps) now live
+  // in their respective tab body headers — they were duplicate shortcuts
+  // here since the tab bar already exposes those surfaces. Repeat-
+  // customer signal moves to a subtle chip inline with Activity (was
+  // fighting for attention next to it before).
+  //
+  // Graceful no-op if the view migration hasn't been applied yet.
   if (!overview) return null;
 
   const activity = relativeActivity(overview.last_activity_at);
-  const tone = activityTone(overview.last_activity_at);
+  const activityTonality = activityTone(overview.last_activity_at);
   const activityClass =
-    tone === "ok"
+    activityTonality === "ok"
       ? "text-blue-700 bg-blue-50 border-blue-200"
-      : tone === "stale"
+      : activityTonality === "stale"
       ? "text-amber-700 bg-amber-50 border-amber-200"
       : "text-rose-700 bg-rose-50 border-rose-200";
 
-  // Document health pip — green if no expired & no expiring-soon, amber
-  // if expiring-soon, rose if any expired.
-  const docHealth =
-    overview.expired_document_count > 0
-      ? { label: `${overview.expired_document_count} expired`, cls: "text-rose-700" }
-      : overview.expiring_soon_document_count > 0
-      ? { label: `${overview.expiring_soon_document_count} expiring`, cls: "text-amber-700" }
-      : overview.active_document_count > 0
-      ? { label: "all current", cls: "text-blue-700" }
-      : { label: "none on file", cls: "text-ppp-charcoal-500" };
-
-  // Repeat customer badge — won at least one bid = relationship has real
-  // history. Helps Alex tell apart cold leads from accounts that already
-  // trust PPP. Surfaced next to the activity pill.
   const isRepeat = (overview.won_opps_count ?? 0) > 0;
 
-  // Total bid sub-label: range when low+high differ, single value when
-  // matched, "—" when no opps. formatBidCents handles all three cases.
-  const totalBidLabel = formatBidCents(
-    overview.total_active_bid_low_cents,
-    overview.total_active_bid_high_cents
-  );
+  // Progress bar — collected as a fraction of invoiced. Tone escalates:
+  //   fully paid → emerald · any overdue → rose ·
+  //   partial paid → blue · nothing paid yet → neutral.
+  const invoicedCents = invoiceRollup.invoiced_cents;
+  const paidCents = invoiceRollup.paid_cents;
+  const collectedPct =
+    invoicedCents > 0 ? Math.min(100, Math.round((paidCents / invoicedCents) * 100)) : 0;
+  const barTone =
+    invoicedCents === 0
+      ? "bg-ppp-charcoal-200"
+      : paidCents >= invoicedCents
+      ? "bg-emerald-500"
+      : invoiceRollup.overdue_count > 0
+      ? "bg-rose-500"
+      : paidCents > 0
+      ? "bg-blue-500"
+      : "bg-ppp-charcoal-300";
+
+  const invoicedCountLabel =
+    invoiceRollup.invoice_count === 0
+      ? undefined
+      : `${invoiceRollup.invoice_count} invoice${invoiceRollup.invoice_count === 1 ? "" : "s"}`;
+  const balanceCountLabel =
+    invoiceRollup.overdue_count > 0
+      ? `${invoiceRollup.overdue_count} overdue`
+      : undefined;
 
   return (
     <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <h2 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
-          Account 360
-        </h2>
-        <div className="flex items-center gap-1.5 flex-wrap">
+      {/* Top-right chip cluster — activity + repeat-customer signal,
+          subtle so they don't compete with the money numbers below. */}
+      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+        <div>
+          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">
+            Financial snapshot
+          </h2>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+            Every non-void invoice + payment, rolled up.
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap shrink-0">
           {isRepeat && (
             <span
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 text-amber-800 border-amber-200"
-              title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account — repeat customer.`}
+              title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this customer.`}
             >
               <span aria-hidden>★</span> Repeat customer
             </span>
           )}
           <span
             className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${activityClass}`}
-            title={`Most recent activity on this account (contact added, doc uploaded, team change, opp updated). Last touched: ${overview.last_activity_at}`}
+            title={`Most recent activity on this account. Last touched: ${overview.last_activity_at}`}
           >
-            Activity: {activity}
+            Active {activity}
           </span>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-        <KpiTile
-          tone="live"
-          num={overview.contact_count}
-          label="Contacts"
-          href={`?tab=contacts`}
-          tooltip="People AT this customer organization (decision makers, PMs, AP contacts, etc.). Distinct from PPP team — those are our internal staff managing the account."
-        />
-        <KpiTile
-          tone="live"
-          num={overview.ppp_team_count}
-          label="PPP team"
-          href={`?tab=team`}
-          tooltip="PPP staff assigned to manage this account — sales rep, account manager, project manager, superintendent, etc. Add or change from the Team tab."
-        />
-        <KpiTile
-          tone="live"
-          num={overview.active_document_count}
-          label="Documents"
-          href={`?tab=documents`}
-          sub={docHealth.label}
-          subCls={docHealth.cls}
-          tooltip="Active (non-archived) files attached to this account — COIs, vendor forms, W-9s, safety docs. Subtitle flags expiring or expired insurance so we don't bid with stale paperwork."
-        />
-        <KpiTile
-          tone="live"
-          num={overview.open_opps_count ?? 0}
-          label="Open opps"
-          href={`?tab=opportunities`}
-          sub={totalBidLabel !== "—" ? totalBidLabel : undefined}
-          subCls="text-ppp-charcoal-500"
-          tooltip="Live opportunities still in play — anything in Inquiry, Site visit, Estimating, Proposal sent, Negotiating, or On hold. Excludes won, lost, and no-bid."
-        />
-        <KpiTile
-          tone="live"
-          text={formatCentsCompact(invoiceRollup.invoiced_cents)}
+
+      {/* Three money tiles — same category (financials), same visual weight.
+          Row layout on mobile stacks 2+1 (grid-cols-2 with last row full);
+          desktop shows all three side-by-side. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+        <MoneyTile
           label="Invoiced"
+          value={formatCentsCompact(invoicedCents)}
+          sub={invoicedCountLabel}
           href={`/commercial/invoices?account_id=${accountId}`}
-          sub={
-            invoiceRollup.invoice_count > 0
-              ? `${invoiceRollup.invoice_count} invoice${invoiceRollup.invoice_count === 1 ? "" : "s"}`
-              : undefined
-          }
-          subCls="text-ppp-charcoal-500"
-          tooltip="Total billable value invoiced to this account (excludes drafts + voided). Click through to filter the Invoices list to this account."
+          tone="brand"
         />
-        <KpiTile
-          tone="live"
-          text={formatCentsCompact(invoiceRollup.paid_cents)}
+        <MoneyTile
           label="Paid"
+          value={formatCentsCompact(paidCents)}
           href={`/commercial/invoices?account_id=${accountId}&status=paid`}
-          tooltip="Sum of payments received against this account's invoices — cash actually collected. Click to jump to this account's paid invoices."
+          tone="emerald"
         />
-        <KpiTile
-          tone="live"
-          text={formatCentsCompact(invoiceRollup.balance_cents)}
+        <MoneyTile
           label="Balance"
+          value={formatCentsCompact(invoiceRollup.balance_cents)}
+          sub={balanceCountLabel}
+          subTone={invoiceRollup.overdue_count > 0 ? "rose" : "muted"}
           href={
             invoiceRollup.overdue_count > 0
               ? `/commercial/invoices?account_id=${accountId}&status=overdue`
               : `/commercial/invoices?account_id=${accountId}&status=sent`
           }
-          sub={
-            invoiceRollup.overdue_count > 0
-              ? `${invoiceRollup.overdue_count} overdue`
-              : undefined
-          }
-          subCls={invoiceRollup.overdue_count > 0 ? "text-rose-700" : "text-ppp-charcoal-500"}
-          tooltip="Outstanding balance across all non-voided invoices (Invoiced − Paid). The 'overdue' sub-count flags invoices past their due date. Click to see this account's outstanding or overdue invoices."
-        />
-        <KpiTile
-          tone="live"
-          num={(overview.won_opps_count ?? 0) + (overview.lost_opps_count ?? 0)}
-          label="Decided bids"
-          href={`?tab=opportunities`}
-          sub={renderWinRateSub(overview)}
-          subCls="text-ppp-charcoal-500"
-          tooltip="Opportunities with a final outcome — Won + Lost + No-bid. The sub-text shows win rate (Won ÷ total decided) and average days from create → decided across Won opps."
+          tone={invoiceRollup.balance_cents > 0 ? "blue" : "muted"}
         />
       </div>
-      {/* Statement CTA — Alex-love (Karan 2026-07-07): GCs and AP clerks
-          call asking "show me every invoice + payment for the year." The
-          KPI tiles above give the totals; this link jumps to the full
-          per-opp grouped invoice ledger so the answer is one click away
-          instead of a URL hack. Only render when there's at least one
-          invoice — otherwise it points at an empty page. */}
-      {invoiceRollup.invoice_count > 0 && (
-        <div className="mt-3 pt-3 border-t border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-[11.5px] text-ppp-charcoal-500">
-            Need the full transaction history? View the statement — every invoice + payment grouped by opportunity.
+
+      {/* Progress bar — only meaningful when there's at least one invoice. */}
+      {invoicedCents > 0 && (
+        <div className="mt-4">
+          <div className="flex items-baseline justify-between gap-2 mb-1.5 flex-wrap">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+              Collected
+            </span>
+            <span className="text-[11.5px] text-ppp-charcoal-600 tabular-nums">
+              <strong className="text-ppp-charcoal">{formatCentsCompact(paidCents)}</strong>
+              <span className="text-ppp-charcoal-500"> of {formatCentsCompact(invoicedCents)}</span>
+              <span className="text-ppp-charcoal-400"> · {collectedPct}%</span>
+            </span>
           </div>
+          <div className="h-2 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${barTone}`}
+              style={{ width: `${collectedPct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* View-statement CTA — INSIDE the container, right-aligned, only
+          when there's a statement worth viewing. Kept quiet (ghost link,
+          not a button) since the money numbers above are the primary
+          story. */}
+      {invoiceRollup.invoice_count > 0 && (
+        <div className="mt-4 pt-3 border-t border-ppp-charcoal-100 flex items-center justify-end">
           <Link
             href={`/commercial/invoices?account_id=${accountId}&view=grouped`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800 min-h-[36px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+            className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-blue-700 hover:text-blue-900 hover:underline underline-offset-2 min-h-[32px] touch-manipulation"
           >
+            View full statement
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <path d="M14 2v6h6M9 13h6M9 17h6" />
+              <path d="M5 12h14 M13 5l7 7-7 7" />
             </svg>
-            View statement
           </Link>
         </div>
       )}
     </section>
+  );
+}
+
+/** Money-only tile — dedicated to the Financial Snapshot container so
+ *  we can drop the KpiTile's tooltip / info-dot / dual-mode complexity.
+ *  Tones map to semantic accents:
+ *   - brand   → cc-brand tint (Invoiced — the top-of-funnel money)
+ *   - emerald → green tint (Paid — money actually in the door)
+ *   - blue    → blue tint (Balance — money still owed)
+ *   - muted   → charcoal (zero-balance / paid-in-full quiet state)
+ */
+function MoneyTile({
+  label,
+  value,
+  sub,
+  subTone = "muted",
+  href,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  subTone?: "muted" | "rose";
+  href: string;
+  tone: "brand" | "emerald" | "blue" | "muted";
+}) {
+  const borderCls =
+    tone === "brand"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/40"
+      : tone === "emerald"
+      ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40"
+      : tone === "blue"
+      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/40"
+      : "border-ppp-charcoal-200 bg-white";
+  const subCls = subTone === "rose" ? "text-rose-700 font-semibold" : "text-ppp-charcoal-500";
+  return (
+    <Link
+      href={href}
+      className={`block rounded-xl border px-4 py-3 sm:py-3.5 transition-all hover:shadow-sm hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 touch-manipulation ${borderCls}`}
+    >
+      <div className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+        {label}
+      </div>
+      <div className="mt-1 text-2xl sm:text-[26px] font-bold text-ppp-charcoal leading-none tabular-nums">
+        {value}
+      </div>
+      {sub && (
+        <div className={`mt-1 text-[11px] ${subCls}`}>
+          {sub}
+        </div>
+      )}
+    </Link>
   );
 }
 
