@@ -56,9 +56,14 @@ import {
   opportunityStatusLabel,
   formatBidRange,
   OPPORTUNITY_STATUSES,
+  OPPORTUNITY_SOURCES,
+  opportunitySourceLabel,
   type CommercialOpportunity,
   type OpportunityStatus,
 } from "@/lib/commercial/opportunities/db";
+import { createCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
+import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
   allowedNextStatuses,
@@ -107,6 +112,13 @@ type SP = Promise<{
   team_added?: string;
   team_skipped?: string;
   saved?: string;
+  /** Karan 2026-07-08: inline "+ New deal" collapsible state. Set from
+   *  the retired /commercial/opportunities/new redirect (auto-opens the
+   *  form) OR from a redirect after error. `created=1` + `created_title`
+   *  fire the success toast. */
+  new_deal?: string;
+  created?: string;
+  created_title?: string;
 }>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
@@ -148,7 +160,7 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "activity">, { key: SubTab
     { key: "notes", label: "Notes" },
   ],
   deals: [
-    { key: "opportunities", label: "Opportunities" },
+    { key: "opportunities", label: "Pipeline" },
     { key: "documents", label: "Documents" },
   ],
 };
@@ -386,7 +398,15 @@ export default async function CommercialAccountDetailPage({
       {tab === "activity" && <ActivityTab accountId={account.id} />}
       {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
-      {tab === "opportunities" && <OpportunitiesTab accountId={account.id} overview={overview} />}
+      {tab === "opportunities" && (
+        <OpportunitiesTab
+          accountId={account.id}
+          overview={overview}
+          openNewDeal={sp.new_deal === "1"}
+          createdTitle={sp.created === "1" ? sp.created_title ?? null : null}
+          errorMessage={sp.error}
+        />
+      )}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "notes" && <NotesTab accountId={account.id} />}
       {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
@@ -435,6 +455,76 @@ async function quickFlipFromAccountAction(formData: FormData) {
     redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
   }
   redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+}
+
+/** Karan 2026-07-08 — inline "+ New deal" server action for the Account
+ *  Pipeline sub-tab. Retires the full-page /commercial/opportunities/new
+ *  form in favor of a collapsible-based inline flow (mirrors the invoice
+ *  inline create pattern). Title + status + source + bid range + due date
+ *  cover 95% of new-deal entries; property + long description are behind
+ *  progressive-disclosure "More details" on the client. */
+async function createDealInlineAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&error=${encodeURIComponent("Deal title is required.")}`);
+  }
+
+  const statusRaw = String(formData.get("status") ?? "inquiry").trim();
+  const status = (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
+    ? (statusRaw as OpportunityStatus)
+    : "inquiry";
+
+  const sourceRaw = String(formData.get("source") ?? "").trim();
+  const source = (OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)
+    ? (sourceRaw as (typeof OPPORTUNITY_SOURCES)[number])
+    : null;
+
+  const bidLowRaw = String(formData.get("bid_low") ?? "").trim();
+  const bidHighRaw = String(formData.get("bid_high") ?? "").trim();
+  const bid_value_low_cents = bidLowRaw ? parseDollarsToCents(bidLowRaw) : null;
+  const bid_value_high_cents = bidHighRaw ? parseDollarsToCents(bidHighRaw) : null;
+
+  const proposalDueRaw = String(formData.get("proposal_due_at") ?? "").trim();
+  const proposal_due_at = proposalDueRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposalDueRaw)
+    ? `${proposalDueRaw}T16:00:00.000Z`
+    : null;
+
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const property_street = String(formData.get("property_street") ?? "").trim() || null;
+  const property_city = String(formData.get("property_city") ?? "").trim() || null;
+  const property_state = String(formData.get("property_state") ?? "").trim() || null;
+  const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
+
+  const result = await createCommercialOpportunity({
+    account_id,
+    title,
+    status,
+    source,
+    bid_value_low_cents,
+    bid_value_high_cents,
+    proposal_due_at,
+    description,
+    property_street,
+    property_city,
+    property_state,
+    property_zip,
+    created_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  revalidatePath("/commercial/opportunities");
+  revalidatePath("/commercial");
+  const createdTitle = encodeURIComponent(result.opportunity.title);
+  redirect(`/commercial/accounts/${account_id}?tab=opportunities&created=1&created_title=${createdTitle}#deal-${result.opportunity.id}`);
 }
 
 async function addTagAction(formData: FormData) {
@@ -1631,12 +1721,146 @@ async function restoreDocumentAction(formData: FormData) {
  * Empty state surfaces a + New Opportunity CTA deep-linked to the new
  * form with the account pre-selected (`?account=<uuid>`).
  */
+/** Inline "+ New deal" form — Karan 2026-07-08. Shared between the
+ *  empty state (renders bare) and the header collapsible (renders inside
+ *  a <details>). Two required rows visible immediately (title, status)
+ *  plus optional bid/due/source. Property + description behind a
+ *  progressive-disclosure <details>. Zero page jumps. */
+function NewDealForm({ accountId }: { accountId: string }) {
+  const inputCls =
+    "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30";
+  const labelCls = "block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5";
+  return (
+    <form action={createDealInlineAction} className="space-y-3">
+      <input type="hidden" name="account_id" value={accountId} />
+      <div>
+        <label className={labelCls} htmlFor="deal-title">Deal title</label>
+        <input
+          id="deal-title"
+          type="text"
+          name="title"
+          required
+          maxLength={200}
+          placeholder="e.g. Lobby + Halls Repaint — Q3 Bid"
+          className={inputCls}
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className={labelCls}>Status</span>
+          <select
+            name="status"
+            defaultValue="inquiry"
+            className={`${inputCls} bg-white`}
+          >
+            {OPPORTUNITY_STATUSES.filter((s) => s !== "reopened").map((s) => (
+              <option key={s} value={s}>{opportunityStatusLabel(s)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className={labelCls}>Source</span>
+          <select
+            name="source"
+            defaultValue=""
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— select —</option>
+            {OPPORTUNITY_SOURCES.map((s) => (
+              <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label className="block">
+          <span className={labelCls}>Bid low</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            name="bid_low"
+            placeholder="0.00"
+            className={`${inputCls} tabular-nums`}
+          />
+        </label>
+        <label className="block">
+          <span className={labelCls}>Bid high</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            name="bid_high"
+            placeholder="0.00"
+            className={`${inputCls} tabular-nums`}
+          />
+        </label>
+        <label className="block">
+          <span className={labelCls}>Proposal due</span>
+          <input
+            type="date"
+            name="proposal_due_at"
+            className={inputCls}
+          />
+        </label>
+      </div>
+      <details className="group/more">
+        <summary className="list-none cursor-pointer text-[11.5px] font-medium text-blue-700 hover:text-blue-900 min-h-[28px] flex items-center gap-1.5 select-none">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+          More details (project address, description)
+        </summary>
+        <div className="mt-2 space-y-3">
+          <label className="block">
+            <span className={labelCls}>Description</span>
+            <textarea
+              name="description"
+              rows={2}
+              maxLength={1000}
+              placeholder="e.g. Scope: repaint 3-story lobby + 4 corridors. Existing latex, no lead."
+              className={`${inputCls} min-h-[60px]`}
+            />
+          </label>
+          <div>
+            <div className={labelCls}>Project address <span className="font-normal text-ppp-charcoal-400">(if different from the account address)</span></div>
+            <input
+              type="text"
+              name="property_street"
+              maxLength={200}
+              placeholder="Street"
+              className={inputCls}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+              <input type="text" name="property_city" maxLength={80} placeholder="City" className={inputCls} />
+              <input type="text" name="property_state" maxLength={2} placeholder="State" className={inputCls} />
+              <input type="text" name="property_zip" maxLength={10} placeholder="ZIP" className={inputCls} />
+            </div>
+          </div>
+        </div>
+      </details>
+      <div className="flex justify-end pt-1">
+        <button
+          type="submit"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+        >
+          Create deal
+        </button>
+      </div>
+    </form>
+  );
+}
+
 async function OpportunitiesTab({
   accountId,
   overview,
+  openNewDeal,
+  createdTitle,
+  errorMessage,
 }: {
   accountId: string;
   overview: AccountOverview | null;
+  openNewDeal?: boolean;
+  createdTitle?: string | null;
+  errorMessage?: string;
 }) {
   const all = await listCommercialOpportunities({ accountId });
   const ids = all.map((o) => o.id);
@@ -1656,23 +1880,35 @@ async function OpportunitiesTab({
   const open = all.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
   const decided = all.filter((o) => TERMINAL_STATUSES.has(o.status));
 
-  // Empty state — first opp on a new account. Deep-link pre-fills the
-  // account picker on the new-opp form (already supported in Batch 1).
+  // Karan 2026-07-08: empty state now renders the SAME inline "+ New
+  // deal" form open by default. Zero clicks between landing on the tab
+  // and filling in the first field. No jumping to a separate page.
   if (all.length === 0) {
     return (
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
-        <div className="text-sm font-semibold text-ppp-charcoal mb-1">
-          No opportunities yet
+      <div className="space-y-3">
+        {errorMessage && (
+          <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800">
+            {errorMessage}
+          </div>
+        )}
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+          <div className="flex items-start gap-3 mb-4">
+            <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-100 text-cc-brand-700 shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="6" />
+                <circle cx="12" cy="12" r="2" />
+              </svg>
+            </span>
+            <div>
+              <div className="text-sm font-bold text-ppp-charcoal">Start the first bid</div>
+              <p className="text-[12.5px] text-ppp-charcoal-500 leading-relaxed mt-0.5">
+                Title is the minimum — add bid range + due date when you have them.
+              </p>
+            </div>
+          </div>
+          <NewDealForm accountId={accountId} />
         </div>
-        <p className="text-sm text-ppp-charcoal-500 mb-4">
-          Start a bid for this customer.
-        </p>
-        <Link
-          href={`/commercial/opportunities/new?account=${accountId}`}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
-        >
-          + New opportunity
-        </Link>
       </div>
     );
   }
@@ -1688,29 +1924,72 @@ async function OpportunitiesTab({
 
   return (
     <div className="space-y-5">
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-[12px] text-ppp-charcoal-700 flex items-center gap-x-3 gap-y-1 flex-wrap">
-          {daysSinceLast !== null && (
-            <span className={isStale ? "text-rose-700 font-medium" : "text-ppp-charcoal-700"}>
-              Last opp activity: {daysSinceLast === 0 ? "today" : daysSinceLast === 1 ? "yesterday" : `${daysSinceLast}d ago`}
-              {isStale && " (cooling)"}
-            </span>
-          )}
-          {(wonCount > 0 || lostCount > 0) && (
-            <>
-              <span aria-hidden className="text-ppp-charcoal-300">·</span>
-              <span className="text-ppp-charcoal-500">
-                {wonCount} won · {lostCount} lost
-              </span>
-            </>
-          )}
+      {/* Karan 2026-07-08: header-strip "+ New opportunity" Link →
+          inline "+ New deal" collapsible. Same activity summary; the
+          CTA is now a native <details> that expands the form right
+          here instead of jumping to a full-page form. Auto-opens when
+          the URL has ?new_deal=1 (set by the retired
+          /commercial/opportunities/new redirect shim). */}
+      {createdTitle && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start justify-between gap-3">
+          <span>
+            <strong>{decodeURIComponent(createdTitle)}</strong> logged.
+          </span>
+          <Link
+            href={`/commercial/accounts/${accountId}?tab=opportunities`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
         </div>
-        <Link
-          href={`/commercial/opportunities/new?account=${accountId}`}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shrink-0"
-        >
-          + New opportunity
-        </Link>
+      )}
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800 flex items-start justify-between gap-3">
+          <span>{errorMessage}</span>
+          <Link
+            href={`/commercial/accounts/${accountId}?tab=opportunities`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-[12px] text-ppp-charcoal-700 flex items-center gap-x-3 gap-y-1 flex-wrap">
+            {daysSinceLast !== null && (
+              <span className={isStale ? "text-rose-700 font-medium" : "text-ppp-charcoal-700"}>
+                Last opp activity: {daysSinceLast === 0 ? "today" : daysSinceLast === 1 ? "yesterday" : `${daysSinceLast}d ago`}
+                {isStale && " (cooling)"}
+              </span>
+            )}
+            {(wonCount > 0 || lostCount > 0) && (
+              <>
+                <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                <span className="text-ppp-charcoal-500">
+                  {wonCount} won · {lostCount} lost
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+        <details open={openNewDeal} className="group/newdeal border-t border-ppp-charcoal-100">
+          <summary
+            id="new-deal"
+            className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-2.5 text-[13px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 5v14 M5 12h14" />
+              </svg>
+              New deal for this customer
+            </span>
+            <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/newdeal:rotate-180">▾</span>
+          </summary>
+          <div className="p-4 border-t border-ppp-charcoal-100">
+            <NewDealForm accountId={accountId} />
+          </div>
+        </details>
       </div>
 
       {open.length === 0 && decided.length > 0 && (
@@ -1720,7 +1999,7 @@ async function OpportunitiesTab({
             {daysSinceLast !== null ? ` ${daysSinceLast}d ago` : ""}.
           </span>
           <Link
-            href={`/commercial/opportunities/new?account=${accountId}`}
+            href={`/commercial/accounts/${accountId}?tab=opportunities&new_deal=1#new-deal`}
             className="font-semibold underline hover:text-blue-900 min-h-[44px] inline-flex items-center"
           >
             Start the next bid →

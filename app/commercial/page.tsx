@@ -168,9 +168,9 @@ export default async function CommercialDashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <QuickAction
             primary
-            href="/commercial/opportunities/new"
+            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the customer first — deals live under their account.")}`}
             title="Start a bid"
-            sub="Log a new opportunity from inquiry."
+            sub="Pick a customer to log the deal under."
             icon={<IconPlus />}
           />
           <QuickAction

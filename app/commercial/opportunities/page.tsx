@@ -337,20 +337,20 @@ export default async function CommercialOpportunitiesPage({
           <div>
             <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
-              Opportunities
+              Pipeline
             </h1>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
-              The deal record. From inquiry through won — every commercial bid.
+              Every commercial deal across every customer. Filter, sort, drag.
             </p>
           </div>
           <Link
-            href="/commercial/opportunities/new"
+            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the customer first — deals live under their account.")}`}
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px] shrink-0"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
             </svg>
-            New opportunity
+            New deal
           </Link>
         </div>
 
@@ -700,13 +700,13 @@ export default async function CommercialOpportunitiesPage({
           </p>
           {!anyFilterActive ? (
             <Link
-              href="/commercial/opportunities/new"
+              href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the customer first — deals live under their account.")}`}
               className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M12 5v14 M5 12h14" />
               </svg>
-              New opportunity
+              New deal
             </Link>
           ) : (
             <Link

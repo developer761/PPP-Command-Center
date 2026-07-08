@@ -41,7 +41,13 @@ const navSections: NavSection[] = [
     heading: "Pipeline",
     items: [
       { label: "Accounts", href: "/commercial/accounts", icon: <IconBuilding /> },
-      { label: "Opportunities", href: "/commercial/opportunities", icon: <IconTarget /> },
+      // Karan 2026-07-08 rename: "Opportunities" → "Pipeline" during
+      // the Accounts+Opps merge. URL stays /commercial/opportunities
+      // for now — an audit-worthy full rename would break every bell
+      // notification / bookmark / email link. Sidebar label is the
+      // safe change; the URL is functional metadata, users never
+      // read it.
+      { label: "Pipeline", href: "/commercial/opportunities", icon: <IconTarget /> },
       // Estimates entry removed 2026-06-24 — Phase 3 ships invoicing
       // without estimates first (Karan: "i dont thinkw e need the
       // estimates for right now"). We may add it back as Phase 3.5 if

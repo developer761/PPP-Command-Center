@@ -1073,15 +1073,40 @@ export default async function OpportunityDetailPage({
           the Invoices tab in the tab bar + the "Won" status pill
           already signal the state. */}
       <header>
-        <Link
-          href="/commercial/opportunities"
-          className="inline-flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-800 min-h-[44px] touch-manipulation -ml-1 px-1"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M19 12H5 M12 19l-7-7 7-7" />
-          </svg>
-          All opportunities
-        </Link>
+        {/* Karan 2026-07-08: proper breadcrumb replacing "← All opportunities".
+            Alex's mental model is [Account] > [Deal] — the deal is a
+            child of the customer. Breadcrumb reinforces that hierarchy
+            + gives one-click paths back to both the customer AND the
+            pipeline. `min-h-[44px]` on each link keeps mobile tap
+            targets solid. Truncate on the deal title so long ones
+            don't push the trail off-screen on mobile. */}
+        <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
+          <Link
+            href="/commercial/opportunities"
+            className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z" />
+            </svg>
+            Pipeline
+          </Link>
+          {account && (
+            <>
+              <span aria-hidden className="text-ppp-charcoal-300">/</span>
+              <Link
+                href={`/commercial/accounts/${account.id}?tab=opportunities`}
+                className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+                title={account.company_name}
+              >
+                {account.company_name}
+              </Link>
+            </>
+          )}
+          <span aria-hidden className="text-ppp-charcoal-300">/</span>
+          <span className="inline-flex items-center min-h-[32px] px-1 text-ppp-charcoal-700 truncate max-w-[300px]" title={opp.title}>
+            {opp.title}
+          </span>
+        </nav>
         <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate">
