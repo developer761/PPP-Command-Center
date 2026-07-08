@@ -834,120 +834,179 @@ function GroupedByOpp({
           // Record payment + inline New invoice). Anchor to the opp
           // section so multi-opp accounts scroll to the right card.
           //
-          // Karan 2026-07-08 orphan-invoice fix: when the parent deal
-          // is soft-deleted the row would fall back to `/commercial/invoices`
-          // which just refreshes the current page — a dead click and no
-          // way to void/delete the orphan. Priority:
-          //   1. Live opp + account → account-filtered view + anchor to opp
-          //   2. Orphan with N invoices → first invoice detail so user
-          //      can void / delete / reassign it
-          //   3. Live opp, no account (shouldn't happen) → account view
-          //   4. Absolute fallback → list
+          // Karan 2026-07-08 orphan-invoice UX: when the parent deal is
+          // soft-deleted we can't route to an opp/account view — but
+          // collapsing the whole group into a single first-invoice link
+          // hides the other N-1 invoices. Instead render the header as
+          // a static block (not a Link) and list each invoice as its
+          // own sub-row so users can drill into any one of them.
+          //
+          // Live opps still get the whole-row Link — that path hasn't
+          // changed.
           const rowHref = opp && account
             ? `/commercial/invoices?account_id=${account.id}#opp-${opp.id}`
-            : !opp && groupInvoices.length > 0
-            ? `/commercial/invoices/${groupInvoices[0].id}`
             : account
             ? `/commercial/invoices?account_id=${account.id}`
             : "/commercial/invoices";
+          const isOrphan = !opp;
+          // Sort orphan sub-rows deterministically: newest created first.
+          const orphanSorted = isOrphan
+            ? [...groupInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at))
+            : groupInvoices;
+          const headerBody = (
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                {/* Row 1: title + account chip + N invoices + overdue badge */}
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <span className={`font-semibold text-[14px] truncate ${isOrphan ? "text-ppp-charcoal-500" : "text-ppp-charcoal group-hover/oppInv:text-blue-800"}`}>
+                    {opp ? opp.title : (
+                      <span className="inline-flex items-center gap-1.5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600">
+                          <path d="M12 9v4M12 17h.01" />
+                          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        </svg>
+                        <span className="italic">Deleted deal — invoices still on file</span>
+                      </span>
+                    )}
+                  </span>
+                  {account && (
+                    <span
+                      className="text-[11px] text-ppp-charcoal-500 truncate max-w-[180px]"
+                      title={account.company_name}
+                    >
+                      · {account.company_name}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 rounded px-1.5 py-0.5 shrink-0">
+                    {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
+                  </span>
+                  {overduePresent && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-200 rounded px-1.5 py-0.5 shrink-0">
+                      Overdue
+                    </span>
+                  )}
+                </div>
+                {/* Row 2: money summary */}
+                <div className="mt-1 text-[12px] text-ppp-charcoal-600 tabular-nums">
+                  <strong className="text-ppp-charcoal">{formatCentsFull(totalInvoiced)}</strong> invoiced
+                  {totalBalance > 0 && (
+                    <>
+                      <span className="text-ppp-charcoal-300"> · </span>
+                      <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
+                    </>
+                  )}
+                  {totalPaid > 0 && (
+                    <>
+                      <span className="text-ppp-charcoal-300"> · </span>
+                      <span className="text-emerald-700 font-medium">{formatCentsFull(totalPaid)} paid</span>
+                    </>
+                  )}
+                  {draftCount > 0 && (
+                    <>
+                      <span className="text-ppp-charcoal-300"> · </span>
+                      <span className="text-ppp-charcoal-500">{draftCount} draft{draftCount === 1 ? "" : "s"}</span>
+                    </>
+                  )}
+                </div>
+                {/* Row 3: compact progress bar */}
+                {totalInvoiced > 0 && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${groupBarTone}`}
+                        style={{ width: `${groupPct}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-semibold text-ppp-charcoal-500 tabular-nums shrink-0 w-9 text-right">
+                      {groupPct}%
+                    </span>
+                  </div>
+                )}
+              </div>
+              {!isOrphan && (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="shrink-0 mt-1 text-ppp-charcoal-300 group-hover/oppInv:text-cc-brand-600 transition-colors"
+                  aria-hidden
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              )}
+            </div>
+          );
           return (
             <li key={oppId}>
-              <Link
-                href={rowHref}
-                className="group/oppInv block px-4 sm:px-5 py-3.5 hover:bg-blue-50/40 focus:outline-none focus:bg-blue-50/60 transition-colors touch-manipulation"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    {/* Row 1: title + account chip + N invoices + overdue badge */}
-                    <div className="flex items-center gap-2 flex-wrap min-w-0">
-                      <span className="font-semibold text-[14px] text-ppp-charcoal group-hover/oppInv:text-blue-800 truncate">
-                        {opp ? opp.title : (
-  <span className="inline-flex items-center gap-1 text-ppp-charcoal-400 italic">
-    Deal deleted
-    <span
-      className="inline-flex items-center px-1 py-0 rounded text-[9px] font-semibold border bg-amber-50 text-amber-800 border-amber-200 not-italic"
-      title="This deal was soft-deleted. Invoices remain — click to manage them."
-    >
-      Orphan
-    </span>
-  </span>
-)}
-                      </span>
-                      {account && (
-                        <span
-                          className="text-[11px] text-ppp-charcoal-500 truncate max-w-[180px]"
-                          title={account.company_name}
-                        >
-                          · {account.company_name}
-                        </span>
-                      )}
-                      <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 rounded px-1.5 py-0.5 shrink-0">
-                        {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
-                      </span>
-                      {overduePresent && (
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-200 rounded px-1.5 py-0.5 shrink-0">
-                          Overdue
-                        </span>
-                      )}
-                    </div>
-                    {/* Row 2: money summary */}
-                    <div className="mt-1 text-[12px] text-ppp-charcoal-600 tabular-nums">
-                      <strong className="text-ppp-charcoal">{formatCentsFull(totalInvoiced)}</strong> invoiced
-                      {totalBalance > 0 && (
-                        <>
-                          <span className="text-ppp-charcoal-300"> · </span>
-                          <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
-                        </>
-                      )}
-                      {totalPaid > 0 && (
-                        <>
-                          <span className="text-ppp-charcoal-300"> · </span>
-                          <span className="text-emerald-700 font-medium">{formatCentsFull(totalPaid)} paid</span>
-                        </>
-                      )}
-                      {draftCount > 0 && (
-                        <>
-                          <span className="text-ppp-charcoal-300"> · </span>
-                          <span className="text-ppp-charcoal-500">{draftCount} draft{draftCount === 1 ? "" : "s"}</span>
-                        </>
-                      )}
-                    </div>
-                    {/* Row 3: compact progress bar */}
-                    {totalInvoiced > 0 && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="h-1.5 flex-1 bg-ppp-charcoal-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${groupBarTone}`}
-                            style={{ width: `${groupPct}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] font-semibold text-ppp-charcoal-500 tabular-nums shrink-0 w-9 text-right">
-                          {groupPct}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="shrink-0 mt-1 text-ppp-charcoal-300 group-hover/oppInv:text-cc-brand-600 transition-colors"
-                    aria-hidden
-                  >
-                    <path d="M9 18l6-6-6-6" />
-                  </svg>
+              {isOrphan ? (
+                <div className="border-l-2 border-amber-300 bg-amber-50/30">
+                  <div className="px-4 sm:px-5 py-3.5">{headerBody}</div>
+                  <ul className="border-t border-ppp-charcoal-100 divide-y divide-ppp-charcoal-100 bg-white">
+                    {orphanSorted.map((inv) => {
+                      const invStatus = deriveInvoiceStatus(inv);
+                      const statusTone =
+                        invStatus === "paid"
+                          ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                          : invStatus === "overdue"
+                          ? "bg-rose-100 text-rose-800 border-rose-200"
+                          : invStatus === "partial"
+                          ? "bg-blue-100 text-blue-800 border-blue-200"
+                          : invStatus === "draft"
+                          ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
+                          : invStatus === "void"
+                          ? "bg-ppp-charcoal-100 text-ppp-charcoal-500 border-ppp-charcoal-200"
+                          : "bg-blue-100 text-blue-800 border-blue-200";
+                      return (
+                        <li key={inv.id}>
+                          <Link
+                            href={`/commercial/invoices/${inv.id}`}
+                            className="group/invRow flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-blue-50/40 focus:outline-none focus:bg-blue-50/60 transition-colors touch-manipulation"
+                          >
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${statusTone} shrink-0`}>
+                              {invoiceStatusLabel(invStatus)}
+                            </span>
+                            <span className="font-mono text-[12px] text-ppp-charcoal-700 truncate flex-1" title={inv.invoice_number}>
+                              {inv.invoice_number}
+                            </span>
+                            <span className="text-[11px] text-ppp-charcoal-500 hidden sm:inline tabular-nums shrink-0">
+                              {fmtEtDate(inv.due_at) ? `Due ${fmtEtDate(inv.due_at)}` : `Created ${fmtEtDate(inv.created_at)}`}
+                            </span>
+                            <span className="font-semibold text-[13px] text-ppp-charcoal tabular-nums shrink-0 min-w-[80px] text-right">
+                              {formatCentsFull(inv.total_cents)}
+                            </span>
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="shrink-0 text-ppp-charcoal-300 group-hover/invRow:text-cc-brand-600 transition-colors"
+                              aria-hidden
+                            >
+                              <path d="M9 18l6-6-6-6" />
+                            </svg>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
-              </Link>
-              {/* Karan 2026-07-07: "View all invoices for X" chip removed
-                  — the whole row now links to the same filtered detail
-                  target (account_id=<X>#opp-<Y>) so the chip was
-                  redundant. Fewer clickable areas per row + zero
-                  jumping. */}
+              ) : (
+                <Link
+                  href={rowHref}
+                  className="group/oppInv block px-4 sm:px-5 py-3.5 hover:bg-blue-50/40 focus:outline-none focus:bg-blue-50/60 transition-colors touch-manipulation"
+                >
+                  {headerBody}
+                </Link>
+              )}
             </li>
           );
         })}
@@ -1126,15 +1185,13 @@ function FullDetailByOpp({
                         {opp.title}
                       </Link>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 text-[15px] font-bold text-ppp-charcoal-400 italic">
-                      Deal deleted
-                      <span
-                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-200 not-italic uppercase tracking-wider"
-                        title="This deal was soft-deleted. Invoices remain — manage or delete them individually below."
-                      >
-                        Orphan
+                      <span className="inline-flex items-center gap-2 text-[15px] font-bold">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600 shrink-0">
+                          <path d="M12 9v4M12 17h.01" />
+                          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        </svg>
+                        <span className="text-ppp-charcoal-500 italic">Deleted deal — invoices still on file</span>
                       </span>
-                    </span>
                     )}
                     <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
                       {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}

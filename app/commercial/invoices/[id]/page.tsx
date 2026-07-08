@@ -352,13 +352,13 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <div className="min-w-0 flex-1">
             <div className="text-[12.5px] font-bold text-amber-900">
               {!opp && !account
-                ? "Orphaned — parent deal and account were deleted"
+                ? "Parent deal and account were deleted"
                 : !opp
-                ? "Orphaned — parent deal was deleted"
-                : "Orphaned — parent account was deleted"}
+                ? "Parent deal was deleted"
+                : "Parent account was deleted"}
             </div>
             <div className="text-[11.5px] text-amber-800 mt-0.5 leading-snug">
-              This invoice still exists but its parent record is gone. Void it (keeps history) or delete it (removes it from lists) using the actions below.
+              This invoice still exists on file. Void it (keeps history) or delete it (removes it from lists) using the actions below.
             </div>
           </div>
         </div>
