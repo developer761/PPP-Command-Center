@@ -543,6 +543,23 @@ async function createDealInlineAction(formData: FormData) {
   const property_state = String(formData.get("property_state") ?? "").trim() || null;
   const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
 
+  // Karan 2026-07-08: capture proposed_start / proposed_end / probability
+  // override on create so the user doesn't have to bounce through the
+  // Edit form after logging a deal that already has a signed schedule.
+  const proposedStartRaw = String(formData.get("proposed_start_at") ?? "").trim();
+  const proposed_start_at = proposedStartRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedStartRaw)
+    ? `${proposedStartRaw}T09:00:00.000Z`
+    : null;
+  const proposedEndRaw = String(formData.get("proposed_end_at") ?? "").trim();
+  const proposed_end_at = proposedEndRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedEndRaw)
+    ? `${proposedEndRaw}T17:00:00.000Z`
+    : null;
+  const probRaw = String(formData.get("probability_pct") ?? "").trim();
+  const probParsed = probRaw ? Number(probRaw) : NaN;
+  const probability_pct = Number.isFinite(probParsed) && probParsed >= 0 && probParsed <= 100
+    ? Math.round(probParsed)
+    : null;
+
   const result = await createCommercialOpportunity({
     account_id,
     title,
@@ -551,6 +568,9 @@ async function createDealInlineAction(formData: FormData) {
     bid_value_low_cents,
     bid_value_high_cents,
     proposal_due_at,
+    proposed_start_at,
+    proposed_end_at,
+    probability_pct,
     description,
     property_street,
     property_city,
@@ -1848,9 +1868,45 @@ function NewDealForm({ accountId }: { accountId: string }) {
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
             <path d="M9 18l6-6-6-6" />
           </svg>
-          More details (project address, description)
+          More details (schedule, probability, description, address)
         </summary>
         <div className="mt-2 space-y-3">
+          {/* Karan 2026-07-08: expanded per user "it should ask me all
+              these questions when i'm making a new deal because it
+              doesnt right now". Captures probability override,
+              proposed start/end, description, project address at
+              create time so users don't have to bounce through Edit. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="block">
+              <span className={labelCls}>Probability %</span>
+              <input
+                type="number"
+                name="probability_pct"
+                min={0}
+                max={100}
+                step={1}
+                placeholder="auto"
+                className={`${inputCls} tabular-nums`}
+              />
+              <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Leave blank → default from status</span>
+            </label>
+            <label className="block">
+              <span className={labelCls}>Proposed start</span>
+              <input
+                type="date"
+                name="proposed_start_at"
+                className={inputCls}
+              />
+            </label>
+            <label className="block">
+              <span className={labelCls}>Proposed end</span>
+              <input
+                type="date"
+                name="proposed_end_at"
+                className={inputCls}
+              />
+            </label>
+          </div>
           <label className="block">
             <span className={labelCls}>Description</span>
             <textarea

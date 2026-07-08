@@ -106,6 +106,15 @@ async function updateAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/opportunities/${id}/edit?error=${encodeURIComponent(result.error)}`);
   }
+  // Karan 2026-07-08: land on the OWNING ACCOUNT's Deals tab with the
+  // saved deal pre-focused. The deal detail page as a landing surface
+  // is being retired — everything about a deal lives under its account.
+  const accId = (result as { opportunity?: { account_id: string } }).opportunity?.account_id ?? null;
+  if (accId) {
+    redirect(`/commercial/accounts/${accId}?tab=deals&deal=${id}&saved=1#deal-${id}`);
+  }
+  // Fallback: no account_id on the returned record → bounce through the
+  // deal detail page which will itself redirect to the account.
   redirect(`/commercial/opportunities/${id}?edited=1`);
 }
 

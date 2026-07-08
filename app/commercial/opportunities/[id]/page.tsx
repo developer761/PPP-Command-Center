@@ -331,16 +331,28 @@ async function softDeleteOpportunityAction(formData: FormData) {
     .eq("id", opp_id)
     .maybeSingle();
   const title = ((pre as { title?: string } | null)?.title || "Opportunity");
+  const account_id = (pre as { account_id?: string } | null)?.account_id ?? null;
   const result = await softDeleteCommercialOpportunity(opp_id, user.id);
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`);
+    // Route error back to the account page (deal drill-in URL) — never
+    // the standalone deal page anymore.
+    if (account_id) {
+      redirect(`/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent(result.error)}`);
+    }
+    redirect(`/commercial/accounts?error=${encodeURIComponent(result.error)}`);
   }
   // Refresh both surfaces so the row disappears immediately.
   revalidatePath("/commercial/opportunities");
-  if (pre && (pre as { account_id?: string }).account_id) {
-    revalidatePath(`/commercial/accounts/${(pre as { account_id: string }).account_id}`);
+  if (account_id) {
+    revalidatePath(`/commercial/accounts/${account_id}`);
+    // Karan 2026-07-08: after deleting a deal, land on the OWNING
+    // ACCOUNT's Deals tab, not the pipeline list. User's mental model
+    // is "manage a customer" — dumping them to a global list after a
+    // delete breaks context. The account still owns everything else
+    // about this customer; that's where they should stay.
+    redirect(`/commercial/accounts/${account_id}?tab=deals&deleted=${encodeURIComponent(title)}`);
   }
-  redirect(`/commercial/opportunities?deleted=${encodeURIComponent(title)}`);
+  redirect(`/commercial/accounts?deleted=${encodeURIComponent(title)}`);
 }
 
 /**
@@ -1004,6 +1016,39 @@ export default async function OpportunityDetailPage({
   const opp = await getCommercialOpportunity(id);
   if (!opp) notFound();
   const account = await getCommercialAccount(opp.account_id);
+
+  // Karan 2026-07-08: kill the deal-detail page as a landing surface.
+  // Per user "everything in accounts" — the pipeline shouldn't route
+  // people here anymore. Bounce to the account's Deals tab with the
+  // ?deal=<id> param so the account page can auto-expand the drill-in
+  // for this deal. Deep-link workflows (?tab=debrief on a closed deal,
+  // ?tab=documents from a submittal email, ?action=change-status from
+  // a kanban drag-close) still render the full page below because
+  // those are structured workflows that need the whole form shell.
+  const _rawTab = pickFirst(sp.tab);
+  const _rawAction = pickFirst(sp.action);
+  const _hasStructuredIntent =
+    _rawTab === "debrief" ||
+    _rawTab === "documents" ||
+    _rawTab === "plans" ||
+    _rawTab === "finishes" ||
+    _rawTab === "submittals" ||
+    _rawTab === "activity" ||
+    _rawTab === "notes" ||
+    _rawTab === "tasks" ||
+    _rawTab === "timeline" ||
+    _rawTab === "team" ||
+    _rawAction === "change-status";
+  if (account && !_hasStructuredIntent) {
+    const q = new URLSearchParams({ tab: "deals", deal: opp.id });
+    const err = pickFirst(sp.error);
+    const editedOk = pickFirst(sp.edited);
+    const statusOk = pickFirst(sp.status_ok);
+    if (err) q.set("error", err);
+    if (editedOk) q.set("saved", editedOk);
+    else if (statusOk) q.set("saved", statusOk);
+    redirect(`/commercial/accounts/${account.id}?${q.toString()}#deal-${opp.id}`);
+  }
 
   // Karan 2026-07-08: Accounts+Deals merge — Invoices lives under the
   // customer, not the deal. Any legacy URL that lands on the Invoices
