@@ -313,7 +313,7 @@ export default async function NewCommercialAccountPage({
 
         <Section title="Contact">
           <Field id="phone" label="Main phone" type="tel" />
-          <Field id="ap_phone" label="AP phone" type="tel" />
+          <Field id="ap_phone" label="Accounts Payable phone" type="tel" />
           <Field id="website" label="Website" type="url" />
         </Section>
 

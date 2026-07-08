@@ -128,7 +128,7 @@ async function addPaymentAction(formData: FormData) {
   const reference = String(formData.get("reference") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   if (amount === null || amount <= 0) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a valid payment amount."));
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a positive dollar amount (e.g., 250.00)."));
   }
   // Karan 2026-07-07 TZ bug fix: `<input type="date">` returns
   // YYYY-MM-DD; `new Date(...)` interprets as UTC midnight which

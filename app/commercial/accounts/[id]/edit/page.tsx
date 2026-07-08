@@ -218,7 +218,7 @@ export default async function EditCommercialAccountPage({
 
         <Section title="Contact">
           <EditField id="phone" label="Main phone" type="tel" defaultValue={account.phone ?? ""} />
-          <EditField id="ap_phone" label="AP phone" type="tel" defaultValue={account.ap_phone ?? ""} />
+          <EditField id="ap_phone" label="Accounts Payable phone" type="tel" defaultValue={account.ap_phone ?? ""} />
           <EditField id="website" label="Website" type="url" defaultValue={account.website ?? ""} />
         </Section>
 

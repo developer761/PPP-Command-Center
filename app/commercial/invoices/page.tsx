@@ -72,7 +72,7 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
   }
   const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amount_cents === null || amount_cents <= 0) {
-    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a valid payment amount.")}`);
+    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}`);
   }
   const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
   const paid_at = paid_at_raw

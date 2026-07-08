@@ -687,7 +687,7 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   }
   const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amount_cents === null || amount_cents <= 0) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("Enter a valid payment amount.")}`);
+    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}`);
   }
   // Karan 2026-07-07 TZ bug fix: `<input type="date">` returns a bare
   // YYYY-MM-DD string. `new Date("2026-07-07").toISOString()` interprets

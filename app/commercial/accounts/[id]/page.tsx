@@ -282,8 +282,9 @@ export default async function CommercialAccountDetailPage({
           <Link
             href={`/commercial/accounts/${account.id}?tab=documents`}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 min-h-[36px] touch-manipulation shrink-0"
+            title="Upload Certificate of Insurance (COI) and W-9 tax form"
           >
-            Upload COI / W-9 →
+            Upload Certificate of Insurance / W-9 →
           </Link>
         </div>
       )}
@@ -804,7 +805,7 @@ async function recordPaymentInlineAction(formData: FormData) {
   const amountRaw = String(formData.get("amount") ?? "").trim();
   const cents = parseDollarsToCents(amountRaw);
   if (cents === null || cents <= 0) {
-    redirect(`${returnUrl}&error=${encodeURIComponent("Enter a positive dollar amount.")}#inv-${invoice_id}`);
+    redirect(`${returnUrl}&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}#inv-${invoice_id}`);
   }
   const paidAtRaw = String(formData.get("paid_at") ?? "").trim();
   const paid_at = paidAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(paidAtRaw)
@@ -1280,7 +1281,7 @@ function InfoCards({ account }: { account: CommercialAccount }) {
 
       <Card title="Contact">
         <Field label="Main phone" value={account.phone} />
-        <Field label="AP phone" value={account.ap_phone} />
+        <Field label="Accounts Payable phone" value={account.ap_phone} />
       </Card>
 
       <Card title="Compliance">
