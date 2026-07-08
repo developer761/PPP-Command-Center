@@ -768,7 +768,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           doesn't dominate the page — most viewers just want the hero +
           progress; the form only opens when someone needs to change
           the due date or add a note. */}
-      <details className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 group/details">
+      <details
+        open={savedTarget === "details"}
+        className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 group/details"
+      >
         <summary className="list-none cursor-pointer flex items-center justify-between gap-3 min-h-[36px]">
           <div>
             <h2 className="text-sm font-bold text-ppp-charcoal inline-flex items-center gap-1.5">
