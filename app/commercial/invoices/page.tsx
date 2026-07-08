@@ -11,7 +11,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { listCommercialInvoices, addPayment, getInvoiceContext, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listCommercialAccounts, getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities } from "@/lib/commercial/opportunities/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -43,6 +43,8 @@ type SP = Promise<{
   paid_invoice?: string;
   paid_capped?: string;
   error?: string;
+  /** Set by createInvoiceInlineAction with the new invoice id (for flash + scroll). */
+  created?: string;
 }>;
 
 /** Server action for the inline "+ Record payment" collapsible on the
@@ -96,6 +98,71 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
   });
   if (result.capped) flash.set("paid_capped", "1");
   redirect(`/commercial/invoices?${flash.toString()}#inv-${invoice_id}`);
+}
+
+/** Server action for the inline "+ New invoice" collapsible on the
+ *  account-filtered detail view (Karan 2026-07-07: retired the batch
+ *  creator page — everything happens inline on this one page). Creates
+ *  a single invoice with a single line item, then redirects back to
+ *  the same page with an anchor to the new invoice. */
+async function createInvoiceInlineAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(opp_id)) {
+    redirect("/commercial/invoices");
+  }
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description) {
+    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a description for what this charge is for.")}`);
+  }
+  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  if (amount_cents === null || amount_cents <= 0) {
+    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a valid amount.")}`);
+  }
+  const due_at_raw = String(formData.get("due_at") ?? "").trim();
+  const due_at = due_at_raw && /^\d{4}-\d{2}-\d{2}$/.test(due_at_raw)
+    ? `${due_at_raw}T16:00:00.000Z`
+    : undefined;
+  const po_number = String(formData.get("po_number") ?? "").trim() || undefined;
+  const payment_terms = String(formData.get("payment_terms") ?? "").trim() || undefined;
+  const customer_message = String(formData.get("customer_message") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  const tax_pct_raw = String(formData.get("tax_pct") ?? "").trim();
+  const tax_pct_parsed = tax_pct_raw !== "" ? parseFloat(tax_pct_raw) : NaN;
+  const tax_pct = Number.isFinite(tax_pct_parsed) && tax_pct_parsed >= 0 && tax_pct_parsed <= 100
+    ? tax_pct_parsed
+    : undefined;
+
+  const result = await createCommercialInvoice({
+    opportunity_id: opp_id,
+    account_id,
+    created_by_user_id: user.id,
+    po_number,
+    payment_terms,
+    customer_message,
+    notes,
+    tax_pct,
+    due_at,
+    line_items: [{
+      description: description.slice(0, 500),
+      quantity: 1,
+      unit_price_cents: amount_cents!,
+    }],
+  });
+  if (!result.ok) {
+    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent(`Couldn't create invoice: ${result.error}`)}`);
+  }
+
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+
+  redirect(`/commercial/invoices?account_id=${account_id}&created=${result.invoice.id}#inv-${result.invoice.id}`);
 }
 
 export default async function CommercialInvoicesPage({ searchParams }: { searchParams: SP }) {
@@ -623,6 +690,8 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           paidOk={pickFirst(sp.paid_ok) === "1"}
           paidInvoiceId={pickFirst(sp.paid_invoice) ?? null}
           paidCapped={pickFirst(sp.paid_capped) === "1"}
+          createdInvoiceId={pickFirst(sp.created) ?? null}
+          errorMessage={pickFirst(sp.error) ?? null}
         />
       ) : (
         // Grouped-by-opportunity compact list. Each row = one opp; click
@@ -750,7 +819,15 @@ function GroupedByOpp({
               : totalPaid > 0
               ? "bg-blue-500"
               : "bg-ppp-charcoal-300";
-          const rowHref = opp ? `/commercial/opportunities/${opp.id}?tab=invoices` : "#";
+          // Karan 2026-07-07 fix: compact card click used to jump to
+          // the opportunities detail page — Karan wants users to stay
+          // in the invoicing surface. Now goes to the account-filtered
+          // full-detail view (which has this opp visible + inline
+          // Record payment + inline New invoice). Anchor to the opp
+          // section so multi-opp accounts scroll to the right card.
+          const rowHref = opp && account
+            ? `/commercial/invoices?account_id=${account.id}#opp-${opp.id}`
+            : "#";
           return (
             <li key={oppId}>
               <Link
@@ -871,6 +948,8 @@ function FullDetailByOpp({
   paidOk,
   paidInvoiceId,
   paidCapped,
+  createdInvoiceId,
+  errorMessage,
 }: {
   invoices: CommercialInvoice[];
   oppById: Map<string, { id: string; title: string; account_id: string; status: string }>;
@@ -880,6 +959,8 @@ function FullDetailByOpp({
   paidOk?: boolean;
   paidInvoiceId?: string | null;
   paidCapped?: boolean;
+  createdInvoiceId?: string | null;
+  errorMessage?: string | null;
 }) {
   const groups = new Map<string, CommercialInvoice[]>();
   for (const inv of invoices) {
@@ -956,6 +1037,28 @@ function FullDetailByOpp({
           </Link>
         </div>
       )}
+      {createdInvoiceId && (
+        <div className="rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 bg-blue-50 border border-blue-200 text-blue-800">
+          <span>Invoice created.</span>
+          <Link
+            href={`/commercial/invoices?account_id=${accountId}`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      {errorMessage && (
+        <div className="rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 bg-rose-50 border border-rose-200 text-rose-800">
+          <span>{errorMessage}</span>
+          <Link
+            href={`/commercial/invoices?account_id=${accountId}`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
       {oppOrder.map(([oppId, groupInvoices]) => {
         const opp = oppById.get(oppId);
         const account = opp ? accountById.get(opp.account_id) : null;
@@ -982,7 +1085,8 @@ function FullDetailByOpp({
         return (
           <section
             key={oppId}
-            className={`bg-white border rounded-xl overflow-hidden shadow-sm ${
+            id={`opp-${oppId}`}
+            className={`scroll-mt-4 bg-white border rounded-xl overflow-hidden shadow-sm ${
               overduePresent ? "border-rose-200" : "border-ppp-charcoal-100"
             }`}
           >
@@ -1013,17 +1117,6 @@ function FullDetailByOpp({
                     <div className="text-[12px] text-ppp-charcoal-500 mt-0.5">{account.company_name}</div>
                   )}
                 </div>
-                {opp && opp.status === "won" && (
-                  <Link
-                    href={`/commercial/invoices/new?opp=${opp.id}`}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-white text-cc-brand-700 text-[11.5px] font-semibold hover:bg-cc-brand-50 min-h-[36px] touch-manipulation"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M12 5v14 M5 12h14" />
-                    </svg>
-                    Add invoice
-                  </Link>
-                )}
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="border border-cc-brand-200 bg-cc-brand-50/40 rounded-lg px-2.5 py-1.5">
@@ -1201,6 +1294,142 @@ function FullDetailByOpp({
                 );
               })}
             </ul>
+            {/* Inline "+ New invoice" collapsible per opp — Karan
+                2026-07-07: retired the batch creator page, everything
+                inline. Description + amount + due date is the minimum;
+                progressive disclosure ("More details") for tax %, PO,
+                terms, message, internal notes. Submits to
+                createInvoiceInlineAction which redirects back here
+                with an anchor to the newly-created row. */}
+            {opp && opp.status === "won" && (
+              <details id={`add-${oppId}`} className="group/add border-t border-ppp-charcoal-100">
+                <summary className="list-none cursor-pointer flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M12 5v14 M5 12h14" />
+                  </svg>
+                  New invoice for this deal
+                  <span aria-hidden className="ml-auto text-ppp-charcoal-400 transition-transform group-open/add:rotate-180">▾</span>
+                </summary>
+                <form
+                  action={createInvoiceInlineAction}
+                  className="px-4 sm:px-5 pb-4 pt-1 space-y-3"
+                >
+                  <input type="hidden" name="account_id" value={accountId} />
+                  <input type="hidden" name="opp_id" value={oppId} />
+                  <div>
+                    <label className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                      What this charge is for
+                    </label>
+                    <input
+                      type="text"
+                      name="description"
+                      required
+                      maxLength={500}
+                      placeholder="e.g. Progress payment 1 of 3 — Lobby repaint"
+                      className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Amount</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        name="amount"
+                        required
+                        placeholder="0.00"
+                        className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Due date</span>
+                      <input
+                        type="date"
+                        name="due_at"
+                        defaultValue={(() => {
+                          const d = new Date();
+                          d.setDate(d.getDate() + 30);
+                          return d.toLocaleDateString("en-CA");
+                        })()}
+                        className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      />
+                    </label>
+                  </div>
+                  {/* Progressive disclosure — advanced fields sit
+                      behind another <details> so the common case stays
+                      three fields. */}
+                  <details className="group/more">
+                    <summary className="list-none cursor-pointer text-[11.5px] font-medium text-blue-700 hover:text-blue-900 min-h-[28px] flex items-center gap-1.5 select-none">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                      More details (terms, tax, PO, notes)
+                    </summary>
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="block">
+                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Payment terms</span>
+                        <input
+                          type="text"
+                          name="payment_terms"
+                          maxLength={60}
+                          placeholder="Net 30"
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Tax % (flat)</span>
+                        <input
+                          type="number"
+                          name="tax_pct"
+                          step="0.001"
+                          min="0"
+                          max="100"
+                          placeholder="0"
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        />
+                      </label>
+                      <label className="block sm:col-span-2">
+                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">PO number</span>
+                        <input
+                          type="text"
+                          name="po_number"
+                          maxLength={80}
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        />
+                      </label>
+                      <label className="block sm:col-span-2">
+                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Message to customer</span>
+                        <textarea
+                          name="customer_message"
+                          rows={2}
+                          maxLength={1000}
+                          placeholder="Optional — appears above line items on the customer's copy."
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        />
+                      </label>
+                      <label className="block sm:col-span-2">
+                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Internal notes</span>
+                        <textarea
+                          name="notes"
+                          rows={2}
+                          maxLength={2000}
+                          placeholder="Never on the customer copy."
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        />
+                      </label>
+                    </div>
+                  </details>
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                    >
+                      Create invoice
+                    </button>
+                  </div>
+                </form>
+              </details>
+            )}
           </section>
         );
       })}
