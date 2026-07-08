@@ -140,32 +140,43 @@ export async function GET(request: Request) {
   //    15-char prefix so an allowlist with the 18-char version still
   //    matches a token stored with the 15-char version (or vice versa).
   const woPrefix = resolvedWoId.slice(0, 15);
-  const [{ data: allowRows }, { count: allowCount }] = await Promise.all([
+  const [{ data: allAllowlist }, { count: allowCount }] = await Promise.all([
     sb
       .from("customer_form_writeback_allowlist")
       .select("work_order_id, label, added_by, added_at")
-      .like("work_order_id", `${woPrefix}%`),
+      .limit(200),
     sb
       .from("customer_form_writeback_allowlist")
       .select("work_order_id", { count: "exact", head: true }),
   ]);
-  const allowRow = (allowRows ?? []).find(Boolean) ?? null;
+  const allowRow = (allAllowlist ?? []).find((r) => {
+    const stored = (r.work_order_id as string | null) ?? "";
+    return stored.slice(0, 15).toLowerCase() === woPrefix.toLowerCase();
+  }) ?? null;
 
-  // 3. Tokens for this WO — also fuzzy-match on 15-char prefix so a WO id
-  //    stored differently between the token table and the allowlist still
-  //    shows up here. Katie 2026-07-08 round 1: her token wasn't found via
-  //    exact match but was on the allowlist — different id format between
-  //    the tables was the smoking gun for the first round of diagnosis.
-  //    Round 2: pull submitted_payload to see WHAT she actually submitted
-  //    (empty surfaces? missing colorId? — that's why writes don't fire).
-  const { data: tokens } = await sb
+  // 3. Tokens for this WO — Katie 2026-07-08 round 3: both .eq(exact) and
+  //    .like(prefix%) queries returned 0 rows despite v2 recent_tokens
+  //    clearly showing tokens with work_order_id === resolvedWoId. Some
+  //    supabase-js / Postgres quirk with the filter (possibly hidden
+  //    whitespace, encoding, or column collation). Bypass the mystery:
+  //    pull the last 100 tokens unfiltered, filter in JS. Also captures
+  //    tokens with different id formats (15/18 char) without depending
+  //    on LIKE case-sensitivity.
+  const { data: allRecentTokens } = await sb
     .from("customer_form_tokens")
     .select(
       "token, kind, work_order_id, work_order_number, customer_name, created_at, submitted_at, resubmitted_at, vendor_email_sent_at, expires_at, created_by_user_id, submitted_payload"
     )
-    .like("work_order_id", `${woPrefix}%`)
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(200);
+  const tokens = (allRecentTokens ?? []).filter((t) => {
+    const stored = (t.work_order_id as string | null) ?? "";
+    if (!stored) return false;
+    // Match on 15-char prefix — handles both 15-char and 18-char SF ids
+    // referring to the same record. Case-insensitive so a stored
+    // '0wowj...' doesn't miss '0WOWj...' input.
+    return stored.slice(0, 15).toLowerCase() === woPrefix.toLowerCase();
+  });
 
   // 4. sf_writes_audit for those tokens OR any WOLI/WO record whose id
   //    starts with the WO's 15-char prefix (SOQL Ids are 15 or 18 chars
