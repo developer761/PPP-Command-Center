@@ -108,6 +108,27 @@ export async function changeOpportunityStatus(
     };
   }
 
+  // Karan 2026-07-08: block reversing a Won deal that already has live
+  // invoices attached. Won → reopened → lost is a legal DAG path, but if
+  // an invoice was issued (or worse — paid) the financial story on the
+  // account depends on this deal being Won. Force the user to void the
+  // invoices first so the money side and the pipeline side stay in sync.
+  if (beforeRow.status === "won" && input.to_status !== "won") {
+    const { data: liveInvoices } = await sb
+      .from("commercial_invoices")
+      .select("id, status")
+      .eq("opportunity_id", input.opp_id)
+      .is("deleted_at", null)
+      .neq("status", "void");
+    const blocking = (liveInvoices ?? []) as { id: string; status: string }[];
+    if (blocking.length > 0) {
+      return {
+        ok: false,
+        error: `Can't move this off Won — ${blocking.length} live invoice${blocking.length === 1 ? "" : "s"} still on the deal. Void those first.`,
+      };
+    }
+  }
+
   // Loss-reason enforcement when transitioning TO a closed-without-win
   // state. Both `lost` and `no_bid` are terminal exits where Alex needs
   // to record WHY — for pipeline analysis (which reasons recur) and
