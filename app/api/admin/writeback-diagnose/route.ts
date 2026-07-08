@@ -169,7 +169,8 @@ export async function GET(request: Request) {
     )
     .order("created_at", { ascending: false })
     .limit(200);
-  const tokens = (allRecentTokens ?? []).filter((t) => {
+  const allTokens = allRecentTokens ?? [];
+  const tokens = allTokens.filter((t) => {
     const stored = (t.work_order_id as string | null) ?? "";
     if (!stored) return false;
     // Match on 15-char prefix — handles both 15-char and 18-char SF ids
@@ -177,6 +178,30 @@ export async function GET(request: Request) {
     // '0wowj...' doesn't miss '0WOWj...' input.
     return stored.slice(0, 15).toLowerCase() === woPrefix.toLowerCase();
   });
+  // Diagnostic breadcrumbs — if the DB returned tokens but our filter
+  // matched none, dump raw work_order_id values so we can spot the
+  // mismatch (whitespace, unicode, alt casing) without hitting Supabase
+  // directly.
+  const diagnosticCrumbs = {
+    total_tokens_fetched: allTokens.length,
+    filter_wo_prefix: woPrefix,
+    matched_tokens_count: tokens.length,
+    distinct_wo_ids_in_last_200: Array.from(
+      new Set(
+        allTokens
+          .map((t) => (t.work_order_id as string | null) ?? "")
+          .filter(Boolean)
+      )
+    ).slice(0, 30),
+    sample_first_5_stored_wo_ids: allTokens.slice(0, 5).map((t) => ({
+      token_head: (t.token as string).slice(0, 12) + "…",
+      work_order_id: t.work_order_id ?? null,
+      submitted_at: t.submitted_at ?? null,
+      matches_filter:
+        typeof t.work_order_id === "string" &&
+        t.work_order_id.slice(0, 15).toLowerCase() === woPrefix.toLowerCase(),
+    })),
+  };
 
   // 4. sf_writes_audit for those tokens OR any WOLI/WO record whose id
   //    starts with the WO's 15-char prefix (SOQL Ids are 15 or 18 chars
@@ -335,9 +360,15 @@ export async function GET(request: Request) {
     },
     tokens: tokens ?? [],
     payload_summary: payloadSummary,
+    diagnostic_crumbs: diagnosticCrumbs,
     sf_writes_audit: auditRows,
   }, {
-    // Pretty-print for easy admin reading.
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    // Pretty-print for easy admin reading. `no-store` defeats any edge
+    // cache that would otherwise serve stale diagnostic results between
+    // deploys — this endpoint is admin-only and never worth caching.
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store, max-age=0",
+    },
   });
 }
