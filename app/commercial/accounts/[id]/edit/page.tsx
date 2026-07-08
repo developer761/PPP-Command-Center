@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -87,6 +88,14 @@ async function updateAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/accounts/${id}/edit?error=${encodeURIComponent(result.error)}`);
   }
+  // Karan 2026-07-08 propagation fix: audit found the account edit was
+  // saving silently — no revalidatePath call meant the detail page +
+  // list served stale data (company name, address, compliance status,
+  // Key Relationship flag) until Next's default ISR window elapsed.
+  // Now flushes every surface that reads account fields.
+  revalidatePath(`/commercial/accounts/${id}`);
+  revalidatePath("/commercial/accounts");
+  revalidatePath("/commercial");
   // Symmetric with opp-edit: redirect with ?saved=1 so the detail page
   // surfaces an emerald "Changes saved." banner. Closes the silent-save
   // gap the persona walkthrough flagged.
@@ -106,6 +115,13 @@ async function deleteAction(formData: FormData) {
   if (!result.ok) {
     redirect(`/commercial/accounts/${id}/edit?error=${encodeURIComponent(result.error)}`);
   }
+  // Flush every surface that lists or scopes by this account so a
+  // freshly-deleted row disappears immediately instead of lingering.
+  revalidatePath(`/commercial/accounts/${id}`);
+  revalidatePath("/commercial/accounts");
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial/opportunities");
+  revalidatePath("/commercial");
   // After delete, the account detail page will 404 → bounce to the list
   redirect("/commercial/accounts?deleted=1");
 }
