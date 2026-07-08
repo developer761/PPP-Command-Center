@@ -1003,14 +1003,18 @@ function AccountRow({
   const cityState = [account.billing_city, account.billing_state].filter(Boolean).join(", ");
   const activity = overview ? relativeActivity(overview.last_activity_at) : null;
   const tone = overview ? activityTone(overview.last_activity_at) : null;
+  // Karan 2026-07-08 GHL-style: activity chip now has bg + border to
+  // match the other SignalPill chips. Old text-only rendering read as
+  // "extra grey noise" at the end of the row; this makes it a proper
+  // freshness signal that scans as important at a glance.
   const activityCls =
     tone === "ok"
-      ? "text-blue-700"
+      ? "bg-blue-50 text-blue-800 border-blue-200"
       : tone === "stale"
-      ? "text-amber-700"
+      ? "bg-amber-50 text-amber-800 border-amber-200"
       : tone === "cold"
-      ? "text-rose-700"
-      : "text-ppp-charcoal-500";
+      ? "bg-rose-50 text-rose-800 border-rose-200"
+      : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
   const visibleTags = tags.slice(0, 4);
   const extraTagCount = Math.max(0, tags.length - visibleTags.length);
   return (
@@ -1092,10 +1096,10 @@ function AccountRow({
                 stats row but with cleaner visual grouping. */}
             {overview && (
               <div className="text-[12px] mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap text-ppp-charcoal-600">
-                <SignalPill icon="👥" label={`${overview.contact_count} contact${overview.contact_count === 1 ? "" : "s"}`} />
-                <SignalPill icon="🏗️" label={`${overview.ppp_team_count} on team`} />
+                <SignalPill icon="contacts" label={`${overview.contact_count} contact${overview.contact_count === 1 ? "" : "s"}`} />
+                <SignalPill icon="team" label={`${overview.ppp_team_count} on team`} />
                 <SignalPill
-                  icon="📄"
+                  icon="docs"
                   label={`${overview.active_document_count} doc${overview.active_document_count === 1 ? "" : "s"}`}
                   tone={
                     overview.expired_document_count > 0
@@ -1114,7 +1118,7 @@ function AccountRow({
                 />
                 {(overview.open_opps_count ?? 0) > 0 && (
                   <SignalPill
-                    icon="🎯"
+                    icon="bids"
                     tone="blue"
                     label={(() => {
                       const bidRange = formatBidCents(
@@ -1128,14 +1132,34 @@ function AccountRow({
                 )}
                 {(overview.won_opps_count ?? 0) > 0 && (
                   <SignalPill
-                    icon="★"
+                    icon="star"
                     tone="amber"
                     label="Repeat customer"
                     title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account.`}
                   />
                 )}
                 {activity && (
-                  <span className={`text-[11px] font-medium ${activityCls}`}>
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${activityCls}`}
+                    title={`Last touched: ${overview.last_activity_at ?? "unknown"}`}
+                  >
+                    {(() => {
+                      // Karan 2026-07-08 GHL-style: subtle pulse dot when
+                      // the account was touched within the last 7 days
+                      // ("hot"), solid dot for older activity. Makes the
+                      // freshness signal readable at a glance.
+                      const isHot = overview.last_activity_at
+                        ? Date.now() - new Date(overview.last_activity_at).getTime() < 7 * 24 * 60 * 60 * 1000
+                        : false;
+                      return (
+                        <span aria-hidden className="relative inline-flex w-1.5 h-1.5">
+                          {isHot && (
+                            <span className="absolute inline-flex w-full h-full rounded-full bg-current opacity-60 animate-ping" />
+                          )}
+                          <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-current" />
+                        </span>
+                      );
+                    })()}
                     Active {activity}
                   </span>
                 )}
@@ -1175,6 +1199,31 @@ function AccountRow({
  * for meaningful signals (open bids = blue, repeat = amber, docs with
  * expired = rose). Neutral for the plain counts.
  */
+/**
+ * Karan 2026-07-08: GHL-style upgrade. Old pills were flat text with an
+ * emoji prefix; the row read as "grey noise." New pill is a proper
+ * chip with a background tint + stroke icon + monospace count so the
+ * row scans like a status band, not a paragraph.
+ */
+function SignalIcon({ kind }: { kind: "contacts" | "team" | "docs" | "bids" | "star" }) {
+  const strokeProps = {
+    fill: "none" as const,
+    stroke: "currentColor",
+    strokeWidth: 2.2,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  if (kind === "contacts")
+    return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden {...strokeProps}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
+  if (kind === "team")
+    return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden {...strokeProps}><path d="M12 2 4 6v6c0 4.4 3.6 8 8 10 4.4-2 8-5.6 8-10V6l-8-4z" /></svg>;
+  if (kind === "docs")
+    return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden {...strokeProps}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8" /></svg>;
+  if (kind === "bids")
+    return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden {...strokeProps}><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></svg>;
+  return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden {...strokeProps}><path d="M12 2 15.09 8.26 22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>;
+}
+
 function SignalPill({
   icon,
   label,
@@ -1182,25 +1231,28 @@ function SignalPill({
   tone,
   title,
 }: {
-  icon: string;
+  icon: "contacts" | "team" | "docs" | "bids" | "star";
   label: string;
   suffix?: string;
   tone?: "neutral" | "blue" | "amber" | "rose";
   title?: string;
 }) {
-  const cls =
+  const chip =
     tone === "blue"
-      ? "text-blue-700"
+      ? "bg-blue-50 text-blue-800 border-blue-200"
       : tone === "amber"
-      ? "text-amber-800"
+      ? "bg-amber-50 text-amber-800 border-amber-200"
       : tone === "rose"
-      ? "text-rose-700"
-      : "text-ppp-charcoal-600";
+      ? "bg-rose-50 text-rose-800 border-rose-200"
+      : "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (
-    <span className={`inline-flex items-center gap-1 ${cls}`} title={title}>
-      <span aria-hidden className="text-[11px]">{icon}</span>
-      <span className="font-medium">{label}</span>
-      {suffix && <span>{suffix}</span>}
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${chip}`}
+      title={title}
+    >
+      <SignalIcon kind={icon} />
+      <span className="tabular-nums">{label}</span>
+      {suffix && <span className="opacity-80">{suffix}</span>}
     </span>
   );
 }

@@ -103,6 +103,24 @@ export async function getCommercialAccount(id: string): Promise<CommercialAccoun
   return (data as CommercialAccount | null) ?? null;
 }
 
+/** Karan 2026-07-08: load an account including soft-deleted rows so
+ *  reconcile-orphan flows (deleted-account invoice cluster on the
+ *  invoicing surface) can render the account name + drive bulk-delete.
+ *  Callers should check `.deleted_at` on the returned row. */
+export async function getCommercialAccountIncludingDeleted(id: string): Promise<CommercialAccount | null> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_accounts")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    console.warn("[commercial/accounts] get(inc-deleted) failed:", error.message);
+    return null;
+  }
+  return (data as CommercialAccount | null) ?? null;
+}
+
 /**
  * Distinct industry values across non-deleted accounts. Used to populate
  * the industry filter dropdown without a separate constants list.

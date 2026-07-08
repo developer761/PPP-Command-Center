@@ -1035,13 +1035,33 @@ function ComplianceChecklistCard({
       <ul className="space-y-1.5">
         {items.map((item) => {
           const { dot, label, tone } = healthDecoration(item);
+          // Karan 2026-07-08: every row that needs attention gets an
+          // "Upload →" (or "Replace →") quick-chip pointing at the
+          // Documents tab so nobody has to hunt for where to add the file.
+          // "ok" rows stay quiet (already on file).
+          const needsAction = item.health === "missing" || item.health === "expired" || item.health === "soon";
+          const actionLabel = item.health === "missing" ? "Upload" : "Replace";
           return (
             <li key={item.category} className="flex items-center justify-between gap-3 py-1">
               <div className="flex items-center gap-2 min-w-0">
                 <span aria-hidden className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
                 <span className="text-[13px] text-ppp-charcoal truncate">{item.label}</span>
               </div>
-              <span className={`text-[11px] font-medium ${tone} shrink-0`}>{label}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`text-[11px] font-medium ${tone}`}>{label}</span>
+                {needsAction && (
+                  <Link
+                    href={`/commercial/accounts/${accountId}?tab=documents#upload-${item.category}`}
+                    className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-blue-700 hover:text-blue-800 hover:underline underline-offset-2 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded px-1 py-0.5"
+                    title={`${actionLabel} a ${item.label}`}
+                  >
+                    {actionLabel}
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                  </Link>
+                )}
+              </div>
             </li>
           );
         })}
