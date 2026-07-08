@@ -182,6 +182,28 @@ export async function getCommercialOpportunity(
   return (data as CommercialOpportunity | null) ?? null;
 }
 
+/** Load a single opportunity including soft-deleted rows. Karan 2026-07-08:
+ *  the deal-detail page needs to still open for a deleted deal so users can
+ *  reach the invoices tab (money history) and either void/delete stragglers
+ *  or record last payments. Callers should render a "deal deleted" banner
+ *  when `deleted_at` is set. Live-only surfaces should keep using
+ *  `getCommercialOpportunity`. */
+export async function getCommercialOpportunityIncludingDeleted(
+  id: string
+): Promise<CommercialOpportunity | null> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_opportunities")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    console.warn("[commercial/opportunities] get(inc-deleted) failed:", error.message);
+    return null;
+  }
+  return (data as CommercialOpportunity | null) ?? null;
+}
+
 /** Bid range as a display string ("$50k–$75k", "$25,000", "—"). */
 export function formatBidRange(low: number | null, high: number | null): string {
   if (low === null && high === null) return "—";

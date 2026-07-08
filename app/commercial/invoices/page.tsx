@@ -945,7 +945,13 @@ function GroupedByOpp({
             <li key={oppId}>
               {isOrphan ? (
                 <div className="border-l-2 border-amber-300 bg-amber-50/30">
-                  <div className="px-4 sm:px-5 py-3.5">{headerBody}</div>
+                  <Link
+                    href={`/commercial/opportunities/${oppId}?tab=invoices`}
+                    className="group/orphanHead block px-4 sm:px-5 py-3.5 hover:bg-amber-50 focus:outline-none focus:bg-amber-50 transition-colors touch-manipulation"
+                    title="Open this deleted deal's invoice manager"
+                  >
+                    {headerBody}
+                  </Link>
                   <ul className="border-t border-ppp-charcoal-100 divide-y divide-ppp-charcoal-100 bg-white">
                     {orphanSorted.map((inv) => {
                       const invStatus = deriveInvoiceStatus(inv);
