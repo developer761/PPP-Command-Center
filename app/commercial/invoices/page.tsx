@@ -50,6 +50,9 @@ type SP = Promise<{
    *  users landing here from the "New invoice ▾" picker see the form
    *  already expanded (details elements don't respond to URL hashes). */
   add?: string;
+  /** Karan 2026-07-08: single-deal focus + bulk-delete flash. */
+  opportunity_id?: string;
+  bulk_deleted?: string;
 }>;
 
 /** Server action for the inline "+ Record payment" collapsible on the

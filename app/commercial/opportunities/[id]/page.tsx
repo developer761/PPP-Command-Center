@@ -122,6 +122,9 @@ type SP = Promise<{
   paid_ok?: string;
   paid_invoice?: string;
   paid_capped?: string;
+  /** Karan 2026-07-08: quick-edit slide-out state on the Invoices tab. */
+  edit_invoice?: string;
+  details_saved?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
