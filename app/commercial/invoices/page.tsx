@@ -309,7 +309,12 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                 <div className="max-h-[320px] overflow-y-auto space-y-0.5">
                   {wonOpps.map((o) => {
                     const acct = accountById.get(o.account_id);
-                    const existing = invoices.filter((i) => i.opportunity_id === o.id).length;
+                    // Karan 2026-07-07 bug fix: use `invoicesRaw` here
+                    // (not `invoices`) so the "N invoices already" badge
+                    // reflects true count, not the search-filtered subset.
+                    // Otherwise searching "Widget" would zero out counts on
+                    // every non-matching opp in the picker.
+                    const existing = invoicesRaw.filter((i) => i.opportunity_id === o.id).length;
                     return (
                       <Link
                         key={o.id}
@@ -547,6 +552,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           invoices={sorted}
           oppById={oppById}
           accountById={accountById}
+          sortKey={sortKey}
         />
       )}
     </div>
@@ -557,10 +563,12 @@ function GroupedByOpp({
   invoices,
   oppById,
   accountById,
+  sortKey,
 }: {
   invoices: CommercialInvoice[];
   oppById: Map<string, { id: string; title: string; account_id: string; status: string }>;
   accountById: Map<string, { id: string; company_name: string }>;
+  sortKey: string;
 }) {
   // Group invoices by opportunity_id. Preserve chronological order per
   // group so the story reads top-down (oldest → newest inside each opp).
@@ -570,12 +578,54 @@ function GroupedByOpp({
     arr.push(inv);
     groups.set(inv.opportunity_id, arr);
   }
-  // Sort opps by most-recent invoice activity so the deals you're
-  // actively billing bubble to the top.
+  // Karan 2026-07-07 bug fix: previous version always sorted groups by
+  // "most-recent invoice created" and ignored the user's sortKey. On
+  // the grouped view the sort control was effectively dead. Now the
+  // sortKey drives GROUP order, and each group's invoices still render
+  // chronologically inside (so the progress-billing story reads
+  // top-down per deal).
   const oppOrder = Array.from(groups.entries()).sort((a, b) => {
-    const aLatest = Math.max(...a[1].map((i) => new Date(i.created_at).getTime()));
-    const bLatest = Math.max(...b[1].map((i) => new Date(i.created_at).getTime()));
-    return bLatest - aLatest;
+    const aInvs = a[1];
+    const bInvs = b[1];
+    switch (sortKey) {
+      case "oldest": {
+        // Groups whose OLDEST invoice is earliest come first.
+        const aOldest = Math.min(...aInvs.map((i) => new Date(i.created_at).getTime()));
+        const bOldest = Math.min(...bInvs.map((i) => new Date(i.created_at).getTime()));
+        return aOldest - bOldest;
+      }
+      case "due_soon": {
+        // Groups whose EARLIEST unpaid due date is closest come first.
+        // Paid/void invoices don't count. Groups with no upcoming due
+        // dates sink to the bottom.
+        const nextDue = (rows: typeof aInvs) => {
+          const dues = rows
+            .filter((i) => i.status !== "paid" && i.status !== "void" && i.due_at)
+            .map((i) => new Date(i.due_at as string).getTime());
+          return dues.length > 0 ? Math.min(...dues) : Infinity;
+        };
+        return nextDue(aInvs) - nextDue(bInvs);
+      }
+      case "amount_high": {
+        // Groups by total invoiced (non-void), largest first.
+        const sum = (rows: typeof aInvs) =>
+          rows.filter((i) => i.status !== "void").reduce((s, i) => s + i.total_cents, 0);
+        return sum(bInvs) - sum(aInvs);
+      }
+      case "balance_high": {
+        // Groups by total outstanding balance, largest first.
+        const bal = (rows: typeof aInvs) =>
+          rows.filter((i) => i.status !== "void").reduce((s, i) => s + i.balance_cents, 0);
+        return bal(bInvs) - bal(aInvs);
+      }
+      case "recent":
+      default: {
+        // Groups whose NEWEST invoice is most recent come first.
+        const aLatest = Math.max(...aInvs.map((i) => new Date(i.created_at).getTime()));
+        const bLatest = Math.max(...bInvs.map((i) => new Date(i.created_at).getTime()));
+        return bLatest - aLatest;
+      }
+    }
   });
 
   if (oppOrder.length === 0) {

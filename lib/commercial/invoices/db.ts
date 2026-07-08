@@ -576,14 +576,50 @@ export async function addPayment(
     recorded_by_user_id: input.recorded_by_user_id,
   });
   if (error) return { ok: false, error: error.message };
-  // Trigger auto-flips status to partial/paid. Log the status change +
-  // re-fetch the after-row so we know the fresh balance / status / opp
-  // context for the fanout notification.
-  const { data: after } = await sb
+  // The DB trigger `trg_recompute_paid_cents` should auto-update
+  // paid_cents (which feeds the generated balance_cents column) + flip
+  // status. Karan 2026-07-07 defense: an older version of the trigger
+  // (pre-commit 3ed6b2b) gated the draft → partial flip on
+  // `status != 'draft'`, which meant recording a payment on a Draft
+  // invoice would leave paid_cents advanced but status stuck at Draft.
+  // If the deployed DB is still running the older trigger, our
+  // notification fanout would fire the wrong variant + the UI would
+  // show a mismatched status. Re-fetch the after-row + explicitly
+  // reconcile status if the trigger left it inconsistent. This is a
+  // no-op when the current trigger is deployed.
+  let { data: after } = await sb
     .from("commercial_invoices")
-    .select("status, balance_cents, total_cents, invoice_number, opportunity_id")
+    .select("status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id")
     .eq("id", invoice_id)
     .maybeSingle();
+  if (after) {
+    const paid = (after as { paid_cents: number }).paid_cents;
+    const total = (after as { total_cents: number }).total_cents;
+    const currentStatus = (after as { status: InvoiceStatus }).status;
+    // Expected status per the current trigger contract.
+    const expectedStatus: InvoiceStatus | null =
+      currentStatus === "void"
+        ? "void"
+        : paid > 0 && paid >= total && total > 0
+        ? "paid"
+        : paid > 0
+        ? "partial"
+        : null; // no reconcile needed
+    if (expectedStatus && currentStatus !== expectedStatus) {
+      const patch: Record<string, unknown> = { status: expectedStatus };
+      // Stamp paid_at when force-flipping to paid so downstream reads
+      // don't see paid=paid_at=null.
+      if (expectedStatus === "paid") patch.paid_at = new Date().toISOString();
+      await sb.from("commercial_invoices").update(patch).eq("id", invoice_id);
+      // Re-fetch so the notification below sees the corrected state.
+      const { data: reFetched } = await sb
+        .from("commercial_invoices")
+        .select("status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id")
+        .eq("id", invoice_id)
+        .maybeSingle();
+      after = reFetched;
+    }
+  }
   if (after?.status && after.status !== inv.status) {
     await logStatusChange(invoice_id, inv.status as InvoiceStatus, after.status as InvoiceStatus, input.recorded_by_user_id, "Payment received");
   }
