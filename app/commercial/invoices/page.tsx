@@ -1120,7 +1120,7 @@ function GroupedByOpp({
                       return (
                         <li key={inv.id}>
                           <Link
-                            href={`/commercial/invoices/${inv.id}`}
+                            href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/invoices?opportunity_id=${oppId}`)}`}
                             className="group/invRow flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-blue-50/40 focus:outline-none focus:bg-blue-50/60 transition-colors touch-manipulation"
                           >
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${statusTone} shrink-0`}>

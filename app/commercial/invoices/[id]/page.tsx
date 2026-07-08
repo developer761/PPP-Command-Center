@@ -56,6 +56,7 @@ type SP = Promise<{
   capped?: string;
   applied?: string;
   requested?: string;
+  from?: string;
 }>;
 
 // ────────────── Server actions ──────────────
@@ -296,8 +297,36 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   // so the user knows their options are Void or Delete.
   const isOrphan = !opp || !account;
 
+  // Karan 2026-07-08: prominent Back button. Reads `?from=<url>` off
+  // the query so a click coming from /commercial/invoices?opportunity_id=X
+  // (the deleted-deal cluster) returns to that scoped view, not the
+  // whole list. Falls back to the natural parent when `from` is missing.
+  const fromRaw = pickFirst(sp.from);
+  const backHref = (() => {
+    if (fromRaw && fromRaw.startsWith("/commercial/")) return fromRaw;
+    // Natural parent: opp invoices tab > account invoices tab > list
+    if (opp) return `/commercial/opportunities/${opp.id}?tab=invoices`;
+    if (account) return `/commercial/accounts/${account.id}?tab=invoices`;
+    return "/commercial/invoices";
+  })();
+
   return (
     <div className="space-y-5">
+      {/* Prominent back button — Karan 2026-07-08. The breadcrumb below
+          is still there for hop-anywhere navigation, but the primary
+          "back" affordance is a big button so users can bounce to their
+          previous surface in one glance. */}
+      <div className="flex items-center gap-2 -ml-1">
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold text-ppp-charcoal-700 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 min-h-[40px] touch-manipulation"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Back
+        </Link>
+      </div>
       {/* Karan 2026-07-08 Batch 3: swapped the "← All invoices" back
           link for a proper breadcrumb — Invoices / [Account] / [Deal] /
           [Invoice #]. Mirrors the deal-detail breadcrumb so users learn
