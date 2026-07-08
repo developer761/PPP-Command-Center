@@ -446,12 +446,11 @@ export async function addPayment(
     .maybeSingle();
   if (!inv) return { ok: false, error: "invoice_not_found" };
   if (inv.status === "void") return { ok: false, error: "cannot_pay_voided" };
-  // Reject payments on drafts. A draft is a work-in-progress bill that
-  // hasn't been shown to the customer; recording a payment on it would
-  // (a) bypass the status DAG (draft → partial without the sent step)
-  // and (b) confuse the audit trail (was the invoice ever sent?). The
-  // UI hides the payment form on drafts; this closes the chain-of-trust.
-  if (inv.status === "draft") return { ok: false, error: "cannot_pay_draft" };
+  // Karan 2026-07-07: "don't make me mark as sent in order to record
+  // payments. Mark as sent should just be for UI purposes." Dropped the
+  // draft-only gate. The trigger will flip draft → partial → paid
+  // automatically as payments come in. "Mark as sent" is now a passive
+  // status pill Alex flips when he actually sends the customer copy.
   const balance = inv.balance_cents as number;
   const cappedAmount = Math.min(input.amount_cents, balance);
   if (cappedAmount <= 0) return { ok: false, error: "no_balance_due" };

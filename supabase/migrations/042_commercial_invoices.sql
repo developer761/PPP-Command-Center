@@ -171,10 +171,11 @@ BEGIN
           -- ($0 invoices never flip so a fat-fingered $0 draft doesn't
           -- silently become "paid").
           WHEN new_paid >= inv_total AND inv_total > 0 THEN 'paid'
-          -- Any positive payment on a NON-draft invoice → partial. Drafts
-          -- reject payments at the lib layer, so this branch only fires on
-          -- sent/viewed/overdue.
-          WHEN new_paid > 0 AND inv_status != 'draft' THEN 'partial'
+          -- Any positive payment → partial. Karan 2026-07-07: "don't
+          -- make me mark as sent to record payments." Drafts now auto-
+          -- flip to partial on first payment; users don't need to
+          -- pre-toggle Sent as a gating step.
+          WHEN new_paid > 0 THEN 'partial'
           -- Last payment refunded on a previously-paid or partially-paid
           -- invoice: fall back to 'sent' so the "unpaid" balance surfaces
           -- again + the invoice re-enters the collections funnel. Overdue

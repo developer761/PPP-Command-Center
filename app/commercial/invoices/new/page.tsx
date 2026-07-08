@@ -73,6 +73,7 @@ async function createBatchAction(formData: FormData) {
   }
 
   let created = 0;
+  const createdIds: string[] = [];
   const errors: string[] = [];
   for (const row of rows) {
     const cents = parseDollarsToCents(row.amount);
@@ -112,6 +113,7 @@ async function createBatchAction(formData: FormData) {
       errors.push(`Failed to create invoice: ${result.error}`);
     } else {
       created += 1;
+      createdIds.push(result.invoice.id);
     }
   }
 
@@ -123,12 +125,21 @@ async function createBatchAction(formData: FormData) {
   if (created === 0) {
     redirect(`/commercial/invoices/new?opp=${opp_id}&error=` + encodeURIComponent(errors[0] ?? "No invoices created."));
   }
+  // Karan 2026-07-07: "when I add an invoice it should keep me on the
+  // invoice page and just bring me to the [detail]." So:
+  //   1 created → land on that invoice's detail
+  //   N created → land on the invoices list with a toast (the grouped-
+  //     by-opp view is the natural way to see the whole batch)
+  if (created === 1) {
+    redirect(`/commercial/invoices/${createdIds[0]}?saved=created`);
+  }
   const flash = new URLSearchParams({
-    tab: "invoices",
+    view: "grouped",
+    account_id: opp!.account_id,
     invoices_created: String(created),
   });
   if (errors.length > 0) flash.set("invoice_errors", String(errors.length));
-  redirect(`/commercial/opportunities/${opp!.id}?${flash.toString()}`);
+  redirect(`/commercial/invoices?${flash.toString()}`);
 }
 
 export default async function NewInvoiceRoute({ searchParams }: { searchParams: SP }) {

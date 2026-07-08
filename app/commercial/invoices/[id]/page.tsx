@@ -504,9 +504,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         <section className="bg-white border border-cc-brand-200 rounded-xl p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
             <div>
-              <h2 className="text-sm font-bold text-ppp-charcoal">Move this invoice forward</h2>
+              <h2 className="text-sm font-bold text-ppp-charcoal">Status</h2>
               <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-                Currently <strong className="text-ppp-charcoal">{invoiceStatusLabel(invoice.status)}</strong>. Pick the next state.
+                Currently <strong className="text-ppp-charcoal">{invoiceStatusLabel(invoice.status)}</strong>. Flip whenever it fits your flow — payments record regardless.
               </p>
             </div>
           </div>
@@ -517,24 +517,17 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 <input type="hidden" name="to_status" value={s} />
                 <button
                   type="submit"
-                  disabled={s === "sent" && lineItems.length === 0}
-                  title={s === "sent" && lineItems.length === 0 ? "Add at least one line item first" : undefined}
                   className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors ${
                     s === "void"
                       ? "border border-rose-200 text-rose-700 bg-white hover:bg-rose-50"
                       : "bg-cc-brand-600 text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30"
-                  } disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none`}
+                  }`}
                 >
                   {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : invoiceStatusLabel(s)}
                 </button>
               </form>
             ))}
           </div>
-          {invoice.status === "draft" && (
-            <p className="mt-3 text-[11px] text-ppp-charcoal-500 leading-snug">
-              <strong className="text-ppp-charcoal-700">Note:</strong> &quot;Mark as sent&quot; flips the status and starts the days-outstanding clock. You still email the invoice to the customer manually. Real auto-send comes later.
-            </p>
-          )}
         </section>
       )}
 
@@ -603,11 +596,30 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     <td />
                   </tr>
                 )}
-                <tr>
+                <tr className="border-t border-ppp-charcoal-100">
                   <td colSpan={4} className="py-2 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-cc-brand-700">Total invoiced</td>
                   <td className="py-2 pr-3 text-right font-bold text-cc-brand-700 tabular-nums">{formatCentsFull(invoice.total_cents)}</td>
                   <td />
                 </tr>
+                {/* Karan 2026-07-07: inline paid + balance rows so the
+                    reconciliation reads without scrolling to the
+                    Payments section below. */}
+                {invoice.paid_cents > 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-1 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-emerald-700">Paid</td>
+                    <td className="py-1 pr-3 text-right font-semibold text-emerald-700 tabular-nums">− {formatCentsFull(invoice.paid_cents)}</td>
+                    <td />
+                  </tr>
+                )}
+                {invoice.paid_cents > 0 && (
+                  <tr className="border-t border-ppp-charcoal-100">
+                    <td colSpan={4} className="py-2 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-700">Outstanding balance</td>
+                    <td className={`py-2 pr-3 text-right font-bold tabular-nums ${
+                      invoice.balance_cents === 0 ? "text-emerald-700" : "text-ppp-charcoal"
+                    }`}>{formatCentsFull(invoice.balance_cents)}</td>
+                    <td />
+                  </tr>
+                )}
               </tfoot>
             </table>
           </div>
@@ -703,7 +715,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </ul>
         )}
 
-        {invoice.balance_cents > 0 && !isVoid && !isDraft && (
+        {invoice.balance_cents > 0 && !isVoid && (
           <form action={addPaymentAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-12 gap-2">
             <input type="hidden" name="invoice_id" value={invoice.id} />
             <div className="sm:col-span-3">
@@ -743,11 +755,6 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         )}
         {invoice.balance_cents === 0 && payments.length > 0 && (
           <p className="mt-2 text-[12px] text-emerald-700 font-medium">✓ Fully paid.</p>
-        )}
-        {isDraft && (
-          <p className="mt-3 text-[12px] text-ppp-charcoal-500 italic">
-            Payments open after the invoice is marked as sent.
-          </p>
         )}
       </section>
 
