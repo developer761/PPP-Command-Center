@@ -10,10 +10,12 @@ import { commercialDb } from "@/lib/commercial/db";
  * mirror on the commercial side.
  */
 
+// Karan 2026-07-09 Phase A: removed `site_visit_scheduled` + `site_visit_done`
+// per post-meeting notes. Any historic rows on those statuses migrate to
+// `bidding` via migration 044. The `bidding` alias (aka `estimating`) is
+// what we now use for the phase between inquiry and proposal_sent.
 export const OPPORTUNITY_STATUSES = [
   "inquiry",
-  "site_visit_scheduled",
-  "site_visit_done",
   "estimating",
   "proposal_sent",
   "negotiating",
@@ -28,8 +30,6 @@ export type OpportunityStatus = (typeof OPPORTUNITY_STATUSES)[number];
 export function opportunityStatusLabel(s: OpportunityStatus): string {
   return {
     inquiry: "Inquiry",
-    site_visit_scheduled: "Site visit scheduled",
-    site_visit_done: "Site visit done",
     estimating: "Estimating",
     proposal_sent: "Proposal sent",
     negotiating: "Negotiating",

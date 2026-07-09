@@ -2302,8 +2302,6 @@ function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
 function StatusPill({ status }: { status: OpportunityStatus }) {
   const map: Record<OpportunityStatus, string> = {
     inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    site_visit_scheduled: "bg-sky-100 text-sky-800 border-sky-300",
-    site_visit_done: "bg-cyan-100 text-cyan-800 border-cyan-300",
     estimating: "bg-amber-100 text-amber-900 border-amber-300",
     proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
     negotiating: "bg-orange-100 text-orange-900 border-orange-300",

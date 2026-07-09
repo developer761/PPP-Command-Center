@@ -37,21 +37,27 @@ const navSections: NavSection[] = [
       { label: "Dashboard", href: "/commercial", icon: <IconHome /> },
     ],
   },
-  // Karan 2026-07-09: sections reordered to match the actual workflow —
-  // sell (Accounts → Pipeline) → bill (Invoices) → deliver (Projects,
-  // disabled/roadmap) → report (Win/Loss). Old order jammed Projects
-  // between Pipeline and Financials which broke the flow visually.
+  // Karan 2026-07-09 Phase A: post-meeting restructure. Two-lobe platform —
+  // Pre-Job (sell + build proposal) vs Post-Job (deliver + bill). Project +
+  // Submittals + Closeout ship in Phases H, I, L. Product / Exclusions
+  // libraries ship in Phases D, E.
   {
-    heading: "Sales",
+    heading: "Pre-Job",
     items: [
       { label: "Accounts", href: "/commercial/accounts", icon: <IconBuilding /> },
-      { label: "Pipeline", href: "/commercial/opportunities", icon: <IconTarget /> },
+      { label: "Opportunities", href: "/commercial/opportunities", icon: <IconTarget /> },
+      { label: "Proposal builder", href: "/commercial/pre-job/proposals", phase: 7, disabled: true, icon: <IconChart /> },
+      { label: "Products", href: "/commercial/pre-job/products", phase: 4, disabled: true, icon: <IconDollar /> },
+      { label: "Exclusions", href: "/commercial/pre-job/exclusions", phase: 5, disabled: true, icon: <IconCheckSquare /> },
     ],
   },
   {
-    heading: "Billing",
+    heading: "Post-Job",
     items: [
+      { label: "Projects", href: "/commercial/projects", phase: 8, disabled: true, icon: <IconHardHat /> },
+      { label: "Submittals", href: "/commercial/post-job/submittals", phase: 9, disabled: true, icon: <IconChangeOrder /> },
       { label: "Invoices", href: "/commercial/invoices", icon: <IconDollar /> },
+      { label: "Closeout & warranty", href: "/commercial/post-job/closeout", phase: 12, disabled: true, icon: <IconCheckSquare /> },
     ],
   },
   {
@@ -61,19 +67,6 @@ const navSections: NavSection[] = [
       { label: "Revenue", href: "/commercial/reports/revenue", phase: 3, disabled: true, icon: <IconChart /> },
     ],
   },
-  {
-    heading: "Projects (coming soon)",
-    items: [
-      { label: "Projects", href: "/commercial/projects", phase: 5, disabled: true, icon: <IconHardHat /> },
-      { label: "Change Orders", href: "/commercial/change-orders", phase: 7, disabled: true, icon: <IconChangeOrder /> },
-      { label: "Closeout", href: "/commercial/closeout", phase: 9, disabled: true, icon: <IconCheckSquare /> },
-    ],
-  },
-  // Settings sits at the bottom of the nav (after the workflow groups).
-  // Karan 2026-06-23: moved here from a top-of-sidebar slot next to
-  // Dashboard so it doesn't compete with workflow links for attention.
-  // Karan 2026-06-24: added Competitors (admin-only dictionary for the
-  // Win/Loss Debrief typeahead — merge/retire duplicates).
   {
     heading: "Settings",
     items: [
@@ -109,8 +102,8 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             priority
           />
           <div className="mt-3 inline-flex items-center gap-1.5">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-brand-600" />
-            <span className="font-condensed text-[10px] font-bold tracking-[0.16em] text-cc-brand-700 uppercase leading-tight">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-navy-600" />
+            <span className="font-condensed text-[10px] font-bold tracking-[0.16em] text-cc-navy-700 uppercase leading-tight">
               Commercial<br />Command Center
             </span>
           </div>
@@ -132,7 +125,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         {navSections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-6" : ""}>
-            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
+            <div className="font-condensed px-3 mb-2 text-[10px] font-bold tracking-[0.18em] text-cc-navy-700 uppercase">
               {section.heading}
             </div>
             <ul className="space-y-0.5">

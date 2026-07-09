@@ -35,11 +35,7 @@ const asStatus = (s: string) => s as OpportunityStatus;
  */
 
 describe("isTransitionAllowed — DAG enforcement", () => {
-  it("inquiry → site_visit_scheduled allowed", () => {
-    expect(isTransitionAllowed("inquiry", "site_visit_scheduled")).toBe(true);
-  });
-
-  it("inquiry → estimating allowed (skip site visit)", () => {
+  it("inquiry → estimating allowed", () => {
     expect(isTransitionAllowed("inquiry", "estimating")).toBe(true);
   });
 
@@ -74,8 +70,6 @@ describe("isTransitionAllowed — DAG enforcement", () => {
   it("every status can go on_hold (except terminal)", () => {
     const non_terminal: OpportunityStatus[] = [
       "inquiry",
-      "site_visit_scheduled",
-      "site_visit_done",
       "estimating",
       "proposal_sent",
       "negotiating",
@@ -103,7 +97,6 @@ describe("isTransitionAllowed — DAG enforcement", () => {
 describe("allowedNextStatuses — list of valid next states", () => {
   it("returns the documented next states for inquiry", () => {
     const next = allowedNextStatuses("inquiry");
-    expect(next).toContain("site_visit_scheduled");
     expect(next).toContain("estimating");
     expect(next).toContain("on_hold");
     expect(next).toContain("lost");
@@ -137,7 +130,7 @@ describe("shouldWarnTransition — UX warn-only transitions", () => {
   });
 
   it("does NOT warn on normal forward motion", () => {
-    expect(shouldWarnTransition("inquiry", "site_visit_scheduled")).toBe(false);
+    expect(shouldWarnTransition("inquiry", "estimating")).toBe(false);
     expect(shouldWarnTransition("estimating", "proposal_sent")).toBe(false);
     expect(shouldWarnTransition("proposal_sent", "negotiating")).toBe(false);
     expect(shouldWarnTransition("negotiating", "won")).toBe(false);
@@ -181,8 +174,6 @@ describe("constants — invariants", () => {
   it("ALLOWED_TRANSITIONS covers every status as a from", () => {
     const allStatuses: OpportunityStatus[] = [
       "inquiry",
-      "site_visit_scheduled",
-      "site_visit_done",
       "estimating",
       "proposal_sent",
       "negotiating",

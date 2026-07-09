@@ -376,11 +376,8 @@ export default async function CommercialAccountDetailPage({
               )}
               {account.rating && <Pill tone={ratingTone(account.rating)}>{account.rating}</Pill>}
               {account.industry && <Pill tone="neutral">{account.industry}</Pill>}
-              {account.vendor_compliance_status && (
-                <Pill tone={complianceTone(account.vendor_compliance_status)}>
-                  {complianceLabel(account.vendor_compliance_status)}
-                </Pill>
-              )}
+              {/* Karan 2026-07-09 Phase A: vendor_compliance_status pill removed —
+                  Compliance moves to per-Opportunity/per-Project docs in Phase C. */}
             </div>
             {primary && (
               <div className="mt-2.5 flex items-center gap-x-2 gap-y-1 flex-wrap text-[12px]">
@@ -456,7 +453,7 @@ export default async function CommercialAccountDetailPage({
           jumps to the Documents tab. Banner is amber for "expiring
           soon" + red for "already expired" so the urgency reads at a
           glance. */}
-      <AccountComplianceBanner accountId={account.id} overview={overview} />
+      {/* Karan 2026-07-09 Phase A: AccountComplianceBanner removed. */}
 
       {/* Primary tab bar — 4 groups. Consolidated from 9 flat tabs;
           Email tab removed entirely. Karan 2026-07-05. */}
@@ -1054,19 +1051,14 @@ async function InfoTab({ account, errorMessage }: { account: CommercialAccount; 
   // Recent Activity moved out of InfoTab → its own tab 2026-06-24.
   // InfoTab stays focused on identity + tags + compliance — no chronological
   // feed that competed with the rest of the layout for vertical space.
-  const [tags, allTags, docGroups] = await Promise.all([
+  const [tags, allTags] = await Promise.all([
     listAccountTags(account.id),
     listAllDistinctTags(),
-    listAccountDocuments(account.id),
   ]);
   // Filter suggestions to tags NOT already on this account (case-
   // insensitive) — saves the picker from showing dupes.
   const existingLower = new Set(tags.map((t) => t.tag.toLowerCase()));
   const suggestions = allTags.filter((s) => !existingLower.has(s.toLowerCase()));
-  // Derive the per-category compliance health from active documents.
-  // Drives the checklist card + the Key Dates panel below.
-  const compliance = buildComplianceChecklist(docGroups);
-
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {errorMessage && (
@@ -1080,15 +1072,11 @@ async function InfoTab({ account, errorMessage }: { account: CommercialAccount; 
         suggestions={suggestions}
         className="lg:col-span-2"
       />
-      <ComplianceChecklistCard
-        accountId={account.id}
-        items={compliance}
-        className="lg:col-span-1"
-      />
-      <KeyDatesCard
-        items={compliance}
-        className="lg:col-span-1"
-      />
+      {/* Karan 2026-07-09 Phase A: ComplianceChecklistCard + KeyDatesCard
+          removed per post-meeting notes. Compliance surfaces move to the
+          Documents scope (per Opportunity / per Project) in Phase C. The
+          underlying account columns remain in the DB behind an admin flag
+          for safety-rollback. */}
       <InfoCards account={account} />
     </div>
   );
