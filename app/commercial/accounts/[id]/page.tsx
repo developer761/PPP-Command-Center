@@ -65,6 +65,7 @@ import {
   type OpportunityStatus,
 } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
+import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -538,6 +539,111 @@ export default async function CommercialAccountDetailPage({
  * as the global page; terminal states (won/lost/no_bid) redirect to
  * the opp detail so the user can capture the required reason/note.
  */
+/**
+ * Karan 2026-07-08: inline-edit each Card on the account overview.
+ * Instead of jumping to the /edit page, each category (Company /
+ * Billing / Site / Contact / Compliance / Tax) gets its own tiny
+ * form + Save button. The `section` field tells the action which
+ * subset of `updateCommercialAccount` fields to accept; everything
+ * outside that whitelist is dropped so a stray form input can't
+ * silently patch unrelated columns.
+ *
+ * Numeric fields (insurance minimums) get NaN-safe parsing; blank
+ * inputs clear back to null.
+ */
+async function updateAccountSectionAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const section = String(formData.get("section") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  const get = (k: string) => {
+    const v = formData.get(k);
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+  const getNum = (k: string) => {
+    const v = get(k);
+    if (!v) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  // Whitelist per section — a stray input outside the current section
+  // can't patch unrelated fields even if the form was tampered with.
+  type Patch = Parameters<typeof updateCommercialAccount>[1];
+  let patch: Patch = {};
+  switch (section) {
+    case "identity":
+      patch = {
+        company_name: get("company_name") ?? undefined,
+        dba: get("dba"),
+        industry: get("industry"),
+        website: get("website"),
+      };
+      break;
+    case "billing":
+      patch = {
+        billing_street: get("billing_street"),
+        billing_city: get("billing_city"),
+        billing_state: get("billing_state"),
+        billing_zip: get("billing_zip"),
+      };
+      break;
+    case "site":
+      patch = {
+        site_street: get("site_street"),
+        site_city: get("site_city"),
+        site_state: get("site_state"),
+        site_zip: get("site_zip"),
+      };
+      break;
+    case "contact":
+      patch = {
+        phone: get("phone"),
+        ap_phone: get("ap_phone"),
+      };
+      break;
+    case "compliance":
+      patch = {
+        vendor_compliance_status: (get("vendor_compliance_status") as
+          | "green"
+          | "yellow"
+          | "red"
+          | "not_started"
+          | null) ?? "not_started",
+        prequalification_status: (get("prequalification_status") as
+          | "not_started"
+          | "pending"
+          | "approved"
+          | "rejected"
+          | null) ?? "not_started",
+        insurance_min_liability: getNum("insurance_min_liability"),
+        insurance_min_workers_comp: getNum("insurance_min_workers_comp"),
+      };
+      break;
+    case "tax":
+      patch = {
+        tax_exempt: formData.get("tax_exempt") === "on",
+        tax_exempt_cert_number: get("tax_exempt_cert_number"),
+      };
+      break;
+    default:
+      redirect(`/commercial/accounts/${account_id}?error=${encodeURIComponent("Unknown section.")}`);
+  }
+  // Company name is required — refuse an empty save on Identity.
+  if (section === "identity" && !patch.company_name) {
+    redirect(`/commercial/accounts/${account_id}?error=${encodeURIComponent("Company name is required.")}`);
+  }
+  const result = await updateCommercialAccount(account_id, patch, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  revalidatePath("/commercial/accounts");
+  redirect(`/commercial/accounts/${account_id}?saved=1#card-${section}`);
+}
+
 async function quickFlipFromAccountAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -1285,78 +1391,101 @@ function TagsCard({
 }
 
 function InfoCards({ account }: { account: CommercialAccount }) {
-  // Karan 2026-07-08: each card now carries an editHref pointing at the
-  // matching Section anchor on the /edit page. Users can jump straight
-  // to editing a category without hunting through tabs / scrolling.
-  const editBase = `/commercial/accounts/${account.id}/edit`;
+  // Karan 2026-07-08: EVERY card is now inline-editable. Each Card
+  // renders its own tiny form scoped to that section. Fields look
+  // like text until focused, then reveal a subtle border. Save button
+  // sits at the bottom of each card. Notes stays on the /edit page
+  // (long-form, doesn't fit the inline pattern well).
   return (
     <>
-      <Card title="Company" editHref={`${editBase}#edit-identity`}>
-        <Field label="Company name" value={account.company_name} />
-        <Field label="DBA" value={account.dba} />
-        <Field label="Industry" value={account.industry} />
-        <Field label="Website" value={account.website} link />
+      <Card title="Company" section="identity" accountId={account.id}>
+        <EditableField name="company_name" label="Company name" defaultValue={account.company_name} required />
+        <EditableField name="dba" label="DBA" defaultValue={account.dba} />
+        <EditableField name="industry" label="Industry" defaultValue={account.industry} placeholder="Real estate, hospitality…" />
+        <EditableField name="website" label="Website" defaultValue={account.website} type="url" link placeholder="https://…" />
       </Card>
 
-      <Card title="Billing address" editHref={`${editBase}#edit-billing`}>
-        <Field label="Street" value={account.billing_street} />
+      <Card title="Billing address" section="billing" accountId={account.id}>
+        <EditableField name="billing_street" label="Street" defaultValue={account.billing_street} />
         <div className="grid grid-cols-3 gap-3">
-          <Field label="City" value={account.billing_city} />
-          <Field label="State" value={account.billing_state} />
-          <Field label="ZIP" value={account.billing_zip} />
+          <EditableField name="billing_city" label="City" defaultValue={account.billing_city} />
+          <EditableField name="billing_state" label="State" defaultValue={account.billing_state} />
+          <EditableField name="billing_zip" label="ZIP" defaultValue={account.billing_zip} />
         </div>
       </Card>
 
-      <Card title="Primary site address" editHref={`${editBase}#edit-site`}>
-        <Field label="Street" value={account.site_street} />
+      <Card title="Primary site address" section="site" accountId={account.id}>
+        <EditableField name="site_street" label="Street" defaultValue={account.site_street} />
         <div className="grid grid-cols-3 gap-3">
-          <Field label="City" value={account.site_city} />
-          <Field label="State" value={account.site_state} />
-          <Field label="ZIP" value={account.site_zip} />
+          <EditableField name="site_city" label="City" defaultValue={account.site_city} />
+          <EditableField name="site_state" label="State" defaultValue={account.site_state} />
+          <EditableField name="site_zip" label="ZIP" defaultValue={account.site_zip} />
         </div>
       </Card>
 
-      <Card title="Contact" editHref={`${editBase}#edit-contact`}>
-        <Field label="Main phone" value={account.phone} />
-        <Field label="Accounts Payable phone" value={account.ap_phone} />
+      <Card title="Contact" section="contact" accountId={account.id}>
+        <EditableField name="phone" label="Main phone" defaultValue={account.phone} type="tel" />
+        <EditableField name="ap_phone" label="Accounts Payable phone" defaultValue={account.ap_phone} type="tel" />
       </Card>
 
-      <Card title="Compliance" editHref={`${editBase}#edit-compliance`}>
-        <Field
+      <Card title="Compliance" section="compliance" accountId={account.id}>
+        <EditableSelect
+          name="vendor_compliance_status"
           label="Vendor compliance"
-          value={account.vendor_compliance_status ? complianceLabel(account.vendor_compliance_status) : null}
+          defaultValue={account.vendor_compliance_status}
+          options={[
+            ["not_started", "Not started"],
+            ["yellow", "In progress"],
+            ["green", "Approved"],
+            ["red", "Issues"],
+          ]}
         />
-        <Field
+        <EditableSelect
+          name="prequalification_status"
           label="Prequalification"
-          value={account.prequalification_status ? prequalLabel(account.prequalification_status) : null}
+          defaultValue={account.prequalification_status}
+          options={[
+            ["not_started", "Not started"],
+            ["pending", "Pending"],
+            ["approved", "Approved"],
+            ["rejected", "Rejected"],
+          ]}
         />
-        <Field
-          label="Insurance min liability"
-          value={account.insurance_min_liability != null ? `$${account.insurance_min_liability.toLocaleString()}` : null}
+        <EditableField
+          name="insurance_min_liability"
+          label="Insurance min liability ($)"
+          defaultValue={account.insurance_min_liability != null ? String(account.insurance_min_liability) : null}
+          type="number"
         />
-        <Field
-          label="Insurance min workers' comp"
-          value={
-            account.insurance_min_workers_comp != null
-              ? `$${account.insurance_min_workers_comp.toLocaleString()}`
-              : null
-          }
+        <EditableField
+          name="insurance_min_workers_comp"
+          label="Insurance min workers' comp ($)"
+          defaultValue={account.insurance_min_workers_comp != null ? String(account.insurance_min_workers_comp) : null}
+          type="number"
         />
       </Card>
 
-      <Card title="Tax" editHref={`${editBase}#edit-tax`}>
-        <Field
-          label="Tax exempt"
-          value={account.tax_exempt ? "Yes" : "No"}
+      <Card title="Tax" section="tax" accountId={account.id}>
+        <EditableCheckbox name="tax_exempt" label="Tax exempt" defaultChecked={account.tax_exempt} />
+        <EditableField
+          name="tax_exempt_cert_number"
+          label="Tax exempt certificate #"
+          defaultValue={account.tax_exempt_cert_number}
         />
-        {account.tax_exempt && (
-          <Field label="Tax exempt certificate #" value={account.tax_exempt_cert_number} />
-        )}
       </Card>
 
       {account.notes && (
-        <Card title="Notes" className="lg:col-span-2" editHref={`${editBase}#edit-notes`}>
+        <Card title="Notes" className="lg:col-span-2">
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{account.notes}</p>
+          <Link
+            href={`/commercial/accounts/${account.id}/edit#edit-notes`}
+            className="inline-flex items-center gap-0.5 mt-3 text-[11px] font-semibold text-blue-700 hover:text-blue-800 hover:underline underline-offset-2"
+          >
+            Edit notes
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </Link>
         </Card>
       )}
     </>
@@ -3061,39 +3190,172 @@ function ComingSoonTab({ label, phase }: { label: string; phase: string }) {
   );
 }
 
+/**
+ * Karan 2026-07-08: inline-edit Card. When `section` + `accountId` are
+ * provided, the whole card body becomes a form that PATCHes only that
+ * section's fields on submit. A small "Save" button sits at the bottom
+ * of the card. Children should use EditableField / EditableSelect /
+ * EditableCheckbox so the inputs read as text until focused, then
+ * reveal a visible border.
+ *
+ * Backwards-compatible: pass no `section` and Card renders as a plain
+ * read-only container (used elsewhere on the page).
+ */
 function Card({
   title,
   children,
   className,
-  editHref,
+  section,
+  accountId,
 }: {
   title: string;
   children: React.ReactNode;
   className?: string;
-  /** Karan 2026-07-08: quick "Edit →" chip in the card header. Deep-links
-   *  to /edit#<anchor> so users jump straight to the matching Section on
-   *  the edit form instead of scrolling. Falls back gracefully if omitted. */
-  editHref?: string;
+  section?: string;
+  accountId?: string;
 }) {
-  return (
-    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+  const isEditable = !!section && !!accountId;
+  const inner = (
+    <>
       <div className="flex items-center justify-between mb-3 gap-2">
         <h2 className="text-sm font-bold text-ppp-charcoal">{title}</h2>
-        {editHref && (
-          <Link
-            href={editHref}
-            className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-blue-700 hover:text-blue-800 hover:underline underline-offset-2 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded px-1.5 py-0.5"
-            title={`Edit ${title}`}
-          >
-            Edit
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          </Link>
+        {isEditable && (
+          <span className="text-[10px] text-ppp-charcoal-400 opacity-0 group-focus-within/inlineCard:opacity-100 transition-opacity">
+            Editing…
+          </span>
         )}
       </div>
       <div className="space-y-2.5">{children}</div>
+      {isEditable && (
+        <div className="mt-4 pt-3 border-t border-ppp-charcoal-100 flex items-center justify-end gap-2">
+          <span className="text-[11px] text-ppp-charcoal-400 hidden group-focus-within/inlineCard:inline">
+            Tap Save to persist
+          </span>
+          <button
+            type="submit"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 min-h-[36px] touch-manipulation shadow-sm shadow-cc-brand-600/25"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+            Save
+          </button>
+        </div>
+      )}
+    </>
+  );
+  if (isEditable) {
+    return (
+      <section id={`card-${section}`} className={`group/inlineCard bg-white border border-ppp-charcoal-100 rounded-xl p-5 focus-within:border-cc-brand-300 focus-within:shadow-sm transition-colors ${className ?? ""}`}>
+        <form action={updateAccountSectionAction}>
+          <input type="hidden" name="account_id" value={accountId} />
+          <input type="hidden" name="section" value={section} />
+          {inner}
+        </form>
+      </section>
+    );
+  }
+  return (
+    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+      {inner}
     </section>
+  );
+}
+
+/** Inline text/tel/url/number input — reads like a plain field label
+ *  until focused, then reveals a visible border. Common baseline for
+ *  every editable value on the Cards. */
+function EditableField({
+  name,
+  label,
+  defaultValue,
+  type = "text",
+  placeholder = "not set",
+  required = false,
+  link = false,
+}: {
+  name: string;
+  label: string;
+  defaultValue: string | null;
+  type?: string;
+  placeholder?: string;
+  required?: boolean;
+  link?: boolean;
+}) {
+  return (
+    <label className="flex items-baseline gap-3 text-sm group/f">
+      <span className="w-32 sm:w-36 shrink-0 text-[11px] uppercase tracking-wide font-bold text-ppp-charcoal-500">
+        {label}
+      </span>
+      <div className="flex-1 min-w-0">
+        <input
+          name={name}
+          type={type}
+          required={required}
+          defaultValue={defaultValue ?? ""}
+          placeholder={placeholder}
+          className={`w-full px-2 py-1 -mx-2 text-sm rounded border border-transparent bg-transparent hover:bg-ppp-charcoal-50/60 focus:bg-white focus:border-cc-brand-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 placeholder:italic min-h-[32px] transition-colors ${link ? "text-blue-700" : "text-ppp-charcoal"} break-words`}
+        />
+      </div>
+    </label>
+  );
+}
+
+/** Inline <select> for status/enum fields. */
+function EditableSelect({
+  name,
+  label,
+  defaultValue,
+  options,
+}: {
+  name: string;
+  label: string;
+  defaultValue: string | null;
+  options: Array<[string, string]>;
+}) {
+  return (
+    <label className="flex items-baseline gap-3 text-sm">
+      <span className="w-32 sm:w-36 shrink-0 text-[11px] uppercase tracking-wide font-bold text-ppp-charcoal-500">
+        {label}
+      </span>
+      <div className="flex-1 min-w-0">
+        <select
+          name={name}
+          defaultValue={defaultValue ?? ""}
+          className="w-full px-2 py-1 -mx-2 text-sm rounded border border-transparent bg-transparent hover:bg-ppp-charcoal-50/60 focus:bg-white focus:border-cc-brand-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 text-ppp-charcoal min-h-[32px] transition-colors appearance-none pr-6"
+          style={SELECT_BG_STYLE}
+        >
+          {options.map(([v, l]) => (
+            <option key={v} value={v}>{l}</option>
+          ))}
+        </select>
+      </div>
+    </label>
+  );
+}
+
+/** Inline checkbox — spans the full row like Fields do. */
+function EditableCheckbox({
+  name,
+  label,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  defaultChecked: boolean;
+}) {
+  return (
+    <label className="flex items-center gap-3 text-sm cursor-pointer group/c">
+      <span className="w-32 sm:w-36 shrink-0 text-[11px] uppercase tracking-wide font-bold text-ppp-charcoal-500">
+        {label}
+      </span>
+      <input
+        type="checkbox"
+        name={name}
+        defaultChecked={defaultChecked}
+        className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
+      />
+    </label>
   );
 }
 
