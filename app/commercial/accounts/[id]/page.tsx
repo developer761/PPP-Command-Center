@@ -552,6 +552,38 @@ export default async function CommercialAccountDetailPage({
  * Numeric fields (insurance minimums) get NaN-safe parsing; blank
  * inputs clear back to null.
  */
+/**
+ * Karan 2026-07-08: manual account note. Notes tab used to say
+ * "manual notes coming next" — this is the "next." Server action
+ * validates body, calls addAccountNote with kind='user' so it
+ * renders in the normal (white) card style vs. the slate-badge
+ * auto-debrief style.
+ */
+async function addAccountNoteAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  const body = String(formData.get("body") ?? "").trim();
+  if (!body) {
+    redirect(`/commercial/accounts/${account_id}?tab=notes&error=${encodeURIComponent("Type something before adding a note.")}`);
+  }
+  const { addAccountNote } = await import("@/lib/commercial/account-notes");
+  const result = await addAccountNote({
+    account_id,
+    body,
+    kind: "user",
+    author_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  redirect(`/commercial/accounts/${account_id}?tab=notes&saved=1#note-${result.note.id}`);
+}
+
 async function updateAccountSectionAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -3117,20 +3149,56 @@ async function NotesTab({ accountId }: { accountId: string }) {
   const { listAccountNotes } = await import("@/lib/commercial/account-notes");
   const notes = await listAccountNotes(accountId);
 
+  const addForm = (
+    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+      <h3 className="text-sm font-bold text-ppp-charcoal mb-1">Add a note</h3>
+      <p className="text-[11.5px] text-ppp-charcoal-500 mb-3">
+        Post any manual note for this account — call summaries, competitor intel,
+        follow-ups, anything the team should see. Won/Lost/No-bid debriefs also
+        auto-post here.
+      </p>
+      <form action={addAccountNoteAction} className="space-y-2">
+        <input type="hidden" name="account_id" value={accountId} />
+        <textarea
+          name="body"
+          rows={3}
+          maxLength={5000}
+          required
+          placeholder="Type your note…"
+          className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 resize-y min-h-[80px] transition-colors"
+        />
+        <div className="flex items-center justify-end">
+          <button
+            type="submit"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/25"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            Add note
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+
   if (notes.length === 0) {
     return (
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-        <strong className="block text-ppp-charcoal">No notes yet</strong>
-        <p className="mt-1">
-          When opportunities for this account close (won/lost/no-bid), the
-          debrief auto-posts here. Manual notes coming next.
-        </p>
+      <div className="space-y-3">
+        {addForm}
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-6 text-center text-sm text-ppp-charcoal-500">
+          <strong className="block text-ppp-charcoal">No notes yet</strong>
+          <p className="mt-1">
+            Add your first one above. Won / Lost / No-bid debriefs also auto-post here.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {addForm}
       {notes.map((n) => {
         const isAuto = n.kind === "auto_debrief";
         return (
