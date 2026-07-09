@@ -38,6 +38,7 @@ import {
   type ComplianceItem,
 } from "@/lib/commercial/accounts/documents";
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
+import AccountInlineCardForm from "@/components/commercial/account-inline-card";
 import {
   getAccountOverview,
   relativeActivity,
@@ -1400,17 +1401,25 @@ function InfoCards({ account }: { account: CommercialAccount }) {
     <>
       <Card title="Company" section="identity" accountId={account.id}>
         <EditableField name="company_name" label="Company name" defaultValue={account.company_name} required />
-        <EditableField name="dba" label="DBA" defaultValue={account.dba} />
-        <EditableField name="industry" label="Industry" defaultValue={account.industry} placeholder="Real estate, hospitality…" />
-        <EditableField name="website" label="Website" defaultValue={account.website} type="url" link placeholder="https://…" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <EditableField name="dba" label="DBA" defaultValue={account.dba} placeholder="Doing business as…" />
+          <EditableField name="industry" label="Industry" defaultValue={account.industry} placeholder="Real estate, hospitality…" />
+        </div>
+        <EditableField name="website" label="Website" defaultValue={account.website} type="url" placeholder="https://…" />
       </Card>
 
       <Card title="Billing address" section="billing" accountId={account.id}>
         <EditableField name="billing_street" label="Street" defaultValue={account.billing_street} />
-        <div className="grid grid-cols-3 gap-3">
-          <EditableField name="billing_city" label="City" defaultValue={account.billing_city} />
-          <EditableField name="billing_state" label="State" defaultValue={account.billing_state} />
-          <EditableField name="billing_zip" label="ZIP" defaultValue={account.billing_zip} />
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+          <div className="sm:col-span-6">
+            <EditableField name="billing_city" label="City" defaultValue={account.billing_city} />
+          </div>
+          <div className="sm:col-span-3">
+            <EditableField name="billing_state" label="State" defaultValue={account.billing_state} placeholder="NY" />
+          </div>
+          <div className="sm:col-span-3">
+            <EditableField name="billing_zip" label="ZIP" defaultValue={account.billing_zip} placeholder="11746" />
+          </div>
         </div>
       </Card>
 
@@ -1424,45 +1433,51 @@ function InfoCards({ account }: { account: CommercialAccount }) {
       </Card>
 
       <Card title="Contact" section="contact" accountId={account.id}>
-        <EditableField name="phone" label="Main phone" defaultValue={account.phone} type="tel" />
-        <EditableField name="ap_phone" label="Accounts Payable phone" defaultValue={account.ap_phone} type="tel" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <EditableField name="phone" label="Main phone" defaultValue={account.phone} type="tel" placeholder="(555) 555-1234" />
+          <EditableField name="ap_phone" label="Accounts Payable phone" defaultValue={account.ap_phone} type="tel" placeholder="(555) 555-9876" />
+        </div>
       </Card>
 
       <Card title="Compliance" section="compliance" accountId={account.id}>
-        <EditableSelect
-          name="vendor_compliance_status"
-          label="Vendor compliance"
-          defaultValue={account.vendor_compliance_status}
-          options={[
-            ["not_started", "Not started"],
-            ["yellow", "In progress"],
-            ["green", "Approved"],
-            ["red", "Issues"],
-          ]}
-        />
-        <EditableSelect
-          name="prequalification_status"
-          label="Prequalification"
-          defaultValue={account.prequalification_status}
-          options={[
-            ["not_started", "Not started"],
-            ["pending", "Pending"],
-            ["approved", "Approved"],
-            ["rejected", "Rejected"],
-          ]}
-        />
-        <EditableField
-          name="insurance_min_liability"
-          label="Insurance min liability ($)"
-          defaultValue={account.insurance_min_liability != null ? String(account.insurance_min_liability) : null}
-          type="number"
-        />
-        <EditableField
-          name="insurance_min_workers_comp"
-          label="Insurance min workers' comp ($)"
-          defaultValue={account.insurance_min_workers_comp != null ? String(account.insurance_min_workers_comp) : null}
-          type="number"
-        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <EditableSelect
+            name="vendor_compliance_status"
+            label="Vendor compliance"
+            defaultValue={account.vendor_compliance_status}
+            options={[
+              ["not_started", "Not started"],
+              ["yellow", "In progress"],
+              ["green", "Approved"],
+              ["red", "Issues"],
+            ]}
+          />
+          <EditableSelect
+            name="prequalification_status"
+            label="Prequalification"
+            defaultValue={account.prequalification_status}
+            options={[
+              ["not_started", "Not started"],
+              ["pending", "Pending"],
+              ["approved", "Approved"],
+              ["rejected", "Rejected"],
+            ]}
+          />
+          <EditableField
+            name="insurance_min_liability"
+            label="Insurance min liability ($)"
+            defaultValue={account.insurance_min_liability != null ? String(account.insurance_min_liability) : null}
+            type="number"
+            placeholder="e.g. 1000000"
+          />
+          <EditableField
+            name="insurance_min_workers_comp"
+            label="Insurance min workers' comp ($)"
+            defaultValue={account.insurance_min_workers_comp != null ? String(account.insurance_min_workers_comp) : null}
+            type="number"
+            placeholder="e.g. 500000"
+          />
+        </div>
       </Card>
 
       <Card title="Tax" section="tax" accountId={account.id}>
@@ -3191,15 +3206,12 @@ function ComingSoonTab({ label, phase }: { label: string; phase: string }) {
 }
 
 /**
- * Karan 2026-07-08: inline-edit Card. When `section` + `accountId` are
- * provided, the whole card body becomes a form that PATCHes only that
- * section's fields on submit. A small "Save" button sits at the bottom
- * of the card. Children should use EditableField / EditableSelect /
- * EditableCheckbox so the inputs read as text until focused, then
- * reveal a visible border.
- *
- * Backwards-compatible: pass no `section` and Card renders as a plain
- * read-only container (used elsewhere on the page).
+ * Karan 2026-07-08: inline-edit Card with AUTOSAVE. When `section` +
+ * `accountId` are provided, the card body wraps its children in a
+ * client autosave form that submits to updateAccountSectionAction on
+ * blur (when any input changes). No Save buttons — user just tabs
+ * away and the value persists. A "Saving…" → "Saved ✓" chip shows
+ * at the top-right of the card body.
  */
 function Card({
   title,
@@ -3215,56 +3227,39 @@ function Card({
   accountId?: string;
 }) {
   const isEditable = !!section && !!accountId;
-  const inner = (
+  const body = (
     <>
       <div className="flex items-center justify-between mb-3 gap-2">
         <h2 className="text-sm font-bold text-ppp-charcoal">{title}</h2>
-        {isEditable && (
-          <span className="text-[10px] text-ppp-charcoal-400 opacity-0 group-focus-within/inlineCard:opacity-100 transition-opacity">
-            Editing…
-          </span>
-        )}
       </div>
-      <div className="space-y-2.5">{children}</div>
-      {isEditable && (
-        <div className="mt-4 pt-3 border-t border-ppp-charcoal-100 flex items-center justify-end gap-2">
-          <span className="text-[11px] text-ppp-charcoal-400 hidden group-focus-within/inlineCard:inline">
-            Tap Save to persist
-          </span>
-          <button
-            type="submit"
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 min-h-[36px] touch-manipulation shadow-sm shadow-cc-brand-600/25"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-            Save
-          </button>
-        </div>
-      )}
+      <div className="space-y-3">{children}</div>
     </>
   );
   if (isEditable) {
     return (
-      <section id={`card-${section}`} className={`group/inlineCard bg-white border border-ppp-charcoal-100 rounded-xl p-5 focus-within:border-cc-brand-300 focus-within:shadow-sm transition-colors ${className ?? ""}`}>
-        <form action={updateAccountSectionAction}>
+      <section
+        id={`card-${section}`}
+        className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 focus-within:border-cc-brand-300 transition-colors ${className ?? ""}`}
+      >
+        <AccountInlineCardForm action={updateAccountSectionAction}>
           <input type="hidden" name="account_id" value={accountId} />
-          <input type="hidden" name="section" value={section} />
-          {inner}
-        </form>
+          <input type="hidden" name="section" value={section as string} />
+          {body}
+        </AccountInlineCardForm>
       </section>
     );
   }
   return (
     <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
-      {inner}
+      {body}
     </section>
   );
 }
 
-/** Inline text/tel/url/number input — reads like a plain field label
- *  until focused, then reveals a visible border. Common baseline for
- *  every editable value on the Cards. */
+/** Karan 2026-07-08: stacked label + input, autosave-friendly. Reads
+ *  clean at rest (input has subtle background so it's visibly clickable),
+ *  visible border + ring on focus. Full-width so labels never crowd
+ *  each other on address rows. */
 function EditableField({
   name,
   label,
@@ -3272,7 +3267,6 @@ function EditableField({
   type = "text",
   placeholder = "not set",
   required = false,
-  link = false,
 }: {
   name: string;
   label: string;
@@ -3280,28 +3274,26 @@ function EditableField({
   type?: string;
   placeholder?: string;
   required?: boolean;
-  link?: boolean;
 }) {
   return (
-    <label className="flex items-baseline gap-3 text-sm group/f">
-      <span className="w-32 sm:w-36 shrink-0 text-[11px] uppercase tracking-wide font-bold text-ppp-charcoal-500">
+    <label className="block">
+      <span className="block text-[10.5px] uppercase tracking-wider font-bold text-ppp-charcoal-500 mb-1">
         {label}
       </span>
-      <div className="flex-1 min-w-0">
-        <input
-          name={name}
-          type={type}
-          required={required}
-          defaultValue={defaultValue ?? ""}
-          placeholder={placeholder}
-          className={`w-full px-2 py-1 -mx-2 text-sm rounded border border-transparent bg-transparent hover:bg-ppp-charcoal-50/60 focus:bg-white focus:border-cc-brand-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 placeholder:italic min-h-[32px] transition-colors ${link ? "text-blue-700" : "text-ppp-charcoal"} break-words`}
-        />
-      </div>
+      <input
+        name={name}
+        type={type}
+        required={required}
+        defaultValue={defaultValue ?? ""}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white hover:border-ppp-charcoal-300 focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 placeholder:italic min-h-[40px] text-ppp-charcoal transition-colors"
+      />
     </label>
   );
 }
 
-/** Inline <select> for status/enum fields. */
+/** Inline <select> — fixes the chevron overlap by widening pr and
+ *  aligning the background icon manually via bg-no-repeat. */
 function EditableSelect({
   name,
   label,
@@ -3314,27 +3306,30 @@ function EditableSelect({
   options: Array<[string, string]>;
 }) {
   return (
-    <label className="flex items-baseline gap-3 text-sm">
-      <span className="w-32 sm:w-36 shrink-0 text-[11px] uppercase tracking-wide font-bold text-ppp-charcoal-500">
+    <label className="block">
+      <span className="block text-[10.5px] uppercase tracking-wider font-bold text-ppp-charcoal-500 mb-1">
         {label}
       </span>
-      <div className="flex-1 min-w-0">
-        <select
-          name={name}
-          defaultValue={defaultValue ?? ""}
-          className="w-full px-2 py-1 -mx-2 text-sm rounded border border-transparent bg-transparent hover:bg-ppp-charcoal-50/60 focus:bg-white focus:border-cc-brand-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 text-ppp-charcoal min-h-[32px] transition-colors appearance-none pr-6"
-          style={SELECT_BG_STYLE}
-        >
-          {options.map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
-          ))}
-        </select>
-      </div>
+      <select
+        name={name}
+        defaultValue={defaultValue ?? ""}
+        className="w-full px-3 py-2 pr-9 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white hover:border-ppp-charcoal-300 focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 text-ppp-charcoal min-h-[40px] appearance-none bg-no-repeat transition-colors"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+          backgroundPosition: "right 0.65rem center",
+          backgroundSize: "1rem 1rem",
+        }}
+      >
+        {options.map(([v, l]) => (
+          <option key={v} value={v}>{l}</option>
+        ))}
+      </select>
     </label>
   );
 }
 
-/** Inline checkbox — spans the full row like Fields do. */
+/** Inline checkbox — one-liner, checkbox on the left of label. */
 function EditableCheckbox({
   name,
   label,
@@ -3345,16 +3340,14 @@ function EditableCheckbox({
   defaultChecked: boolean;
 }) {
   return (
-    <label className="flex items-center gap-3 text-sm cursor-pointer group/c">
-      <span className="w-32 sm:w-36 shrink-0 text-[11px] uppercase tracking-wide font-bold text-ppp-charcoal-500">
-        {label}
-      </span>
+    <label className="inline-flex items-center gap-2 py-2 cursor-pointer text-sm">
       <input
         type="checkbox"
         name={name}
         defaultChecked={defaultChecked}
         className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
       />
+      <span className="text-ppp-charcoal">{label}</span>
     </label>
   );
 }
