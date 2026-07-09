@@ -11,7 +11,24 @@ import {
   getLifetimeCompetitorStats,
   type CompetitorLifetimeStats,
 } from "@/lib/commercial/competitors";
+import { opportunityLossReasonLabel, type OpportunityLossReason, OPPORTUNITY_LOSS_REASONS } from "@/lib/commercial/opportunities/db";
 import Link from "next/link";
+
+function formatCentsCompact(cents: number): string {
+  const dollars = cents / 100;
+  if (dollars === 0) return "$0";
+  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
+  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}k`;
+  return `$${Math.round(dollars).toLocaleString()}`;
+}
+
+function factorLabel(raw: string | null): string {
+  if (!raw) return "—";
+  if ((OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(raw)) {
+    return opportunityLossReasonLabel(raw as OpportunityLossReason);
+  }
+  return raw;
+}
 
 /**
  * Competitors admin — manage the typeahead dictionary backing the Win/Loss
@@ -138,6 +155,7 @@ export default async function CompetitorsAdminPage({
   const totalDebriefs = Array.from(statsById.values()).reduce((s, x) => s + x.total_count, 0);
   const totalLosses = Array.from(statsById.values()).reduce((s, x) => s + x.lost_count, 0);
   const totalWins = Array.from(statsById.values()).reduce((s, x) => s + x.won_count, 0);
+  const totalDollarLost = Array.from(statsById.values()).reduce((s, x) => s + x.dollar_lost_cents, 0);
   const overallWinRate = totalWins + totalLosses > 0
     ? Math.round((totalWins / (totalWins + totalLosses)) * 100)
     : null;
@@ -207,7 +225,12 @@ export default async function CompetitorsAdminPage({
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <StatTile label="Head-to-heads" value={String(totalWins + totalLosses)} sub={`${totalDebriefs} debriefs total`} />
           <StatTile label="Win rate" value={overallWinRate !== null ? `${overallWinRate}%` : "—"} sub={`${totalWins} won · ${totalLosses} lost`} tone={overallWinRate !== null && overallWinRate >= 50 ? "good" : "bad"} />
-          <StatTile label="Rivals tracked" value={String(active.length)} sub={inactive.length > 0 ? `${inactive.length} retired` : "all active"} />
+          <StatTile
+            label="$ lost to rivals"
+            value={totalDollarLost > 0 ? formatCentsCompact(totalDollarLost) : "$0"}
+            sub={totalDollarLost > 0 ? "sum of midpoint bids on lost deals" : "no bid-value on any loss yet"}
+            tone={totalDollarLost > 0 ? "bad" : undefined}
+          />
           <StatTile label="Top rival" value={topRival?.name ?? "—"} sub={topRival ? `${statsById.get(topRival.id)?.lost_count ?? 0} losses to them` : "no losses yet"} tone="bad" />
         </section>
       )}
@@ -252,25 +275,40 @@ export default async function CompetitorsAdminPage({
                         )}
                       </div>
                       {stats && stats.total_count > 0 ? (
-                        <div className="text-[11.5px] text-ppp-charcoal-600 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap tabular-nums">
-                          <span><strong className="text-ppp-charcoal">{stats.won_count}</strong> won</span>
-                          <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                          <span><strong className={stats.lost_count > 0 ? "text-rose-700" : "text-ppp-charcoal"}>{stats.lost_count}</strong> lost</span>
-                          {stats.no_bid_count > 0 && (
-                            <>
-                              <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                              <span>{stats.no_bid_count} no-bid</span>
-                            </>
+                        <>
+                          <div className="text-[11.5px] text-ppp-charcoal-600 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap tabular-nums">
+                            <span><strong className="text-ppp-charcoal">{stats.won_count}</strong> won</span>
+                            <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                            <span><strong className={stats.lost_count > 0 ? "text-rose-700" : "text-ppp-charcoal"}>{stats.lost_count}</strong> lost</span>
+                            {stats.no_bid_count > 0 && (
+                              <>
+                                <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                                <span>{stats.no_bid_count} no-bid</span>
+                              </>
+                            )}
+                            {stats.dollar_lost_cents > 0 && (
+                              <>
+                                <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                                <span className="text-rose-700">
+                                  <strong>{formatCentsCompact(stats.dollar_lost_cents)}</strong> lost to them
+                                </span>
+                              </>
+                            )}
+                            {stats.last_seen_at && (
+                              <>
+                                <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                                <span className="text-ppp-charcoal-500">
+                                  Last seen {new Date(stats.last_seen_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {stats.top_deciding_factor && (
+                            <div className="text-[11px] text-ppp-charcoal-500 mt-1">
+                              Losing on <strong className="text-ppp-charcoal-700">{factorLabel(stats.top_deciding_factor)}</strong> most often
+                            </div>
                           )}
-                          {stats.last_seen_at && (
-                            <>
-                              <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                              <span className="text-ppp-charcoal-500">
-                                Last seen {new Date(stats.last_seen_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              </span>
-                            </>
-                          )}
-                        </div>
+                        </>
                       ) : (
                         <div className="text-[11.5px] text-ppp-charcoal-500 mt-1 italic">
                           Not seen on any debrief yet.

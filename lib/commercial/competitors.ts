@@ -317,16 +317,43 @@ export type CompetitorLifetimeStats = {
   total_count: number;
   last_seen_at: string | null;
   win_rate_pct: number | null;
+  /** Sum of midpoint bid $ (in cents) on LOST debriefs — how much
+   *  business this competitor has taken from us over time. */
+  dollar_lost_cents: number;
+  /** Most-common deciding_factor tag on lost debriefs against this
+   *  competitor — the "why" behind the losses. Null if there's no
+   *  loss data or no factor recorded. */
+  top_deciding_factor: string | null;
 };
 
 export async function getLifetimeCompetitorStats(): Promise<Map<string, CompetitorLifetimeStats>> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_win_loss_debrief")
-    .select("competitor_id, outcome, debriefed_at")
+    .select(`
+      competitor_id,
+      outcome,
+      debriefed_at,
+      deciding_factor,
+      opportunity:commercial_opportunities!inner(bid_value_low_cents, bid_value_high_cents)
+    `)
     .not("competitor_id", "is", null);
 
-  type Row = { competitor_id: string; outcome: "won" | "lost" | "no_bid"; debriefed_at: string };
+  type Row = {
+    competitor_id: string;
+    outcome: "won" | "lost" | "no_bid";
+    debriefed_at: string;
+    deciding_factor: string | null;
+    opportunity:
+      | { bid_value_low_cents: number | null; bid_value_high_cents: number | null }
+      | Array<{ bid_value_low_cents: number | null; bid_value_high_cents: number | null }>
+      | null;
+  };
+
+  // Track deciding_factor counts separately so we can pick the mode
+  // per competitor after aggregation.
+  const factorCounts = new Map<string, Map<string, number>>();
+
   const byId = new Map<string, CompetitorLifetimeStats>();
   for (const r of ((data as Row[] | null) ?? [])) {
     const cur = byId.get(r.competitor_id) ?? {
@@ -336,19 +363,49 @@ export async function getLifetimeCompetitorStats(): Promise<Map<string, Competit
       total_count: 0,
       last_seen_at: null,
       win_rate_pct: null,
+      dollar_lost_cents: 0,
+      top_deciding_factor: null,
     };
     if (r.outcome === "won") cur.won_count++;
-    else if (r.outcome === "lost") cur.lost_count++;
-    else if (r.outcome === "no_bid") cur.no_bid_count++;
+    else if (r.outcome === "lost") {
+      cur.lost_count++;
+      // Sum midpoint bid $ for the running "dollar impact" total. Only
+      // include when both low + high are known; a lone value is too
+      // speculative to count. Zero-bid rows are skipped implicitly.
+      const opp = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
+      if (opp && opp.bid_value_low_cents !== null && opp.bid_value_high_cents !== null) {
+        cur.dollar_lost_cents += Math.round((opp.bid_value_low_cents + opp.bid_value_high_cents) / 2);
+      }
+      // Tally deciding_factor for lost debriefs only — we care about
+      // "why we lose", not "why we win" on this surface.
+      if (r.deciding_factor) {
+        const inner = factorCounts.get(r.competitor_id) ?? new Map<string, number>();
+        inner.set(r.deciding_factor, (inner.get(r.deciding_factor) ?? 0) + 1);
+        factorCounts.set(r.competitor_id, inner);
+      }
+    } else if (r.outcome === "no_bid") cur.no_bid_count++;
     cur.total_count++;
     if (!cur.last_seen_at || r.debriefed_at > cur.last_seen_at) cur.last_seen_at = r.debriefed_at;
     byId.set(r.competitor_id, cur);
   }
   // Compute win rate = won / (won + lost). No-bid excluded because it's not
   // a head-to-head. If no head-to-heads exist we leave win_rate_pct null.
-  for (const stats of byId.values()) {
+  for (const [id, stats] of byId.entries()) {
     const decided = stats.won_count + stats.lost_count;
     stats.win_rate_pct = decided > 0 ? Math.round((stats.won_count / decided) * 100) : null;
+    // Pick the mode deciding_factor for this competitor.
+    const inner = factorCounts.get(id);
+    if (inner && inner.size > 0) {
+      let bestFactor = "";
+      let bestCount = 0;
+      for (const [factor, count] of inner.entries()) {
+        if (count > bestCount) {
+          bestFactor = factor;
+          bestCount = count;
+        }
+      }
+      stats.top_deciding_factor = bestFactor || null;
+    }
   }
   return byId;
 }
