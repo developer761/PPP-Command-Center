@@ -257,6 +257,66 @@ async function deleteDraftAction(formData: FormData) {
   redirect(`/commercial/invoices?deleted=1`);
 }
 
+/**
+ * Karan 2026-07-08: bulk-delete every sibling invoice for the current
+ * invoice's parent (deal OR account, based on the `scope` field). Same
+ * safety envelope as the list-page variants — the parent must be
+ * soft-deleted, and any recorded payment blocks the wipe. Landing
+ * here happens from the "Delete all N invoices" button on the invoice
+ * detail page when the parent is gone.
+ */
+async function bulkDeleteInvoicesFromDetailAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const scope = String(formData.get("scope") ?? "");
+  const parent_id = String(formData.get("parent_id") ?? "");
+  const confirmed = formData.get("confirm") === "yes";
+  const back_href = String(formData.get("back_href") ?? "/commercial/invoices");
+  if (!UUID_RE.test(parent_id) || (scope !== "opp" && scope !== "account")) {
+    redirect("/commercial/invoices");
+  }
+  if (!confirmed) {
+    redirect(back_href);
+  }
+  const { commercialDb } = await import("@/lib/commercial/db");
+  const sb = commercialDb();
+  // Guard 1: parent must be soft-deleted (orphan-cleanup only).
+  if (scope === "opp") {
+    const { data: row } = await sb.from("commercial_opportunities").select("id, deleted_at").eq("id", parent_id).maybeSingle();
+    if (!row || !(row as { deleted_at: string | null }).deleted_at) {
+      redirect(`${back_href}${back_href.includes("?") ? "&" : "?"}error=${encodeURIComponent("Bulk delete only allowed on deleted deals.")}`);
+    }
+  } else {
+    const { data: row } = await sb.from("commercial_accounts").select("id, deleted_at").eq("id", parent_id).maybeSingle();
+    if (!row || !(row as { deleted_at: string | null }).deleted_at) {
+      redirect(`${back_href}${back_href.includes("?") ? "&" : "?"}error=${encodeURIComponent("Bulk delete only allowed on deleted accounts.")}`);
+    }
+  }
+  // Guard 2: block if any invoice has recorded payments.
+  const parentCol = scope === "opp" ? "opportunity_id" : "account_id";
+  const { data: invRows } = await sb
+    .from("commercial_invoices")
+    .select("id, paid_cents")
+    .eq(parentCol, parent_id)
+    .is("deleted_at", null);
+  const rows = (invRows ?? []) as { id: string; paid_cents: number }[];
+  const paidRows = rows.filter((r) => (r.paid_cents ?? 0) > 0);
+  if (paidRows.length > 0) {
+    redirect(`${back_href}${back_href.includes("?") ? "&" : "?"}error=${encodeURIComponent(`${paidRows.length} invoice${paidRows.length === 1 ? " has" : "s have"} recorded payments. Void those individually first.`)}`);
+  }
+  if (rows.length > 0) {
+    await sb
+      .from("commercial_invoices")
+      .update({ deleted_at: new Date().toISOString() })
+      .in("id", rows.map((r) => r.id));
+  }
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+  redirect(`/commercial/invoices?bulk_deleted=${rows.length}`);
+}
+
 // ────────────── Page ──────────────
 
 export default async function InvoiceDetailPage({ params, searchParams }: { params: PP; searchParams: SP }) {
@@ -571,6 +631,65 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 Delete invoice
               </button>
             </form>
+            {/* Karan 2026-07-08: bulk-delete siblings when the parent
+                (deal or account) is soft-deleted. Same guards as the
+                cluster-header variant on /commercial/invoices — must
+                be an orphan cleanup, no invoice with recorded payments.
+                Prefers deal scope when the deal is deleted; falls back
+                to account scope when only the account is deleted. */}
+            {isOrphan && hasSiblings && (() => {
+              const scope: "opp" | "account" | null = !opp
+                ? "opp"
+                : !account
+                ? "account"
+                : null;
+              if (!scope) return null;
+              const parent_id = scope === "opp" ? invoice.opportunity_id : invoice.account_id;
+              const scopeLabel = scope === "opp" ? "deal" : "account";
+              const siblingsForBulk = siblingsSorted;
+              const anyPaid = siblingsForBulk.some((s) => (s.paid_cents ?? 0) > 0);
+              return (
+                <details className="relative">
+                  <summary
+                    className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold min-h-[44px] touch-manipulation ${
+                      anyPaid
+                        ? "border border-ppp-charcoal-200 text-ppp-charcoal-500"
+                        : "bg-rose-600 text-white hover:bg-rose-700 shadow-sm shadow-rose-600/25"
+                    }`}
+                    title={
+                      anyPaid
+                        ? "Some sibling invoices have recorded payments — void those individually first."
+                        : `Delete every invoice attached to this deleted ${scopeLabel}.`
+                    }
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    </svg>
+                    Delete all {siblingsForBulk.length}
+                  </summary>
+                  {!anyPaid && (
+                    <div className="absolute right-0 top-full mt-1.5 w-[calc(100vw-2rem)] max-w-xs bg-white border border-rose-200 rounded-lg shadow-lg p-3 z-10">
+                      <div className="text-[12px] text-ppp-charcoal-700 mb-2 leading-snug">
+                        Permanently hide all <strong>{siblingsForBulk.length}</strong> invoice
+                        {siblingsForBulk.length === 1 ? "" : "s"} attached to this deleted {scopeLabel}. Rows stay in the DB for audit history.
+                      </div>
+                      <form action={bulkDeleteInvoicesFromDetailAction}>
+                        <input type="hidden" name="scope" value={scope} />
+                        <input type="hidden" name="parent_id" value={parent_id} />
+                        <input type="hidden" name="confirm" value="yes" />
+                        <input type="hidden" name="back_href" value={backHref} />
+                        <button
+                          type="submit"
+                          className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+                        >
+                          Yes, delete all {siblingsForBulk.length}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </details>
+              );
+            })()}
           </div>
         </div>
 
