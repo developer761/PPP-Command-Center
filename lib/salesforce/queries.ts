@@ -1126,22 +1126,27 @@ export async function loadSalesforceSnapshot(
       return all;
     }
 
-    let oppRecords: SfOppRow[];
-    if (thin) {
-      // Thin mode (materials page): skip the 89k-record opp fetch entirely.
-      // Saves the biggest chunk of cold-cache wall time. Materials only needs
-      // workOrders/woLineItems/accounts/paintColors — opportunities are unused.
-      oppRecords = [];
-      console.log(`[SF] thin mode: skipping Opportunity fetch`);
-    } else {
-      try {
-        oppRecords = await queryAllOpps(true);
-      } catch (err) {
-        console.error("[SF] Opp query with custom fields failed — narrowing:", err);
-        oppRecords = await queryAllOpps(false);
-      }
-      console.log(`[SF] Pulled ${oppRecords.length} opportunities (all batches)`);
-    }
+    // Karan 2026-07-09 cold-open perf: Opps was a blocking await before the
+    // parallel fan-out below — meaning WO/Account/Quote/PaintColor all had
+    // to wait ~6-10s for the 89k Opp pagination to finish before starting.
+    // Now: Opps runs as its own promise concurrent with everything else, and
+    // we await it inside the Promise.all at the fan-out barrier. Estimated
+    // save: 6-10s on cold cache (Opps + WO were the two big blocks and now
+    // they overlap).
+    const oppsPromise: Promise<SfOppRow[]> = thin
+      ? Promise.resolve([])
+      : (async () => {
+          try {
+            const rows = await queryAllOpps(true);
+            console.log(`[SF] Pulled ${rows.length} opportunities (all batches) — PARALLEL`);
+            return rows;
+          } catch (err) {
+            console.error("[SF] Opp query with custom fields failed — narrowing:", err);
+            const rows = await queryAllOpps(false);
+            console.log(`[SF] Pulled ${rows.length} opportunities (fallback, no custom fields) — PARALLEL`);
+            return rows;
+          }
+        })();
 
     // PERF: kick off Account + Quote queries NOW so they run in parallel with
     // the upcoming WO schema discovery + WO query. Was sequential before
@@ -1599,6 +1604,11 @@ export async function loadSalesforceSnapshot(
         };
       });
 
+    // Await Opps here — but every other slow query (Accounts, Quotes,
+    // PaintColors, WOs, etc.) is already in-flight as a promise created
+    // earlier, so they race with Opps in the background instead of
+    // waiting for it to finish first.
+    const oppRecords = await oppsPromise;
     const opportunities: SnapshotOpp[] = oppRecords.map((o) => {
       // Resolve amount per-opp:
       //   1. If we discovered a canonical revenue field, prefer it
