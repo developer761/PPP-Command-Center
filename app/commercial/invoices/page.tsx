@@ -358,9 +358,16 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // Only Won opps can be invoiced; sort newest first so the picker shows
   // the most recent wins on top (Karan's typical flow after a Win/Loss
   // Debrief lands).
-  const wonOpps = allOpps
+  // Karan 2026-07-09: when filtered by account, the picker scopes to that
+  // account's Won deals — otherwise Bob's filtered view showed every
+  // Won deal from every customer, and clicking one would jump away from
+  // Bob's filter context entirely.
+  const wonOppsAll = allOpps
     .filter((o) => o.status === "won")
     .sort((a, b) => (b.decided_at ?? b.created_at).localeCompare(a.decided_at ?? a.created_at));
+  const wonOpps = accountIdFilter
+    ? wonOppsAll.filter((o) => o.account_id === accountIdFilter)
+    : wonOppsAll;
 
   // Apply sort.
   const sorted = [...invoices].sort((a, b) => {
@@ -687,15 +694,33 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               <span aria-hidden className="text-white/80 group-open:rotate-180 transition-transform">▾</span>
             </summary>
             <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[300px] max-w-[calc(100vw-1rem)]">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-1 pb-2">
-                Pick a Won deal to bill
+              <div className="text-[12px] font-semibold text-ppp-charcoal-700 px-1 pb-2">
+                {accountIdFilter
+                  ? `Pick a Won deal for ${accountFilter?.company_name ?? "this customer"} to bill`
+                  : "Pick a Won deal to bill"}
               </div>
               {wonOpps.length === 0 ? (
-                <div className="px-2 py-3 text-[12.5px] text-ppp-charcoal-500">
-                  No Won deals yet.{" "}
-                  <Link href="/commercial/opportunities" className="text-blue-700 font-semibold hover:underline">
-                    Go to pipeline →
-                  </Link>
+                <div className="px-2 py-3 text-[12.5px] text-ppp-charcoal-600 space-y-2">
+                  {accountIdFilter ? (
+                    <>
+                      <div>
+                        {accountFilter?.company_name ?? "This customer"} has no Won deals yet. Invoices attach to a deal that's been marked <strong>Won</strong>.
+                      </div>
+                      <Link
+                        href={`/commercial/accounts/${accountIdFilter}?tab=deals`}
+                        className="inline-flex items-center gap-1 text-blue-700 font-semibold hover:underline"
+                      >
+                        Open {accountFilter?.company_name ?? "this customer"}'s deals →
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <div>No Won deals yet — an invoice needs a Won deal to attach to.</div>
+                      <Link href="/commercial/opportunities" className="inline-flex items-center gap-1 text-blue-700 font-semibold hover:underline">
+                        Go to pipeline →
+                      </Link>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="max-h-[320px] overflow-y-auto space-y-0.5">
