@@ -403,7 +403,7 @@ export default async function CommercialAccountsPage({
             <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
               <span aria-hidden>✓</span>
               <span className="flex-1">
-                Account deleted. The record + every contact, document, and team assignment stays in the database — an admin can restore it.
+                Account deleted.
               </span>
             </div>
           )}

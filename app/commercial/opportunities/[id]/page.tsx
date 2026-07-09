@@ -2458,9 +2458,6 @@ async function InfoTab({
             <div className="text-sm font-semibold text-rose-800 mb-1">
               Delete {opp.title || "this opportunity"}?
             </div>
-            <p className="text-[13px] text-rose-700 mb-3 leading-relaxed">
-              All notes, tasks, attachments, and team assignments tied to this deal will hide from list pages. The record stays in the database — an admin can restore it later from the audit log if needed.
-            </p>
             <div className="flex items-center gap-2 flex-wrap">
               <form action={softDeleteOpportunityAction}>
                 <input type="hidden" name="opp_id" value={opp.id} />
@@ -2469,7 +2466,7 @@ async function InfoTab({
                   type="submit"
                   className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 min-h-[44px] touch-manipulation"
                 >
-                  Yes, delete it
+                  Delete
                 </button>
               </form>
               <Link

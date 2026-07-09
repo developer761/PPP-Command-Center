@@ -318,32 +318,25 @@ export default async function EditCommercialAccountPage({
         </div>
       </form>
 
-      {/* Delete zone — sequestered at the bottom so an accidental click
-          stays accidental. Two-step: click 'Delete account' to reveal
-          the confirm panel; click 'Yes, delete it' INSIDE the panel to
-          actually fire the server action. URL-driven so a fresh load
-          resets to the closed state. */}
-      <section id="danger-zone" className="max-w-2xl border border-rose-200 rounded-xl p-4 sm:p-5 bg-rose-50/40 mt-8 scroll-mt-20">
-        <h2 className="text-sm font-bold text-rose-700 mb-1">Danger zone</h2>
-        <p className="text-[12px] text-ppp-charcoal-700 leading-relaxed mb-3">
-          Deleting hides this account from every list, but the record + every contact, document, and team assignment stays in the database. An admin can restore it via direct database access.
-        </p>
+      {/* Two-step delete — click to reveal, click again inside the panel
+          to fire. URL-driven so a fresh load closes the panel. */}
+      <section id="danger-zone" className="max-w-2xl mt-10 scroll-mt-20">
         {!confirmDelete ? (
           <Link
             href={`/commercial/accounts/${account.id}/edit?confirm_delete=1#danger-zone`}
             scroll={false}
-            className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-rose-300 text-sm font-semibold text-rose-700 hover:bg-rose-100 min-h-[44px] touch-manipulation"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-rose-700 hover:text-rose-800 hover:underline touch-manipulation"
           >
-            Delete account
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" />
+            </svg>
+            Delete this account
           </Link>
         ) : (
           <div className="space-y-3 bg-white border border-rose-300 rounded-lg p-4">
             <p className="text-sm text-ppp-charcoal-700">
-              Are you sure you want to delete <strong>{account.company_name}</strong>?
+              Delete <strong>{account.company_name}</strong>?
             </p>
-            {/* Cancel on LEFT, destructive action on RIGHT — matches the
-                main Cancel/Save row above so muscle memory is consistent
-                and the destructive button is the deliberate further reach. */}
             <div className="flex flex-col sm:flex-row gap-2">
               <Link
                 href={`/commercial/accounts/${account.id}/edit#danger-zone`}
@@ -358,7 +351,7 @@ export default async function EditCommercialAccountPage({
                   type="submit"
                   className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 active:bg-rose-800 min-h-[44px] touch-manipulation"
                 >
-                  Yes, delete it
+                  Delete
                 </button>
               </form>
             </div>

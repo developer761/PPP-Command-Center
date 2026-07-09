@@ -39,6 +39,8 @@ export const INPUT_CLS =
 export const TEXTAREA_CLS =
   `w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors`;
 
-/** Label classname — uppercase tracking, charcoal-500. */
+/** Label classname — warm sentence-case, charcoal-800. Karan 2026-07-09:
+ *  the old uppercase tracked-gray look reads like an AI form generator.
+ *  Sentence-case + darker weight looks intentional and hand-crafted. */
 export const LABEL_CLS =
-  `block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1.5`;
+  `block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5`;

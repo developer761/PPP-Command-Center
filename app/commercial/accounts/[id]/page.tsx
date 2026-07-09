@@ -347,6 +347,17 @@ export default async function CommercialAccountDetailPage({
           as the dashboard hero for consistent design language. */}
       <header className="relative bg-gradient-to-br from-cc-brand-50/40 via-white to-white border border-cc-brand-100 rounded-2xl p-5 sm:p-6 overflow-hidden">
         <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
+        <div className="relative">
+          <Link
+            href="/commercial/accounts"
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-ppp-charcoal-500 hover:text-cc-brand-700 mb-2 touch-manipulation"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            Accounts
+          </Link>
+        </div>
         <div className="relative flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal break-words tracking-tight">
@@ -2215,36 +2226,6 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           </form>
         </details>
       </section>
-
-      {/* Symbol key — Karan 2026-06-14: every banner / pill icon explained
-          inline so Alex never has to ask "what does ★ mean?" Stays compact;
-          tooltips carry the long form for each. */}
-      <details className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden group" open={team.length === 0}>
-        <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
-          <span>What do the symbols mean?</span>
-          <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
-        </summary>
-        <ul className="px-4 py-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700 space-y-1.5">
-          <li>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-600 text-white border-blue-700 mr-1">
-              ★ Sales Rep
-            </span>
-            Primary holder of this role — the &ldquo;THE&rdquo; person platform-wide. One per (account, role).
-          </li>
-          <li>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200 mr-1">
-              Sales Rep
-            </span>
-            Standard role assignment without primary status — supports the primary or covers when they&apos;re out.
-          </li>
-          <li className="text-amber-800">
-            <strong>⚠️ Amber banner</strong> · a role has people but nobody marked primary. Re-add someone in that role with &ldquo;Mark as primary&rdquo; checked.
-          </li>
-          <li className="text-rose-700">
-            <strong>🚫 Rose banner</strong> · no PPP staff have Commercial Command Center access yet. Grant on the admin Users page.
-          </li>
-        </ul>
-      </details>
 
       {/* Current team */}
       {team.length === 0 ? (

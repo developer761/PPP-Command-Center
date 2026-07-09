@@ -71,7 +71,7 @@ import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachm
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
-import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
 
 const MS_PER_DAY = 86_400_000;
@@ -588,7 +588,7 @@ export default async function CommercialOpportunitiesPage({
           {deletedTitle && (
             <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-start justify-between gap-3">
               <span>
-                Deleted <strong className="text-ppp-charcoal">{deletedTitle}</strong>. Soft-deleted — an admin can restore it.
+                Deleted <strong className="text-ppp-charcoal">{deletedTitle}</strong>.
               </span>
               <Link
                 href="/commercial/opportunities"
@@ -1063,7 +1063,7 @@ function NewDealSlideOut({
           />
 
           <div>
-            <label htmlFor="new-deal-title" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">
+            <label htmlFor="new-deal-title" className={LABEL_CLS}>
               Deal name <span className="text-red-600">*</span>
             </label>
             <input
@@ -1072,18 +1072,18 @@ function NewDealSlideOut({
               required
               maxLength={200}
               placeholder='e.g. "40 Wall St — Lobby repaint"'
-              className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+              className={INPUT_CLS}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="new-deal-status" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Status</label>
+              <label htmlFor="new-deal-status" className={LABEL_CLS}>Status</label>
               <select
                 id="new-deal-status"
                 name="status"
                 defaultValue="inquiry"
-                className={`${SELECT_CLS} min-h-[44px]`}
+                className={SELECT_CLS}
                 style={SELECT_BG_STYLE}
               >
                 {OPPORTUNITY_STATUSES.map((s) => (
@@ -1092,12 +1092,12 @@ function NewDealSlideOut({
               </select>
             </div>
             <div>
-              <label htmlFor="new-deal-source" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Source</label>
+              <label htmlFor="new-deal-source" className={LABEL_CLS}>Source</label>
               <select
                 id="new-deal-source"
                 name="source"
                 defaultValue=""
-                className={`${SELECT_CLS} min-h-[44px]`}
+                className={SELECT_CLS}
                 style={SELECT_BG_STYLE}
               >
                 <option value="">— unspecified —</option>
@@ -1110,45 +1110,45 @@ function NewDealSlideOut({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="new-deal-bid-low" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Bid low ($)</label>
+              <label htmlFor="new-deal-bid-low" className={LABEL_CLS}>Bid low ($)</label>
               <input
                 id="new-deal-bid-low"
                 name="bid_value_low_dollars"
                 inputMode="decimal"
                 placeholder="0.00"
-                className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+                className={INPUT_CLS}
               />
             </div>
             <div>
-              <label htmlFor="new-deal-bid-high" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Bid high ($)</label>
+              <label htmlFor="new-deal-bid-high" className={LABEL_CLS}>Bid high ($)</label>
               <input
                 id="new-deal-bid-high"
                 name="bid_value_high_dollars"
                 inputMode="decimal"
                 placeholder="0.00"
-                className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+                className={INPUT_CLS}
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="new-deal-due" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Proposal due</label>
+            <label htmlFor="new-deal-due" className={LABEL_CLS}>Proposal due</label>
             <input
               id="new-deal-due"
               name="proposal_due_at"
               type="date"
-              className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+              className={INPUT_CLS}
             />
           </div>
 
           <div>
-            <label htmlFor="new-deal-desc" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Notes (optional)</label>
+            <label htmlFor="new-deal-desc" className={LABEL_CLS}>Notes (optional)</label>
             <textarea
               id="new-deal-desc"
               name="description"
               rows={3}
               placeholder="Scope, contact, anything the team should know…"
-              className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 resize-none"
+              className={TEXTAREA_CLS}
             />
           </div>
         </form>

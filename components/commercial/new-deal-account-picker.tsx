@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 /**
  * Karan 2026-07-08: account picker for the "New deal" slide-out on the
@@ -39,7 +40,7 @@ export default function NewDealAccountPicker({
 
   return (
     <div>
-      <label htmlFor="new-deal-account" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">
+      <label htmlFor="new-deal-account" className={LABEL_CLS}>
         Customer <span className="text-red-600">*</span>
       </label>
       <input
@@ -51,7 +52,7 @@ export default function NewDealAccountPicker({
         onChange={(e) => setName(e.target.value)}
         placeholder="Type a customer name…"
         autoComplete="off"
-        className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+        className={INPUT_CLS}
       />
       <datalist id="new-deal-accounts-list">
         {accounts.map((a) => (
