@@ -61,6 +61,9 @@ import {
   changeOpportunityStatus,
   listCurrentStatusEnteredAtByOpp,
 } from "@/lib/commercial/opportunities/status";
+import { createCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
+import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { revalidatePath } from "next/cache";
 import { listPrimaryLeadByOpp, opportunityAssignmentRoleLabel } from "@/lib/commercial/opportunities/assignments";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
@@ -69,6 +72,7 @@ import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submitta
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
+import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -126,6 +130,81 @@ async function quickFlipStatusAction(formData: FormData) {
   redirect(buildFlipReturnHref(returnHref, "status_ok", "1"));
 }
 
+// Karan 2026-07-08: GHL-style "New deal" slide-out on the pipeline page.
+// The old "+ New deal" button bounced through /commercial/accounts which
+// felt like a dead-end because the user hadn't picked one yet. Now the
+// button opens a right-side sheet with an account autocomplete + the
+// core deal fields; on submit we insert the deal and drop the user into
+// the account's Deals tab where the new row is already highlighted.
+async function createDealFromPipelineAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+
+  const account_id = String(formData.get("account_id") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const status = String(formData.get("status") ?? "inquiry").trim();
+  const source = String(formData.get("source") ?? "").trim();
+  const bidLowRaw = String(formData.get("bid_value_low_dollars") ?? "").trim();
+  const bidHighRaw = String(formData.get("bid_value_high_dollars") ?? "").trim();
+  const proposalDueRaw = String(formData.get("proposal_due_at") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+
+  const backHref = "/commercial/opportunities?new_deal=1#new-deal-sheet";
+  if (!UUID_RE.test(account_id)) {
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Pick a customer from the list.")}#new-deal-sheet`);
+  }
+  if (!title || title.length > 200) {
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Deal name is required (max 200 chars).")}#new-deal-sheet`);
+  }
+  if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(status)) {
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Invalid status.")}#new-deal-sheet`);
+  }
+  if (source && !(OPPORTUNITY_SOURCES as readonly string[]).includes(source)) {
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Invalid source.")}#new-deal-sheet`);
+  }
+
+  const low = bidLowRaw ? parseDollarsToCents(bidLowRaw) : null;
+  const high = bidHighRaw ? parseDollarsToCents(bidHighRaw) : null;
+  if (bidLowRaw && low === null) {
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Bid low is not a valid dollar amount.")}#new-deal-sheet`);
+  }
+  if (bidHighRaw && high === null) {
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Bid high is not a valid dollar amount.")}#new-deal-sheet`);
+  }
+
+  // Anchor a date-only proposal-due at noon ET (16:00 UTC) so we don't
+  // race the timezone into the previous day for east-coast users.
+  let proposalDueAt: string | null = null;
+  if (proposalDueRaw) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(proposalDueRaw)) {
+      redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Proposal due date is malformed.")}#new-deal-sheet`);
+    }
+    proposalDueAt = `${proposalDueRaw}T16:00:00Z`;
+  }
+
+  const result = await createCommercialOpportunity({
+    account_id,
+    title,
+    description: description || undefined,
+    status: status as OpportunityStatus,
+    source: source ? (source as OpportunitySource) : undefined,
+    bid_value_low_cents: low,
+    bid_value_high_cents: high,
+    proposal_due_at: proposalDueAt,
+    created_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent(result.error)}#new-deal-sheet`);
+  }
+  revalidatePath("/commercial/opportunities");
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  redirect(`/commercial/accounts/${account_id}?tab=deals&saved=1#deal-${result.opportunity.id}`);
+  // unreachable — satisfy the linter that this file has a "server action returns void" signature
+  void backHref;
+}
+
 export const dynamic = "force-dynamic";
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
@@ -146,6 +225,9 @@ export default async function CommercialOpportunitiesPage({
   const statusOk = pickFirst(sp.status_ok) === "1";
   const statusError = pickFirst(sp.status_error);
   const deletedTitle = pickFirst(sp.deleted);
+  // Karan 2026-07-08: New-deal slide-out signals (GHL-style right-side sheet).
+  const newDealOpen = pickFirst(sp.new_deal) === "1";
+  const sheetError = pickFirst(sp.sheet_error) ?? null;
 
   const staleFilter = pickFirst(sp.stale) === "1";
   const hotFilter = pickFirst(sp.hot) === "1";
@@ -409,6 +491,20 @@ export default async function CommercialOpportunitiesPage({
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   })();
+  // Karan 2026-07-08: same shape as the customer sheet close, but also
+  // strips the new_deal + sheet_error signals — the New Deal sheet lives
+  // on the same URL surface.
+  const newDealSheetCloseHref: string = (() => {
+    const p = new URLSearchParams(baseParams);
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    p.delete("customer");
+    p.delete("focus");
+    p.delete("new_deal");
+    p.delete("sheet_error");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  })();
   // Karan 2026-07-08 audit fix: forms that use quickFlipStatusAction
   // post this as a hidden input so the server action can redirect back
   // to the current filtered view instead of the naked pipeline URL.
@@ -430,7 +526,7 @@ export default async function CommercialOpportunitiesPage({
             </p>
           </div>
           <Link
-            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the customer first — deals live under their account.")}`}
+            href="?new_deal=1#new-deal-sheet"
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px] shrink-0"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -802,7 +898,7 @@ export default async function CommercialOpportunitiesPage({
           </p>
           {!anyFilterActive ? (
             <Link
-              href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the customer first — deals live under their account.")}`}
+              href="?new_deal=1#new-deal-sheet"
               className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -888,7 +984,202 @@ export default async function CommercialOpportunitiesPage({
           flipReturnHref={flipReturnHref}
         />
       )}
+
+      {/* Karan 2026-07-08: GHL-style right-side "New deal" slide-out.
+          Backdrop <Link> closes without a click handler (works with JS
+          off too). Account picker is a text input backed by a <datalist>
+          of live accounts so the user can type the customer name or
+          scroll — the underlying value is the account_id we submit. */}
+      {newDealOpen && (
+        <NewDealSlideOut
+          accounts={accounts.filter((a) => !a.deleted_at)}
+          closeHref={newDealSheetCloseHref}
+          sheetError={sheetError}
+          action={createDealFromPipelineAction}
+        />
+      )}
     </div>
+  );
+}
+
+// Karan 2026-07-08: right-side slide-out for creating a deal on the pipeline
+// page. Uses a hidden account_id input paired with a visible text field +
+// <datalist> so the user picks by name but we submit the UUID directly.
+// Kept as a server-rendered aside (no client component needed) because
+// the interactivity is just <input list=> autocomplete + form submit.
+function NewDealSlideOut({
+  accounts,
+  closeHref,
+  sheetError,
+  action,
+}: {
+  accounts: CommercialAccount[];
+  closeHref: string;
+  sheetError: string | null;
+  action: (formData: FormData) => void | Promise<void>;
+}) {
+  return (
+    <>
+      <Link
+        href={closeHref}
+        aria-label="Close new deal panel"
+        className="fixed inset-0 z-40 bg-ppp-charcoal-900/40 backdrop-blur-sm"
+      />
+      <aside
+        id="new-deal-sheet"
+        className="fixed right-0 top-0 bottom-0 z-50 w-full sm:max-w-md bg-white shadow-2xl flex flex-col"
+        aria-label="Create a new deal"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ppp-charcoal-100">
+          <div>
+            <h2 className="text-base font-bold text-ppp-charcoal">New deal</h2>
+            <p className="text-xs text-ppp-charcoal-500 mt-0.5">
+              Pick the customer, name the deal, click Create.
+            </p>
+          </div>
+          <Link
+            href={closeHref}
+            aria-label="Close"
+            className="p-2 -m-2 text-ppp-charcoal-400 hover:text-ppp-charcoal touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M18 6L6 18 M6 6l12 12" />
+            </svg>
+          </Link>
+        </div>
+        {sheetError && (
+          <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+            {sheetError}
+          </div>
+        )}
+        <form id="new-deal-form" action={action} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Client-side account picker: visible input is the customer
+              name, hidden input carries the resolved UUID that the
+              server action reads as account_id. Client component
+              needed because <datalist> filters on `value` not `label`,
+              so we can't get name-based autocomplete server-only. */}
+          <NewDealAccountPicker
+            accounts={accounts.map((a) => ({ id: a.id, company_name: a.company_name }))}
+          />
+
+          <div>
+            <label htmlFor="new-deal-title" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">
+              Deal name <span className="text-red-600">*</span>
+            </label>
+            <input
+              id="new-deal-title"
+              name="title"
+              required
+              maxLength={200}
+              placeholder='e.g. "40 Wall St — Lobby repaint"'
+              className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="new-deal-status" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Status</label>
+              <select
+                id="new-deal-status"
+                name="status"
+                defaultValue="inquiry"
+                className={`${SELECT_CLS} min-h-[44px]`}
+                style={SELECT_BG_STYLE}
+              >
+                {OPPORTUNITY_STATUSES.map((s) => (
+                  <option key={s} value={s}>{opportunityStatusLabel(s)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="new-deal-source" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Source</label>
+              <select
+                id="new-deal-source"
+                name="source"
+                defaultValue=""
+                className={`${SELECT_CLS} min-h-[44px]`}
+                style={SELECT_BG_STYLE}
+              >
+                <option value="">— unspecified —</option>
+                {OPPORTUNITY_SOURCES.map((s) => (
+                  <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="new-deal-bid-low" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Bid low ($)</label>
+              <input
+                id="new-deal-bid-low"
+                name="bid_value_low_dollars"
+                inputMode="decimal"
+                placeholder="0.00"
+                className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+              />
+            </div>
+            <div>
+              <label htmlFor="new-deal-bid-high" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Bid high ($)</label>
+              <input
+                id="new-deal-bid-high"
+                name="bid_value_high_dollars"
+                inputMode="decimal"
+                placeholder="0.00"
+                className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="new-deal-due" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Proposal due</label>
+            <input
+              id="new-deal-due"
+              name="proposal_due_at"
+              type="date"
+              className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 min-h-[44px]"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="new-deal-desc" className="block text-xs font-semibold text-ppp-charcoal-700 mb-1">Notes (optional)</label>
+            <textarea
+              id="new-deal-desc"
+              name="description"
+              rows={3}
+              placeholder="Scope, contact, anything the team should know…"
+              className="w-full rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:border-cc-brand-500 resize-none"
+            />
+          </div>
+        </form>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/50">
+          <Link
+            href={closeHref}
+            className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[44px]"
+          >
+            Cancel
+          </Link>
+          <NewDealSubmitProxy />
+        </div>
+      </aside>
+    </>
+  );
+}
+
+// Karan 2026-07-08: the Create button lives in the footer outside the
+// scrollable <form> content, so we use a tiny inline <button
+// form="…"> proxy to submit the form by id. Wrapping the entire aside
+// in one <form> would also work but nesting the scrollable body +
+// sticky footer is easier with an explicit form id.
+function NewDealSubmitProxy() {
+  return (
+    <button
+      type="submit"
+      form="new-deal-form"
+      className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+    >
+      Create deal
+    </button>
   );
 }
 
