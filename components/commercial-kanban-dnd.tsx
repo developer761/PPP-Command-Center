@@ -108,11 +108,12 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
       // Refresh in a transition so the optimistic card stays in place
       // until the server-rendered payload arrives — no flash of "old"
       // state between optimistic clear + refresh paint.
+      // Karan 2026-07-09: dropped from 500ms → 200ms — the SSR round-
+      // trip normally lands in ~150-300ms and the fixed 500ms was
+      // adding a perceptible "sit and wait" feeling after every drop.
       startTransition(() => {
         router.refresh();
-        // Clear optimistic state after the transition kicks off; the
-        // refresh's new HTML will have the card in the right column.
-        setTimeout(() => setOptimisticMove(null), 500);
+        setTimeout(() => setOptimisticMove(null), 200);
       });
     } catch {
       setOptimisticMove(null);
@@ -179,7 +180,10 @@ export function KanbanDnDCard({ oppId, children }: { oppId: string; children: Re
       draggable
       onDragStart={(e) => ctx.onCardDragStart(e, oppId)}
       onDragEnd={ctx.onCardDragEnd}
-      className={`cursor-grab active:cursor-grabbing transition-opacity ${
+      // Karan 2026-07-09: dropped `transition-opacity` — the 150ms fade
+      // during drag felt like a lag on the way in and on the way out.
+      // Instant opacity switch reads as snappier + more direct.
+      className={`cursor-grab active:cursor-grabbing ${
         ctx.dragOppId === oppId ? "opacity-40" : "opacity-100"
       }`}
     >
@@ -210,7 +214,9 @@ export function KanbanDnDColumn({
         setIsOver(false);
         void ctx.onColumnDrop(e, status);
       }}
-      className={`h-full transition-shadow ${
+      // No transition — the ring should snap in/out as the card enters
+      // and leaves the column so the drop feels precise, not delayed.
+      className={`h-full ${
         isOver && ctx.dragOppId
           ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-ppp-charcoal-50 rounded-xl"
           : ""

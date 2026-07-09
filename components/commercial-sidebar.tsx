@@ -37,52 +37,36 @@ const navSections: NavSection[] = [
       { label: "Dashboard", href: "/commercial", icon: <IconHome /> },
     ],
   },
+  // Karan 2026-07-09: sections reordered to match the actual workflow —
+  // sell (Accounts → Pipeline) → bill (Invoices) → deliver (Projects,
+  // disabled/roadmap) → report (Win/Loss). Old order jammed Projects
+  // between Pipeline and Financials which broke the flow visually.
   {
-    heading: "Pipeline",
+    heading: "Sales",
     items: [
       { label: "Accounts", href: "/commercial/accounts", icon: <IconBuilding /> },
-      // Karan 2026-07-08 rename: "Opportunities" → "Pipeline" during
-      // the Accounts+Opps merge. URL stays /commercial/opportunities
-      // for now — an audit-worthy full rename would break every bell
-      // notification / bookmark / email link. Sidebar label is the
-      // safe change; the URL is functional metadata, users never
-      // read it.
       { label: "Pipeline", href: "/commercial/opportunities", icon: <IconTarget /> },
-      // Estimates entry removed 2026-06-24 — Phase 3 ships invoicing
-      // without estimates first (Karan: "i dont thinkw e need the
-      // estimates for right now"). We may add it back as Phase 3.5 if
-      // Alex asks for "what we quoted vs billed" history.
     ],
   },
   {
-    heading: "Projects",
+    heading: "Billing",
     items: [
-      { label: "Projects", href: "/commercial/projects", phase: 5, disabled: true, icon: <IconHardHat /> },
-      { label: "Change Orders", href: "/commercial/change-orders", phase: 7, disabled: true, icon: <IconChangeOrder /> },
-      { label: "Closeout", href: "/commercial/closeout", phase: 9, disabled: true, icon: <IconCheckSquare /> },
-    ],
-  },
-  {
-    heading: "Financials",
-    items: [
-      // Bumped from phase 8 → 3 on 2026-06-24 when invoicing moved
-      // ahead in the roadmap. Stays disabled until Phase 3 ships; the
-      // disabled state still surfaces the link so Alex sees what's
-      // coming next.
       { label: "Invoices", href: "/commercial/invoices", icon: <IconDollar /> },
     ],
   },
-  // NEW Reports group — promoted out of "Financials" (win/loss is sales
-  // effectiveness, not financial). First entry = Win/Loss Debrief reports
-  // (Karan 2026-06-24). Future reports (Revenue, Project Margin, Pipeline
-  // Velocity, Salesperson Scorecard) land here as they ship.
   {
     heading: "Reports",
     items: [
       { label: "Win/Loss", href: "/commercial/reports/win-loss", icon: <IconChart /> },
-      // Revenue dashboard ships with Phase 3 invoicing. Disabled until
-      // then so Alex sees what's coming.
       { label: "Revenue", href: "/commercial/reports/revenue", phase: 3, disabled: true, icon: <IconChart /> },
+    ],
+  },
+  {
+    heading: "Projects (coming soon)",
+    items: [
+      { label: "Projects", href: "/commercial/projects", phase: 5, disabled: true, icon: <IconHardHat /> },
+      { label: "Change Orders", href: "/commercial/change-orders", phase: 7, disabled: true, icon: <IconChangeOrder /> },
+      { label: "Closeout", href: "/commercial/closeout", phase: 9, disabled: true, icon: <IconCheckSquare /> },
     ],
   },
   // Settings sits at the bottom of the nav (after the workflow groups).

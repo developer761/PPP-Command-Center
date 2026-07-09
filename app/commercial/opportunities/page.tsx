@@ -1344,8 +1344,17 @@ function CustomerBoardRow({
       : `${daysAgo}d ago`;
 
   return (
-    <li className="p-4 hover:bg-ppp-charcoal-50/40 transition-colors">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+    <li className="relative p-4 hover:bg-ppp-charcoal-50/40 transition-colors">
+      {/* Karan 2026-07-09: whole row is clickable — an absolutely-
+          positioned Link overlays the entire card so any dead space
+          opens the account. Nested links (deal chips + View button)
+          sit at z-10 so they win the click when clicked directly. */}
+      <Link
+        href={`/commercial/accounts/${account.id}`}
+        aria-label={`Open ${account.company_name}`}
+        className="absolute inset-0 z-0"
+      />
+      <div className="relative z-10 flex items-start justify-between gap-3 flex-wrap">
         {/* Left column — customer identity + signal metadata. */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -1415,9 +1424,10 @@ function CustomerBoardRow({
       {/* Deal chip strip — subtle pills for each deal so users can drill
           straight into a specific deal without opening the account first.
           Open bids show as blue pills; closed dim to charcoal so the eye
-          reads open-work first. */}
+          reads open-work first. `relative z-10` keeps these chips
+          clickable above the whole-row stretched-link overlay. */}
       {(open.length > 0 || closed.length > 0) && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
+        <div className="relative z-10 mt-2.5 flex flex-wrap gap-1.5">
           {open.map((o) => (
             <Link
               key={o.id}
