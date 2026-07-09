@@ -45,6 +45,7 @@ import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import DueDatePickerWithPresets from "@/components/commercial/due-date-picker-with-presets";
+import DatePicker from "@/components/commercial/date-picker";
 import CopyInvoiceLinkButton from "@/components/commercial/copy-invoice-link";
 
 export const dynamic = "force-dynamic";
@@ -947,7 +948,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="pmt-date" className={LABEL_CLS}>Paid on</label>
-              <input id="pmt-date" name="paid_at" type="date" defaultValue={new Date().toISOString().slice(0, 10)} className={INPUT_CLS} />
+              <DatePicker id="pmt-date" name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA")} placeholder="Payment date" ariaLabel="Payment date" />
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="pmt-method" className={LABEL_CLS}>Method</label>

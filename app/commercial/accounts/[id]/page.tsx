@@ -40,6 +40,7 @@ import {
 } from "@/lib/commercial/accounts/documents";
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
+import DatePicker from "@/components/commercial/date-picker";
 import {
   getAccountOverview,
   relativeActivity,
@@ -2471,14 +2472,10 @@ function NewDealForm({ accountId }: { accountId: string }) {
             className={`${inputCls} tabular-nums`}
           />
         </label>
-        <label className="block">
+        <div>
           <span className={labelCls}>Proposal due</span>
-          <input
-            type="date"
-            name="proposal_due_at"
-            className={inputCls}
-          />
-        </label>
+          <DatePicker name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
+        </div>
       </div>
       <details className="group/more">
         <summary className="list-none cursor-pointer text-[11.5px] font-medium text-blue-700 hover:text-blue-900 min-h-[28px] flex items-center gap-1.5 select-none">
@@ -2507,22 +2504,14 @@ function NewDealForm({ accountId }: { accountId: string }) {
               />
               <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Leave blank → default from status</span>
             </label>
-            <label className="block">
+            <div>
               <span className={labelCls}>Proposed start</span>
-              <input
-                type="date"
-                name="proposed_start_at"
-                className={inputCls}
-              />
-            </label>
-            <label className="block">
+              <DatePicker name="proposed_start_at" placeholder="Pick a start date" ariaLabel="Proposed start date" />
+            </div>
+            <div>
               <span className={labelCls}>Proposed end</span>
-              <input
-                type="date"
-                name="proposed_end_at"
-                className={inputCls}
-              />
-            </label>
+              <DatePicker name="proposed_end_at" placeholder="Pick an end date" ariaLabel="Proposed end date" />
+            </div>
           </div>
           <label className="block">
             <span className={labelCls}>Description</span>
@@ -4654,15 +4643,15 @@ function DealEditSheet({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="edit-due" className={labelCls}>Proposal due</label>
-                <input id="edit-due" name="proposal_due_at" type="date" defaultValue={dueDateDefault} className={inputCls} />
+                <DatePicker id="edit-due" name="proposal_due_at" defaultValue={dueDateDefault} placeholder="Pick a due date" ariaLabel="Proposal due date" />
               </div>
               <div>
                 <label htmlFor="edit-start" className={labelCls}>Proposed start</label>
-                <input id="edit-start" name="proposed_start_at" type="date" defaultValue={startDateDefault} className={inputCls} />
+                <DatePicker id="edit-start" name="proposed_start_at" defaultValue={startDateDefault} placeholder="Pick a start date" ariaLabel="Proposed start date" />
               </div>
               <div>
                 <label htmlFor="edit-end" className={labelCls}>Proposed end</label>
-                <input id="edit-end" name="proposed_end_at" type="date" defaultValue={endDateDefault} className={inputCls} />
+                <DatePicker id="edit-end" name="proposed_end_at" defaultValue={endDateDefault} placeholder="Pick an end date" ariaLabel="Proposed end date" />
               </div>
             </div>
           </SheetSection>

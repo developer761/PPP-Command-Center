@@ -73,6 +73,7 @@ import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/commercial-kanban-dnd";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
+import DatePicker from "@/components/commercial/date-picker";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -1133,11 +1134,11 @@ function NewDealSlideOut({
 
           <div>
             <label htmlFor="new-deal-due" className={LABEL_CLS}>Proposal due</label>
-            <input
+            <DatePicker
               id="new-deal-due"
               name="proposal_due_at"
-              type="date"
-              className={INPUT_CLS}
+              placeholder="Pick a due date"
+              ariaLabel="Proposal due date"
             />
           </div>
 

@@ -13,6 +13,7 @@ import {
   etMidnightToUTC,
 } from "@/lib/commercial/win-loss/reports";
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
+import DatePicker from "@/components/commercial/date-picker";
 
 type Preset = "this_quarter" | "last_quarter" | "this_year" | "last_year";
 const PRESETS: ReadonlyArray<{ key: Preset; label: string }> = [
@@ -207,25 +208,25 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
             method="GET"
             className="inline-flex flex-wrap items-center gap-2"
           >
-            <label htmlFor="rng_from" className="sr-only">From date</label>
-            <input
-              id="rng_from"
-              type="date"
-              name="from"
-              defaultValue={range.fromYmd}
-              className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1 text-base sm:text-[13px] text-ppp-charcoal min-h-[44px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 focus:border-cc-brand-600"
-              aria-label="From date"
-            />
+            <div className="w-[168px]">
+              <DatePicker
+                id="rng_from"
+                name="from"
+                defaultValue={range.fromYmd}
+                placeholder="From date"
+                ariaLabel="From date"
+              />
+            </div>
             <span className="text-[12px] text-ppp-charcoal-400" aria-hidden>→</span>
-            <label htmlFor="rng_to" className="sr-only">To date</label>
-            <input
-              id="rng_to"
-              type="date"
-              name="to"
-              defaultValue={range.toYmd}
-              className="rounded-lg border border-ppp-charcoal-200 px-2.5 py-1 text-base sm:text-[13px] text-ppp-charcoal min-h-[44px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 focus:border-cc-brand-600"
-              aria-label="To date"
-            />
+            <div className="w-[168px]">
+              <DatePicker
+                id="rng_to"
+                name="to"
+                defaultValue={range.toYmd}
+                placeholder="To date"
+                ariaLabel="To date"
+              />
+            </div>
             <button
               type="submit"
               className={`inline-flex items-center px-3.5 py-2 rounded-lg text-[13px] font-semibold border min-h-[44px] touch-manipulation transition-colors ${
