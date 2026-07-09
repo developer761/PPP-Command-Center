@@ -4018,29 +4018,38 @@ async function AccountInvoicesTab({
   paymentApplied?: number | null;
   errorMessage?: string;
 }) {
-  const invoices = await listCommercialInvoices({ accountId });
+  const [invoices, accountOpps] = await Promise.all([
+    listCommercialInvoices({ accountId }),
+    listCommercialOpportunities({ accountId }),
+  ]);
   const paidPct =
     rollup.invoiced_cents > 0
       ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))
       : 0;
-  // Group by derived status; keep insertion order (most recent first
-  // since the underlying query orders by created_at DESC).
-  const buckets = new Map<ReturnType<typeof deriveInvoiceStatus>, CommercialInvoice[]>();
+  // Karan 2026-07-09: group by DEAL instead of status. Each deal that has
+  // billing history renders as its own section — deal title, mini
+  // roll-up (invoiced/paid/balance), then the invoices. A single
+  // "Orphaned" section catches any invoice whose parent opp was deleted
+  // so nothing goes hidden.
+  const oppById = new Map(accountOpps.map((o) => [o.id, o]));
+  const dealGroups = new Map<string, CommercialInvoice[]>();
+  const orphaned: CommercialInvoice[] = [];
   for (const inv of invoices) {
-    const s = deriveInvoiceStatus(inv);
-    const arr = buckets.get(s) ?? [];
-    arr.push(inv);
-    buckets.set(s, arr);
+    if (inv.opportunity_id && oppById.has(inv.opportunity_id)) {
+      const arr = dealGroups.get(inv.opportunity_id) ?? [];
+      arr.push(inv);
+      dealGroups.set(inv.opportunity_id, arr);
+    } else {
+      orphaned.push(inv);
+    }
   }
-  const ORDER: ReadonlyArray<ReturnType<typeof deriveInvoiceStatus>> = [
-    "overdue",
-    "sent",
-    "viewed",
-    "partial",
-    "draft",
-    "paid",
-    "void",
-  ];
+  // Sort deals: most-recent invoice first (so the deal you're actively
+  // billing floats to the top).
+  const dealOrder = Array.from(dealGroups.entries()).sort((a, b) => {
+    const aLatest = Math.max(...a[1].map((i) => new Date(i.created_at).getTime()));
+    const bLatest = Math.max(...b[1].map((i) => new Date(i.created_at).getTime()));
+    return bLatest - aLatest;
+  });
   return (
     <div className="space-y-4">
       {/* Flash toasts from the inline "Record payment" action. Same
@@ -4122,31 +4131,104 @@ async function AccountInvoicesTab({
         </div>
       )}
 
-      {/* Grouped invoice list */}
+      {/* Deal-grouped invoice list. Each deal that has been billed shows
+          its own section — Karan 2026-07-09: "under the accounts invoices
+          tab the two deals with separate invoice(s) for each". */}
       {invoices.length > 0 && (
         <div className="space-y-4">
-          {ORDER.map((status) => {
-            const arr = buckets.get(status) ?? [];
-            if (arr.length === 0) return null;
-            const isDanger = status === "overdue";
+          {dealOrder.map(([oppId, dealInvoices]) => {
+            const opp = oppById.get(oppId)!;
+            const nonVoid = dealInvoices.filter((i) => i.status !== "void");
+            const dealInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
+            const dealPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
+            const dealBalance = dealInvoiced - dealPaid;
+            const dealOverdue = dealInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
+            const dealPct = dealInvoiced > 0 ? Math.min(100, Math.round((dealPaid / dealInvoiced) * 100)) : 0;
+            const barTone = dealPaid >= dealInvoiced && dealInvoiced > 0
+              ? "bg-emerald-500"
+              : dealOverdue
+              ? "bg-rose-500"
+              : dealPaid > 0
+              ? "bg-blue-500"
+              : "bg-ppp-charcoal-300";
             return (
               <section
-                key={status}
-                className={`rounded-xl overflow-hidden border ${isDanger ? "border-rose-200 bg-rose-50/20" : "border-ppp-charcoal-100 bg-white"}`}
+                key={oppId}
+                className={`rounded-xl overflow-hidden border ${dealOverdue ? "border-rose-200" : "border-ppp-charcoal-100"} bg-white`}
               >
-                <div className={`px-4 py-2.5 border-b ${isDanger ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-ppp-charcoal-50/40"}`}>
-                  <h3 className={`text-[13px] font-bold ${isDanger ? "text-rose-800" : "text-ppp-charcoal"}`}>
-                    {invoiceStatusLabel(status)} · {arr.length}
-                  </h3>
+                <div className={`px-4 py-3 border-b ${dealOverdue ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-gradient-to-br from-white to-blue-50/30"}`}>
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <Link
+                          href={`/commercial/opportunities/${opp.id}?tab=invoices`}
+                          className="text-[14px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 truncate"
+                        >
+                          {opp.title}
+                        </Link>
+                        <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
+                          {dealInvoices.length} invoice{dealInvoices.length === 1 ? "" : "s"}
+                        </span>
+                        {dealOverdue && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-300 rounded px-1.5 py-0.5">
+                            Overdue
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 text-[11.5px] text-ppp-charcoal-600 tabular-nums">
+                        <strong className="text-ppp-charcoal">{formatCentsFull(dealPaid)}</strong>
+                        <span className="text-ppp-charcoal-500"> of {formatCentsFull(dealInvoiced)}</span>
+                        {dealBalance > 0 && (
+                          <span className="text-ppp-charcoal-500">
+                            {" · "}
+                            <strong className={dealOverdue ? "text-rose-700" : "text-ppp-charcoal"}>
+                              {formatCentsFull(dealBalance)}
+                            </strong>{" "}
+                            owed
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Link
+                      href={`/commercial/invoices/new?opp=${opp.id}`}
+                      className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-cc-brand-200 text-[11.5px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[36px] touch-manipulation"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M12 5v14 M5 12h14" />
+                      </svg>
+                      New invoice
+                    </Link>
+                  </div>
+                  {dealInvoiced > 0 && (
+                    <div className="mt-2 h-1.5 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${barTone}`} style={{ width: `${dealPct}%` }} />
+                    </div>
+                  )}
                 </div>
                 <ul className="divide-y divide-ppp-charcoal-100">
-                  {arr.map((inv) => (
-                    <AccountInvoiceRow key={inv.id} invoice={inv} accountId={accountId} />
-                  ))}
+                  {dealInvoices
+                    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+                    .map((inv) => (
+                      <AccountInvoiceRow key={inv.id} invoice={inv} accountId={accountId} />
+                    ))}
                 </ul>
               </section>
             );
           })}
+          {orphaned.length > 0 && (
+            <section className="rounded-xl overflow-hidden border border-amber-200 bg-amber-50/20">
+              <div className="px-4 py-2.5 border-b border-amber-200 bg-amber-50/40">
+                <h3 className="text-[13px] font-bold text-amber-900">
+                  Orphaned (parent deal deleted) · {orphaned.length}
+                </h3>
+              </div>
+              <ul className="divide-y divide-ppp-charcoal-100">
+                {orphaned.map((inv) => (
+                  <AccountInvoiceRow key={inv.id} invoice={inv} accountId={accountId} />
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       )}
     </div>

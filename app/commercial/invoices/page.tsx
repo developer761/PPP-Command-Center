@@ -1011,39 +1011,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               </Link>
             </>
           ) : wonOpps.length > 0 ? (
-            <>
-              <p className="mt-1 text-sm text-ppp-charcoal-500">
-                {wonOpps.length === 1
-                  ? "You have 1 Won deal ready to bill."
-                  : `You have ${wonOpps.length} Won deals ready to bill.`}{" "}
-                Pick one to start:
-              </p>
-              <div className="mt-4 max-w-md mx-auto text-left space-y-1.5">
-                {wonOpps.slice(0, 5).map((o) => {
-                  const acct = accountById.get(o.account_id);
-                  return (
-                    <Link
-                      key={o.id}
-                      href={`/commercial/invoices/new?opp=${o.id}`}
-                      className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation transition-colors"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{o.title}</div>
-                        {acct && (
-                          <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{acct.company_name}</div>
-                        )}
-                      </div>
-                      <span aria-hidden className="text-ppp-charcoal-400 shrink-0 self-center">→</span>
-                    </Link>
-                  );
-                })}
-                {wonOpps.length > 5 && (
-                  <div className="text-[11.5px] text-ppp-charcoal-500 text-center pt-1">
-                    Or use <strong>New invoice ▾</strong> above to see all {wonOpps.length}.
-                  </div>
-                )}
-              </div>
-            </>
+            <p className="mt-1 text-sm text-ppp-charcoal-500 max-w-md mx-auto">
+              You have {wonOpps.length} Won deal{wonOpps.length === 1 ? "" : "s"} ready to bill. Use <strong className="text-ppp-charcoal-700">New invoice ▾</strong> at the top of this page to pick one.
+            </p>
           ) : (
             <>
               <p className="mt-1 text-sm text-ppp-charcoal-500">
@@ -1482,27 +1452,12 @@ function FullDetailByOpp({
       <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
         <div className="text-sm font-semibold text-ppp-charcoal">No invoices for this customer yet</div>
         {wonList.length > 0 ? (
-          <>
-            <p className="mt-1 text-sm text-ppp-charcoal-500">
-              {wonList.length === 1
-                ? "1 Won deal is ready to bill. Pick it to start:"
-                : `${wonList.length} Won deals are ready to bill. Pick one to start:`}
-            </p>
-            <div className="mt-4 max-w-md mx-auto text-left space-y-1.5">
-              {wonList.map((o) => (
-                <Link
-                  key={o.id}
-                  href={`/commercial/invoices/new?opp=${o.id}`}
-                  className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation transition-colors"
-                >
-                  <div className="min-w-0">
-                    <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{o.title}</div>
-                  </div>
-                  <span aria-hidden className="text-ppp-charcoal-400 shrink-0 self-center">→</span>
-                </Link>
-              ))}
-            </div>
-          </>
+          <p className="mt-1 text-sm text-ppp-charcoal-500 max-w-md mx-auto">
+            {wonList.length === 1
+              ? "1 Won deal ready to bill."
+              : `${wonList.length} Won deals ready to bill.`}{" "}
+            Use <strong className="text-ppp-charcoal-700">New invoice</strong> at the top of this page.
+          </p>
         ) : (
           <>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
