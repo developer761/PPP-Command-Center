@@ -1142,19 +1142,52 @@ function GroupedByOpp({
     );
   }
 
-  // Karan 2026-07-07 redesign: grouped view collapsed to a compact list
-  // of opp ROWS instead of per-opp expanded cards. Each row = opp title +
-  // account chip + summary tiles + Open button that jumps into the opp
-  // Invoices tab (which owns the master progress bar + per-invoice detail
-  // + Record payment collapsibles + Add invoice). Kept: total-invoiced,
-  // outstanding, N invoices, overdue flag. Dropped: per-invoice inline
-  // rows, master progress bar (moved to opp Invoices tab), Add invoice
-  // button per row (moved to opp Invoices tab). Account name click goes
-  // to a filtered invoice list, NOT the accounts page.
+  // Karan 2026-07-09: second level of grouping — deals under the same
+  // customer bucket together with the customer name as a section
+  // header. Encounter-order preserved so the top account is still the
+  // one whose highest-ranked deal ranks first by the current sortKey.
+  // Orphans (deleted parent deal → no account) get their own section
+  // at the bottom.
+  type OppRow = [string, CommercialInvoice[]];
+  const byAccount = new Map<string, OppRow[]>();
+  const orphanRows: OppRow[] = [];
+  for (const row of oppOrder) {
+    const opp = oppById.get(row[0]);
+    if (!opp) {
+      orphanRows.push(row);
+      continue;
+    }
+    const arr = byAccount.get(opp.account_id) ?? [];
+    arr.push(row);
+    byAccount.set(opp.account_id, arr);
+  }
+  const accountOrder = Array.from(byAccount.entries());
+
   return (
     <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm">
-      <ul className="divide-y divide-ppp-charcoal-100">
-        {oppOrder.map(([oppId, groupInvoices]) => {
+      {accountOrder.map(([accountId, dealRows], acctIdx) => {
+        const acct = accountById.get(accountId);
+        return (
+          <div key={accountId} className={acctIdx > 0 ? "border-t border-ppp-charcoal-200" : ""}>
+            <Link
+              href={`/commercial/invoices?account_id=${accountId}`}
+              className="group/acct block px-4 sm:px-5 py-2.5 bg-gradient-to-b from-ppp-charcoal-50 to-white border-b border-ppp-charcoal-100 hover:bg-cc-brand-50/40 focus:outline-none focus:bg-cc-brand-50/40 transition-colors touch-manipulation"
+              title={`View ${acct?.company_name ?? "this customer"}'s invoices`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[13px] font-bold text-ppp-charcoal group-hover/acct:text-cc-brand-700 truncate">
+                  {acct?.company_name ?? "—"}
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-ppp-charcoal-500 shrink-0">
+                  <span>{dealRows.length} deal{dealRows.length === 1 ? "" : "s"}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 group-hover/acct:text-cc-brand-600">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </div>
+              </div>
+            </Link>
+            <ul className="divide-y divide-ppp-charcoal-100">
+              {dealRows.map(([oppId, groupInvoices]) => {
           const opp = oppById.get(oppId);
           const account = opp ? accountById.get(opp.account_id) : null;
           const nonVoid = groupInvoices.filter((i) => i.status !== "void");
@@ -1219,14 +1252,9 @@ function GroupedByOpp({
                       </span>
                     )}
                   </span>
-                  {account && (
-                    <span
-                      className="text-[11px] text-ppp-charcoal-500 truncate max-w-[180px]"
-                      title={account.company_name}
-                    >
-                      · {account.company_name}
-                    </span>
-                  )}
+                  {/* Karan 2026-07-09: dropped the "· Bob" inline chip since
+                      account name is now the section header above. Kept the
+                      invoice count + overdue flag which are per-deal signals. */}
                   <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 rounded px-1.5 py-0.5 shrink-0">
                     {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
                   </span>
@@ -1365,8 +1393,60 @@ function GroupedByOpp({
               )}
             </li>
           );
-        })}
-      </ul>
+              })}
+            </ul>
+          </div>
+        );
+      })}
+      {orphanRows.length > 0 && (
+        <div className="border-t border-ppp-charcoal-200">
+          <div className="px-4 sm:px-5 py-2.5 bg-amber-50/40 border-b border-amber-200 text-[13px] font-bold text-amber-900">
+            Deleted deals — invoices still on file
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {orphanRows.map(([oppId, groupInvoices]) => {
+              const nonVoid = groupInvoices.filter((i) => i.status !== "void");
+              const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
+              const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
+              const totalBalance = totalInvoiced - totalPaid;
+              return (
+                <li key={oppId} className="px-4 sm:px-5 py-3">
+                  <Link
+                    href={`/commercial/invoices?opportunity_id=${oppId}`}
+                    className="block hover:bg-amber-50/30 -mx-4 -my-3 px-4 py-3 touch-manipulation"
+                  >
+                    <div className="text-[13px] font-semibold text-ppp-charcoal-500 italic flex items-center gap-1.5">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600">
+                        <path d="M12 9v4M12 17h.01" />
+                        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      </svg>
+                      Deleted deal
+                      <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 rounded px-1.5 py-0.5 not-italic">
+                        {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[12px] text-ppp-charcoal-600 tabular-nums">
+                      <strong className="text-ppp-charcoal">{formatCentsFull(totalInvoiced)}</strong> invoiced
+                      {totalBalance > 0 && (
+                        <>
+                          <span className="text-ppp-charcoal-300"> · </span>
+                          <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
+                        </>
+                      )}
+                      {totalPaid > 0 && (
+                        <>
+                          <span className="text-ppp-charcoal-300"> · </span>
+                          <span className="text-emerald-700 font-medium">{formatCentsFull(totalPaid)} paid</span>
+                        </>
+                      )}
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
