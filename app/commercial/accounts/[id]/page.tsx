@@ -1285,16 +1285,20 @@ function TagsCard({
 }
 
 function InfoCards({ account }: { account: CommercialAccount }) {
+  // Karan 2026-07-08: each card now carries an editHref pointing at the
+  // matching Section anchor on the /edit page. Users can jump straight
+  // to editing a category without hunting through tabs / scrolling.
+  const editBase = `/commercial/accounts/${account.id}/edit`;
   return (
     <>
-      <Card title="Company">
+      <Card title="Company" editHref={`${editBase}#edit-identity`}>
         <Field label="Company name" value={account.company_name} />
         <Field label="DBA" value={account.dba} />
         <Field label="Industry" value={account.industry} />
         <Field label="Website" value={account.website} link />
       </Card>
 
-      <Card title="Billing address">
+      <Card title="Billing address" editHref={`${editBase}#edit-billing`}>
         <Field label="Street" value={account.billing_street} />
         <div className="grid grid-cols-3 gap-3">
           <Field label="City" value={account.billing_city} />
@@ -1303,7 +1307,7 @@ function InfoCards({ account }: { account: CommercialAccount }) {
         </div>
       </Card>
 
-      <Card title="Primary site address">
+      <Card title="Primary site address" editHref={`${editBase}#edit-site`}>
         <Field label="Street" value={account.site_street} />
         <div className="grid grid-cols-3 gap-3">
           <Field label="City" value={account.site_city} />
@@ -1312,12 +1316,12 @@ function InfoCards({ account }: { account: CommercialAccount }) {
         </div>
       </Card>
 
-      <Card title="Contact">
+      <Card title="Contact" editHref={`${editBase}#edit-contact`}>
         <Field label="Main phone" value={account.phone} />
         <Field label="Accounts Payable phone" value={account.ap_phone} />
       </Card>
 
-      <Card title="Compliance">
+      <Card title="Compliance" editHref={`${editBase}#edit-compliance`}>
         <Field
           label="Vendor compliance"
           value={account.vendor_compliance_status ? complianceLabel(account.vendor_compliance_status) : null}
@@ -1340,7 +1344,7 @@ function InfoCards({ account }: { account: CommercialAccount }) {
         />
       </Card>
 
-      <Card title="Tax">
+      <Card title="Tax" editHref={`${editBase}#edit-tax`}>
         <Field
           label="Tax exempt"
           value={account.tax_exempt ? "Yes" : "No"}
@@ -1351,7 +1355,7 @@ function InfoCards({ account }: { account: CommercialAccount }) {
       </Card>
 
       {account.notes && (
-        <Card title="Notes" className="lg:col-span-2">
+        <Card title="Notes" className="lg:col-span-2" editHref={`${editBase}#edit-notes`}>
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{account.notes}</p>
         </Card>
       )}
@@ -3061,14 +3065,33 @@ function Card({
   title,
   children,
   className,
+  editHref,
 }: {
   title: string;
   children: React.ReactNode;
   className?: string;
+  /** Karan 2026-07-08: quick "Edit →" chip in the card header. Deep-links
+   *  to /edit#<anchor> so users jump straight to the matching Section on
+   *  the edit form instead of scrolling. Falls back gracefully if omitted. */
+  editHref?: string;
 }) {
   return (
     <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
-      <h2 className="text-sm font-bold text-ppp-charcoal mb-3">{title}</h2>
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <h2 className="text-sm font-bold text-ppp-charcoal">{title}</h2>
+        {editHref && (
+          <Link
+            href={editHref}
+            className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-blue-700 hover:text-blue-800 hover:underline underline-offset-2 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded px-1.5 py-0.5"
+            title={`Edit ${title}`}
+          >
+            Edit
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </Link>
+        )}
+      </div>
       <div className="space-y-2.5">{children}</div>
     </section>
   );

@@ -172,7 +172,7 @@ export default async function EditCommercialAccountPage({
       <form action={updateAction} className="space-y-5 max-w-2xl">
         <input type="hidden" name="id" value={account.id} />
 
-        <Section title="Identity">
+        <Section title="Identity" anchorId="edit-identity">
           <EditField id="company_name" label="Company name *" required defaultValue={account.company_name} />
           <EditField id="dba" label="DBA (doing business as)" defaultValue={account.dba ?? ""} />
           <EditField id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" defaultValue={account.industry ?? ""} />
@@ -184,7 +184,7 @@ export default async function EditCommercialAccountPage({
           />
         </Section>
 
-        <Section title="Billing address">
+        <Section title="Billing address" anchorId="edit-billing">
           <CommercialAddressFields
             prefix="billing"
             defaults={{
@@ -196,7 +196,7 @@ export default async function EditCommercialAccountPage({
           />
         </Section>
 
-        <Section title="Primary site address">
+        <Section title="Primary site address" anchorId="edit-site">
           {/* Default the "Same as billing" toggle to ON when the existing
               site address matches billing (common case for accounts
               created before the toggle existed — they had to retype). */}
@@ -216,13 +216,13 @@ export default async function EditCommercialAccountPage({
           />
         </Section>
 
-        <Section title="Contact">
+        <Section title="Contact" anchorId="edit-contact">
           <EditField id="phone" label="Main phone" type="tel" defaultValue={account.phone ?? ""} />
           <EditField id="ap_phone" label="Accounts Payable phone" type="tel" defaultValue={account.ap_phone ?? ""} />
           <EditField id="website" label="Website" type="url" defaultValue={account.website ?? ""} />
         </Section>
 
-        <Section title="Compliance">
+        <Section title="Compliance" anchorId="edit-compliance">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <EditSelectField
               id="vendor_compliance_status"
@@ -261,7 +261,7 @@ export default async function EditCommercialAccountPage({
           </div>
         </Section>
 
-        <Section title="Tax">
+        <Section title="Tax" anchorId="edit-tax">
           <label className="flex items-center gap-2 text-sm min-h-[44px]">
             <input
               type="checkbox"
@@ -274,7 +274,7 @@ export default async function EditCommercialAccountPage({
           <EditField id="tax_exempt_cert_number" label="Tax exempt certificate #" defaultValue={account.tax_exempt_cert_number ?? ""} />
         </Section>
 
-        <Section title="Strategic">
+        <Section title="Strategic" anchorId="edit-strategic">
           <label className="flex items-start gap-3 text-sm min-h-[44px] cursor-pointer">
             <input
               type="checkbox"
@@ -291,7 +291,7 @@ export default async function EditCommercialAccountPage({
           </label>
         </Section>
 
-        <Section title="Notes">
+        <Section title="Notes" anchorId="edit-notes">
           <textarea
             id="notes"
             name="notes"
@@ -369,9 +369,24 @@ export default async function EditCommercialAccountPage({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  anchorId,
+}: {
+  title: string;
+  children: React.ReactNode;
+  /** Karan 2026-07-08: the detail page "Edit →" quick-links deep-link
+   *  to /edit#{anchorId} so users jump straight to the right section
+   *  instead of scrolling. scroll-mt-24 keeps the section title clear
+   *  of the sticky page chrome. */
+  anchorId?: string;
+}) {
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 space-y-3">
+    <section
+      id={anchorId}
+      className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 space-y-3 ${anchorId ? "scroll-mt-24 target:ring-2 target:ring-cc-brand-600/30" : ""}`}
+    >
       <h2 className="text-sm font-bold text-ppp-charcoal">{title}</h2>
       {children}
     </section>
