@@ -451,7 +451,7 @@ function KpiCard({
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
       <div className={`text-xl sm:text-2xl font-bold mt-1 ${valueCls}`}>

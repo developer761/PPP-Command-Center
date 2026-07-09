@@ -853,7 +853,7 @@ export default async function CommercialOpportunitiesPage({
           snapshot) ─── */}
       {viewMode === "list" && statusSnapshot.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2 flex items-center justify-between">
+          <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2 flex items-center justify-between">
             <span>Open by status</span>
             <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal text-[10px]">
               {validStatus ? "Tap active pill to clear" : "Tap to filter"}
@@ -1861,7 +1861,7 @@ function KpiCard({
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
       <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1">
@@ -2373,7 +2373,7 @@ function CustomerQuickSheet({
         <header className="px-5 py-4 border-b border-ppp-charcoal-100 space-y-3">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-0.5">
+              <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-0.5">
                 Customer
               </div>
               <h2 id="customer-sheet-title" className="text-xl font-bold text-ppp-charcoal leading-tight break-words">
@@ -2426,7 +2426,7 @@ function CustomerQuickSheet({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* ─── Team ─── */}
           <section>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2 flex items-center justify-between">
+            <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2 flex items-center justify-between">
               <span>Team ({team.length})</span>
               <Link
                 href={`/commercial/accounts/${account.id}?tab=overview&sub=team`}
@@ -2464,7 +2464,7 @@ function CustomerQuickSheet({
 
           {/* ─── Financials — invoiced / paid / balance + progress bar ─── */}
           <section>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
+            <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2">
               Financials
             </div>
             <div className="grid grid-cols-3 gap-2">
@@ -2505,7 +2505,7 @@ function CustomerQuickSheet({
           {/* ─── Invoices list — click to full detail ─── */}
           {invoices.length > 0 && (
             <section>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2 flex items-center justify-between">
+              <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2 flex items-center justify-between">
                 <span>Invoices ({invoices.length})</span>
                 <Link
                   href={`/commercial/invoices?account_id=${account.id}`}
@@ -2569,7 +2569,7 @@ function CustomerQuickSheet({
           {/* ─── Active deals — inline status-flip on each ─── */}
           {openDeals.length > 0 && (
             <section>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
+              <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2">
                 Active deals ({openDeals.length})
               </div>
               <ul className="space-y-2">
@@ -2639,7 +2639,7 @@ function CustomerQuickSheet({
               deals section's focused-ring treatment. */}
           {closedDeals.length > 0 && (
             <section>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">
+              <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2">
                 Closed ({closedDeals.length})
               </div>
               <ul className="space-y-1">

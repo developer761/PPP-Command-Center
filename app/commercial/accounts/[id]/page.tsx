@@ -4244,7 +4244,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                   Balance owed: <strong className="text-ppp-charcoal">{formatCentsFull(invoice.balance_cents)}</strong>
                 </div>
                 <label className="block">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Amount</span>
+                  <span className="text-[12px] font-semibold text-ppp-charcoal-700">Amount</span>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -4257,7 +4257,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Date</span>
+                    <span className="text-[12px] font-semibold text-ppp-charcoal-700">Date</span>
                     <input
                       type="date"
                       name="paid_at"
@@ -4266,7 +4266,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                     />
                   </label>
                   <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Method</span>
+                    <span className="text-[12px] font-semibold text-ppp-charcoal-700">Method</span>
                     <select
                       name="method"
                       defaultValue=""
@@ -4280,7 +4280,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                   </label>
                 </div>
                 <label className="block">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Reference (optional)</span>
+                  <span className="text-[12px] font-semibold text-ppp-charcoal-700">Reference (optional)</span>
                   <input
                     type="text"
                     name="reference"
@@ -4328,7 +4328,7 @@ function RollupTile({
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
       <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1 leading-none">
@@ -4504,7 +4504,7 @@ function DealEditSheet({
   const endDateDefault = deal.proposed_end_at ? deal.proposed_end_at.slice(0, 10) : "";
   const closeHref = `/commercial/accounts/${accountId}?tab=opportunities`;
   const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]";
-  const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1";
+  const labelCls = "block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5";
   return (
     <div id="deal-edit-sheet" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="deal-edit-title">
       {/* Backdrop — full-viewport link closes the sheet by dropping ?edit. */}

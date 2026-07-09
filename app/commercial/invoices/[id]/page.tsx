@@ -811,7 +811,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <div className="overflow-x-auto -mx-2 px-2">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 border-b border-ppp-charcoal-100">
+                <tr className="text-left text-[12px] font-semibold text-ppp-charcoal-700 border-b border-ppp-charcoal-100">
                   <th className="py-2 pr-3">Description</th>
                   <th className="py-2 pr-3 text-right w-24">Qty</th>
                   <th className="py-2 pr-3 w-24">Unit</th>
@@ -1138,7 +1138,7 @@ function BigNumber({ label, value, sub, tone }: { label: string; value: string; 
   return (
     <div className="relative border border-ppp-charcoal-100 rounded-lg px-4 py-3 overflow-hidden bg-gradient-to-br from-white to-ppp-charcoal-50/40">
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
       <div className={`text-xl sm:text-2xl font-bold mt-1 tabular-nums ${valueCls}`}>

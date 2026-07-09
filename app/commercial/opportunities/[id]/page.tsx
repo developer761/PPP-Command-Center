@@ -1732,7 +1732,7 @@ async function OpportunityInvoicesPanel({
           {totalInvoicedCents > 0 && (
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+                <div className="text-[12px] font-semibold text-ppp-charcoal-700">
                   Deal progress
                 </div>
                 <div className="text-[11px] text-ppp-charcoal-600 tabular-nums">
@@ -4379,7 +4379,7 @@ function KpiTile({
       title={tooltip}
     >
       <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-sky-500 to-cyan-400" aria-hidden />
-      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
       <div className="text-base sm:text-lg font-bold text-ppp-charcoal mt-1 truncate">
