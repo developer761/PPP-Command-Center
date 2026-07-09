@@ -9,7 +9,9 @@ import {
   mergeCompetitor,
   getOrCreateCompetitor,
   getLifetimeCompetitorStats,
+  updateCompetitorIntel,
   type CompetitorLifetimeStats,
+  type Competitor,
 } from "@/lib/commercial/competitors";
 import { opportunityLossReasonLabel, type OpportunityLossReason, OPPORTUNITY_LOSS_REASONS } from "@/lib/commercial/opportunities/db";
 import Link from "next/link";
@@ -116,6 +118,46 @@ async function mergeAction(formData: FormData) {
   redirect("/commercial/settings/competitors?ok=merged");
 }
 
+function parseDollarsToCents(raw: string | null): number | null {
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed.replace(/[$,]/g, ""));
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num * 100);
+}
+
+async function updateIntelAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const profile = await getProfileByUserId(user.id);
+  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
+  if (!isAdmin) redirect("/commercial");
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/commercial/settings/competitors?error=invalid");
+  const bidLow = parseDollarsToCents(formData.get("bid_low")?.toString() ?? null);
+  const bidHigh = parseDollarsToCents(formData.get("bid_high")?.toString() ?? null);
+  const result = await updateCompetitorIntel(
+    id,
+    {
+      website: String(formData.get("website") ?? "").trim() || null,
+      home_base: String(formData.get("home_base") ?? "").trim() || null,
+      typical_bid_low_cents: bidLow,
+      typical_bid_high_cents: bidHigh,
+      strengths: String(formData.get("strengths") ?? "").trim() || null,
+      weaknesses: String(formData.get("weaknesses") ?? "").trim() || null,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    },
+    user.id
+  );
+  if (!result.ok) {
+    redirect("/commercial/settings/competitors?error=" + encodeURIComponent(result.error));
+  }
+  redirect("/commercial/settings/competitors?ok=intel_saved");
+}
+
 export default async function CompetitorsAdminPage({
   searchParams,
 }: {
@@ -184,6 +226,7 @@ export default async function CompetitorsAdminPage({
           {sp.ok === "renamed" && "Competitor renamed."}
           {sp.ok === "updated" && "Competitor status updated."}
           {sp.ok === "merged" && "Competitors merged."}
+          {sp.ok === "intel_saved" && "Intel updated."}
         </div>
       )}
       {sp.error && (
@@ -330,6 +373,7 @@ export default async function CompetitorsAdminPage({
                       <MergeForm sourceId={c.id} sourceName={c.name} candidates={active.filter((x) => x.id !== c.id)} />
                     </div>
                   </div>
+                  <IntelEditor competitor={c} />
                 </li>
               );
             })}
@@ -457,6 +501,91 @@ function MergeForm({
         >
           Merge
         </button>
+      </form>
+    </details>
+  );
+}
+
+/** Karan 2026-07-09: admin-editable intel below each active competitor.
+ *  Collapsed by default when there's data (surface a summary line);
+ *  open by default when the row is bare so Alex sees where to fill in.
+ *  Fields: website, home base, typical bid range (low/high $), what
+ *  they're good at, where they're weak, general notes. */
+function IntelEditor({ competitor }: { competitor: Competitor }) {
+  const hasIntel = !!(
+    competitor.website ||
+    competitor.home_base ||
+    competitor.typical_bid_low_cents !== null ||
+    competitor.typical_bid_high_cents !== null ||
+    competitor.strengths ||
+    competitor.weaknesses ||
+    competitor.notes
+  );
+  const dollarStr = (cents: number | null): string => (cents === null ? "" : (cents / 100).toFixed(2));
+  return (
+    <details className="mt-3 group/intel" open={!hasIntel}>
+      <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[28px] select-none">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/intel:rotate-90">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+        {hasIntel ? "Edit intel" : "Add intel — website, base, bid range, strengths, weaknesses, notes"}
+      </summary>
+      {hasIntel && (
+        <div className="mt-2 text-[11.5px] text-ppp-charcoal-600 space-y-0.5 pl-4">
+          {competitor.website && (
+            <div>🌐 <a href={competitor.website.startsWith("http") ? competitor.website : `https://${competitor.website}`} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline">{competitor.website}</a></div>
+          )}
+          {competitor.home_base && <div>📍 {competitor.home_base}</div>}
+          {(competitor.typical_bid_low_cents !== null || competitor.typical_bid_high_cents !== null) && (
+            <div>
+              💰 Typical bids:{" "}
+              {competitor.typical_bid_low_cents !== null && formatCentsCompact(competitor.typical_bid_low_cents)}
+              {competitor.typical_bid_low_cents !== null && competitor.typical_bid_high_cents !== null && " – "}
+              {competitor.typical_bid_high_cents !== null && formatCentsCompact(competitor.typical_bid_high_cents)}
+            </div>
+          )}
+          {competitor.strengths && <div className="text-emerald-800"><strong>Strengths:</strong> {competitor.strengths}</div>}
+          {competitor.weaknesses && <div className="text-rose-800"><strong>Weaknesses:</strong> {competitor.weaknesses}</div>}
+          {competitor.notes && <div className="text-ppp-charcoal-700 whitespace-pre-wrap"><strong>Notes:</strong> {competitor.notes}</div>}
+        </div>
+      )}
+      <form action={updateIntelAction} className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 border-t border-ppp-charcoal-100 pt-3">
+        <input type="hidden" name="id" value={competitor.id} />
+        <label className="block sm:col-span-2">
+          <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Website</span>
+          <input type="text" name="website" defaultValue={competitor.website ?? ""} maxLength={500} placeholder="abcpainting.com" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px]" />
+        </label>
+        <label className="block">
+          <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Home base</span>
+          <input type="text" name="home_base" defaultValue={competitor.home_base ?? ""} maxLength={200} placeholder="Bronx, NY" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px]" />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Bid low ($)</span>
+            <input type="text" name="bid_low" defaultValue={dollarStr(competitor.typical_bid_low_cents)} inputMode="decimal" placeholder="10000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
+          </label>
+          <label className="block">
+            <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Bid high ($)</span>
+            <input type="text" name="bid_high" defaultValue={dollarStr(competitor.typical_bid_high_cents)} inputMode="decimal" placeholder="75000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
+          </label>
+        </div>
+        <label className="block">
+          <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Strengths</span>
+          <textarea name="strengths" defaultValue={competitor.strengths ?? ""} maxLength={2000} rows={2} placeholder="Fast turnaround; strong GC relationships in the Bronx." className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
+        </label>
+        <label className="block">
+          <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Weaknesses</span>
+          <textarea name="weaknesses" defaultValue={competitor.weaknesses ?? ""} maxLength={2000} rows={2} placeholder="Weak on high-rise; won't do restoration work." className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">General notes</span>
+          <textarea name="notes" defaultValue={competitor.notes ?? ""} maxLength={4000} rows={3} placeholder="Anything else the team should know — pricing tendencies, key contacts, past incidents…" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
+        </label>
+        <div className="sm:col-span-2 flex justify-end">
+          <button type="submit" className="inline-flex items-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px]">
+            Save intel
+          </button>
+        </div>
       </form>
     </details>
   );

@@ -31,6 +31,14 @@ export type Competitor = {
   created_by_user_id: string | null;
   updated_at: string;
   merged_into_competitor_id: string | null;
+  // Karan 2026-07-09 intel fields — see migration 043.
+  website: string | null;
+  home_base: string | null;
+  typical_bid_low_cents: number | null;
+  typical_bid_high_cents: number | null;
+  strengths: string | null;
+  weaknesses: string | null;
+  notes: string | null;
 };
 
 function normalizeName(raw: string): string {
@@ -298,6 +306,57 @@ export async function listAllCompetitors(): Promise<Competitor[]> {
     .select("*")
     .order("name", { ascending: true });
   return (data as Competitor[] | null) ?? [];
+}
+
+/**
+ * Karan 2026-07-09: patch admin-editable intel fields on a competitor
+ * (website, home base, typical bid range, strengths/weaknesses, notes).
+ * Only fields explicitly present in the patch are written; others stay
+ * as-is. Bid values arrive as cents (client parses dollars → cents).
+ */
+export type CompetitorIntelPatch = {
+  website?: string | null;
+  home_base?: string | null;
+  typical_bid_low_cents?: number | null;
+  typical_bid_high_cents?: number | null;
+  strengths?: string | null;
+  weaknesses?: string | null;
+  notes?: string | null;
+};
+
+export async function updateCompetitorIntel(
+  id: string,
+  patch: CompetitorIntelPatch,
+  actingUserId: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  // Whitelist writes so a rogue key can't leak into the update.
+  const writable: Record<string, string | number | null> = {};
+  if ("website" in patch) writable.website = patch.website?.trim() || null;
+  if ("home_base" in patch) writable.home_base = patch.home_base?.trim() || null;
+  if ("typical_bid_low_cents" in patch) writable.typical_bid_low_cents = patch.typical_bid_low_cents ?? null;
+  if ("typical_bid_high_cents" in patch) writable.typical_bid_high_cents = patch.typical_bid_high_cents ?? null;
+  if ("strengths" in patch) writable.strengths = patch.strengths?.trim() || null;
+  if ("weaknesses" in patch) writable.weaknesses = patch.weaknesses?.trim() || null;
+  if ("notes" in patch) writable.notes = patch.notes?.trim() || null;
+  if (Object.keys(writable).length === 0) return { ok: true };
+
+  // Auto-swap low/high if inverted (same convenience as the opportunity
+  // mutations — don't reject, just fix).
+  const lo = writable.typical_bid_low_cents;
+  const hi = writable.typical_bid_high_cents;
+  if (typeof lo === "number" && typeof hi === "number" && lo > hi) {
+    writable.typical_bid_low_cents = hi;
+    writable.typical_bid_high_cents = lo;
+  }
+
+  const { error } = await sb
+    .from("commercial_competitors")
+    .update(writable)
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  await logUpdate("commercial_competitors", id, writable, actingUserId);
+  return { ok: true };
 }
 
 /**
