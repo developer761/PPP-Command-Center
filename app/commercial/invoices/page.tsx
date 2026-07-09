@@ -206,9 +206,10 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
     .eq("id", opp_id)
     .maybeSingle();
   if (!oppRow) redirect("/commercial/invoices");
-  if (!(oppRow as { deleted_at: string | null }).deleted_at) {
-    redirect(`/commercial/invoices?opportunity_id=${opp_id}&error=${encodeURIComponent("Bulk delete only allowed on deleted deals — void or delete individual invoices instead.")}`);
-  }
+  // Karan 2026-07-09: relaxed the "deleted parent only" guard. Active
+  // Won deals need bulk-clear too (test data cleanup, duplicate imports,
+  // etc). Auto-void logic below preserves payment history for any paid
+  // rows so the audit trail stays intact even on an active deal.
   // Guard 2: block if any invoice has recorded payments.
   const { data: invRows } = await sb
     .from("commercial_invoices")
@@ -237,6 +238,13 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
   }
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
+  // Karan 2026-07-09: preserve the caller's scope so the flash lands on
+  // the same filtered view instead of dumping the user on the unfiltered
+  // list.
+  const returnAccountId = String(formData.get("return_account_id") ?? "");
+  if (UUID_RE.test(returnAccountId)) {
+    redirect(`/commercial/invoices?account_id=${returnAccountId}&bulk_deleted=${rows.length}`);
+  }
   redirect(`/commercial/invoices?bulk_deleted=${rows.length}`);
 }
 
@@ -679,10 +687,40 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               Bill for Won deals. Track sent · viewed · paid · overdue.
             </p>
           </div>
-          {/* New invoice CTA — right-aligned so it sits next to the title
-              like Salesforce's "New" button. Progressive-disclosure: click
-              to open a Won-opp picker directly on this page rather than
-              making the user go opp-first + click Convert. */}
+          {/* New invoice CTA. Karan 2026-07-09: when the target opp is
+              unambiguous (a deal-scoped view OR an account view with
+              exactly one Won deal), the button skips the picker and
+              scrolls straight to the inline "+ New invoice for this
+              deal" form — no more "pick Deal 1 from a picker of one". */}
+          {(() => {
+            const singleOppTarget =
+              opportunityIdFilter && wonOpps.some((o) => o.id === opportunityIdFilter)
+                ? opportunityIdFilter
+                : accountIdFilter && wonOpps.length === 1
+                ? wonOpps[0].id
+                : null;
+            if (singleOppTarget) {
+              const targetOpp = wonOpps.find((o) => o.id === singleOppTarget);
+              const targetAccount = targetOpp ? targetOpp.account_id : accountIdFilter;
+              return (
+                <Link
+                  href={`/commercial/invoices?account_id=${targetAccount}&add=${singleOppTarget}#opp-${singleOppTarget}`}
+                  className="sm:self-end inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M12 5v14 M5 12h14" />
+                  </svg>
+                  New invoice
+                </Link>
+              );
+            }
+            return null;
+          })()}
+          {/* Picker path — only when there's actually a choice to make. */}
+          {!(
+            (opportunityIdFilter && wonOpps.some((o) => o.id === opportunityIdFilter)) ||
+            (accountIdFilter && wonOpps.length === 1)
+          ) && (
           <details className="relative sm:self-end group">
             <summary
               className="list-none cursor-pointer inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
@@ -762,6 +800,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               </div>
             </div>
           </details>
+          )}
         </div>
 
         {/* KPI strip */}
@@ -1597,6 +1636,42 @@ function FullDetailByOpp({
                     <div className="text-[12px] text-ppp-charcoal-500 mt-0.5">{account.company_name}</div>
                   )}
                 </div>
+                {/* Karan 2026-07-09: Delete-all-invoices affordance per
+                    deal so cleanup doesn't require clicking each row.
+                    Two-step popover: click summary → panel with a Delete
+                    button. Popover-only, no URL flip, so we can't
+                    accidentally wipe by opening a stale link. */}
+                {groupInvoices.length > 1 && (
+                  <details className="relative group/wipe shrink-0">
+                    <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-rose-200 text-[11.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[36px] touch-manipulation">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6" />
+                      </svg>
+                      Delete all
+                    </summary>
+                    <div className="absolute right-0 mt-2 z-20 bg-white border border-rose-200 rounded-lg shadow-xl p-3 w-[280px]">
+                      <div className="text-[12.5px] text-ppp-charcoal-800 font-semibold">
+                        Delete all {groupInvoices.length} invoices for this deal?
+                      </div>
+                      {groupInvoices.some((i) => (i.paid_cents ?? 0) > 0 && i.status !== "void") && (
+                        <p className="mt-1 text-[11px] text-ppp-charcoal-600">
+                          Paid ones auto-void first — payment history stays in the audit log.
+                        </p>
+                      )}
+                      <form action={bulkDeleteInvoicesForOppAction} className="mt-2 flex items-center gap-2">
+                        <input type="hidden" name="opp_id" value={oppId} />
+                        <input type="hidden" name="confirm" value="yes" />
+                        <input type="hidden" name="return_account_id" value={accountId} />
+                        <button
+                          type="submit"
+                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12.5px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+                        >
+                          Delete all
+                        </button>
+                      </form>
+                    </div>
+                  </details>
+                )}
               </div>
               {groupInvoices.length > 0 && (
                 <div className="mt-3 grid grid-cols-3 gap-2">
