@@ -19,6 +19,7 @@ import {
 import {
   listAccountTeam,
   listAssignableStaff,
+  listAllPppProfileEmails,
   addAssignment,
   removeAssignment,
   ASSIGNMENT_ROLES,
@@ -1636,7 +1637,11 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
       )}
       {/* Add-contact form */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
-        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add contact</h2>
+        <h2 className="text-sm font-bold text-ppp-charcoal">Add contact</h2>
+        <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 mt-0.5 leading-snug">
+          People at the <strong>customer&apos;s company</strong> — decision-maker, PM, estimator, AP contact, etc.
+          For PPP staff working this account, use the <strong>Team</strong> tab under Overview.
+        </p>
         <form action={addContactAction} className="space-y-3">
           <input type="hidden" name="account_id" value={accountId} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1907,6 +1912,65 @@ async function addAssignmentAction(formData: FormData) {
   redirect(`/commercial/accounts/${account_id}?tab=team`);
 }
 
+/**
+ * Karan 2026-07-08: add by email variant. Mirrors the on-create picker
+ * — looks up the profile row by email, auto-grants Commercial CC
+ * access if missing (admin already said "add this person"), then
+ * fires the same addAssignment call so the email notification goes
+ * out identically.
+ */
+async function addAssignmentByEmailAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  const rawEmail = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (!rawEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent("Enter a valid email.")}`);
+  }
+  const role = String(formData.get("role") ?? "other") as AssignmentRole;
+  const is_primary = formData.get("is_primary") === "on";
+  const notes = (formData.get("notes") as string) || null;
+  const { commercialDb } = await import("@/lib/commercial/db");
+  const sb = commercialDb();
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("user_id, is_active, has_new_platform_access")
+    .ilike("email", rawEmail)
+    .maybeSingle();
+  if (!profile) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(`${rawEmail} isn't in profiles yet — they need to sign in to PPP Command Center once first, then come back.`)}`);
+  }
+  const p = profile as { user_id: string; is_active: boolean | null; has_new_platform_access: boolean | null };
+  if (p.is_active === false) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(`${rawEmail}'s account is inactive.`)}`);
+  }
+  if (!p.has_new_platform_access) {
+    const { error: grantErr } = await sb
+      .from("profiles")
+      .update({ has_new_platform_access: true })
+      .eq("user_id", p.user_id);
+    if (grantErr) {
+      redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(`Couldn't grant access to ${rawEmail}: ${grantErr.message}`)}`);
+    }
+  }
+  const result = await addAssignment({
+    account_id,
+    user_id: p.user_id,
+    role,
+    is_primary,
+    notes,
+    assigned_by_user_id: user.id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  redirect(`/commercial/accounts/${account_id}?tab=team&team_added=1`);
+}
+
 async function removeAssignmentAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -1926,9 +1990,10 @@ async function removeAssignmentAction(formData: FormData) {
 }
 
 async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
-  const [team, assignableStaff] = await Promise.all([
+  const [team, assignableStaff, allPppEmails] = await Promise.all([
     listAccountTeam(accountId),
     listAssignableStaff(),
+    listAllPppProfileEmails(),
   ]);
   const teamUserIds = new Set(team.map((t) => t.user_id));
   // Count by role so we can show "1 sales rep · 2 PMs" inline at the top
@@ -1975,7 +2040,12 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
 
       {/* Add assignment form */}
       <section id="assign-ppp-staff" className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 scroll-mt-24">
-        <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Assign PPP staff</h2>
+        <h2 className="text-sm font-bold text-ppp-charcoal">Assign PPP staff</h2>
+        <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 mt-0.5 leading-snug">
+          People from <strong>PPP</strong> working this account (sales rep, PM, estimator). For the
+          customer&apos;s own team, use the <strong>Contacts</strong> tab under People. Newly assigned
+          staff get an email with a link to this account.
+        </p>
         <form action={addAssignmentAction} className="space-y-3">
           <input type="hidden" name="account_id" value={accountId} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2057,6 +2127,93 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             </button>
           </div>
         </form>
+
+        {/* Karan 2026-07-08: "or add by email" collapsible below the
+            main picker. Autocompletes from every PPP profile (not just
+            those with CC access — the server action auto-grants access
+            on add). Same role / primary / notes wiring. */}
+        <details className="mt-5 border-t border-ppp-charcoal-100 pt-4 group/emailAdd">
+          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-blue-700 hover:text-blue-800 min-h-[32px] touch-manipulation">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/emailAdd:rotate-90">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+            Not on the list? Add by email
+          </summary>
+          <p className="text-[11.5px] text-ppp-charcoal-500 mt-2 leading-snug">
+            Type any PPP teammate&apos;s email. Autocompletes from known
+            PPP profiles. If they don&apos;t have Commercial CC access yet,
+            we&apos;ll grant it as part of the add. They&apos;ll get an
+            email with a link to this account and their role.
+          </p>
+          <form action={addAssignmentByEmailAction} className="space-y-3 mt-3">
+            <input type="hidden" name="account_id" value={accountId} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="team_email" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                  Email *
+                </label>
+                <input
+                  id="team_email"
+                  name="email"
+                  type="email"
+                  required
+                  list="ppp-staff-emails"
+                  placeholder="firstname@precisionpaintingplus.net"
+                  className={INPUT_CLS}
+                />
+                <datalist id="ppp-staff-emails">
+                  {allPppEmails.map((s) => (
+                    <option key={s.email} value={s.email}>
+                      {s.full_name ? `${s.full_name} — ${s.email}` : s.email}
+                    </option>
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label htmlFor="email_role" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                  Role *
+                </label>
+                <select
+                  id="email_role"
+                  name="role"
+                  defaultValue="sales_rep"
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
+                >
+                  {ASSIGNMENT_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {assignmentRoleLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30" />
+              Mark as primary in this role
+            </label>
+            <div>
+              <label htmlFor="email_team_notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                Notes
+              </label>
+              <input
+                id="email_team_notes"
+                name="notes"
+                type="text"
+                placeholder="Optional"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-blue-300 bg-white text-blue-700 text-sm font-semibold hover:bg-blue-50 min-h-[44px] touch-manipulation"
+              >
+                Add by email
+              </button>
+            </div>
+          </form>
+        </details>
       </section>
 
       {/* Symbol key — Karan 2026-06-14: every banner / pill icon explained

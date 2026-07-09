@@ -158,6 +158,33 @@ export async function listAssignableStaff(): Promise<
     }));
 }
 
+/**
+ * Karan 2026-07-08: for the Team tab's "Add by email" datalist.
+ * Returns every non-inactive profile email regardless of Commercial CC
+ * access — the admin adding someone by email may need to include a
+ * teammate who hasn't been granted CC access yet (the server action
+ * auto-grants on add). Used purely to power the <datalist> suggestions.
+ */
+export async function listAllPppProfileEmails(): Promise<
+  Array<{ email: string; full_name: string | null }>
+> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("profiles")
+    .select("email, sf_user_name, is_active")
+    .order("email");
+  if (error) {
+    console.warn("[commercial/assignments] listAllPppProfileEmails failed:", error.message);
+    return [];
+  }
+  return (data ?? [])
+    .filter((r) => r.is_active !== false && r.email)
+    .map((r) => ({
+      email: r.email as string,
+      full_name: (r.sf_user_name as string | null) ?? null,
+    }));
+}
+
 export type AddAssignmentInput = {
   account_id: string;
   user_id: string;
