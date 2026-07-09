@@ -212,15 +212,23 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
   // Guard 2: block if any invoice has recorded payments.
   const { data: invRows } = await sb
     .from("commercial_invoices")
-    .select("id, paid_cents")
+    .select("id, status, paid_cents")
     .eq("opportunity_id", opp_id)
     .is("deleted_at", null);
-  const rows = (invRows ?? []) as { id: string; paid_cents: number }[];
-  const paidRows = rows.filter((r) => (r.paid_cents ?? 0) > 0);
-  if (paidRows.length > 0) {
-    redirect(`/commercial/invoices?opportunity_id=${opp_id}&error=${encodeURIComponent(`${paidRows.length} invoice${paidRows.length === 1 ? " has" : "s have"} recorded payments. Void those individually first.`)}`);
-  }
+  const rows = (invRows ?? []) as { id: string; status: string; paid_cents: number }[];
+  // Karan 2026-07-08 revised policy: on a DELETED parent the operator is
+  // clearly cleaning up orphaned rows — refusing to wipe because one
+  // invoice had a payment leaves the user stuck. Auto-void any non-void
+  // paid invoices first so the audit trail records the payments
+  // (paid_cents + payments log stay intact) then soft-delete everything.
   const now = new Date().toISOString();
+  const paidNonVoid = rows.filter((r) => (r.paid_cents ?? 0) > 0 && r.status !== "void");
+  if (paidNonVoid.length > 0) {
+    await sb
+      .from("commercial_invoices")
+      .update({ status: "void", voided_at: now })
+      .in("id", paidNonVoid.map((r) => r.id));
+  }
   if (rows.length > 0) {
     await sb
       .from("commercial_invoices")
@@ -235,8 +243,9 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
 /**
  * Karan 2026-07-08: bulk-delete every invoice attached to a specific
  * (deleted) account. Mirrors the per-opp variant but scopes on account_id.
- * Same safety envelope: parent account must be soft-deleted; any invoice
- * with recorded payments blocks the wipe (void individually first).
+ * Same safety envelope: parent account must be soft-deleted; auto-voids
+ * any paid non-void invoices before wiping so the operator isn't stuck
+ * on orphan cleanup.
  */
 async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
   "use server";
@@ -262,15 +271,22 @@ async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
   }
   const { data: invRows } = await sb
     .from("commercial_invoices")
-    .select("id, paid_cents")
+    .select("id, status, paid_cents")
     .eq("account_id", account_id)
     .is("deleted_at", null);
-  const rows = (invRows ?? []) as { id: string; paid_cents: number }[];
-  const paidRows = rows.filter((r) => (r.paid_cents ?? 0) > 0);
-  if (paidRows.length > 0) {
-    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent(`${paidRows.length} invoice${paidRows.length === 1 ? " has" : "s have"} recorded payments. Void those individually first.`)}`);
-  }
+  const rows = (invRows ?? []) as { id: string; status: string; paid_cents: number }[];
+  // Auto-void paid non-void invoices then wipe. Same rationale as the
+  // per-opp variant: on a deleted parent, refusing to wipe because one
+  // invoice took a payment leaves the operator stuck. Voiding first
+  // preserves the audit trail (paid_cents + payments log stay intact).
   const now = new Date().toISOString();
+  const paidNonVoid = rows.filter((r) => (r.paid_cents ?? 0) > 0 && r.status !== "void");
+  if (paidNonVoid.length > 0) {
+    await sb
+      .from("commercial_invoices")
+      .update({ status: "void", voided_at: now })
+      .in("id", paidNonVoid.map((r) => r.id));
+  }
   if (rows.length > 0) {
     await sb
       .from("commercial_invoices")
@@ -461,13 +477,16 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     ? invoicesRaw.filter((i) => i.account_id === accountIdFilter)
     : [];
   const scopedInvoiceCount = scopedInvoices.length;
-  const scopedHasPaid = scopedInvoices.some((i) => (i.paid_cents ?? 0) > 0);
+  const scopedPaidCount = scopedInvoices.filter((i) => (i.paid_cents ?? 0) > 0 && i.status !== "void").length;
   const scopedIsOrphan = opportunityIdFilter && !oppById.has(opportunityIdFilter);
   const scopedAccountIsDeleted = !!(accountIdFilter && accountFilter?.deleted_at);
   // Show the focus banner when either filter narrows the list.
   const showFocusBanner = !!opportunityIdFilter || !!accountIdFilter;
-  // Delete-all button surfaces only when the parent is soft-deleted.
-  const showDeleteAll = !!(scopedIsOrphan || scopedAccountIsDeleted) && scopedInvoiceCount > 0 && !scopedHasPaid;
+  // Karan 2026-07-08: relaxed the payment-block. On a DELETED parent
+  // the operator is cleaning up orphan rows — refusing to wipe because
+  // one had a payment leaves them stuck. Server action auto-voids paid
+  // non-void invoices first so the audit trail is preserved.
+  const showDeleteAll = !!(scopedIsOrphan || scopedAccountIsDeleted) && scopedInvoiceCount > 0;
   // Copy varies by scope + deletion state.
   const focusTitle = scopedIsOrphan
     ? "Deleted deal — invoices still on file"
@@ -552,7 +571,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                 </summary>
                 <div className="absolute right-0 top-full mt-1.5 w-[calc(100vw-2rem)] max-w-xs sm:w-72 bg-white border border-rose-200 rounded-lg shadow-lg p-3 z-10">
                   <div className="text-[12px] text-ppp-charcoal-700 mb-2 leading-snug">
-                    Permanently hide all <strong>{scopedInvoiceCount}</strong> invoice{scopedInvoiceCount === 1 ? "" : "s"} from lists. Data stays in the DB for audit history.
+                    Permanently hide all <strong>{scopedInvoiceCount}</strong> invoice{scopedInvoiceCount === 1 ? "" : "s"} from lists.
+                    {scopedPaidCount > 0 && (
+                      <> {scopedPaidCount} paid invoice{scopedPaidCount === 1 ? "" : "s"} will auto-void first — payment history stays in the audit log.</>
+                    )}
+                    {" "}Data stays in the DB for audit history.
                   </div>
                   <form action={deleteAllForm.action}>
                     <input type="hidden" name={deleteAllForm.key} value={deleteAllForm.value} />
@@ -566,11 +589,6 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   </form>
                 </div>
               </details>
-            )}
-            {(scopedIsOrphan || scopedAccountIsDeleted) && scopedHasPaid && (
-              <span className="text-[10.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                Some invoices have payments — void those individually
-              </span>
             )}
           </div>
         </div>
