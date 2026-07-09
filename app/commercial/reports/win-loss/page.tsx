@@ -246,14 +246,33 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
         )}
       </div>
 
-      {/* ─── KPI strip — same left-accent-stripe design as the other
-          Commercial CC surfaces for visual consistency. ─── */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* KPI strip. Karan 2026-07-09 polish: added a "$ won ratio" tile
+          because count-based win rate hides big-vs-small deal dynamics
+          — winning one $500k job while losing three $50k jobs is a
+          different story than the reverse, and only the $ split shows
+          it. Win rate reads "—" instead of "0%" when there were no
+          head-to-heads (only no-bids), so an empty period doesn't look
+          like a wipeout. */}
+      <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KpiCard
           tone="cc-brand"
           label="Win rate"
-          value={`${summary.winRatePct}%`}
-          sub={`${summary.wonCount} won · ${summary.lostCount} lost`}
+          value={summary.wonCount + summary.lostCount > 0 ? `${summary.winRatePct}%` : "—"}
+          sub={
+            summary.wonCount + summary.lostCount > 0
+              ? `${summary.wonCount} won · ${summary.lostCount} lost`
+              : "no head-to-heads yet"
+          }
+        />
+        <KpiCard
+          tone="cc-brand"
+          label="$ won ratio"
+          value={(() => {
+            const totalValue = summary.wonValueCents + summary.lostValueCents;
+            if (totalValue === 0) return "—";
+            return `${Math.round((summary.wonValueCents / totalValue) * 100)}%`;
+          })()}
+          sub="of every $ we bid on"
         />
         <KpiCard
           tone="blue"
@@ -271,18 +290,18 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           tone="neutral"
           label="No-bid"
           value={String(summary.noBidCount)}
-          sub="deals we passed on"
+          sub={summary.noBidCount === 1 ? "deal we passed on" : "deals we passed on"}
         />
       </section>
 
       {summary.totalClosed === 0 ? (
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
           <h2 className="text-base font-semibold text-ppp-charcoal mb-2">
-            No debriefs in this period yet
+            No debriefs in this period
           </h2>
           <p className="text-sm text-ppp-charcoal-500">
-            As deals close with completed debriefs, they&apos;ll show up here.
-            See <Link href="/commercial/opportunities" className="text-blue-700 underline">pipeline</Link> for active deals.
+            Try a wider range, or head to the{" "}
+            <Link href="/commercial/opportunities" className="text-blue-700 underline">pipeline</Link> to close some deals.
           </p>
         </section>
       ) : (
@@ -377,8 +396,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
             </h2>
             {lessons.length === 0 ? (
               <p className="text-sm text-ppp-charcoal-500">
-                No lessons captured yet. Encourage the team to fill out the
-                &quot;what would you do differently?&quot; field when closing opps.
+                No lessons captured yet in this period.
               </p>
             ) : (
               <ul className="space-y-3 divide-y divide-ppp-charcoal-50">
