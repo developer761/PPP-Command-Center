@@ -1335,9 +1335,28 @@ function FullDetailByOpp({
     arr.push(inv);
     groups.set(inv.opportunity_id, arr);
   }
+  // Karan 2026-07-09 bug fix: when a user clicks "New invoice ▾" on a
+  // filtered view for a customer with zero existing invoices, the
+  // redirect lands here with ?add=<opp_id> but `groups` is empty — so
+  // the per-opp loop that renders the inline "+ New invoice" form
+  // never runs, and the page shows "No invoices for this account yet."
+  // with no create affordance. Prime an empty group for the requested
+  // opp so its inline form renders even on first use. Defensive check
+  // that the opp actually belongs to this account and is Won.
+  if (openAddOppId && !groups.has(openAddOppId)) {
+    const opp = oppById.get(openAddOppId);
+    if (opp && opp.account_id === accountId && opp.status === "won") {
+      groups.set(openAddOppId, []);
+    }
+  }
   const oppOrder = Array.from(groups.entries()).sort((a, b) => {
     const aInvs = a[1];
     const bInvs = b[1];
+    // Empty groups (opp we primed for first-time create) always float to
+    // the top so the "+ New invoice" form is right where the user landed.
+    if (aInvs.length === 0 && bInvs.length > 0) return -1;
+    if (bInvs.length === 0 && aInvs.length > 0) return 1;
+    if (aInvs.length === 0 && bInvs.length === 0) return 0;
     switch (sortKey) {
       case "oldest": {
         const aOldest = Math.min(...aInvs.map((i) => new Date(i.created_at).getTime()));
@@ -1374,8 +1393,11 @@ function FullDetailByOpp({
 
   if (oppOrder.length === 0) {
     return (
-      <div className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-xl p-8 text-center">
-        <p className="text-[13px] text-ppp-charcoal-600">No invoices for this account yet.</p>
+      <div className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-xl p-8 text-center space-y-2">
+        <p className="text-[13px] text-ppp-charcoal-600">No invoices for this customer yet.</p>
+        <p className="text-[12px] text-ppp-charcoal-500">
+          Use <strong>New invoice ▾</strong> above to pick a Won deal to bill.
+        </p>
       </div>
     );
   }
@@ -1477,9 +1499,15 @@ function FullDetailByOpp({
                         <span className="text-ppp-charcoal-500 italic">Deleted deal — invoices still on file</span>
                       </span>
                     )}
-                    <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
-                      {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
-                    </span>
+                    {groupInvoices.length === 0 ? (
+                      <span className="text-[10px] font-semibold text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 rounded px-1.5 py-0.5">
+                        First invoice
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
+                        {groupInvoices.length} invoice{groupInvoices.length === 1 ? "" : "s"}
+                      </span>
+                    )}
                     {overduePresent && (
                       <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 border border-rose-300 rounded px-1.5 py-0.5">
                         Overdue
@@ -1491,22 +1519,24 @@ function FullDetailByOpp({
                   )}
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <div className="border border-cc-brand-200 bg-cc-brand-50/40 rounded-lg px-2.5 py-1.5">
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Invoiced</div>
-                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalInvoiced)}</div>
+              {groupInvoices.length > 0 && (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="border border-cc-brand-200 bg-cc-brand-50/40 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Invoiced</div>
+                    <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalInvoiced)}</div>
+                  </div>
+                  <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Paid</div>
+                    <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalPaid)}</div>
+                  </div>
+                  <div className={`border rounded-lg px-2.5 py-1.5 ${
+                    totalBalance > 0 ? "border-blue-200 bg-blue-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
+                  }`}>
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Balance</div>
+                    <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance)}</div>
+                  </div>
                 </div>
-                <div className="border border-emerald-200 bg-emerald-50/40 rounded-lg px-2.5 py-1.5">
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Paid</div>
-                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalPaid)}</div>
-                </div>
-                <div className={`border rounded-lg px-2.5 py-1.5 ${
-                  totalBalance > 0 ? "border-blue-200 bg-blue-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
-                }`}>
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Balance</div>
-                  <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance)}</div>
-                </div>
-              </div>
+              )}
               {totalInvoiced > 0 && (
                 <div className="mt-3">
                   <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
