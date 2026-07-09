@@ -761,38 +761,61 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   )}
                 </div>
               ) : (
-                <div className="max-h-[320px] overflow-y-auto space-y-0.5">
-                  {wonOpps.map((o) => {
-                    const acct = accountById.get(o.account_id);
-                    // Karan 2026-07-07 bug fix: use `invoicesRaw` here
-                    // (not `invoices`) so the "N invoices already" badge
-                    // reflects true count, not the search-filtered subset.
-                    // Otherwise searching "Widget" would zero out counts on
-                    // every non-matching opp in the picker.
-                    const existing = invoicesRaw.filter((i) => i.opportunity_id === o.id).length;
-                    return (
-                      <Link
-                        key={o.id}
-                        href={`/commercial/invoices/new?opp=${o.id}`}
-                        className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-blue-50 min-h-[44px] touch-manipulation"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
-                            {o.title}
-                          </div>
-                          <div className="text-[11px] text-ppp-charcoal-500 truncate">
+                <div className="max-h-[360px] overflow-y-auto">
+                  {/* Karan 2026-07-09: group by customer so multiple deals
+                      under the same account read as one bucket. Renders
+                      "Bob" as a section header with Deal 1 / Deal 2
+                      indented underneath instead of two flat rows both
+                      subtitled with the customer's name. */}
+                  {(() => {
+                    const byAcct = new Map<string, typeof wonOpps>();
+                    for (const o of wonOpps) {
+                      const arr = byAcct.get(o.account_id) ?? [];
+                      arr.push(o);
+                      byAcct.set(o.account_id, arr);
+                    }
+                    // Preserve the newest-first sort by keying group
+                    // order to the first opp's index in wonOpps.
+                    const groupOrder = Array.from(byAcct.entries()).sort((a, b) => {
+                      const ai = wonOpps.findIndex((o) => o.account_id === a[0]);
+                      const bi = wonOpps.findIndex((o) => o.account_id === b[0]);
+                      return ai - bi;
+                    });
+                    return groupOrder.map(([accountId, deals]) => {
+                      const acct = accountById.get(accountId);
+                      return (
+                        <div key={accountId} className="pb-1.5">
+                          <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
                             {acct?.company_name ?? "—"}
-                            {existing > 0 && (
-                              <span className="ml-1.5 text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-1 py-0.5">
-                                {existing} invoice{existing === 1 ? "" : "s"} already
-                              </span>
-                            )}
+                          </div>
+                          <div className="space-y-0.5">
+                            {deals.map((o) => {
+                              const existing = invoicesRaw.filter((i) => i.opportunity_id === o.id).length;
+                              return (
+                                <Link
+                                  key={o.id}
+                                  href={`/commercial/invoices/new?opp=${o.id}`}
+                                  className="flex items-start justify-between gap-3 pl-5 pr-3 py-2 rounded-lg hover:bg-blue-50 min-h-[40px] touch-manipulation"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
+                                      {o.title}
+                                    </div>
+                                    {existing > 0 && (
+                                      <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5">
+                                        {existing} invoice{existing === 1 ? "" : "s"} already
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span aria-hidden className="text-cc-brand-600 shrink-0 mt-1">→</span>
+                                </Link>
+                              );
+                            })}
                           </div>
                         </div>
-                        <span aria-hidden className="text-cc-brand-600 shrink-0 mt-0.5">→</span>
-                      </Link>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               )}
               <div className="mt-2 pt-2 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500 px-1">
