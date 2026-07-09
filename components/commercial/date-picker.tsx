@@ -222,7 +222,8 @@ export default function DatePicker({
             <button
               type="button"
               onClick={() => pick(new Date())}
-              className="text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
+              disabled={isDisabled(new Date())}
+              className="text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed disabled:hover:text-ppp-charcoal-300"
             >
               Today
             </button>
