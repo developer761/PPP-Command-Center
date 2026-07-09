@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
-import { listCommercialOpportunities } from "@/lib/commercial/opportunities/db";
+import { listCommercialOpportunities, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -928,44 +928,13 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         </form>
       </div>
 
-      {/* List / empty */}
-      {sorted.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-12 text-center">
-          <div aria-hidden className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-4">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          </div>
-          <div className="text-sm font-semibold text-ppp-charcoal">
-            {anyFilterActive ? "No invoices match these filters" : "No invoices yet"}
-          </div>
-          <p className="mt-1 text-sm text-ppp-charcoal-500">
-            {anyFilterActive
-              ? "Try clearing filters or searching by invoice number or deal title."
-              : "Convert a Won deal into an invoice to get started."}
-          </p>
-          {anyFilterActive ? (
-            <Link
-              href="/commercial/invoices"
-              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
-            >
-              Clear all filters
-            </Link>
-          ) : (
-            <Link
-              href="/commercial/opportunities"
-              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
-            >
-              Go to pipeline
-            </Link>
-          )}
-        </div>
-      ) : accountIdFilter ? (
-        // Karan 2026-07-07: when scoped to a specific account, render
-        // FULL detail (per-invoice rows + inline Record payment + Add
-        // invoice) so users can do everything from this one page
-        // without jumping to opp detail. Compact list is only for the
-        // unfiltered overview.
+      {/* List / empty
+          Karan 2026-07-09 restructure: when scoped to an account,
+          FullDetailByOpp ALWAYS renders — even with zero invoices — so
+          the picker → ?add=<oppId> redirect can prime the inline form
+          for a first-time customer bill. Empty state only shows on the
+          unfiltered overview. */}
+      {accountIdFilter ? (
         <FullDetailByOpp
           invoices={sorted}
           oppById={oppById}
@@ -978,7 +947,78 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           createdInvoiceId={pickFirst(sp.created) ?? null}
           errorMessage={pickFirst(sp.error) ?? null}
           openAddOppId={pickFirst(sp.add) ?? null}
+          wonOppsForAccount={wonOpps}
         />
+      ) : sorted.length === 0 ? (
+        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 sm:p-12 text-center">
+          <div aria-hidden className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-4">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+          </div>
+          <div className="text-sm font-semibold text-ppp-charcoal">
+            {anyFilterActive ? "No invoices match these filters" : "No invoices yet"}
+          </div>
+          {anyFilterActive ? (
+            <>
+              <p className="mt-1 text-sm text-ppp-charcoal-500">
+                Try clearing filters or searching by invoice number or deal title.
+              </p>
+              <Link
+                href="/commercial/invoices"
+                className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
+              >
+                Clear all filters
+              </Link>
+            </>
+          ) : wonOpps.length > 0 ? (
+            <>
+              <p className="mt-1 text-sm text-ppp-charcoal-500">
+                {wonOpps.length === 1
+                  ? "You have 1 Won deal ready to bill."
+                  : `You have ${wonOpps.length} Won deals ready to bill.`}{" "}
+                Pick one to start:
+              </p>
+              <div className="mt-4 max-w-md mx-auto text-left space-y-1.5">
+                {wonOpps.slice(0, 5).map((o) => {
+                  const acct = accountById.get(o.account_id);
+                  return (
+                    <Link
+                      key={o.id}
+                      href={`/commercial/invoices/new?opp=${o.id}`}
+                      className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{o.title}</div>
+                        {acct && (
+                          <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{acct.company_name}</div>
+                        )}
+                      </div>
+                      <span aria-hidden className="text-ppp-charcoal-400 shrink-0 self-center">→</span>
+                    </Link>
+                  );
+                })}
+                {wonOpps.length > 5 && (
+                  <div className="text-[11.5px] text-ppp-charcoal-500 text-center pt-1">
+                    Or use <strong>New invoice ▾</strong> above to see all {wonOpps.length}.
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-ppp-charcoal-500">
+                An invoice attaches to a deal marked <strong>Won</strong>. Win a deal first, then come back.
+              </p>
+              <Link
+                href="/commercial/opportunities"
+                className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+              >
+                Go to pipeline
+              </Link>
+            </>
+          )}
+        </div>
       ) : (
         // Grouped-by-opportunity compact list. Each row = one opp; click
         // → jumps into opp detail. This is the overview surface.
@@ -1316,6 +1356,7 @@ function FullDetailByOpp({
   createdInvoiceId,
   errorMessage,
   openAddOppId,
+  wonOppsForAccount,
 }: {
   invoices: CommercialInvoice[];
   oppById: Map<string, { id: string; title: string; account_id: string; status: string }>;
@@ -1328,6 +1369,11 @@ function FullDetailByOpp({
   createdInvoiceId?: string | null;
   errorMessage?: string | null;
   openAddOppId?: string | null;
+  /** Karan 2026-07-09: passed in so the empty state can show a mini
+   *  Won-deal picker inline instead of dead-ending. Undefined = don't
+   *  render the picker (used for the unfiltered overview which uses a
+   *  different empty state entirely). */
+  wonOppsForAccount?: CommercialOpportunity[];
 }) {
   const groups = new Map<string, CommercialInvoice[]>();
   for (const inv of invoices) {
@@ -1392,12 +1438,45 @@ function FullDetailByOpp({
   });
 
   if (oppOrder.length === 0) {
+    const wonList = wonOppsForAccount ?? [];
     return (
-      <div className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-xl p-8 text-center space-y-2">
-        <p className="text-[13px] text-ppp-charcoal-600">No invoices for this customer yet.</p>
-        <p className="text-[12px] text-ppp-charcoal-500">
-          Use <strong>New invoice ▾</strong> above to pick a Won deal to bill.
-        </p>
+      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+        <div className="text-sm font-semibold text-ppp-charcoal">No invoices for this customer yet</div>
+        {wonList.length > 0 ? (
+          <>
+            <p className="mt-1 text-sm text-ppp-charcoal-500">
+              {wonList.length === 1
+                ? "1 Won deal is ready to bill. Pick it to start:"
+                : `${wonList.length} Won deals are ready to bill. Pick one to start:`}
+            </p>
+            <div className="mt-4 max-w-md mx-auto text-left space-y-1.5">
+              {wonList.map((o) => (
+                <Link
+                  key={o.id}
+                  href={`/commercial/invoices/new?opp=${o.id}`}
+                  className="flex items-start justify-between gap-3 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{o.title}</div>
+                  </div>
+                  <span aria-hidden className="text-ppp-charcoal-400 shrink-0 self-center">→</span>
+                </Link>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="mt-1 text-sm text-ppp-charcoal-500">
+              An invoice attaches to a deal marked <strong>Won</strong>. Win one of this customer's deals first.
+            </p>
+            <Link
+              href={`/commercial/accounts/${accountId}?tab=deals`}
+              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+            >
+              Open this customer's deals
+            </Link>
+          </>
+        )}
       </div>
     );
   }
