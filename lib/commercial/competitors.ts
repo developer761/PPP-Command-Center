@@ -299,3 +299,56 @@ export async function listAllCompetitors(): Promise<Competitor[]> {
     .order("name", { ascending: true });
   return (data as Competitor[] | null) ?? [];
 }
+
+/**
+ * Karan 2026-07-09: lifetime debrief stats per competitor for the
+ * Competitors settings page. Turns the page from a plain dictionary
+ * editor into a real competitor intelligence view — you see who you
+ * lose to most, your win rate against each, and when they last
+ * showed up on a deal.
+ *
+ * Returns a Map keyed on competitor_id so the calling page can join
+ * against `listAllCompetitors()` without a second round-trip.
+ */
+export type CompetitorLifetimeStats = {
+  won_count: number;
+  lost_count: number;
+  no_bid_count: number;
+  total_count: number;
+  last_seen_at: string | null;
+  win_rate_pct: number | null;
+};
+
+export async function getLifetimeCompetitorStats(): Promise<Map<string, CompetitorLifetimeStats>> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_win_loss_debrief")
+    .select("competitor_id, outcome, debriefed_at")
+    .not("competitor_id", "is", null);
+
+  type Row = { competitor_id: string; outcome: "won" | "lost" | "no_bid"; debriefed_at: string };
+  const byId = new Map<string, CompetitorLifetimeStats>();
+  for (const r of ((data as Row[] | null) ?? [])) {
+    const cur = byId.get(r.competitor_id) ?? {
+      won_count: 0,
+      lost_count: 0,
+      no_bid_count: 0,
+      total_count: 0,
+      last_seen_at: null,
+      win_rate_pct: null,
+    };
+    if (r.outcome === "won") cur.won_count++;
+    else if (r.outcome === "lost") cur.lost_count++;
+    else if (r.outcome === "no_bid") cur.no_bid_count++;
+    cur.total_count++;
+    if (!cur.last_seen_at || r.debriefed_at > cur.last_seen_at) cur.last_seen_at = r.debriefed_at;
+    byId.set(r.competitor_id, cur);
+  }
+  // Compute win rate = won / (won + lost). No-bid excluded because it's not
+  // a head-to-head. If no head-to-heads exist we leave win_rate_pct null.
+  for (const stats of byId.values()) {
+    const decided = stats.won_count + stats.lost_count;
+    stats.win_rate_pct = decided > 0 ? Math.round((stats.won_count / decided) * 100) : null;
+  }
+  return byId;
+}

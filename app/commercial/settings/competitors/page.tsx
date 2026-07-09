@@ -8,7 +8,10 @@ import {
   setCompetitorActive,
   mergeCompetitor,
   getOrCreateCompetitor,
+  getLifetimeCompetitorStats,
+  type CompetitorLifetimeStats,
 } from "@/lib/commercial/competitors";
+import Link from "next/link";
 
 /**
  * Competitors admin — manage the typeahead dictionary backing the Win/Loss
@@ -109,10 +112,36 @@ export default async function CompetitorsAdminPage({
   if (!isAdmin) redirect("/commercial");
 
   const sp = await searchParams;
-  const competitors = await listAllCompetitors();
-  const active = competitors.filter((c) => c.is_active && !c.merged_into_competitor_id);
+  const [competitors, statsById] = await Promise.all([
+    listAllCompetitors(),
+    getLifetimeCompetitorStats(),
+  ]);
+  const activeUnsorted = competitors.filter((c) => c.is_active && !c.merged_into_competitor_id);
   const inactive = competitors.filter((c) => !c.is_active && !c.merged_into_competitor_id);
   const merged = competitors.filter((c) => !!c.merged_into_competitor_id);
+  // Karan 2026-07-09: sort active by "lost to us the most" first — that's
+  // the operational reading: which shops beat us and how often. Falls
+  // back to total encounters, then alphabetical.
+  const active = [...activeUnsorted].sort((a, b) => {
+    const sa = statsById.get(a.id);
+    const sb2 = statsById.get(b.id);
+    const lostA = sa?.lost_count ?? 0;
+    const lostB = sb2?.lost_count ?? 0;
+    if (lostA !== lostB) return lostB - lostA;
+    const totA = sa?.total_count ?? 0;
+    const totB = sb2?.total_count ?? 0;
+    if (totA !== totB) return totB - totA;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Top-of-page summary numbers.
+  const totalDebriefs = Array.from(statsById.values()).reduce((s, x) => s + x.total_count, 0);
+  const totalLosses = Array.from(statsById.values()).reduce((s, x) => s + x.lost_count, 0);
+  const totalWins = Array.from(statsById.values()).reduce((s, x) => s + x.won_count, 0);
+  const overallWinRate = totalWins + totalLosses > 0
+    ? Math.round((totalWins / (totalWins + totalLosses)) * 100)
+    : null;
+  const topRival = active.find((c) => (statsById.get(c.id)?.lost_count ?? 0) > 0) ?? null;
 
   return (
     <div className="space-y-5">
@@ -172,44 +201,109 @@ export default async function CompetitorsAdminPage({
         </p>
       </section>
 
+      {/* Karan 2026-07-09: intelligence strip. Turns this from a
+          dictionary editor into a real "who are we losing to" surface. */}
+      {totalDebriefs > 0 && (
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <StatTile label="Head-to-heads" value={String(totalWins + totalLosses)} sub={`${totalDebriefs} debriefs total`} />
+          <StatTile label="Win rate" value={overallWinRate !== null ? `${overallWinRate}%` : "—"} sub={`${totalWins} won · ${totalLosses} lost`} tone={overallWinRate !== null && overallWinRate >= 50 ? "good" : "bad"} />
+          <StatTile label="Rivals tracked" value={String(active.length)} sub={inactive.length > 0 ? `${inactive.length} retired` : "all active"} />
+          <StatTile label="Top rival" value={topRival?.name ?? "—"} sub={topRival ? `${statsById.get(topRival.id)?.lost_count ?? 0} losses to them` : "no losses yet"} tone="bad" />
+        </section>
+      )}
+
       {/* Active competitors */}
       <section className="mb-6 bg-white border border-ppp-charcoal-100 rounded-xl p-4">
-        <h2 className="text-sm font-semibold text-ppp-charcoal mb-3">
-          Active ({active.length})
-        </h2>
+        <div className="flex items-baseline justify-between mb-3 gap-3">
+          <h2 className="text-sm font-semibold text-ppp-charcoal">
+            Active ({active.length})
+          </h2>
+          <span className="text-[11px] text-ppp-charcoal-400">
+            Sorted by losses first — the shops beating us most float to the top.
+          </span>
+        </div>
         {active.length === 0 ? (
           <p className="text-sm text-ppp-charcoal-500">
             No active competitors yet. As debriefs roll in, this list grows.
           </p>
         ) : (
           <ul className="space-y-2">
-            {active.map((c) => (
-              <li key={c.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm text-ppp-charcoal truncate">{c.name}</div>
-                    <div className="text-[11px] text-ppp-charcoal-400 mt-0.5">
-                      Added {new Date(c.created_at).toLocaleDateString()}
+            {active.map((c) => {
+              const stats = statsById.get(c.id);
+              return (
+                <li key={c.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <div className="font-semibold text-[14px] text-ppp-charcoal truncate">{c.name}</div>
+                        {stats && stats.win_rate_pct !== null && (
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-bold ${
+                              stats.win_rate_pct >= 50
+                                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                : stats.win_rate_pct === 0
+                                ? "bg-rose-50 text-rose-800 border border-rose-200"
+                                : "bg-amber-50 text-amber-800 border border-amber-200"
+                            }`}
+                            title={`${stats.won_count} won · ${stats.lost_count} lost head-to-head`}
+                          >
+                            {stats.win_rate_pct}% win rate
+                          </span>
+                        )}
+                      </div>
+                      {stats && stats.total_count > 0 ? (
+                        <div className="text-[11.5px] text-ppp-charcoal-600 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap tabular-nums">
+                          <span><strong className="text-ppp-charcoal">{stats.won_count}</strong> won</span>
+                          <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                          <span><strong className={stats.lost_count > 0 ? "text-rose-700" : "text-ppp-charcoal"}>{stats.lost_count}</strong> lost</span>
+                          {stats.no_bid_count > 0 && (
+                            <>
+                              <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                              <span>{stats.no_bid_count} no-bid</span>
+                            </>
+                          )}
+                          {stats.last_seen_at && (
+                            <>
+                              <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                              <span className="text-ppp-charcoal-500">
+                                Last seen {new Date(stats.last_seen_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-[11.5px] text-ppp-charcoal-500 mt-1 italic">
+                          Not seen on any debrief yet.
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      <RenameForm competitorId={c.id} currentName={c.name} />
+                      <form action={toggleActiveAction}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="set_to" value="inactive" />
+                        <button
+                          type="submit"
+                          className="text-xs font-medium px-3 py-2 rounded-md border border-amber-200 text-amber-800 hover:bg-amber-50 min-h-[44px]"
+                        >
+                          Retire
+                        </button>
+                      </form>
+                      <MergeForm sourceId={c.id} sourceName={c.name} candidates={active.filter((x) => x.id !== c.id)} />
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <RenameForm competitorId={c.id} currentName={c.name} />
-                    <form action={toggleActiveAction}>
-                      <input type="hidden" name="id" value={c.id} />
-                      <input type="hidden" name="set_to" value="inactive" />
-                      <button
-                        type="submit"
-                        className="text-xs font-medium px-3 py-2 rounded-md border border-amber-200 text-amber-800 hover:bg-amber-50 min-h-[44px]"
-                      >
-                        Retire
-                      </button>
-                    </form>
-                    <MergeForm sourceId={c.id} sourceName={c.name} candidates={active.filter((x) => x.id !== c.id)} />
-                  </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
+        )}
+        {totalDebriefs > 0 && (
+          <div className="mt-3 pt-3 border-t border-ppp-charcoal-100 text-[11.5px] text-ppp-charcoal-500 flex items-center gap-1">
+            <span>Stats come from Win/Loss Debriefs.</span>
+            <Link href="/commercial/reports/win-loss" className="text-cc-brand-700 font-semibold hover:underline">
+              Open the full report →
+            </Link>
+          </div>
         )}
       </section>
 
@@ -327,5 +421,36 @@ function MergeForm({
         </button>
       </form>
     </details>
+  );
+}
+
+/** Karan 2026-07-09: reused tile shape for the intelligence strip at
+ *  the top of the Competitors page. Tone-driven so "top rival" reads
+ *  red and "win rate ≥50%" reads emerald without a legend. */
+function StatTile({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  tone?: "good" | "bad";
+}) {
+  const valueCls =
+    tone === "good"
+      ? "text-emerald-700"
+      : tone === "bad"
+      ? "text-rose-700"
+      : "text-ppp-charcoal";
+  return (
+    <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 shadow-sm">
+      <div className="text-[12px] font-semibold text-ppp-charcoal-700">{label}</div>
+      <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 truncate ${valueCls}`} title={value}>
+        {value}
+      </div>
+      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 truncate" title={sub}>{sub}</div>
+    </div>
   );
 }
