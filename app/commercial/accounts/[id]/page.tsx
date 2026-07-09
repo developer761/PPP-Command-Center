@@ -178,7 +178,7 @@ const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
   // (scoreboard), People, Activity. Landing on Overview by default
   // gives an easy-read snapshot before drilling in.
   { key: "overview", label: "Overview" },
-  { key: "deals", label: "Deals" },
+  { key: "deals", label: "Opportunities" },
   { key: "invoices", label: "Invoices" },
   { key: "kpis", label: "KPIs" },
   { key: "people", label: "People" },
@@ -418,7 +418,7 @@ export default async function CommercialAccountDetailPage({
             <Link
               href={`/commercial/accounts/${account.id}?tab=deals&sub=opportunities&new_deal=1#new-deal`}
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px]"
-              title={`Log a new deal for ${account.company_name}`}
+              title={`Log a new opportunity for ${account.company_name}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M12 5v14 M5 12h14" />
@@ -2401,7 +2401,7 @@ function NewDealForm({ accountId }: { accountId: string }) {
     <form action={createDealInlineAction} className="space-y-3">
       <input type="hidden" name="account_id" value={accountId} />
       <div>
-        <label className={labelCls} htmlFor="deal-title">Deal title</label>
+        <label className={labelCls} htmlFor="deal-title">Opportunity title</label>
         <input
           id="deal-title"
           type="text"

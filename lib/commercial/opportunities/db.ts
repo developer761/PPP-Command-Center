@@ -12,8 +12,8 @@ import { commercialDb } from "@/lib/commercial/db";
 
 // Karan 2026-07-09 Phase A: removed `site_visit_scheduled` + `site_visit_done`
 // per post-meeting notes. Any historic rows on those statuses migrate to
-// `bidding` via migration 044. The `bidding` alias (aka `estimating`) is
-// what we now use for the phase between inquiry and proposal_sent.
+// `estimating` via migration 044 (the natural post-inquiry pre-proposal
+// state now that site-visit is folded into estimating).
 export const OPPORTUNITY_STATUSES = [
   "inquiry",
   "estimating",
@@ -27,8 +27,14 @@ export const OPPORTUNITY_STATUSES = [
 ] as const;
 export type OpportunityStatus = (typeof OPPORTUNITY_STATUSES)[number];
 
-export function opportunityStatusLabel(s: OpportunityStatus): string {
-  return {
+// Widened arg type so callers with a legacy row (site_visit_*) or any
+// unknown enum value get a readable fallback instead of `undefined`
+// silently reaching JSX. Phase A migration 044 backfills historic rows,
+// but a webhook / integration writing a stale status must not blow up
+// the pipeline UI.
+export function opportunityStatusLabel(s: string | null | undefined): string {
+  if (!s) return "Unknown";
+  const label = {
     inquiry: "Inquiry",
     estimating: "Estimating",
     proposal_sent: "Proposal sent",
@@ -38,7 +44,12 @@ export function opportunityStatusLabel(s: OpportunityStatus): string {
     lost: "Lost",
     no_bid: "No bid",
     reopened: "Reopened",
-  }[s];
+    // Retired 2026-07-09 (Phase A). Kept as read-only display fallback
+    // so any un-migrated historic row still renders a sane label.
+    site_visit_scheduled: "Site visit scheduled (retired)",
+    site_visit_done: "Site visit done (retired)",
+  }[s as string];
+  return label ?? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
 }
 
 export const OPPORTUNITY_SOURCES = [

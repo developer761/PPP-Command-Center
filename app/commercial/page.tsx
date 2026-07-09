@@ -118,7 +118,7 @@ export default async function CommercialDashboardPage() {
         <KpiTile
           tone="cc-brand"
           value={openOpps.length.toLocaleString()}
-          label="Open deals"
+          label="Open opportunities"
           sub={`${decidedOpps.length} decided`}
           href="/commercial/opportunities"
           icon={<IconTarget />}
@@ -179,9 +179,9 @@ export default async function CommercialDashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <QuickAction
             primary
-            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the customer first — deals live under their account.")}`}
+            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the customer first — opportunities live under their account.")}`}
             title="Start a bid"
-            sub="Pick a customer to log the deal under."
+            sub="Pick a customer to log the opportunity under."
             icon={<IconPlus />}
           />
           <QuickAction

@@ -900,7 +900,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               name="q"
               type="search"
               defaultValue={search ?? ""}
-              placeholder="Search by invoice # or deal title…"
+              placeholder="Search by invoice # or opportunity title…"
               className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
             />
           </div>

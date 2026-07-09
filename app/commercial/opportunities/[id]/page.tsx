@@ -2313,7 +2313,7 @@ async function InfoTab({
           Invoices tab in the tab bar already signal what needs doing.
           A banner repeating the same message is noise. */}
       <Card
-        title="Deal"
+        title="Opportunity"
         tone="cc-brand"
         icon={
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

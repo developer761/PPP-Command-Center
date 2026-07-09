@@ -548,7 +548,7 @@ export default async function CommercialOpportunitiesPage({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             tone="cc-brand"
-            label="Open deals"
+            label="Open opportunities"
             value={openOpps.length.toString()}
             sub={`${opps.length - openOpps.length} closed`}
           />
@@ -648,7 +648,7 @@ export default async function CommercialOpportunitiesPage({
               name="q"
               type="search"
               defaultValue={search ?? ""}
-              placeholder="Search deals by title…"
+              placeholder="Search opportunities by title…"
               className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
             />
           </div>

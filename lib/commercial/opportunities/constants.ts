@@ -14,8 +14,6 @@
  *  you are to win — it's a side state. */
 export const DEFAULT_PROBABILITY_BY_STATUS: Record<string, number> = {
   inquiry: 10,
-  site_visit_scheduled: 20,
-  site_visit_done: 35,
   estimating: 50,
   proposal_sent: 60,
   negotiating: 75,
@@ -66,9 +64,7 @@ export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
   // soft confirmation prompt; the lib accepts the transition.
   // Karan 2026-06-24: Won was only reachable from Negotiating, breaking
   // the obvious "I just got the verbal" close path from any earlier state.
-  inquiry: ["site_visit_scheduled", "estimating", "won", "lost", "no_bid", "on_hold"],
-  site_visit_scheduled: ["site_visit_done", "won", "lost", "no_bid", "on_hold"],
-  site_visit_done: ["estimating", "won", "lost", "no_bid", "on_hold"],
+  inquiry: ["estimating", "won", "lost", "no_bid", "on_hold"],
   estimating: ["proposal_sent", "won", "lost", "no_bid", "on_hold"],
   proposal_sent: ["negotiating", "estimating", "won", "lost", "no_bid", "on_hold"],
   negotiating: ["won", "lost", "no_bid", "on_hold", "estimating"],
@@ -86,13 +82,9 @@ export const WARN_TRANSITIONS: ReadonlySet<string> = new Set([
   // Early-kill warnings — flagging the user "are you sure you're killing
   // this without trying?"
   "inquiry→lost",
-  "site_visit_scheduled→lost",
-  "site_visit_done→lost",
   // Early-WIN warnings — verbal-yes mid-funnel is real (repeat customers
   // call and commit), but flag in case someone misclicks.
   "inquiry→won",
-  "site_visit_scheduled→won",
-  "site_visit_done→won",
   "estimating→won",
   // Scope-change re-bid warnings
   "proposal_sent→estimating",
@@ -149,8 +141,6 @@ export const STALE_ACCOUNT_OPP_COOLING_MULTIPLIER = 4;
  *  state so users see them as a queue to clear. */
 export const OPEN_OPP_STATUSES: readonly string[] = [
   "inquiry",
-  "site_visit_scheduled",
-  "site_visit_done",
   "estimating",
   "proposal_sent",
   "negotiating",

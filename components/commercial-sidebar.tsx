@@ -92,7 +92,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
     // Karan 2026-07-01: "do the same format as PPP command center just
     // like different colors, red and blue for the commercial side."
     <aside className="w-64 lg:w-64 h-full bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
-      <div className="px-6 py-5 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
+      <div className="px-6 py-3 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
         <Link href="/commercial" className="block" onClick={onNavigate}>
           <Image
             src="/brand/logo.svg"
@@ -122,10 +122,10 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
         )}
       </div>
 
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+      <nav className="flex-1 px-3 py-3 lg:py-4 overflow-y-auto">
         {navSections.map((section, sectionIdx) => (
-          <div key={section.heading} className={sectionIdx > 0 ? "mt-6" : ""}>
-            <div className="font-condensed px-3 mb-2 text-[10px] font-bold tracking-[0.18em] text-cc-navy-700 uppercase">
+          <div key={section.heading} className={sectionIdx > 0 ? "mt-4 lg:mt-6" : ""}>
+            <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-cc-navy-700 uppercase">
               {section.heading}
             </div>
             <ul className="space-y-0.5">
@@ -134,7 +134,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                   item.href === "/commercial"
                     ? pathname === "/commercial"
                     : pathname.startsWith(item.href);
-                const baseClasses = "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors";
+                const baseClasses = "flex items-center gap-3 px-3 py-2 lg:py-2.5 rounded-lg text-sm font-medium transition-colors";
 
                 if (item.disabled) {
                   return (
@@ -188,11 +188,14 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
         )}
       </nav>
 
-      <div className="px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
-        <div className="font-semibold text-ppp-charcoal">Phase 3 · Invoicing</div>
+      {/* Version footer hidden on mobile so the drawer's nav can fully fit on
+         a 568px viewport. Desktop keeps the phase-tag for at-a-glance
+         "what's the platform on right now" context. */}
+      <div className="hidden lg:block px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
+        <div className="font-semibold text-ppp-charcoal">Phase A · Restructure</div>
         <div className="mt-0.5 flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-cc-brand-500 animate-pulse" aria-hidden />
-          Postgres-native
+          Pre-Job / Post-Job
         </div>
       </div>
     </aside>
