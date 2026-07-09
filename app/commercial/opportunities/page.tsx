@@ -201,7 +201,10 @@ async function createDealFromPipelineAction(formData: FormData) {
   }
   revalidatePath("/commercial/opportunities");
   revalidatePath(`/commercial/accounts/${account_id}`);
-  redirect(`/commercial/accounts/${account_id}?tab=deals&saved=1#deal-${result.opportunity.id}`);
+  // Karan 2026-07-09: stay on the pipeline instead of jumping to the
+  // account's Deals tab. Passes ?created=<title> so the pipeline flash
+  // banner can confirm the create.
+  redirect(`/commercial/opportunities?created=1&created_title=${encodeURIComponent(title)}`);
   // unreachable — satisfy the linter that this file has a "server action returns void" signature
   void backHref;
 }
@@ -260,9 +263,12 @@ export default async function CommercialOpportunitiesPage({
   // the customer name lands on their account page. Kanban + list stay
   // as alternate views (?view=kanban / ?view=list) so the deal-first
   // workflows (drag-through-stage, CSV export) don't disappear.
+  // Karan 2026-07-09: kanban is now the default view — matches the way
+  // Alex actually reads the pipeline (columns of stages) instead of the
+  // customer-first grouping we had before.
   const viewRaw = pickFirst(sp.view);
   const viewMode: "list" | "kanban" | "customer" =
-    viewRaw === "list" ? "list" : viewRaw === "kanban" ? "kanban" : "customer";
+    viewRaw === "list" ? "list" : viewRaw === "customer" ? "customer" : "kanban";
 
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently updated" },

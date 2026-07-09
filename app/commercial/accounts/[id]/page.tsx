@@ -1404,7 +1404,7 @@ function TagsCard({
       <form action={addTagAction} className="flex flex-col sm:flex-row sm:items-end gap-2">
         <input type="hidden" name="account_id" value={accountId} />
         <div className="flex-1">
-          <label htmlFor="new_tag" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+          <label htmlFor="new_tag" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
             Add tag
           </label>
           <input
@@ -1663,7 +1663,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
             <ContactInput id="phone" label="Phone" type="tel" />
           </div>
           <div>
-            <label htmlFor="role" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="role" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
               Role
             </label>
             <select
@@ -1680,7 +1680,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
             </select>
           </div>
           <div>
-            <label htmlFor="contact_notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="contact_notes" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
               Notes
             </label>
             <input
@@ -1873,7 +1873,7 @@ function ContactInput({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+      <label htmlFor={id} className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
         {label}
       </label>
       <input
@@ -2062,7 +2062,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           <input type="hidden" name="account_id" value={accountId} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label htmlFor="user_id" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="user_id" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
                 PPP staff *
               </label>
               <select
@@ -2096,7 +2096,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
               )}
             </div>
             <div>
-              <label htmlFor="role" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="role" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
                 Role *
               </label>
               <select
@@ -2119,7 +2119,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             Mark as primary in this role (replaces any current primary)
           </label>
           <div>
-            <label htmlFor="team_notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+            <label htmlFor="team_notes" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
               Notes
             </label>
             <input
@@ -2161,7 +2161,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             <input type="hidden" name="account_id" value={accountId} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor="team_email" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                <label htmlFor="team_email" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
                   Email *
                 </label>
                 <input
@@ -2182,7 +2182,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
                 </datalist>
               </div>
               <div>
-                <label htmlFor="email_role" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+                <label htmlFor="email_role" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
                   Role *
                 </label>
                 <select
@@ -2205,7 +2205,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
               Mark as primary in this role
             </label>
             <div>
-              <label htmlFor="email_team_notes" className="block text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-1">
+              <label htmlFor="email_team_notes" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
                 Notes
               </label>
               <input

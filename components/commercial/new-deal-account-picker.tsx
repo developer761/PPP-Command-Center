@@ -1,71 +1,130 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 /**
- * Karan 2026-07-08: account picker for the "New deal" slide-out on the
+ * Karan 2026-07-09: account picker for the "New deal" slide-out on the
  * pipeline page.
  *
- * The dumb server-only approach ({option value=uuid}) doesn't work as
- * autocomplete — browsers filter <datalist> options on `value`, not on
- * `label`. So typing a customer name would never match anything.
+ * V1 used <datalist> — browser-native, which meant the dropdown was
+ * that gray OS-chrome look that Karan hates. This version renders our
+ * own filtered list panel underneath the input, styled to match the
+ * rest of the platform.
  *
- * Fix: the visible input is the human-readable company name, backed by
- * a <datalist> of all names. On every keystroke we look up the id
- * corresponding to that name and stash it in a hidden field named
- * `account_id` — which is what the server action reads. Case-
- * insensitive match; ties broken by the first row in the accounts
- * array (order comes from listCommercialAccounts which alphabetizes).
+ * The visible input is the customer name; the selected UUID lives in a
+ * hidden `account_id` field so the server action doesn't need to
+ * change. Keyboard support: ↑↓ to move, Enter to select, Esc to close.
  */
-export default function NewDealAccountPicker({
-  accounts,
-}: {
-  accounts: { id: string; company_name: string }[];
-}) {
+type Account = { id: string; company_name: string };
+
+export default function NewDealAccountPicker({ accounts }: { accounts: Account[] }) {
   const [name, setName] = useState("");
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedId, setSelectedId] = useState("");
+  const [open, setOpen] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const idForName = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const a of accounts) {
-      const key = a.company_name.trim().toLowerCase();
-      if (!map.has(key)) map.set(key, a.id);
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     }
-    return map;
-  }, [accounts]);
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
-  const trimmed = name.trim().toLowerCase();
-  const resolvedId = idForName.get(trimmed) ?? "";
+  const q = name.trim().toLowerCase();
+  const matches = useMemo(() => {
+    if (!q) return accounts.slice(0, 40);
+    return accounts.filter((a) => a.company_name.toLowerCase().includes(q)).slice(0, 40);
+  }, [accounts, q]);
+
+  function pick(a: Account) {
+    setName(a.company_name);
+    setSelectedId(a.id);
+    setOpen(false);
+  }
+
+  function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setActiveIdx((i) => Math.min(matches.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      if (open && matches[activeIdx]) {
+        e.preventDefault();
+        pick(matches[activeIdx]);
+      }
+    }
+  }
 
   return (
-    <div>
+    <div ref={rootRef} className="relative">
       <label htmlFor="new-deal-account" className={LABEL_CLS}>
         Customer <span className="text-red-600">*</span>
       </label>
       <input
         id="new-deal-account"
-        ref={inputRef}
-        list="new-deal-accounts-list"
+        type="text"
         required
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e) => {
+          setName(e.target.value);
+          setSelectedId("");
+          setOpen(true);
+          setActiveIdx(0);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={onInputKey}
         placeholder="Type a customer name…"
         autoComplete="off"
         className={INPUT_CLS}
+        aria-autocomplete="list"
+        aria-expanded={open}
       />
-      <datalist id="new-deal-accounts-list">
-        {accounts.map((a) => (
-          <option key={a.id} value={a.company_name} />
-        ))}
-      </datalist>
-      <input type="hidden" name="account_id" value={resolvedId} />
-      {name && !resolvedId && (
-        <p className="text-[11px] text-red-600 mt-1">
-          No customer matches “{name}” — pick one from the list.
-        </p>
+      <input type="hidden" name="account_id" value={selectedId} />
+      {open && matches.length > 0 && (
+        <ul
+          role="listbox"
+          className="absolute z-50 mt-1 left-0 right-0 max-h-64 overflow-y-auto bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl py-1"
+        >
+          {matches.map((a, i) => (
+            <li
+              key={a.id}
+              role="option"
+              aria-selected={i === activeIdx}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pick(a);
+              }}
+              onMouseEnter={() => setActiveIdx(i)}
+              className={`px-3 py-2 text-sm cursor-pointer ${i === activeIdx ? "bg-cc-brand-50 text-ppp-charcoal" : "text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"}`}
+            >
+              {a.company_name}
+            </li>
+          ))}
+        </ul>
       )}
-      {resolvedId && (
+      {open && matches.length === 0 && q && (
+        <div className="absolute z-50 mt-1 left-0 right-0 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl px-3 py-3 text-[13px] text-ppp-charcoal-500">
+          No customer matches “{name}”.
+        </div>
+      )}
+      {name && !selectedId && !open && (
+        <p className="text-[11px] text-red-600 mt-1">Pick one from the list.</p>
+      )}
+      {selectedId && (
         <p className="text-[11px] text-emerald-700 mt-1">✓ Customer selected.</p>
       )}
     </div>
