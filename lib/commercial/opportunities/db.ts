@@ -152,6 +152,11 @@ export type CommercialOpportunity = {
   client_name: string | null;
   location_short: string | null;
   estimator_user_id: string | null;
+  // Migration 049 (Karan 2026-07-10) — free-text estimator name for
+  // sub / GC-supplied / off-roster estimators. Takes precedence over
+  // estimator_user_id at display time. One of the two is enough to
+  // satisfy the estimating+ structural-fields gate.
+  estimator_name: string | null;
   // project_number auto-populated by BEFORE INSERT trigger (YYYY-NNNN).
   project_number: string | null;
   // Migration 045 — snapshot of previous status; preserves context for

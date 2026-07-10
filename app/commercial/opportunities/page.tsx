@@ -983,66 +983,73 @@ export default async function CommercialOpportunitiesPage({
                   </p>
                 </div>
               </div>
-              {/* Karan 2026-07-10 (ui-micro-details rev 3): removed all
-                  blue/navy from the group headers per Karan's feedback.
-                  Now uses a clean charcoal treatment across the board:
-                  bg-white cards with a subtle charcoal-50 strip between
-                  groups, charcoal-200 left accent for every group,
-                  charcoal-100 header bg + charcoal-800 text. Multi-deal
-                  groups get a slightly stronger left accent
-                  (charcoal-400) but no color tint. Professional, quiet,
-                  no color noise. */}
-              <ul className="divide-y-[6px] divide-ppp-charcoal-50">
-                {groups.map((g) => {
-                  const isCluster = g.opps.length > 1;
-                  return (
-                    <li
-                      key={g.accountId}
-                      className={
-                        isCluster
-                          ? "border-l-[3px] border-ppp-charcoal-500"
-                          : "border-l-[3px] border-ppp-charcoal-200"
-                      }
-                    >
-                      {g.account && (
-                        <div
-                          className={`px-4 py-2 flex items-center gap-2 flex-wrap border-b border-ppp-charcoal-100 ${
-                            isCluster ? "bg-ppp-charcoal-100/70" : "bg-ppp-charcoal-50/60"
-                          }`}
-                        >
+              {/* Karan 2026-07-10 (ui-micro-details rev 4): rebuild pass.
+                  Previous versions read as "Bob · Bob · — bid" — the
+                  group header stacked separately from the rows and each
+                  row still rendered the account name inline. New shape:
+                  each account = one white CARD with rounded borders +
+                  soft shadow. Header row: bold account name (link) +
+                  right-aligned deals count chip + optional Key/industry
+                  chips. Divider. Then each deal renders as a plain
+                  row with hideAccount=true so no repetition. Cards
+                  separated by a 12px gap (no divide-y). Reads as a
+                  clean stack of customer cards, not one long list. */}
+              <ul className="space-y-3">
+                {groups.map((g) => (
+                  <li
+                    key={g.accountId}
+                    className="bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden"
+                  >
+                    {g.account && (
+                      <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/40">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
                           <Link
                             href={`/commercial/accounts/${g.account.id}`}
-                            className="text-[13px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2"
+                            className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
                             title={`Open ${g.account.company_name}'s account`}
                           >
                             {g.account.company_name}
                           </Link>
-                          <span className="text-[10.5px] font-bold uppercase tracking-wide text-ppp-charcoal-600 bg-white border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
-                            {g.opps.length} deal{g.opps.length === 1 ? "" : "s"}
-                          </span>
+                          {g.account.is_key_relationship && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200 shrink-0"
+                              title="Key relationship — flagged by admin"
+                            >
+                              <span aria-hidden>★</span> Key
+                            </span>
+                          )}
+                          {g.account.industry && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 shrink-0">
+                              {g.account.industry}
+                            </span>
+                          )}
                         </div>
-                      )}
-                      <ul className="divide-y divide-ppp-charcoal-100">
-                        {g.opps.map((o) => (
-                          <OpportunityRow
-                            key={o.id}
-                            opportunity={o}
-                            account={g.account}
-                            statusEnteredAt={statusEnteredAtMap.get(o.id) ?? null}
-                            taskStats={taskStatsMap.get(o.id) ?? null}
-                            lastNote={lastNoteMap.get(o.id) ?? null}
-                            primaryLead={primaryLeadMap.get(o.id) ?? null}
-                            fileCount={fileCountMap.get(o.id) ?? 0}
-                            submittalStats={submittalCountMap.get(o.id) ?? null}
-                            finishCount={finishCountMap.get(o.id) ?? 0}
-                            sheetHref={customerSheetHref}
-                            flipReturnHref={flipReturnHref}
-                          />
-                        ))}
-                      </ul>
-                    </li>
-                  );
-                })}
+                        <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-white border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
+                          {g.opps.length} deal{g.opps.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    )}
+                    <ul className="divide-y divide-ppp-charcoal-100">
+                      {g.opps.map((o) => (
+                        <OpportunityRow
+                          key={o.id}
+                          opportunity={o}
+                          account={g.account}
+                          statusEnteredAt={statusEnteredAtMap.get(o.id) ?? null}
+                          taskStats={taskStatsMap.get(o.id) ?? null}
+                          lastNote={lastNoteMap.get(o.id) ?? null}
+                          primaryLead={primaryLeadMap.get(o.id) ?? null}
+                          fileCount={fileCountMap.get(o.id) ?? 0}
+                          submittalStats={submittalCountMap.get(o.id) ?? null}
+                          finishCount={finishCountMap.get(o.id) ?? 0}
+                          sheetHref={customerSheetHref}
+                          flipReturnHref={flipReturnHref}
+                          hideAccount={g.account !== null}
+                        />
+                      ))}
+                    </ul>
+                  </li>
+                ))}
               </ul>
             </div>
           );
@@ -2078,6 +2085,7 @@ function OpportunityRow({
   finishCount,
   sheetHref,
   flipReturnHref,
+  hideAccount = false,
 }: {
   opportunity: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -2090,6 +2098,10 @@ function OpportunityRow({
   finishCount: number;
   sheetHref: (accountId: string, focus?: string) => string;
   flipReturnHref: string;
+  /** Karan 2026-07-10: when true, suppress the row's inline account
+   *  name + industry chip because the outer group header already
+   *  renders them. Kills the "Bob · Bob · — bid" repetition. */
+  hideAccount?: boolean;
 }) {
   const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
   const dueChip = decisionChip(opportunity.proposal_due_at);
@@ -2118,16 +2130,19 @@ function OpportunityRow({
             </div>
 
             {/* Line 2 — account context + bid + confidence. Muted so
-                the eye lands on the title first. */}
+                the eye lands on the title first. When the row lives
+                inside an account-grouped list, hide the account
+                name+chips (already surfaced in the group header) so
+                the line doesn't read as "Bob · Bob · — bid". */}
             <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
-              {account && (
+              {!hideAccount && account && (
                 <span className="text-ppp-charcoal-700 font-medium">{account.company_name}</span>
               )}
-              {account?.rating && <RatingPill rating={account.rating} />}
-              {account?.prequalification_status && account.prequalification_status !== "not_started" && (
+              {!hideAccount && account?.rating && <RatingPill rating={account.rating} />}
+              {!hideAccount && account?.prequalification_status && account.prequalification_status !== "not_started" && (
                 <PrequalPill status={account.prequalification_status} />
               )}
-              {account && <span aria-hidden>·</span>}
+              {!hideAccount && account && <span aria-hidden>·</span>}
               <span>
                 <strong className="text-ppp-charcoal">{bid}</strong> bid
               </span>

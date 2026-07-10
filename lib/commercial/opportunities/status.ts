@@ -153,7 +153,11 @@ export async function changeOpportunityStatus(
     const missing: string[] = [];
     if (!beforeRow.client_name?.trim()) missing.push("client name");
     if (!beforeRow.location_short?.trim()) missing.push("site location");
-    if (!beforeRow.estimator_user_id) missing.push("estimator");
+    // Karan 2026-07-10: manual estimator entry (migration 049) — accept
+    // either the FK OR a non-empty free-text name to satisfy the
+    // estimating+ gate. Subs / GC-supplied estimators aren't in the
+    // auth.users roster but the deal still needs to move.
+    if (!beforeRow.estimator_user_id && !beforeRow.estimator_name?.trim()) missing.push("estimator");
     if (missing.length > 0) {
       const label =
         missing.length === 1

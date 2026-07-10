@@ -778,6 +778,11 @@ async function createDealInlineAction(formData: FormData) {
   const location_short = String(formData.get("location_short") ?? "").trim() || null;
   const estimatorRaw = String(formData.get("estimator_user_id") ?? "").trim();
   const estimator_user_id = estimatorRaw && UUID_RE.test(estimatorRaw) ? estimatorRaw : null;
+  // Migration 049 (Karan 2026-07-10) — free-text estimator name for
+  // subs/off-roster estimators. The mutation clears this if
+  // estimator_user_id is set, so no dueling-writes concern here.
+  const estimator_name_raw = String(formData.get("estimator_name") ?? "").trim();
+  const estimator_name = estimator_name_raw ? estimator_name_raw.slice(0, 120) : null;
 
   // Karan 2026-07-08: capture proposed_start / proposed_end / probability
   // override on create so the user doesn't have to bounce through the
@@ -833,6 +838,7 @@ async function createDealInlineAction(formData: FormData) {
     client_name,
     location_short,
     estimator_user_id,
+    estimator_name,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -921,6 +927,9 @@ async function editDealFromAccountAction(formData: FormData) {
   const location_short = String(formData.get("location_short") ?? "").trim() || null;
   const estimatorSheetRaw = String(formData.get("estimator_user_id") ?? "").trim();
   const estimator_user_id = estimatorSheetRaw && UUID_RE.test(estimatorSheetRaw) ? estimatorSheetRaw : null;
+  // Migration 049 — free-text estimator name (see createDealInlineAction).
+  const estimatorNameSheetRaw = String(formData.get("estimator_name") ?? "").trim();
+  const estimator_name = estimatorNameSheetRaw ? estimatorNameSheetRaw.slice(0, 120) : null;
 
   const result = await updateCommercialOpportunity({
     id: opp_id,
@@ -940,6 +949,7 @@ async function editDealFromAccountAction(formData: FormData) {
     client_name,
     location_short,
     estimator_user_id,
+    estimator_name,
     updated_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -1680,7 +1690,8 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
               id="role"
               name="role"
               defaultValue="decision_maker"
-              className="w-full sm:w-auto px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 bg-white"
+              className={`${SELECT_CLS} sm:w-auto`}
+              style={SELECT_BG_STYLE}
             >
               {CONTACT_ROLES.map((r) => (
                 <option key={r} value={r}>
@@ -2425,7 +2436,13 @@ function NewDealForm({
   duplicateWarning: { id: string; label: string } | null;
 }) {
   const inputCls =
-    "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30";
+    "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 bg-white";
+  // Karan 2026-07-10 (second flag on gray selects): the OS-default
+  // <select> chevron on Mac/Chrome renders the whole control in a
+  // grayscale gradient that reads as "disabled" even when it isn't.
+  // Every select in this form pins appearance-none + our own chevron
+  // via SELECT_BG_STYLE so it visually matches the text inputs.
+  const selectCls = `${inputCls} appearance-none bg-no-repeat pr-9 cursor-pointer`;
   const labelCls = "block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5";
   return (
     <form action={createDealInlineAction} className="space-y-3">
@@ -2465,7 +2482,8 @@ function NewDealForm({
           <select
             name="status"
             defaultValue="solicitation"
-            className={`${inputCls} bg-white`}
+            className={selectCls}
+            style={SELECT_BG_STYLE}
           >
             {/* Filter terminal states out at create time. Won/lost need
                 loss_reason + debrief context that we can't collect from
@@ -2481,9 +2499,10 @@ function NewDealForm({
           <select
             name="source"
             defaultValue=""
-            className={`${inputCls} bg-white`}
+            className={selectCls}
+            style={SELECT_BG_STYLE}
           >
-            <option value="">— select —</option>
+            <option value="">Choose a source</option>
             {OPPORTUNITY_SOURCES.map((s) => (
               <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
             ))}
@@ -2544,18 +2563,36 @@ function NewDealForm({
         </label>
         <label className="block">
           <span className={labelCls}>Estimator</span>
-          <select name="estimator_user_id" defaultValue="" className={`${inputCls} bg-white`}>
+          <select
+            name="estimator_user_id"
+            defaultValue=""
+            className={selectCls}
+            style={SELECT_BG_STYLE}
+          >
             {/* Karan 2026-07-10 copy polish: explicit "required for
                 Estimating" replaces the cryptic "— unassigned —" so
                 users understand why picking someone matters. */}
-            <option value="">No estimator (required for Estimating)</option>
+            <option value="">Choose from account team</option>
             {estimators.map((e) => (
               <option key={e.user_id} value={e.user_id}>{e.name}</option>
             ))}
           </select>
+          {/* Karan 2026-07-10 (second flag): manual estimator entry
+              option — not every estimator on a bid is on the team
+              roster (subs, ex-employees handling one bid, GC-supplied
+              estimator names). If this field is filled, it takes
+              precedence over the picker above. Persisted to the
+              estimator_name TEXT column (migration 049). */}
+          <input
+            type="text"
+            name="estimator_name"
+            maxLength={120}
+            placeholder="…or type a name"
+            className={`${inputCls} mt-1`}
+          />
           <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
             {estimators.length === 0
-              ? "Add someone to the account team first to assign them."
+              ? "No teammates yet — type a name above."
               : "Required to move this to Estimating."}
           </span>
         </label>
@@ -4373,9 +4410,10 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                     <select
                       name="method"
                       defaultValue=""
-                      className="w-full mt-0.5 px-2 py-1.5 text-[13px] bg-white border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      className="w-full mt-0.5 px-2 py-1.5 pr-8 text-[13px] bg-white border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 appearance-none bg-no-repeat cursor-pointer"
+                      style={SELECT_BG_STYLE}
                     >
-                      <option value="">—</option>
+                      <option value="">Choose method</option>
                       {PAYMENT_METHODS.map((m) => (
                         <option key={m.key} value={m.key}>{m.label}</option>
                       ))}
@@ -4855,11 +4893,24 @@ function DealEditSheet({
                       </option>
                     )}
                 </select>
+                {/* Karan 2026-07-10 (second flag on manual estimator):
+                    free-text estimator name for subs / off-roster
+                    estimators. Persisted via migration 049's
+                    estimator_name column. UI: mutation clears the
+                    other side, so filling either wins. */}
+                <input
+                  name="estimator_name"
+                  type="text"
+                  maxLength={120}
+                  defaultValue={deal.estimator_name ?? ""}
+                  placeholder="…or type a name"
+                  className={`${inputCls} mt-1`}
+                />
                 <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
                   {estimators.length === 0
-                    ? "Add someone to the account team first to assign them."
+                    ? "No teammates yet — type a name above."
                     : deal.estimator_user_id && !estimators.find((e) => e.user_id === deal.estimator_user_id)
-                    ? "⚠️ Previous estimator was removed from the team — reassign."
+                    ? "⚠️ Previous estimator was removed from the team — reassign or type a name."
                     : "Required to move this to Estimating."}
                 </span>
               </label>

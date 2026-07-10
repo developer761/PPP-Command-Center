@@ -173,7 +173,13 @@ export async function exportOpportunitiesCsv(
         csvEscape(accountName),
         csvEscape(o.client_name ?? ""),
         csvEscape(o.location_short ?? ""),
-        csvEscape(o.estimator_user_id ? estimatorNameById.get(o.estimator_user_id) ?? "" : ""),
+        // Migration 049 — estimator_name (free-text) wins over the FK
+        // lookup so manual entries land in the CSV under the same
+        // "Estimator" column.
+        csvEscape(
+          o.estimator_name?.trim() ||
+            (o.estimator_user_id ? estimatorNameById.get(o.estimator_user_id) ?? "" : "")
+        ),
         csvEscape(opportunityStatusLabel(o.status)),
         csvEscape(centsToDollars(o.bid_value_low_cents)),
         csvEscape(centsToDollars(o.bid_value_high_cents)),

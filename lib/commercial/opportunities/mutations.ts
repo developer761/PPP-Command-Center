@@ -43,6 +43,8 @@ export type CreateOpportunityInput = {
   client_name?: string | null;
   location_short?: string | null;
   estimator_user_id?: string | null;
+  // Migration 049 — free-text estimator name (subs / off-roster).
+  estimator_name?: string | null;
   created_by_user_id?: string | null;
 };
 
@@ -107,6 +109,11 @@ export async function createCommercialOpportunity(
       client_name: input.client_name?.trim() || null,
       location_short: input.location_short?.trim() || null,
       estimator_user_id: input.estimator_user_id ?? null,
+      // If the picker chose a user, clear the free-text field (and vice
+      // versa). Prevents "old typo lingers after switching to the FK."
+      estimator_name: input.estimator_user_id
+        ? null
+        : input.estimator_name?.trim() || null,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
     })
@@ -206,6 +213,18 @@ export async function updateCommercialOpportunity(
   if (input.client_name !== undefined) patch.client_name = input.client_name?.trim() || null;
   if (input.location_short !== undefined) patch.location_short = input.location_short?.trim() || null;
   if (input.estimator_user_id !== undefined) patch.estimator_user_id = input.estimator_user_id || null;
+  // Migration 049 — free-text estimator. When both come through in one
+  // patch (unusual but possible if the UI sends both), the picker wins
+  // and free-text is cleared — the FK is the authoritative link.
+  if (input.estimator_name !== undefined) {
+    patch.estimator_name = input.estimator_user_id
+      ? null
+      : input.estimator_name?.trim() || null;
+  } else if (input.estimator_user_id) {
+    // Picker chose a user → clear any stale free-text left over from
+    // a prior manual entry.
+    patch.estimator_name = null;
+  }
 
   const { data: after, error } = await sb
     .from("commercial_opportunities")
