@@ -5,6 +5,7 @@ import {
   hasRecentNotification,
   insertCommercialTaskOverdueNotification,
 } from "@/lib/notifications/commercial-events";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
 
 /**
  * Daily cron job — fire bell + email for tasks whose due_at has passed
@@ -54,8 +55,8 @@ export async function runOverdueTasksReminder(): Promise<Result> {
       .select(
         `id, title, due_at, assigned_user_id,
          opportunity:commercial_opportunities!inner(
-           id, title, deleted_at,
-           account:commercial_accounts!inner(id, deleted_at)
+           id, title, client_name, location_short, deleted_at,
+           account:commercial_accounts!inner(id, company_name, deleted_at)
          )`
       )
       .not("assigned_user_id", "is", null)
@@ -69,15 +70,23 @@ export async function runOverdueTasksReminder(): Promise<Result> {
       out.errors.push(`task query failed: ${error.message}`);
       return out;
     }
+    type OppInner = {
+      id: string;
+      title: string;
+      client_name: string | null;
+      location_short: string | null;
+      deleted_at: string | null;
+      account:
+        | { id: string; company_name: string; deleted_at: string | null }
+        | Array<{ id: string; company_name: string; deleted_at: string | null }>
+        | null;
+    };
     type Row = {
       id: string;
       title: string;
       due_at: string;
       assigned_user_id: string;
-      opportunity:
-        | { id: string; title: string; deleted_at: string | null }
-        | Array<{ id: string; title: string; deleted_at: string | null }>
-        | null;
+      opportunity: OppInner | Array<OppInner> | null;
     };
     const rows = (data ?? []) as unknown as Row[];
     out.found = rows.length;
@@ -103,12 +112,18 @@ export async function runOverdueTasksReminder(): Promise<Result> {
           out.skipped += 1;
           continue;
         }
+        // Phase B: compute the derived opp name from the joined account
+        // so the notification body reads {account} - {client} - {location}
+        // when the CEO structural fields are populated.
+        const acct = Array.isArray(opp.account) ? opp.account[0] ?? null : opp.account;
+        const accountName = acct?.company_name ?? null;
+        const displayName = derivedOppName(opp, accountName);
         await insertCommercialTaskOverdueNotification({
           taskId: r.id,
           opportunityId: opp.id,
           taskTitle: r.title,
           dueAt: r.due_at,
-          oppTitle: opp.title,
+          oppTitle: displayName,
           recipientUserId: r.assigned_user_id,
         });
         out.sent += 1;

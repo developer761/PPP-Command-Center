@@ -5,6 +5,7 @@ import {
   hasRecentNotification,
   insertCommercialHotDealCoolingNotification,
 } from "@/lib/notifications/commercial-events";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import {
   HOT_DEAL_ACTIVE_STATUSES,
   HOT_DEAL_BID_CENTS,
@@ -71,8 +72,8 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
     const { data, error } = await sb
       .from("commercial_opportunities")
       .select(
-        `id, title, updated_at, created_by_user_id,
-         account:commercial_accounts!inner(id, deleted_at)`
+        `id, title, client_name, location_short, updated_at, created_by_user_id,
+         account:commercial_accounts!inner(id, company_name, deleted_at)`
       )
       .in("status", HOT_DEAL_ACTIVE_STATUSES as readonly string[])
       .gte("bid_value_high_cents", HOT_DEAL_BID_CENTS)
@@ -89,11 +90,13 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
     type Row = {
       id: string;
       title: string;
+      client_name: string | null;
+      location_short: string | null;
       updated_at: string;
       created_by_user_id: string | null;
       account:
-        | { id: string; deleted_at: string | null }
-        | Array<{ id: string; deleted_at: string | null }>
+        | { id: string; company_name: string; deleted_at: string | null }
+        | Array<{ id: string; company_name: string; deleted_at: string | null }>
         | null;
     };
     const rows = (data ?? []) as unknown as Row[];
@@ -165,9 +168,13 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
           out.skipped += 1;
           continue;
         }
+        // Phase B: derived name so the email reads "{account} - {client}
+        // - {location}" when the CEO structural fields are populated.
+        const acct = Array.isArray(r.account) ? r.account[0] ?? null : r.account;
+        const displayName = derivedOppName(r, acct?.company_name ?? null);
         await insertCommercialHotDealCoolingNotification({
           opportunityId: r.id,
-          oppTitle: r.title,
+          oppTitle: displayName,
           daysSinceUpdate,
           recipientUserId: recipient,
         });

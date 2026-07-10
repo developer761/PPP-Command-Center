@@ -161,7 +161,7 @@ export async function changeOpportunityStatus(
           : missing.slice(0, -1).join(", ") + " and " + missing.slice(-1)[0];
       return {
         ok: false,
-        error: `Set the ${label} on this opportunity before moving to ${input.to_status}. Use Edit to fill them in.`,
+        error: `Set the ${label} on this opportunity before moving to ${input.to_status}. Open Edit → Structure section.`,
       };
     }
   }

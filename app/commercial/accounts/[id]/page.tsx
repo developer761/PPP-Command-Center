@@ -82,6 +82,7 @@ import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachm
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
+import { findDuplicateOpportunities } from "@/lib/commercial/opportunities/duplicates";
 import {
   OPEN_OPP_STATUSES,
   TERMINAL_STATUSES,
@@ -146,6 +147,14 @@ type SP = Promise<{
   new_deal?: string;
   created?: string;
   created_title?: string;
+  /** Phase B (2026-07-09) — populated by createDealInlineAction when
+   *  a match on client_name + location_short exists on this account.
+   *  Renders an amber "Possible duplicate" banner on the New Deal form
+   *  with a "Create anyway" button. dup_id is the matched opp's UUID
+   *  (drill-in link); dup_label is either its project_number or title
+   *  for display. */
+  dup_id?: string;
+  dup_label?: string;
 }>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
@@ -523,6 +532,11 @@ export default async function CommercialAccountDetailPage({
           savedFlash={sp.saved === "1"}
           deletedFlash={typeof sp.deleted === "string" ? sp.deleted : null}
           errorMessage={sp.error}
+          duplicateWarning={
+            typeof sp.dup_id === "string" && /^[0-9a-f-]{36}$/i.test(sp.dup_id)
+              ? { id: sp.dup_id, label: typeof sp.dup_label === "string" ? sp.dup_label : "" }
+              : null
+          }
         />
       )}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
@@ -790,6 +804,24 @@ async function createDealInlineAction(formData: FormData) {
   const probability_pct = Number.isFinite(probParsed) && probParsed >= 0 && probParsed <= 100
     ? Math.round(probParsed)
     : null;
+
+  // Duplicate check (Phase B). Skipped when the user submits with the
+  // hidden `confirm_duplicate=1` field from the "Create anyway" button.
+  const forceCreate = String(formData.get("confirm_duplicate") ?? "") === "1";
+  if (!forceCreate && client_name && location_short) {
+    const dups = await findDuplicateOpportunities({
+      accountId: account_id,
+      clientName: client_name,
+      locationShort: location_short,
+    });
+    if (dups.length > 0) {
+      const first = dups[0];
+      const label = first.project_number ? `#${first.project_number}` : first.title;
+      redirect(
+        `/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&dup_id=${first.id}&dup_label=${encodeURIComponent(label)}#new-deal`
+      );
+    }
+  }
 
   const result = await createCommercialOpportunity({
     account_id,
@@ -2410,13 +2442,38 @@ async function restoreDocumentAction(formData: FormData) {
  *  a <details>). Two required rows visible immediately (title, status)
  *  plus optional bid/due/source. Property + description behind a
  *  progressive-disclosure <details>. Zero page jumps. */
-function NewDealForm({ accountId, estimators }: { accountId: string; estimators: EligibleEstimator[] }) {
+function NewDealForm({
+  accountId,
+  estimators,
+  duplicateWarning,
+}: {
+  accountId: string;
+  estimators: EligibleEstimator[];
+  duplicateWarning: { id: string; label: string } | null;
+}) {
   const inputCls =
     "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30";
   const labelCls = "block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5";
   return (
     <form action={createDealInlineAction} className="space-y-3">
       <input type="hidden" name="account_id" value={accountId} />
+      {duplicateWarning && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-900 space-y-1.5">
+          <div className="font-semibold">Possible duplicate</div>
+          <div>
+            Another opportunity on this account already has the same client + location:{" "}
+            <Link
+              href={`/commercial/accounts/${accountId}?tab=opportunities&edit=${duplicateWarning.id}#deal-edit-sheet`}
+              className="underline decoration-amber-500 underline-offset-2 hover:text-amber-950"
+            >
+              {duplicateWarning.label}
+            </Link>. If this bid is separate (different scope or phase), pick <em>Create anyway</em> below.
+          </div>
+          {/* When present, this hidden field skips the duplicate check on
+              the next submit — the user has acknowledged the match. */}
+          <input type="hidden" name="confirm_duplicate" value="1" />
+        </div>
+      )}
       <div>
         <label className={labelCls} htmlFor="deal-title">Opportunity title</label>
         <input
@@ -2595,7 +2652,7 @@ function NewDealForm({ accountId, estimators }: { accountId: string; estimators:
           type="submit"
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
         >
-          Create deal
+          {duplicateWarning ? "Create anyway" : "Create opportunity"}
         </button>
       </div>
     </form>
@@ -2611,6 +2668,7 @@ async function OpportunitiesTab({
   savedFlash,
   deletedFlash,
   errorMessage,
+  duplicateWarning,
 }: {
   accountId: string;
   overview: AccountOverview | null;
@@ -2625,6 +2683,11 @@ async function OpportunitiesTab({
   savedFlash?: boolean;
   deletedFlash?: string | null;
   errorMessage?: string;
+  /** Phase B duplicate detection — set on redirect back from
+   *  createDealInlineAction when the client/location combo matches
+   *  an existing non-deleted opp on this account. The NewDealForm
+   *  renders a "Create anyway" resubmit path when this is populated. */
+  duplicateWarning?: { id: string; label: string } | null;
 }) {
   const all = await listCommercialOpportunities({ accountId });
   const ids = all.map((o) => o.id);
@@ -2674,7 +2737,7 @@ async function OpportunitiesTab({
               </p>
             </div>
           </div>
-          <NewDealForm accountId={accountId} estimators={estimators} />
+          <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} />
         </div>
       </div>
     );
@@ -2797,7 +2860,7 @@ async function OpportunitiesTab({
           <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0">▾</span>
         </summary>
         <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
-          <NewDealForm accountId={accountId} estimators={estimators} />
+          <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} />
         </div>
       </details>
 
@@ -4763,6 +4826,18 @@ function DealEditSheet({
                   {estimators.map((e) => (
                     <option key={e.user_id} value={e.user_id}>{e.name}</option>
                   ))}
+                  {/* Karan 2026-07-09 Phase B.3 audit fix: if the currently-
+                      assigned estimator was removed from the team, they'd
+                      be absent from the list and the <select> would show
+                      as blank — silently orphaning the FK. Surface the
+                      orphaned value as an explicit option so the user
+                      sees + can keep or reassign. */}
+                  {deal.estimator_user_id &&
+                    !estimators.find((e) => e.user_id === deal.estimator_user_id) && (
+                      <option value={deal.estimator_user_id}>
+                        ⚠️ Removed from team (still assigned)
+                      </option>
+                    )}
                 </select>
                 <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
                   {estimators.length === 0
