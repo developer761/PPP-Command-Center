@@ -34,6 +34,7 @@ import {
   opportunitySourceLabel,
   formatBidRange,
   weightedPipelineCents,
+  derivedOppName,
   type CommercialOpportunity,
   type OpportunityStatus,
   type OpportunitySource,
@@ -1702,7 +1703,7 @@ function KanbanBoard({
                     href={sheetHref(opp.account_id, opp.id)}
                     className="text-[13px] text-blue-700 hover:text-blue-800 underline"
                   >
-                    {opp.title}
+                    {derivedOppName(opp, accountById.get(opp.account_id)?.company_name ?? null)}
                   </Link>
                   <span className="text-[11px] text-ppp-charcoal-500 ml-2">
                     {opportunityStatusLabel(opp.status)}
@@ -1768,7 +1769,7 @@ function KanbanCard({
       <li className="bg-white border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
         <Link href={sheetHref(opp.account_id, opp.id)} className="block">
           <div className="text-[11px] font-semibold text-ppp-charcoal leading-snug break-words line-clamp-2">
-            {opp.title || "(untitled)"}
+            {derivedOppName(opp, account?.company_name ?? null)}
           </div>
           {account && (
             <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 truncate">
@@ -1789,7 +1790,7 @@ function KanbanCard({
         className="block"
       >
         <div className="text-[13px] font-semibold text-ppp-charcoal leading-snug mb-1 break-words">
-          {opp.title || "(untitled)"}
+          {derivedOppName(opp, account?.company_name ?? null)}
         </div>
         {account && (
           <div className="text-[11px] text-ppp-charcoal-500 mb-1.5 truncate">
@@ -2042,7 +2043,7 @@ function OpportunityRow({
                 scanning finds titles fast. */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
-                {opportunity.title}
+                {derivedOppName(opportunity, account?.company_name ?? null)}
               </span>
               <StatusPill status={opportunity.status} />
               {dueChip && <DueChip {...dueChip} />}

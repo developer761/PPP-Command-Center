@@ -63,17 +63,38 @@ export async function GET(
   }
   const { submittal, items } = loaded;
 
-  // Pull the opp's title + ppp_job_number for the cover. Already verified
-  // via getOpportunitySubmittal (chain-of-trust), so a thin re-fetch is safe.
+  // Pull the opp's title + ppp_job_number + Phase B structural fields
+  // for the cover so the PDF's "Job no." field renders the derived
+  // {account}-{client}-{location} identity users see everywhere else.
+  // Already verified via getOpportunitySubmittal (chain-of-trust), so
+  // a thin re-fetch is safe.
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
-    .select("title, ppp_job_number")
+    .select("title, ppp_job_number, account_id, client_name, location_short")
     .eq("id", opportunity_id)
     .maybeSingle();
-  const opp = (oppRow as { title: string; ppp_job_number: string | null } | null) ?? {
+  const oppRowTyped = oppRow as {
+    title: string;
+    ppp_job_number: string | null;
+    account_id?: string | null;
+    client_name?: string | null;
+    location_short?: string | null;
+  } | null;
+  const opp = oppRowTyped ?? {
     title: "(opportunity not found)",
     ppp_job_number: null,
+    client_name: null,
+    location_short: null,
   };
+  let accountName: string | null = null;
+  if (oppRowTyped?.account_id) {
+    const { data: acctRow } = await sb
+      .from("commercial_accounts")
+      .select("company_name")
+      .eq("id", oppRowTyped.account_id)
+      .maybeSingle();
+    accountName = (acctRow as { company_name?: string | null } | null)?.company_name ?? null;
+  }
 
   // Dynamic import keeps @react-pdf/renderer out of the shared bundle —
   // only this route pays the ~3-4 MB load (and only on cold start).
@@ -86,6 +107,7 @@ export async function GET(
       submittal,
       items,
       opp,
+      accountName,
       // PPP entity name — sourced from lib/brand.ts (single source of
       // truth, audit backend M2). Strip the ® for PDF rendering so it
       // doesn't show as a fallback glyph in Helvetica.

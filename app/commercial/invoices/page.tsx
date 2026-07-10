@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
-import { listCommercialOpportunities, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
+import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -572,7 +572,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               </span>
             </div>
             <div className="mt-0.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
-              Showing only invoices for this {opportunityIdFilter ? "deal" : "account"}. Click a row to open — Void or Delete lives inside.
+              Showing only invoices for this {opportunityIdFilter ? "opportunity" : "account"}. Click a row to open — Void or Delete lives inside.
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap shrink-0">
@@ -1072,7 +1072,7 @@ function GroupedByOpp({
   sortKey,
 }: {
   invoices: CommercialInvoice[];
-  oppById: Map<string, { id: string; title: string; account_id: string; status: string }>;
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string; client_name: string | null; location_short: string | null }>;
   accountById: Map<string, { id: string; company_name: string }>;
   sortKey: string;
 }) {
@@ -1242,13 +1242,13 @@ function GroupedByOpp({
                 {/* Row 1: title + account chip + N invoices + overdue badge */}
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
                   <span className={`font-semibold text-[14px] truncate ${isOrphan ? "text-ppp-charcoal-500" : "text-ppp-charcoal group-hover/oppInv:text-blue-800"}`}>
-                    {opp ? opp.title : (
+                    {opp ? derivedOppName(opp, account?.company_name ?? null) : (
                       <span className="inline-flex items-center gap-1.5">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600">
                           <path d="M12 9v4M12 17h.01" />
                           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                         </svg>
-                        <span className="italic">Deleted deal — invoices still on file</span>
+                        <span className="italic">Deleted opportunity — invoices still on file</span>
                       </span>
                     )}
                   </span>
@@ -1471,7 +1471,7 @@ function FullDetailByOpp({
   wonOppsForAccount,
 }: {
   invoices: CommercialInvoice[];
-  oppById: Map<string, { id: string; title: string; account_id: string; status: string }>;
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string; client_name: string | null; location_short: string | null }>;
   accountById: Map<string, { id: string; company_name: string }>;
   sortKey: string;
   accountId: string;
@@ -1664,7 +1664,7 @@ function FullDetailByOpp({
                         href={`/commercial/opportunities/${opp.id}?tab=invoices`}
                         className="text-[15px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 truncate"
                       >
-                        {opp.title}
+                        {derivedOppName(opp, account?.company_name ?? null)}
                       </Link>
                     ) : (
                       <span className="inline-flex items-center gap-2 text-[15px] font-bold">
@@ -1672,7 +1672,7 @@ function FullDetailByOpp({
                           <path d="M12 9v4M12 17h.01" />
                           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                         </svg>
-                        <span className="text-ppp-charcoal-500 italic">Deleted deal — invoices still on file</span>
+                        <span className="text-ppp-charcoal-500 italic">Deleted opportunity — invoices still on file</span>
                       </span>
                     )}
                     {groupInvoices.length === 0 ? (

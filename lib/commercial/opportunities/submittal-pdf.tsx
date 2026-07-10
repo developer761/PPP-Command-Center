@@ -12,6 +12,7 @@ import {
 import * as React from "react";
 
 import type { OpportunitySubmittal } from "./submittals";
+import { derivedOppName } from "./db";
 import {
   includedKindLabel,
   INCLUDED_KINDS,
@@ -297,7 +298,12 @@ type SubmittalPdfInput = {
   opp: {
     title: string;
     ppp_job_number: string | null;
+    // Phase B: structural fields so the transmittal PDF matches what
+    // users see in the UI. Nullable — legacy rows fall back to title.
+    client_name?: string | null;
+    location_short?: string | null;
   };
+  accountName?: string | null;
   fromCompany: string; // PPP entity name — hardcoded for now, could be tenant-configurable
 };
 
@@ -321,7 +327,7 @@ function safeDateLabel(value: string | null | undefined, fmt: Intl.DateTimeForma
   return d.toLocaleDateString("en-US", { timeZone: "America/New_York", ...fmt });
 }
 
-function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: SubmittalPdfInput) {
+function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromCompany }: SubmittalPdfInput) {
   const issueDate = submittal.sent_at ?? submittal.created_at;
   const dateLabel = safeDateLabel(issueDate, { year: "numeric", month: "long", day: "numeric" });
   const submittalNumber = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${
@@ -416,7 +422,7 @@ function LetterOfTransmittalDocument({ submittal, items, opp, fromCompany }: Sub
             <View style={styles.metaBox}>
               <Text style={styles.metaLabel}>Job no.</Text>
               <Text style={styles.metaValueMono}>{opp.ppp_job_number ?? "—"}</Text>
-              <Text style={styles.metaValue}>{opp.title}</Text>
+              <Text style={styles.metaValue}>{derivedOppName({ title: opp.title, client_name: opp.client_name ?? null, location_short: opp.location_short ?? null }, accountName ?? null)}</Text>
             </View>
             <View style={styles.metaBox}>
               <Text style={styles.metaLabel}>RE</Text>

@@ -40,7 +40,7 @@ import {
 } from "@/lib/commercial/invoices/constants";
 import { formatCentsFull, fmtEtDate, parseDollarsToCents, daysBetween } from "@/lib/commercial/invoices/format";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
-import { getCommercialOpportunity } from "@/lib/commercial/opportunities/db";
+import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -428,9 +428,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <Link
               href={`/commercial/opportunities/${opp.id}`}
               className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
-              title={opp.title}
+              title={derivedOppName(opp, account?.company_name ?? null)}
             >
-              {opp.title}
+              {derivedOppName(opp, account?.company_name ?? null)}
             </Link>
           </>
         )}
@@ -480,7 +480,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 href={`/commercial/opportunities/${opp.id}?tab=info`}
                 className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
               >
-                {opp.title}
+                {derivedOppName(opp, account?.company_name ?? null)}
               </Link>
             </span>
           </div>
@@ -606,7 +606,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               {opp && (
                 <>
                   <Link href={`/commercial/opportunities/${opp.id}`} className="text-blue-700 hover:text-blue-800 underline underline-offset-2">
-                    {opp.title}
+                    {derivedOppName(opp, account?.company_name ?? null)}
                   </Link>
                   <span aria-hidden>·</span>
                 </>
@@ -630,7 +630,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/new?opp=${opp.id}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
-                title={`Add another invoice for ${opp.title}. Progress-billing friendly.`}
+                title={`Add another invoice for ${derivedOppName(opp, account?.company_name ?? null)}. Progress-billing friendly.`}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 5v14 M5 12h14" />
@@ -662,7 +662,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 : null;
               if (!scope) return null;
               const parent_id = scope === "opp" ? invoice.opportunity_id : invoice.account_id;
-              const scopeLabel = scope === "opp" ? "deal" : "account";
+              const scopeLabel = scope === "opp" ? "opportunity" : "account";
               const siblingsForBulk = siblingsSorted;
               const paidCount = siblingsForBulk.filter((s) => (s.paid_cents ?? 0) > 0 && s.status !== "void").length;
               return (

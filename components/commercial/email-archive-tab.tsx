@@ -87,8 +87,8 @@ function ArchiveAddressBar({
             Auto-archive your customer emails here
           </h3>
           <p className="text-xs text-ppp-charcoal-500 leading-relaxed">
-            This {kind === "opp" ? "deal" : "account"} has its own private email address (below).
-            Copy it, then BCC it whenever you email the customer about this {kind === "opp" ? "deal" : "account"} —
+            This {kind === "opp" ? "opportunity" : "account"} has its own private email address (below).
+            Copy it, then BCC it whenever you email the customer about this {kind === "opp" ? "opportunity" : "account"} —
             your message and any replies will land in this tab automatically.
             Save it to your phone or Gmail as &ldquo;{kind === "opp" ? "Opp Archive" : "Account Archive"}&rdquo; so it&apos;s one tap to add.
           </p>

@@ -61,6 +61,7 @@ import {
   opportunityStatusLabel,
   formatBidRange,
   weightedPipelineCents,
+  derivedOppName,
   OPPORTUNITY_STATUSES,
   OPPORTUNITY_SOURCES,
   opportunitySourceLabel,
@@ -996,16 +997,34 @@ async function deleteDealFromAccountAction(formData: FormData) {
   // once per manual delete, not on every account-page render).
   const { commercialDb: _cdb } = await import("@/lib/commercial/db");
   const sb = _cdb();
+  // Phase B: pull structural fields + account name so the toast shows
+  // the CEO's derived name ({account} - {client} - {location}) instead
+  // of just the raw title. Falls back to the raw title if any piece
+  // is missing.
   const { data: pre } = await sb
     .from("commercial_opportunities")
-    .select("title, account_id")
+    .select("title, account_id, client_name, location_short")
     .eq("id", opp_id)
     .eq("account_id", account_id)
     .maybeSingle();
   if (!pre) {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Deal not found on this account.")}`);
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Opportunity not found on this account.")}`);
   }
-  const title = ((pre as { title?: string }).title || "Deal");
+  const preRow = pre as { title?: string; client_name?: string | null; location_short?: string | null };
+  const { data: preAcct } = await sb
+    .from("commercial_accounts")
+    .select("company_name")
+    .eq("id", account_id)
+    .maybeSingle();
+  const acctName = (preAcct as { company_name?: string | null } | null)?.company_name ?? null;
+  const title = derivedOppName(
+    {
+      title: preRow.title || "Opportunity",
+      client_name: preRow.client_name ?? null,
+      location_short: preRow.location_short ?? null,
+    },
+    acctName,
+  );
   const result = await softDeleteCommercialOpportunity(opp_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&deal=${opp_id}&error=${encodeURIComponent(result.error)}#deal-${opp_id}`);

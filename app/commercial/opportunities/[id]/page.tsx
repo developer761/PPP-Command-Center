@@ -10,6 +10,7 @@ import {
   opportunityLossReasonLabel,
   formatBidRange,
   weightedPipelineCents,
+  derivedOppName,
   OPPORTUNITY_STATUSES,
   OPPORTUNITY_LOSS_REASONS,
   type CommercialOpportunity,
@@ -1282,14 +1283,17 @@ export default async function OpportunityDetailPage({
             </>
           )}
           <span aria-hidden className="text-ppp-charcoal-300">/</span>
-          <span className="inline-flex items-center min-h-[32px] px-1 text-ppp-charcoal-700 truncate max-w-[300px]" title={opp.title}>
-            {opp.title}
+          <span
+            className="inline-flex items-center min-h-[32px] px-1 text-ppp-charcoal-700 truncate max-w-[300px]"
+            title={derivedOppName(opp, account?.company_name ?? null)}
+          >
+            {derivedOppName(opp, account?.company_name ?? null)}
           </span>
         </nav>
         <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate">
-              {opp.title}
+              {derivedOppName(opp, account?.company_name ?? null)}
             </h1>
             <div className="text-sm text-ppp-charcoal-500 mt-1 flex items-center gap-2 flex-wrap">
               {account && (
