@@ -2239,10 +2239,9 @@ async function OpportunityInvoicesPanel({
                   <label className="block">
                     <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Tax %</span>
                     <input
-                      type="number"
-                      step={0.01}
-                      min={0}
-                      max={100}
+                      type="text"
+                      inputMode="decimal"
+                      pattern="[0-9.]*"
                       name="tax_pct"
                       defaultValue={editing.tax_pct ?? ""}
                       className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 max-w-[140px]"

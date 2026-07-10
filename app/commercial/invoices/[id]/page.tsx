@@ -1074,7 +1074,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 Tax % (flat)
                 {!isDraft && !isVoid && <span className="ml-1 text-[10px] font-normal text-ppp-charcoal-400">(draft-only)</span>}
               </label>
-              <input id="dt-tax" name="tax_pct" type="number" step="0.001" min="0" max="100" defaultValue={invoice.tax_pct} disabled={!isDraft} className={INPUT_CLS} />
+              <input id="dt-tax" name="tax_pct" type="text" inputMode="decimal" pattern="[0-9.]*" defaultValue={invoice.tax_pct} disabled={!isDraft} className={INPUT_CLS} />
             </div>
             <div>
               <label htmlFor="dt-po" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">PO number</label>

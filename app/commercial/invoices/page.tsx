@@ -2037,11 +2037,10 @@ function FullDetailByOpp({
                       <label className="block">
                         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Tax % (flat)</span>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
+                          pattern="[0-9.]*"
                           name="tax_pct"
-                          step="0.001"
-                          min="0"
-                          max="100"
                           placeholder="0"
                           className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                         />

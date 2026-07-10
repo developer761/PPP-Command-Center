@@ -41,6 +41,7 @@ import {
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
 import DatePicker from "@/components/commercial/date-picker";
+import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import {
   getAccountOverview,
   relativeActivity,
@@ -2576,11 +2577,11 @@ function NewDealForm({
             <label className="block">
               <span className={labelCls}>Probability %</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={3}
                 name="probability_pct"
-                min={0}
-                max={100}
-                step={1}
                 placeholder="auto"
                 className={`${inputCls} tabular-nums`}
               />
@@ -4936,12 +4937,12 @@ function DealEditSheet({
               <p className="text-[12px] text-rose-800 leading-relaxed">
                 Are you sure? This will remove <strong>{deal.title || "this deal"}</strong> from the pipeline.
               </p>
-              <button
-                type="submit"
-                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+              <PendingSubmitButton
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation disabled:hover:bg-rose-600"
+                pendingLabel="Deleting…"
               >
                 Yes, delete this deal
-              </button>
+              </PendingSubmitButton>
             </form>
           </details>
         </section>

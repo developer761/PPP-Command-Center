@@ -967,9 +967,9 @@ export default async function SubmittalDetailPage({
                 <label className={LABEL_CLS}>Copies</label>
                 <input
                   name="copies"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
-                  min={1}
+                  pattern="[0-9]*"
                   defaultValue={1}
                   className={INPUT_CLS}
                 />
@@ -1109,9 +1109,9 @@ export default async function SubmittalDetailPage({
                           <label className={LABEL_CLS}>Copies</label>
                           <input
                             name="copies"
-                            type="number"
+                            type="text"
                             inputMode="numeric"
-                            min={1}
+                            pattern="[0-9]*"
                             defaultValue={item.copies}
                             className={INPUT_CLS}
                           />
@@ -1847,9 +1847,9 @@ function ResponseRecorder({
             </label>
             <input
               name="response_copies"
-              type="number"
+              type="text"
               inputMode="numeric"
-              min={0}
+              pattern="[0-9]*"
               placeholder={copiesPlaceholder ?? "optional"}
               className={INPUT_CLS}
             />

@@ -213,10 +213,9 @@ export default function BatchInvoiceRows() {
                       <input
                         id={`row-${rowKey}-tax_pct`}
                         name={`row-${rowKey}-tax_pct`}
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        max="100"
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9.]*"
                         placeholder="0"
                         className={INPUT_CLS}
                       />
