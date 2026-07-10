@@ -38,6 +38,11 @@ export type CreateOpportunityInput = {
   property_city?: string | null;
   property_state?: string | null;
   property_zip?: string | null;
+  // Migration 046 (Phase B) — CEO structural fields. All nullable at
+  // solicitation; changeOpportunityStatus enforces required-at-estimating.
+  client_name?: string | null;
+  location_short?: string | null;
+  estimator_user_id?: string | null;
   created_by_user_id?: string | null;
 };
 
@@ -99,6 +104,9 @@ export async function createCommercialOpportunity(
       property_city: input.property_city?.trim() || null,
       property_state: input.property_state?.trim() || null,
       property_zip: input.property_zip?.trim() || null,
+      client_name: input.client_name?.trim() || null,
+      location_short: input.location_short?.trim() || null,
+      estimator_user_id: input.estimator_user_id ?? null,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
     })

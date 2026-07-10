@@ -5,6 +5,7 @@ import {
   opportunityStatusLabel,
   opportunitySourceLabel,
   opportunityLossReasonLabel,
+  derivedOppName,
   type OpportunitiesListFilters,
   type CommercialOpportunity,
 } from "./db";
@@ -29,8 +30,13 @@ import { commercialDb } from "@/lib/commercial/db";
  */
 
 const HEADERS = [
-  "Title",
+  "Project #",
+  "Display name",
+  "Title (raw)",
   "Account",
+  "Client",
+  "Location",
+  "Estimator",
   "Status",
   "Bid low ($)",
   "Bid high ($)",
@@ -105,7 +111,10 @@ export async function exportOpportunitiesCsv(
   // parallel pattern as the global page so the export query budget
   // matches what the user just looked at.
   const accountIds = Array.from(new Set(opps.map((o) => o.account_id).filter(Boolean)));
-  const [statusEntered, primaryLead, lastNote, taskStats, fileCounts, accountsRows] =
+  const estimatorIds = Array.from(
+    new Set(opps.map((o) => o.estimator_user_id).filter((s): s is string => Boolean(s)))
+  );
+  const [statusEntered, primaryLead, lastNote, taskStats, fileCounts, accountsRows, estimatorRows] =
     await Promise.all([
       listCurrentStatusEnteredAtByOpp(ids),
       listPrimaryLeadByOpp(ids),
@@ -121,11 +130,25 @@ export async function exportOpportunitiesCsv(
             // Don't print a deleted account's name in the CSV — opps on a
             // soft-deleted account would otherwise leak the stale label.
             .is("deleted_at", null),
+      estimatorIds.length === 0
+        ? Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string | null }[] })
+        : sb
+            .from("profiles")
+            .select("id, full_name, email")
+            .in("id", estimatorIds),
     ]);
 
   const accountNameById = new Map<string, string>();
   for (const r of (accountsRows.data ?? []) as { id: string; company_name: string }[]) {
     accountNameById.set(r.id, r.company_name);
+  }
+  const estimatorNameById = new Map<string, string>();
+  for (const r of (estimatorRows.data ?? []) as {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+  }[]) {
+    estimatorNameById.set(r.id, r.full_name || r.email || "");
   }
 
   const rows: string[] = [];
@@ -141,10 +164,16 @@ export async function exportOpportunitiesCsv(
     const leadLabel = lead
       ? lead.user_full_name ?? lead.user_email
       : "";
+    const accountName = accountNameById.get(o.account_id) ?? "";
     rows.push(
       [
+        csvEscape(o.project_number ?? ""),
+        csvEscape(derivedOppName(o, accountName)),
         csvEscape(o.title),
-        csvEscape(accountNameById.get(o.account_id) ?? ""),
+        csvEscape(accountName),
+        csvEscape(o.client_name ?? ""),
+        csvEscape(o.location_short ?? ""),
+        csvEscape(o.estimator_user_id ? estimatorNameById.get(o.estimator_user_id) ?? "" : ""),
         csvEscape(opportunityStatusLabel(o.status)),
         csvEscape(centsToDollars(o.bid_value_low_cents)),
         csvEscape(centsToDollars(o.bid_value_high_cents)),

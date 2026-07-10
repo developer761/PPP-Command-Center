@@ -146,7 +146,46 @@ export type CommercialOpportunity = {
   // current closure. NULL on terminal opps means "amber Debrief banner
   // shows on the opp page." Cleared on reopen.
   win_loss_debriefed_at: string | null;
+  // Migration 046 (Phase B) — CEO structural fields. Nullable at row
+  // level; changeOpportunityStatus enforces required-at-estimating for
+  // client_name / location_short / estimator_user_id.
+  client_name: string | null;
+  location_short: string | null;
+  estimator_user_id: string | null;
+  // project_number auto-populated by BEFORE INSERT trigger (YYYY-NNNN).
+  project_number: string | null;
+  // Migration 045 — snapshot of previous status; preserves context for
+  // rows migrated from v1.0's `reopened` value.
+  previous_status: string | null;
 };
+
+/**
+ * Derived display name — {account} - {client_name} - {location_short}.
+ * Falls back to opp.title when structural fields are unpopulated (which
+ * is the state of every row created before Phase B ships).
+ *
+ * Called from every place that displays an opportunity name: list rows,
+ * kanban cards, hero titles, breadcrumbs, CSV exports, bell + email
+ * notification bodies. Keep this the single source of truth — direct
+ * `opp.title` reads on customer-facing surfaces will drift.
+ */
+export function derivedOppName(
+  opp: Pick<CommercialOpportunity, "title" | "client_name" | "location_short">,
+  accountName: string | null | undefined,
+): string {
+  const parts: string[] = [];
+  if (accountName && accountName.trim()) parts.push(accountName.trim());
+  if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
+  if (opp.location_short && opp.location_short.trim()) parts.push(opp.location_short.trim());
+  // Structural form needs at least client_name + location_short (the
+  // two Phase B fields). Falls back to opp.title otherwise — including
+  // for accounts-only titles like "Solicitation from BobCo" where we
+  // haven't captured the client/location yet.
+  if (parts.length >= 2 && opp.client_name && opp.location_short) {
+    return parts.join(" — ");
+  }
+  return opp.title || parts.join(" — ") || "Untitled opportunity";
+}
 
 export type OpportunitiesListFilters = {
   search?: string;

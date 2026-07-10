@@ -16,6 +16,7 @@ import {
   type OpportunityLossReason,
   OPPORTUNITY_LOSS_REASONS,
   opportunityStatusLabel,
+  derivedOppName,
 } from "./db";
 
 /**
@@ -266,9 +267,21 @@ export async function changeOpportunityStatus(
         const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
         actorName = a?.sf_user_name || a?.email || "PPP admin";
       }
+      // Phase B: compute the derived opp name (account - client - location)
+      // for the bell + email body so users see the CEO's standardized
+      // format, not the raw stored `title` field.
+      let accountName: string | null = null;
+      if (updated.account_id) {
+        const { data: acct } = await sb
+          .from("commercial_accounts")
+          .select("company_name")
+          .eq("id", updated.account_id)
+          .maybeSingle();
+        accountName = (acct as { company_name: string } | null)?.company_name ?? null;
+      }
       await insertCommercialOppStatusChangedNotifications({
         opportunityId: input.opp_id,
-        oppTitle: updated.title,
+        oppTitle: derivedOppName(updated, accountName),
         fromStatusLabel: opportunityStatusLabel(beforeRow.status),
         toStatusLabel: opportunityStatusLabel(input.to_status),
         actingUserId: input.acting_user_id,
