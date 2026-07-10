@@ -99,6 +99,10 @@ export type AccountTone = {
   border: CSSProps;
   headerBg: CSSProps;
   avatar: CSSProps;
+  /** Karan 2026-07-10 rev 7: the account NAME itself is colored per
+   *  account, not just the avatar. Slightly darker than avatar text
+   *  for strong contrast against the tinted header background. */
+  nameText: CSSProps;
 };
 
 function accountColorTone(accountId: string | null): AccountTone {
@@ -119,6 +123,7 @@ function accountColorTone(accountId: string | null): AccountTone {
       backgroundColor: `hsl(${hue}, 55%, 88%)`,
       color: `hsl(${hue}, 55%, 28%)`,
     },
+    nameText: { color: `hsl(${hue}, 60%, 32%)` },
   };
 }
 
@@ -1067,7 +1072,8 @@ export default async function CommercialOpportunitiesPage({
                           </span>
                           <Link
                             href={`/commercial/accounts/${g.account.id}`}
-                            className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
+                            className="text-[14px] font-bold hover:underline underline-offset-2 truncate"
+                            style={tone.nameText}
                             title={`Open ${g.account.company_name}'s account`}
                           >
                             {g.account.company_name}
