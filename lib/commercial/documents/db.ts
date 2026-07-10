@@ -349,6 +349,15 @@ export async function bumpDocumentVersion(
         .from("commercial_documents")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", newDocId);
+      // Karan 2026-07-10 audit fix: the DB row is soft-deleted above,
+      // but the FILE was already written to storage before the chain
+      // link failed. Without an explicit remove, every race case leaks
+      // a bucket file forever. Best-effort remove — swallow errors
+      // since the caller only cares about the user-facing message.
+      await sb.storage
+        .from(STORAGE_BUCKET)
+        .remove([uploaded.document.storage_key])
+        .catch(() => {});
       return {
         ok: false,
         error: "Someone else just uploaded a new version. Refresh the page and try again.",

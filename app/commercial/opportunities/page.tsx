@@ -1043,13 +1043,20 @@ export default async function CommercialOpportunitiesPage({
               <ul className="space-y-3">
                 {groups.map((g) => {
                   const tone = accountColorTone(g.accountId);
+                  // Karan 2026-07-10 audit fix (rev 5 avatar edge case):
+                  // whitespace-only company_name ("   ") is truthy in JS
+                  // so `|| "?"` didn't fall through — split+filter left
+                  // an empty array and the avatar rendered blank. Trim
+                  // FIRST and re-fallback to "?" if the result is empty,
+                  // plus join+fallback so an unusual name (emoji-only,
+                  // pure punctuation) still lands on a glyph.
                   const initials = g.account
-                    ? (g.account.company_name || "?")
+                    ? ((g.account.company_name || "").trim() || "?")
                         .split(/\s+/)
                         .filter(Boolean)
                         .slice(0, 2)
                         .map((w) => w[0]!.toUpperCase())
-                        .join("")
+                        .join("") || "?"
                     : "?";
                   return (
                   <li

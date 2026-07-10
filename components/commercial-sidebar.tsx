@@ -103,7 +103,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             priority
           />
           <div className="mt-3 inline-flex items-center gap-1.5">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-navy-600" />
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-brand-600" />
             <span className="font-condensed text-[10px] font-bold tracking-[0.16em] text-ppp-charcoal-500 uppercase leading-tight">
               Commercial<br />Command Center
             </span>

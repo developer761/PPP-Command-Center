@@ -986,7 +986,10 @@ async function deleteDealFromAccountAction(formData: FormData) {
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
   if (!confirm) {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities&deal=${opp_id}&error=${encodeURIComponent("Confirmation required to delete.")}#deal-${opp_id}`);
+    // Karan 2026-07-10 audit fix (P3): use ?edit= not ?deal= so the
+    // DealEditSheet reopens with the error banner visible. The tab
+    // only listens to ?edit= for sheet-open state.
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&edit=${opp_id}&error=${encodeURIComponent("Confirmation required to delete.")}#deal-edit-sheet`);
   }
   // Peek the title BEFORE deleting so we can surface it in the toast.
   // Lazy import to keep the top-of-module bundle lean (this action fires
@@ -1023,7 +1026,9 @@ async function deleteDealFromAccountAction(formData: FormData) {
   );
   const result = await softDeleteCommercialOpportunity(opp_id, user.id);
   if (!result.ok) {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities&deal=${opp_id}&error=${encodeURIComponent(result.error)}#deal-${opp_id}`);
+    // Karan 2026-07-10 audit fix (P3): reopen the sheet with the error
+    // banner rather than dumping the user to the tab list. Uses ?edit=.
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&edit=${opp_id}&error=${encodeURIComponent(result.error)}#deal-edit-sheet`);
   }
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/opportunities");
@@ -2839,6 +2844,7 @@ async function OpportunitiesTab({
             accountId={accountId}
             primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
             estimators={estimators}
+            errorMessage={errorMessage}
           />
         );
       })()}
@@ -3005,7 +3011,14 @@ function AccountOpportunityRow({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[14px] font-semibold text-ppp-charcoal break-words leading-snug">
-                {opp.title || "(untitled)"}
+                {/* Phase B derived-name rule (Karan 2026-07-10 audit
+                    fix): show {client}-{location} on account-context
+                    rows. accountName is passed as null since we're
+                    already on Bob's page — including "Bob-John-123
+                    Main St" would just repeat the page context.
+                    Falls back to opp.title if structural fields
+                    are unset (pre-Phase-B rows). */}
+                {derivedOppName(opp, null)}
               </span>
               <span
                 className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border shrink-0 ${statusInfo.cls}`}
@@ -4014,8 +4027,12 @@ function KpiTile({
 function Pill({ children, tone }: { children: React.ReactNode; tone: "emerald" | "blue" | "amber" | "rose" | "neutral" }) {
   // Karan 2026-06-24: boosted saturation from -50/-700/-200 to
   // -100/-800/-300 to match the brighter status pills on opp page.
+  // Karan 2026-07-10 audit fix: `emerald` was silently rendering blue
+  // — the tone key literally mapped to bg-blue-100/text-blue-800. Any
+  // consumer asking for the emerald-scored variant (Rating A on the
+  // account financial snapshot, etc.) got the wrong color for weeks.
   const cls = {
-    emerald: "bg-blue-100 text-blue-800 border-blue-300",
+    emerald: "bg-emerald-100 text-emerald-800 border-emerald-300",
     blue: "bg-blue-100 text-blue-800 border-blue-300",
     amber: "bg-amber-100 text-amber-900 border-amber-300",
     rose: "bg-rose-100 text-rose-800 border-rose-300",
@@ -4214,15 +4231,17 @@ async function AccountInvoicesTab({
                 key={oppId}
                 className={`rounded-xl overflow-hidden border ${dealOverdue ? "border-rose-200" : "border-ppp-charcoal-100"} bg-white`}
               >
-                <div className={`px-4 py-3 border-b ${dealOverdue ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-gradient-to-br from-white to-blue-50/30"}`}>
+                <div className={`px-4 py-3 border-b ${dealOverdue ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-gradient-to-br from-white to-ppp-charcoal-50/60"}`}>
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <Link
                           href={`/commercial/opportunities/${opp.id}?tab=invoices`}
-                          className="text-[14px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 truncate"
+                          className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
                         >
-                          {opp.title}
+                          {/* Phase B derived-name (Karan 2026-07-10 audit
+                              fix). accountName=null on account-context. */}
+                          {derivedOppName(opp, null)}
                         </Link>
                         <span className="text-[10px] font-semibold text-ppp-charcoal-500 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
                           {dealInvoices.length} invoice{dealInvoices.length === 1 ? "" : "s"}
@@ -4631,11 +4650,19 @@ function DealEditSheet({
   accountId,
   primaryLead,
   estimators,
+  errorMessage,
 }: {
   deal: CommercialOpportunity;
   accountId: string;
   primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
   estimators: EligibleEstimator[];
+  /** Karan 2026-07-10 audit fix (P1): when the edit action fails +
+   *  redirects back with ?edit=<opp>&error=..., the tab-level
+   *  errorMessage banner was rendered BEHIND this sheet's z-40
+   *  backdrop — user saw the darkened overlay and nothing else, as if
+   *  the save silently disappeared. Now the same message renders
+   *  INSIDE the sheet body at the top of the scroll container. */
+  errorMessage?: string | null;
 }) {
   const bidLabel = formatBidRange(deal.bid_value_low_cents, deal.bid_value_high_cents);
   const weighted = weightedPipelineCents(deal);
@@ -4715,6 +4742,16 @@ function DealEditSheet({
             swallowed by the outer edit form (Delete button silently
             did nothing). Fixed. */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-ppp-charcoal-50/50">
+        {errorMessage && (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+          >
+            <span aria-hidden className="mt-0.5">⚠</span>
+            <span>{errorMessage}</span>
+          </div>
+        )}
         <form
           action={editDealFromAccountAction}
           id={`edit-deal-form-${deal.id}`}

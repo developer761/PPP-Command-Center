@@ -130,12 +130,17 @@ export async function exportOpportunitiesCsv(
             // Don't print a deleted account's name in the CSV — opps on a
             // soft-deleted account would otherwise leak the stale label.
             .is("deleted_at", null),
+      // Karan 2026-07-10 audit fix: the profiles table's primary key is
+      // `user_id` (not `id`), and the display column is `sf_user_name`
+      // (not `full_name`). The old code silently returned zero rows for
+      // every FK-based estimator lookup — the "Estimator" column in the
+      // CSV was always blank for pre-migration-049 opps. Fixed.
       estimatorIds.length === 0
-        ? Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string | null }[] })
+        ? Promise.resolve({ data: [] as { user_id: string; sf_user_name: string | null; email: string | null }[] })
         : sb
             .from("profiles")
-            .select("id, full_name, email")
-            .in("id", estimatorIds),
+            .select("user_id, sf_user_name, email")
+            .in("user_id", estimatorIds),
     ]);
 
   const accountNameById = new Map<string, string>();
@@ -144,11 +149,11 @@ export async function exportOpportunitiesCsv(
   }
   const estimatorNameById = new Map<string, string>();
   for (const r of (estimatorRows.data ?? []) as {
-    id: string;
-    full_name: string | null;
+    user_id: string;
+    sf_user_name: string | null;
     email: string | null;
   }[]) {
-    estimatorNameById.set(r.id, r.full_name || r.email || "");
+    estimatorNameById.set(r.user_id, r.sf_user_name || r.email || "");
   }
 
   const rows: string[] = [];

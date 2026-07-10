@@ -1324,13 +1324,13 @@ export default async function OpportunityDetailPage({
         </div>
       )}
       {editedOk && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>Changes saved.</span>
         </div>
       )}
       {clonedOk && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>
             Cloned from another deal. Edit the title + bid range now, then
@@ -2392,11 +2392,11 @@ async function InfoTab({
         </div>
       )}
       {statusOk && (
-        <div className="lg:col-span-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700 flex items-start justify-between gap-3">
+        <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
           <span>Status updated to <strong>{opportunityStatusLabel(opp.status)}</strong>.</span>
           <Link
             href={`/commercial/opportunities/${opp.id}`}
-            className="text-[12px] text-blue-700 hover:text-blue-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -2619,11 +2619,11 @@ function ChangeStatusCard({
   // up-front block makes the warning visible BEFORE the user picks).
   const warnNext = nextStatuses.filter((s) => shouldWarnTransition(opp.status, s));
   return (
-    <section className={`bg-white border border-blue-200 rounded-xl p-5 ring-1 ring-blue-50 ${className ?? ""}`}>
+    <section className={`bg-white border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
         <div>
           <h2 className="text-base font-bold text-ppp-charcoal flex items-center gap-2">
-            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[14px]" aria-hidden>→</span>
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-[14px]" aria-hidden>→</span>
             Move this deal forward
           </h2>
           <p className="text-[12px] text-ppp-charcoal-600 mt-1">
@@ -2750,12 +2750,12 @@ async function DebriefTab({
         </div>
       )}
       {(statusOk || justClosed) && !isDebriefed && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
           Deal saved as <strong>{opportunityStatusLabel(opp.status)}</strong>. Capture the {outcomeLabel.toLowerCase()} debrief below to feed the quarterly Win/Loss report — or skip and come back later.
         </div>
       )}
       {debriefSaved && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
           Debrief saved. Thanks — this feeds the quarterly Win/Loss report.
         </div>
       )}
