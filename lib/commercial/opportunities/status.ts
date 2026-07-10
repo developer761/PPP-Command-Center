@@ -159,9 +159,15 @@ export async function changeOpportunityStatus(
         missing.length === 1
           ? missing[0]
           : missing.slice(0, -1).join(", ") + " and " + missing.slice(-1)[0];
+      // Karan 2026-07-10: pointer used to say "Structure section" but
+      // the audit-fix batch (commit 2ee6fc9) merged Structure + Project
+      // into a single "Details" section on the DealEditSheet. Also
+      // humanize the status name so the toast reads like plain English
+      // instead of a snake_case enum.
+      const toStatusLabel = opportunityStatusLabel(input.to_status).toLowerCase();
       return {
         ok: false,
-        error: `Set the ${label} on this opportunity before moving to ${input.to_status}. Open Edit → Structure section.`,
+        error: `Set the ${label} on this opportunity before moving to ${toStatusLabel}. Open the opportunity's Edit sheet → Details section.`,
       };
     }
   }
