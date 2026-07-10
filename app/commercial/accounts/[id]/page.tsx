@@ -4608,6 +4608,11 @@ function DealEditSheet({
   const endDateDefault = deal.proposed_end_at ? deal.proposed_end_at.slice(0, 10) : "";
   const closeHref = `/commercial/accounts/${accountId}?tab=opportunities`;
   const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]";
+  // Karan 2026-07-10 (arrows-coming-down flag): all selects get an
+  // identical chevron. `appearance-none` strips the OS default (which
+  // rendered differently in Safari vs Firefox vs Chrome). SELECT_BG_STYLE
+  // paints our own inline SVG chevron so every dropdown looks the same.
+  const selectCls = `${inputCls} appearance-none bg-white pr-9`;
   const labelCls = "block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5";
   return (
     <div id="deal-edit-sheet" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="deal-edit-title">
@@ -4668,8 +4673,8 @@ function DealEditSheet({
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="opp_id" value={deal.id} />
 
-          {/* ─── Section: Basics ─── */}
-          <SheetSection title="Basics">
+          {/* ─── Section: About this deal ─── */}
+          <SheetSection title="About this deal">
             <div>
               <label htmlFor="edit-title" className={labelCls}>Deal title *</label>
               <input
@@ -4688,7 +4693,7 @@ function DealEditSheet({
                 id="edit-source"
                 name="source"
                 defaultValue={deal.source ?? ""}
-                className={`${inputCls} bg-white`}
+                className={selectCls}
                 style={SELECT_BG_STYLE}
               >
                 <option value="">— not set —</option>
@@ -4699,8 +4704,11 @@ function DealEditSheet({
             </div>
           </SheetSection>
 
-          {/* ─── Section: Money ─── */}
-          <SheetSection title="Money">
+          {/* ─── Section: Pricing ─── */}
+          <SheetSection
+            title="Pricing"
+            hint="Rough bid range + your best guess on close probability."
+          >
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="edit-bid-low" className={labelCls}>Bid low ($)</label>
@@ -4742,8 +4750,11 @@ function DealEditSheet({
             </div>
           </SheetSection>
 
-          {/* ─── Section: Schedule ─── */}
-          <SheetSection title="Schedule">
+          {/* ─── Section: Timeline ─── */}
+          <SheetSection
+            title="Timeline"
+            hint="When is the proposal due, and when might we start + finish the work?"
+          >
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="edit-due" className={labelCls}>Proposal due</label>
@@ -4769,7 +4780,10 @@ function DealEditSheet({
                 fields optional at Solicitation; changeOpportunityStatus
                 blocks the move to Estimating until the three CEO fields
                 are set. ─── */}
-          <SheetSection title="Details">
+          <SheetSection
+            title="Details"
+            hint="Client name, site location, and estimator are required before this deal can move to Estimating."
+          >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className={labelCls}>Client name</span>
@@ -4800,7 +4814,8 @@ function DealEditSheet({
                 <select
                   name="estimator_user_id"
                   defaultValue={deal.estimator_user_id ?? ""}
-                  className={`${inputCls} bg-white`}
+                  className={selectCls}
+                  style={SELECT_BG_STYLE}
                 >
                   {/* Karan 2026-07-10 copy polish: "— unassigned —" was
                       cryptic; call out that this is required for the
@@ -4871,15 +4886,58 @@ function DealEditSheet({
               />
             </div>
           </SheetSection>
+
+          {/* ─── Danger zone — Karan 2026-07-10: moved Delete out of the
+                footer where it was crammed next to Save (destructive
+                next to primary = bad). Now lives at the bottom of the
+                scroll body with an explicit "Danger zone" label, rose
+                border, and its own confirm flow. The footer stays
+                focused on Save + Cancel. ─── */}
+          <section className="border border-rose-200 bg-rose-50/40 rounded-xl p-4 sm:p-5 space-y-3">
+            <div>
+              <h3 className="text-[13px] font-bold text-rose-800 leading-tight">
+                Danger zone
+              </h3>
+              <p className="text-[11.5px] text-rose-700 mt-0.5 leading-snug">
+                Soft-deletes this deal. Restorable by an admin from the audit log.
+              </p>
+            </div>
+            <details className="relative">
+              <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-300 bg-white text-[12.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[40px] touch-manipulation">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                </svg>
+                Delete this deal
+              </summary>
+              <form
+                action={deleteDealFromAccountAction}
+                className="mt-3 bg-white border border-rose-200 rounded-lg p-3 space-y-2.5"
+              >
+                <input type="hidden" name="account_id" value={accountId} />
+                <input type="hidden" name="opp_id" value={deal.id} />
+                <input type="hidden" name="confirm" value="yes" />
+                <p className="text-[12px] text-rose-800 leading-relaxed">
+                  Are you sure? This will remove <strong>{deal.title}</strong> from the pipeline.
+                </p>
+                <button
+                  type="submit"
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+                >
+                  Yes, delete this deal
+                </button>
+              </form>
+            </details>
+          </section>
         </form>
 
-        {/* Footer — Save + Cancel + Delete. Save fires the form above via
-            form= attribute; Cancel/Delete are separate forms/links. */}
-        <footer className="px-5 py-3 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/40 flex items-center gap-2 flex-wrap">
+        {/* Footer — Karan 2026-07-10: simplified to Save + Cancel only.
+            Delete moved into the Danger Zone section above so
+            destructive isn't inches from the primary CTA. */}
+        <footer className="px-5 py-3 border-t border-ppp-charcoal-100 bg-white flex items-center gap-2">
           <button
             type="submit"
             form={`edit-deal-form-${deal.id}`}
-            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <polyline points="20 6 9 17 4 12" />
@@ -4892,45 +4950,39 @@ function DealEditSheet({
           >
             Cancel
           </Link>
-          <details className="relative">
-            <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-rose-200 bg-white text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-              </svg>
-              Delete
-            </summary>
-            <form
-              action={deleteDealFromAccountAction}
-              className="absolute right-0 bottom-full mb-2 z-10 bg-white border border-rose-200 rounded-lg shadow-xl p-3 w-[260px] space-y-2.5"
-            >
-              <input type="hidden" name="account_id" value={accountId} />
-              <input type="hidden" name="opp_id" value={deal.id} />
-              <input type="hidden" name="confirm" value="yes" />
-              <p className="text-[12px] text-rose-800 leading-relaxed">
-                Soft-delete <strong>{deal.title}</strong>. Restorable by admin from the audit log.
-              </p>
-              <button
-                type="submit"
-                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
-              >
-                Yes, delete this deal
-              </button>
-            </form>
-          </details>
         </footer>
       </aside>
     </div>
   );
 }
 
-function SheetSection({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * Karan 2026-07-10: SheetSection rebuilt as a proper card with a real
+ * title header, not a nav-style eyebrow. Sections now read as distinct
+ * boxes with generous padding and a light bg tint. Optional `hint` line
+ * sits under the title for context (e.g. "Required to move to
+ * Estimating") without cluttering the field labels themselves.
+ */
+function SheetSection({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
+    <section className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-4">
+      <div>
+        <h3 className="text-[14px] font-bold text-ppp-charcoal leading-tight">
           {title}
-        </div>
-        <div className="flex-1 h-px bg-ppp-charcoal-100" />
+        </h3>
+        {hint && (
+          <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 leading-snug">
+            {hint}
+          </p>
+        )}
       </div>
       <div className="space-y-3">{children}</div>
     </section>

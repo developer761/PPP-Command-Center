@@ -983,35 +983,53 @@ export default async function CommercialOpportunitiesPage({
                   </p>
                 </div>
               </div>
-              {/* Karan 2026-07-10 (ui-micro-details): make grouped-under-
-                  same-customer visually POP. Navy left-border accent runs
-                  the full height of the group (header + all its rows) so
-                  the connection reads at a glance. Header uses cc-navy-50
-                  tint + cc-navy-800 for the account name — matches the
-                  Phase A "navy = structural elements" rule. */}
-              <ul>
+              {/* Karan 2026-07-10 (ui-micro-details rev 2): every account
+                  gets a consistent header + a real gap between accounts
+                  (divide-y-[6px] on the parent = 6px charcoal-50 strip
+                  between cards). Multi-deal accounts get a stronger
+                  navy accent + bold header; single-deal accounts get a
+                  quieter charcoal treatment so density stays balanced.
+                  Together this makes each customer's cluster read as
+                  ONE clear block. */}
+              <ul className="divide-y-[6px] divide-ppp-charcoal-50">
                 {groups.map((g) => {
-                  const isCluster = g.opps.length > 1 && !!g.account;
+                  const isCluster = g.opps.length > 1;
                   return (
                     <li
                       key={g.accountId}
                       className={
                         isCluster
-                          ? "border-l-[3px] border-cc-navy-500 border-b border-ppp-charcoal-100"
-                          : "border-b border-ppp-charcoal-100"
+                          ? "border-l-[3px] border-cc-navy-500"
+                          : "border-l-[3px] border-ppp-charcoal-200"
                       }
                     >
-                      {isCluster && g.account && (
-                        <div className="px-4 py-2 bg-cc-navy-50 border-b border-cc-navy-100 flex items-center gap-2 flex-wrap">
+                      {g.account && (
+                        <div
+                          className={`px-4 py-2 flex items-center gap-2 flex-wrap ${
+                            isCluster
+                              ? "bg-cc-navy-50 border-b border-cc-navy-100"
+                              : "bg-ppp-charcoal-50/60 border-b border-ppp-charcoal-100"
+                          }`}
+                        >
                           <Link
                             href={`/commercial/accounts/${g.account.id}`}
-                            className="text-[13px] font-bold text-cc-navy-800 hover:text-cc-navy-900 hover:underline underline-offset-2"
+                            className={`text-[13px] font-bold hover:underline underline-offset-2 ${
+                              isCluster
+                                ? "text-cc-navy-800 hover:text-cc-navy-900"
+                                : "text-ppp-charcoal hover:text-blue-800"
+                            }`}
                             title={`Open ${g.account.company_name}'s account`}
                           >
                             {g.account.company_name}
                           </Link>
-                          <span className="text-[10.5px] font-bold uppercase tracking-wide text-cc-navy-700 bg-white border border-cc-navy-200 rounded px-1.5 py-0.5">
-                            {g.opps.length} deals
+                          <span
+                            className={`text-[10.5px] font-bold uppercase tracking-wide rounded px-1.5 py-0.5 border ${
+                              isCluster
+                                ? "text-cc-navy-700 bg-white border-cc-navy-200"
+                                : "text-ppp-charcoal-600 bg-white border-ppp-charcoal-200"
+                            }`}
+                          >
+                            {g.opps.length} deal{g.opps.length === 1 ? "" : "s"}
                           </span>
                         </div>
                       )}
