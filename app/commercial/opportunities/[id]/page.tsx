@@ -95,9 +95,14 @@ import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
+import { CommercialFileRowActions } from "@/components/commercial-file-row-actions";
 import { listDocumentsForParent, type CommercialDocument } from "@/lib/commercial/documents/db";
-import { documentCategoryLabel } from "@/lib/commercial/documents/categories";
-import { documentStatusLabel, type DocumentStatus } from "@/lib/commercial/documents/status";
+import { documentCategoryLabel, DOCUMENT_CATEGORIES } from "@/lib/commercial/documents/categories";
+import {
+  documentStatusLabel,
+  allowedNextDocumentStatuses,
+  type DocumentStatus,
+} from "@/lib/commercial/documents/status";
 // InfoDot import removed 2026-07-08 Batch 2b — labels now use native
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
@@ -130,6 +135,8 @@ type SP = Promise<{
   /** Karan 2026-07-08: quick-edit slide-out state on the Invoices tab. */
   edit_invoice?: string;
   details_saved?: string;
+  /** Phase C: category filter chip on the Files sub-tab. */
+  category?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
@@ -669,6 +676,76 @@ async function archiveAttachmentAction(formData: FormData) {
   // force-dynamic, but the list page can be cached for navigation.
   revalidatePath("/commercial/opportunities");
   redirect(`/commercial/opportunities/${opportunity_id}?tab=plans`);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase C · Files sub-tab — server actions
+// Toggle-favorite, transition-status, soft-delete. Version bump lives
+// on its own API route (multipart file upload) not a server action.
+// All three actions redirect back to the Files tab preserving any
+// active `?category=X` filter so the user's context isn't lost.
+// ═══════════════════════════════════════════════════════════════════
+
+async function toggleDocumentFavoriteAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const document_id = String(formData.get("document_id") ?? "");
+  const currently = String(formData.get("favorited") ?? "0") === "1";
+  if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
+  const { favoriteDocument, unfavoriteDocument, getDocument: getDoc } = await import(
+    "@/lib/commercial/documents/db"
+  );
+  const doc = await getDoc(document_id);
+  if (!doc) redirect("/commercial/opportunities");
+  const result = currently
+    ? await unfavoriteDocument(document_id, user.id)
+    : await favoriteDocument(document_id, user.id);
+  const parentOppId = doc.parent_id;
+  const errQs = result.ok ? "" : `&error=${encodeURIComponent(result.error)}`;
+  redirect(`/commercial/opportunities/${parentOppId}?tab=files${errQs}`);
+}
+
+async function transitionDocumentStatusAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const document_id = String(formData.get("document_id") ?? "");
+  const to_status = String(formData.get("to_status") ?? "");
+  if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
+  const { transitionDocumentStatus, getDocument: getDoc } = await import(
+    "@/lib/commercial/documents/db"
+  );
+  const doc = await getDoc(document_id);
+  if (!doc) redirect("/commercial/opportunities");
+  const result = await transitionDocumentStatus(
+    document_id,
+    to_status as import("@/lib/commercial/documents/status").DocumentStatus,
+    user.id
+  );
+  const parentOppId = doc.parent_id;
+  const errQs = result.ok ? "" : `&error=${encodeURIComponent(result.error)}`;
+  redirect(`/commercial/opportunities/${parentOppId}?tab=files${errQs}`);
+}
+
+async function softDeleteDocumentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const document_id = String(formData.get("document_id") ?? "");
+  if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
+  const { softDeleteDocument, getDocument: getDoc } = await import(
+    "@/lib/commercial/documents/db"
+  );
+  const doc = await getDoc(document_id);
+  if (!doc) redirect("/commercial/opportunities");
+  const parentOppId = doc.parent_id;
+  const result = await softDeleteDocument(document_id, user.id);
+  const errQs = result.ok ? "" : `&error=${encodeURIComponent(result.error)}`;
+  redirect(`/commercial/opportunities/${parentOppId}?tab=files${errQs}`);
 }
 
 /**
@@ -1534,7 +1611,13 @@ export default async function OpportunityDetailPage({
       {tab === "submittals" && (
         <SubmittalsTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />
       )}
-      {tab === "files" && <FilesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "files" && (
+        <FilesTab
+          oppId={opp.id}
+          errorMessage={pickFirst(sp.error)}
+          categoryFilter={pickFirst(sp.category) ?? null}
+        />
+      )}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
     </div>
   );
@@ -4158,12 +4241,37 @@ function SubmittalRow({
  * Renders favorites at top, then the rest by most-recent-upload. Empty
  * state coaches users toward the drop-zone.
  */
-async function FilesTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
-  const docs = await listDocumentsForParent("opportunity", oppId);
+async function FilesTab({
+  oppId,
+  errorMessage,
+  categoryFilter,
+}: {
+  oppId: string;
+  errorMessage?: string;
+  categoryFilter: string | null;
+}) {
+  const allDocs = await listDocumentsForParent("opportunity", oppId);
+  // Apply category filter if set. Kept case-sensitive because our own
+  // categories.ts values are lowercase snake_case — filter chip href
+  // uses the same slugs.
+  const docs = categoryFilter
+    ? allDocs.filter((d) => d.category === categoryFilter)
+    : allDocs;
   const live = docs.filter((d) => d.status !== "superseded");
   const superseded = docs.filter((d) => d.status === "superseded");
   const favorites = live.filter((d) => d.favorited_at);
   const others = live.filter((d) => !d.favorited_at);
+
+  // Per-category counts drive the chip labels so users see totals at a
+  // glance without having to click each filter. Computed from allDocs
+  // (unfiltered) so the counts don't collapse to zero when a filter is
+  // active.
+  const counts = new Map<string, number>();
+  for (const d of allDocs) {
+    counts.set(d.category, (counts.get(d.category) ?? 0) + 1);
+  }
+
+  const baseHref = `/commercial/opportunities/${oppId}?tab=files`;
 
   return (
     <div className="space-y-5">
@@ -4174,6 +4282,26 @@ async function FilesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
       )}
 
       <CommercialFilesUploadForm parentType="opportunity" parentId={oppId} />
+
+      {/* Category filter chips — All + one per DOCUMENT_CATEGORIES. Rendered
+          as links so back/forward preserves filter state + copy-link works. */}
+      {allDocs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FilterChip href={baseHref} label={`All · ${allDocs.length}`} active={!categoryFilter} />
+          {DOCUMENT_CATEGORIES.map((c) => {
+            const n = counts.get(c) ?? 0;
+            if (n === 0) return null;
+            return (
+              <FilterChip
+                key={c}
+                href={`${baseHref}&category=${c}`}
+                label={`${documentCategoryLabel(c)} · ${n}`}
+                active={categoryFilter === c}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {favorites.length > 0 && (
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -4199,7 +4327,9 @@ async function FilesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
         </div>
         {others.length + favorites.length === 0 ? (
           <div className="p-8 text-center text-sm text-ppp-charcoal-500">
-            No files yet. Drop a bid set, an RFI, meeting minutes, or a site photo above.
+            {categoryFilter
+              ? `No files in the ${documentCategoryLabel(categoryFilter)} category yet.`
+              : "No files yet. Drop a bid set, an RFI, meeting minutes, or a site photo above."}
           </div>
         ) : others.length === 0 ? (
           <div className="p-6 text-center text-[12px] text-ppp-charcoal-500">
@@ -4231,10 +4361,34 @@ async function FilesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
   );
 }
 
+function FilterChip({
+  href,
+  label,
+  active,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11.5px] font-semibold transition-colors touch-manipulation min-h-[30px] ${
+        active
+          ? "bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200"
+          : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border border-transparent hover:bg-ppp-charcoal-100"
+      }`}
+    >
+      {label}
+    </Link>
+  );
+}
+
 /**
  * A file row on the Files tab. Renders: file name (opens signed download
- * in a new tab), size, category pill, status pill, favorite star toggle,
- * uploaded_at timestamp, and (via nested <details>) the notes if any.
+ * in a new tab), size, category label, status pill, action strip
+ * (favorite / status transitions / new version / delete) via the client
+ * component.
  */
 function FileRow({ doc, muted }: { doc: CommercialDocument; muted?: boolean }) {
   const sizeMB = (doc.size_bytes / 1024 / 1024).toFixed(2);
@@ -4247,6 +4401,13 @@ function FileRow({ doc, muted }: { doc: CommercialDocument; muted?: boolean }) {
     timeZone: "America/New_York",
   });
   const statusTone = statusToneClasses(doc.status);
+  // Server-computed allowed transitions — superseded row shows no
+  // transitions (client component also renders nothing for it).
+  const rawAllowed = allowedNextDocumentStatuses(doc.status);
+  const allowedNext = rawAllowed.filter(
+    (s): s is "draft" | "pending_review" | "approved" | "rejected" =>
+      s !== "superseded"
+  );
   return (
     <li className={`px-4 py-3 ${muted ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -4288,17 +4449,15 @@ function FileRow({ doc, muted }: { doc: CommercialDocument; muted?: boolean }) {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {doc.favorited_at ? (
-            <span
-              className="inline-flex items-center justify-center h-8 w-8 text-amber-500"
-              title="Favorited"
-              aria-label="Favorited"
-            >
-              ★
-            </span>
-          ) : null}
-        </div>
+        <CommercialFileRowActions
+          documentId={doc.id}
+          status={doc.status}
+          favorited={!!doc.favorited_at}
+          allowedNext={allowedNext}
+          toggleFavoriteAction={toggleDocumentFavoriteAction}
+          transitionStatusAction={transitionDocumentStatusAction}
+          deleteAction={softDeleteDocumentAction}
+        />
       </div>
     </li>
   );
