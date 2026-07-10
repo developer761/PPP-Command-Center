@@ -4622,9 +4622,11 @@ function DealEditSheet({
         aria-label="Close deal editor"
         className="absolute inset-0 bg-ppp-charcoal/40 backdrop-blur-[1px]"
       />
-      {/* Sheet — right-aligned slide-out. Full-width on mobile, 480px on
-          desktop so the accounts page stays visible behind it. */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[520px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
+      {/* Sheet — right-aligned slide-out. Karan 2026-07-10: bumped
+          desktop width from 520px → 720px so the form breathes; long
+          field labels + hints don't wrap mid-word anymore. Full-width
+          on mobile stays. */}
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[600px] lg:w-[720px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
         {/* Karan 2026-07-08 simplification pass: killed the read-only KPI
             band (redundant with the form field values below) and the
             "status changes happen elsewhere" paragraph (users learn
@@ -4665,10 +4667,17 @@ function DealEditSheet({
         {/* Edit form — scrollable body. Sections separated by labeled
             dividers instead of just spacing so the eye tracks where each
             group of fields ends. */}
+        {/* Karan 2026-07-10: the scroll container is now a plain <div>
+            wrapping BOTH the edit <form> AND the Danger Zone <form>
+            as siblings. Previous structure nested them, which is
+            invalid HTML — the inner Delete form's submit was getting
+            swallowed by the outer edit form (Delete button silently
+            did nothing). Fixed. */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-ppp-charcoal-50/50">
         <form
           action={editDealFromAccountAction}
           id={`edit-deal-form-${deal.id}`}
-          className="flex-1 overflow-y-auto px-5 py-4 space-y-5"
+          className="space-y-4"
         >
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="opp_id" value={deal.id} />
@@ -4696,7 +4705,7 @@ function DealEditSheet({
                 className={selectCls}
                 style={SELECT_BG_STYLE}
               >
-                <option value="">— not set —</option>
+                <option value="">Choose a source</option>
                 {OPPORTUNITY_SOURCES.map((s) => (
                   <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
                 ))}
@@ -4737,13 +4746,17 @@ function DealEditSheet({
             </div>
             <div>
               <label htmlFor="edit-prob" className={labelCls}>Probability (%)</label>
+              {/* Karan 2026-07-10: type="text" + inputMode="numeric"
+                  instead of type="number" so browsers don't render the
+                  up/down spinner arrows inside the box. Server action
+                  still parses as a number. */}
               <input
                 id="edit-prob"
                 name="probability_pct"
-                type="number"
-                min={0}
-                max={100}
-                step={1}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={3}
                 defaultValue={deal.probability_pct}
                 className={`${inputCls} tabular-nums max-w-[140px]`}
               />
@@ -4784,7 +4797,10 @@ function DealEditSheet({
             title="Details"
             hint="Client name, site location, and estimator are required before this deal can move to Estimating."
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Karan 2026-07-10: tighter 3-col layout for the required
+                Phase B fields so users see them together as a group + it
+                saves vertical scroll. On mobile they stack (grid-cols-1). */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label className="block">
                 <span className={labelCls}>Client name</span>
                 <input
@@ -4807,8 +4823,6 @@ function DealEditSheet({
                   className={inputCls}
                 />
               </label>
-            </div>
-            <div>
               <label className="block">
                 <span className={labelCls}>Estimator</span>
                 <select
@@ -4821,7 +4835,7 @@ function DealEditSheet({
                       cryptic; call out that this is required for the
                       Estimating status transition so the empty state
                       isn't ambiguous. */}
-                  <option value="">No estimator (required for Estimating)</option>
+                  <option value="">Choose an estimator</option>
                   {estimators.map((e) => (
                     <option key={e.user_id} value={e.user_id}>{e.name}</option>
                   ))}
@@ -4886,49 +4900,50 @@ function DealEditSheet({
               />
             </div>
           </SheetSection>
-
-          {/* ─── Danger zone — Karan 2026-07-10: moved Delete out of the
-                footer where it was crammed next to Save (destructive
-                next to primary = bad). Now lives at the bottom of the
-                scroll body with an explicit "Danger zone" label, rose
-                border, and its own confirm flow. The footer stays
-                focused on Save + Cancel. ─── */}
-          <section className="border border-rose-200 bg-rose-50/40 rounded-xl p-4 sm:p-5 space-y-3">
-            <div>
-              <h3 className="text-[13px] font-bold text-rose-800 leading-tight">
-                Danger zone
-              </h3>
-              <p className="text-[11.5px] text-rose-700 mt-0.5 leading-snug">
-                Soft-deletes this deal. Restorable by an admin from the audit log.
-              </p>
-            </div>
-            <details className="relative">
-              <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-300 bg-white text-[12.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[40px] touch-manipulation">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                </svg>
-                Delete this deal
-              </summary>
-              <form
-                action={deleteDealFromAccountAction}
-                className="mt-3 bg-white border border-rose-200 rounded-lg p-3 space-y-2.5"
-              >
-                <input type="hidden" name="account_id" value={accountId} />
-                <input type="hidden" name="opp_id" value={deal.id} />
-                <input type="hidden" name="confirm" value="yes" />
-                <p className="text-[12px] text-rose-800 leading-relaxed">
-                  Are you sure? This will remove <strong>{deal.title}</strong> from the pipeline.
-                </p>
-                <button
-                  type="submit"
-                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
-                >
-                  Yes, delete this deal
-                </button>
-              </form>
-            </details>
-          </section>
         </form>
+
+        {/* ─── Danger zone — SIBLING of the edit form (not nested).
+              The <details> holds its OWN form. HTML doesn't allow
+              nested forms; the previous structure caused the Delete
+              button to silently submit the edit form instead. This
+              wrapper is a plain <section> so the two forms live side
+              by side inside the scroll container. ─── */}
+        <section className="border border-rose-200 bg-rose-50/40 rounded-xl p-4 sm:p-5 space-y-3">
+          <div>
+            <h3 className="text-[13px] font-bold text-rose-800 leading-tight">
+              Danger zone
+            </h3>
+            <p className="text-[11.5px] text-rose-700 mt-0.5 leading-snug">
+              Soft-deletes this deal. Restorable by an admin from the audit log.
+            </p>
+          </div>
+          <details className="relative">
+            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-300 bg-white text-[12.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[40px] touch-manipulation">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              </svg>
+              Delete this deal
+            </summary>
+            <form
+              action={deleteDealFromAccountAction}
+              className="mt-3 bg-white border border-rose-200 rounded-lg p-3 space-y-2.5"
+            >
+              <input type="hidden" name="account_id" value={accountId} />
+              <input type="hidden" name="opp_id" value={deal.id} />
+              <input type="hidden" name="confirm" value="yes" />
+              <p className="text-[12px] text-rose-800 leading-relaxed">
+                Are you sure? This will remove <strong>{deal.title || "this deal"}</strong> from the pipeline.
+              </p>
+              <button
+                type="submit"
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
+              >
+                Yes, delete this deal
+              </button>
+            </form>
+          </details>
+        </section>
+        </div>
 
         {/* Footer — Karan 2026-07-10: simplified to Save + Cancel only.
             Delete moved into the Danger Zone section above so
@@ -4957,11 +4972,12 @@ function DealEditSheet({
 }
 
 /**
- * Karan 2026-07-10: SheetSection rebuilt as a proper card with a real
- * title header, not a nav-style eyebrow. Sections now read as distinct
- * boxes with generous padding and a light bg tint. Optional `hint` line
- * sits under the title for context (e.g. "Required to move to
- * Estimating") without cluttering the field labels themselves.
+ * Karan 2026-07-10: SheetSection rebuilt as a clean white card with a
+ * bold section title + optional hint. Dropped the gray tint (Karan:
+ * "make it look professional and clean") — plain white with a single
+ * subtle border reads better than tinted panels stacked on tinted
+ * backgrounds. Sections are visually distinct via padding + border,
+ * not tinted bg.
  */
 function SheetSection({
   title,
@@ -4973,13 +4989,13 @@ function SheetSection({
   children: ReactNode;
 }) {
   return (
-    <section className="bg-ppp-charcoal-50/40 border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-4">
+    <section className="bg-white border border-ppp-charcoal-200 rounded-xl p-5 space-y-4 shadow-sm">
       <div>
-        <h3 className="text-[14px] font-bold text-ppp-charcoal leading-tight">
+        <h3 className="text-[15px] font-bold text-ppp-charcoal leading-tight">
           {title}
         </h3>
         {hint && (
-          <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 leading-snug">
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 leading-snug">
             {hint}
           </p>
         )}
