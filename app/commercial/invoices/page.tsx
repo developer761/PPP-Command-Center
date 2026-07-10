@@ -527,13 +527,13 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   return (
     <div className="space-y-5">
       {deletedFlash && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Invoice deleted.</span>
         </div>
       )}
       {bulkDeletedFlash > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span><strong>{bulkDeletedFlash}</strong> invoice{bulkDeletedFlash === 1 ? "" : "s"} deleted.</span>
         </div>
@@ -612,7 +612,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         <div className={`rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 ${
           invoiceErrorsFlash > 0
             ? "bg-amber-50 border border-amber-200 text-amber-900"
-            : "bg-blue-50 border border-blue-200 text-blue-800"
+            : "bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800"
         }`}>
           <span>
             <strong>{invoicesCreatedFlash}</strong> invoice{invoicesCreatedFlash === 1 ? "" : "s"} created.
@@ -645,9 +645,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         // "Open account" chip on the right gives users the option to
         // navigate but requires an explicit click (labeled, not
         // ambient) so nobody misclicks into the wrong context.
-        <div className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center justify-between gap-3 flex-wrap">
+        <div className="bg-white border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 rounded px-1.5 py-0.5">
               Filtered
             </span>
             <span>
@@ -660,14 +660,14 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href={`/commercial/accounts/${accountFilter.id}`}
-              className="text-[12px] font-medium text-ppp-charcoal-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 min-h-[36px] px-2 touch-manipulation"
+              className="text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 hover:underline inline-flex items-center gap-1 min-h-[36px] px-2 touch-manipulation"
               title="Open the account detail page in a new context"
             >
               Open account
             </Link>
             <Link
               href="/commercial/invoices"
-              className="text-[12px] font-semibold text-blue-700 hover:text-blue-900 inline-flex items-center gap-1 min-h-[44px] px-3 touch-manipulation"
+              className="text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-1 min-h-[44px] px-3 touch-manipulation"
             >
               Show all invoices
               <span aria-hidden>→</span>
@@ -746,7 +746,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                       </div>
                       <Link
                         href={`/commercial/accounts/${accountIdFilter}?tab=deals`}
-                        className="inline-flex items-center gap-1 text-blue-700 font-semibold hover:underline"
+                        className="inline-flex items-center gap-1 text-cc-brand-700 font-semibold hover:underline"
                       >
                         Open {accountFilter?.company_name ?? "this customer"}'s deals →
                       </Link>
@@ -754,7 +754,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   ) : (
                     <>
                       <div>No Won deals yet — an invoice needs a Won deal to attach to.</div>
-                      <Link href="/commercial/opportunities" className="inline-flex items-center gap-1 text-blue-700 font-semibold hover:underline">
+                      <Link href="/commercial/opportunities" className="inline-flex items-center gap-1 text-cc-brand-700 font-semibold hover:underline">
                         Go to pipeline →
                       </Link>
                     </>
@@ -795,7 +795,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                                 <Link
                                   key={o.id}
                                   href={`/commercial/invoices/new?opp=${o.id}`}
-                                  className="flex items-start justify-between gap-3 pl-5 pr-3 py-2 rounded-lg hover:bg-blue-50 min-h-[40px] touch-manipulation"
+                                  className="flex items-start justify-between gap-3 pl-5 pr-3 py-2 rounded-lg hover:bg-cc-brand-50 min-h-[40px] touch-manipulation"
                                 >
                                   <div className="min-w-0 flex-1">
                                     <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
@@ -934,7 +934,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             <summary
               className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 ${
                 sortKey !== "recent"
-                  ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                  ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
                   : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
@@ -955,7 +955,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                       key={o.key}
                       href={setSortHref(o.key)}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
-                        active ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-ppp-charcoal-50"
+                        active ? "bg-cc-brand-50 hover:bg-cc-brand-100" : "hover:bg-ppp-charcoal-50"
                       }`}
                     >
                       <span
@@ -966,7 +966,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                       >
                         {active && <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />}
                       </span>
-                      <span className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal-700"}`}>
+                      <span className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal-700"}`}>
                         {o.label}
                       </span>
                     </Link>
@@ -1208,7 +1208,7 @@ function GroupedByOpp({
               : overduePresent
               ? "bg-rose-500"
               : totalPaid > 0
-              ? "bg-blue-500"
+              ? "bg-cc-brand-500"
               : "bg-ppp-charcoal-300";
           // Karan 2026-07-07 fix: compact card click used to jump to
           // the opportunities detail page — Karan wants users to stay
@@ -1241,7 +1241,7 @@ function GroupedByOpp({
               <div className="min-w-0 flex-1">
                 {/* Row 1: title + account chip + N invoices + overdue badge */}
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
-                  <span className={`font-semibold text-[14px] truncate ${isOrphan ? "text-ppp-charcoal-500" : "text-ppp-charcoal group-hover/oppInv:text-blue-800"}`}>
+                  <span className={`font-semibold text-[14px] truncate ${isOrphan ? "text-ppp-charcoal-500" : "text-ppp-charcoal group-hover/oppInv:text-cc-brand-800"}`}>
                     {opp ? derivedOppName(opp, account?.company_name ?? null) : (
                       <span className="inline-flex items-center gap-1.5">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600">
@@ -1339,17 +1339,17 @@ function GroupedByOpp({
                           : invStatus === "overdue"
                           ? "bg-rose-100 text-rose-800 border-rose-200"
                           : invStatus === "partial"
-                          ? "bg-blue-100 text-blue-800 border-blue-200"
+                          ? "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200"
                           : invStatus === "draft"
                           ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
                           : invStatus === "void"
                           ? "bg-ppp-charcoal-100 text-ppp-charcoal-500 border-ppp-charcoal-200"
-                          : "bg-blue-100 text-blue-800 border-blue-200";
+                          : "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200";
                       return (
                         <li key={inv.id}>
                           <Link
                             href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/invoices?opportunity_id=${oppId}`)}`}
-                            className="group/invRow flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-blue-50/40 focus:outline-none focus:bg-blue-50/60 transition-colors touch-manipulation"
+                            className="group/invRow flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-cc-brand-50/40 focus:outline-none focus:bg-cc-brand-50/60 transition-colors touch-manipulation"
                           >
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${statusTone} shrink-0`}>
                               {invoiceStatusLabel(invStatus)}
@@ -1386,7 +1386,7 @@ function GroupedByOpp({
               ) : (
                 <Link
                   href={rowHref}
-                  className="group/oppInv block px-4 sm:px-5 py-3.5 hover:bg-blue-50/40 focus:outline-none focus:bg-blue-50/60 transition-colors touch-manipulation"
+                  className="group/oppInv block px-4 sm:px-5 py-3.5 hover:bg-cc-brand-50/40 focus:outline-none focus:bg-cc-brand-50/60 transition-colors touch-manipulation"
                 >
                   {headerBody}
                 </Link>
@@ -1587,7 +1587,7 @@ function FullDetailByOpp({
           className={`rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 ${
             paidCapped
               ? "bg-amber-50 border border-amber-200 text-amber-900"
-              : "bg-blue-50 border border-blue-200 text-blue-800"
+              : "bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800"
           }`}
         >
           <span>
@@ -1603,7 +1603,7 @@ function FullDetailByOpp({
         </div>
       )}
       {createdInvoiceId && (
-        <div className="rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 bg-blue-50 border border-blue-200 text-blue-800">
+        <div className="rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800">
           <span>Invoice created.</span>
           <Link
             href={`/commercial/invoices?account_id=${accountId}`}
@@ -1644,7 +1644,7 @@ function FullDetailByOpp({
             : overduePresent
             ? "bg-rose-500"
             : totalPaid > 0
-            ? "bg-blue-500"
+            ? "bg-cc-brand-500"
             : "bg-ppp-charcoal-300";
         const sortedGroup = [...groupInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
         return (
@@ -1662,7 +1662,7 @@ function FullDetailByOpp({
                     {opp ? (
                       <Link
                         href={`/commercial/opportunities/${opp.id}?tab=invoices`}
-                        className="text-[15px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 truncate"
+                        className="text-[15px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
                       >
                         {derivedOppName(opp, account?.company_name ?? null)}
                       </Link>
@@ -1742,7 +1742,7 @@ function FullDetailByOpp({
                     <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalPaid)}</div>
                   </div>
                   <div className={`border rounded-lg px-2.5 py-1.5 ${
-                    totalBalance > 0 ? "border-blue-200 bg-blue-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
+                    totalBalance > 0 ? "border-cc-brand-200 bg-cc-brand-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
                   }`}>
                     <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Balance</div>
                     <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance)}</div>
@@ -1783,23 +1783,23 @@ function FullDetailByOpp({
                   <li
                     key={inv.id}
                     id={`inv-${inv.id}`}
-                    className={`scroll-mt-4 ${isFlashRow ? "bg-blue-50/40" : ""}`}
+                    className={`scroll-mt-4 ${isFlashRow ? "bg-cc-brand-50/40" : ""}`}
                   >
                     <Link
                       href={`/commercial/invoices/${inv.id}`}
-                      className="group/inv block px-4 sm:px-5 py-3 hover:bg-blue-50/30 transition-colors touch-manipulation"
+                      className="group/inv block px-4 sm:px-5 py-3 hover:bg-cc-brand-50/30 transition-colors touch-manipulation"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-blue-800 group-hover/inv:underline">
+                            <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-cc-brand-800 group-hover/inv:underline">
                               {inv.invoice_number}
                             </span>
                             <StatusPill status={displayStatus} />
                             {inv.due_at && (
                               <span
                                 className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
-                                  isOverdue ? "text-rose-700" : daysUntilDue !== null && daysUntilDue <= 7 ? "text-amber-700" : "text-blue-700"
+                                  isOverdue ? "text-rose-700" : daysUntilDue !== null && daysUntilDue <= 7 ? "text-amber-700" : "text-cc-brand-700"
                                 }`}
                               >
                                 Due {fmtEtDate(inv.due_at)}
@@ -1852,7 +1852,7 @@ function FullDetailByOpp({
                       </div>
                     ) : (
                       <details className="group/pay border-t border-ppp-charcoal-100">
-                        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-blue-700 hover:bg-blue-50/60 min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
                           <span className="inline-flex items-center gap-1.5">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                               <path d="M12 5v14 M5 12h14" />
@@ -2017,7 +2017,7 @@ function FullDetailByOpp({
                       behind another <details> so the common case stays
                       three fields. */}
                   <details className="group/more">
-                    <summary className="list-none cursor-pointer text-[11.5px] font-medium text-blue-700 hover:text-blue-900 min-h-[28px] flex items-center gap-1.5 select-none">
+                    <summary className="list-none cursor-pointer text-[11.5px] font-medium text-cc-brand-700 hover:text-cc-brand-800 min-h-[28px] flex items-center gap-1.5 select-none">
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
                         <path d="M9 18l6-6-6-6" />
                       </svg>
@@ -2119,12 +2119,12 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
       : invoice.paid_cents >= invoice.total_cents && invoice.total_cents > 0
       ? "bg-emerald-500"
       : invoice.paid_cents > 0
-      ? "bg-blue-500"
+      ? "bg-cc-brand-500"
       : displayStatus === "overdue"
       ? "bg-rose-500"
       : "bg-ppp-charcoal-300";
   return (
-    <li className="relative group/row hover:bg-blue-50/30 transition-colors">
+    <li className="relative group/row hover:bg-cc-brand-50/30 transition-colors">
       <Link href={`/commercial/invoices/${invoice.id}`} className="block px-4 py-4 touch-manipulation">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -2222,12 +2222,12 @@ function KpiCard({
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
       : tone === "rose"
       ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
       : "border-ppp-charcoal-100 bg-white";
   const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-cc-brand-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
@@ -2292,7 +2292,7 @@ function StatusPill({ status }: { status: InvoiceStatus }) {
       : status === "void"
       ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
       : status === "sent" || status === "viewed"
-      ? "bg-blue-100 text-blue-800 border-blue-300"
+      ? "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300"
       : status === "partial"
       ? "bg-amber-100 text-amber-900 border-amber-300"
       : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
@@ -2309,7 +2309,7 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
       ? "bg-rose-50 text-rose-700 border-rose-200"
       : tone === "soon"
       ? "bg-amber-50 text-amber-800 border-amber-200"
-      : "bg-blue-50 text-blue-700 border-blue-200";
+      : "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200";
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}>
       {label}

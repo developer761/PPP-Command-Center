@@ -299,13 +299,13 @@ export default async function CommercialAccountDetailPage({
           out via reload (no client component needed — the user navigating
           away clears the query string naturally). */}
       {savedOk && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>Changes saved.</span>
         </div>
       )}
       {teamAddedCount > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2 flex-wrap">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2 flex-wrap">
           <span aria-hidden>✓</span>
           <span className="flex-1 min-w-0">
             Added {teamAddedCount} team member{teamAddedCount === 1 ? "" : "s"}.
@@ -313,7 +313,7 @@ export default async function CommercialAccountDetailPage({
           </span>
           <Link
             href={`/commercial/accounts/${account.id}?tab=documents`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 min-h-[36px] touch-manipulation shrink-0"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-white text-cc-brand-700 border border-cc-brand-300 hover:bg-cc-brand-50 min-h-[36px] touch-manipulation shrink-0"
             title="Upload Certificate of Insurance (COI) and W-9 tax form"
           >
             Upload Certificate of Insurance / W-9 →
@@ -330,7 +330,7 @@ export default async function CommercialAccountDetailPage({
         </div>
       )}
       {(docsAddedCount > 0 || tagsAddedCount > 0) && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2 flex-wrap">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2 flex-wrap">
           <span aria-hidden>✓</span>
           <span className="flex-1 min-w-0">
             {docsAddedCount > 0 && (
@@ -407,7 +407,7 @@ export default async function CommercialAccountDetailPage({
                 {primary.contact.email && (
                   <a
                     href={`mailto:${primary.contact.email}`}
-                    className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 hover:underline underline-offset-2 min-h-[24px]"
+                    className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[24px]"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" />
@@ -418,7 +418,7 @@ export default async function CommercialAccountDetailPage({
                 {primary.contact.phone && (
                   <a
                     href={`tel:${primary.contact.phone.replace(/[^0-9+]/g, "")}`}
-                    className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 hover:underline underline-offset-2 min-h-[24px]"
+                    className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[24px]"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
@@ -1185,9 +1185,9 @@ function RecentActivityCard({
           const when = new Date(entry.occurred_at);
           const iconCls =
             entry.kind === "status_change"
-              ? "bg-blue-100 text-blue-700"
+              ? "bg-cc-brand-100 text-cc-brand-700"
               : entry.kind === "task_completed"
-              ? "bg-blue-100 text-blue-700"
+              ? "bg-cc-brand-100 text-cc-brand-700"
               : "bg-ppp-charcoal-100 text-ppp-charcoal-700";
           const icon =
             entry.kind === "status_change" ? "→" : entry.kind === "task_completed" ? "✓" : "📝";
@@ -1205,7 +1205,7 @@ function RecentActivityCard({
                   <span className="text-ppp-charcoal-400">on</span>
                   <Link
                     href={`/commercial/opportunities/${entry.opportunity_id}`}
-                    className="text-blue-700 hover:text-blue-800 underline break-words"
+                    className="text-cc-brand-700 hover:text-cc-brand-800 underline break-words"
                   >
                     {entry.opportunity_title || "(untitled)"}
                   </Link>
@@ -1276,7 +1276,7 @@ function ComplianceChecklistCard({
         </div>
         <Link
           href={`/commercial/accounts/${accountId}?tab=documents`}
-          className="text-[12px] text-blue-700 hover:text-blue-800 underline shrink-0"
+          className="text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline shrink-0"
         >
           Documents tab
         </Link>
@@ -1301,7 +1301,7 @@ function ComplianceChecklistCard({
                 {needsAction && (
                   <Link
                     href={`/commercial/accounts/${accountId}?tab=documents#upload-${item.category}`}
-                    className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-blue-700 hover:text-blue-800 hover:underline underline-offset-2 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded px-1 py-0.5"
+                    className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded px-1 py-0.5"
                     title={`${actionLabel} a ${item.label}`}
                   >
                     {actionLabel}
@@ -1316,7 +1316,7 @@ function ComplianceChecklistCard({
         })}
       </ul>
       {allGood && (
-        <p className="mt-3 text-[12px] text-blue-700">All required docs on file and valid.</p>
+        <p className="mt-3 text-[12px] text-cc-brand-700">All required docs on file and valid.</p>
       )}
       {!allGood && (
         <p className="mt-3 text-[12px] text-ppp-charcoal-500">
@@ -1349,11 +1349,11 @@ function healthDecoration(item: ComplianceItem): { dot: string; label: string; t
       };
     case "ok":
       return {
-        dot: "bg-blue-500",
+        dot: "bg-cc-brand-500",
         label: item.expires_at
           ? `${item.days_until ?? 0}d left`
           : "On file",
-        tone: "text-blue-700",
+        tone: "text-cc-brand-700",
       };
   }
 }
@@ -1444,7 +1444,7 @@ function TagsCard({
           {tags.map((t) => (
             <span
               key={t.id}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px] font-medium border bg-blue-50 text-blue-700 border-blue-200"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
             >
               {t.tag}
               <form action={removeTagAction} className="inline">
@@ -1453,7 +1453,7 @@ function TagsCard({
                 <button
                   type="submit"
                   aria-label={`Remove ${t.tag}`}
-                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-blue-700/60 hover:text-blue-900 touch-manipulation"
+                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-cc-brand-700/60 hover:text-cc-brand-800 touch-manipulation"
                 >
                   ✕
                 </button>
@@ -1566,7 +1566,7 @@ function InfoCards({ account }: { account: CommercialAccount }) {
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{account.notes}</p>
           <Link
             href={`/commercial/accounts/${account.id}/edit#edit-notes`}
-            className="inline-flex items-center gap-0.5 mt-3 text-[11px] font-semibold text-blue-700 hover:text-blue-800 hover:underline underline-offset-2"
+            className="inline-flex items-center gap-0.5 mt-3 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2"
           >
             Edit notes
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1802,7 +1802,7 @@ function ContactRow({
         )}
         <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
           {contact.email && (
-            <a href={`mailto:${contact.email}`} className="text-blue-700 hover:text-blue-800 break-all">
+            <a href={`mailto:${contact.email}`} className="text-cc-brand-700 hover:text-cc-brand-800 break-all">
               {contact.email}
             </a>
           )}
@@ -1819,7 +1819,7 @@ function ContactRow({
           {attachments.map((a) => (
             <span
               key={a.account_contact_id}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
               title={a.notes ?? undefined}
             >
               {roleLabel(a.role)}
@@ -1829,7 +1829,7 @@ function ContactRow({
                 <button
                   type="submit"
                   aria-label={`Remove ${roleLabel(a.role)} role`}
-                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-blue-700/80 hover:text-blue-900 touch-manipulation"
+                  className="-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-cc-brand-700/80 hover:text-cc-brand-800 touch-manipulation"
                 >
                   ✕
                 </button>
@@ -1859,7 +1859,7 @@ function ContactRow({
               <input type="hidden" name="account_contact_id" value={attachments[0].account_contact_id} />
               <button
                 type="submit"
-                className="text-[11px] text-ppp-charcoal-500 hover:text-blue-700 underline underline-offset-2 touch-manipulation min-h-[44px] px-1 inline-flex items-center"
+                className="text-[11px] text-ppp-charcoal-500 hover:text-cc-brand-700 underline underline-offset-2 touch-manipulation min-h-[44px] px-1 inline-flex items-center"
                 title="Record that you just emailed or called this contact"
               >
                 I just touched base
@@ -2173,7 +2173,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             those with CC access — the server action auto-grants access
             on add). Same role / primary / notes wiring. */}
         <details className="mt-5 border-t border-ppp-charcoal-100 pt-4 group/emailAdd">
-          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-blue-700 hover:text-blue-800 min-h-[32px] touch-manipulation">
+          <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] touch-manipulation">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/emailAdd:rotate-90">
               <path d="M9 18l6-6-6-6" />
             </svg>
@@ -2247,7 +2247,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-blue-300 bg-white text-blue-700 text-sm font-semibold hover:bg-blue-50 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cc-brand-300 bg-white text-cc-brand-700 text-sm font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
                 Add by email
               </button>
@@ -2321,7 +2321,7 @@ function TeamRow({
         </div>
         <a
           href={`mailto:${person.user_email}`}
-          className="text-[11px] text-blue-700 hover:text-blue-800 break-all"
+          className="text-[11px] text-cc-brand-700 hover:text-cc-brand-800 break-all"
         >
           {person.user_email}
         </a>
@@ -2346,8 +2346,8 @@ function TeamRow({
               key={a.id}
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
                 a.is_primary
-                  ? "bg-cc-brand-600 text-white border-blue-700"
-                  : "bg-blue-50 text-blue-700 border-blue-200"
+                  ? "bg-cc-brand-600 text-white border-cc-brand-700"
+                  : "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
               }`}
               title={tipBits.join("\n")}
             >
@@ -2359,7 +2359,7 @@ function TeamRow({
                 <button
                   type="submit"
                   aria-label={`Remove ${assignmentRoleLabel(a.role)} role from ${person.user_full_name ?? person.user_email}`}
-                  className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-blue-700/80 hover:text-blue-900"}`}
+                  className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[44px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-cc-brand-700/80 hover:text-cc-brand-800"}`}
                 >
                   ✕
                 </button>
@@ -2606,7 +2606,7 @@ function NewDealForm({
         </label>
       </div>
       <details className="group/more">
-        <summary className="list-none cursor-pointer text-[11.5px] font-medium text-blue-700 hover:text-blue-900 min-h-[28px] flex items-center gap-1.5 select-none">
+        <summary className="list-none cursor-pointer text-[11.5px] font-medium text-cc-brand-700 hover:text-cc-brand-800 min-h-[28px] flex items-center gap-1.5 select-none">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
             <path d="M9 18l6-6-6-6" />
           </svg>
@@ -2773,7 +2773,7 @@ async function OpportunitiesTab({
           the URL has ?new_deal=1 (set by the retired
           /commercial/opportunities/new redirect shim). */}
       {createdTitle && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start justify-between gap-3">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start justify-between gap-3">
           <span>
             <strong>{decodeURIComponent(createdTitle)}</strong> logged.
           </span>
@@ -2986,7 +2986,7 @@ function AccountOpportunityRow({
       ? "text-rose-700"
       : daysInStatus > 7
       ? "text-amber-700"
-      : "text-blue-700";
+      : "text-cc-brand-700";
   // First name from "Sarah Connor" → "Sarah". Falls back to the local
   // part of the email when no full name is set.
   const leadLabel = primaryLead
@@ -3127,12 +3127,12 @@ function AccountOpportunityRow({
               );
             })}
           </select>
-          <button
-            type="submit"
-            className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[36px] touch-manipulation"
+          <PendingSubmitButton
+            className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation disabled:hover:bg-ppp-charcoal-700"
+            pendingLabel="Moving…"
           >
             Go
-          </button>
+          </PendingSubmitButton>
         </form>
       )}
     </li>
@@ -3147,7 +3147,7 @@ function statusPillTone(status: OpportunityStatus | string): { cls: string } {
   if (status === "follow_up") return { cls: "bg-cyan-50 text-cyan-800 border-cyan-200" };
   if (status === "proposal_sent") return { cls: "bg-orange-50 text-orange-800 border-orange-200" };
   if (status === "proposal_pending_approval") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
-  if (status === "rfp") return { cls: "bg-blue-50 text-blue-800 border-blue-200" };
+  if (status === "rfp") return { cls: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200" };
   if (status === "estimating") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
   return { cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100" };
 }
@@ -3203,13 +3203,13 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
         </summary>
         <ul className="px-4 py-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700 space-y-1.5">
           <li>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200 mr-1">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200 mr-1">
               v3
             </span>
             Active version. Highest version number wins. Older versions stack into &ldquo;History&rdquo;.
           </li>
           <li>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-100 text-blue-800 border-blue-200 mr-1">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200 mr-1">
               ✓ Valid 6mo
             </span>
             Document is in good standing &mdash; expires more than 30 days out (or never).
@@ -3317,7 +3317,7 @@ function DocumentRow({
     }
     if (doc.expires_at) {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200">
           ✓ Valid
         </span>
       );
@@ -3336,7 +3336,7 @@ function DocumentRow({
     <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200">
             v{doc.version}
           </span>
           {expBadge}
@@ -3348,7 +3348,7 @@ function DocumentRow({
         </div>
         <a
           href={`/api/commercial/accounts/${accountId}/documents/${doc.id}/download`}
-          className="text-sm font-medium text-blue-700 hover:text-blue-800 break-all"
+          className="text-sm font-medium text-cc-brand-700 hover:text-cc-brand-800 break-all"
         >
           {doc.file_name}
         </a>
@@ -3386,7 +3386,7 @@ function DocumentRow({
           <input type="hidden" name="document_id" value={doc.id} />
           <button
             type="submit"
-            className="w-full sm:w-auto px-3 py-2 text-[12px] font-medium text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 min-h-[44px] touch-manipulation whitespace-nowrap"
+            className="w-full sm:w-auto px-3 py-2 text-[12px] font-medium text-cc-brand-700 border border-cc-brand-200 rounded-lg hover:bg-cc-brand-50 min-h-[44px] touch-manipulation whitespace-nowrap"
             title="Make this the active version. Adds a new entry to the chain so the audit trail stays intact."
           >
             Restore as active
@@ -3502,7 +3502,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
                       <span
                         className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                           n.source_outcome === "won"
-                            ? "bg-blue-100 text-blue-800"
+                            ? "bg-cc-brand-100 text-cc-brand-800"
                             : n.source_outcome === "lost"
                             ? "bg-rose-100 text-rose-800"
                             : "bg-ppp-charcoal-100 text-ppp-charcoal-700"
@@ -3524,7 +3524,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
               {isAuto && n.source_opportunity_id && (
                 <Link
                   href={`/commercial/opportunities/${n.source_opportunity_id}`}
-                  className="text-[11px] font-medium text-blue-700 hover:text-blue-800 shrink-0 underline underline-offset-2"
+                  className="text-[11px] font-medium text-cc-brand-700 hover:text-cc-brand-800 shrink-0 underline underline-offset-2"
                 >
                   {n.source_opportunity_title ?? "View opportunity"} →
                 </Link>
@@ -3716,7 +3716,7 @@ function Field({
             href={value.startsWith("http") ? value : `https://${value}`}
             target="_blank"
             rel="noreferrer noopener"
-            className="text-blue-700 hover:text-blue-800 break-all"
+            className="text-cc-brand-700 hover:text-cc-brand-800 break-all"
           >
             {value}
           </a>
@@ -3772,7 +3772,7 @@ function AccountOverviewStrip({
   const activityTonality = activityTone(overview.last_activity_at);
   const activityClass =
     activityTonality === "ok"
-      ? "text-blue-700 bg-blue-50 border-blue-200"
+      ? "text-cc-brand-700 bg-cc-brand-50 border-cc-brand-200"
       : activityTonality === "stale"
       ? "text-amber-700 bg-amber-50 border-amber-200"
       : "text-rose-700 bg-rose-50 border-rose-200";
@@ -3792,7 +3792,7 @@ function AccountOverviewStrip({
       : invoiceRollup.overdue_count > 0
       ? "bg-rose-500"
       : paidCents > 0
-      ? "bg-blue-500"
+      ? "bg-cc-brand-500"
       : "bg-ppp-charcoal-300";
 
   const invoicedCountLabel =
@@ -3920,7 +3920,7 @@ function MoneyTile({
       : tone === "emerald"
       ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40"
       : tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/40"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/40"
       : "border-ppp-charcoal-200 bg-white";
   const subCls = subTone === "rose" ? "text-rose-700 font-semibold" : "text-ppp-charcoal-500";
   return (
@@ -4018,7 +4018,7 @@ function KpiTile({
   return href ? (
     <a
       href={href}
-      className={`block rounded-xl border px-3 py-3 sm:px-4 sm:py-3.5 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 touch-manipulation ${cls}`}
+      className={`block rounded-xl border px-3 py-3 sm:px-4 sm:py-3.5 transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-cc-brand-300 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 touch-manipulation ${cls}`}
     >
       {content}
     </a>
@@ -4031,12 +4031,12 @@ function Pill({ children, tone }: { children: React.ReactNode; tone: "emerald" |
   // Karan 2026-06-24: boosted saturation from -50/-700/-200 to
   // -100/-800/-300 to match the brighter status pills on opp page.
   // Karan 2026-07-10 audit fix: `emerald` was silently rendering blue
-  // — the tone key literally mapped to bg-blue-100/text-blue-800. Any
+  // — the tone key literally mapped to bg-cc-brand-100/text-cc-brand-800. Any
   // consumer asking for the emerald-scored variant (Rating A on the
   // account financial snapshot, etc.) got the wrong color for weeks.
   const cls = {
     emerald: "bg-emerald-100 text-emerald-800 border-emerald-300",
-    blue: "bg-blue-100 text-blue-800 border-blue-300",
+    blue: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
     amber: "bg-amber-100 text-amber-900 border-amber-300",
     rose: "bg-rose-100 text-rose-800 border-rose-300",
     neutral: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
@@ -4227,7 +4227,7 @@ async function AccountInvoicesTab({
               : dealOverdue
               ? "bg-rose-500"
               : dealPaid > 0
-              ? "bg-blue-500"
+              ? "bg-cc-brand-500"
               : "bg-ppp-charcoal-300";
             return (
               <section
@@ -4324,7 +4324,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
       ? "bg-rose-50 text-rose-800 border-rose-200"
       : derived === "void"
       ? "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200"
-      : "bg-blue-50 text-blue-800 border-blue-200";
+      : "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200";
   const paidPct =
     invoice.total_cents > 0
       ? Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))
@@ -4336,7 +4336,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
   const canRecordPayment = derived !== "paid" && derived !== "void" && invoice.balance_cents > 0;
   return (
     <li id={`inv-${invoice.id}`} className="scroll-mt-4">
-      <div className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-blue-50/40 transition-colors">
+      <div className="flex items-start justify-between gap-3 px-4 py-3 hover:bg-cc-brand-50/40 transition-colors">
         <Link
           href={`/commercial/invoices/${invoice.id}`}
           className="flex-1 min-w-0 min-h-[52px] touch-manipulation"
@@ -4368,7 +4368,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
           {invoice.total_cents > 0 && invoice.paid_cents > 0 && invoice.paid_cents < invoice.total_cents && (
             <div className="mt-1.5 max-w-[240px]">
               <div className="h-1 rounded-full bg-ppp-charcoal-100 overflow-hidden">
-                <div className="h-full bg-blue-500" style={{ width: `${paidPct}%` }} aria-label={`${paidPct}% paid`} />
+                <div className="h-full bg-cc-brand-500" style={{ width: `${paidPct}%` }} aria-label={`${paidPct}% paid`} />
               </div>
             </div>
           )}
@@ -4452,12 +4452,12 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                     className="w-full mt-0.5 px-2 py-1.5 text-[13px] border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                   />
                 </label>
-                <button
-                  type="submit"
-                  className="w-full inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[36px] touch-manipulation"
+                <PendingSubmitButton
+                  className="w-full inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation disabled:hover:bg-cc-brand-600"
+                  pendingLabel="Recording…"
                 >
                   Record payment
-                </button>
+                </PendingSubmitButton>
               </form>
             </details>
           )}
@@ -4480,14 +4480,14 @@ function RollupTile({
 }) {
   const ring =
     tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
       : tone === "warn"
       ? "border-amber-200 bg-gradient-to-br from-white to-amber-50/40"
       : tone === "danger"
       ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
       : "border-ppp-charcoal-100 bg-white";
   const stripe =
-    tone === "blue" ? "bg-blue-500" : tone === "warn" ? "bg-amber-500" : tone === "danger" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+    tone === "blue" ? "bg-cc-brand-500" : tone === "warn" ? "bg-amber-500" : tone === "danger" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
@@ -4596,7 +4596,7 @@ function AccountKpisTab({
           </div>
           <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
             <div
-              className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+              className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-cc-brand-500"}`}
               style={{ width: `${paidPct}%` }}
               aria-label={`${paidPct}% of invoiced amount collected`}
             />

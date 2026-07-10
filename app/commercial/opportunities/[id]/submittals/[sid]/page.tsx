@@ -630,7 +630,7 @@ export default async function SubmittalDetailPage({
         </div>
       )}
       {saved && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Cover saved.</span>
         </div>
@@ -1215,7 +1215,7 @@ export default async function SubmittalDetailPage({
               drawdowns, samples. Upload directly here, or link files already on{" "}
               <Link
                 href={`/commercial/opportunities/${opportunity_id}?tab=docs&sub=plans`}
-                className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
               >
                 Plans &amp; Specs
               </Link>.
@@ -1258,12 +1258,12 @@ export default async function SubmittalDetailPage({
               return (
                 <li
                   key={att.id}
-                  className="flex items-start justify-between gap-3 p-3 rounded-lg border border-ppp-charcoal-100 bg-white hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
+                  className="flex items-start justify-between gap-3 p-3 rounded-lg border border-ppp-charcoal-100 bg-white hover:border-cc-brand-200 hover:bg-cc-brand-50/30 transition-colors"
                 >
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     <span
                       aria-hidden
-                      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded bg-blue-50 text-blue-700 border border-blue-100"
+                      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-100"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8" />
@@ -1320,13 +1320,13 @@ export default async function SubmittalDetailPage({
             attach all the architect spec PDFs to a fresh draft. */}
         {canLinkAttachments && unlinkedAttachments.length > 0 && (
           <details className="mt-4 group" open={pickerOpen}>
-            <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-semibold text-blue-700 hover:text-blue-800 min-h-[36px] touch-manipulation select-none">
+            <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px] touch-manipulation select-none">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
                 <path d="M9 18l6-6-6-6" />
               </svg>
               + Link existing PDF ({unlinkedAttachments.length} available)
             </summary>
-            <form action={bulkLinkAttachmentsAction} className="mt-3 p-3 rounded-lg border border-blue-100 bg-blue-50/30 space-y-3">
+            <form action={bulkLinkAttachmentsAction} className="mt-3 p-3 rounded-lg border border-cc-brand-100 bg-cc-brand-50/30 space-y-3">
               <input type="hidden" name="opportunity_id" value={opportunity_id} />
               <input type="hidden" name="submittal_id" value={submittal_id} />
               <p className="text-[11px] text-ppp-charcoal-600">

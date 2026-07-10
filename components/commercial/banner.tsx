@@ -41,10 +41,10 @@ const VARIANT_STYLES: Record<
   }
 > = {
   info: {
-    stripe: "bg-blue-500",
+    stripe: "bg-cc-brand-500",
     tint: "bg-gradient-to-br from-white to-blue-50/40",
-    iconWrap: "bg-blue-100",
-    iconColor: "text-blue-700",
+    iconWrap: "bg-cc-brand-100",
+    iconColor: "text-cc-brand-700",
     text: "text-ppp-charcoal",
   },
   warn: {
@@ -147,7 +147,7 @@ export function Banner({
               {title}
             </div>
           )}
-          <div className="text-[13px] text-ppp-charcoal-600 leading-relaxed mt-0.5 [&_a]:text-blue-700 [&_a]:hover:text-blue-800 [&_a]:underline [&_a]:underline-offset-2 [&_strong]:text-ppp-charcoal">
+          <div className="text-[13px] text-ppp-charcoal-600 leading-relaxed mt-0.5 [&_a]:text-cc-brand-700 [&_a]:hover:text-cc-brand-700 [&_a]:underline [&_a]:underline-offset-2 [&_strong]:text-ppp-charcoal">
             {children}
           </div>
         </div>
@@ -170,7 +170,7 @@ export function BannerCta({
   const cls =
     tone === "primary"
       ? "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12.5px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 no-underline"
-      : "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12.5px] font-semibold text-blue-700 hover:text-blue-900 hover:bg-blue-50 min-h-[36px] touch-manipulation no-underline";
+      : "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 hover:bg-cc-brand-50 min-h-[36px] touch-manipulation no-underline";
   return (
     <Link href={href} className={cls}>
       {children}

@@ -182,7 +182,7 @@ export default function BatchInvoiceRows() {
                 <button
                   type="button"
                   onClick={() => toggleDetails(row.id)}
-                  className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-blue-700 hover:text-blue-900 min-h-[32px] touch-manipulation"
+                  className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] touch-manipulation"
                   aria-expanded={isOpen}
                   aria-controls={`row-${rowKey}-details`}
                 >

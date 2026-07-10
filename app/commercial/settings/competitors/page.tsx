@@ -221,7 +221,7 @@ export default async function CompetitorsAdminPage({
       </header>
 
       {sp.ok && (
-        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-blue-800">
+        <div className="mb-4 bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-2.5 text-sm text-cc-brand-800">
           {sp.ok === "added" && "Competitor added."}
           {sp.ok === "renamed" && "Competitor renamed."}
           {sp.ok === "updated" && "Competitor status updated."}
@@ -403,7 +403,7 @@ export default async function CompetitorsAdminPage({
                   <input type="hidden" name="set_to" value="active" />
                   <button
                     type="submit"
-                    className="text-xs font-medium px-3 py-2 rounded-md border border-blue-200 text-blue-800 hover:bg-blue-50 min-h-[44px]"
+                    className="text-xs font-medium px-3 py-2 rounded-md border border-cc-brand-200 text-cc-brand-800 hover:bg-cc-brand-50 min-h-[44px]"
                   >
                     Reactivate
                   </button>
@@ -533,7 +533,7 @@ function IntelEditor({ competitor }: { competitor: Competitor }) {
       {hasIntel && (
         <div className="mt-2 text-[11.5px] text-ppp-charcoal-600 space-y-0.5 pl-4">
           {competitor.website && (
-            <div>🌐 <a href={competitor.website.startsWith("http") ? competitor.website : `https://${competitor.website}`} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline">{competitor.website}</a></div>
+            <div>🌐 <a href={competitor.website.startsWith("http") ? competitor.website : `https://${competitor.website}`} target="_blank" rel="noopener noreferrer" className="text-cc-brand-700 hover:underline">{competitor.website}</a></div>
           )}
           {competitor.home_base && <div>📍 {competitor.home_base}</div>}
           {(competitor.typical_bid_low_cents !== null || competitor.typical_bid_high_cents !== null) && (

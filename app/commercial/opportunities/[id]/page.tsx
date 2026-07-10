@@ -1375,7 +1375,7 @@ export default async function OpportunityDetailPage({
         <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
           <Link
             href="/commercial/opportunities"
-            className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation"
+            className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z" />
@@ -1387,7 +1387,7 @@ export default async function OpportunityDetailPage({
               <span aria-hidden className="text-ppp-charcoal-300">/</span>
               <Link
                 href={`/commercial/accounts/${account.id}?tab=opportunities`}
-                className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+                className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
                 title={account.company_name}
               >
                 {account.company_name}
@@ -1411,7 +1411,7 @@ export default async function OpportunityDetailPage({
               {account && (
                 <Link
                   href={`/commercial/accounts/${account.id}`}
-                  className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                  className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
                 >
                   {account.company_name}
                 </Link>
@@ -1470,7 +1470,7 @@ export default async function OpportunityDetailPage({
                 <input type="hidden" name="opp_id" value={opp.id} />
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-blue-200 bg-white text-blue-700 text-[12px] font-semibold hover:bg-blue-50 hover:border-blue-300 min-h-[44px] touch-manipulation"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-cc-brand-200 bg-white text-cc-brand-700 text-[12px] font-semibold hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[44px] touch-manipulation"
                   title="Customer's back in play? Reopen puts this deal back into the active pipeline."
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1717,7 +1717,7 @@ async function OpportunityInvoicesPanel({
       : anyOverdue
       ? "bg-rose-500"
       : totalPaidCents > 0
-      ? "bg-blue-500"
+      ? "bg-cc-brand-500"
       : "bg-ppp-charcoal-300";
   // % of contract billed — how much of the estimated deal value have we
   // actually invoiced? Above 100% = we billed for more than we estimated
@@ -1733,7 +1733,7 @@ async function OpportunityInvoicesPanel({
         <div className={`rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
           invoiceErrors && invoiceErrors > 0
             ? "bg-amber-50 border border-amber-200 text-amber-900"
-            : "bg-blue-50 border border-blue-200 text-blue-700"
+            : "bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700"
         }`}>
           <span>
             <strong>{invoicesCreated}</strong> invoice{invoicesCreated === 1 ? "" : "s"} created.
@@ -1754,7 +1754,7 @@ async function OpportunityInvoicesPanel({
           className={`rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
             paidCapped
               ? "bg-amber-50 border border-amber-200 text-amber-900"
-              : "bg-blue-50 border border-blue-200 text-blue-700"
+              : "bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700"
           }`}
         >
           <span>
@@ -1905,7 +1905,7 @@ async function OpportunityInvoicesPanel({
                   : inv.paid_cents >= inv.total_cents && inv.total_cents > 0
                   ? "bg-emerald-500"
                   : inv.paid_cents > 0
-                  ? "bg-blue-500"
+                  ? "bg-cc-brand-500"
                   : isOverdue
                   ? "bg-rose-500"
                   : "bg-ppp-charcoal-300";
@@ -1923,8 +1923,8 @@ async function OpportunityInvoicesPanel({
                   id={`inv-${inv.id}`}
                   className={`scroll-mt-4 rounded-lg border transition-all ${
                     isFlashRow
-                      ? "border-blue-300 bg-blue-50/60 ring-1 ring-blue-200"
-                      : "border-ppp-charcoal-100 hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm"
+                      ? "border-cc-brand-300 bg-cc-brand-50/60 ring-1 ring-cc-brand-200"
+                      : "border-ppp-charcoal-100 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 hover:shadow-sm"
                   }`}
                 >
                   <Link
@@ -1935,7 +1935,7 @@ async function OpportunityInvoicesPanel({
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-blue-800 group-hover/inv:underline underline-offset-2 transition-colors">
+                          <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-cc-brand-800 group-hover/inv:underline underline-offset-2 transition-colors">
                             {inv.invoice_number}
                           </span>
                           <InvoicePill status={displayStatus} />
@@ -1946,7 +1946,7 @@ async function OpportunityInvoicesPanel({
                                   ? "text-rose-700"
                                   : daysUntilDue !== null && daysUntilDue <= 7
                                   ? "text-amber-700"
-                                  : "text-blue-700"
+                                  : "text-cc-brand-700"
                               }`}
                             >
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1997,7 +1997,7 @@ async function OpportunityInvoicesPanel({
                   </Link>
                   {canRecordPayment && (
                     <details className="group/pay border-t border-ppp-charcoal-100">
-                      <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-blue-700 hover:bg-blue-50/60 rounded-b-lg min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                      <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 rounded-b-lg min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
                         <span className="inline-flex items-center gap-1.5">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                             <path d="M12 5v14 M5 12h14" />
@@ -2099,7 +2099,7 @@ async function OpportunityInvoicesPanel({
                           Need to edit line items, change status, or delete this invoice?{" "}
                           <Link
                             href={`/commercial/invoices/${inv.id}`}
-                            className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                            className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
                           >
                             Open the full invoice
                           </Link>
@@ -2303,7 +2303,7 @@ async function OpportunityInvoicesPanel({
                   Need to edit line items, change status, void, or delete?{" "}
                   <Link
                     href={`/commercial/invoices/${editing.id}`}
-                    className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                    className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
                   >
                     Open the full invoice
                   </Link>.
@@ -2339,7 +2339,7 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
       : tone === "emerald"
       ? "border-emerald-200 bg-emerald-50/50"
       : tone === "blue"
-      ? "border-blue-200 bg-blue-50/50"
+      ? "border-cc-brand-200 bg-cc-brand-50/50"
       : "border-ppp-charcoal-200 bg-ppp-charcoal-50/50";
   return (
     <div className={`border rounded-lg px-3 py-2 ${cls}`}>
@@ -2362,7 +2362,7 @@ function InvoicePill({ status }: { status: InvoiceStatus }) {
       : status === "void"
       ? "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200"
       : status === "sent" || status === "viewed"
-      ? "bg-blue-100 text-blue-800 border-blue-300"
+      ? "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300"
       : status === "partial"
       ? "bg-amber-100 text-amber-900 border-amber-300"
       : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
@@ -2532,7 +2532,7 @@ async function InfoTab({
             <div className="pt-2">
               <Link
                 href={`/commercial/accounts/${account.id}`}
-                className="inline-flex items-center gap-1 text-[13px] font-semibold text-blue-700 hover:text-blue-800 underline underline-offset-2 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 text-[13px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 min-h-[36px] touch-manipulation"
               >
                 Open account →
               </Link>
@@ -3118,7 +3118,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                   {person.user_full_name ?? person.user_email}
                 </div>
                 {person.user_full_name && (
-                  <a href={`mailto:${person.user_email}`} className="text-[12px] text-blue-700 hover:text-blue-800 underline">
+                  <a href={`mailto:${person.user_email}`} className="text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline">
                     {person.user_email}
                   </a>
                 )}
@@ -3129,7 +3129,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
                         a.is_primary
                           ? "bg-cc-brand-600 text-white border-cc-brand-700"
-                          : "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
                       }`}
                       title={a.notes ?? undefined}
                     >
@@ -3141,7 +3141,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                         <button
                           type="submit"
                           aria-label={`Remove ${opportunityAssignmentRoleLabel(a.role)} role`}
-                          className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-blue-700/80 hover:text-blue-900"}`}
+                          className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-cc-brand-700/80 hover:text-cc-brand-800"}`}
                         >
                           ✕
                         </button>
@@ -3490,7 +3490,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
       <details className="group">
         <summary className="list-none cursor-pointer">
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{note.body}</p>
-          <span className="text-[11px] text-blue-700 underline mt-2 inline-flex items-center gap-1 min-h-[44px] touch-manipulation">
+          <span className="text-[11px] text-cc-brand-700 underline mt-2 inline-flex items-center gap-1 min-h-[44px] touch-manipulation">
             Edit / Delete
           </span>
         </summary>
@@ -3636,14 +3636,14 @@ function AttachmentRow({
         <div className="flex items-center gap-2 flex-wrap">
           <a
             href={`/api/commercial/opportunities/${oppId}/attachments/${attachment.id}/download`}
-            className="text-sm font-semibold text-blue-700 hover:text-blue-800 underline break-words py-1 inline-block"
+            className="text-sm font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline break-words py-1 inline-block"
             target="_blank"
             rel="noopener noreferrer"
           >
             {attachment.file_name}
           </a>
           {category && (
-            <span className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
+            <span className="inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200">
               {category}
             </span>
           )}
@@ -4521,7 +4521,7 @@ function FileRow({
               href={`/api/commercial/documents/${doc.id}/download`}
               target="_blank"
               rel="noreferrer"
-              className="text-[13px] font-semibold text-blue-700 hover:text-blue-800 truncate hover:underline underline-offset-2"
+              className="text-[13px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 truncate hover:underline underline-offset-2"
               title={doc.file_name}
             >
               {doc.file_name}
@@ -4689,7 +4689,7 @@ function Card({
     tone === "cc-brand"
       ? "bg-cc-brand-50 text-cc-brand-700"
       : tone === "blue"
-      ? "bg-blue-50 text-blue-700"
+      ? "bg-cc-brand-50 text-cc-brand-700"
       : tone === "amber"
       ? "bg-amber-50 text-amber-700"
       : "bg-ppp-charcoal-50 text-ppp-charcoal-600";
@@ -4697,7 +4697,7 @@ function Card({
     tone === "cc-brand"
       ? "bg-cc-brand-500"
       : tone === "blue"
-      ? "bg-blue-500"
+      ? "bg-cc-brand-500"
       : tone === "amber"
       ? "bg-amber-500"
       : "bg-ppp-charcoal-200";
@@ -4865,7 +4865,7 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
   // historic row still tints correctly.
   const map: Record<string, string> = {
     solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    rfp: "bg-blue-100 text-blue-800 border-blue-300",
+    rfp: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
     estimating: "bg-amber-100 text-amber-900 border-amber-300",
     proposal_pending_approval: "bg-purple-100 text-purple-800 border-purple-300",
     proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
@@ -4877,7 +4877,7 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
     negotiating: "bg-orange-100 text-orange-900 border-orange-300",
     on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
     no_bid: "bg-rose-100 text-rose-800 border-rose-300",
-    reopened: "bg-blue-100 text-blue-800 border-blue-300",
+    reopened: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
   };
   const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (

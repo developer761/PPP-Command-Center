@@ -281,13 +281,13 @@ function KpiTile({
       ? "border-cc-brand-100 bg-white hover:border-cc-brand-300"
       : tone === "rose"
       ? "border-rose-100 bg-white hover:border-rose-300"
-      : "border-blue-100 bg-white hover:border-blue-300";
+      : "border-cc-brand-100 bg-white hover:border-cc-brand-300";
   const glow =
     tone === "cc-brand"
       ? "bg-cc-brand-100/50"
       : tone === "rose"
       ? "bg-rose-100/50"
-      : "bg-blue-100/50";
+      : "bg-cc-brand-100/50";
   const stripe =
     tone === "cc-brand" ? "bg-gradient-to-b from-cc-brand-600 to-cc-brand-500"
     : tone === "rose" ? "bg-gradient-to-b from-rose-600 to-rose-500"
@@ -297,7 +297,7 @@ function KpiTile({
       ? "bg-cc-brand-100 text-cc-brand-700 group-hover/kpi:bg-cc-brand-600 group-hover/kpi:text-white"
       : tone === "rose"
       ? "bg-rose-100 text-rose-700 group-hover/kpi:bg-rose-600 group-hover/kpi:text-white"
-      : "bg-blue-100 text-blue-700 group-hover/kpi:bg-blue-600 group-hover/kpi:text-white";
+      : "bg-cc-brand-100 text-cc-brand-700 group-hover/kpi:bg-cc-brand-600 group-hover/kpi:text-white";
   return (
     <Link
       href={href}

@@ -78,7 +78,7 @@ export default function DueDatePickerWithPresets({
             type="button"
             onClick={() => applyPreset(p.days)}
             disabled={disabled}
-            className="px-2 py-0.5 text-[11px] font-semibold rounded border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors min-h-[28px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+            className="px-2 py-0.5 text-[11px] font-semibold rounded border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors min-h-[28px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
           >
             {p.label}
           </button>
@@ -87,7 +87,7 @@ export default function DueDatePickerWithPresets({
           type="button"
           onClick={applyEndOfMonth}
           disabled={disabled}
-          className="px-2 py-0.5 text-[11px] font-semibold rounded border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors min-h-[28px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+          className="px-2 py-0.5 text-[11px] font-semibold rounded border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors min-h-[28px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
         >
           EOM
         </button>

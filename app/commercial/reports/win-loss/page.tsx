@@ -301,7 +301,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           </h2>
           <p className="text-sm text-ppp-charcoal-500">
             Try a wider range, or head to the{" "}
-            <Link href="/commercial/opportunities" className="text-blue-700 underline">pipeline</Link> to close some deals.
+            <Link href="/commercial/opportunities" className="text-cc-brand-700 underline">pipeline</Link> to close some deals.
           </p>
         </section>
       ) : (
@@ -405,7 +405,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                     <div className="flex flex-wrap items-baseline gap-2 mb-1">
                       <Link
                         href={`/commercial/opportunities/${l.opportunity_id}`}
-                        className="text-sm font-semibold text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                        className="text-sm font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
                       >
                         {l.opportunity_title}
                       </Link>
@@ -453,7 +453,7 @@ function KpiCard({
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
       : tone === "rose"
       ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
       : "border-ppp-charcoal-100 bg-white";
@@ -461,7 +461,7 @@ function KpiCard({
     tone === "cc-brand"
       ? "bg-cc-brand-600"
       : tone === "blue"
-      ? "bg-blue-500"
+      ? "bg-cc-brand-500"
       : tone === "rose"
       ? "bg-rose-500"
       : "bg-ppp-charcoal-200";

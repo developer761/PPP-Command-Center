@@ -830,7 +830,7 @@ export default async function CommercialOpportunitiesPage({
             <summary
               className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                 sortChanged
-                  ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                  ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
                   : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
@@ -1524,7 +1524,7 @@ function CustomerBoardRow({
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href={`/commercial/accounts/${account.id}`}
-              className="text-sm font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2 break-words"
+              className="text-sm font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 break-words"
               title={`Open ${account.company_name}'s account`}
             >
               {account.company_name}
@@ -1575,7 +1575,7 @@ function CustomerBoardRow({
             GoHighLevel-style sheet with team + invoices + progress. */}
         <Link
           href={sheetHref(account.id)}
-          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800 min-h-[36px] touch-manipulation transition-colors"
+          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-700 min-h-[36px] touch-manipulation transition-colors"
           title={`Quick view of ${account.company_name}`}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1596,7 +1596,7 @@ function CustomerBoardRow({
             <Link
               key={o.id}
               href={sheetHref(account.id, o.id)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-blue-200 bg-blue-50 text-blue-800 text-[11.5px] font-medium hover:bg-blue-100 hover:border-blue-300 max-w-[280px] truncate"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-cc-brand-200 bg-cc-brand-50 text-cc-brand-800 text-[11.5px] font-medium hover:bg-cc-brand-100 hover:border-cc-brand-300 max-w-[280px] truncate"
               title={`View ${account.company_name} · ${o.title} — ${opportunityStatusLabel(o.status)}`}
             >
               <span className="truncate">{o.title}</span>
@@ -1858,7 +1858,7 @@ function KanbanBoard({
                 <li key={opp.id} className="py-2">
                   <Link
                     href={sheetHref(opp.account_id, opp.id)}
-                    className="text-[13px] text-blue-700 hover:text-blue-800 underline"
+                    className="text-[13px] text-cc-brand-700 hover:text-cc-brand-800 underline"
                   >
                     {derivedOppName(opp, accountById.get(opp.account_id)?.company_name ?? null)}
                   </Link>
@@ -2035,10 +2035,10 @@ function KpiCard({
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
       : "border-ppp-charcoal-100 bg-white";
   const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : "bg-ppp-charcoal-200";
+    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-cc-brand-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
@@ -2085,7 +2085,7 @@ function SortOption({
     <Link
       href={href}
       className={`flex items-center gap-3 px-3 py-2 rounded-lg min-h-[40px] touch-manipulation transition-colors ${
-        active ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-ppp-charcoal-50"
+        active ? "bg-cc-brand-50 hover:bg-cc-brand-100" : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
@@ -2096,7 +2096,7 @@ function SortOption({
       >
         {active && <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />}
       </span>
-      <span className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal-700"}`}>
+      <span className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal-700"}`}>
         {label}
       </span>
     </Link>
@@ -2118,7 +2118,7 @@ function FilterOption({
     <Link
       href={href}
       className={`flex items-start gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
-        active ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-ppp-charcoal-50"
+        active ? "bg-cc-brand-50 hover:bg-cc-brand-100" : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
@@ -2132,7 +2132,7 @@ function FilterOption({
         </svg>
       </span>
       <div className="min-w-0 flex-1">
-        <div className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal"}`}>
+        <div className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal"}`}>
           {label}
         </div>
         <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 leading-snug">
@@ -2279,7 +2279,7 @@ function OpportunityRow({
                 )}
                 {primaryLead && (
                   <span
-                    className="inline-flex items-center gap-1 text-blue-700"
+                    className="inline-flex items-center gap-1 text-cc-brand-700"
                     title={`${opportunityAssignmentRoleLabel(primaryLead.role)}: ${primaryLead.user_full_name ?? primaryLead.user_email}`}
                   >
                     <span aria-hidden>★</span>
@@ -2332,7 +2332,7 @@ function OpportunityRow({
           {finishCount > 0 && (
             <Link
               href={`/commercial/opportunities/${opportunity.id}?tab=finishes`}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-blue-800 bg-blue-50 border border-blue-100 hover:bg-blue-100 transition-colors min-h-[28px] touch-manipulation"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-100 hover:bg-cc-brand-100 transition-colors min-h-[28px] touch-manipulation"
             >
               <span aria-hidden>🎨</span>
               <span>{finishCount} {finishCount === 1 ? "finish" : "finishes"} →</span>
@@ -2441,7 +2441,7 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
       ? "bg-rose-50 text-rose-700 border-rose-200"
       : tone === "soon"
       ? "bg-amber-50 text-amber-800 border-amber-200"
-      : "bg-blue-50 text-blue-700 border-blue-200";
+      : "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200";
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}>
       {label}
@@ -2454,7 +2454,7 @@ function RatingPill({ rating }: { rating: CommercialAccountRating }) {
     rating === "A"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : rating === "B"
-      ? "bg-blue-50 text-blue-700 border-blue-200"
+      ? "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
       : "bg-amber-50 text-amber-700 border-amber-200";
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-bold border ${cls}`}>
@@ -2485,7 +2485,7 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
   // unknown status reaches the UI.
   const map: Record<string, string> = {
     solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    rfp: "bg-blue-100 text-blue-800 border-blue-300",
+    rfp: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
     estimating: "bg-amber-100 text-amber-900 border-amber-300",
     proposal_pending_approval: "bg-purple-100 text-purple-800 border-purple-300",
     proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
@@ -2497,7 +2497,7 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
     negotiating: "bg-orange-100 text-orange-900 border-orange-300",
     on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
     no_bid: "bg-rose-100 text-rose-800 border-rose-300",
-    reopened: "bg-blue-100 text-blue-800 border-blue-300",
+    reopened: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
   };
   const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (
@@ -2583,7 +2583,7 @@ function CustomerQuickSheet({
                   </span>
                 )}
                 {account.rating && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-blue-50 text-blue-800 border-blue-200 capitalize">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200 capitalize">
                     {account.rating.replace(/_/g, " ")}
                   </span>
                 )}
@@ -2627,7 +2627,7 @@ function CustomerQuickSheet({
               <span>Team ({team.length})</span>
               <Link
                 href={`/commercial/accounts/${account.id}?tab=overview&sub=team`}
-                className="text-[10px] font-semibold text-blue-700 hover:text-blue-800 normal-case tracking-normal"
+                className="text-[10px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 normal-case tracking-normal"
               >
                 Manage →
               </Link>
@@ -2669,9 +2669,9 @@ function CustomerQuickSheet({
                 <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Invoiced</div>
                 <div className="text-sm font-bold text-ppp-charcoal mt-0.5">{formatCentsFull(rollup.invoiced_cents)}</div>
               </div>
-              <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-2.5 py-2">
-                <div className="text-[9.5px] text-blue-800 font-medium uppercase tracking-wide">Paid</div>
-                <div className="text-sm font-bold text-blue-900 mt-0.5">{formatCentsFull(rollup.paid_cents)}</div>
+              <div className="rounded-lg border border-cc-brand-100 bg-cc-brand-50/50 px-2.5 py-2">
+                <div className="text-[9.5px] text-cc-brand-800 font-medium uppercase tracking-wide">Paid</div>
+                <div className="text-sm font-bold text-cc-brand-800 mt-0.5">{formatCentsFull(rollup.paid_cents)}</div>
               </div>
               <div className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-white"}`}>
                 <div className={`text-[9.5px] font-medium uppercase tracking-wide ${rollup.overdue_count > 0 ? "text-rose-800" : "text-ppp-charcoal-500"}`}>Balance</div>
@@ -2682,7 +2682,7 @@ function CustomerQuickSheet({
               <div className="mt-2.5">
                 <div className="h-1.5 rounded-full bg-ppp-charcoal-100 overflow-hidden">
                   <div
-                    className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+                    className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-cc-brand-500"}`}
                     style={{ width: `${paidPct}%` }}
                     aria-label={`${paidPct}% of invoiced amount paid`}
                   />
@@ -2706,7 +2706,7 @@ function CustomerQuickSheet({
                 <span>Invoices ({invoices.length})</span>
                 <Link
                   href={`/commercial/invoices?account_id=${account.id}`}
-                  className="text-[10px] font-semibold text-blue-700 hover:text-blue-800 normal-case tracking-normal"
+                  className="text-[10px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 normal-case tracking-normal"
                 >
                   Manage →
                 </Link>
@@ -2721,12 +2721,12 @@ function CustomerQuickSheet({
                       ? "bg-rose-50 text-rose-800 border-rose-200"
                       : derived === "void"
                       ? "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200"
-                      : "bg-blue-50 text-blue-800 border-blue-200";
+                      : "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200";
                   return (
                     <li key={inv.id}>
                       <Link
                         href={`/commercial/invoices/${inv.id}`}
-                        className="flex items-center gap-3 px-3 py-2 hover:bg-blue-50/40 transition-colors min-h-[44px] touch-manipulation"
+                        className="flex items-center gap-3 px-3 py-2 hover:bg-cc-brand-50/40 transition-colors min-h-[44px] touch-manipulation"
                         title={`Open ${inv.invoice_number}`}
                       >
                         <div className="min-w-0 flex-1">
@@ -2753,7 +2753,7 @@ function CustomerQuickSheet({
                   <li className="px-3 py-2 text-center">
                     <Link
                       href={`/commercial/invoices?account_id=${account.id}`}
-                      className="text-[11.5px] font-semibold text-blue-700 hover:text-blue-800"
+                      className="text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
                     >
                       +{invoices.length - 5} more invoices →
                     </Link>

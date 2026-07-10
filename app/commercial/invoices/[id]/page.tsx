@@ -403,7 +403,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
         <Link
           href="/commercial/invoices"
-          className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation"
+          className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
@@ -415,7 +415,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <span aria-hidden className="text-ppp-charcoal-300">/</span>
             <Link
               href={`/commercial/accounts/${account.id}`}
-              className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+              className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
               title={account.company_name}
             >
               {account.company_name}
@@ -427,7 +427,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <span aria-hidden className="text-ppp-charcoal-300">/</span>
             <Link
               href={`/commercial/opportunities/${opp.id}`}
-              className="inline-flex items-center gap-1 text-blue-700 hover:text-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+              className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
               title={derivedOppName(opp, account?.company_name ?? null)}
             >
               {derivedOppName(opp, account?.company_name ?? null)}
@@ -478,7 +478,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <span aria-hidden>·</span>
               <Link
                 href={`/commercial/opportunities/${opp.id}?tab=info`}
-                className="text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
               >
                 {derivedOppName(opp, account?.company_name ?? null)}
               </Link>
@@ -489,7 +489,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/${prevSibling.id}`}
                 aria-label={`Previous invoice: ${prevSibling.invoice_number}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M15 18l-6-6 6-6" />
@@ -508,7 +508,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/${nextSibling.id}`}
                 aria-label={`Next invoice: ${nextSibling.invoice_number}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-blue-50 hover:border-blue-300 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
               >
                 <span className="font-mono">{nextSibling.invoice_number.replace(/^PPP-INV-/, "…")}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -533,25 +533,25 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         </div>
       )}
       {savedTarget === "details" && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Details saved.</span>
         </div>
       )}
       {savedTarget === "created" && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Invoice created.</span>
         </div>
       )}
       {savedTarget === "status" && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Status updated.</span>
         </div>
       )}
       {savedTarget === "payment" && pickFirst(sp.capped) !== "1" && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Payment recorded.</span>
         </div>
@@ -597,7 +597,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
               {account && (
                 <>
-                  <Link href={`/commercial/accounts/${account.id}`} className="text-blue-700 hover:text-blue-800 underline underline-offset-2 font-medium">
+                  <Link href={`/commercial/accounts/${account.id}`} className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 font-medium">
                     {account.company_name}
                   </Link>
                   <span aria-hidden>·</span>
@@ -605,7 +605,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               )}
               {opp && (
                 <>
-                  <Link href={`/commercial/opportunities/${opp.id}`} className="text-blue-700 hover:text-blue-800 underline underline-offset-2">
+                  <Link href={`/commercial/opportunities/${opp.id}`} className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2">
                     {derivedOppName(opp, account?.company_name ?? null)}
                   </Link>
                   <span aria-hidden>·</span>
@@ -733,7 +733,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                   invoice.paid_cents >= invoice.total_cents
                     ? "bg-emerald-500"
                     : invoice.paid_cents > 0
-                    ? "bg-blue-500"
+                    ? "bg-cc-brand-500"
                     : "bg-ppp-charcoal-300"
                 }`}
                 style={{
@@ -918,7 +918,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     <span className="font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(p.amount_cents)}</span>
                     <span className="text-[11px] text-ppp-charcoal-500">· {fmtEtDate(p.paid_at)}</span>
                     {p.method && (
-                      <span className="inline-flex items-center px-1.5 py-0 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-medium">
+                      <span className="inline-flex items-center px-1.5 py-0 rounded bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200 text-[10px] font-medium">
                         {PAYMENT_METHODS.find((m) => m.key === p.method)?.label ?? p.method}
                       </span>
                     )}
@@ -1017,7 +1017,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 : "Due date, payment terms, PO#, tax %, customer message, internal notes."}
             </p>
           </div>
-          <span className="text-[11px] font-semibold text-blue-700 group-open/details:hidden">Edit</span>
+          <span className="text-[11px] font-semibold text-cc-brand-700 group-open/details:hidden">Edit</span>
           <span className="text-[11px] font-semibold text-ppp-charcoal-500 hidden group-open/details:inline">Close</span>
         </summary>
         {/* Karan 2026-07-07: Details form used to render as 6 fields
@@ -1133,7 +1133,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 }
 
 function BigNumber({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "cc-brand" | "blue" | "rose" | "neutral" }) {
-  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-cc-brand-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   const valueCls = tone === "rose" ? "text-rose-700" : tone === "cc-brand" ? "text-cc-brand-700" : "text-ppp-charcoal";
   return (
     <div className="relative border border-ppp-charcoal-100 rounded-lg px-4 py-3 overflow-hidden bg-gradient-to-br from-white to-ppp-charcoal-50/40">
@@ -1158,7 +1158,7 @@ function StatusPill({ status }: { status: InvoiceStatus }) {
       : status === "void"
       ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
       : status === "sent" || status === "viewed"
-      ? "bg-blue-100 text-blue-800 border-blue-300"
+      ? "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300"
       : status === "partial"
       ? "bg-amber-100 text-amber-900 border-amber-300"
       : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";

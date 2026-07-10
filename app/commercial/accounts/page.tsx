@@ -400,7 +400,7 @@ export default async function CommercialAccountsPage({
       {(justDeleted || bulkResult || bulkError) && (
         <div className="space-y-2">
           {justDeleted && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
+            <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2">
               <span aria-hidden>✓</span>
               <span className="flex-1">
                 Account deleted.
@@ -408,11 +408,11 @@ export default async function CommercialAccountsPage({
             </div>
           )}
           {bulkResult && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start justify-between gap-3">
+            <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start justify-between gap-3">
               <span className="flex-1">{bulkResult}</span>
               <Link
                 href="/commercial/accounts"
-                className="text-[12px] text-blue-700 hover:text-blue-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+                className="text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline shrink-0 min-h-[24px] inline-flex items-center"
                 aria-label="Dismiss banner"
               >
                 Dismiss
@@ -578,7 +578,7 @@ export default async function CommercialAccountsPage({
             <summary
               className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                 sortChanged
-                  ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                  ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
                   : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
@@ -657,7 +657,7 @@ export default async function CommercialAccountsPage({
         <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
           <summary className="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3 hover:bg-ppp-charcoal-50 transition-colors touch-manipulation">
             <div className="flex items-center gap-2 min-w-0">
-              <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-blue-50 text-blue-700 shrink-0">
+              <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-cc-brand-50 text-cc-brand-700 shrink-0">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <circle cx="12" cy="12" r="10" />
                   <path d="M12 6v6l4 2" />
@@ -686,7 +686,7 @@ export default async function CommercialAccountsPage({
                   <li key={account.id}>
                     <Link
                       href={`/commercial/accounts/${account.id}`}
-                      className="block border border-ppp-charcoal-100 rounded-lg px-3 py-2.5 hover:border-blue-300 hover:bg-blue-50/40 transition-colors touch-manipulation min-h-[44px]"
+                      className="block border border-ppp-charcoal-100 rounded-lg px-3 py-2.5 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors touch-manipulation min-h-[44px]"
                     >
                       <div className="text-sm font-semibold text-ppp-charcoal truncate">
                         {account.company_name}
@@ -875,10 +875,10 @@ function KpiCard({
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
       : "border-ppp-charcoal-100 bg-white";
   const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : "bg-ppp-charcoal-200";
+    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-cc-brand-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
@@ -926,7 +926,7 @@ function SortOption({
     <Link
       href={href}
       className={`flex items-center gap-3 px-3 py-2 rounded-lg min-h-[40px] touch-manipulation transition-colors ${
-        active ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-ppp-charcoal-50"
+        active ? "bg-cc-brand-50 hover:bg-cc-brand-100" : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
@@ -937,7 +937,7 @@ function SortOption({
       >
         {active && <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />}
       </span>
-      <span className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal-700"}`}>
+      <span className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal-700"}`}>
         {label}
       </span>
     </Link>
@@ -959,7 +959,7 @@ function FilterOption({
     <Link
       href={href}
       className={`flex items-start gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
-        active ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-ppp-charcoal-50"
+        active ? "bg-cc-brand-50 hover:bg-cc-brand-100" : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
@@ -973,7 +973,7 @@ function FilterOption({
         </svg>
       </span>
       <div className="min-w-0 flex-1">
-        <div className={`text-[13px] font-semibold ${active ? "text-blue-800" : "text-ppp-charcoal"}`}>
+        <div className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal"}`}>
           {label}
         </div>
         <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 leading-snug">
@@ -1009,7 +1009,7 @@ function AccountRow({
   // freshness signal that scans as important at a glance.
   const activityCls =
     tone === "ok"
-      ? "bg-blue-50 text-blue-800 border-blue-200"
+      ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
       : tone === "stale"
       ? "bg-amber-50 text-amber-800 border-amber-200"
       : tone === "cold"
@@ -1018,7 +1018,7 @@ function AccountRow({
   const visibleTags = tags.slice(0, 4);
   const extraTagCount = Math.max(0, tags.length - visibleTags.length);
   return (
-    <li className="flex items-start gap-1 hover:bg-blue-50/30 transition-colors group/row">
+    <li className="flex items-start gap-1 hover:bg-cc-brand-50/30 transition-colors group/row">
       {/* Checkbox — big tap area, sits OUTSIDE the Link so clicking it
           doesn't navigate. Label wraps for wider tap. */}
       <label className="pl-3 sm:pl-4 pt-5 cursor-pointer touch-manipulation shrink-0">
@@ -1172,7 +1172,7 @@ function AccountRow({
                 {visibleTags.map((t) => (
                   <span
                     key={t.id}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-medium"
+                    className="inline-flex items-center px-2 py-0.5 rounded-full bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200 text-[10px] font-medium"
                   >
                     {t.tag}
                   </span>
@@ -1239,7 +1239,7 @@ function SignalPill({
 }) {
   const chip =
     tone === "blue"
-      ? "bg-blue-50 text-blue-800 border-blue-200"
+      ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
       : tone === "amber"
       ? "bg-amber-50 text-amber-800 border-amber-200"
       : tone === "rose"
@@ -1261,9 +1261,9 @@ function RatingPill({ rating }: { rating: "A" | "B" | "C" }) {
   // A + B share a positive-quality blue tint; C is amber (attention).
   const cls =
     rating === "A"
-      ? "bg-blue-50 text-blue-700 border-blue-200"
+      ? "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
       : rating === "B"
-      ? "bg-blue-50 text-blue-700 border-blue-200"
+      ? "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
       : "bg-amber-50 text-amber-700 border-amber-200";
   return (
     <span
