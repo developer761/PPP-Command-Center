@@ -23,17 +23,30 @@ import { deriveInvoiceStatus } from "@/lib/commercial/invoices/constants";
 
 export const dynamic = "force-dynamic";
 
-// Roadmap statuses. Keep in sync with what's actually been merged on main.
+// Roadmap statuses — keep in sync with what's actually been merged.
+// Karan 2026-07-10: restructured to match the CEO-led plan doc after
+// Phase A/B/C shipped. Foundation phases (1/2/2.5/3 + Win/Loss) stay
+// numbered; the restructure phases (A–H) are letter-prefixed to match
+// ~/Desktop/Commercial_CC_Restructure_Plan.md. Total 12 phases.
+const SHIPPED = "bg-emerald-50 text-emerald-700 border-emerald-200";
+const UP_NEXT = "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200";
+const QUEUED = "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
 const PHASES = [
-  { num: 1, name: "Account Management", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { num: 2, name: "Opportunity (Preconstruction)", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { num: "2.5", name: "Submittals & Finish Schedule", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { num: 3, name: "Invoicing & Revenue", status: "Shipped", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { num: 4, name: "Contract Award", status: "Up next", color: "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200" },
-  { num: 5, name: "Project Setup", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
-  { num: 6, name: "Project Execution", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
-  { num: 7, name: "Change Management", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
-  { num: 9, name: "Closeout", status: "Queued", color: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200" },
+  // ── Foundation (shipped before the CEO restructure) ──
+  { num: 1, name: "Account Management", status: "Shipped", color: SHIPPED },
+  { num: 2, name: "Opportunity Pipeline", status: "Shipped", color: SHIPPED },
+  { num: "2.5", name: "Submittals & Finish Schedule", status: "Shipped", color: SHIPPED },
+  { num: 3, name: "Invoicing & Revenue", status: "Shipped", color: SHIPPED },
+  { num: "3+", name: "Win/Loss Debrief", status: "Shipped", color: SHIPPED },
+  // ── Restructure phases (CEO plan doc) ──
+  { num: "A", name: "Sidebar split + Deal→Opp rename", status: "Shipped", color: SHIPPED },
+  { num: "B", name: "Structural fields + estimator", status: "Shipped", color: SHIPPED },
+  { num: "C", name: "Documents (polymorphic + versions)", status: "Shipped", color: SHIPPED },
+  { num: "D", name: "Product Library + Tomco prices", status: "Up next", color: UP_NEXT },
+  { num: "E", name: "Exclusions Library", status: "Queued", color: QUEUED },
+  { num: "F", name: "Light / dark mode", status: "Queued", color: QUEUED },
+  { num: "G", name: "Proposal Builder + PDF export", status: "Queued", color: QUEUED },
+  { num: "H", name: "Project (post-sale) + Won→Project", status: "Queued", color: QUEUED },
 ];
 
 function formatCentsCompact(cents: number): string {

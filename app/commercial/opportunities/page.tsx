@@ -983,43 +983,59 @@ export default async function CommercialOpportunitiesPage({
                   </p>
                 </div>
               </div>
-              <ul className="divide-y divide-ppp-charcoal-100">
-                {groups.map((g) => (
-                  <li key={g.accountId}>
-                    {g.opps.length > 1 && g.account && (
-                      <div className="px-4 py-2 bg-ppp-charcoal-50 border-b border-ppp-charcoal-100 flex items-center gap-2 flex-wrap">
-                        <Link
-                          href={`/commercial/accounts/${g.account.id}`}
-                          className="text-[12.5px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2"
-                          title={`Open ${g.account.company_name}'s account`}
-                        >
-                          {g.account.company_name}
-                        </Link>
-                        <span className="text-[10.5px] font-semibold text-ppp-charcoal-600 bg-white border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
-                          {g.opps.length} deals
-                        </span>
-                      </div>
-                    )}
-                    <ul className="divide-y divide-ppp-charcoal-100">
-                      {g.opps.map((o) => (
-                        <OpportunityRow
-                          key={o.id}
-                          opportunity={o}
-                          account={g.account}
-                          statusEnteredAt={statusEnteredAtMap.get(o.id) ?? null}
-                          taskStats={taskStatsMap.get(o.id) ?? null}
-                          lastNote={lastNoteMap.get(o.id) ?? null}
-                          primaryLead={primaryLeadMap.get(o.id) ?? null}
-                          fileCount={fileCountMap.get(o.id) ?? 0}
-                          submittalStats={submittalCountMap.get(o.id) ?? null}
-                          finishCount={finishCountMap.get(o.id) ?? 0}
-                          sheetHref={customerSheetHref}
-                          flipReturnHref={flipReturnHref}
-                        />
-                      ))}
-                    </ul>
-                  </li>
-                ))}
+              {/* Karan 2026-07-10 (ui-micro-details): make grouped-under-
+                  same-customer visually POP. Navy left-border accent runs
+                  the full height of the group (header + all its rows) so
+                  the connection reads at a glance. Header uses cc-navy-50
+                  tint + cc-navy-800 for the account name — matches the
+                  Phase A "navy = structural elements" rule. */}
+              <ul>
+                {groups.map((g) => {
+                  const isCluster = g.opps.length > 1 && !!g.account;
+                  return (
+                    <li
+                      key={g.accountId}
+                      className={
+                        isCluster
+                          ? "border-l-[3px] border-cc-navy-500 border-b border-ppp-charcoal-100"
+                          : "border-b border-ppp-charcoal-100"
+                      }
+                    >
+                      {isCluster && g.account && (
+                        <div className="px-4 py-2 bg-cc-navy-50 border-b border-cc-navy-100 flex items-center gap-2 flex-wrap">
+                          <Link
+                            href={`/commercial/accounts/${g.account.id}`}
+                            className="text-[13px] font-bold text-cc-navy-800 hover:text-cc-navy-900 hover:underline underline-offset-2"
+                            title={`Open ${g.account.company_name}'s account`}
+                          >
+                            {g.account.company_name}
+                          </Link>
+                          <span className="text-[10.5px] font-bold uppercase tracking-wide text-cc-navy-700 bg-white border border-cc-navy-200 rounded px-1.5 py-0.5">
+                            {g.opps.length} deals
+                          </span>
+                        </div>
+                      )}
+                      <ul className="divide-y divide-ppp-charcoal-100">
+                        {g.opps.map((o) => (
+                          <OpportunityRow
+                            key={o.id}
+                            opportunity={o}
+                            account={g.account}
+                            statusEnteredAt={statusEnteredAtMap.get(o.id) ?? null}
+                            taskStats={taskStatsMap.get(o.id) ?? null}
+                            lastNote={lastNoteMap.get(o.id) ?? null}
+                            primaryLead={primaryLeadMap.get(o.id) ?? null}
+                            fileCount={fileCountMap.get(o.id) ?? 0}
+                            submittalStats={submittalCountMap.get(o.id) ?? null}
+                            finishCount={finishCountMap.get(o.id) ?? 0}
+                            sheetHref={customerSheetHref}
+                            flipReturnHref={flipReturnHref}
+                          />
+                        ))}
+                      </ul>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           );
