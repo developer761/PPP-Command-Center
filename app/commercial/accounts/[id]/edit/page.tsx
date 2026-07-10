@@ -63,20 +63,8 @@ async function updateAction(formData: FormData) {
       phone: get("phone"),
       ap_phone: get("ap_phone"),
       website: get("website"),
-      vendor_compliance_status: (get("vendor_compliance_status") as
-        | "green"
-        | "yellow"
-        | "red"
-        | "not_started"
-        | null) ?? "not_started",
-      prequalification_status: (get("prequalification_status") as
-        | "not_started"
-        | "pending"
-        | "approved"
-        | "rejected"
-        | null) ?? "not_started",
-      insurance_min_liability: getNum("insurance_min_liability"),
-      insurance_min_workers_comp: getNum("insurance_min_workers_comp"),
+      // Karan 2026-07-10 (Katie/Brendan notes): compliance fields
+      // no longer captured on Accounts — moved to per-Opportunity.
       tax_exempt: formData.get("tax_exempt") === "on",
       tax_exempt_cert_number: get("tax_exempt_cert_number"),
       notes: get("notes"),
@@ -222,44 +210,10 @@ export default async function EditCommercialAccountPage({
           <EditField id="website" label="Website" type="url" defaultValue={account.website ?? ""} />
         </Section>
 
-        <Section title="Compliance" anchorId="edit-compliance">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <EditSelectField
-              id="vendor_compliance_status"
-              label="Vendor compliance"
-              options={[
-                ["not_started", "Not started"],
-                ["yellow", "In progress"],
-                ["green", "Approved"],
-                ["red", "Issues"],
-              ]}
-              defaultValue={account.vendor_compliance_status ?? "not_started"}
-            />
-            <EditSelectField
-              id="prequalification_status"
-              label="Prequalification"
-              options={[
-                ["not_started", "Not started"],
-                ["pending", "Pending"],
-                ["approved", "Approved"],
-                ["rejected", "Rejected"],
-              ]}
-              defaultValue={account.prequalification_status ?? "not_started"}
-            />
-            <EditField
-              id="insurance_min_liability"
-              label="Insurance min liability ($)"
-              type="number"
-              defaultValue={account.insurance_min_liability != null ? String(account.insurance_min_liability) : ""}
-            />
-            <EditField
-              id="insurance_min_workers_comp"
-              label="Insurance min workers' comp ($)"
-              type="number"
-              defaultValue={account.insurance_min_workers_comp != null ? String(account.insurance_min_workers_comp) : ""}
-            />
-          </div>
-        </Section>
+        {/* Karan 2026-07-10 (Katie/Brendan notes): Compliance section
+            removed. Fields still exist in DB for audit trail but this
+            form no longer writes them. Insurance certs + prequal docs
+            now live per-Opportunity (Files sub-tab, Phase C). */}
 
         <Section title="Tax" anchorId="edit-tax">
           <label className="flex items-center gap-2 text-sm min-h-[44px]">

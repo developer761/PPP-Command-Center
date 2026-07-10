@@ -96,20 +96,9 @@ async function createAction(formData: FormData) {
     phone: get("phone"),
     ap_phone: get("ap_phone"),
     website: get("website"),
-    vendor_compliance_status: (get("vendor_compliance_status") as
-      | "green"
-      | "yellow"
-      | "red"
-      | "not_started"
-      | null) ?? "not_started",
-    prequalification_status: (get("prequalification_status") as
-      | "not_started"
-      | "pending"
-      | "approved"
-      | "rejected"
-      | null) ?? "not_started",
-    insurance_min_liability: getNum("insurance_min_liability"),
-    insurance_min_workers_comp: getNum("insurance_min_workers_comp"),
+    // Karan 2026-07-10 (Katie/Brendan notes): compliance status +
+    // insurance minimums no longer collected on Accounts — moved to
+    // per-Opportunity docs (Files → "Insurance" category).
     tax_exempt: formData.get("tax_exempt") === "on",
     tax_exempt_cert_number: get("tax_exempt_cert_number"),
     notes: get("notes"),
@@ -405,32 +394,12 @@ export default async function NewCommercialAccountPage({
           <Field id="website" label="Website" type="url" />
         </Section>
 
-        <Section title="Compliance">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <SelectField
-              id="vendor_compliance_status"
-              label="Vendor compliance"
-              options={[
-                ["not_started", "Not started"],
-                ["yellow", "In progress"],
-                ["green", "Approved"],
-                ["red", "Issues"],
-              ]}
-            />
-            <SelectField
-              id="prequalification_status"
-              label="Prequalification"
-              options={[
-                ["not_started", "Not started"],
-                ["pending", "Pending"],
-                ["approved", "Approved"],
-                ["rejected", "Rejected"],
-              ]}
-            />
-            <Field id="insurance_min_liability" label="Insurance min liability ($)" type="number" />
-            <Field id="insurance_min_workers_comp" label="Insurance min workers' comp ($)" type="number" />
-          </div>
-        </Section>
+        {/* Karan 2026-07-10 (Katie/Brendan notes): Compliance section
+            removed from Accounts. Vendor compliance status, prequal
+            status, and insurance minimums live per-Opportunity now
+            (upload insurance docs as Files → category "Insurance"
+            per Phase C). DB columns kept for audit trail but never
+            written to from this flow again. */}
 
         <Section title="Tax">
           <label className="flex items-center gap-2 text-sm">

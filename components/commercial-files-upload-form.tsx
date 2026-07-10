@@ -151,6 +151,15 @@ export function CommercialFilesUploadForm({
           <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
             PDFs, images, Word, Excel, or plain text. Up to 100 MB.
           </p>
+          {/* Google Drive silently recompresses PDFs on download (per
+              Brendan/Katie 2026-07-10). Note it here so users upload
+              the raw file, not a Drive re-share. Dropbox doesn't do this. */}
+          <p className="text-[10.5px] text-amber-700 mt-1 flex items-start gap-1">
+            <span aria-hidden>ⓘ</span>
+            <span>
+              Google Drive recompresses PDFs on download — upload the raw file, not a Drive link.
+            </span>
+          </p>
         </div>
       </div>
 

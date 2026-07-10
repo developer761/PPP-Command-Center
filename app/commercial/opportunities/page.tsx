@@ -949,36 +949,81 @@ export default async function CommercialOpportunitiesPage({
           flipReturnHref={flipReturnHref}
         />
       ) : (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-ppp-charcoal">
-                {opps.length} deal{opps.length === 1 ? "" : "s"}
-              </h2>
-              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-                Sorted by {currentSortLabel.toLowerCase()}
-              </p>
+        (() => {
+          // Karan 2026-07-10 (ui-micro-details rule): group same-account
+          // opps under a subtle account header so scanning tells you
+          // "Bob = 2 opps, KARAN = 1 opp" without reading every row.
+          // Single-opp accounts render without a header — no wasted
+          // vertical space. Group order preserves the original sort by
+          // taking each account's first-seen index in `opps`.
+          const groups: Array<{ accountId: string; account: CommercialAccount | null; opps: CommercialOpportunity[] }> = [];
+          const groupIndex = new Map<string, number>();
+          for (const o of opps) {
+            const idx = groupIndex.get(o.account_id);
+            if (idx === undefined) {
+              groupIndex.set(o.account_id, groups.length);
+              groups.push({
+                accountId: o.account_id,
+                account: accountById.get(o.account_id) ?? null,
+                opps: [o],
+              });
+            } else {
+              groups[idx].opps.push(o);
+            }
+          }
+          return (
+            <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-ppp-charcoal">
+                    {opps.length} deal{opps.length === 1 ? "" : "s"} · {groups.length} customer{groups.length === 1 ? "" : "s"}
+                  </h2>
+                  <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                    Sorted by {currentSortLabel.toLowerCase()}. Same-customer deals are grouped.
+                  </p>
+                </div>
+              </div>
+              <ul className="divide-y divide-ppp-charcoal-100">
+                {groups.map((g) => (
+                  <li key={g.accountId}>
+                    {g.opps.length > 1 && g.account && (
+                      <div className="px-4 py-2 bg-ppp-charcoal-50 border-b border-ppp-charcoal-100 flex items-center gap-2 flex-wrap">
+                        <Link
+                          href={`/commercial/accounts/${g.account.id}`}
+                          className="text-[12.5px] font-bold text-ppp-charcoal hover:text-blue-800 hover:underline underline-offset-2"
+                          title={`Open ${g.account.company_name}'s account`}
+                        >
+                          {g.account.company_name}
+                        </Link>
+                        <span className="text-[10.5px] font-semibold text-ppp-charcoal-600 bg-white border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
+                          {g.opps.length} deals
+                        </span>
+                      </div>
+                    )}
+                    <ul className="divide-y divide-ppp-charcoal-100">
+                      {g.opps.map((o) => (
+                        <OpportunityRow
+                          key={o.id}
+                          opportunity={o}
+                          account={g.account}
+                          statusEnteredAt={statusEnteredAtMap.get(o.id) ?? null}
+                          taskStats={taskStatsMap.get(o.id) ?? null}
+                          lastNote={lastNoteMap.get(o.id) ?? null}
+                          primaryLead={primaryLeadMap.get(o.id) ?? null}
+                          fileCount={fileCountMap.get(o.id) ?? 0}
+                          submittalStats={submittalCountMap.get(o.id) ?? null}
+                          finishCount={finishCountMap.get(o.id) ?? 0}
+                          sheetHref={customerSheetHref}
+                          flipReturnHref={flipReturnHref}
+                        />
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-          <ul className="divide-y divide-ppp-charcoal-100">
-            {opps.map((o) => (
-              <OpportunityRow
-                key={o.id}
-                opportunity={o}
-                account={accountById.get(o.account_id) ?? null}
-                statusEnteredAt={statusEnteredAtMap.get(o.id) ?? null}
-                taskStats={taskStatsMap.get(o.id) ?? null}
-                lastNote={lastNoteMap.get(o.id) ?? null}
-                primaryLead={primaryLeadMap.get(o.id) ?? null}
-                fileCount={fileCountMap.get(o.id) ?? 0}
-                submittalStats={submittalCountMap.get(o.id) ?? null}
-                finishCount={finishCountMap.get(o.id) ?? 0}
-                sheetHref={customerSheetHref}
-                flipReturnHref={flipReturnHref}
-              />
-            ))}
-          </ul>
-        </div>
+          );
+        })()
       )}
 
       {/* ─── Karan 2026-07-08 rewrite: customer-scoped quick sheet.

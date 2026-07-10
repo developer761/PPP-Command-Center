@@ -223,6 +223,14 @@ function VersionBumpSheet({
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         setError((err as Error).message || "Upload failed.");
+        // Karan 2026-07-10 audit fix: scroll the sheet's scroll
+        // container to the top so the error banner is above the fold.
+        // Without this, a long notes textarea + a below-fold error made
+        // the failure invisible on mobile.
+        requestAnimationFrame(() => {
+          const form = document.getElementById("version-bump-form");
+          form?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       }
       setBusy(false);
     }

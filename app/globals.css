@@ -65,6 +65,9 @@
   --color-cc-navy-50:  #eff6ff;
   --color-cc-navy-100: #dbeafe;
   --color-cc-navy-200: #bfdbfe;
+  /* 300 + 400 filled in 2026-07-10 so `text-cc-navy-300` etc. resolve. */
+  --color-cc-navy-300: #93c5fd;
+  --color-cc-navy-400: #60a5fa;
   --color-cc-navy-500: #3b82f6;
   --color-cc-navy-600: #1e3a8a;
   --color-cc-navy-700: #1e40af;

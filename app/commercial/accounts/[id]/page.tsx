@@ -667,24 +667,9 @@ async function updateAccountSectionAction(formData: FormData) {
         ap_phone: get("ap_phone"),
       };
       break;
-    case "compliance":
-      patch = {
-        vendor_compliance_status: (get("vendor_compliance_status") as
-          | "green"
-          | "yellow"
-          | "red"
-          | "not_started"
-          | null) ?? "not_started",
-        prequalification_status: (get("prequalification_status") as
-          | "not_started"
-          | "pending"
-          | "approved"
-          | "rejected"
-          | null) ?? "not_started",
-        insurance_min_liability: getNum("insurance_min_liability"),
-        insurance_min_workers_comp: getNum("insurance_min_workers_comp"),
-      };
-      break;
+    // Karan 2026-07-10: "compliance" section removed from Accounts UI
+    // (Katie/Brendan notes). Case removed — inline card no longer
+    // renders, so this branch is unreachable from the UI.
     case "tax":
       patch = {
         tax_exempt: formData.get("tax_exempt") === "on",
@@ -1544,46 +1529,10 @@ function InfoCards({ account }: { account: CommercialAccount }) {
         </div>
       </Card>
 
-      <Card title="Compliance" section="compliance" accountId={account.id}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <EditableSelect
-            name="vendor_compliance_status"
-            label="Vendor compliance"
-            defaultValue={account.vendor_compliance_status}
-            options={[
-              ["not_started", "Not started"],
-              ["yellow", "In progress"],
-              ["green", "Approved"],
-              ["red", "Issues"],
-            ]}
-          />
-          <EditableSelect
-            name="prequalification_status"
-            label="Prequalification"
-            defaultValue={account.prequalification_status}
-            options={[
-              ["not_started", "Not started"],
-              ["pending", "Pending"],
-              ["approved", "Approved"],
-              ["rejected", "Rejected"],
-            ]}
-          />
-          <EditableField
-            name="insurance_min_liability"
-            label="Insurance min liability ($)"
-            defaultValue={account.insurance_min_liability != null ? String(account.insurance_min_liability) : null}
-            type="number"
-            placeholder="e.g. 1000000"
-          />
-          <EditableField
-            name="insurance_min_workers_comp"
-            label="Insurance min workers' comp ($)"
-            defaultValue={account.insurance_min_workers_comp != null ? String(account.insurance_min_workers_comp) : null}
-            type="number"
-            placeholder="e.g. 500000"
-          />
-        </div>
-      </Card>
+      {/* Karan 2026-07-10 (Katie/Brendan notes): Compliance card removed
+          from account Overview. Compliance now lives per-Opportunity —
+          upload COI + prequal certs as Files (category "Insurance") on
+          the opp detail. DB columns preserved for audit trail. */}
 
       <Card title="Tax" section="tax" accountId={account.id}>
         <EditableCheckbox name="tax_exempt" label="Tax exempt" defaultChecked={account.tax_exempt} />
