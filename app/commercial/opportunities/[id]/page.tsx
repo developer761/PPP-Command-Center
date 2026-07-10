@@ -1058,7 +1058,7 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
   if (raw === "plans" || raw === "finishes" || raw === "submittals") return { primary: "docs", sub: raw as SubTab };
   if (raw === "notes" || raw === "tasks" || raw === "timeline") return { primary: "activity", sub: raw as SubTab };
-  // Removed tabs (Email) or garbage → fall through to Overview.
+  // Unknown / stale keys → fall through to Overview.
   return { primary: "overview", sub: null };
 }
 

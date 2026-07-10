@@ -407,7 +407,10 @@ export async function insertCommercialOppStatusChangedNotifications(input: {
   }
   if (recipientIds.size === 0) return { fanout: 0 };
 
-  const relativeLink = `/commercial/opportunities/${input.opportunityId}`;
+  // Phase B audit fix (2026-07-10): opp detail page has a shim that
+  // bounces params-less URLs back to the account list. Add ?tab=info
+  // so the recipient lands on the opp itself, not the account view.
+  const relativeLink = `/commercial/opportunities/${input.opportunityId}?tab=info`;
   const emailLink = appendBase(relativeLink);
   const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
   const title = `${shortOppTitle} → ${input.toStatusLabel}`;
@@ -736,7 +739,10 @@ export async function insertCommercialHotDealCoolingNotification(input: {
   daysSinceUpdate: number;
   recipientUserId: string;
 }): Promise<void> {
-  const relativeLink = `/commercial/opportunities/${input.opportunityId}`;
+  // Phase B audit fix (2026-07-10): opp detail page has a shim that
+  // bounces params-less URLs back to the account list. Add ?tab=info
+  // so the recipient lands on the opp itself, not the account view.
+  const relativeLink = `/commercial/opportunities/${input.opportunityId}?tab=info`;
   const emailLink = appendBase(relativeLink);
   const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
   const dayNoun = input.daysSinceUpdate === 1 ? "day" : "days";

@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
 import { sendEmail } from "@/lib/email/resend";
 import { insertCommercialTeamAssignedNotification } from "@/lib/notifications/insert";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
 
 /**
  * PPP staff assignments per opportunity (migration 030).
@@ -320,7 +321,9 @@ async function notifyAssignment(
   const [oppRes, userRes, byRes] = await Promise.all([
     sb
       .from("commercial_opportunities")
-      .select("title, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)")
+      // Phase B: pull client_name + location_short so derivedOppName can
+      // return the CEO's {account} - {client} - {location} format.
+      .select("title, client_name, location_short, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)")
       .eq("id", opportunity_id)
       .maybeSingle(),
     sb.from("profiles").select("email, sf_user_name").eq("user_id", user_id).maybeSingle(),
@@ -330,13 +333,26 @@ async function notifyAssignment(
   ]);
   type OppRow = {
     title?: string;
+    client_name?: string | null;
+    location_short?: string | null;
     account?: { company_name?: string } | Array<{ company_name?: string }> | null;
   };
   const oppData = oppRes.data as OppRow | null;
-  const oppTitle = oppData?.title ?? "an opportunity";
   const accountName = Array.isArray(oppData?.account)
     ? oppData.account[0]?.company_name
     : oppData?.account?.company_name;
+  // Phase B: derived name replaces raw title in the assignment email
+  // body so users see the CEO's standardized display everywhere.
+  const oppTitle = oppData
+    ? derivedOppName(
+        {
+          title: oppData.title ?? "an opportunity",
+          client_name: oppData.client_name ?? null,
+          location_short: oppData.location_short ?? null,
+        },
+        accountName ?? null,
+      )
+    : "an opportunity";
   const assigneeEmail = (userRes.data as { email?: string } | null)?.email;
   if (!assigneeEmail) {
     console.warn(`[commercial/opportunities/assignments] no email on user ${user_id} — skipping notify`);

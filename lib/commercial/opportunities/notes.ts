@@ -6,6 +6,7 @@ import {
   insertCommercialOppNoteAddedNotifications,
   insertCommercialNoteMentionNotifications,
 } from "@/lib/notifications/commercial-events";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
 
 /**
  * Per-opportunity notes — free-form timeline entries with edit + delete.
@@ -232,13 +233,15 @@ export async function addOpportunityNote(
   const sb = commercialDb();
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, title, deleted_at")
+    // Phase B: pull client_name + location_short for derivedOppName.
+    .select("id, account_id, title, client_name, location_short, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
   const { data: acct } = await sb
     .from("commercial_accounts")
-    .select("id, deleted_at")
+    // Phase B: pull company_name for derivedOppName.
+    .select("id, company_name, deleted_at")
     .eq("id", opp.account_id)
     .maybeSingle();
   if (!acct || acct.deleted_at) return { ok: false, error: "Account not found." };
@@ -290,13 +293,24 @@ export async function addOpportunityNote(
       }
       const preview = body.length > 240 ? `${body.slice(0, 240).trimEnd()}…` : body;
 
+      // Phase B: derived opp name for both bells so users see the CEO's
+      // standardized {account} - {client} - {location} format instead
+      // of the raw stored title.
+      const oppRow = opp as {
+        title: string;
+        client_name: string | null;
+        location_short: string | null;
+      };
+      const acctRow = acct as { company_name: string };
+      const displayName = derivedOppName(oppRow, acctRow.company_name);
+
       // Mentions go first so the helper has a chance to skip-self the
       // author cleanly. Author@mention-of-self is a no-op anyway.
       if (mentionedResolved.length > 0) {
         await insertCommercialNoteMentionNotifications({
           opportunityId: input.opportunity_id,
           noteId: note.id,
-          oppTitle: (opp as { title: string }).title,
+          oppTitle: displayName,
           noteBodyPreview: preview,
           actingUserId: input.author_user_id ?? null,
           actorName,
@@ -309,7 +323,7 @@ export async function addOpportunityNote(
       await insertCommercialOppNoteAddedNotifications({
         opportunityId: input.opportunity_id,
         noteId: note.id,
-        oppTitle: (opp as { title: string }).title,
+        oppTitle: displayName,
         noteBodyPreview: preview,
         actingUserId: input.author_user_id ?? null,
         actorName,

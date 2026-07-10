@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { insertCommercialTaskAssignedNotification } from "@/lib/notifications/commercial-events";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
 
 /**
  * Per-opportunity tasks — to-dos with assignee + due_at + completion
@@ -113,13 +114,16 @@ export async function createOpportunityTask(
   const sb = commercialDb();
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, title, deleted_at")
+    // Phase B: pull client_name + location_short so we can compute the
+    // derived opp name for the task_assigned notification body.
+    .select("id, account_id, title, client_name, location_short, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
   const { data: acct } = await sb
     .from("commercial_accounts")
-    .select("id, deleted_at")
+    // Phase B: pull company_name so derivedOppName can format it.
+    .select("id, company_name, deleted_at")
     .eq("id", opp.account_id)
     .maybeSingle();
   if (!acct || acct.deleted_at) return { ok: false, error: "Account not found." };
@@ -175,12 +179,22 @@ export async function createOpportunityTask(
           const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
           assignerName = a?.sf_user_name || a?.email || "PPP admin";
         }
+        // Phase B: derived opp name so the bell + email body reads
+        // {account} - {client} - {location} when the CEO structural
+        // fields are populated. Falls back to opp.title otherwise.
+        const oppRow = opp as {
+          title: string;
+          client_name: string | null;
+          location_short: string | null;
+        };
+        const acctRow = acct as { company_name: string };
+        const displayName = derivedOppName(oppRow, acctRow.company_name);
         await insertCommercialTaskAssignedNotification({
           taskId: task.id,
           opportunityId: task.opportunity_id,
           taskTitle: task.title,
           dueAt: task.due_at,
-          oppTitle: (opp as { title: string }).title,
+          oppTitle: displayName,
           recipientUserId: task.assigned_user_id!,
           actingUserId: input.created_by_user_id ?? null,
           assignerName,

@@ -8,6 +8,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import {
   DEFAULT_INVOICE_PREFIX,
   DEFAULT_PAYMENT_TERMS,
@@ -37,19 +38,43 @@ async function resolveActorName(user_id: string | null | undefined): Promise<str
   return a?.sf_user_name || a?.email || "PPP admin";
 }
 
-/** Fetch the parent opp's title in one round-trip. Used by the invoice
- *  notification fanouts so the bell/email body reads "Lobby Repaint Q3"
- *  instead of a UUID. Returns null on any lookup miss — helpers fall
- *  back to "the opportunity" copy in that case. */
+/** Fetch the parent opp's display name (CEO {account}-{client}-{location}
+ *  format when structural fields exist, else the raw title) in one
+ *  round-trip. Used by the invoice notification fanouts so the bell/email
+ *  body reads the same thing users see in the UI everywhere else.
+ *  Returns null on any lookup miss — helpers fall back to
+ *  "the opportunity" copy in that case. */
 async function fetchOppTitle(opp_id: string): Promise<string | null> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_opportunities")
-    .select("title")
+    .select("title, client_name, location_short, account_id")
     .eq("id", opp_id)
     .maybeSingle();
-  const row = data as { title?: string | null } | null;
-  return row?.title ?? null;
+  const row = data as {
+    title?: string | null;
+    client_name?: string | null;
+    location_short?: string | null;
+    account_id?: string | null;
+  } | null;
+  if (!row?.title) return null;
+  let accountName: string | null = null;
+  if (row.account_id) {
+    const { data: acct } = await sb
+      .from("commercial_accounts")
+      .select("company_name")
+      .eq("id", row.account_id)
+      .maybeSingle();
+    accountName = (acct as { company_name?: string | null } | null)?.company_name ?? null;
+  }
+  return derivedOppName(
+    {
+      title: row.title,
+      client_name: row.client_name ?? null,
+      location_short: row.location_short ?? null,
+    },
+    accountName,
+  );
 }
 
 // ────────────── Types ──────────────

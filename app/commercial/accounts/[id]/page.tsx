@@ -173,33 +173,34 @@ type SP = Promise<{
 // Karan 2026-07-08: added "invoices" + "kpis" as top-level tabs per user
 // ask ("add KPIs tab here as well" + "invoices tab where me kate katie or
 // alex or whoever can quick edit"). Both are leaves — no sub-tabs.
-type PrimaryTab = "overview" | "people" | "deals" | "invoices" | "activity" | "kpis";
+type PrimaryTab = "overview" | "people" | "deals" | "invoices" | "activity";
 type SubTab =
   | "info"
   | "team"
-  | "performance"
+  | "kpis"
   | "contacts"
   | "notes"
   | "opportunities"
   | "documents";
 const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
-  // Karan 2026-07-08 reorder: Overview leads (at-a-glance summary),
-  // then Deals (pipeline read), Invoices (money question), KPIs
-  // (scoreboard), People, Activity. Landing on Overview by default
-  // gives an easy-read snapshot before drilling in.
+  // Karan 2026-07-08 reorder + 2026-07-10 fold: Overview leads
+  // (at-a-glance summary — Info · Team · KPIs sub-tabs), then Deals
+  // (pipeline read), Invoices (money question), People, Activity.
+  // KPIs got folded into Overview because the standalone tab was a
+  // scoreboard-only leaf; the sub-tab keeps it discoverable without
+  // adding a top-nav slot.
   { key: "overview", label: "Overview" },
   { key: "deals", label: "Opportunities" },
   { key: "invoices", label: "Invoices" },
-  { key: "kpis", label: "KPIs" },
   { key: "people", label: "People" },
   { key: "activity", label: "Activity" },
 ];
-type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "kpis">;
+type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices">;
 const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
     { key: "team", label: "Team" },
-    { key: "performance", label: "Performance" },
+    { key: "kpis", label: "KPIs" },
   ],
   people: [
     { key: "contacts", label: "Contacts" },
@@ -218,10 +219,15 @@ const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
   // Karan 2026-07-08: Overview is the default landing tab.
   if (!raw) return { primary: "overview", sub: null };
-  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "activity" || raw === "invoices" || raw === "kpis") {
+  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "activity" || raw === "invoices") {
     return { primary: raw, sub: null };
   }
-  if (raw === "info" || raw === "team" || raw === "performance") return { primary: "overview", sub: raw as SubTab };
+  // 2026-07-10: `?tab=kpis` legacy links land on Overview → KPIs sub-tab
+  // so old bookmarks + bells don't 404.
+  if (raw === "kpis") return { primary: "overview", sub: "kpis" };
+  // "performance" was the old placeholder — normalize to the new KPIs sub-tab.
+  if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
+  if (raw === "performance") return { primary: "overview", sub: "kpis" };
   if (raw === "contacts" || raw === "notes") return { primary: "people", sub: raw as SubTab };
   if (raw === "opportunities" || raw === "documents") return { primary: "deals", sub: raw as SubTab };
   return { primary: "overview", sub: null };
@@ -256,10 +262,9 @@ export default async function CommercialAccountDetailPage({
     : DEFAULT_SUB_BY_PRIMARY[primaryTab];
   // Legacy compat: existing tab dispatchers below check `tab === "info"`
   // etc. Preserve that shape so the sub-tabs still route correctly.
-  const tab: SubTab | "activity" | "invoices" | "kpis" =
+  const tab: SubTab | "activity" | "invoices" =
     primaryTab === "activity" ? "activity"
     : primaryTab === "invoices" ? "invoices"
-    : primaryTab === "kpis" ? "kpis"
     : sub!;
 
   const account = await getCommercialAccount(id);
@@ -491,7 +496,7 @@ export default async function CommercialAccountDetailPage({
       </nav>
 
       {/* Sub-tab pill row — only when the primary has sub-tabs.
-          Activity / Invoices / KPIs are single-view leaves with no sub-nav. */}
+          Activity / Invoices are single-view leaves with no sub-nav. */}
       {hasSubTabs && (
         <div className="flex flex-wrap items-center gap-1.5">
           {SUB_TABS_BY_PRIMARY[primaryTab as PrimaryWithSubs].map((s) => {
@@ -541,7 +546,7 @@ export default async function CommercialAccountDetailPage({
       )}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "notes" && <NotesTab accountId={account.id} />}
-      {tab === "performance" && <ComingSoonTab label="Performance" phase="next" />}
+      {tab === "kpis" && <AccountKpisTab accountId={account.id} overview={overview} rollup={invoiceRollup} />}
       {tab === "invoices" && (
         <AccountInvoicesTab
           accountId={account.id}
@@ -553,7 +558,6 @@ export default async function CommercialAccountDetailPage({
           errorMessage={sp.error}
         />
       )}
-      {tab === "kpis" && <AccountKpisTab accountId={account.id} overview={overview} rollup={invoiceRollup} />}
     </div>
   );
 }
@@ -2572,7 +2576,10 @@ function NewDealForm({
         <label className="block">
           <span className={labelCls}>Estimator</span>
           <select name="estimator_user_id" defaultValue="" className={`${inputCls} bg-white`}>
-            <option value="">— unassigned —</option>
+            {/* Karan 2026-07-10 copy polish: explicit "required for
+                Estimating" replaces the cryptic "— unassigned —" so
+                users understand why picking someone matters. */}
+            <option value="">No estimator (required for Estimating)</option>
             {estimators.map((e) => (
               <option key={e.user_id} value={e.user_id}>{e.name}</option>
             ))}
@@ -2589,7 +2596,7 @@ function NewDealForm({
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
             <path d="M9 18l6-6-6-6" />
           </svg>
-          More details (schedule, probability, description, address)
+          Show optional fields
         </summary>
         <div className="mt-2 space-y-3">
           {/* Karan 2026-07-08: expanded per user "it should ask me all
@@ -4785,11 +4792,16 @@ function DealEditSheet({
             </div>
           </SheetSection>
 
-          {/* ─── Section: Project (address override + description) ─── */}
-          <SheetSection title="Structure">
-            {/* Phase B (Plan v1.1) — CEO structural fields. All optional
-                at Solicitation; changeOpportunityStatus blocks moving to
-                Estimating until all three are set. */}
+          {/* ─── Section: Details — merged Structure + Project into one
+                block 2026-07-10. Two panels felt like duplicate context;
+                everything from client-name to address override is now a
+                single scroll. Phase B (Plan v1.1) — CEO structural
+                fields (client_name, location_short, estimator) stay at
+                the top; site address override + description follow. All
+                fields optional at Solicitation; changeOpportunityStatus
+                blocks the move to Estimating until the three CEO fields
+                are set. ─── */}
+          <SheetSection title="Details">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className={labelCls}>Client name</span>
@@ -4822,7 +4834,11 @@ function DealEditSheet({
                   defaultValue={deal.estimator_user_id ?? ""}
                   className={`${inputCls} bg-white`}
                 >
-                  <option value="">— unassigned —</option>
+                  {/* Karan 2026-07-10 copy polish: "— unassigned —" was
+                      cryptic; call out that this is required for the
+                      Estimating status transition so the empty state
+                      isn't ambiguous. */}
+                  <option value="">No estimator (required for Estimating)</option>
                   {estimators.map((e) => (
                     <option key={e.user_id} value={e.user_id}>{e.name}</option>
                   ))}
@@ -4853,9 +4869,6 @@ function DealEditSheet({
                 Project #: <span className="font-mono text-ppp-charcoal-800">{deal.project_number}</span>
               </div>
             )}
-          </SheetSection>
-
-          <SheetSection title="Project">
             <div>
               <div className={labelCls}>
                 Address override
