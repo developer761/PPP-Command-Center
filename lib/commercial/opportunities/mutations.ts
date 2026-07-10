@@ -202,6 +202,10 @@ export async function updateCommercialOpportunity(
   if (input.property_city !== undefined) patch.property_city = input.property_city?.trim() || null;
   if (input.property_state !== undefined) patch.property_state = input.property_state?.trim().slice(0, 2).toUpperCase() || null;
   if (input.property_zip !== undefined) patch.property_zip = input.property_zip?.trim() || null;
+  // Migration 046 (Phase B) — CEO structural fields.
+  if (input.client_name !== undefined) patch.client_name = input.client_name?.trim() || null;
+  if (input.location_short !== undefined) patch.location_short = input.location_short?.trim() || null;
+  if (input.estimator_user_id !== undefined) patch.estimator_user_id = input.estimator_user_id || null;
 
   const { data: after, error } = await sb
     .from("commercial_opportunities")

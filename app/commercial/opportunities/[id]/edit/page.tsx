@@ -100,6 +100,11 @@ async function updateAction(formData: FormData) {
     property_city: (formData.get("property_city") as string) ?? null,
     property_state: (formData.get("property_state") as string) ?? null,
     property_zip: (formData.get("property_zip") as string) ?? null,
+    // Phase B — CEO structural fields. Empty strings → null so the
+    // server-side validator sees a truly missing value instead of "".
+    client_name: (formData.get("client_name") as string)?.trim() || null,
+    location_short: (formData.get("location_short") as string)?.trim() || null,
+    estimator_user_id: (formData.get("estimator_user_id") as string) || null,
     updated_by_user_id: user.id,
   });
 

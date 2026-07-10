@@ -137,6 +137,35 @@ export async function changeOpportunityStatus(
     }
   }
 
+  // Phase B (Plan v1.1) — structural-field guard. Brendan's spec says
+  // Estimating "requires assigning an estimator." The plan extended
+  // that to `estimating+` since every downstream status needs those
+  // fields too. Block the transition here with a clear error the UI
+  // can surface as an inline hint pointing at the missing fields.
+  const REQUIRES_STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
+    "estimating",
+    "proposal_pending_approval",
+    "proposal_sent",
+    "follow_up",
+    "won",
+  ]);
+  if (REQUIRES_STRUCTURAL_FIELDS.has(input.to_status)) {
+    const missing: string[] = [];
+    if (!beforeRow.client_name?.trim()) missing.push("client name");
+    if (!beforeRow.location_short?.trim()) missing.push("site location");
+    if (!beforeRow.estimator_user_id) missing.push("estimator");
+    if (missing.length > 0) {
+      const label =
+        missing.length === 1
+          ? missing[0]
+          : missing.slice(0, -1).join(", ") + " and " + missing.slice(-1)[0];
+      return {
+        ok: false,
+        error: `Set the ${label} on this opportunity before moving to ${input.to_status}. Use Edit to fill them in.`,
+      };
+    }
+  }
+
   // Loss-reason enforcement when transitioning TO a closed-without-win
   // state. Alex needs a WHY on every lost bid — for pipeline analysis
   // (which reasons recur) and CYA against future "you should've gone

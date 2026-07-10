@@ -81,6 +81,7 @@ import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
+import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
 import {
   OPEN_OPP_STATUSES,
   TERMINAL_STATUSES,
@@ -767,6 +768,11 @@ async function createDealInlineAction(formData: FormData) {
   const property_city = String(formData.get("property_city") ?? "").trim() || null;
   const property_state = String(formData.get("property_state") ?? "").trim() || null;
   const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
+  // Phase B (Plan v1.1) — CEO structural fields.
+  const client_name = String(formData.get("client_name") ?? "").trim() || null;
+  const location_short = String(formData.get("location_short") ?? "").trim() || null;
+  const estimatorRaw = String(formData.get("estimator_user_id") ?? "").trim();
+  const estimator_user_id = estimatorRaw && UUID_RE.test(estimatorRaw) ? estimatorRaw : null;
 
   // Karan 2026-07-08: capture proposed_start / proposed_end / probability
   // override on create so the user doesn't have to bounce through the
@@ -801,6 +807,9 @@ async function createDealInlineAction(formData: FormData) {
     property_city,
     property_state,
     property_zip,
+    client_name,
+    location_short,
+    estimator_user_id,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -2393,7 +2402,7 @@ async function restoreDocumentAction(formData: FormData) {
  *  a <details>). Two required rows visible immediately (title, status)
  *  plus optional bid/due/source. Property + description behind a
  *  progressive-disclosure <details>. Zero page jumps. */
-function NewDealForm({ accountId }: { accountId: string }) {
+function NewDealForm({ accountId, estimators }: { accountId: string; estimators: EligibleEstimator[] }) {
   const inputCls =
     "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30";
   const labelCls = "block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5";
@@ -2468,6 +2477,47 @@ function NewDealForm({ accountId }: { accountId: string }) {
           <span className={labelCls}>Proposal due</span>
           <DatePicker name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
         </div>
+      </div>
+      {/* Phase B (Plan v1.1) — CEO structural fields. All optional at
+          Solicitation; the changeOpportunityStatus validator blocks the
+          Estimating transition until all three are set. Hint below the
+          Estimator picker explains the gate so users know why they'd
+          fill these in later. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label className="block">
+          <span className={labelCls}>Client name</span>
+          <input
+            type="text"
+            name="client_name"
+            maxLength={200}
+            placeholder="e.g. Tomco Painting"
+            className={inputCls}
+          />
+        </label>
+        <label className="block">
+          <span className={labelCls}>Site location</span>
+          <input
+            type="text"
+            name="location_short"
+            maxLength={200}
+            placeholder="e.g. 1234 Main St, Central Islip"
+            className={inputCls}
+          />
+        </label>
+        <label className="block">
+          <span className={labelCls}>Estimator</span>
+          <select name="estimator_user_id" defaultValue="" className={`${inputCls} bg-white`}>
+            <option value="">— unassigned —</option>
+            {estimators.map((e) => (
+              <option key={e.user_id} value={e.user_id}>{e.name}</option>
+            ))}
+          </select>
+          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
+            {estimators.length === 0
+              ? "Add someone to the account team first to assign them."
+              : "Required to move this to Estimating."}
+          </span>
+        </label>
       </div>
       <details className="group/more">
         <summary className="list-none cursor-pointer text-[11.5px] font-medium text-blue-700 hover:text-blue-900 min-h-[28px] flex items-center gap-1.5 select-none">
@@ -2572,8 +2622,10 @@ async function OpportunitiesTab({
   const ids = all.map((o) => o.id);
 
   // Bulk-fetch every row signal in parallel — keeps the tab a single
-  // batch query regardless of opp count.
-  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap] = await Promise.all([
+  // batch query regardless of opp count. Also preload the eligible
+  // estimator list for the New + Edit forms (Phase B) so we don't need
+  // a client-side fetch per form render.
+  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap, estimators] = await Promise.all([
     listCurrentStatusEnteredAtByOpp(ids),
     listOpenTaskStatsByOpp(ids),
     listLastNoteByOpp(ids),
@@ -2581,6 +2633,7 @@ async function OpportunitiesTab({
     listAttachmentCountByOpp(ids),
     listSubmittalCountByOpp(ids),
     listFinishCountByOpp(ids),
+    listEligibleEstimators(accountId),
   ]);
 
   const open = all.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
@@ -2613,7 +2666,7 @@ async function OpportunitiesTab({
               </p>
             </div>
           </div>
-          <NewDealForm accountId={accountId} />
+          <NewDealForm accountId={accountId} estimators={estimators} />
         </div>
       </div>
     );
@@ -2735,7 +2788,7 @@ async function OpportunitiesTab({
           <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0">▾</span>
         </summary>
         <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
-          <NewDealForm accountId={accountId} />
+          <NewDealForm accountId={accountId} estimators={estimators} />
         </div>
       </details>
 
