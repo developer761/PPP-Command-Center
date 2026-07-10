@@ -3,6 +3,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
+import { classifySurface } from "@/lib/customer-form/surface-mapping";
 
 /**
  * Diagnostic: why isn't the customer-form Salesforce writeback firing for
@@ -297,14 +298,17 @@ export async function GET(request: Request) {
       let withColorId = 0;
       let withColorIdAndFinish = 0;
       let skippedFlag = 0;
-      const knownFields = new Set(["walls", "wall", "ceiling", "trim", "floor", "other"]);
+      // A surface produces an SF write if it's a standard surface OR an orphan
+      // (orphans route to ColorOther__c / ColorNotes__c — Kate 2026-07-09).
+      // Shared classifier keeps this diagnostic in lockstep with the submit
+      // route's actual mapping so orphan-only WOLIs don't false-flag as empty.
       let knownSurfaces = 0;
       for (const li of lineItems) {
         const surfaces = Array.isArray(li.surfaces) ? li.surfaces : [];
         for (const s of surfaces) {
           totalSurfaces++;
-          const sname = typeof s?.surface === "string" ? s.surface.toLowerCase() : "";
-          if (knownFields.has(sname)) knownSurfaces++;
+          const sname = typeof s?.surface === "string" ? s.surface : "";
+          if (sname && classifySurface(sname).kind !== "unknown") knownSurfaces++;
           if (s?.colorId) withColorId++;
           if (s?.colorId && (s as { finish?: string }).finish) withColorIdAndFinish++;
           if (s?.skipped) skippedFlag++;
@@ -353,7 +357,7 @@ export async function GET(request: Request) {
     verdict = `❌ WO NOT ON ALLOWLIST — mode is test_only and this specific WO ('${resolvedWoId}') isn't listed. The customer form saves the submission but skips SF. Either add this WO on /dashboard/settings/writeback OR flip mode to 'all'.`;
   } else if (submittedTokens.length > 0 && auditRows.length === 0 && allPayloadsEmpty) {
     const first = payloadSummary[0];
-    verdict = `❌ CUSTOMER SUBMITTED BUT PAYLOAD IS EMPTY — ${submittedTokens.length} token(s) submitted for this WO, but every submission has zero surfaces with a valid colorId + known field mapping. That's why no SF writes fire (the submit route builds an empty attempts array and skips silently). Most recent submission: ${first.line_items_count} line item(s), ${first.total_surfaces} surface(s), ${first.surfaces_with_colorId} with colorId, ${first.surfaces_with_known_field_name} with a known field name (walls/ceiling/trim/floor/other). Likely causes: (a) the customer picked colors in the UI but the form's JSON body isn't including colorId in each surface, (b) surface names in the payload don't match the SURFACE_TO_FIELD map (case sensitive on 'walls', 'ceiling', etc.), or (c) the form UI regressed and stopped attaching color IDs. Inspect payload_summary[0] below + compare against the customer-form-view.tsx onSubmit builder.`;
+    verdict = `❌ CUSTOMER SUBMITTED BUT PAYLOAD IS EMPTY — ${submittedTokens.length} token(s) submitted for this WO, but every submission has zero surfaces with a valid colorId + known field mapping. That's why no SF writes fire (the submit route builds an empty attempts array and skips silently). Most recent submission: ${first.line_items_count} line item(s), ${first.total_surfaces} surface(s), ${first.surfaces_with_colorId} with colorId, ${first.surfaces_with_known_field_name} with a known field name (standard: walls/ceiling/trim/floor; orphan → Other/Notes: cabinets/accent wall/door/window/closet/shelves). Likely causes: (a) the customer picked colors in the UI but the form's JSON body isn't including colorId in each surface, (b) surface names in the payload aren't recognized by lib/customer-form/surface-mapping (neither standard nor orphan), or (c) the form UI regressed and stopped attaching color IDs. Inspect payload_summary[0] below + compare against the customer-form-view.tsx onSubmit builder.`;
   } else if (auditRows.length === 0) {
     verdict = `⚠ NO WRITE ATTEMPTS LOGGED — mode + allowlist look good (${mode}, on-allowlist=${onAllowlist}) but no SF writes have been attempted for this WO. Tokens submitted count: ${submittedTokens.length}. If that's 0 — customer never actually clicked submit. If >0 — the submit route bailed before reaching the write path. Read payload_summary[0] below to see what was actually submitted.`;
   } else if (recentSuccess) {

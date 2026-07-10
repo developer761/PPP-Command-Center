@@ -296,9 +296,9 @@ function computeRequiredByDate(workOrder: SnapshotWorkOrder, override?: string):
   return threeDaysOut.toISOString().split("T")[0];
 }
 
-/** Map WOLI surface field → label. Single source of truth used by the
- *  customer form on submit. Kept in sync with SURFACE_TO_FIELD on the
- *  submit endpoint. */
+/** Map WOLI color-field slot → label. Orphan surfaces (cabinets, accent wall,
+ *  etc.) route into the shared ColorOther__c slot on submit, so they surface
+ *  here as "Other" (see lib/customer-form/surface-mapping). */
 const SURFACE_FIELD_TO_LABEL: Record<string, string> = {
   colorWallId: "Walls",
   colorCeilingId: "Ceiling",

@@ -7,6 +7,11 @@ import { checkRateLimit, sweepRateLimit } from "@/lib/rate-limit";
 import { notifySenderOnSubmit } from "@/lib/customer-form/notify-sender";
 import { insertCustomerFormSubmittedNotification } from "@/lib/notifications/insert";
 import { VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-form/material-types";
+import {
+  STANDARD_SURFACE_FIELDS,
+  ORPHAN_SURFACES,
+  normalizeFinishToSf,
+} from "@/lib/customer-form/surface-mapping";
 
 /**
  * Customer form submit handler.
@@ -70,15 +75,8 @@ type SubmitPayload = {
   };
 };
 
-/** Map a surface name (from Surfaces__c) to the WOLI color field it controls. */
-const SURFACE_TO_FIELD: Record<string, string> = {
-  walls: "ColorWall__c",
-  wall: "ColorWall__c",
-  ceiling: "ColorCeiling__c",
-  trim: "ColorTrim__c",
-  floor: "ColorFloor__c",
-  other: "ColorOther__c",
-};
+// Surface → SF field mapping + finish normalization live in a standalone,
+// unit-tested module (Kate's 2026-07-09 spec — §1–3). See surface-mapping.ts.
 
 /**
  * Server-side allowlist for finish values — must stay in lockstep with
@@ -322,34 +320,13 @@ export async function POST(
     // Defensive: a malformed payload could omit/ill-type surfaces. Guard so the
     // loop never throws on a public endpoint.
     const surfaces = Array.isArray(submitted.surfaces) ? submitted.surfaces : [];
+
+    // Reject off-list finishes server-side BEFORE building any fields — the
+    // client picklist is the source of truth and a tampered payload shouldn't
+    // land "Eggshell Gloss" anywhere. Validates the raw form label; the
+    // SF-picklist normalization happens separately below.
     for (const s of surfaces) {
-      // Per-element shape guard — a malformed surface element (null, or
-      // missing `surface` string) would otherwise crash on `.toLowerCase()`.
-      if (!s || typeof s !== "object" || typeof (s as { surface?: unknown }).surface !== "string") continue;
-      const fieldName = SURFACE_TO_FIELD[s.surface.toLowerCase()];
-      // On a RE-EDIT, an explicit "don't paint this" (skipped) must CLEAR any
-      // color we previously wrote — otherwise a customer removing a color on a
-      // second pass silently leaves the old color in SF. First submit keeps the
-      // conservative behavior (a blank surface never overwrites with null), so
-      // we only force-clear when the customer is revising a prior submission.
-      if (isReedit && s.skipped && fieldName) {
-        fields[fieldName] = null;
-        continue;
-      }
-      // Skip surfaces the customer didn't pick. Empty/null colorId means the
-      // customer chose to skip — don't overwrite any existing value with null
-      // unintentionally. (If admin wants to force-clear, they edit in SF.)
-      if (!s.colorId) continue;
-      if (!fieldName) continue; // Unknown surface label — skip safely
-      fields[fieldName] = s.colorId;
-    }
-    // Combine surface-specific finishes + room notes into ColorNotes__c so
-    // the field crew + materials shop see them. Format is human-readable on
-    // purpose since PPP staff read this field directly. Reject off-list
-    // finishes server-side — the client picklist is the source of truth and
-    // a tampered payload shouldn't land "Eggshell Gloss" in the notes.
-    for (const s of surfaces) {
-      if (s.colorId && s.finish && !VALID_FINISHES.has(s.finish)) {
+      if (s && typeof s === "object" && s.colorId && s.finish && !VALID_FINISHES.has(s.finish)) {
         return NextResponse.json({
           error: "invalid_finish",
           message: `Finish "${s.finish}" isn't a valid choice. Please pick from the list and try again.`,
@@ -358,15 +335,114 @@ export async function POST(
         }, { status: 400 });
       }
     }
-    const noteLines: string[] = [];
+
+    // Orphan surfaces (no dedicated SF field) are collected here and resolved
+    // AFTER the standard-surface pass — the 1-vs-2+ rule can only be decided
+    // once we know how many orphans this WOLI carries (Kate 2026-07-09 §2).
+    const orphanPicks: {
+      surface: string;
+      colorId: string;
+      colorName: string | null;
+      colorCode: string | null;
+      sfFinish: string | null;
+      rawFinish: string | null;
+    }[] = [];
+
     for (const s of surfaces) {
-      if (s.colorId && s.finish) {
-        noteLines.push(`${s.surface}: ${s.colorName ?? "(color picked)"}${s.colorCode ? ` (${s.colorCode})` : ""} — ${s.finish}`);
+      // Per-element shape guard — a malformed surface element (null, or
+      // missing `surface` string) would otherwise crash on `.toLowerCase()`.
+      if (!s || typeof s !== "object" || typeof (s as { surface?: unknown }).surface !== "string") continue;
+      const key = s.surface.toLowerCase().trim();
+      const std = STANDARD_SURFACE_FIELDS[key];
+      const isOrphan = !std && ORPHAN_SURFACES.has(key);
+
+      // On a RE-EDIT, an explicit "don't paint this" (skipped) must CLEAR any
+      // color+finish we previously wrote — otherwise a customer removing a
+      // color on a second pass silently leaves the old values in SF. First
+      // submit keeps the conservative behavior (a blank surface never
+      // overwrites with null), so we only force-clear on re-edit.
+      if (isReedit && s.skipped) {
+        if (std) {
+          fields[std.color] = null;
+          fields[std.finish] = null;
+        }
+        // Orphan skips need no explicit clear here — the shared Other fields
+        // are recomputed from the surviving orphan set below (and cleared
+        // there on re-edit when 0 or 2+ orphans remain).
+        continue;
       }
+
+      // Skip surfaces the customer didn't pick. Empty/null colorId means the
+      // customer chose to skip — don't overwrite any existing value with null
+      // unintentionally. (If admin wants to force-clear, they edit in SF.)
+      if (!s.colorId) continue;
+
+      const sfFinish = normalizeFinishToSf(s.finish);
+
+      if (std) {
+        fields[std.color] = s.colorId;
+        // Finish → its own picklist field, normalized (Semi-Gloss → Semigloss).
+        // normalizeFinishToSf returns null for choices with no SF value
+        // (High-Gloss) — never guess. Write the value when we have one; on
+        // re-edit also write null so a stale prior finish gets cleared.
+        if (sfFinish !== null) fields[std.finish] = sfFinish;
+        else if (isReedit) fields[std.finish] = null;
+      } else if (isOrphan) {
+        orphanPicks.push({
+          surface: s.surface,
+          colorId: s.colorId,
+          colorName: s.colorName ?? null,
+          colorCode: s.colorCode ?? null,
+          sfFinish,
+          rawFinish: s.finish ?? null,
+        });
+      }
+      // Unknown surface label (neither standard nor orphan) — skip safely.
+    }
+
+    // Resolve orphan surfaces per Kate's spec (§2):
+    //  - exactly 1 orphan → ColorOther__c / FinishOther__c
+    //  - 2+ orphans       → ColorNotes__c text (built below), Other left blank
+    //  - 0 orphans        → nothing (clear stale Other on re-edit)
+    const orphanNoteParts: string[] = [];
+    if (orphanPicks.length === 1) {
+      const o = orphanPicks[0];
+      fields.ColorOther__c = o.colorId;
+      if (o.sfFinish !== null) fields.FinishOther__c = o.sfFinish;
+      else if (isReedit) fields.FinishOther__c = null;
+    } else if (orphanPicks.length >= 2) {
+      // Two or more orphans overflow to ColorNotes__c; make sure a prior
+      // single-orphan value in Other doesn't linger on re-edit.
+      if (isReedit) {
+        fields.ColorOther__c = null;
+        fields.FinishOther__c = null;
+      }
+      for (const o of orphanPicks) {
+        // Human-readable for the crew: "Surface: ColorName (code) Finish".
+        // Prefer the normalized SF finish; fall back to the raw label so an
+        // unmapped choice (High-Gloss) still tells the crew what was picked.
+        const finishText = o.sfFinish ?? o.rawFinish ?? "";
+        const codeText = o.colorCode ? ` (${o.colorCode})` : "";
+        orphanNoteParts.push(
+          `${o.surface}: ${o.colorName ?? "(color picked)"}${codeText}${finishText ? ` ${finishText}` : ""}`.trim()
+        );
+      }
+    } else if (isReedit) {
+      fields.ColorOther__c = null;
+      fields.FinishOther__c = null;
+    }
+
+    // ColorNotes__c now carries only the orphan overflow (2+ case) + the
+    // customer's free-text room notes. Standard + single-orphan surfaces live
+    // entirely in their dedicated color/finish fields, so they no longer
+    // duplicate into notes (Kate 2026-07-09 — finishes belong in FinishX__c).
+    const noteLines: string[] = [];
+    if (orphanNoteParts.length > 0) {
+      noteLines.push(orphanNoteParts.join(", "));
     }
     const submittedNotes = typeof submitted.notes === "string" ? submitted.notes : "";
     if (submittedNotes.trim()) {
-      noteLines.push("");
+      if (noteLines.length > 0) noteLines.push("");
       noteLines.push(`Customer notes: ${submittedNotes.trim()}`);
     }
     if (noteLines.length > 0) {

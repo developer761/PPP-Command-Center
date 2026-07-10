@@ -148,6 +148,62 @@ async function addToAllowlistAction(formData: FormData) {
   );
 }
 
+async function bulkAddToAllowlistAction(formData: FormData) {
+  "use server";
+  const ctx = await requireAdmin();
+  const raw = String(formData.get("work_order_ids") ?? "");
+  const label = String(formData.get("label") ?? "").trim().slice(0, 200) || null;
+  // Split on any whitespace, comma, or semicolon so a pasted column, a
+  // comma-list, or an email dump all parse the same way. Dedupe.
+  const tokens = Array.from(
+    new Set(raw.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean))
+  );
+  if (tokens.length === 0) {
+    redirect("/dashboard/settings/writeback?err=" + encodeURIComponent("Paste at least one Salesforce work order Id."));
+  }
+  const valid = tokens.filter((t) => WO_ID_RE.test(t));
+  const invalid = tokens.filter((t) => !WO_ID_RE.test(t));
+  if (valid.length === 0) {
+    redirect(
+      "/dashboard/settings/writeback?err=" +
+        encodeURIComponent(
+          `None of the ${tokens.length} pasted value${tokens.length === 1 ? "" : "s"} look like a Salesforce WO Id (should start with 0WO and be 15 or 18 characters).`
+        )
+    );
+  }
+  try {
+    const sb = adminClient();
+    const nowIso = new Date().toISOString();
+    const { error } = await sb.from("customer_form_writeback_allowlist").upsert(
+      valid.map((woId) => ({
+        work_order_id: woId,
+        label,
+        added_by: ctx.email,
+        added_at: nowIso,
+      })),
+      { onConflict: "work_order_id" }
+    );
+    if (error) throw error;
+  } catch (err) {
+    redirect(
+      "/dashboard/settings/writeback?err=" +
+        encodeURIComponent(
+          `Couldn't add the batch: ${err instanceof Error ? err.message : String(err)}. If the allowlist table doesn't exist yet, run migration 015 first.`
+        )
+    );
+  }
+  revalidatePath("/dashboard/settings/writeback");
+  redirect(
+    "/dashboard/settings/writeback?ok=" +
+      encodeURIComponent(
+        `Added ${valid.length} work order${valid.length === 1 ? "" : "s"} to the allowlist.` +
+          (invalid.length > 0
+            ? ` Skipped ${invalid.length} value${invalid.length === 1 ? "" : "s"} that didn't look like a WO Id: ${invalid.slice(0, 5).join(", ")}${invalid.length > 5 ? "…" : ""}.`
+            : "")
+      )
+  );
+}
+
 async function removeFromAllowlistAction(formData: FormData) {
   "use server";
   await requireAdmin();
@@ -377,6 +433,47 @@ export default async function WritebackSettingsPage({ searchParams }: { searchPa
             Add
           </button>
         </form>
+
+        {/* Bulk add — paste a whole list (e.g. Katie emails 25 WO Ids at once). */}
+        <details className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/40">
+          <summary className="cursor-pointer select-none px-4 py-2.5 text-[13px] font-semibold text-ppp-charcoal-700 hover:text-ppp-charcoal">
+            Add several at once
+          </summary>
+          <form action={bulkAddToAllowlistAction} className="px-4 pb-4 pt-1 space-y-3">
+            <p className="text-[12px] text-ppp-charcoal-500">
+              Paste multiple work order Ids — one per line, or comma-separated. Anything that isn&apos;t a valid <code className="font-mono text-[11px] px-1 py-0.5 bg-white rounded">0WO…</code> Id is skipped and reported back. Re-adding an existing WO is a no-op.
+            </p>
+            <textarea
+              name="work_order_ids"
+              required
+              rows={6}
+              placeholder={"0WOWj000007AwUvOAK\n0WOWj000007FEmbOAG\n0WOWj000007FHfdOAG"}
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
+              <label className="flex flex-col gap-1 min-w-0">
+                <span className="text-[12px] font-semibold text-ppp-charcoal-700">
+                  Label for the whole batch <span className="font-normal text-ppp-charcoal-500">(optional)</span>
+                </span>
+                <input
+                  name="label"
+                  placeholder="Katie batch — 2026-07-09"
+                  maxLength={200}
+                  autoComplete="off"
+                  className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
+                />
+              </label>
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 min-h-[44px] shadow-sm shadow-emerald-600/30"
+              >
+                Add all
+              </button>
+            </div>
+          </form>
+        </details>
 
         {allowlist.length === 0 ? (
           <div className="rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 px-4 py-6 text-center text-sm text-ppp-charcoal-500">
