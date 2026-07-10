@@ -588,7 +588,7 @@ export default async function CommercialOpportunitiesPage({
       {(created || deletedTitle || statusOk || statusError) && (
         <div className="space-y-2">
           {created && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start gap-2">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
               <span aria-hidden>✓</span>
               <span className="flex-1">
                 {createdTitle ? (
@@ -613,11 +613,11 @@ export default async function CommercialOpportunitiesPage({
             </div>
           )}
           {statusOk && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-800 flex items-start justify-between gap-3">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
               <span>Status updated.</span>
               <Link
                 href="/commercial/opportunities"
-                className="text-[12px] text-blue-700 hover:text-blue-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+                className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
               >
                 Dismiss
               </Link>
@@ -1609,7 +1609,7 @@ function KanbanBoard({
   return (
     <KanbanDnDProvider>
       <div className="space-y-3">
-        <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-blue-50 border border-blue-100 rounded-full px-3 py-1.5">
+        <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-full px-3 py-1.5">
           <span aria-hidden>💡</span>
           <span>
             Drag a card between stages to move it forward. Drop into <strong>Won / Lost</strong> to close the bid.

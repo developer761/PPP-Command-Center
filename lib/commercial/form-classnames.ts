@@ -24,11 +24,18 @@ export const SELECT_CLS =
   // URL-encoded SVG inside arbitrary values reliably). See INPUT_BG_STYLE.
   ``;
 
-/** Inline style for the chevron background — apply alongside SELECT_CLS. */
+/** Inline style for the chevron background — apply alongside SELECT_CLS.
+ *  Karan 2026-07-10: `backgroundRepeat: "no-repeat"` is CRITICAL — without
+ *  it, Safari + Chrome tile the SVG chevron across the entire select
+ *  width (~20 chevrons in a horizontal row). Consumers that use their
+ *  OWN classname (not SELECT_CLS) still get the fix from this one line
+ *  because the inline style overrides CSS, so we don't have to hunt down
+ *  every classname. */
 export const SELECT_BG_STYLE = {
   backgroundImage: `url("data:image/svg+xml,${CHEVRON_SVG}")`,
   backgroundPosition: "right 0.875rem center",
   backgroundSize: "14px 14px",
+  backgroundRepeat: "no-repeat",
 } as const;
 
 /** Custom-styled <input> classname for text/date/number inputs. */

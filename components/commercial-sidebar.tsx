@@ -104,7 +104,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
           />
           <div className="mt-3 inline-flex items-center gap-1.5">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-navy-600" />
-            <span className="font-condensed text-[10px] font-bold tracking-[0.16em] text-cc-navy-700 uppercase leading-tight">
+            <span className="font-condensed text-[10px] font-bold tracking-[0.16em] text-ppp-charcoal-500 uppercase leading-tight">
               Commercial<br />Command Center
             </span>
           </div>
@@ -126,7 +126,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
       <nav className="flex-1 px-3 py-3 lg:py-4 overflow-y-auto">
         {navSections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-4 lg:mt-6" : ""}>
-            <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-cc-navy-700 uppercase">
+            <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
               {section.heading}
             </div>
             <ul className="space-y-0.5">

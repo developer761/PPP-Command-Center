@@ -4611,8 +4611,10 @@ function DealEditSheet({
   // Karan 2026-07-10 (arrows-coming-down flag): all selects get an
   // identical chevron. `appearance-none` strips the OS default (which
   // rendered differently in Safari vs Firefox vs Chrome). SELECT_BG_STYLE
-  // paints our own inline SVG chevron so every dropdown looks the same.
-  const selectCls = `${inputCls} appearance-none bg-white pr-9`;
+  // paints our own inline SVG chevron. `bg-no-repeat` is CRITICAL —
+  // without it, the browser tiles the chevron across the whole select
+  // width (~20 chevrons in a row — Karan's 4:09pm screenshot).
+  const selectCls = `${inputCls} appearance-none bg-white bg-no-repeat pr-9`;
   const labelCls = "block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5";
   return (
     <div id="deal-edit-sheet" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="deal-edit-title">
