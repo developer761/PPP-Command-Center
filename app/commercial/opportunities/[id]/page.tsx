@@ -686,6 +686,30 @@ async function archiveAttachmentAction(formData: FormData) {
 // active `?category=X` filter so the user's context isn't lost.
 // ═══════════════════════════════════════════════════════════════════
 
+// Karan 2026-07-10 audit fix (Phase C P1): the three server actions
+// below were only gating on `if (!user) redirect("/")`. The upload +
+// version + download API routes gate on `has_new_platform_access`;
+// the actions did not. A domain-approved user without commercial
+// access could POST directly to these actions and mutate any document.
+// This helper matches the API-route gate: returns the user id if
+// they hold the flag, redirects to root otherwise.
+async function requireCommercialUser(): Promise<string> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("has_new_platform_access")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!(profile as { has_new_platform_access?: boolean } | null)?.has_new_platform_access) {
+    redirect("/");
+  }
+  return user.id;
+}
+
 // Build the redirect URL for a Files-tab server action, preserving any
 // active category filter chip so users don't lose their spot.
 function buildFilesTabRedirect(
@@ -701,9 +725,7 @@ function buildFilesTabRedirect(
 
 async function toggleDocumentFavoriteAction(formData: FormData) {
   "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  const userId = await requireCommercialUser();
   const document_id = String(formData.get("document_id") ?? "");
   const currently = String(formData.get("favorited") ?? "0") === "1";
   if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
@@ -713,16 +735,14 @@ async function toggleDocumentFavoriteAction(formData: FormData) {
   const doc = await getDoc(document_id);
   if (!doc) redirect("/commercial/opportunities");
   const result = currently
-    ? await unfavoriteDocument(document_id, user.id)
-    : await favoriteDocument(document_id, user.id);
+    ? await unfavoriteDocument(document_id, userId)
+    : await favoriteDocument(document_id, userId);
   redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
 }
 
 async function transitionDocumentStatusAction(formData: FormData) {
   "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  const userId = await requireCommercialUser();
   const document_id = String(formData.get("document_id") ?? "");
   const to_status = String(formData.get("to_status") ?? "");
   if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
@@ -734,16 +754,14 @@ async function transitionDocumentStatusAction(formData: FormData) {
   const result = await transitionDocumentStatus(
     document_id,
     to_status as import("@/lib/commercial/documents/status").DocumentStatus,
-    user.id
+    userId
   );
   redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
 }
 
 async function softDeleteDocumentAction(formData: FormData) {
   "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  const userId = await requireCommercialUser();
   const document_id = String(formData.get("document_id") ?? "");
   if (!UUID_RE.test(document_id)) redirect("/commercial/opportunities");
   const { softDeleteDocument, getDocument: getDoc } = await import(
@@ -751,7 +769,7 @@ async function softDeleteDocumentAction(formData: FormData) {
   );
   const doc = await getDoc(document_id);
   if (!doc) redirect("/commercial/opportunities");
-  const result = await softDeleteDocument(document_id, user.id);
+  const result = await softDeleteDocument(document_id, userId);
   redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
 }
 
