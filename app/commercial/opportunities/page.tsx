@@ -79,6 +79,39 @@ import DatePicker from "@/components/commercial/date-picker";
 const MS_PER_DAY = 86_400_000;
 
 /**
+ * Deterministic per-account color tone for the pipeline list-view group
+ * cards. Karan 2026-07-10 (rev 5): "make the account colors different
+ * to differentiate even more." Hash the account_id (or a stable
+ * fallback for accountless rows) into one of 8 muted palette entries.
+ * Same account_id → same tone forever, so users learn the color +
+ * neighbors are visually distinct at a glance. Palette skips blue/navy
+ * (Karan-banned platform-wide) — sticks to warm + earthy accents.
+ */
+const ACCOUNT_TONE_PALETTE: ReadonlyArray<{
+  border: string; // Tailwind border-color class for the 4px left bar
+  headerBg: string; // subtle tint for the header strip
+  avatar: string; // circular initials badge bg + text
+}> = [
+  { border: "border-emerald-400", headerBg: "bg-emerald-50/60", avatar: "bg-emerald-100 text-emerald-800" },
+  { border: "border-amber-400", headerBg: "bg-amber-50/60", avatar: "bg-amber-100 text-amber-800" },
+  { border: "border-rose-400", headerBg: "bg-rose-50/60", avatar: "bg-rose-100 text-rose-800" },
+  { border: "border-violet-400", headerBg: "bg-violet-50/60", avatar: "bg-violet-100 text-violet-800" },
+  { border: "border-teal-400", headerBg: "bg-teal-50/60", avatar: "bg-teal-100 text-teal-800" },
+  { border: "border-orange-400", headerBg: "bg-orange-50/60", avatar: "bg-orange-100 text-orange-800" },
+  { border: "border-lime-400", headerBg: "bg-lime-50/60", avatar: "bg-lime-100 text-lime-800" },
+  { border: "border-pink-400", headerBg: "bg-pink-50/60", avatar: "bg-pink-100 text-pink-800" },
+];
+
+function accountColorTone(accountId: string | null): (typeof ACCOUNT_TONE_PALETTE)[number] {
+  const key = accountId || "__no_account__";
+  // Simple deterministic hash — sum char codes then modulo. Doesn't need
+  // to be cryptographic; just needs to be stable across renders.
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h + key.charCodeAt(i)) >>> 0;
+  return ACCOUNT_TONE_PALETTE[h % ACCOUNT_TONE_PALETTE.length]!;
+}
+
+/**
  * Karan 2026-07-08 audit fix: every quick-flip form now posts a
  * `return_href` hidden input containing the current pipeline URL
  * (minus ?customer= so the sheet doesn't reopen after the flip). The
@@ -983,26 +1016,39 @@ export default async function CommercialOpportunitiesPage({
                   </p>
                 </div>
               </div>
-              {/* Karan 2026-07-10 (ui-micro-details rev 4): rebuild pass.
-                  Previous versions read as "Bob · Bob · — bid" — the
-                  group header stacked separately from the rows and each
-                  row still rendered the account name inline. New shape:
-                  each account = one white CARD with rounded borders +
-                  soft shadow. Header row: bold account name (link) +
-                  right-aligned deals count chip + optional Key/industry
-                  chips. Divider. Then each deal renders as a plain
-                  row with hideAccount=true so no repetition. Cards
-                  separated by a 12px gap (no divide-y). Reads as a
-                  clean stack of customer cards, not one long list. */}
+              {/* Karan 2026-07-10 (rev 5): per-account color accent. The
+                  cards were visually identical; Karan asked for account
+                  differentiation. Each account_id hashes deterministically
+                  into one of 8 muted palette entries → colored 4px left
+                  bar + colored circular initials badge. Same account
+                  always gets the same color (so users learn "Bob is
+                  amber"), and neighbors are visually distinct at a
+                  glance. Palette avoids blue/navy (Karan-banned). */}
               <ul className="space-y-3">
-                {groups.map((g) => (
+                {groups.map((g) => {
+                  const tone = accountColorTone(g.accountId);
+                  const initials = g.account
+                    ? (g.account.company_name || "?")
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((w) => w[0]!.toUpperCase())
+                        .join("")
+                    : "?";
+                  return (
                   <li
                     key={g.accountId}
-                    className="bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden"
+                    className={`bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden border-l-4 ${tone.border}`}
                   >
                     {g.account && (
-                      <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/40">
-                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <div className={`px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100 ${tone.headerBg}`}>
+                        <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                          <span
+                            aria-hidden
+                            className={`shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold ${tone.avatar}`}
+                          >
+                            {initials}
+                          </span>
                           <Link
                             href={`/commercial/accounts/${g.account.id}`}
                             className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
@@ -1049,7 +1095,8 @@ export default async function CommercialOpportunitiesPage({
                       ))}
                     </ul>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           );
