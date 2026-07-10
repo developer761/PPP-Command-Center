@@ -94,6 +94,10 @@ import {
 import { revalidatePath } from "next/cache";
 import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
+import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
+import { listDocumentsForParent, type CommercialDocument } from "@/lib/commercial/documents/db";
+import { documentCategoryLabel } from "@/lib/commercial/documents/categories";
+import { documentStatusLabel, type DocumentStatus } from "@/lib/commercial/documents/status";
 // InfoDot import removed 2026-07-08 Batch 2b — labels now use native
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
@@ -1006,14 +1010,19 @@ async function createSubmittalAction(formData: FormData) {
 // bar itself is just quieter.
 //
 //   Overview  → Info (default) · Team
-//   Documents → Plans (default) · Finishes · Submittals
+//   Documents → Plans (default) · Finishes · Submittals · Files
 //   Activity  → Notes (default) · Tasks · Timeline
 //   Debrief   → terminal opps only (unchanged)
+//
+// Files sub-tab added 2026-07-10 for Phase C — general-purpose polymorphic
+// docs (bid sets, RFIs, permits, contracts, site photos, correspondence)
+// with status DAG + version chain + favorites. Separate from Plans/
+// Finishes/Submittals which are structured / stage-specific.
 //
 // Sub-navigation drives from URL `?tab=X&sub=Y`. Missing/invalid `sub`
 // falls back to the group's default (Info / Plans / Notes).
 type PrimaryTab = "overview" | "docs" | "activity" | "invoices" | "debrief";
-type SubTab = "info" | "team" | "plans" | "finishes" | "submittals" | "notes" | "tasks" | "timeline";
+type SubTab = "info" | "team" | "plans" | "finishes" | "submittals" | "files" | "notes" | "tasks" | "timeline";
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
 // Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
 const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
@@ -1030,6 +1039,7 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, {
     { key: "plans", label: "Plans & Specs" },
     { key: "finishes", label: "Finishes" },
     { key: "submittals", label: "Submittals" },
+    { key: "files", label: "Files" },
   ],
   activity: [
     { key: "notes", label: "Notes" },
@@ -1057,7 +1067,7 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   }
   // Legacy flat sub-tab keys → route to the primary + explicit sub.
   if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
-  if (raw === "plans" || raw === "finishes" || raw === "submittals") return { primary: "docs", sub: raw as SubTab };
+  if (raw === "plans" || raw === "finishes" || raw === "submittals" || raw === "files") return { primary: "docs", sub: raw as SubTab };
   if (raw === "notes" || raw === "tasks" || raw === "timeline") return { primary: "activity", sub: raw as SubTab };
   // Unknown / stale keys → fall through to Overview.
   return { primary: "overview", sub: null };
@@ -1524,6 +1534,7 @@ export default async function OpportunityDetailPage({
       {tab === "submittals" && (
         <SubmittalsTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />
       )}
+      {tab === "files" && <FilesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
     </div>
   );
@@ -4137,6 +4148,179 @@ function SubmittalRow({
  *
  * Empty state covers freshly-created opps that haven't moved yet.
  */
+/**
+ * Phase C · Files sub-tab — general-purpose polymorphic docs on an opp.
+ * Sits alongside Plans & Specs / Finishes / Submittals under the Docs
+ * primary tab. Each row: file name + category + status pill + favorite
+ * star + open/download link + row menu (soft-delete for now; version
+ * bump + status transitions land in C.3).
+ *
+ * Renders favorites at top, then the rest by most-recent-upload. Empty
+ * state coaches users toward the drop-zone.
+ */
+async function FilesTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+  const docs = await listDocumentsForParent("opportunity", oppId);
+  const live = docs.filter((d) => d.status !== "superseded");
+  const superseded = docs.filter((d) => d.status === "superseded");
+  const favorites = live.filter((d) => d.favorited_at);
+  const others = live.filter((d) => !d.favorited_at);
+
+  return (
+    <div className="space-y-5">
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
+          {errorMessage}
+        </div>
+      )}
+
+      <CommercialFilesUploadForm parentType="opportunity" parentId={oppId} />
+
+      {favorites.length > 0 && (
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 flex items-center gap-2">
+            <span aria-hidden className="text-amber-500">★</span>
+            <h2 className="text-sm font-semibold text-ppp-charcoal">
+              Favorites · {favorites.length}
+            </h2>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {favorites.map((d) => (
+              <FileRow key={d.id} doc={d} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+          <h2 className="text-sm font-semibold text-ppp-charcoal">
+            {favorites.length > 0 ? "All files" : "Files"} · {others.length + favorites.length}
+          </h2>
+        </div>
+        {others.length + favorites.length === 0 ? (
+          <div className="p-8 text-center text-sm text-ppp-charcoal-500">
+            No files yet. Drop a bid set, an RFI, meeting minutes, or a site photo above.
+          </div>
+        ) : others.length === 0 ? (
+          <div className="p-6 text-center text-[12px] text-ppp-charcoal-500">
+            All current files are pinned above.
+          </div>
+        ) : (
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {others.map((d) => (
+              <FileRow key={d.id} doc={d} />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {superseded.length > 0 && (
+        <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
+          <summary className="px-4 py-3 cursor-pointer text-[12px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
+            <span>Superseded · {superseded.length}</span>
+            <span className="text-ppp-charcoal-300 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <ul className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
+            {superseded.map((d) => (
+              <FileRow key={d.id} doc={d} muted />
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A file row on the Files tab. Renders: file name (opens signed download
+ * in a new tab), size, category pill, status pill, favorite star toggle,
+ * uploaded_at timestamp, and (via nested <details>) the notes if any.
+ */
+function FileRow({ doc, muted }: { doc: CommercialDocument; muted?: boolean }) {
+  const sizeMB = (doc.size_bytes / 1024 / 1024).toFixed(2);
+  const catLabel = documentCategoryLabel(doc.category);
+  const statusLabel = documentStatusLabel(doc.status);
+  const uploadedDate = new Date(doc.uploaded_at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/New_York",
+  });
+  const statusTone = statusToneClasses(doc.status);
+  return (
+    <li className={`px-4 py-3 ${muted ? "opacity-60" : ""}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <a
+              href={`/api/commercial/documents/${doc.id}/download`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[13px] font-semibold text-blue-700 hover:text-blue-800 truncate hover:underline underline-offset-2"
+              title={doc.file_name}
+            >
+              {doc.file_name}
+            </a>
+            {doc.version > 1 && (
+              <span
+                className="text-[10px] font-mono bg-ppp-charcoal-100 text-ppp-charcoal-600 rounded px-1 py-0.5"
+                title={`Version ${doc.version} in this chain`}
+              >
+                v{doc.version}
+              </span>
+            )}
+            <span
+              className={`text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 border ${statusTone}`}
+            >
+              {statusLabel}
+            </span>
+          </div>
+          <div className="text-[11.5px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+            <span>{catLabel}</span>
+            <span aria-hidden>·</span>
+            <span>{sizeMB} MB</span>
+            <span aria-hidden>·</span>
+            <span>Uploaded {uploadedDate}</span>
+          </div>
+          {doc.notes && (
+            <div className="text-[12px] text-ppp-charcoal-700 mt-1.5 whitespace-pre-wrap">
+              {doc.notes}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {doc.favorited_at ? (
+            <span
+              className="inline-flex items-center justify-center h-8 w-8 text-amber-500"
+              title="Favorited"
+              aria-label="Favorited"
+            >
+              ★
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function statusToneClasses(status: DocumentStatus): string {
+  switch (status) {
+    case "draft":
+      return "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200";
+    case "pending_review":
+      return "bg-amber-50 text-amber-800 border-amber-200";
+    case "approved":
+      return "bg-emerald-50 text-emerald-800 border-emerald-200";
+    case "rejected":
+      return "bg-rose-50 text-rose-800 border-rose-200";
+    case "superseded":
+      return "bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-200";
+    default:
+      return "bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-200";
+  }
+}
+
 async function TimelineTab({ oppId }: { oppId: string }) {
   const log = await listOpportunityStatusLog(oppId);
   if (log.length === 0) {
