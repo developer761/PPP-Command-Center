@@ -893,6 +893,11 @@ async function editDealFromAccountAction(formData: FormData) {
   const property_city = String(formData.get("property_city") ?? "").trim() || null;
   const property_state = String(formData.get("property_state") ?? "").trim() || null;
   const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
+  // Phase B (Plan v1.1) — CEO structural fields.
+  const client_name = String(formData.get("client_name") ?? "").trim() || null;
+  const location_short = String(formData.get("location_short") ?? "").trim() || null;
+  const estimatorSheetRaw = String(formData.get("estimator_user_id") ?? "").trim();
+  const estimator_user_id = estimatorSheetRaw && UUID_RE.test(estimatorSheetRaw) ? estimatorSheetRaw : null;
 
   const result = await updateCommercialOpportunity({
     id: opp_id,
@@ -909,6 +914,9 @@ async function editDealFromAccountAction(formData: FormData) {
     property_city,
     property_state,
     property_zip,
+    client_name,
+    location_short,
+    estimator_user_id,
     updated_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -2754,6 +2762,7 @@ async function OpportunitiesTab({
             deal={dealRow}
             accountId={accountId}
             primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
+            estimators={estimators}
           />
         );
       })()}
@@ -4544,10 +4553,12 @@ function DealEditSheet({
   deal,
   accountId,
   primaryLead,
+  estimators,
 }: {
   deal: CommercialOpportunity;
   accountId: string;
   primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
+  estimators: EligibleEstimator[];
 }) {
   const bidLabel = formatBidRange(deal.bid_value_low_cents, deal.bid_value_high_cents);
   const weighted = weightedPipelineCents(deal);
@@ -4712,6 +4723,63 @@ function DealEditSheet({
           </SheetSection>
 
           {/* ─── Section: Project (address override + description) ─── */}
+          <SheetSection title="Structure">
+            {/* Phase B (Plan v1.1) — CEO structural fields. All optional
+                at Solicitation; changeOpportunityStatus blocks moving to
+                Estimating until all three are set. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block">
+                <span className={labelCls}>Client name</span>
+                <input
+                  name="client_name"
+                  type="text"
+                  maxLength={200}
+                  defaultValue={deal.client_name ?? ""}
+                  placeholder="e.g. Tomco Painting"
+                  className={inputCls}
+                />
+              </label>
+              <label className="block">
+                <span className={labelCls}>Site location</span>
+                <input
+                  name="location_short"
+                  type="text"
+                  maxLength={200}
+                  defaultValue={deal.location_short ?? ""}
+                  placeholder="e.g. 1234 Main St, Central Islip"
+                  className={inputCls}
+                />
+              </label>
+            </div>
+            <div>
+              <label className="block">
+                <span className={labelCls}>Estimator</span>
+                <select
+                  name="estimator_user_id"
+                  defaultValue={deal.estimator_user_id ?? ""}
+                  className={`${inputCls} bg-white`}
+                >
+                  <option value="">— unassigned —</option>
+                  {estimators.map((e) => (
+                    <option key={e.user_id} value={e.user_id}>{e.name}</option>
+                  ))}
+                </select>
+                <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
+                  {estimators.length === 0
+                    ? "Add someone to the account team first to assign them."
+                    : deal.estimator_user_id && !estimators.find((e) => e.user_id === deal.estimator_user_id)
+                    ? "⚠️ Previous estimator was removed from the team — reassign."
+                    : "Required to move this to Estimating."}
+                </span>
+              </label>
+            </div>
+            {deal.project_number && (
+              <div className="text-[11.5px] text-ppp-charcoal-500 tabular-nums">
+                Project #: <span className="font-mono text-ppp-charcoal-800">{deal.project_number}</span>
+              </div>
+            )}
+          </SheetSection>
+
           <SheetSection title="Project">
             <div>
               <div className={labelCls}>
