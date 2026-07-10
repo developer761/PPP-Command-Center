@@ -4189,10 +4189,11 @@ async function TimelineTab({ oppId }: { oppId: string }) {
                   {" ET"}
                 </span>
               </div>
-              {/* Only surface loss_reason on terminal lost/no_bid rows —
-                  if stale data ever set it on a won row, we don't want
-                  the timeline to look like the deal was lost. */}
-              {entry.loss_reason && (entry.to_status === "lost" || entry.to_status === "no_bid") && (
+              {/* Only surface loss_reason on lost rows — if stale data
+                  ever set it on a won row, we don't want the timeline
+                  to look like the bid was lost. no_bid distinction now
+                  lives inside loss_reason itself (Phase A.1). */}
+              {entry.loss_reason && entry.to_status === "lost" && (
                 <div className="text-[12px] text-rose-700 mb-1">
                   Reason: {opportunityLossReasonLabel(entry.loss_reason)}
                 </div>
@@ -4402,24 +4403,29 @@ function weightedTooltip(opp: CommercialOpportunity): string {
   return `${opp.probability_pct}% probability × $${midDollars} midpoint bid.`;
 }
 
-function StatusPill({ status }: { status: OpportunityStatus }) {
-  // Karan 2026-06-24: boosted saturation from -50/-700/-200 to
-  // -100/-800/-300 across the board so pills pop like the PPP CC.
-  // Same color, more contrast. Negotiating uses orange instead of
-  // amber to stand out from earlier amber states.
-  const map: Record<OpportunityStatus, string> = {
-    inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+function StatusPill({ status }: { status: OpportunityStatus | string }) {
+  // Karan 2026-07-09 Phase A.1: v1.1 CEO status model. Map covers the
+  // 8 Pre-Contract values + retired v1.0 values so any un-migrated
+  // historic row still tints correctly.
+  const map: Record<string, string> = {
+    solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+    rfp: "bg-blue-100 text-blue-800 border-blue-300",
     estimating: "bg-amber-100 text-amber-900 border-amber-300",
+    proposal_pending_approval: "bg-purple-100 text-purple-800 border-purple-300",
     proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
-    negotiating: "bg-orange-100 text-orange-900 border-orange-300",
-    on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+    follow_up: "bg-cyan-100 text-cyan-800 border-cyan-300",
     won: "bg-emerald-100 text-emerald-800 border-emerald-300",
     lost: "bg-rose-100 text-rose-800 border-rose-300",
+    // Retired v1.0 values (fallback for un-migrated rows)
+    inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+    negotiating: "bg-orange-100 text-orange-900 border-orange-300",
+    on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
     no_bid: "bg-rose-100 text-rose-800 border-rose-300",
     reopened: "bg-blue-100 text-blue-800 border-blue-300",
   };
+  const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${map[status]}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${cls}`}>
       {opportunityStatusLabel(status)}
     </span>
   );

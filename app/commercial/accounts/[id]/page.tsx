@@ -742,10 +742,10 @@ async function createDealInlineAction(formData: FormData) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&error=${encodeURIComponent("Deal title is required.")}`);
   }
 
-  const statusRaw = String(formData.get("status") ?? "inquiry").trim();
+  const statusRaw = String(formData.get("status") ?? "solicitation").trim();
   const status = (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
     ? (statusRaw as OpportunityStatus)
-    : "inquiry";
+    : "solicitation";
 
   const sourceRaw = String(formData.get("source") ?? "").trim();
   const source = (OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)
@@ -2417,10 +2417,10 @@ function NewDealForm({ accountId }: { accountId: string }) {
           <span className={labelCls}>Status</span>
           <select
             name="status"
-            defaultValue="inquiry"
+            defaultValue="solicitation"
             className={`${inputCls} bg-white`}
           >
-            {OPPORTUNITY_STATUSES.filter((s) => s !== "reopened").map((s) => (
+            {OPPORTUNITY_STATUSES.map((s) => (
               <option key={s} value={s}>{opportunityStatusLabel(s)}</option>
             ))}
           </select>
@@ -2982,12 +2982,15 @@ function AccountOpportunityRow({
 }
 
 /** Status pill color tone — mirrors the global pipeline page. */
-function statusPillTone(status: OpportunityStatus): { cls: string } {
+function statusPillTone(status: OpportunityStatus | string): { cls: string } {
+  // Karan 2026-07-09 Phase A.1: v1.1 CEO status model.
   if (status === "won") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
-  if (status === "lost" || status === "no_bid") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
-  if (status === "on_hold") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
-  if (status === "negotiating" || status === "proposal_sent") return { cls: "bg-blue-50 text-blue-800 border-blue-200" };
-  if (status === "reopened") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
+  if (status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
+  if (status === "follow_up") return { cls: "bg-cyan-50 text-cyan-800 border-cyan-200" };
+  if (status === "proposal_sent") return { cls: "bg-orange-50 text-orange-800 border-orange-200" };
+  if (status === "proposal_pending_approval") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
+  if (status === "rfp") return { cls: "bg-blue-50 text-blue-800 border-blue-200" };
+  if (status === "estimating") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
   return { cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100" };
 }
 

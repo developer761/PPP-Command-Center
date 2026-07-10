@@ -66,7 +66,7 @@ export async function createCommercialOpportunity(
     [low, high] = [high, low];
   }
 
-  const status: OpportunityStatus = input.status ?? "inquiry";
+  const status: OpportunityStatus = input.status ?? "solicitation";
   // Auto-fill primary contact from the account if not supplied + the
   // account has a starred primary contact (Phase 1 Batch A feature).
   let primaryContactId = input.primary_contact_id ?? null;

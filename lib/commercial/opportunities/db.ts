@@ -10,42 +10,50 @@ import { commercialDb } from "@/lib/commercial/db";
  * mirror on the commercial side.
  */
 
-// Karan 2026-07-09 Phase A: removed `site_visit_scheduled` + `site_visit_done`
-// per post-meeting notes. Any historic rows on those statuses migrate to
-// `estimating` via migration 044 (the natural post-inquiry pre-proposal
-// state now that site-visit is folded into estimating).
+// Karan 2026-07-09 Phase A.1: CEO status-model correction (Plan v1.1).
+// Alex emailed an 8-value Pre-Contract enum that supersedes the Phase A
+// list. Historic rows migrate via migration 045 (inquiry/reopened →
+// solicitation, negotiating/on_hold → follow_up, no_bid → lost with
+// `lost_reason='no_bid'` preserved, site_visit_* → estimating).
+// Post-Contract lifecycle statuses live on `commercial_projects` — see
+// `lib/commercial/projects/db.ts` (Phase H).
 export const OPPORTUNITY_STATUSES = [
-  "inquiry",
+  "solicitation",
+  "rfp",
   "estimating",
+  "proposal_pending_approval",
   "proposal_sent",
-  "negotiating",
-  "on_hold",
+  "follow_up",
   "won",
   "lost",
-  "no_bid",
-  "reopened",
 ] as const;
 export type OpportunityStatus = (typeof OPPORTUNITY_STATUSES)[number];
 
-// Widened arg type so callers with a legacy row (site_visit_*) or any
-// unknown enum value get a readable fallback instead of `undefined`
-// silently reaching JSX. Phase A migration 044 backfills historic rows,
-// but a webhook / integration writing a stale status must not blow up
-// the pipeline UI.
+// Widened arg type so callers with any un-migrated row (v1.0 enum values
+// or retired site_visit_*) or any unknown enum value get a readable
+// fallback instead of `undefined` silently reaching JSX. Migration 045
+// backfills historic rows, but a webhook / integration writing a stale
+// status must not blow up the pipeline UI.
 export function opportunityStatusLabel(s: string | null | undefined): string {
   if (!s) return "Unknown";
   const label = {
-    inquiry: "Inquiry",
+    // v1.1 Pre-Contract enum (source of truth as of 2026-07-09 PM)
+    solicitation: "Solicitation",
+    rfp: "RFP",
     estimating: "Estimating",
+    proposal_pending_approval: "Proposal pending approval",
     proposal_sent: "Proposal sent",
-    negotiating: "Negotiating",
-    on_hold: "On hold",
+    follow_up: "Follow up",
     won: "Won",
     lost: "Lost",
-    no_bid: "No bid",
-    reopened: "Reopened",
-    // Retired 2026-07-09 (Phase A). Kept as read-only display fallback
-    // so any un-migrated historic row still renders a sane label.
+    // Retired v1.0 values kept as read-only display fallback so any
+    // un-migrated historic row still renders a sane label.
+    inquiry: "Inquiry (retired)",
+    negotiating: "Negotiating (retired)",
+    on_hold: "On hold (retired)",
+    no_bid: "No bid (retired)",
+    reopened: "Reopened (retired)",
+    // Retired Phase A values (site-visit pair).
     site_visit_scheduled: "Site visit scheduled (retired)",
     site_visit_done: "Site visit done (retired)",
   }[s as string];
@@ -75,7 +83,14 @@ export function opportunitySourceLabel(s: OpportunitySource): string {
   }[s];
 }
 
+// Karan 2026-07-09 Phase A.1: `no_bid` added as a loss reason. The v1.0
+// enum had `no_bid` as a first-class status, which the CEO's v1.1 list
+// dropped. We keep the distinction (for Win/Loss reporting, competitor
+// analysis, and "how many did we pass on vs actually lose") by moving
+// it into the loss_reason enum. Migration 045 backfills historic no_bid
+// rows into `lost` with `loss_reason='no_bid'`.
 export const OPPORTUNITY_LOSS_REASONS = [
+  "no_bid",
   "price",
   "scope",
   "timing",
@@ -88,6 +103,7 @@ export type OpportunityLossReason = (typeof OPPORTUNITY_LOSS_REASONS)[number];
 
 export function opportunityLossReasonLabel(r: OpportunityLossReason): string {
   return {
+    no_bid: "We declined to bid",
     price: "Price",
     scope: "Scope mismatch",
     timing: "Timing",

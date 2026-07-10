@@ -137,28 +137,24 @@ export async function changeOpportunityStatus(
   }
 
   // Loss-reason enforcement when transitioning TO a closed-without-win
-  // state. Both `lost` and `no_bid` are terminal exits where Alex needs
-  // to record WHY — for pipeline analysis (which reasons recur) and
-  // CYA against future "you should've gone after this one" questions.
-  // Reason enum is shared (price/scope/timing/etc.); semantics differ
-  // only in label.
+  // state. Alex needs a WHY on every lost bid — for pipeline analysis
+  // (which reasons recur) and CYA against future "you should've gone
+  // after this one" questions. Reason enum includes the `no_bid` value
+  // as a first-class reason for `lost`, preserving the v1.0 distinction
+  // after the CEO status model collapsed no_bid into lost (Plan v1.1).
   let lossReason: OpportunityLossReason | null = null;
   let lossNote: string | null = null;
-  if (input.to_status === "lost" || input.to_status === "no_bid") {
+  if (input.to_status === "lost") {
     if (!input.loss_reason || !OPPORTUNITY_LOSS_REASONS.includes(input.loss_reason)) {
       return {
         ok: false,
-        error: input.to_status === "no_bid"
-          ? "Pick a reason for declining to bid."
-          : "Pick a loss reason to mark this lost.",
+        error: "Pick a reason for losing (or `no_bid` if we declined to bid).",
       };
     }
     if (!input.note || !input.note.trim()) {
       return {
         ok: false,
-        error: input.to_status === "no_bid"
-          ? "Add a short note explaining why we passed on this."
-          : "Add a short note explaining why this was lost.",
+        error: "Add a short note explaining the loss.",
       };
     }
     lossReason = input.loss_reason;
@@ -199,10 +195,10 @@ export async function changeOpportunityStatus(
     updated_by_user_id: input.acting_user_id ?? null,
   };
   if (nextDecidedAt !== undefined) patch.decided_at = nextDecidedAt;
-  if (input.to_status === "lost" || input.to_status === "no_bid") {
+  if (input.to_status === "lost") {
     patch.loss_reason = lossReason;
     patch.loss_notes = lossNote;
-  } else if (beforeRow.status === "lost" || beforeRow.status === "no_bid") {
+  } else if (beforeRow.status === "lost") {
     patch.loss_reason = null;
     patch.loss_notes = null;
   }

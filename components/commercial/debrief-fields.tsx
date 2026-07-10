@@ -35,7 +35,10 @@ import {
  * sets `debrief_skip="1"` hidden field when the button is clicked).
  */
 
-const TERMINAL_STATUSES = new Set(["won", "lost", "no_bid"]);
+// Karan 2026-07-09 Phase A.1: CEO enum drops no_bid. no_bid distinction
+// preserved via `lost_reason='no_bid'` on the opportunity row itself.
+// Debrief still fires on won/lost transitions.
+const TERMINAL_STATUSES = new Set(["won", "lost"]);
 
 type Props = {
   initialStatus?: string;

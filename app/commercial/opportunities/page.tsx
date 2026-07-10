@@ -263,12 +263,15 @@ export default async function CommercialOpportunitiesPage({
   // the customer name lands on their account page. Kanban + list stay
   // as alternate views (?view=kanban / ?view=list) so the deal-first
   // workflows (drag-through-stage, CSV export) don't disappear.
-  // Karan 2026-07-09: kanban is now the default view — matches the way
-  // Alex actually reads the pipeline (columns of stages) instead of the
-  // customer-first grouping we had before.
+  // Karan 2026-07-09 PM (Phase A.1): default view flipped Kanban → List
+  // per CEO's follow-up email. Alex agreed with Karan's flag that Kanban
+  // isn't appropriate for the volume of statuses (8 Pre-Contract + up to
+  // 7 Post-Contract when Projects ship in Phase H). List with toggle
+  // filters reads better at that count. Kanban stays available via
+  // ?view=kanban for the Pre-Contract subset.
   const viewRaw = pickFirst(sp.view);
   const viewMode: "list" | "kanban" | "customer" =
-    viewRaw === "list" ? "list" : viewRaw === "customer" ? "customer" : "kanban";
+    viewRaw === "kanban" ? "kanban" : viewRaw === "customer" ? "customer" : "list";
 
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently updated" },
@@ -1089,7 +1092,7 @@ function NewDealSlideOut({
               <select
                 id="new-deal-status"
                 name="status"
-                defaultValue="inquiry"
+                defaultValue="solicitation"
                 className={SELECT_CLS}
                 style={SELECT_BG_STYLE}
               >
@@ -1500,7 +1503,10 @@ function KanbanBoard({
   flipReturnHref: string;
 }) {
   const OPEN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
-  const TERMINAL_COLUMNS: readonly OpportunityStatus[] = ["won", "lost", "no_bid"];
+  // Karan 2026-07-09 Phase A.1: CEO enum drops no_bid (mapped to lost
+  // with lost_reason='no_bid' preserving the distinction for reporting).
+  // Kanban terminal cluster is now just Won + Lost.
+  const TERMINAL_COLUMNS: readonly OpportunityStatus[] = ["won", "lost"];
   const KANBAN_COLUMNS = [...OPEN_COLUMNS, ...TERMINAL_COLUMNS] as readonly OpportunityStatus[];
   const TERMINAL_DISPLAY_CAP = 10;
 
@@ -1534,7 +1540,7 @@ function KanbanBoard({
         <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-blue-50 border border-blue-100 rounded-full px-3 py-1.5">
           <span aria-hidden>💡</span>
           <span>
-            Drag a card between stages to move it forward. Drop into <strong>Won / Lost / No-bid</strong> to close the deal.
+            Drag a card between stages to move it forward. Drop into <strong>Won / Lost</strong> to close the bid.
           </span>
         </div>
         <div className="overflow-x-auto -mx-2 px-2 pb-2">
@@ -1546,9 +1552,13 @@ function KanbanBoard({
                 (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
                 0
               );
+              // Karan 2026-07-09 Phase A.1: reopened dropped from enum
+              // (v1.0 → v1.1 CEO correction). follow_up gets the tinted
+              // treatment since it's the "waiting on GC" bucket that
+              // benefits from visual differentiation.
               const tone =
-                status === "reopened"
-                  ? { col: "bg-blue-50/40 border-blue-200", head: "bg-blue-50 border-blue-200" }
+                status === "follow_up"
+                  ? { col: "bg-cyan-50/40 border-cyan-200", head: "bg-cyan-50 border-cyan-200" }
                   : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
               return (
                 <KanbanDnDColumn key={status} status={status}>
@@ -1571,7 +1581,7 @@ function KanbanBoard({
                     <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px]">
                       {colOpps.length === 0 ? (
                         <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
-                          {status === "reopened" ? "Reopened deals land here" : "Drop a deal here"}
+                          {status === "follow_up" ? "Follow-ups waiting on the GC" : "Drop a bid here"}
                         </li>
                       ) : (
                         colOpps.map((opp) => (
@@ -2299,20 +2309,30 @@ function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
   );
 }
 
-function StatusPill({ status }: { status: OpportunityStatus }) {
-  const map: Record<OpportunityStatus, string> = {
-    inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+function StatusPill({ status }: { status: OpportunityStatus | string }) {
+  // Karan 2026-07-09 Phase A.1: CEO status-model correction. Map covers
+  // the 8 Pre-Contract values + retired v1.0 values so any un-migrated
+  // historic row still tints correctly. Fallback to neutral if a truly
+  // unknown status reaches the UI.
+  const map: Record<string, string> = {
+    solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+    rfp: "bg-blue-100 text-blue-800 border-blue-300",
     estimating: "bg-amber-100 text-amber-900 border-amber-300",
+    proposal_pending_approval: "bg-purple-100 text-purple-800 border-purple-300",
     proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
-    negotiating: "bg-orange-100 text-orange-900 border-orange-300",
-    on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+    follow_up: "bg-cyan-100 text-cyan-800 border-cyan-300",
     won: "bg-emerald-100 text-emerald-800 border-emerald-300",
     lost: "bg-rose-100 text-rose-800 border-rose-300",
+    // Retired v1.0 values (fallback for un-migrated rows)
+    inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+    negotiating: "bg-orange-100 text-orange-900 border-orange-300",
+    on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
     no_bid: "bg-rose-100 text-rose-800 border-rose-300",
     reopened: "bg-blue-100 text-blue-800 border-blue-300",
   };
+  const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${map[status]}`}>
+    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}>
       {opportunityStatusLabel(status)}
     </span>
   );
