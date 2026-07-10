@@ -2420,7 +2420,11 @@ function NewDealForm({ accountId }: { accountId: string }) {
             defaultValue="solicitation"
             className={`${inputCls} bg-white`}
           >
-            {OPPORTUNITY_STATUSES.map((s) => (
+            {/* Filter terminal states out at create time. Won/lost need
+                loss_reason + debrief context that we can't collect from
+                this inline form. Reach won/lost via status change on an
+                open opportunity, not by starting there. */}
+            {OPPORTUNITY_STATUSES.filter((s) => s !== "won" && s !== "lost").map((s) => (
               <option key={s} value={s}>{opportunityStatusLabel(s)}</option>
             ))}
           </select>
@@ -3572,86 +3576,11 @@ function Field({
   );
 }
 
-// ───────────────────── Stage 3 compliance banner ─────────────────────
-
-/**
- * AccountComplianceBanner — sits above the tab bar when any active
- * doc is expiring soon or already expired. Pulls counts from the
- * overview view so it's a free read (no extra query). Wraps the
- * banner in a soft-deleted-aware guard so a deleted account never
- * shows the banner.
- *
- *   expired > 0          → red banner, "N expired — renew now"
- *   else expiring > 0    → amber banner, "N expiring within 30d"
- *   else                 → nothing
- */
-function AccountComplianceBanner({
-  accountId,
-  overview,
-}: {
-  accountId: string;
-  overview: AccountOverview | null;
-}) {
-  if (!overview) return null;
-  const expired = overview.expired_document_count ?? 0;
-  const expiring = overview.expiring_soon_document_count ?? 0;
-  if (expired === 0 && expiring === 0) return null;
-  const isRed = expired > 0;
-  const noun = isRed
-    ? `${expired} compliance doc${expired === 1 ? "" : "s"} expired`
-    : `${expiring} compliance doc${expiring === 1 ? "" : "s"} expiring within 30 days`;
-  return (
-    <Link
-      href={`/commercial/accounts/${accountId}?tab=documents`}
-      className={`block rounded-xl border px-4 py-3 sm:py-3.5 transition-colors touch-manipulation min-h-[44px] ${
-        isRed
-          ? "bg-rose-50 border-rose-200 text-rose-900 hover:bg-rose-100"
-          : "bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100"
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-          className="shrink-0"
-        >
-          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold leading-tight">{noun}</p>
-          <p className="text-[12px] mt-0.5 leading-tight opacity-90">
-            {isRed
-              ? "Tap to open Documents and renew before the next bid."
-              : "Tap to open Documents and schedule renewal."}
-          </p>
-        </div>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-          className="shrink-0 opacity-75"
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </div>
-    </Link>
-  );
-}
+// AccountComplianceBanner removed in Phase A (2026-07-09) with the rest
+// of the account-level compliance UI. Compliance surfaces move to the
+// Documents scope (per Opportunity / per Project) in Phase C. Function
+// deleted 2026-07-09 PM after post-Phase-A.1 UI/UX audit flagged the
+// ~70-line orphan.
 
 // ───────────────────── Account 360 strip ─────────────────────
 

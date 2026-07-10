@@ -165,14 +165,15 @@ export async function changeOpportunityStatus(
   // - If the user overrode the prior status's default (current pct
   //   isn't equal to the default for the from status), KEEP the
   //   override — they meant it.
-  // - If transitioning INTO on_hold (probability-preserving), keep
-  //   the current value regardless.
+  // - If transitioning INTO a probability-preserving status
+  //   (follow_up in v1.1), keep the current value regardless — waiting
+  //   on the customer doesn't change how likely you are to win.
   // - Otherwise auto-set to the new status's default.
   const fromDefault = DEFAULT_PROBABILITY_BY_STATUS[beforeRow.status] ?? null;
   const userOverrode = fromDefault !== null && beforeRow.probability_pct !== fromDefault;
-  const preserveOnHold = PROBABILITY_PRESERVING_STATUSES.has(input.to_status);
+  const preserveProbability = PROBABILITY_PRESERVING_STATUSES.has(input.to_status);
   const nextProbability =
-    userOverrode || preserveOnHold
+    userOverrode || preserveProbability
       ? beforeRow.probability_pct
       : DEFAULT_PROBABILITY_BY_STATUS[input.to_status] ?? beforeRow.probability_pct;
 

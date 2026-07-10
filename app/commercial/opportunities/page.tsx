@@ -112,7 +112,10 @@ async function quickFlipStatusAction(formData: FormData) {
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     redirect(buildFlipReturnHref(returnHref, "status_error", "Invalid status."));
   }
-  if (to_status === "lost" || to_status === "no_bid") {
+  // v1.1 (Phase A.1): no_bid moved to loss_reason enum inside the
+  // lost transition — see lib/commercial/opportunities/db.ts. Only
+  // `lost` needs to route through the debrief page for reason capture.
+  if (to_status === "lost") {
     redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
   }
   const result = await changeOpportunityStatus({

@@ -308,9 +308,13 @@ async function reopenOpportunityAction(formData: FormData) {
   if (!user) redirect("/");
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  // Karan 2026-07-09 Phase A.1: v1.1 dropped `reopened` from the enum.
+  // Terminal → solicitation is the re-engage path (bid starts fresh
+  // at the top of the funnel). See constants.ts ALLOWED_TRANSITIONS:
+  // won/lost only allow → solicitation.
   const result = await changeOpportunityStatus({
     opp_id,
-    to_status: "reopened" as OpportunityStatus,
+    to_status: "solicitation" as OpportunityStatus,
     acting_user_id: user.id,
   });
   if (!result.ok) {
@@ -2538,7 +2542,7 @@ function ChangeStatusCard({
       )}
       {nextStatuses.length === 0 ? (
         <p className="text-[12px] text-ppp-charcoal-500 italic">
-          This status has no outbound transitions. Move to <em>reopened</em> first to re-engage.
+          This status has no outbound transitions. Use <em>Reopen</em> above to re-engage — it starts a fresh Solicitation.
         </p>
       ) : (
         <form action={changeStatusAction} className="space-y-3">

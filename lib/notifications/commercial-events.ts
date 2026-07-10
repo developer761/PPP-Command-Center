@@ -749,7 +749,7 @@ export async function insertCommercialHotDealCoolingNotification(input: {
     ``,
     `${input.oppTitle} is a Hot deal (high-value bid, decision due soon) but hasn't been touched in ${input.daysSinceUpdate} ${dayNoun}.`,
     ``,
-    `Pick up the phone, log a note, or flip the status to On Hold if it's truly stuck.`,
+    `Pick up the phone, log a note, or flip the status to Follow Up if you're waiting on the GC.`,
     ``,
     `Open the opportunity: ${emailLink}`,
     ``,
@@ -758,7 +758,7 @@ export async function insertCommercialHotDealCoolingNotification(input: {
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
   <p>Hi,</p>
   <p><strong>${escape(input.oppTitle)}</strong> is a Hot deal (high-value bid, decision due soon) but hasn't been touched in <strong>${input.daysSinceUpdate} ${dayNoun}</strong>.</p>
-  <p>Pick up the phone, log a note, or flip the status to <em>On Hold</em> if it's truly stuck.</p>
+  <p>Pick up the phone, log a note, or flip the status to <em>Follow Up</em> if you're waiting on the GC.</p>
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the opportunity →</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
