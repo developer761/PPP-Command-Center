@@ -80,35 +80,46 @@ const MS_PER_DAY = 86_400_000;
 
 /**
  * Deterministic per-account color tone for the pipeline list-view group
- * cards. Karan 2026-07-10 (rev 5): "make the account colors different
- * to differentiate even more." Hash the account_id (or a stable
- * fallback for accountless rows) into one of 8 muted palette entries.
- * Same account_id → same tone forever, so users learn the color +
- * neighbors are visually distinct at a glance. Palette skips blue/navy
- * (Karan-banned platform-wide) — sticks to warm + earthy accents.
+ * cards. Karan 2026-07-10 (rev 6): "would every account color be
+ * different and it should." Fixed palettes topped out at 8 slots →
+ * collisions once you had 9+ accounts. Switched to HSL hue rotation
+ * so every unique account_id lands on a unique hue (360 possible
+ * hues → practically unlimited for a commercial pipeline).
+ *
+ * Hash the account_id (or a stable fallback) via djb2 → hue in 0-359.
+ * Skip the blue band (200-260°) because Karan banned blue/navy
+ * platform-wide. Fixed saturation + lightness so every card looks
+ * equally muted + readable regardless of hue.
+ *
+ * Returns inline styles (not Tailwind classes) because Tailwind can't
+ * generate arbitrary HSL at build time.
  */
-const ACCOUNT_TONE_PALETTE: ReadonlyArray<{
-  border: string; // Tailwind border-color class for the 4px left bar
-  headerBg: string; // subtle tint for the header strip
-  avatar: string; // circular initials badge bg + text
-}> = [
-  { border: "border-emerald-400", headerBg: "bg-emerald-50/60", avatar: "bg-emerald-100 text-emerald-800" },
-  { border: "border-amber-400", headerBg: "bg-amber-50/60", avatar: "bg-amber-100 text-amber-800" },
-  { border: "border-rose-400", headerBg: "bg-rose-50/60", avatar: "bg-rose-100 text-rose-800" },
-  { border: "border-violet-400", headerBg: "bg-violet-50/60", avatar: "bg-violet-100 text-violet-800" },
-  { border: "border-teal-400", headerBg: "bg-teal-50/60", avatar: "bg-teal-100 text-teal-800" },
-  { border: "border-orange-400", headerBg: "bg-orange-50/60", avatar: "bg-orange-100 text-orange-800" },
-  { border: "border-lime-400", headerBg: "bg-lime-50/60", avatar: "bg-lime-100 text-lime-800" },
-  { border: "border-pink-400", headerBg: "bg-pink-50/60", avatar: "bg-pink-100 text-pink-800" },
-];
+type CSSProps = import("react").CSSProperties;
+export type AccountTone = {
+  border: CSSProps;
+  headerBg: CSSProps;
+  avatar: CSSProps;
+};
 
-function accountColorTone(accountId: string | null): (typeof ACCOUNT_TONE_PALETTE)[number] {
+function accountColorTone(accountId: string | null): AccountTone {
   const key = accountId || "__no_account__";
-  // Simple deterministic hash — sum char codes then modulo. Doesn't need
-  // to be cryptographic; just needs to be stable across renders.
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h + key.charCodeAt(i)) >>> 0;
-  return ACCOUNT_TONE_PALETTE[h % ACCOUNT_TONE_PALETTE.length]!;
+  // djb2 hash — deterministic + well-distributed for short strings.
+  let h = 5381;
+  for (let i = 0; i < key.length; i++) {
+    h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
+  }
+  // Map to 0-299° then skip the blue band (200-260°) by shifting
+  // anything that lands there up by 60° → maps to red/orange band.
+  let hue = h % 300;
+  if (hue >= 200) hue = (hue + 60) % 360;
+  return {
+    border: { borderLeftColor: `hsl(${hue}, 62%, 55%)` },
+    headerBg: { backgroundColor: `hsl(${hue}, 62%, 96%)` },
+    avatar: {
+      backgroundColor: `hsl(${hue}, 55%, 88%)`,
+      color: `hsl(${hue}, 55%, 28%)`,
+    },
+  };
 }
 
 /**
@@ -1038,14 +1049,19 @@ export default async function CommercialOpportunitiesPage({
                   return (
                   <li
                     key={g.accountId}
-                    className={`bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden border-l-4 ${tone.border}`}
+                    className="bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden border-l-4"
+                    style={tone.border}
                   >
                     {g.account && (
-                      <div className={`px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100 ${tone.headerBg}`}>
+                      <div
+                        className="px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100"
+                        style={tone.headerBg}
+                      >
                         <div className="flex items-center gap-2.5 flex-wrap min-w-0">
                           <span
                             aria-hidden
-                            className={`shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold ${tone.avatar}`}
+                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold"
+                            style={tone.avatar}
                           >
                             {initials}
                           </span>
