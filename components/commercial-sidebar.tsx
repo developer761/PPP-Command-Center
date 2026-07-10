@@ -37,12 +37,13 @@ const navSections: NavSection[] = [
       { label: "Dashboard", href: "/commercial", icon: <IconHome /> },
     ],
   },
-  // Karan 2026-07-09 Phase A: post-meeting restructure. Two-lobe platform —
-  // Pre-Job (sell + build proposal) vs Post-Job (deliver + bill). Project +
-  // Submittals + Closeout ship in Phases H, I, L. Product / Exclusions
-  // libraries ship in Phases D, E.
+  // Karan 2026-07-09 Phase A / 07-10 Phase A.2: post-meeting restructure.
+  // Two-lobe platform — Pre-Contract (sell + build proposal) vs
+  // Post-Contract (deliver + bill). Labels match Brendan's email verbatim.
+  // Project + Submittals + Closeout ship in Phases H, I, L. Product /
+  // Exclusions libraries ship in Phases D, E.
   {
-    heading: "Pre-Job",
+    heading: "Pre-Contract",
     items: [
       { label: "Accounts", href: "/commercial/accounts", icon: <IconBuilding /> },
       { label: "Opportunities", href: "/commercial/opportunities", icon: <IconTarget /> },
@@ -52,7 +53,7 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    heading: "Post-Job",
+    heading: "Post-Contract",
     items: [
       { label: "Projects", href: "/commercial/projects", phase: 8, disabled: true, icon: <IconHardHat /> },
       { label: "Submittals", href: "/commercial/post-job/submittals", phase: 9, disabled: true, icon: <IconChangeOrder /> },
@@ -192,10 +193,10 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
          a 568px viewport. Desktop keeps the phase-tag for at-a-glance
          "what's the platform on right now" context. */}
       <div className="hidden lg:block px-6 py-4 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-500">
-        <div className="font-semibold text-ppp-charcoal">Phase A · Restructure</div>
+        <div className="font-semibold text-ppp-charcoal">Phase B · Structural fields</div>
         <div className="mt-0.5 flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-cc-brand-500 animate-pulse" aria-hidden />
-          Pre-Job / Post-Job
+          Pre-Contract / Post-Contract
         </div>
       </div>
     </aside>
