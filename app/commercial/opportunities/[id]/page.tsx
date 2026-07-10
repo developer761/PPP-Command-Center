@@ -686,6 +686,19 @@ async function archiveAttachmentAction(formData: FormData) {
 // active `?category=X` filter so the user's context isn't lost.
 // ═══════════════════════════════════════════════════════════════════
 
+// Build the redirect URL for a Files-tab server action, preserving any
+// active category filter chip so users don't lose their spot.
+function buildFilesTabRedirect(
+  oppId: string,
+  formData: FormData,
+  errorMsg?: string | null
+): string {
+  const cat = String(formData.get("current_category") ?? "").trim();
+  const catQs = cat ? `&category=${encodeURIComponent(cat)}` : "";
+  const errQs = errorMsg ? `&error=${encodeURIComponent(errorMsg)}` : "";
+  return `/commercial/opportunities/${oppId}?tab=files${catQs}${errQs}`;
+}
+
 async function toggleDocumentFavoriteAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -702,9 +715,7 @@ async function toggleDocumentFavoriteAction(formData: FormData) {
   const result = currently
     ? await unfavoriteDocument(document_id, user.id)
     : await favoriteDocument(document_id, user.id);
-  const parentOppId = doc.parent_id;
-  const errQs = result.ok ? "" : `&error=${encodeURIComponent(result.error)}`;
-  redirect(`/commercial/opportunities/${parentOppId}?tab=files${errQs}`);
+  redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
 }
 
 async function transitionDocumentStatusAction(formData: FormData) {
@@ -725,9 +736,7 @@ async function transitionDocumentStatusAction(formData: FormData) {
     to_status as import("@/lib/commercial/documents/status").DocumentStatus,
     user.id
   );
-  const parentOppId = doc.parent_id;
-  const errQs = result.ok ? "" : `&error=${encodeURIComponent(result.error)}`;
-  redirect(`/commercial/opportunities/${parentOppId}?tab=files${errQs}`);
+  redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
 }
 
 async function softDeleteDocumentAction(formData: FormData) {
@@ -742,10 +751,8 @@ async function softDeleteDocumentAction(formData: FormData) {
   );
   const doc = await getDoc(document_id);
   if (!doc) redirect("/commercial/opportunities");
-  const parentOppId = doc.parent_id;
   const result = await softDeleteDocument(document_id, user.id);
-  const errQs = result.ok ? "" : `&error=${encodeURIComponent(result.error)}`;
-  redirect(`/commercial/opportunities/${parentOppId}?tab=files${errQs}`);
+  redirect(buildFilesTabRedirect(doc.parent_id, formData, result.ok ? null : result.error));
 }
 
 /**
@@ -4313,7 +4320,7 @@ async function FilesTab({
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {favorites.map((d) => (
-              <FileRow key={d.id} doc={d} />
+              <FileRow key={d.id} doc={d} currentCategory={categoryFilter} />
             ))}
           </ul>
         </section>
@@ -4329,7 +4336,7 @@ async function FilesTab({
           <div className="p-8 text-center text-sm text-ppp-charcoal-500">
             {categoryFilter
               ? `No files in the ${documentCategoryLabel(categoryFilter)} category yet.`
-              : "No files yet. Drop a bid set, an RFI, meeting minutes, or a site photo above."}
+              : "No files yet. Upload a bid set, an RFI, meeting minutes, or a site photo above."}
           </div>
         ) : others.length === 0 ? (
           <div className="p-6 text-center text-[12px] text-ppp-charcoal-500">
@@ -4338,7 +4345,7 @@ async function FilesTab({
         ) : (
           <ul className="divide-y divide-ppp-charcoal-100">
             {others.map((d) => (
-              <FileRow key={d.id} doc={d} />
+              <FileRow key={d.id} doc={d} currentCategory={categoryFilter} />
             ))}
           </ul>
         )}
@@ -4352,7 +4359,7 @@ async function FilesTab({
           </summary>
           <ul className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
             {superseded.map((d) => (
-              <FileRow key={d.id} doc={d} muted />
+              <FileRow key={d.id} doc={d} muted currentCategory={categoryFilter} />
             ))}
           </ul>
         </details>
@@ -4390,7 +4397,15 @@ function FilterChip({
  * (favorite / status transitions / new version / delete) via the client
  * component.
  */
-function FileRow({ doc, muted }: { doc: CommercialDocument; muted?: boolean }) {
+function FileRow({
+  doc,
+  muted,
+  currentCategory,
+}: {
+  doc: CommercialDocument;
+  muted?: boolean;
+  currentCategory: string | null;
+}) {
   const sizeMB = (doc.size_bytes / 1024 / 1024).toFixed(2);
   const catLabel = documentCategoryLabel(doc.category);
   const statusLabel = documentStatusLabel(doc.status);
@@ -4454,6 +4469,7 @@ function FileRow({ doc, muted }: { doc: CommercialDocument; muted?: boolean }) {
           status={doc.status}
           favorited={!!doc.favorited_at}
           allowedNext={allowedNext}
+          currentCategory={currentCategory}
           toggleFavoriteAction={toggleDocumentFavoriteAction}
           transitionStatusAction={transitionDocumentStatusAction}
           deleteAction={softDeleteDocumentAction}

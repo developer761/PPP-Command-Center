@@ -170,11 +170,14 @@ export async function listDocumentVersionChain(
   let cursor: string | null = documentId;
   // Cap at 50 hops so a pathological cycle (shouldn't happen — FK is
   // ON DELETE SET NULL, not cascade) can't infinite-loop this query.
+  // Filters soft-deleted docs so the "See older versions" UI doesn't
+  // surface tombstones (audit fix 2026-07-10).
   for (let i = 0; i < 50 && cursor; i++) {
     const { data }: { data: CommercialDocument | null } = await sb
       .from("commercial_documents")
       .select("*")
       .eq("id", cursor)
+      .is("deleted_at", null)
       .maybeSingle();
     if (!data) break;
     if (i > 0) chain.push(data); // skip the head itself
@@ -330,6 +333,27 @@ export async function bumpDocumentVersion(
     .select("*")
     .single();
   if (chainErr) {
+    // Migration 048 partial UNIQUE (idx_commercial_documents_one_child_
+    // per_parent) rejects a second concurrent version bump on the same
+    // prev doc. Postgres returns SQLSTATE 23505 → the wrapper surfaces
+    // as "duplicate key value violates unique constraint". Present a
+    // friendly refresh prompt + best-effort clean up the orphan row we
+    // just uploaded (Storage cleanup lives in uploadDocument's error
+    // path; here we soft-delete the metadata row so the list doesn't
+    // show a headless clone).
+    const isRace =
+      chainErr.code === "23505" ||
+      /unique constraint|duplicate key/i.test(chainErr.message);
+    if (isRace) {
+      await sb
+        .from("commercial_documents")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", newDocId);
+      return {
+        ok: false,
+        error: "Someone else just uploaded a new version. Refresh the page and try again.",
+      };
+    }
     return { ok: false, error: `Chain link failed: ${chainErr.message}` };
   }
 
