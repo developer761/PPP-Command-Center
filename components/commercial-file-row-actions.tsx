@@ -77,7 +77,7 @@ export function CommercialFileRowActions({
           {currentCategory && <input type="hidden" name="current_category" value={currentCategory} />}
           <button
             type="submit"
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold min-h-[32px] touch-manipulation ${transitionBtnCls(
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold min-h-[44px] touch-manipulation ${transitionBtnCls(
               next
             )}`}
             title={transitionLabel(next, status)}
@@ -95,7 +95,7 @@ export function CommercialFileRowActions({
         <button
           type="button"
           onClick={() => setVersionOpen(true)}
-          className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[32px] touch-manipulation"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[44px] touch-manipulation"
           title="Upload a new version — supersedes this one"
         >
           New version
@@ -109,7 +109,7 @@ export function CommercialFileRowActions({
         <button
           type="button"
           onClick={() => setConfirmDelete(true)}
-          className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[32px] touch-manipulation"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation"
           title="Delete this file"
         >
           Delete
@@ -124,14 +124,14 @@ export function CommercialFileRowActions({
           {currentCategory && <input type="hidden" name="current_category" value={currentCategory} />}
           <button
             type="submit"
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 min-h-[32px] touch-manipulation"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 min-h-[44px] touch-manipulation"
           >
             Confirm delete
           </button>
           <button
             type="button"
             onClick={() => setConfirmDelete(false)}
-            className="inline-flex items-center px-2 py-1 rounded text-[11px] font-semibold text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 min-h-[32px] touch-manipulation"
+            className="inline-flex items-center px-2 py-1 rounded text-[11px] font-semibold text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
           >
             Cancel
           </button>

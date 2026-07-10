@@ -2763,8 +2763,17 @@ async function DebriefTab({
   return (
     <div className="space-y-4">
       {errorMessage && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
+        // Karan 2026-07-10 audit fix: role=alert + aria-live for
+        // screen-reader announcement; ⚠ glyph + text-rose-800 for
+        // stronger visual contrast. Applies to every tab-level error
+        // banner across opp detail (uniformity).
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+        >
+          <span aria-hidden className="mt-0.5">⚠</span>
+          <span>{errorMessage}</span>
         </div>
       )}
       {(statusOk || justClosed) && !isDebriefed && (
@@ -2944,8 +2953,17 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
   return (
     <div className="space-y-5">
       {errorMessage && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
+        // Karan 2026-07-10 audit fix: role=alert + aria-live for
+        // screen-reader announcement; ⚠ glyph + text-rose-800 for
+        // stronger visual contrast. Applies to every tab-level error
+        // banner across opp detail (uniformity).
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+        >
+          <span aria-hidden className="mt-0.5">⚠</span>
+          <span>{errorMessage}</span>
         </div>
       )}
       {assignedOk && (
@@ -3154,8 +3172,17 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
   return (
     <div className="space-y-5">
       {errorMessage && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
+        // Karan 2026-07-10 audit fix: role=alert + aria-live for
+        // screen-reader announcement; ⚠ glyph + text-rose-800 for
+        // stronger visual contrast. Applies to every tab-level error
+        // banner across opp detail (uniformity).
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+        >
+          <span aria-hidden className="mt-0.5">⚠</span>
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -3367,8 +3394,17 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
   return (
     <div className="space-y-5">
       {errorMessage && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
+        // Karan 2026-07-10 audit fix: role=alert + aria-live for
+        // screen-reader announcement; ⚠ glyph + text-rose-800 for
+        // stronger visual contrast. Applies to every tab-level error
+        // banner across opp detail (uniformity).
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+        >
+          <span aria-hidden className="mt-0.5">⚠</span>
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -3521,8 +3557,17 @@ async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
   return (
     <div className="space-y-5">
       {errorMessage && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
+        // Karan 2026-07-10 audit fix: role=alert + aria-live for
+        // screen-reader announcement; ⚠ glyph + text-rose-800 for
+        // stronger visual contrast. Applies to every tab-level error
+        // banner across opp detail (uniformity).
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+        >
+          <span aria-hidden className="mt-0.5">⚠</span>
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -3674,8 +3719,17 @@ async function FinishesTab({
   return (
     <div className="space-y-5">
       {errorMessage && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
+        // Karan 2026-07-10 audit fix: role=alert + aria-live for
+        // screen-reader announcement; ⚠ glyph + text-rose-800 for
+        // stronger visual contrast. Applies to every tab-level error
+        // banner across opp detail (uniformity).
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+        >
+          <span aria-hidden className="mt-0.5">⚠</span>
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -4112,8 +4166,17 @@ async function SubmittalsTab({
   return (
     <div className="space-y-5">
       {errorMessage && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
+        // Karan 2026-07-10 audit fix: role=alert + aria-live for
+        // screen-reader announcement; ⚠ glyph + text-rose-800 for
+        // stronger visual contrast. Applies to every tab-level error
+        // banner across opp detail (uniformity).
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+        >
+          <span aria-hidden className="mt-0.5">⚠</span>
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -4300,8 +4363,17 @@ async function FilesTab({
   return (
     <div className="space-y-5">
       {errorMessage && (
-        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          {errorMessage}
+        // Karan 2026-07-10 audit fix: role=alert + aria-live for
+        // screen-reader announcement; ⚠ glyph + text-rose-800 for
+        // stronger visual contrast. Applies to every tab-level error
+        // banner across opp detail (uniformity).
+        <div
+          role="alert"
+          aria-live="polite"
+          className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
+        >
+          <span aria-hidden className="mt-0.5">⚠</span>
+          <span>{errorMessage}</span>
         </div>
       )}
 

@@ -25,6 +25,7 @@
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PendingFormButton } from "@/components/commercial/pending-form-button";
 import { createClient } from "@/lib/supabase/server";
 import {
   listCommercialOpportunities,
@@ -1079,7 +1080,7 @@ export default async function CommercialOpportunitiesPage({
                           </span>
                           <Link
                             href={`/commercial/accounts/${g.account.id}`}
-                            className="text-[14px] font-bold hover:underline underline-offset-2 truncate"
+                            className="text-[14px] font-bold hover:underline underline-offset-2 truncate inline-flex items-center min-h-[44px] touch-manipulation"
                             style={tone.nameText}
                             title={`Open ${g.account.company_name}'s account`}
                           >
@@ -1337,14 +1338,19 @@ function NewDealSlideOut({
 // in one <form> would also work but nesting the scrollable body +
 // sticky footer is easier with an explicit form id.
 function NewDealSubmitProxy() {
+  // Karan 2026-07-10 (audit round 4 fix): swapped plain <button> for
+  // PendingFormButton so users see "Creating…" during the server
+  // action round-trip. The button lives OUTSIDE the form via form=id,
+  // so useFormStatus can't reach it — PendingFormButton subscribes
+  // to the form's submit event by id instead.
   return (
-    <button
-      type="submit"
-      form="new-deal-form"
-      className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+    <PendingFormButton
+      formId="new-deal-form"
+      className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30 disabled:hover:bg-cc-brand-600"
+      pendingLabel="Creating…"
     >
       Create deal
-    </button>
+    </PendingFormButton>
   );
 }
 
@@ -2188,7 +2194,7 @@ function OpportunityRow({
   const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
   const nextStatuses = allowedNextStatuses(opportunity.status);
   return (
-    <li className="relative group/row hover:bg-blue-50/30 transition-colors">
+    <li className="relative group/row hover:bg-ppp-charcoal-50/60 transition-colors">
       <Link
         href={sheetHref(opportunity.account_id, opportunity.id)}
         className="block px-4 py-4 touch-manipulation"

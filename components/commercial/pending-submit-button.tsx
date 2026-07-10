@@ -8,6 +8,12 @@
  * without a pending state the click feels dead. useFormStatus is the
  * only Next-native way to read pending state without lifting state
  * up. Reusable — pass the classes + label + pending copy.
+ *
+ * IMPORTANT: this component MUST live INSIDE its target <form>. The
+ * `useFormStatus` hook only sees the enclosing form. If your button
+ * needs to live outside the form (sticky footer via `form={id}`),
+ * use PendingFormButton (peer file) instead — that one subscribes
+ * to the target form's submit event by id.
  */
 
 import { useFormStatus } from "react-dom";
@@ -18,19 +24,16 @@ export function PendingSubmitButton({
   children,
   pendingLabel,
   ariaLabel,
-  form,
 }: {
   className: string;
   children: ReactNode;
   pendingLabel: string;
   ariaLabel?: string;
-  form?: string;
 }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      form={form}
       disabled={pending}
       aria-label={ariaLabel}
       className={`${className} ${pending ? "opacity-70 cursor-wait" : ""}`}

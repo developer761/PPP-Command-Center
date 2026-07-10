@@ -42,6 +42,8 @@ import CommercialDocumentUploadForm from "@/components/commercial-document-uploa
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
 import DatePicker from "@/components/commercial/date-picker";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { PendingFormButton } from "@/components/commercial/pending-form-button";
+import { SearchableSelect } from "@/components/commercial/searchable-select";
 import {
   getAccountOverview,
   relativeActivity,
@@ -2568,31 +2570,32 @@ function NewDealForm({
         </label>
         <label className="block">
           <span className={labelCls}>Estimator</span>
-          <select
+          {/* Karan 2026-07-10 (searchable-dropdowns rule): SearchableSelect
+              type-to-filters the team roster. Works today with 2 people;
+              won't need retrofit once PPP has 40 estimators. Manual
+              entry preserved via the text input below (estimator_name
+              column, migration 049). */}
+          <SearchableSelect
             name="estimator_user_id"
+            options={estimators.map((e) => ({
+              value: e.user_id,
+              label: e.name,
+            }))}
             defaultValue=""
-            className={selectCls}
-            style={SELECT_BG_STYLE}
-          >
-            {/* Karan 2026-07-10 copy polish: explicit "required for
-                Estimating" replaces the cryptic "— unassigned —" so
-                users understand why picking someone matters. */}
-            <option value="">Choose from account team</option>
-            {estimators.map((e) => (
-              <option key={e.user_id} value={e.user_id}>{e.name}</option>
-            ))}
-          </select>
-          {/* Karan 2026-07-10 (second flag): manual estimator entry
-              option — not every estimator on a bid is on the team
-              roster (subs, ex-employees handling one bid, GC-supplied
-              estimator names). If this field is filled, it takes
-              precedence over the picker above. Persisted to the
-              estimator_name TEXT column (migration 049). */}
+            placeholder={
+              estimators.length === 0
+                ? "No teammates on the roster yet"
+                : "Search team roster…"
+            }
+            ariaLabel="Estimator from account team"
+            disabled={estimators.length === 0}
+            emptyMessage="No teammates match. Try a different search or type a name below."
+          />
           <input
             type="text"
             name="estimator_name"
             maxLength={120}
-            placeholder="…or type a name"
+            placeholder="…or type a name manually"
             className={`${inputCls} mt-1`}
           />
           <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
@@ -2666,12 +2669,12 @@ function NewDealForm({
         </div>
       </details>
       <div className="flex justify-end pt-1">
-        <button
-          type="submit"
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+        <PendingSubmitButton
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 disabled:hover:bg-cc-brand-600"
+          pendingLabel="Creating…"
         >
           {duplicateWarning ? "Create anyway" : "Create opportunity"}
-        </button>
+        </PendingSubmitButton>
       </div>
     </form>
   );
@@ -4903,33 +4906,39 @@ function DealEditSheet({
               </label>
               <label className="block">
                 <span className={labelCls}>Estimator</span>
-                <select
+                {/* Karan 2026-07-10 (searchable-dropdowns rule):
+                    SearchableSelect — type-to-filter roster. Orphaned
+                    estimator (removed from team but still assigned)
+                    still surfaces as an explicit option so the FK
+                    doesn't silently render blank. */}
+                <SearchableSelect
                   name="estimator_user_id"
                   defaultValue={deal.estimator_user_id ?? ""}
-                  className={selectCls}
-                  style={SELECT_BG_STYLE}
-                >
-                  {/* Karan 2026-07-10 copy polish: "— unassigned —" was
-                      cryptic; call out that this is required for the
-                      Estimating status transition so the empty state
-                      isn't ambiguous. */}
-                  <option value="">Choose an estimator</option>
-                  {estimators.map((e) => (
-                    <option key={e.user_id} value={e.user_id}>{e.name}</option>
-                  ))}
-                  {/* Karan 2026-07-09 Phase B.3 audit fix: if the currently-
-                      assigned estimator was removed from the team, they'd
-                      be absent from the list and the <select> would show
-                      as blank — silently orphaning the FK. Surface the
-                      orphaned value as an explicit option so the user
-                      sees + can keep or reassign. */}
-                  {deal.estimator_user_id &&
-                    !estimators.find((e) => e.user_id === deal.estimator_user_id) && (
-                      <option value={deal.estimator_user_id}>
-                        ⚠️ Removed from team (still assigned)
-                      </option>
-                    )}
-                </select>
+                  options={[
+                    ...estimators.map((e) => ({
+                      value: e.user_id,
+                      label: e.name,
+                    })),
+                    ...(deal.estimator_user_id &&
+                    !estimators.find((e) => e.user_id === deal.estimator_user_id)
+                      ? [
+                          {
+                            value: deal.estimator_user_id,
+                            label: "⚠️ Removed from team (still assigned)",
+                            hint: "Reassign or type a name below",
+                          },
+                        ]
+                      : []),
+                  ]}
+                  placeholder={
+                    estimators.length === 0
+                      ? "No teammates on the roster yet"
+                      : "Search team roster…"
+                  }
+                  disabled={estimators.length === 0 && !deal.estimator_user_id}
+                  ariaLabel="Estimator from account team"
+                  emptyMessage="No teammates match. Try a different search or type a name below."
+                />
                 {/* Karan 2026-07-10 (second flag on manual estimator):
                     free-text estimator name for subs / off-roster
                     estimators. Persisted via migration 049's
@@ -5040,16 +5049,21 @@ function DealEditSheet({
             Delete moved into the Danger Zone section above so
             destructive isn't inches from the primary CTA. */}
         <footer className="px-5 py-3 border-t border-ppp-charcoal-100 bg-white flex items-center gap-2">
-          <button
-            type="submit"
-            form={`edit-deal-form-${deal.id}`}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+          {/* Karan 2026-07-10 (audit round 4 fix): Save was a plain
+              <button> outside the form via form={id}, so useFormStatus
+              couldn't reach it. PendingFormButton subscribes to the
+              target form's submit event by id and flips to "Saving…"
+              during the round-trip. */}
+          <PendingFormButton
+            formId={`edit-deal-form-${deal.id}`}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 disabled:hover:bg-cc-brand-600"
+            pendingLabel="Saving…"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <polyline points="20 6 9 17 4 12" />
             </svg>
             Save changes
-          </button>
+          </PendingFormButton>
           <Link
             href={closeHref}
             className="inline-flex items-center gap-1 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
