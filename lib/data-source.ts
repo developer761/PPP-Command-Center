@@ -107,7 +107,7 @@ export type LiveDashboardBundle = {
  */
 export async function loadDashboardData(
   searchParams?: Record<string, string | string[] | undefined>,
-  opts?: { thin?: boolean; materials?: boolean }
+  opts?: { thin?: boolean; materials?: boolean; forceRebuild?: boolean }
 ): Promise<LiveDashboardBundle> {
   // Viewer + creds are both pure Supabase round-trips with no dependency on
   // each other — running them concurrently shaves 50-200ms off every page
@@ -142,7 +142,7 @@ export async function loadDashboardData(
     // if anything goes wrong (the cached() wrapper retries on rejection).
     const raw = opts?.materials
       ? await loadMaterialsBundle()
-      : await loadSalesforceSnapshot(opts?.thin ? { thin: true } : undefined);
+      : await loadSalesforceSnapshot({ thin: opts?.thin, forceRebuild: opts?.forceRebuild });
     if (raw.reps.length === 0) {
       return { source: "mock", reason: "sf_returned_no_reps", snapshot: null, viewer };
     }

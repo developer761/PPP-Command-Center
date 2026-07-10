@@ -229,6 +229,15 @@ async function invalidateSharedSnapshot(key: string): Promise<void> {
 
 const SHARED_SNAPSHOT_MAX_GZ_BYTES = 45 * 1024 * 1024; // refuse to push an absurd blob into Postgres
 
+// Serve-stale-while-revalidate hard cap. A snapshot past its 30-min TTL is
+// still worth serving INSTANTLY — the alternative on a cold instance is an
+// 8-15s live SF rebuild on the request's critical path, which is exactly the
+// cold-start slowness we're killing. We keep serving a stale blob (and kick a
+// background rebuild) up to this age; only past it do we force a live rebuild.
+// 26h comfortably spans the once-daily warm cron + margin, so as long as the
+// cron (or any traffic) has run within ~a day, no user ever waits on SF.
+const SHARED_SNAPSHOT_SERVE_STALE_MAX_MS = 26 * 60 * 60 * 1000;
+
 // Module-singleton — speed pass 2026-06-29. Previously called twice per
 // materials request (getCurrentGeneration + readSharedSnapshot), each
 // doing fresh TLS + HTTP/2 setup. Same pattern as coverage-config.ts,
@@ -244,17 +253,27 @@ function snapshotCacheClient() {
   return _snapshotCacheClient;
 }
 
-async function readSharedSnapshot(key: string): Promise<SalesforceSnapshot | null> {
+async function readSharedSnapshot(
+  key: string
+): Promise<{ snapshot: SalesforceSnapshot; isStale: boolean } | null> {
   try {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return null;
     const sb = snapshotCacheClient();
     const { data, error } = await sb
       .from("snapshot_cache")
-      .select("payload_gz, expires_at")
+      .select("payload_gz, expires_at, fetched_at")
       .eq("key", key)
       .maybeSingle();
     if (error || !data) return null;
-    if (new Date(data.expires_at as string).getTime() < Date.now()) return null; // stale
+    const now = Date.now();
+    const expiresMs = new Date(data.expires_at as string).getTime();
+    // fetched_at drives the serve-stale age cap; fall back to expires_at on a
+    // legacy row that predates the column so age is never NaN.
+    const fetchedMs = data.fetched_at ? new Date(data.fetched_at as string).getTime() : expiresMs;
+    const ageMs = now - fetchedMs;
+    // Too old even for serve-stale → refuse, forcing a fresh live rebuild.
+    if (Number.isFinite(ageMs) && ageMs > SHARED_SNAPSHOT_SERVE_STALE_MAX_MS) return null;
+    const isStale = expiresMs < now;
     const json = gunzipSync(Buffer.from(data.payload_gz as string, "base64")).toString("utf-8");
     const parsed = JSON.parse(json) as SalesforceSnapshot;
     // Shape sanity — never trust a malformed/partial blob.
@@ -267,8 +286,11 @@ async function readSharedSnapshot(key: string): Promise<SalesforceSnapshot | nul
     ) {
       return null;
     }
-    console.log(`[SF] snapshot served from SHARED cache (${parsed.opportunities.length} opps, ${parsed.workOrders.length} WOs)`);
-    return parsed;
+    console.log(
+      `[SF] snapshot served from SHARED cache (${parsed.opportunities.length} opps, ${parsed.workOrders.length} WOs)` +
+        (isStale ? " [STALE — revalidating in background]" : "")
+    );
+    return { snapshot: parsed, isStale };
   } catch (err) {
     console.warn("[SF] shared snapshot read failed — falling back to live query:", err instanceof Error ? err.message : err);
     return null;
@@ -294,6 +316,35 @@ async function writeSharedSnapshot(key: string, snap: SalesforceSnapshot): Promi
   } catch (err) {
     console.warn("[SF] shared snapshot write failed (non-fatal):", err instanceof Error ? err.message : err);
   }
+}
+
+// Best-effort background revalidation. When a request is served a STALE shared
+// snapshot (fast), we fire the warm-snapshot cron endpoint so the NEXT reader
+// gets fresh data — the current request never waits for the rebuild. The warm
+// endpoint runs as its own 60s invocation, so we only need to DISPATCH it.
+// Throttled per-instance so a burst of stale reads triggers at most one warm.
+// If the env for self-triggering isn't present (e.g. local dev, or CRON_SECRET
+// unset) this is a no-op and the daily cron remains the freshness backstop.
+let _lastBgWarmAt = 0;
+const BG_WARM_MIN_INTERVAL_MS = 5 * 60 * 1000;
+function scheduleBackgroundWarm(): void {
+  const now = Date.now();
+  if (now - _lastBgWarmAt < BG_WARM_MIN_INTERVAL_MS) return;
+  const secret = process.env.CRON_SECRET;
+  const base =
+    process.env.WARM_SELF_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  if (!secret || !base) return;
+  _lastBgWarmAt = now;
+  void fetch(`${base}/api/cron/warm-snapshot`, {
+    headers: { authorization: `Bearer ${secret}` },
+  })
+    .then((r) => {
+      if (!r.ok) console.warn(`[SF] background snapshot warm returned HTTP ${r.status}`);
+    })
+    .catch((e) => {
+      console.warn("[SF] background snapshot warm dispatch failed:", e instanceof Error ? e.message : e);
+    });
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -888,25 +939,36 @@ function isFieldRep(profileName: string | null, userId: string): boolean {
  * counter so a manual refresh / SF writeback invalidates both.
  */
 export async function loadSalesforceSnapshot(
-  opts?: { thin?: boolean }
+  opts?: { thin?: boolean; forceRebuild?: boolean }
 ): Promise<SalesforceSnapshot> {
   const thin = !!opts?.thin;
+  const forceRebuild = !!opts?.forceRebuild;
   const cacheKey = thin ? "snapshot-thin-v1" : "snapshot-v6";
-  return cached(cacheKey, async () => {
+
+  const build = async (): Promise<SalesforceSnapshot> => {
     // Timing: surface cold-load breakdown in Vercel logs so we can see the
     // real impact of the parallelization + cron perf work without guessing.
     const tSnapStart = Date.now();
-    // Cross-instance fast path: if another instance already built a fresh
-    // snapshot, read it (one gzipped Supabase row) instead of re-paging
-    // Salesforce ~45 times. Pure optimization — readSharedSnapshot returns null
-    // on ANY problem, so we fall through to the live query below unchanged.
+    // Cross-instance fast path: if another instance already built a snapshot,
+    // serve it (one gzipped Supabase row) instead of re-paging Salesforce ~45
+    // times. Serve-stale-while-revalidate: even a snapshot past its 30-min TTL
+    // is served INSTANTLY (up to the ~26h hard cap) and a background rebuild is
+    // kicked, so a cold instance between the once-daily warm-cron runs never
+    // eats the 8-15s live rebuild. forceRebuild (cron / background warm) skips
+    // this so it actually rebuilds. Pure optimization — readSharedSnapshot
+    // returns null on ANY problem, so we fall through to the live query below.
     const tSharedStart = Date.now();
-    const sharedHit = await readSharedSnapshot(cacheKey);
+    const sharedHit = forceRebuild ? null : await readSharedSnapshot(cacheKey);
     if (sharedHit) {
-      console.log(`[SF] snapshot${thin ? "(thin)" : ""} WARM-HIT in ${Date.now() - tSharedStart}ms`);
-      return sharedHit;
+      if (sharedHit.isStale) scheduleBackgroundWarm();
+      console.log(
+        `[SF] snapshot${thin ? "(thin)" : ""} ${sharedHit.isStale ? "STALE-HIT (revalidating)" : "WARM-HIT"} in ${Date.now() - tSharedStart}ms`
+      );
+      return sharedHit.snapshot;
     }
-    console.log(`[SF] snapshot${thin ? "(thin)" : ""} COLD START — no shared cache (${Date.now() - tSharedStart}ms check)`);
+    console.log(
+      `[SF] snapshot${thin ? "(thin)" : ""} ${forceRebuild ? "FORCE-REBUILD" : "COLD START — no shared cache"} (${Date.now() - tSharedStart}ms check)`
+    );
 
     const conn = await getSalesforceClient();
 
@@ -2357,7 +2419,22 @@ export async function loadSalesforceSnapshot(
     void writeSharedSnapshot(cacheKey, snapshot);
     console.log(`[SF] snapshot${thin ? "(thin)" : ""} COLD-COMPLETE in ${Date.now() - tSnapStart}ms`);
     return snapshot;
-  });
+  };
+
+  if (forceRebuild) {
+    // Genuine live rebuild (warm-snapshot cron + background revalidation).
+    // Bypass BOTH the in-memory promise cache and the shared-cache read, then
+    // refill the in-memory entry so this instance serves the fresh result on
+    // subsequent reads within the TTL.
+    const fresh = await build();
+    cache.set(cacheKey, {
+      promise: Promise.resolve(fresh),
+      expiresAt: Date.now() + CACHE_TTL_MS,
+      generation: await getCurrentGeneration(),
+    });
+    return fresh;
+  }
+  return cached(cacheKey, build);
 }
 
 /* ─────────────────────────────────────────────────────────────────

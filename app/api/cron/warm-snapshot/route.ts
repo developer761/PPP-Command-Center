@@ -7,23 +7,26 @@ import { reportError } from "@/lib/observability";
  * Snapshot warmer cron — keeps the shared Supabase snapshot cache fresh so
  * user requests rarely pay the full ~10-15s SF SOQL rebuild.
  *
- * Schedule (vercel.json): `* /10 * * * *` — every 10 minutes. The shared
- * cache TTL is 30 min, so a 10-min cadence guarantees we re-write the blob
- * twice before it expires under normal load. Going more frequent (`* /3`)
- * would 3x the cost for zero TTI win because Vercel function instances
- * spin down after ~5 min idle anyway — the win is the SHARED Supabase
- * cache being warm, not function warmth.
+ * Schedule (vercel.json): `0 6 * * *` — once daily at 6am (Vercel Hobby caps
+ * cron frequency at once/day). The shared snapshot TTL is only 30 min, so this
+ * daily run alone can't keep the cache warm all day — that gap is closed by
+ * serve-stale-while-revalidate in readSharedSnapshot (queries.ts): a request
+ * served a stale snapshot returns instantly AND kicks a background rebuild, so
+ * cold instances never pay the 8-15s live rebuild. This cron is the guaranteed
+ * daily fresh build + backstop. If PPP moves to Vercel Pro, bump the schedule
+ * to e.g. `* /15 * * * *` to keep intraday data fresher without relying on
+ * traffic-triggered revalidation.
  *
- * What it warms:
- *   - thin snapshot (`snapshot-thin-v1` key) — what the dashboard reads
- *   - materials bundle (`materials-v1` key) — what the materials page reads
+ * What it warms (all with forceRebuild so they genuinely refresh, not
+ * serve-stale):
+ *   - FULL snapshot (`snapshot-v6` key) — what the Overview dashboard reads
+ *   - thin snapshot (`snapshot-thin-v1` key) — rep drill-ins / lighter surfaces
+ *   - materials bundle (`materials-v1` key) — the materials page
  *
  * Bearer-token auth via CRON_SECRET. Same shape as commercial-daily.
  *
- * Cost: ~144 invocations/day × ~12s wall × 1024MB ≈ ~30 GB-s/day, well
- * inside Vercel Pro's included budget. Errors are logged but the route
- * always returns 200 so a transient SF blip doesn't cause Vercel cron
- * retry storms (the next scheduled tick is only 10 min away).
+ * Errors are logged but the route always returns 200 so a transient SF blip
+ * doesn't cause a Vercel cron retry storm.
  *
  * Speed pass 2026-06-29: pre-warm cron was referenced in code comments
  * (queries.ts:2340, materials.ts:150) but never actually registered. Every
@@ -47,21 +50,34 @@ export async function GET(request: Request) {
   // role/view-as resolution which the cron doesn't need.
   const sp: Record<string, string | string[] | undefined> = {};
 
-  // Warm thin snapshot + materials bundle in parallel. Both fill their
-  // own cache layers (`snapshot-thin-v1` + `materials-v1` in
-  // snapshot_cache table). If one fails, the other still warms.
+  // Rebuild the FULL snapshot first (snapshot-v6 — what the Overview dashboard
+  // reads, and the heaviest pull), then thin + materials in parallel. Running
+  // full on its own keeps us from triple-hammering the SF API at once.
+  // forceRebuild makes these bypass serve-stale so they genuinely refresh.
+  const [fullRes] = await Promise.allSettled([
+    loadDashboardData(sp, { forceRebuild: true }),
+  ]);
   const [thinRes, matsRes] = await Promise.allSettled([
-    loadDashboardData(sp, { thin: true }),
+    loadDashboardData(sp, { thin: true, forceRebuild: true }),
     loadDashboardData(sp, { materials: true }),
   ]);
 
   const result: Record<string, unknown> = {
     ok: true,
     duration_ms: Date.now() - tStart,
+    full: fullRes.status === "fulfilled" ? "ok" : "failed",
     thin: thinRes.status === "fulfilled" ? "ok" : "failed",
     materials: matsRes.status === "fulfilled" ? "ok" : "failed",
   };
 
+  if (fullRes.status === "rejected") {
+    reportError({
+      key: "warm_snapshot_full",
+      message: `Pre-warm cron full snapshot rebuild failed: ${String(fullRes.reason?.message ?? fullRes.reason)}`,
+      platform: "ppp_cc",
+    });
+    result.full_error = String(fullRes.reason?.message ?? fullRes.reason);
+  }
   if (thinRes.status === "rejected") {
     reportError({
       key: "warm_snapshot_thin",
