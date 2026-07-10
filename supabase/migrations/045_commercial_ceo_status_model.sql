@@ -1,58 +1,35 @@
 -- 045_commercial_ceo_status_model.sql
 --
 -- CEO status-model amendment (Plan v1.1, 2026-07-09 PM).
--- The Phase A commit shipped a 9-status list. Alex's email replaces it
--- with an 8-value Pre-Contract list; this migration remaps historic
--- rows without data loss + widens the existing loss_reason CHECK
--- constraints so `no_bid` becomes a first-class loss reason (was a
--- first-class status in v1.0). Also adds `previous_status` so the
--- `reopened → solicitation` mapping doesn't destroy audit-trail context.
 --
--- IMPORTANT — the previous draft of this migration created a NEW
--- column called `lost_reason` (with a T). That was a typo — the real
--- column is `loss_reason` (LOSS with an S), defined in migration 028
--- and already used by the lib layer. This corrected version widens
--- the EXISTING `loss_reason` CHECK constraint instead of creating a
--- new column. Safe to re-run over any state.
+-- Karan 2026-07-10: v3 rewrite. The v2 migration hit a
+-- commercial_opportunities_status_check violation because the CHECK
+-- constraint on the status column only whitelists v1.0 values —
+-- UPDATE-ing a row to 'solicitation' triggers CHECK before any other
+-- step runs. This version widens the constraint to accept BOTH old +
+-- new values FIRST, runs the data migration, then narrows to just the
+-- new 8 values.
 --
--- Old → New mapping (see Plan v1.1 AMENDMENT block for reasoning):
---   inquiry              → solicitation
---   reopened             → solicitation  (previous_status snapshot preserved)
---   estimating           → estimating    (unchanged)
---   proposal_sent        → proposal_sent (unchanged)
---   negotiating          → follow_up
---   on_hold              → follow_up     (Pre-Contract has no on_hold;
---                                         Post-Contract WIP does)
---   won                  → won           (unchanged)
---   lost                 → lost          (unchanged)
---   no_bid               → lost          (loss_reason = 'no_bid' preserved)
---   site_visit_scheduled → estimating    (already done by migration 044,
---                                         included here for safety re-run)
---   site_visit_done      → estimating    (same)
+-- Same treatment on commercial_opportunity_status_log.from_status +
+-- .to_status — those are an append-only audit trail, so we
+-- PERMANENTLY widen them (never narrow) so historic rows survive AND
+-- future writes with new values succeed.
 --
--- Rerun-safe: every ALTER is idempotent (drop-then-recreate on the
--- CHECK constraint); every UPDATE is a WHERE-scoped no-op after first
--- application.
+-- Idempotent throughout. Safe to re-run over any state.
 
 BEGIN;
 
--- 1. Widen the loss_reason CHECK on commercial_opportunities to include
---    'no_bid' as a first-class reason. Postgres doesn't allow altering
---    a CHECK in place — drop by known constraint name if present, then
---    re-add. The original constraint was auto-named by migration 028
---    as `commercial_opportunities_loss_reason_check` (Postgres default
---    naming for CHECK on a single column).
+-- ═══════════════════════════════════════════════════════════════════
+-- 1. Widen loss_reason CHECK on both tables to include 'no_bid'.
+-- ═══════════════════════════════════════════════════════════════════
+
 DO $$
-DECLARE
-  constraint_exists BOOLEAN;
 BEGIN
-  SELECT EXISTS (
+  IF EXISTS (
     SELECT 1 FROM pg_constraint
      WHERE conname = 'commercial_opportunities_loss_reason_check'
        AND conrelid = 'public.commercial_opportunities'::regclass
-  ) INTO constraint_exists;
-
-  IF constraint_exists THEN
+  ) THEN
     ALTER TABLE public.commercial_opportunities
       DROP CONSTRAINT commercial_opportunities_loss_reason_check;
   END IF;
@@ -61,29 +38,17 @@ END $$;
 ALTER TABLE public.commercial_opportunities
   ADD CONSTRAINT commercial_opportunities_loss_reason_check
   CHECK (loss_reason IS NULL OR loss_reason IN (
-    'no_bid',
-    'price',
-    'scope',
-    'timing',
-    'no_decision',
-    'awarded_to_competitor',
-    'relationship',
-    'other'
+    'no_bid','price','scope','timing','no_decision',
+    'awarded_to_competitor','relationship','other'
   ));
 
--- 2. Same widening on the status log table so historic transitions
---    can carry `no_bid` as a reason on future lost inserts.
 DO $$
-DECLARE
-  constraint_exists BOOLEAN;
 BEGIN
-  SELECT EXISTS (
+  IF EXISTS (
     SELECT 1 FROM pg_constraint
      WHERE conname = 'commercial_opportunity_status_log_loss_reason_check'
        AND conrelid = 'public.commercial_opportunity_status_log'::regclass
-  ) INTO constraint_exists;
-
-  IF constraint_exists THEN
+  ) THEN
     ALTER TABLE public.commercial_opportunity_status_log
       DROP CONSTRAINT commercial_opportunity_status_log_loss_reason_check;
   END IF;
@@ -92,20 +57,94 @@ END $$;
 ALTER TABLE public.commercial_opportunity_status_log
   ADD CONSTRAINT commercial_opportunity_status_log_loss_reason_check
   CHECK (loss_reason IS NULL OR loss_reason IN (
-    'no_bid',
-    'price',
-    'scope',
-    'timing',
-    'no_decision',
-    'awarded_to_competitor',
-    'relationship',
-    'other'
+    'no_bid','price','scope','timing','no_decision',
+    'awarded_to_competitor','relationship','other'
   ));
 
--- 3. Add previous_status snapshot so the "reopened → solicitation"
---    mapping doesn't destroy audit-trail context. Populated on any
---    status change trigger going forward; backfilled below for existing
---    reopened rows.
+-- ═══════════════════════════════════════════════════════════════════
+-- 2. WIDEN status_log from_status + to_status CHECKs to accept both
+--    v1.0 and v1.1 values PERMANENTLY. This is an append-only audit
+--    trail — historic rows must keep their v1.0 values; future writes
+--    use v1.1 values. Both sets are permanent.
+-- ═══════════════════════════════════════════════════════════════════
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'commercial_opportunity_status_log_from_status_check'
+       AND conrelid = 'public.commercial_opportunity_status_log'::regclass
+  ) THEN
+    ALTER TABLE public.commercial_opportunity_status_log
+      DROP CONSTRAINT commercial_opportunity_status_log_from_status_check;
+  END IF;
+END $$;
+
+ALTER TABLE public.commercial_opportunity_status_log
+  ADD CONSTRAINT commercial_opportunity_status_log_from_status_check
+  CHECK (from_status IS NULL OR from_status IN (
+    -- v1.1 (current)
+    'solicitation','rfp','estimating','proposal_pending_approval',
+    'proposal_sent','follow_up','won','lost',
+    -- v1.0 (historic — kept for audit trail)
+    'inquiry','site_visit_scheduled','site_visit_done',
+    'negotiating','on_hold','no_bid','reopened'
+  ));
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'commercial_opportunity_status_log_to_status_check'
+       AND conrelid = 'public.commercial_opportunity_status_log'::regclass
+  ) THEN
+    ALTER TABLE public.commercial_opportunity_status_log
+      DROP CONSTRAINT commercial_opportunity_status_log_to_status_check;
+  END IF;
+END $$;
+
+ALTER TABLE public.commercial_opportunity_status_log
+  ADD CONSTRAINT commercial_opportunity_status_log_to_status_check
+  CHECK (to_status IN (
+    'solicitation','rfp','estimating','proposal_pending_approval',
+    'proposal_sent','follow_up','won','lost',
+    'inquiry','site_visit_scheduled','site_visit_done',
+    'negotiating','on_hold','no_bid','reopened'
+  ));
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 3. TEMPORARILY widen commercial_opportunities.status CHECK to accept
+--    both v1.0 and v1.1 values so the UPDATE statements below don't
+--    trip the constraint. Also drop the DEFAULT so we can change it
+--    to 'solicitation' after the migration.
+-- ═══════════════════════════════════════════════════════════════════
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'commercial_opportunities_status_check'
+       AND conrelid = 'public.commercial_opportunities'::regclass
+  ) THEN
+    ALTER TABLE public.commercial_opportunities
+      DROP CONSTRAINT commercial_opportunities_status_check;
+  END IF;
+END $$;
+
+ALTER TABLE public.commercial_opportunities
+  ADD CONSTRAINT commercial_opportunities_status_check
+  CHECK (status IN (
+    'solicitation','rfp','estimating','proposal_pending_approval',
+    'proposal_sent','follow_up','won','lost',
+    'inquiry','site_visit_scheduled','site_visit_done',
+    'negotiating','on_hold','no_bid','reopened'
+  ));
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 4. Add previous_status snapshot column for reopened → solicitation
+--    audit trail preservation. Idempotent.
+-- ═══════════════════════════════════════════════════════════════════
+
 ALTER TABLE public.commercial_opportunities
   ADD COLUMN IF NOT EXISTS previous_status TEXT;
 
@@ -114,75 +153,111 @@ COMMENT ON COLUMN public.commercial_opportunities.previous_status IS
    after the CEO status model dropped reopened as a first-class value
    (Plan v1.1, 2026-07-09).';
 
--- 4. Clean up the mistaken `lost_reason` column if the previous draft
---    of this migration ran and created it. Safe no-op if the column
---    doesn't exist.
+-- ═══════════════════════════════════════════════════════════════════
+-- 5. Clean up the mistaken lost_reason column if an earlier v1 draft
+--    of this migration ran and created it. Safe no-op otherwise.
+-- ═══════════════════════════════════════════════════════════════════
+
 ALTER TABLE public.commercial_opportunities
   DROP COLUMN IF EXISTS lost_reason;
 
--- 5. Backfill loss_reason for existing no_bid status rows BEFORE we
---    collapse the status. Order matters: read no_bid, write loss_reason,
---    then change status. This preserves the "we passed" distinction
---    that would otherwise be lost when no_bid rolls into lost.
+-- ═══════════════════════════════════════════════════════════════════
+-- 6. Backfill loss_reason='no_bid' BEFORE flipping the status so the
+--    distinction survives.
+-- ═══════════════════════════════════════════════════════════════════
+
 UPDATE public.commercial_opportunities
-   SET loss_reason = 'no_bid',
-       updated_at = now()
+   SET loss_reason = 'no_bid', updated_at = now()
  WHERE status = 'no_bid'
    AND (loss_reason IS NULL OR loss_reason <> 'no_bid');
 
--- 6. Backfill previous_status for existing reopened rows. We don't
---    know the exact prior status without reading the audit log; snapshot
---    a sentinel value so future code knows "this was reopened, but we
---    don't have the prior state" instead of NULL (which reads as
---    "never reopened").
+-- ═══════════════════════════════════════════════════════════════════
+-- 7. Backfill previous_status on existing reopened rows with a
+--    sentinel value.
+-- ═══════════════════════════════════════════════════════════════════
+
 UPDATE public.commercial_opportunities
-   SET previous_status = 'reopened_unknown_prior',
-       updated_at = now()
+   SET previous_status = 'reopened_unknown_prior', updated_at = now()
  WHERE status = 'reopened'
    AND previous_status IS NULL;
 
--- 7. Migrate historic status values to the CEO status model.
---    Order chosen so any row moves exactly once.
+-- ═══════════════════════════════════════════════════════════════════
+-- 8. Migrate historic status values to the CEO v1.1 enum.
+--    Order chosen so any row moves exactly once. Now safe because
+--    the widened CHECK accepts both old + new values.
+-- ═══════════════════════════════════════════════════════════════════
+
 UPDATE public.commercial_opportunities
-   SET status = 'solicitation',
-       updated_at = now()
+   SET status = 'solicitation', updated_at = now()
  WHERE status IN ('inquiry', 'reopened');
 
 UPDATE public.commercial_opportunities
-   SET status = 'follow_up',
-       updated_at = now()
+   SET status = 'follow_up', updated_at = now()
  WHERE status IN ('negotiating', 'on_hold');
 
 UPDATE public.commercial_opportunities
-   SET status = 'lost',
-       updated_at = now()
+   SET status = 'lost', updated_at = now()
  WHERE status = 'no_bid';
 
 -- Defense in depth: site_visit_* rows should already be migrated
 -- to estimating by migration 044, but re-apply here so this migration
--- is safe to run standalone if 044 was skipped.
+-- is safe standalone.
 UPDATE public.commercial_opportunities
-   SET status = 'estimating',
-       updated_at = now()
+   SET status = 'estimating', updated_at = now()
  WHERE status IN ('site_visit_scheduled', 'site_visit_done');
 
--- 8. Sanity check — after migration, every row should be in one of
---    the 8 new Pre-Contract values. This is a diagnostic-only
---    RAISE NOTICE (no failure) so an unexpected stray value logs but
---    doesn't block the transaction.
+-- ═══════════════════════════════════════════════════════════════════
+-- 9. NARROW commercial_opportunities.status CHECK to just the 8 v1.1
+--    values. Any row still on a v1.0 value would fail — the diagnostic
+--    at step 11 catches those before we hit the narrow constraint.
+-- ═══════════════════════════════════════════════════════════════════
+
+-- Guard: if any row is still on a v1.0 value, don't narrow (the
+-- narrow ALTER would fail and roll back the whole migration).
 DO $$
 DECLARE
-  bad_count INT;
+  stray_count INT;
 BEGIN
-  SELECT COUNT(*) INTO bad_count
+  SELECT COUNT(*) INTO stray_count
     FROM public.commercial_opportunities
    WHERE status NOT IN (
-     'solicitation', 'rfp', 'estimating', 'proposal_pending_approval',
-     'proposal_sent', 'follow_up', 'won', 'lost'
+     'solicitation','rfp','estimating','proposal_pending_approval',
+     'proposal_sent','follow_up','won','lost'
    );
-  IF bad_count > 0 THEN
-    RAISE NOTICE 'Migration 045: % opportunity rows still have a status value outside the new Pre-Contract enum. Check manually before flipping the code.', bad_count;
+  IF stray_count > 0 THEN
+    RAISE EXCEPTION 'Migration 045: cannot narrow status CHECK — % rows still have a v1.0 value. Check the UPDATEs above.', stray_count;
   END IF;
+END $$;
+
+ALTER TABLE public.commercial_opportunities
+  DROP CONSTRAINT commercial_opportunities_status_check;
+
+ALTER TABLE public.commercial_opportunities
+  ADD CONSTRAINT commercial_opportunities_status_check
+  CHECK (status IN (
+    'solicitation','rfp','estimating','proposal_pending_approval',
+    'proposal_sent','follow_up','won','lost'
+  ));
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 10. Flip the column DEFAULT from 'inquiry' (v1.0) to 'solicitation'
+--     (v1.1). New rows without an explicit status now land on the
+--     current default. Rerun-safe (SET DEFAULT is idempotent).
+-- ═══════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.commercial_opportunities
+  ALTER COLUMN status SET DEFAULT 'solicitation';
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 11. Final sanity notice — diagnostic-only (no failure).
+-- ═══════════════════════════════════════════════════════════════════
+
+DO $$
+DECLARE
+  total_opps INT;
+BEGIN
+  SELECT COUNT(*) INTO total_opps FROM public.commercial_opportunities;
+  RAISE NOTICE 'Migration 045: complete. % opportunity rows migrated to Pre-Contract v1.1 enum.', total_opps;
 END $$;
 
 COMMIT;
