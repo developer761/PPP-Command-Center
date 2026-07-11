@@ -57,6 +57,9 @@ export function CommandPalette() {
 
   // ⌘K / Ctrl+K toggle. Escape closes. Ignored when typing in
   // regular inputs so users don't accidentally hijack Cmd+K in text.
+  // Also listens for a custom "commercial-palette-open" event dispatched
+  // by KeyboardShortcuts when the user presses "/" — bridges the two
+  // components without a shared parent.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey;
@@ -67,8 +70,13 @@ export function CommandPalette() {
         setOpen(false);
       }
     };
+    const onPaletteOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("commercial-palette-open", onPaletteOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("commercial-palette-open", onPaletteOpen);
+    };
   }, [open]);
 
   // Focus + reset on open.

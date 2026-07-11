@@ -2127,8 +2127,24 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
       : displayStatus === "overdue"
       ? "bg-rose-500"
       : "bg-ppp-charcoal-300";
+  // Karan 2026-07-11 signature-moments stage 5: days-idle heat on
+  // overdue invoices — mirror the deal-side treatment. 15d+ overdue
+  // gets a subtle rose tint, hover deepens instead of washing out.
+  // Only applies to open-balance invoices; paid/void are exempt.
+  const isOpenBalance =
+    invoice.status !== "paid" &&
+    invoice.status !== "void" &&
+    invoice.paid_cents < invoice.total_cents;
+  const overdueDays =
+    isOpenBalance && daysUntilDue !== null && daysUntilDue < 0 ? Math.abs(daysUntilDue) : 0;
+  const overdueTint =
+    overdueDays >= 30
+      ? "bg-rose-50/50 hover:bg-rose-100/60"
+      : overdueDays >= 15
+      ? "bg-amber-50/40 hover:bg-amber-100/60"
+      : "hover:bg-cc-brand-50/30";
   return (
-    <li className="relative group/row hover:bg-cc-brand-50/30 transition-colors">
+    <li className={`relative group/row transition-colors ${overdueTint}`}>
       <Link href={`/commercial/invoices/${invoice.id}`} className="block px-4 py-4 touch-manipulation">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">

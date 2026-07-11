@@ -5,6 +5,7 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import CommercialChrome from "@/components/commercial-chrome";
 import { UndoToast } from "@/components/commercial/undo-toast";
 import { CommandPalette } from "@/components/commercial/command-palette";
+import { KeyboardShortcuts } from "@/components/commercial/keyboard-shortcuts";
 import { Suspense } from "react";
 
 /**
@@ -61,6 +62,11 @@ export default async function CommercialDashboardLayout({
           command palette. Global search across accounts + deals +
           invoices, with keyboard-only navigation. */}
       <CommandPalette />
+      {/* Karan 2026-07-11 signature-moments Tier 3: global keyboard
+          shortcuts — /, N, G+P/A/I/D, ? for help. Bridges into
+          CommandPalette via a custom event so both live in the same
+          layer. */}
+      <KeyboardShortcuts />
     </CommercialChrome>
   );
 }
