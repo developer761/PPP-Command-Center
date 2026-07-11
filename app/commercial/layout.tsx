@@ -4,6 +4,7 @@ import { isAllowedToSignIn } from "@/lib/auth/admin";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import CommercialChrome from "@/components/commercial-chrome";
 import { UndoToast } from "@/components/commercial/undo-toast";
+import { CommandPalette } from "@/components/commercial/command-palette";
 import { Suspense } from "react";
 
 /**
@@ -56,6 +57,10 @@ export default async function CommercialDashboardLayout({
       <Suspense fallback={null}>
         <UndoToast />
       </Suspense>
+      {/* Karan 2026-07-11 signature-moments Tier 2: ⌘K / Ctrl+K
+          command palette. Global search across accounts + deals +
+          invoices, with keyboard-only navigation. */}
+      <CommandPalette />
     </CommercialChrome>
   );
 }
