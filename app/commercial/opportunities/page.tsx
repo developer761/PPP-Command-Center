@@ -26,6 +26,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
+import { DealJourneyStrip } from "@/components/commercial/deal-journey-strip";
 import { createClient } from "@/lib/supabase/server";
 import {
   listCommercialOpportunities,
@@ -2228,6 +2229,15 @@ function OpportunityRow({
               </span>
               <StatusPill status={opportunity.status} />
               {dueChip && <DueChip {...dueChip} />}
+            </div>
+
+            {/* Deal-journey progress strip (Karan 2026-07-11 signature-
+                moments Tier 2). Shows the full pipeline stages inline
+                so users see where the deal IS in the journey without
+                reading a status label. Terminal deals render a compact
+                closed cap. */}
+            <div className="mt-1.5">
+              <DealJourneyStrip status={opportunity.status} />
             </div>
 
             {/* Line 2 — account context + bid + confidence. Muted so

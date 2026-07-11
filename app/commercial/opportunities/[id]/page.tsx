@@ -106,6 +106,7 @@ import {
 // InfoDot import removed 2026-07-08 Batch 2b — labels now use native
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
+import { DealJourneyStrip } from "@/components/commercial/deal-journey-strip";
 
 export const dynamic = "force-dynamic";
 
@@ -1418,6 +1419,12 @@ export default async function OpportunityDetailPage({
               )}
               <span aria-hidden>·</span>
               <StatusPill status={opp.status} />
+            </div>
+            {/* Karan 2026-07-11 signature-moments Tier 2: deal-journey
+                strip on the hero — visualize the pipeline stages so
+                users see how far along the deal is at a glance. */}
+            <div className="mt-2">
+              <DealJourneyStrip status={opp.status} />
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
