@@ -2193,8 +2193,21 @@ function OpportunityRow({
   const defaultProb = DEFAULT_PROBABILITY_BY_STATUS[opportunity.status] ?? null;
   const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
   const nextStatuses = allowedNextStatuses(opportunity.status);
+  // Karan 2026-07-11 (signature-moments): days-idle heat treatment on
+  // open deals only. Terminal statuses (won/lost/no_bid) aren't "idle"
+  // — they closed intentionally. Amber at 7 days stuck, rose at 14.
+  // Silent signal, no extra chip.
+  const isOpenDeal = !isTerminalOpportunityStatus(opportunity.status);
+  const idleBg =
+    isOpenDeal && daysInStatus !== null
+      ? daysInStatus >= 14
+        ? "bg-rose-50/40"
+        : daysInStatus >= 7
+        ? "bg-amber-50/40"
+        : ""
+      : "";
   return (
-    <li className="relative group/row hover:bg-ppp-charcoal-50/60 transition-colors">
+    <li className={`relative group/row hover:bg-ppp-charcoal-50/60 transition-colors ${idleBg}`}>
       <Link
         href={sheetHref(opportunity.account_id, opportunity.id)}
         className="block px-4 py-4 touch-manipulation"

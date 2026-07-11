@@ -41,6 +41,7 @@ import {
 } from "@/lib/commercial/accounts/overview";
 import { SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import CommercialAccountsSearchAutocomplete from "@/components/commercial-accounts-search-autocomplete";
+import { AccountAvatar } from "@/components/commercial/account-avatar";
 import {
   listTagsForAccounts,
   listAllDistinctTags,
@@ -1038,8 +1039,11 @@ function AccountRow({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             {/* Line 1 — company name + status badges. Bigger typography
-                than the meta lines so scanning finds the name fast. */}
+                than the meta lines so scanning finds the name fast.
+                Karan 2026-07-11: colored initials avatar so Bob is
+                recognizably-Bob before you even read the name. */}
             <div className="flex items-center gap-2 flex-wrap">
+              <AccountAvatar accountId={account.id} name={account.company_name} size="sm" />
               {account.is_key_relationship && (
                 <span
                   className="inline-flex items-center text-amber-500 text-base leading-none"

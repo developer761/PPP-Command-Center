@@ -24,6 +24,7 @@ import {
 } from "@/lib/commercial/invoices/constants";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { pickFirst } from "@/lib/commercial/form-utils";
+import { AccountAvatar } from "@/components/commercial/account-avatar";
 
 export const dynamic = "force-dynamic";
 
@@ -1691,7 +1692,10 @@ function FullDetailByOpp({
                     )}
                   </div>
                   {account && (
-                    <div className="text-[12px] text-ppp-charcoal-500 mt-0.5">{account.company_name}</div>
+                    <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 inline-flex items-center gap-1.5">
+                      <AccountAvatar accountId={account.id} name={account.company_name} size="xs" />
+                      <span className="truncate">{account.company_name}</span>
+                    </div>
                   )}
                 </div>
                 {/* Karan 2026-07-09: Delete-all-invoices affordance per

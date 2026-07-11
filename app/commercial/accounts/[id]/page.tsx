@@ -44,6 +44,7 @@ import DatePicker from "@/components/commercial/date-picker";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
+import { AccountAvatar } from "@/components/commercial/account-avatar";
 import {
   getAccountOverview,
   relativeActivity,
@@ -380,9 +381,16 @@ export default async function CommercialAccountDetailPage({
         </div>
         <div className="relative flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal break-words tracking-tight">
-              {account.company_name}
-            </h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Karan 2026-07-11: colored initials avatar so the hero
+                  immediately identifies this account by its platform-
+                  wide color. Same hue appears on pipeline group cards,
+                  invoice list rows, quick-sheet header, etc. */}
+              <AccountAvatar accountId={account.id} name={account.company_name} size="lg" />
+              <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal break-words tracking-tight">
+                {account.company_name}
+              </h1>
+            </div>
             {account.dba && (
               <p className="text-sm text-ppp-charcoal-500 mt-0.5">d/b/a {account.dba}</p>
             )}
