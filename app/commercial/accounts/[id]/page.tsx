@@ -45,6 +45,7 @@ import { PendingSubmitButton } from "@/components/commercial/pending-submit-butt
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
+import { CopyToClipboardButton } from "@/components/commercial/copy-to-clipboard-button";
 import {
   getAccountOverview,
   relativeActivity,
@@ -413,26 +414,32 @@ export default async function CommercialAccountDetailPage({
                   <span className="text-ppp-charcoal-500">· {roleLabel(primary.role)}</span>
                 </span>
                 {primary.contact.email && (
-                  <a
-                    href={`mailto:${primary.contact.email}`}
-                    className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[24px]"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" />
-                    </svg>
-                    Email
-                  </a>
+                  <span className="inline-flex items-center gap-0.5">
+                    <a
+                      href={`mailto:${primary.contact.email}`}
+                      className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[24px]"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" />
+                      </svg>
+                      Email
+                    </a>
+                    <CopyToClipboardButton value={primary.contact.email} label="Email copied" ariaLabel={`Copy email ${primary.contact.email}`} />
+                  </span>
                 )}
                 {primary.contact.phone && (
-                  <a
-                    href={`tel:${primary.contact.phone.replace(/[^0-9+]/g, "")}`}
-                    className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[24px]"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
-                    </svg>
-                    Call
-                  </a>
+                  <span className="inline-flex items-center gap-0.5">
+                    <a
+                      href={`tel:${primary.contact.phone.replace(/[^0-9+]/g, "")}`}
+                      className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[24px]"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                      </svg>
+                      Call
+                    </a>
+                    <CopyToClipboardButton value={primary.contact.phone} label="Phone copied" ariaLabel={`Copy phone ${primary.contact.phone}`} />
+                  </span>
                 )}
               </div>
             )}
@@ -4978,8 +4985,9 @@ function DealEditSheet({
               </label>
             </div>
             {deal.project_number && (
-              <div className="text-[11.5px] text-ppp-charcoal-500 tabular-nums">
+              <div className="text-[11.5px] text-ppp-charcoal-500 tabular-nums inline-flex items-center gap-1">
                 Project #: <span className="font-mono text-ppp-charcoal-800">{deal.project_number}</span>
+                <CopyToClipboardButton value={deal.project_number} label="Project # copied" ariaLabel={`Copy project number ${deal.project_number}`} />
               </div>
             )}
             <div>
