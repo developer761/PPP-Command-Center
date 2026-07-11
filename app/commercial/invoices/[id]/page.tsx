@@ -247,6 +247,10 @@ async function deleteDraftAction(formData: FormData) {
   // the DB, but semantically the panel should re-render without it —
   // the roll-up + progress bar totals need to drop this invoice's share.
   const ctx = await getInvoiceContext(invoice_id);
+  // Karan 2026-07-11 signature-moments: capture the invoice_number for
+  // the undo-toast label BEFORE deletion so users see "Deleted INV-042"
+  // instead of just "Deleted invoice".
+  const preInvoice = await getCommercialInvoice(invoice_id);
   const result = await softDeleteInvoice(invoice_id, user.id);
   if (!result.ok) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Delete failed"));
@@ -255,7 +259,10 @@ async function deleteDraftAction(formData: FormData) {
   revalidatePath("/commercial");
   if (ctx.opportunity_id) revalidatePath(`/commercial/opportunities/${ctx.opportunity_id}`);
   if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
-  redirect(`/commercial/invoices?deleted=1`);
+  const undoLabel = preInvoice?.invoice_number ?? "";
+  redirect(
+    `/commercial/invoices?deleted=1&undo_id=${invoice_id}&undo_kind=invoice&undo_label=${encodeURIComponent(undoLabel)}`
+  );
 }
 
 /**

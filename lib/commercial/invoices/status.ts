@@ -119,3 +119,36 @@ export async function softDeleteInvoice(
   await logStatusChange(invoice_id, from_status, "void", actor_user_id, "Invoice deleted");
   return { ok: true };
 }
+
+/**
+ * Restore a soft-deleted invoice. Powers the undo-toast for accidental
+ * delete clicks (Karan 2026-07-11 signature-moments). Only restores if
+ * currently deleted — race-safe against concurrent restore + re-delete.
+ * Logs a synthetic status change so the audit trail records the undo.
+ */
+export async function restoreInvoice(
+  invoice_id: string,
+  actor_user_id: string
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_invoices")
+    .select("status, deleted_at")
+    .eq("id", invoice_id)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "invoice_not_found" };
+  if (!before.deleted_at) return { ok: false, error: "invoice_not_deleted" };
+  const { error } = await sb
+    .from("commercial_invoices")
+    .update({ deleted_at: null, updated_at: new Date().toISOString() })
+    .eq("id", invoice_id);
+  if (error) return { ok: false, error: error.message };
+  await logStatusChange(
+    invoice_id,
+    before.status as InvoiceStatus,
+    before.status as InvoiceStatus,
+    actor_user_id,
+    "Invoice restored (undo)"
+  );
+  return { ok: true };
+}

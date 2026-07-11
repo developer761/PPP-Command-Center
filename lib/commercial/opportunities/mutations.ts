@@ -331,15 +331,13 @@ export async function restoreCommercialOpportunity(
   const beforeRow = before as { deleted_at: string | null };
   if (!beforeRow.deleted_at) return { ok: false, error: "Opportunity is not deleted." };
   const deletedAt = new Date(beforeRow.deleted_at).getTime();
-  const now = Date.now();
-  // Best-effort: only cascade-restore invoices that were tombstoned in
-  // the same brief window (they were cascaded by our delete path). A
-  // longer window risks resurrecting invoices that were explicitly
-  // deleted afterwards. 5 minutes is generous but bounded.
-  const restoreWindowMs = 5 * 60 * 1000;
+  // Best-effort: only cascade-restore invoices tombstoned in the ±5s
+  // window around this deal's delete (they were part of the same
+  // cascade). Any wider window risks resurrecting invoices that were
+  // explicitly deleted afterwards. Audit fix 2026-07-11: previous
+  // version had a stale 5-min comment + dead vars — trimmed.
   const cascadeWindowStart = new Date(deletedAt - 5000).toISOString();
   const cascadeWindowEnd = new Date(deletedAt + 5000).toISOString();
-  void now; // guarded above via non-null deleted_at
 
   const { data: after, error } = await sb
     .from("commercial_opportunities")
@@ -359,7 +357,6 @@ export async function restoreCommercialOpportunity(
     .eq("opportunity_id", id)
     .gte("deleted_at", cascadeWindowStart)
     .lte("deleted_at", cascadeWindowEnd);
-  void restoreWindowMs;
 
   await logUpdate("commercial_opportunities", id, before, after, restoredByUserId);
   return { ok: true };

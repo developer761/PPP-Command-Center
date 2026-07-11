@@ -2197,17 +2197,23 @@ function OpportunityRow({
   // open deals only. Terminal statuses (won/lost/no_bid) aren't "idle"
   // — they closed intentionally. Amber at 7 days stuck, rose at 14.
   // Silent signal, no extra chip.
+  //
+  // Post-audit fix (2026-07-11): the earlier version paired the idle
+  // background with `hover:bg-ppp-charcoal-50/60` — on hover the row
+  // washed neutral gray, LOSING the heat signal exactly when the
+  // user was engaging with it. Now the hover state DEEPENS the same
+  // color so heat stays visible; only fresh rows get the neutral hover.
   const isOpenDeal = !isTerminalOpportunityStatus(opportunity.status);
-  const idleBg =
+  const idleTint =
     isOpenDeal && daysInStatus !== null
       ? daysInStatus >= 14
-        ? "bg-rose-50/40"
+        ? "bg-rose-50/40 hover:bg-rose-100/60"
         : daysInStatus >= 7
-        ? "bg-amber-50/40"
-        : ""
-      : "";
+        ? "bg-amber-50/40 hover:bg-amber-100/60"
+        : "hover:bg-ppp-charcoal-50/60"
+      : "hover:bg-ppp-charcoal-50/60";
   return (
-    <li className={`relative group/row hover:bg-ppp-charcoal-50/60 transition-colors ${idleBg}`}>
+    <li className={`relative group/row transition-colors ${idleTint}`}>
       <Link
         href={sheetHref(opportunity.account_id, opportunity.id)}
         className="block px-4 py-4 touch-manipulation"

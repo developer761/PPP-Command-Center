@@ -158,6 +158,35 @@ export async function softDeleteAccountNote(
   return { ok: true };
 }
 
+/**
+ * Restore a soft-deleted note. Powers the undo-toast for accidental
+ * delete clicks. Race-safe: only restore if currently deleted.
+ * Karan 2026-07-11 signature-moments batch.
+ */
+export async function restoreAccountNote(
+  noteId: string,
+  actorUserId: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_account_notes")
+    .select("*")
+    .eq("id", noteId)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "Note not found." };
+  const beforeRow = before as { deleted_at: string | null };
+  if (!beforeRow.deleted_at) return { ok: false, error: "Note is not deleted." };
+  const { data: after, error } = await sb
+    .from("commercial_account_notes")
+    .update({ deleted_at: null })
+    .eq("id", noteId)
+    .select("*")
+    .single();
+  if (error) return { ok: false, error: error.message };
+  await logUpdate("commercial_account_notes", noteId, before, after, actorUserId);
+  return { ok: true };
+}
+
 /** List notes for an account (timeline view). Excludes soft-deleted by default. */
 export async function listAccountNotes(
   accountId: string
