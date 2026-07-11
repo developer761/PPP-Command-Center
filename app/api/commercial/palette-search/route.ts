@@ -45,9 +45,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawQ = (searchParams.get("q") ?? "").trim();
   if (rawQ.length === 0) return NextResponse.json({ results: [] });
-  // Escape SQL LIKE wildcards to keep the query safe when the user
-  // types "%" or "_".
-  const safe = rawQ.replace(/[%_]/g, "\\$&");
+  // Escape SQL LIKE wildcards — audit fix 2026-07-11: also escape
+  // backslash because Postgres uses `\` as the default LIKE escape
+  // character. Without this, a query of `\` becomes `%\%` which is a
+  // syntax error at worst or matches nothing at best.
+  const safe = rawQ.replace(/[\\%_]/g, "\\$&");
   const pattern = `%${safe}%`;
 
   const [accountsRes, oppsRes, invoicesRes] = await Promise.all([

@@ -184,12 +184,19 @@ export function CommandPalette() {
             className="flex-1 outline-none text-[15px] text-ppp-charcoal placeholder:text-ppp-charcoal-400 bg-transparent"
             autoComplete="off"
             spellCheck={false}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls="palette-results"
+            aria-activedescendant={
+              flat[highlight] ? `palette-opt-${flat[highlight].id}` : undefined
+            }
+            aria-autocomplete="list"
           />
           <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-400 bg-ppp-charcoal-100 border border-ppp-charcoal-200 rounded px-1.5 py-0.5">
             Esc
           </span>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[60vh] overflow-y-auto" role="listbox" id="palette-results">
           {query.trim().length < 2 ? (
             <div className="px-4 py-8 text-center text-[13px] text-ppp-charcoal-500">
               Type 2+ characters to search accounts, deals, and invoices.
@@ -213,7 +220,7 @@ export function CommandPalette() {
                     const flatIdx = flat.indexOf(r);
                     const isHighlighted = flatIdx === highlight;
                     return (
-                      <li key={r.id}>
+                      <li key={r.id} role="option" id={`palette-opt-${r.id}`} aria-selected={isHighlighted}>
                         <button
                           type="button"
                           onMouseEnter={() => setHighlight(flatIdx)}

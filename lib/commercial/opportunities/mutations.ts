@@ -331,13 +331,18 @@ export async function restoreCommercialOpportunity(
   const beforeRow = before as { deleted_at: string | null };
   if (!beforeRow.deleted_at) return { ok: false, error: "Opportunity is not deleted." };
   const deletedAt = new Date(beforeRow.deleted_at).getTime();
-  // Best-effort: only cascade-restore invoices tombstoned in the ±5s
-  // window around this deal's delete (they were part of the same
-  // cascade). Any wider window risks resurrecting invoices that were
-  // explicitly deleted afterwards. Audit fix 2026-07-11: previous
-  // version had a stale 5-min comment + dead vars — trimmed.
-  const cascadeWindowStart = new Date(deletedAt - 5000).toISOString();
-  const cascadeWindowEnd = new Date(deletedAt + 5000).toISOString();
+  // Best-effort cascade-restore. Tightened to ±2s (audit fix
+  // 2026-07-11) after a lane found the previous 5s window could
+  // theoretically resurrect an invoice that was independently deleted
+  // right around the same moment. 2s comfortably covers the ~50-100ms
+  // between the opp delete and its cascaded invoice delete in the
+  // same request, but keeps the collateral-restore blast radius
+  // small.
+  //
+  // Perfect fix would tag cascaded invoices with a batch id at
+  // delete time — that's a schema change for a future migration.
+  const cascadeWindowStart = new Date(deletedAt - 2000).toISOString();
+  const cascadeWindowEnd = new Date(deletedAt + 2000).toISOString();
 
   const { data: after, error } = await sb
     .from("commercial_opportunities")

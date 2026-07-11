@@ -26,6 +26,7 @@ import { isTerminalOpportunityStatus } from "@/lib/commercial/opportunities/cons
  */
 const JOURNEY_STAGES: OpportunityStatus[] = [
   "solicitation",
+  "rfp",
   "estimating",
   "proposal_pending_approval",
   "proposal_sent",
@@ -39,6 +40,7 @@ const JOURNEY_STAGES: OpportunityStatus[] = [
  */
 const SHORT_LABEL: Partial<Record<OpportunityStatus, string>> = {
   solicitation: "Sol",
+  rfp: "RFP",
   estimating: "Est",
   proposal_pending_approval: "Proposal",
   proposal_sent: "Sent",
@@ -68,7 +70,7 @@ export function DealJourneyStrip({
       : { bg: "bg-ppp-charcoal-500", text: "text-white", label: "No bid" };
     return (
       <div
-        className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${className}`}
+        className={`inline-flex flex-wrap items-center gap-0.5 gap-y-1 text-[10px] font-semibold ${className}`}
         title={`This deal is closed: ${opportunityStatusLabel(status)}`}
       >
         {JOURNEY_STAGES.map((s) => (
@@ -93,7 +95,7 @@ export function DealJourneyStrip({
 
   return (
     <div
-      className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${className}`}
+      className={`inline-flex flex-wrap items-center gap-0.5 gap-y-1 text-[10px] font-semibold ${className}`}
       title={`Current stage: ${opportunityStatusLabel(status)}`}
     >
       {JOURNEY_STAGES.map((s, i) => {

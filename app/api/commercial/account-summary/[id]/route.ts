@@ -49,7 +49,19 @@ export async function GET(
       .select("id", { count: "exact", head: true })
       .eq("account_id", id)
       .is("deleted_at", null)
-      .not("status", "in", "(won,lost,no_bid)"),
+      // Audit fix 2026-07-11: explicit whitelist of OPEN statuses so
+      // a future new enum value doesn't silently get counted here.
+      // no_bid was dropped in migration 045 — was still in the old
+      // exclusion clause as dead code. lost and won are the current
+      // terminal states.
+      .in("status", [
+        "solicitation",
+        "rfp",
+        "estimating",
+        "proposal_pending_approval",
+        "proposal_sent",
+        "follow_up",
+      ]),
     sb
       .from("commercial_invoices")
       .select("total_cents")

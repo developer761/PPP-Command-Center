@@ -20,13 +20,19 @@
  * handler in CommandPalette.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export function KeyboardShortcuts() {
   const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
   const [pendingG, setPendingG] = useState(false);
+  // Audit fix 2026-07-11 (G25): remember which element had focus when
+  // the help sheet opened so we can restore focus on close. Also
+  // initial-focus the close button so keyboard users don't get stuck
+  // in the background.
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const lastFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const timer: { current: ReturnType<typeof setTimeout> | null } = { current: null };
@@ -42,7 +48,10 @@ export function KeyboardShortcuts() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTypingTarget(e.target)) return;
 
-      // "g" then <letter> sequence — 1s window.
+      // "g" then <letter> sequence — 1s window. Audit fix 2026-07-11:
+      // if the second key doesn't match p/a/i/d, fall through to the
+      // rest of the handler so `n`, `/`, `?` etc. still work. Previous
+      // version returned unconditionally and swallowed those keys.
       if (pendingG) {
         setPendingG(false);
         if (timer.current) clearTimeout(timer.current);
@@ -67,7 +76,8 @@ export function KeyboardShortcuts() {
           router.push("/commercial");
           return;
         }
-        return;
+        // Second key didn't match a G-sequence — fall through so the
+        // key hits the normal handlers below.
       }
 
       if (e.key === "g") {
@@ -76,8 +86,11 @@ export function KeyboardShortcuts() {
         return;
       }
       if (e.key === "n") {
+        // Audit fix 2026-07-11: previous target was accounts?new_deal=1
+        // but the accounts list page doesn't handle that param.
+        // Pipeline page opens the New Deal slide-out on ?new_deal=1.
         e.preventDefault();
-        router.push("/commercial/accounts?new_deal=1#new-deal");
+        router.push("/commercial/opportunities?new_deal=1");
         return;
       }
       if (e.key === "?" || (e.shiftKey && e.key === "/")) {
@@ -105,6 +118,18 @@ export function KeyboardShortcuts() {
     };
   }, [pendingG, helpOpen, router]);
 
+  // Focus management on the help sheet — capture prior focus on open,
+  // restore on close, and set initial focus to the close button.
+  useEffect(() => {
+    if (helpOpen) {
+      lastFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+      // Delay so the modal DOM exists before focus targets it.
+      setTimeout(() => closeBtnRef.current?.focus(), 10);
+    } else {
+      lastFocusRef.current?.focus?.();
+    }
+  }, [helpOpen]);
+
   if (!helpOpen) return null;
 
   return (
@@ -124,10 +149,11 @@ export function KeyboardShortcuts() {
         <div className="px-5 py-3.5 border-b border-ppp-charcoal-100 flex items-center justify-between">
           <h2 className="text-[15px] font-bold text-ppp-charcoal">Keyboard shortcuts</h2>
           <button
+            ref={closeBtnRef}
             type="button"
             aria-label="Close"
             onClick={() => setHelpOpen(false)}
-            className="inline-flex items-center justify-center w-8 h-8 rounded text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50"
+            className="inline-flex items-center justify-center w-8 h-8 rounded text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M18 6L6 18 M6 6l12 12" />
