@@ -1035,7 +1035,15 @@ async function deleteDealFromAccountAction(formData: FormData) {
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/opportunities");
   revalidatePath("/commercial");
-  redirect(`/commercial/accounts/${account_id}?tab=opportunities&deleted=${encodeURIComponent(title)}`);
+  // Karan 2026-07-11 (signature-moments): pass undo params so the
+  // client-side UndoToast (mounted in the commercial layout) shows a
+  // 5-second Undo button that POSTs to /api/commercial/opportunities/
+  // <id>/restore. Fire-and-forget — the existing ?deleted=<title>
+  // flash is kept for continuity (the pipeline tab reads it), and the
+  // undo params live alongside it.
+  redirect(
+    `/commercial/accounts/${account_id}?tab=opportunities&deleted=${encodeURIComponent(title)}&undo_id=${opp_id}&undo_kind=deal&undo_label=${encodeURIComponent(title)}`
+  );
 }
 
 /**

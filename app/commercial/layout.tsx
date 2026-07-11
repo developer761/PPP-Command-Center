@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { isAllowedToSignIn } from "@/lib/auth/admin";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import CommercialChrome from "@/components/commercial-chrome";
+import { UndoToast } from "@/components/commercial/undo-toast";
+import { Suspense } from "react";
 
 /**
  * /commercial — New Platform layout.
@@ -46,6 +48,14 @@ export default async function CommercialDashboardLayout({
       showSwitcher={access.hasBoth}
     >
       {children}
+      {/* Karan 2026-07-11 (signature-moments batch): global undo-toast.
+          Renders when a URL has ?undo_id=<uuid>&undo_kind=deal|note|
+          invoice — soft-delete server actions redirect with those
+          params so accidental deletes have a 5-second Undo. Wrapped
+          in Suspense because useSearchParams requires it. */}
+      <Suspense fallback={null}>
+        <UndoToast />
+      </Suspense>
     </CommercialChrome>
   );
 }

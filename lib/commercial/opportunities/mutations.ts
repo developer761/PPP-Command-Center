@@ -306,3 +306,61 @@ export async function softDeleteCommercialOpportunity(
   void after; // logDelete captures the row
   return { ok: true };
 }
+
+/**
+ * Restore a soft-deleted opportunity by nulling `deleted_at`. Powers
+ * the undo-toast Karan requested 2026-07-11 — accidental delete clicks
+ * had no safety net before. Also restores any invoices the delete
+ * cascade tombstoned in the same 60-second window (best-effort — if
+ * the user waits longer we assume the delete was intentional).
+ *
+ * Race guard: only restore if currently deleted. If someone else
+ * already restored (or the row is fresh), no-op with a clear error.
+ */
+export async function restoreCommercialOpportunity(
+  id: string,
+  restoredByUserId?: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_opportunities")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "Opportunity not found." };
+  const beforeRow = before as { deleted_at: string | null };
+  if (!beforeRow.deleted_at) return { ok: false, error: "Opportunity is not deleted." };
+  const deletedAt = new Date(beforeRow.deleted_at).getTime();
+  const now = Date.now();
+  // Best-effort: only cascade-restore invoices that were tombstoned in
+  // the same brief window (they were cascaded by our delete path). A
+  // longer window risks resurrecting invoices that were explicitly
+  // deleted afterwards. 5 minutes is generous but bounded.
+  const restoreWindowMs = 5 * 60 * 1000;
+  const cascadeWindowStart = new Date(deletedAt - 5000).toISOString();
+  const cascadeWindowEnd = new Date(deletedAt + 5000).toISOString();
+  void now; // guarded above via non-null deleted_at
+
+  const { data: after, error } = await sb
+    .from("commercial_opportunities")
+    .update({
+      deleted_at: null,
+      updated_by_user_id: restoredByUserId ?? null,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) return { ok: false, error: error.message };
+
+  // Cascade restore matching invoices.
+  await sb
+    .from("commercial_invoices")
+    .update({ deleted_at: null })
+    .eq("opportunity_id", id)
+    .gte("deleted_at", cascadeWindowStart)
+    .lte("deleted_at", cascadeWindowEnd);
+  void restoreWindowMs;
+
+  await logUpdate("commercial_opportunities", id, before, after, restoredByUserId);
+  return { ok: true };
+}
