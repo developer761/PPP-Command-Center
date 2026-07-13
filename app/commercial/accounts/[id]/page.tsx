@@ -2515,11 +2515,13 @@ function NewDealForm({
             className={selectCls}
             style={SELECT_BG_STYLE}
           >
-            {/* Filter terminal states out at create time. Won/lost need
+            {/* Filter terminal states out at create time. Closed opps need
                 loss_reason + debrief context that we can't collect from
-                this inline form. Reach won/lost via status change on an
+                this inline form. Reach Closed via status change on an
                 open opportunity, not by starting there. */}
-            {OPPORTUNITY_STATUSES.filter((s) => s !== "won" && s !== "lost").map((s) => (
+            {OPPORTUNITY_STATUSES.filter(
+              (s) => s !== "pre_sale_closed" && s !== "post_sale_closed"
+            ).map((s) => (
               <option key={s} value={s}>{opportunityStatusLabel(s)}</option>
             ))}
           </select>

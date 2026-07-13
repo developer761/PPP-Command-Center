@@ -6,9 +6,15 @@ import { insertCommercialOppStatusChangedNotifications } from "@/lib/notificatio
 import {
   ALLOWED_TRANSITIONS,
   DEFAULT_PROBABILITY_BY_STATUS,
+  DEFAULT_PROBABILITY_BY_SUB_STATUS,
+  DEFAULT_SUB_STATUS_BY_STATUS,
   PROBABILITY_PRESERVING_STATUSES,
+  PROBABILITY_PRESERVING_SUB_STATUSES,
   TERMINAL_STATUSES,
   WARN_TRANSITIONS,
+  isValidSubStatus,
+  isWon,
+  isLost,
 } from "./constants";
 import {
   type CommercialOpportunity,
@@ -58,10 +64,14 @@ export function shouldWarnTransition(from: OpportunityStatus, to: OpportunitySta
 export type ChangeStatusInput = {
   opp_id: string;
   to_status: OpportunityStatus;
+  /** v2 (migration 052): callers should pass the target sub_status too so
+   *  the tuple lands whitelisted. If omitted, the DEFAULT_SUB_STATUS_BY_STATUS
+   *  fallback for `to_status` is used (e.g. proposal → sent). */
+  to_sub_status?: string | null;
   acting_user_id: string | null;
-  /** Free-form note. Required (non-empty) when to_status='lost'. */
+  /** Free-form note. Required (non-empty) when the closure is a Lost. */
   note?: string | null;
-  /** Required (non-null) when to_status='lost'. */
+  /** Required (non-null) when the closure is a Lost. */
   loss_reason?: OpportunityLossReason | null;
 };
 
@@ -114,7 +124,12 @@ export async function changeOpportunityStatus(
   // an invoice was issued (or worse — paid) the financial story on the
   // account depends on this deal being Won. Force the user to void the
   // invoices first so the money side and the pipeline side stay in sync.
-  if (beforeRow.status === "won" && input.to_status !== "won") {
+  // v2 (migration 052): Won lives as (pre_sale_closed / won). Any move
+  // OUT of pre_sale_closed OR sub-flip to "lost" counts as leaving Won.
+  const wasWon = isWon(beforeRow);
+  const stillWonAfter =
+    input.to_status === "pre_sale_closed" && input.to_sub_status === "won";
+  if (wasWon && !stillWonAfter) {
     // Karan 2026-07-08 refinement: only customer-visible invoices block
     // the reversal. Drafts haven't been sent — safe to un-win a deal
     // that only has drafts attached (drafts can be manually cleaned up
@@ -138,18 +153,24 @@ export async function changeOpportunityStatus(
   }
 
   // Phase B (Plan v1.1) — structural-field guard. Brendan's spec says
-  // Estimating "requires assigning an estimator." The plan extended
-  // that to `estimating+` since every downstream status needs those
-  // fields too. Block the transition here with a clear error the UI
-  // can surface as an inline hint pointing at the missing fields.
+  // Estimating "requires assigning an estimator." Extended to any status
+  // downstream of Qualifying since every downstream stage needs those
+  // fields too.
+  // v2 (migration 052): the "estimating+" bucket in v2 speak is any
+  // status EXCEPT qualifying (and the closed-lost sub, which doesn't need
+  // structural fields to record a decline).
   const REQUIRES_STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
     "estimating",
-    "proposal_pending_approval",
-    "proposal_sent",
-    "follow_up",
-    "won",
+    "proposal",
+    "pre_sale_closed",
+    "pre_construction",
+    "in_progress",
+    "billing",
+    "post_sale_closed",
   ]);
-  if (REQUIRES_STRUCTURAL_FIELDS.has(input.to_status)) {
+  const targetIsLost =
+    input.to_status === "pre_sale_closed" && input.to_sub_status === "lost";
+  if (REQUIRES_STRUCTURAL_FIELDS.has(input.to_status) && !targetIsLost) {
     const missing: string[] = [];
     if (!beforeRow.client_name?.trim()) missing.push("client name");
     if (!beforeRow.location_short?.trim()) missing.push("site location");
@@ -176,15 +197,12 @@ export async function changeOpportunityStatus(
     }
   }
 
-  // Loss-reason enforcement when transitioning TO a closed-without-win
-  // state. Alex needs a WHY on every lost bid — for pipeline analysis
-  // (which reasons recur) and CYA against future "you should've gone
-  // after this one" questions. Reason enum includes the `no_bid` value
-  // as a first-class reason for `lost`, preserving the v1.0 distinction
-  // after the CEO status model collapsed no_bid into lost (Plan v1.1).
+  // Loss-reason enforcement when the closure is a Lost.
+  // v2 (migration 052): "Lost" is Pre-Sale/Closed/Lost — i.e. status =
+  // pre_sale_closed AND sub_status = lost.
   let lossReason: OpportunityLossReason | null = null;
   let lossNote: string | null = null;
-  if (input.to_status === "lost") {
+  if (targetIsLost) {
     if (!input.loss_reason || !OPPORTUNITY_LOSS_REASONS.includes(input.loss_reason)) {
       return {
         ok: false,
@@ -230,16 +248,27 @@ export async function changeOpportunityStatus(
 
   // Loss tracking: clear loss_reason + loss_notes when LEAVING lost.
   // Set them inline (rather than two separate updates) when entering.
+  // v2 (migration 052): patch BOTH status and sub_status.
+  // If caller didn't supply to_sub_status, fall back to the default
+  // sub-status for the target status. The DB CHECK will reject any
+  // (status, sub_status) tuple that's not whitelisted so the fallback
+  // must be internally consistent.
+  const nextSubStatus =
+    input.to_sub_status && isValidSubStatus(input.to_status, input.to_sub_status)
+      ? input.to_sub_status
+      : ((DEFAULT_SUB_STATUS_BY_STATUS as Record<string, string>)[input.to_status] ??
+        "solicitation");
   const patch: Record<string, unknown> = {
     status: input.to_status,
+    sub_status: nextSubStatus,
     probability_pct: nextProbability,
     updated_by_user_id: input.acting_user_id ?? null,
   };
   if (nextDecidedAt !== undefined) patch.decided_at = nextDecidedAt;
-  if (input.to_status === "lost") {
+  if (targetIsLost) {
     patch.loss_reason = lossReason;
     patch.loss_notes = lossNote;
-  } else if (beforeRow.status === "lost") {
+  } else if (isLost(beforeRow)) {
     patch.loss_reason = null;
     patch.loss_notes = null;
   }

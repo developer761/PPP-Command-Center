@@ -2,7 +2,13 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
-import { DEFAULT_PROBABILITY_BY_STATUS } from "./constants";
+import {
+  DEFAULT_PROBABILITY_BY_STATUS,
+  DEFAULT_PROBABILITY_BY_SUB_STATUS,
+  DEFAULT_SUB_STATUS_BY_STATUS,
+  isValidSubStatus,
+  FULLY_CLOSED_SUB_STATUSES,
+} from "./constants";
 import type {
   CommercialOpportunity,
   OpportunityStatus,
@@ -23,6 +29,12 @@ export type CreateOpportunityInput = {
   title: string;
   description?: string | null;
   status?: OpportunityStatus;
+  /** v2 sub-status (migration 052). If omitted, the DEFAULT_SUB_STATUS_BY_STATUS
+   *  fallback for `status` is used (e.g. qualifying → solicitation). */
+  sub_status?: string | null;
+  /** v2 follow-up scheduling (Katie's ask). */
+  follow_up_at?: string | null;
+  follow_up_notes?: string | null;
   source?: OpportunitySource | null;
   bid_value_low_cents?: number | null;
   bid_value_high_cents?: number | null;
@@ -73,7 +85,15 @@ export async function createCommercialOpportunity(
     [low, high] = [high, low];
   }
 
-  const status: OpportunityStatus = input.status ?? "solicitation";
+  const status: OpportunityStatus = input.status ?? "qualifying";
+  // v2 (migration 052): sub_status is NOT NULL. Fall back to the default
+  // sub-status for the picked status if the caller didn't supply one.
+  // If they DID supply one, validate it against the parent-status whitelist.
+  const subStatus =
+    input.sub_status && isValidSubStatus(status, input.sub_status)
+      ? input.sub_status
+      : ((DEFAULT_SUB_STATUS_BY_STATUS as Record<string, string>)[status] ??
+        "solicitation");
   // Auto-fill primary contact from the account if not supplied + the
   // account has a starred primary contact (Phase 1 Batch A feature).
   let primaryContactId = input.primary_contact_id ?? null;
@@ -95,10 +115,17 @@ export async function createCommercialOpportunity(
       title: input.title.trim(),
       description: input.description?.trim() || null,
       status,
+      sub_status: subStatus,
+      follow_up_at: input.follow_up_at ?? null,
+      follow_up_notes: input.follow_up_notes?.trim() || null,
       source: input.source ?? null,
       bid_value_low_cents: low,
       bid_value_high_cents: high,
-      probability_pct: input.probability_pct ?? DEFAULT_PROBABILITY_BY_STATUS[status] ?? 10,
+      probability_pct:
+        input.probability_pct ??
+        DEFAULT_PROBABILITY_BY_SUB_STATUS[subStatus] ??
+        DEFAULT_PROBABILITY_BY_STATUS[status] ??
+        10,
       proposed_start_at: input.proposed_start_at ?? null,
       proposed_end_at: input.proposed_end_at ?? null,
       proposal_due_at: input.proposal_due_at ?? null,

@@ -1,162 +1,421 @@
 /**
- * Phase 2 Opportunity Pipeline — shared constants.
+ * Opportunity Pipeline — v2 Status Model (Katie/Karan 2026-07-13).
  *
- * Hot-deal thresholds + default probabilities live here so the values
- * are one-line tweaks when Alex says "fire hot at $25k instead of $50k."
- * Promote to a commercial_settings row when that demand surfaces.
+ * Two-lane, two-level model:
+ *   PRE-SALE:  Qualifying → Estimating → Proposal → Closed
+ *   POST-SALE: Pre-Construction → In Progress → Billing → Closed
  *
- * Karan 2026-07-09 Phase A.1: CEO status-model correction (Plan v1.1).
- * All Pre-Contract enum values, DAG transitions, and default probabilities
- * refactored to match Alex's email. Historic v1.0 values are absent —
- * migration 045 backfills them.
+ * Every opportunity has BOTH a `status` (one of 8) AND a `sub_status`
+ * (whitelisted per parent status). Migration 052 enforces the tuple
+ * via a CHECK constraint. Lane is derived from status.
+ *
+ * Migration 052 backfills every v1.1 row into a v2 (status, sub_status)
+ * tuple. See the migration for the exact mapping.
  */
 
-/** Default win probability per status. Lib sets these on every status
- *  change UNLESS the user has overridden probability_pct away from
- *  the prior status's default (in which case the override carries over).
- *  follow_up is special: the lib PRESERVES the prior probability (no
- *  default applied) because "waiting on the customer" doesn't change
- *  how likely you are to win — it's a side state. */
-export const DEFAULT_PROBABILITY_BY_STATUS: Record<string, number> = {
+// ═══════════════════════════════════════════════════════════════════
+// Statuses (top level, 8 total)
+// ═══════════════════════════════════════════════════════════════════
+
+export const PRE_SALE_STATUSES = [
+  "qualifying",
+  "estimating",
+  "proposal",
+  "pre_sale_closed",
+] as const;
+
+export const POST_SALE_STATUSES = [
+  "pre_construction",
+  "in_progress",
+  "billing",
+  "post_sale_closed",
+] as const;
+
+export const OPPORTUNITY_STATUSES = [
+  ...PRE_SALE_STATUSES,
+  ...POST_SALE_STATUSES,
+] as const;
+
+/** v1.1 status values kept in the TS union so callsites doing
+ *  `opp.status === "won"` still compile. At runtime, migration 052 has
+ *  already backfilled every row into a v2 status, so these comparisons
+ *  are dead code — they'll always be false. Callers should migrate to
+ *  `isWon(opp)` / `isLost(opp)` semantic helpers.
+ *
+ *  Karan/Katie 2026-07-13: this is a deliberate migration compat layer
+ *  so the UI keeps working while we sweep the codebase to v2 semantics
+ *  file-by-file. Delete this once every `opp.status === "won"` (v1
+ *  compare) has been replaced.
+ */
+export const LEGACY_V1_STATUSES = [
+  "solicitation",
+  "rfp",
+  "proposal_pending_approval",
+  "proposal_sent",
+  "follow_up",
+  "won",
+  "lost",
+] as const;
+
+export type OpportunityStatus =
+  | (typeof OPPORTUNITY_STATUSES)[number]
+  | (typeof LEGACY_V1_STATUSES)[number];
+
+// ═══════════════════════════════════════════════════════════════════
+// Sub-statuses (whitelisted per parent status)
+// ═══════════════════════════════════════════════════════════════════
+
+/** Per-parent sub-status whitelist. Mirrors the CHECK constraint in
+ *  migration 052 exactly — do not diverge without a migration. */
+type V2Status = (typeof OPPORTUNITY_STATUSES)[number];
+
+export const SUB_STATUSES_BY_STATUS = {
+  qualifying: ["solicitation", "rfp", "estimating"] as const,
+  estimating: ["proposal_pending_approval"] as const,
+  proposal: ["sent", "follow_up"] as const,
+  pre_sale_closed: ["won", "lost"] as const,
+  pre_construction: ["coordination", "ready_to_mobilize"] as const,
+  in_progress: ["wip_on_site", "wip_on_hold"] as const,
+  billing: ["substantial_completion", "completed_and_invoiced"] as const,
+  post_sale_closed: ["closeout", "closed"] as const,
+} as const satisfies Record<V2Status, readonly string[]>;
+
+export type OpportunitySubStatus =
+  (typeof SUB_STATUSES_BY_STATUS)[V2Status][number];
+
+/** Predicate: is this (status, sub_status) tuple actually valid?
+ *  Matches the DB CHECK constraint. Use before writing to the DB. */
+export function isValidSubStatus(
+  status: string,
+  subStatus: string | null | undefined
+): boolean {
+  if (!subStatus) return false;
+  const allowed = (SUB_STATUSES_BY_STATUS as Record<string, readonly string[]>)[
+    status
+  ];
+  if (!allowed) return false;
+  return allowed.includes(subStatus);
+}
+
+/** Default sub-status when a caller flips to a new status without
+ *  specifying one. Chooses the "starting" sub-status of each lane. */
+export const DEFAULT_SUB_STATUS_BY_STATUS: Record<V2Status, string> = {
+  qualifying: "solicitation",
+  estimating: "proposal_pending_approval",
+  proposal: "sent",
+  pre_sale_closed: "won",
+  pre_construction: "coordination",
+  in_progress: "wip_on_site",
+  billing: "substantial_completion",
+  post_sale_closed: "closeout",
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// Lane derivation
+// ═══════════════════════════════════════════════════════════════════
+
+export type OpportunityLane = "pre_sale" | "post_sale";
+
+const PRE_SALE_STATUS_SET = new Set<string>(PRE_SALE_STATUSES);
+
+export function laneForStatus(status: string): OpportunityLane {
+  return PRE_SALE_STATUS_SET.has(status) ? "pre_sale" : "post_sale";
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Labels (human-readable)
+// ═══════════════════════════════════════════════════════════════════
+
+const STATUS_LABELS: Record<V2Status, string> = {
+  qualifying: "Qualifying",
+  estimating: "Estimating",
+  proposal: "Proposal",
+  pre_sale_closed: "Closed",
+  pre_construction: "Pre-Construction",
+  in_progress: "In Progress",
+  billing: "Billing",
+  post_sale_closed: "Closed",
+};
+
+/** V2 status label. Handles retired v1 values as read-only fallback so
+ *  a stale bell notification or webhook doesn't crash the UI. */
+export function opportunityStatusLabelV2(
+  s: string | null | undefined
+): string {
+  if (!s) return "Unknown";
+  const v2 = (STATUS_LABELS as Record<string, string>)[s];
+  if (v2) return v2;
+  // v1.1 fallback labels — displayed as "(retired)" so stale UIs are obvious.
+  const v1Retired: Record<string, string> = {
+    solicitation: "Solicitation (v1)",
+    rfp: "RFP (v1)",
+    proposal_pending_approval: "Proposal pending (v1)",
+    proposal_sent: "Proposal sent (v1)",
+    follow_up: "Follow up (v1)",
+    won: "Won (v1)",
+    lost: "Lost (v1)",
+    inquiry: "Inquiry (v1.0)",
+    negotiating: "Negotiating (v1.0)",
+    on_hold: "On hold (v1.0)",
+    no_bid: "No bid (v1.0)",
+    reopened: "Reopened (v1.0)",
+    site_visit_scheduled: "Site visit scheduled (v1.0)",
+    site_visit_done: "Site visit done (v1.0)",
+  };
+  return (
+    v1Retired[s] ?? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ")
+  );
+}
+
+/** Alias for the previous single-arg helper — kept so existing callsites
+ *  don't all break. New code should call opportunityStatusLabelV2. */
+export function opportunityStatusLabel(
+  s: string | null | undefined
+): string {
+  return opportunityStatusLabelV2(s);
+}
+
+const SUB_STATUS_LABELS: Record<string, string> = {
+  // qualifying
+  solicitation: "Solicitation",
+  rfp: "RFP",
+  estimating: "Estimating (intake)", // clarify vs the top-level Estimating status
+  // estimating (top-level)
+  proposal_pending_approval: "Pending approval",
+  // proposal
+  sent: "Sent",
+  follow_up: "Follow up",
+  // pre_sale_closed
+  won: "Won",
+  lost: "Lost",
+  // pre_construction
+  coordination: "Coordination",
+  ready_to_mobilize: "Ready to mobilize",
+  // in_progress
+  wip_on_site: "On site",
+  wip_on_hold: "On hold",
+  // billing
+  substantial_completion: "Substantial completion",
+  completed_and_invoiced: "Completed & invoiced",
+  // post_sale_closed
+  closeout: "Close-out docs",
+  closed: "Closed",
+};
+
+export function opportunitySubStatusLabel(
+  s: string | null | undefined
+): string {
+  if (!s) return "";
+  return SUB_STATUS_LABELS[s] ?? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Probability defaults
+//
+// v2 shift: probability tracks the SUB-STATUS (finer granularity than
+// v1 which tracked status). A repeat customer on Qualifying/Solicitation
+// is still a ~10% bet; Proposal/Sent is ~65%. Post-sale opportunities
+// are 100% (already won).
+// ═══════════════════════════════════════════════════════════════════
+
+export const DEFAULT_PROBABILITY_BY_SUB_STATUS: Record<string, number> = {
+  // pre-sale
   solicitation: 10,
   rfp: 20,
-  estimating: 40,
+  estimating: 30, // qualifying/estimating (intake) — before real work
+  proposal_pending_approval: 55,
+  sent: 65,
+  follow_up: 65, // sentinel — probability preserved on entry
+  won: 100,
+  lost: 0,
+  // post-sale (all won implicitly)
+  coordination: 100,
+  ready_to_mobilize: 100,
+  wip_on_site: 100,
+  wip_on_hold: 100,
+  substantial_completion: 100,
+  completed_and_invoiced: 100,
+  closeout: 100,
+  closed: 100,
+};
+
+/** DEPRECATED shim — kept so callers importing DEFAULT_PROBABILITY_BY_STATUS
+ *  (v1.1) don't break during the migration. Prefer the sub-status version
+ *  above. Maps status → probability of its DEFAULT sub-status. */
+export const DEFAULT_PROBABILITY_BY_STATUS: Record<string, number> = {
+  qualifying: DEFAULT_PROBABILITY_BY_SUB_STATUS.solicitation,
+  estimating: DEFAULT_PROBABILITY_BY_SUB_STATUS.proposal_pending_approval,
+  proposal: DEFAULT_PROBABILITY_BY_SUB_STATUS.sent,
+  pre_sale_closed: DEFAULT_PROBABILITY_BY_SUB_STATUS.won,
+  pre_construction: 100,
+  in_progress: 100,
+  billing: 100,
+  post_sale_closed: 100,
+  // v1.1 alias fallbacks so anything writing pre-migration doesn't NaN.
+  solicitation: 10,
+  rfp: 20,
   proposal_pending_approval: 55,
   proposal_sent: 65,
-  follow_up: 65, // sentinel — lib treats follow_up specially (preserve prior)
+  follow_up: 65,
   won: 100,
   lost: 0,
 };
 
-/** Statuses where "preserve prior probability" applies — used by
- *  changeOpportunityStatus to know NOT to auto-update probability when
- *  transitioning into one of these. follow_up replaces the v1.0 on_hold
- *  role: it means "waiting on the customer", not "canceled or paused",
- *  so probability shouldn't move. */
+/** Sub-statuses where probability should be PRESERVED (not reset) when
+ *  transitioning INTO them. Follow-Up is the classic "waiting on the
+ *  customer" holding state — probability shouldn't drop. */
+export const PROBABILITY_PRESERVING_SUB_STATUSES: ReadonlySet<string> = new Set([
+  "follow_up",
+  "wip_on_hold",
+]);
+
+/** v1.1 alias — kept during migration. */
 export const PROBABILITY_PRESERVING_STATUSES: ReadonlySet<string> = new Set([
   "follow_up",
 ]);
 
-/** Statuses that mean "the bid is settled" — used to auto-set decided_at.
- *  CEO's v1.1 enum drops no_bid; the distinction is preserved via
- *  `lost_reason='no_bid'` (see migration 045). */
+// ═══════════════════════════════════════════════════════════════════
+// Terminal & open
+// ═══════════════════════════════════════════════════════════════════
+
+/** The bid decision is settled. Sets `decided_at` on write. */
 export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  "won",
-  "lost",
+  "pre_sale_closed", // Lost bids stop here
+  "post_sale_closed", // Delivered projects stop here
 ]);
 
-/** Predicate form for inline use — eliminates repeated status checks
- *  across the codebase. Accepts unknown so callers don't have to
- *  type-narrow first. */
-export function isTerminalOpportunityStatus(status: string | null | undefined): boolean {
-  return status !== null && status !== undefined && TERMINAL_STATUSES.has(status);
+/** Predicate form. Accepts unknown so callers don't have to type-narrow. */
+export function isTerminalOpportunityStatus(
+  status: string | null | undefined
+): boolean {
+  return (
+    status !== null && status !== undefined && TERMINAL_STATUSES.has(status)
+  );
 }
 
-/**
- * The status DAG — which `to_status` is allowed from each `from_status`.
- * Drives the quick-flip dropdown on the list page (filters next options
- * to only valid ones) AND the lib-side validation in
- * changeOpportunityStatus (so a tampered URL or stale form can't move
- * a bid sideways into a state that breaks reporting).
- *
- * Conservative rule of thumb: every active state can flip to `follow_up`
- * (waiting on GC) and to `lost` (early kill). Terminal states (won/lost)
- * exit only back to `solicitation` (re-engage from the top of the funnel).
- *
- * v1.1 flow (CEO's email):
- *   solicitation → rfp → estimating → proposal_pending_approval →
- *   proposal_sent → follow_up → (won | lost)
- * Shortcuts allowed at every step — a repeat-customer verbal-yes can
- * fire won from any active state. WARN_TRANSITIONS flags the unusual
- * jumps at the UI layer without blocking.
- */
-export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
-  solicitation: ["rfp", "estimating", "won", "lost", "follow_up"],
-  rfp: ["estimating", "proposal_pending_approval", "proposal_sent", "won", "lost", "follow_up"],
-  estimating: ["proposal_pending_approval", "proposal_sent", "won", "lost", "follow_up"],
-  proposal_pending_approval: ["proposal_sent", "estimating", "won", "lost", "follow_up"],
-  proposal_sent: ["follow_up", "estimating", "won", "lost"],
-  follow_up: ["estimating", "proposal_pending_approval", "proposal_sent", "won", "lost"],
-  // Terminal states re-enter through solicitation — a Won that reopens
-  // is a new bid cycle; a Lost that comes back to us is a new solicitation.
-  won: ["solicitation"],
-  lost: ["solicitation"],
+// ═══════════════════════════════════════════════════════════════════
+// Semantic tuple predicates — used everywhere v1 code compared to raw
+// 'won' / 'lost' / 'follow_up' as a top-level status. In v2 those are
+// sub-statuses under Closed / Proposal, so callers need to look at the
+// tuple. Grep for `isWon(` etc. as the migration marker.
+// ═══════════════════════════════════════════════════════════════════
+
+type StatusTuple = {
+  status: string | null | undefined;
+  sub_status: string | null | undefined;
 };
 
-/** Transitions that are technically allowed but unusual enough to deserve
- *  a "are you sure?" warning at the UI layer. Lib accepts them silently;
- *  the warning is purely UX. Keyed by "from→to". */
-export const WARN_TRANSITIONS: ReadonlySet<string> = new Set([
-  // Early-kill warnings — flagging the user "are you sure you're killing
-  // this without trying?"
-  "solicitation→lost",
-  "rfp→lost",
-  // Early-WIN warnings — verbal-yes mid-funnel is real (repeat customers
-  // call and commit), but flag in case someone misclicks.
-  "solicitation→won",
-  "rfp→won",
-  "estimating→won",
-  // Scope-change re-bid warnings — going back to estimating means
-  // discarding pricing work.
-  "proposal_sent→estimating",
-  "proposal_pending_approval→estimating",
-  "follow_up→estimating",
-  // Reopen a terminal warning — soft confirmation before re-engaging
-  // from won/lost back into the pipeline.
-  "won→solicitation",
-  "lost→solicitation",
+/** True when this opp is in Pre-Sale/Closed/Won. */
+export function isWon(opp: StatusTuple): boolean {
+  return opp.status === "pre_sale_closed" && opp.sub_status === "won";
+}
+
+/** True when this opp is in Pre-Sale/Closed/Lost. */
+export function isLost(opp: StatusTuple): boolean {
+  return opp.status === "pre_sale_closed" && opp.sub_status === "lost";
+}
+
+/** True when this opp is in Proposal/Follow Up (waiting on customer). */
+export function isFollowUp(opp: StatusTuple): boolean {
+  return opp.status === "proposal" && opp.sub_status === "follow_up";
+}
+
+/** True when the opp has been decided (Won OR Lost OR Closeout OR Closed). */
+export function isDecided(opp: StatusTuple): boolean {
+  return isWon(opp) || isLost(opp) || (opp.status === "post_sale_closed");
+}
+
+/** True when the opp is in the Post-Sale lane (project delivery phase). */
+export function isPostSale(opp: StatusTuple): boolean {
+  return opp.status ? !PRE_SALE_STATUS_SET.has(opp.status) : false;
+}
+
+/** Sub-statuses that count as "the opp is truly closed" — used by
+ *  reporting to distinguish Won-and-billed vs Lost from Pre-Sale.Won-
+ *  waiting-for-kickoff. */
+export const FULLY_CLOSED_SUB_STATUSES: ReadonlySet<string> = new Set([
+  "lost", // Pre-Sale/Closed/Lost
+  "closed", // Post-Sale/Closed/Closed
 ]);
 
-/** Statuses that the LIST-PAGE quick-flip dropdown should NOT expose.
- *  Terminal states (won/lost) need extra fields (loss_reason for lost,
- *  decided_at for both) so we force the user to open the detail page
- *  for those. The list-page dropdown is for fast forward motion. */
-export const QUICK_FLIP_BLOCKED_STATUSES: ReadonlySet<string> = new Set([
-  "won",
-  "lost",
-]);
-
-/** "Hot deal" = high-value AND closing soon AND in an active bid state.
- *  Drives the hot chip filter on the list page. Tunable later.
- *  v1.1: RFP + Estimating + Pending Approval + Proposal Sent + Follow Up
- *  are all active states where a big-$ bid deserves attention. */
-export const HOT_DEAL_BID_CENTS = 5_000_000;       // $50,000 high-end
-export const HOT_DEAL_DECISION_DAYS = 14;          // proposal_due_at within 14 days
-export const HOT_DEAL_ACTIVE_STATUSES: readonly string[] = [
-  "rfp",
-  "estimating",
-  "proposal_pending_approval",
-  "proposal_sent",
-  "follow_up",
-] as const;
-
-/** "Stale opp" = open status + no activity in 14 days. Reuses the same
- *  staleness mental model as accounts but with a tighter window because
- *  opps move faster than accounts. */
-export const STALE_OPP_DAYS = 14;
-
-/**
- * Multiplier on STALE_OPP_DAYS for marking an *account* relationship as
- * "cooling" — used on the Account-side Opportunities tab header.
- *
- * Commercial bid cycles run longer than residential. A specific opp
- * stale at 14d is one thing; an account where NO opp has moved in
- * 14 * 4 = 56 days is "the relationship is cooling, reach out." Bumped
- * to its own constant so Alex can tune without digging into page code.
- */
-export const STALE_ACCOUNT_OPP_COOLING_MULTIPLIER = 4;
-
-/** Statuses that count as "open" in pipeline reporting + filters.
- *  Excludes terminal states (won, lost).
- *  v1.1: the CEO's Pre-Contract list has 8 statuses; 6 are open. Follow
- *  Up is included because it's the "waiting on GC" bucket that must
- *  remain visible in the pipeline — a bid the client is sitting on
- *  is still a live bid until it's decided. */
+/** Statuses that count as "open" in pipeline reporting.
+ *  Excludes terminal (pre_sale_closed=lost and post_sale_closed=closed).
+ *  Pre-Sale/Closed/Won IS still "open" from a project-delivery perspective
+ *  until Alex clicks Start Project. */
 export const OPEN_OPP_STATUSES: readonly string[] = [
-  "solicitation",
-  "rfp",
+  "qualifying",
   "estimating",
-  "proposal_pending_approval",
-  "proposal_sent",
-  "follow_up",
+  "proposal",
+  "pre_construction",
+  "in_progress",
+  "billing",
 ] as const;
+
+// ═══════════════════════════════════════════════════════════════════
+// Status DAG
+//
+// v2: transitions defined at the STATUS level. Sub-status transitions
+// within a status are always free (any → any within the parent's whitelist).
+// ═══════════════════════════════════════════════════════════════════
+
+export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
+  qualifying: ["estimating", "proposal", "pre_sale_closed"],
+  estimating: ["proposal", "qualifying", "pre_sale_closed"],
+  proposal: ["pre_sale_closed", "estimating"],
+  // "Start Project" button on the Won debrief modal takes pre_sale_closed
+  // (Won) → pre_construction. Losing side just stays put.
+  pre_sale_closed: ["pre_construction", "qualifying"],
+  pre_construction: ["in_progress", "billing"],
+  in_progress: ["billing", "pre_construction"],
+  billing: ["post_sale_closed", "in_progress"],
+  // Delivered projects can reopen via a new qualifying opp — usually
+  // that's warranty work or a follow-on bid, but the DAG allows it.
+  post_sale_closed: ["qualifying"],
+};
+
+/** Transitions that are technically allowed but unusual enough to
+ *  deserve a soft warning in the UI. Keyed by `from→to`. */
+export const WARN_TRANSITIONS: ReadonlySet<string> = new Set([
+  // Early kill
+  "qualifying→pre_sale_closed", // if sub is lost — verbal decline in Qualifying
+  // Repeat-customer verbal-yes jumps
+  "qualifying→pre_sale_closed", // if sub is won — no proposal cycle
+  // Scope-change rebids
+  "proposal→estimating",
+  // Post-sale backpedals
+  "in_progress→pre_construction",
+  "billing→in_progress",
+  // Terminal reopen
+  "post_sale_closed→qualifying",
+  "pre_sale_closed→qualifying",
+]);
+
+// ═══════════════════════════════════════════════════════════════════
+// UI hints
+// ═══════════════════════════════════════════════════════════════════
+
+/** Statuses the list-page quick-flip dropdown should NOT expose.
+ *  Terminal states need extra fields (loss_reason, decided_at) so
+ *  the user must open the detail page. */
+export const QUICK_FLIP_BLOCKED_STATUSES: ReadonlySet<string> = new Set([
+  "pre_sale_closed",
+  "post_sale_closed",
+]);
+
+// ═══════════════════════════════════════════════════════════════════
+// Hot / stale / cooling constants (v2-adjusted)
+// ═══════════════════════════════════════════════════════════════════
+
+export const HOT_DEAL_BID_CENTS = 5_000_000; // $50,000
+export const HOT_DEAL_DECISION_DAYS = 14;
+
+/** "Hot deal" = active pre-sale bid with high $ + close decision date.
+ *  Post-sale opps aren't "hot" in the sales sense — they're won already. */
+export const HOT_DEAL_ACTIVE_STATUSES: readonly string[] = [
+  "qualifying",
+  "estimating",
+  "proposal",
+] as const;
+
+export const STALE_OPP_DAYS = 14;
+export const STALE_ACCOUNT_OPP_COOLING_MULTIPLIER = 4;

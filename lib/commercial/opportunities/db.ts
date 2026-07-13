@@ -10,55 +10,34 @@ import { commercialDb } from "@/lib/commercial/db";
  * mirror on the commercial side.
  */
 
-// Karan 2026-07-09 Phase A.1: CEO status-model correction (Plan v1.1).
-// Alex emailed an 8-value Pre-Contract enum that supersedes the Phase A
-// list. Historic rows migrate via migration 045 (inquiry/reopened →
-// solicitation, negotiating/on_hold → follow_up, no_bid → lost with
-// `lost_reason='no_bid'` preserved, site_visit_* → estimating).
-// Post-Contract lifecycle statuses live on `commercial_projects` — see
-// `lib/commercial/projects/db.ts` (Phase H).
-export const OPPORTUNITY_STATUSES = [
-  "solicitation",
-  "rfp",
-  "estimating",
-  "proposal_pending_approval",
-  "proposal_sent",
-  "follow_up",
-  "won",
-  "lost",
-] as const;
-export type OpportunityStatus = (typeof OPPORTUNITY_STATUSES)[number];
-
-// Widened arg type so callers with any un-migrated row (v1.0 enum values
-// or retired site_visit_*) or any unknown enum value get a readable
-// fallback instead of `undefined` silently reaching JSX. Migration 045
-// backfills historic rows, but a webhook / integration writing a stale
-// status must not blow up the pipeline UI.
-export function opportunityStatusLabel(s: string | null | undefined): string {
-  if (!s) return "Unknown";
-  const label = {
-    // v1.1 Pre-Contract enum (source of truth as of 2026-07-09 PM)
-    solicitation: "Solicitation",
-    rfp: "RFP",
-    estimating: "Estimating",
-    proposal_pending_approval: "Proposal pending approval",
-    proposal_sent: "Proposal sent",
-    follow_up: "Follow up",
-    won: "Won",
-    lost: "Lost",
-    // Retired v1.0 values kept as read-only display fallback so any
-    // un-migrated historic row still renders a sane label.
-    inquiry: "Inquiry (retired)",
-    negotiating: "Negotiating (retired)",
-    on_hold: "On hold (retired)",
-    no_bid: "No bid (retired)",
-    reopened: "Reopened (retired)",
-    // Retired Phase A values (site-visit pair).
-    site_visit_scheduled: "Site visit scheduled (retired)",
-    site_visit_done: "Site visit done (retired)",
-  }[s as string];
-  return label ?? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
-}
+// Karan/Katie 2026-07-13 Status Model v2: two-lane, two-level model
+// (Pre-Sale/Post-Sale × Status/Sub-Status). Migration 052 enforces the
+// tuple + backfills every v1.1 row. See lib/commercial/opportunities/
+// constants.ts for the full whitelist + lane derivation.
+import {
+  OPPORTUNITY_STATUSES,
+  laneForStatus,
+  opportunityStatusLabel,
+  opportunityStatusLabelV2,
+  opportunitySubStatusLabel,
+  SUB_STATUSES_BY_STATUS,
+  isValidSubStatus,
+  DEFAULT_SUB_STATUS_BY_STATUS,
+  type OpportunityStatus,
+  type OpportunitySubStatus,
+  type OpportunityLane,
+} from "./constants";
+export {
+  OPPORTUNITY_STATUSES,
+  laneForStatus,
+  opportunityStatusLabel,
+  opportunityStatusLabelV2,
+  opportunitySubStatusLabel,
+  SUB_STATUSES_BY_STATUS,
+  isValidSubStatus,
+  DEFAULT_SUB_STATUS_BY_STATUS,
+};
+export type { OpportunityStatus, OpportunitySubStatus, OpportunityLane };
 
 export const OPPORTUNITY_SOURCES = [
   "email",
@@ -121,6 +100,14 @@ export type CommercialOpportunity = {
   title: string;
   description: string | null;
   status: OpportunityStatus;
+  /** v2 sub-status (migration 052). Whitelisted per parent status via
+   *  SUB_STATUSES_BY_STATUS + DB CHECK. NEVER null on well-formed rows —
+   *  the CHECK constraint refuses NULL. Nullable in TS only because
+   *  Postgres schema tools may return string|null on the row shape. */
+  sub_status: string | null;
+  /** v2 follow-up scheduling (Katie's ask: reminder dates + notes). */
+  follow_up_at: string | null;
+  follow_up_notes: string | null;
   bid_value_low_cents: number | null;
   bid_value_high_cents: number | null;
   probability_pct: number;
