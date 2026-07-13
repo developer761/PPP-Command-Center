@@ -2,13 +2,13 @@
  * Horizontal stage-progress strip for a deal — v2 (2026-07-13 Katie's
  * Pre-Sale / Post-Sale two-lane model).
  *
- * Renders TWO rows:
- *   Pre-Sale:  Qualifying → Estimating → Proposal → Closed (Won/Lost)
- *   Post-Sale: Pre-Construction → In Progress → Billing → Closed
- * (Post-Sale row only appears once the deal is Won or beyond.)
+ * Two labeled rows:
+ *   PRE-SALE   Qualifying → Estimating → Proposal → Closed (Won/Lost)
+ *   POST-SALE  Pre-Construction → In Progress → Billing → Closed
+ * (Post-Sale row appears once the deal is in the delivery lane.)
  *
- * Sub-status is shown as a small chip beneath the ACTIVE pill so
- * "Qualifying / RFP" reads as a two-line stack in one glance.
+ * Sub-status shown as a chip next to the ACTIVE pill so
+ * "Qualifying · RFP" reads as one glance.
  *
  * Server component — no client JS. Pure derived render from
  * (status, sub_status).
@@ -25,74 +25,87 @@ import {
 } from "@/lib/commercial/opportunities/constants";
 
 const PRE_SALE_SHORT: Record<string, string> = {
-  qualifying: "Qualify",
-  estimating: "Estimate",
+  qualifying: "Qualifying",
+  estimating: "Estimating",
   proposal: "Proposal",
   pre_sale_closed: "Closed",
 };
 
 const POST_SALE_SHORT: Record<string, string> = {
-  pre_construction: "Pre-Con",
-  in_progress: "WIP",
+  pre_construction: "Pre-Construction",
+  in_progress: "In Progress",
   billing: "Billing",
   post_sale_closed: "Closed",
 };
 
-function pillClass(state: "complete" | "current" | "future" | "lost-cap") {
+function pillClass(state: "complete" | "current" | "future" | "lost-cap" | "won-cap") {
   switch (state) {
     case "complete":
       return "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200";
     case "current":
-      return "bg-amber-100 text-amber-900 border-amber-300 ring-1 ring-amber-200";
+      return "bg-amber-100 text-amber-900 border-amber-300 ring-2 ring-amber-300/50 shadow-sm";
     case "future":
       return "bg-white text-ppp-charcoal-400 border-ppp-charcoal-200";
     case "lost-cap":
       return "bg-rose-500 text-white border-rose-500";
+    case "won-cap":
+      return "bg-emerald-500 text-white border-emerald-500";
   }
 }
 
-/**
- * Render one lane (Pre-Sale or Post-Sale) as a pill row + optional
- * sub-status chip underneath the ACTIVE pill.
- */
 function LaneRow({
+  laneLabel,
+  laneTone,
   stages,
   labels,
   currentIdx,
   activeSubStatus,
-  isLostCap,
+  finalCap,
 }: {
+  laneLabel: string;
+  laneTone: "pre" | "post";
   stages: readonly OpportunityStatus[];
   labels: Record<string, string>;
   currentIdx: number;
   activeSubStatus: string | null | undefined;
-  isLostCap: boolean;
+  finalCap: "won" | "lost" | null;
 }) {
+  const laneChipCls =
+    laneTone === "pre"
+      ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
+      : "bg-emerald-50 text-emerald-800 border-emerald-200";
   return (
-    <div className="inline-flex flex-wrap items-center gap-0.5 gap-y-1 text-[10px] font-semibold">
-      {stages.map((s, i) => {
-        // Final pill in a lost-cap lane renders rose regardless of index.
-        const isFinalPill = i === stages.length - 1;
-        let state: "complete" | "current" | "future" | "lost-cap";
-        if (isLostCap && isFinalPill) state = "lost-cap";
-        else if (i < currentIdx) state = "complete";
-        else if (i === currentIdx) state = "current";
-        else state = "future";
-        return (
-          <span
-            key={s}
-            className={`px-1.5 py-0.5 rounded border ${pillClass(state)}`}
-            aria-current={i === currentIdx ? "step" : undefined}
-          >
-            {labels[s] ?? s}
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className={`inline-flex items-center h-6 px-2 rounded-md border text-[10px] font-bold uppercase tracking-widest ${laneChipCls}`}
+      >
+        {laneLabel}
+      </span>
+      <div className="flex flex-wrap items-center gap-1 text-[11px] font-semibold">
+        {stages.map((s, i) => {
+          const isFinalPill = i === stages.length - 1;
+          let state: "complete" | "current" | "future" | "lost-cap" | "won-cap";
+          if (finalCap === "lost" && isFinalPill) state = "lost-cap";
+          else if (finalCap === "won" && isFinalPill) state = "won-cap";
+          else if (i < currentIdx) state = "complete";
+          else if (i === currentIdx) state = "current";
+          else state = "future";
+          return (
+            <span
+              key={s}
+              className={`px-2 py-0.5 rounded-md border ${pillClass(state)}`}
+              aria-current={i === currentIdx ? "step" : undefined}
+            >
+              {labels[s] ?? s}
+            </span>
+          );
+        })}
+        {activeSubStatus && (
+          <span className="inline-flex items-center h-5 px-1.5 rounded bg-ppp-charcoal-100 border border-ppp-charcoal-200 text-[10px] font-semibold text-ppp-charcoal-700">
+            {opportunitySubStatusLabel(activeSubStatus)}
           </span>
-        );
-      })}
-      {activeSubStatus && (
-        <span className="ml-1 px-1 py-0 rounded bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-[9.5px] font-medium text-ppp-charcoal-600 tracking-wide">
-          {opportunitySubStatusLabel(activeSubStatus)}
-        </span>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -110,35 +123,41 @@ export function DealJourneyStrip({
   const preIdx = (PRE_SALE_STATUSES as readonly string[]).indexOf(status);
   const postIdx = (POST_SALE_STATUSES as readonly string[]).indexOf(status);
 
-  // Post-Sale row visibility: only render once the deal has moved past
-  // Pre-Sale/Closed/Won into Post-Sale. Losing a bid stops at Pre-Sale.
-  const showPostSaleRow = lane === "post_sale";
   const oppTuple = { status, sub_status };
+  const won = isWon(oppTuple);
+  const lostBid = isLost(oppTuple);
+  const inPostSale = lane === "post_sale";
 
-  // Pre-Sale row rendering
+  // Pre-Sale row: always shown. Current index is the actual pre-sale
+  // position OR the final "Closed" pill if the deal moved into Post-Sale
+  // (i.e. Pre-Sale is fully complete).
   const preSaleActiveIdx =
     lane === "pre_sale" ? preIdx : PRE_SALE_STATUSES.length - 1;
-  const preSaleLostCap =
-    lane === "pre_sale" && isLost(oppTuple);
-  const showPreSaleSubStatus =
-    lane === "pre_sale" && sub_status && !isLost(oppTuple) && !isWon(oppTuple);
+  const preFinalCap = lostBid ? "lost" : won ? "won" : null;
+  // Show sub-status chip in Pre-Sale row unless already Won (then the
+  // Post-Sale row's sub-status is the meaningful one).
+  const showPreSubStatus = lane === "pre_sale" && !!sub_status;
 
   return (
-    <div className={`inline-flex flex-col gap-1 ${className}`}>
+    <div className={`flex flex-col gap-1.5 ${className}`}>
       <LaneRow
+        laneLabel="Pre-Sale"
+        laneTone="pre"
         stages={PRE_SALE_STATUSES}
         labels={PRE_SALE_SHORT}
         currentIdx={preSaleActiveIdx}
-        activeSubStatus={showPreSaleSubStatus ? sub_status ?? null : null}
-        isLostCap={preSaleLostCap}
+        activeSubStatus={showPreSubStatus ? sub_status : null}
+        finalCap={preFinalCap}
       />
-      {showPostSaleRow && (
+      {inPostSale && (
         <LaneRow
+          laneLabel="Post-Sale"
+          laneTone="post"
           stages={POST_SALE_STATUSES}
           labels={POST_SALE_SHORT}
           currentIdx={postIdx}
           activeSubStatus={sub_status ?? null}
-          isLostCap={false}
+          finalCap={null}
         />
       )}
     </div>

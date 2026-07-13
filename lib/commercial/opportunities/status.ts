@@ -111,13 +111,14 @@ export async function changeOpportunityStatus(
     return { ok: false, error: "Account not found." };
   }
 
-  // DAG check.
-  if (!isTransitionAllowed(beforeRow.status, input.to_status)) {
-    return {
-      ok: false,
-      error: `Can't go from ${beforeRow.status} → ${input.to_status}.`,
-    };
-  }
+  // Karan 2026-07-13: DAG check TEMPORARILY DISABLED for v2 testing so
+  // any transition works (e.g. Proposal → Pre-Construction skips the
+  // "must win first" gate). Re-enable in Phase E-4 once the cascading
+  // Status/Sub-Status pickers surface the transition rules inline and
+  // Katie's "Start Project" button explicitly walks the Won → Post-Sale
+  // handoff. The DAG data itself lives in ALLOWED_TRANSITIONS and is
+  // preserved for that reintroduction.
+  void isTransitionAllowed; // referenced when re-enabled
 
   // Karan 2026-07-08: block reversing a Won deal that already has live
   // invoices attached. Won → reopened → lost is a legal DAG path, but if
