@@ -1,121 +1,146 @@
 /**
- * Horizontal stage-progress strip for a deal.
+ * Horizontal stage-progress strip for a deal — v2 (2026-07-13 Katie's
+ * Pre-Sale / Post-Sale two-lane model).
  *
- * Renders the pipeline stages as a pill row: `Solicitation →
- * Estimating → Proposal Pending → Proposal Sent → Follow-up → Won`.
- * Completed stages fill emerald, the CURRENT stage shows amber "you
- * are here," upcoming stages ghost gray. Terminal statuses (won/lost/
- * no_bid) render a compact closed cap.
+ * Renders TWO rows:
+ *   Pre-Sale:  Qualifying → Estimating → Proposal → Closed (Won/Lost)
+ *   Post-Sale: Pre-Construction → In Progress → Billing → Closed
+ * (Post-Sale row only appears once the deal is Won or beyond.)
  *
- * Karan 2026-07-11 (signature-moments Tier 2): "the color coding on
- * opportunities makes the platform 100x better — see where else we
- * can add features like that." Same idea for deal STAGE: instead of
- * a status pill saying "estimating", show the whole journey so users
- * see how far along they are at a glance.
+ * Sub-status is shown as a small chip beneath the ACTIVE pill so
+ * "Qualifying / RFP" reads as a two-line stack in one glance.
  *
- * Server component — no client JS. Pure derived render from status.
+ * Server component — no client JS. Pure derived render from
+ * (status, sub_status).
  */
 
-import type { OpportunityStatus } from "@/lib/commercial/opportunities/db";
-import { opportunityStatusLabel } from "@/lib/commercial/opportunities/db";
-import { isTerminalOpportunityStatus } from "@/lib/commercial/opportunities/constants";
+import {
+  laneForStatus,
+  isWon,
+  isLost,
+  PRE_SALE_STATUSES,
+  POST_SALE_STATUSES,
+  opportunitySubStatusLabel,
+  type OpportunityStatus,
+} from "@/lib/commercial/opportunities/constants";
 
-/**
- * The visible stage sequence for the strip. Terminal states aren't
- * part of the journey — they're the closed cap.
- */
-const JOURNEY_STAGES: OpportunityStatus[] = [
-  "solicitation",
-  "rfp",
-  "estimating",
-  "proposal_pending_approval",
-  "proposal_sent",
-  "follow_up",
-];
-
-/**
- * Short labels for the pills. `opportunityStatusLabel` returns
- * sentence-case strings like "Proposal pending approval" which is too
- * long for the strip; we tighten these for scanability.
- */
-const SHORT_LABEL: Partial<Record<OpportunityStatus, string>> = {
-  solicitation: "Sol",
-  rfp: "RFP",
-  estimating: "Est",
-  proposal_pending_approval: "Proposal",
-  proposal_sent: "Sent",
-  follow_up: "Follow-up",
+const PRE_SALE_SHORT: Record<string, string> = {
+  qualifying: "Qualify",
+  estimating: "Estimate",
+  proposal: "Proposal",
+  pre_sale_closed: "Closed",
 };
 
-function shortLabel(status: OpportunityStatus): string {
-  return SHORT_LABEL[status] ?? opportunityStatusLabel(status);
+const POST_SALE_SHORT: Record<string, string> = {
+  pre_construction: "Pre-Con",
+  in_progress: "WIP",
+  billing: "Billing",
+  post_sale_closed: "Closed",
+};
+
+function pillClass(state: "complete" | "current" | "future" | "lost-cap") {
+  switch (state) {
+    case "complete":
+      return "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200";
+    case "current":
+      return "bg-amber-100 text-amber-900 border-amber-300 ring-1 ring-amber-200";
+    case "future":
+      return "bg-white text-ppp-charcoal-400 border-ppp-charcoal-200";
+    case "lost-cap":
+      return "bg-rose-500 text-white border-rose-500";
+  }
+}
+
+/**
+ * Render one lane (Pre-Sale or Post-Sale) as a pill row + optional
+ * sub-status chip underneath the ACTIVE pill.
+ */
+function LaneRow({
+  stages,
+  labels,
+  currentIdx,
+  activeSubStatus,
+  isLostCap,
+}: {
+  stages: readonly OpportunityStatus[];
+  labels: Record<string, string>;
+  currentIdx: number;
+  activeSubStatus: string | null | undefined;
+  isLostCap: boolean;
+}) {
+  return (
+    <div className="inline-flex flex-wrap items-center gap-0.5 gap-y-1 text-[10px] font-semibold">
+      {stages.map((s, i) => {
+        // Final pill in a lost-cap lane renders rose regardless of index.
+        const isFinalPill = i === stages.length - 1;
+        let state: "complete" | "current" | "future" | "lost-cap";
+        if (isLostCap && isFinalPill) state = "lost-cap";
+        else if (i < currentIdx) state = "complete";
+        else if (i === currentIdx) state = "current";
+        else state = "future";
+        return (
+          <span
+            key={s}
+            className={`px-1.5 py-0.5 rounded border ${pillClass(state)}`}
+            aria-current={i === currentIdx ? "step" : undefined}
+          >
+            {labels[s] ?? s}
+          </span>
+        );
+      })}
+      {activeSubStatus && (
+        <span className="ml-1 px-1 py-0 rounded bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-[9.5px] font-medium text-ppp-charcoal-600 tracking-wide">
+          {opportunitySubStatusLabel(activeSubStatus)}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function DealJourneyStrip({
   status,
+  sub_status,
   className = "",
 }: {
-  status: OpportunityStatus;
+  status: OpportunityStatus | string;
+  sub_status?: string | null;
   className?: string;
 }) {
-  const isTerminal = isTerminalOpportunityStatus(status);
+  const lane = laneForStatus(status);
+  const preIdx = (PRE_SALE_STATUSES as readonly string[]).indexOf(status);
+  const postIdx = (POST_SALE_STATUSES as readonly string[]).indexOf(status);
 
-  if (isTerminal) {
-    // Terminal cap — compact rendering. Won = solid emerald cap; lost/
-    // no_bid = rose. All stages count as complete since we finished.
-    const cap = status === "won"
-      ? { bg: "bg-cc-brand-600", text: "text-white", label: "Won" }
-      : status === "lost"
-      ? { bg: "bg-rose-500", text: "text-white", label: "Lost" }
-      : { bg: "bg-ppp-charcoal-500", text: "text-white", label: "No bid" };
-    return (
-      <div
-        className={`inline-flex flex-wrap items-center gap-0.5 gap-y-1 text-[10px] font-semibold ${className}`}
-        title={`This deal is closed: ${opportunityStatusLabel(status)}`}
-      >
-        {JOURNEY_STAGES.map((s) => (
-          <span
-            key={s}
-            className="px-1.5 py-0.5 rounded bg-cc-brand-100 text-cc-brand-700 border border-cc-brand-200"
-          >
-            {shortLabel(s)}
-          </span>
-        ))}
-        <span aria-hidden className="mx-0.5 text-ppp-charcoal-400">→</span>
-        <span
-          className={`px-2 py-0.5 rounded ${cap.bg} ${cap.text} font-bold`}
-        >
-          {cap.label}
-        </span>
-      </div>
-    );
-  }
+  // Post-Sale row visibility: only render once the deal has moved past
+  // Pre-Sale/Closed/Won into Post-Sale. Losing a bid stops at Pre-Sale.
+  const showPostSaleRow = lane === "post_sale";
+  const oppTuple = { status, sub_status };
 
-  const currentIdx = JOURNEY_STAGES.indexOf(status);
+  // Pre-Sale row rendering
+  const preSaleActiveIdx =
+    lane === "pre_sale" ? preIdx : PRE_SALE_STATUSES.length - 1;
+  const preSaleLostCap =
+    lane === "pre_sale" && isLost(oppTuple);
+  const showPreSaleSubStatus =
+    lane === "pre_sale" && sub_status && !isLost(oppTuple) && !isWon(oppTuple);
 
   return (
-    <div
-      className={`inline-flex flex-wrap items-center gap-0.5 gap-y-1 text-[10px] font-semibold ${className}`}
-      title={`Current stage: ${opportunityStatusLabel(status)}`}
-    >
-      {JOURNEY_STAGES.map((s, i) => {
-        const isComplete = i < currentIdx;
-        const isCurrent = i === currentIdx;
-        const tone = isCurrent
-          ? "bg-amber-100 text-amber-900 border-amber-300 ring-1 ring-amber-200"
-          : isComplete
-          ? "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200"
-          : "bg-white text-ppp-charcoal-400 border-ppp-charcoal-200";
-        return (
-          <span
-            key={s}
-            className={`px-1.5 py-0.5 rounded border ${tone}`}
-            aria-current={isCurrent ? "step" : undefined}
-          >
-            {shortLabel(s)}
-          </span>
-        );
-      })}
+    <div className={`inline-flex flex-col gap-1 ${className}`}>
+      <LaneRow
+        stages={PRE_SALE_STATUSES}
+        labels={PRE_SALE_SHORT}
+        currentIdx={preSaleActiveIdx}
+        activeSubStatus={showPreSaleSubStatus ? sub_status ?? null : null}
+        isLostCap={preSaleLostCap}
+      />
+      {showPostSaleRow && (
+        <LaneRow
+          stages={POST_SALE_STATUSES}
+          labels={POST_SALE_SHORT}
+          currentIdx={postIdx}
+          activeSubStatus={sub_status ?? null}
+          isLostCap={false}
+        />
+      )}
     </div>
   );
 }

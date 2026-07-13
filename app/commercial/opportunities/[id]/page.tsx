@@ -1428,7 +1428,7 @@ export default async function OpportunityDetailPage({
                 strip on the hero — visualize the pipeline stages so
                 users see how far along the deal is at a glance. */}
             <div className="mt-2">
-              <DealJourneyStrip status={opp.status} />
+              <DealJourneyStrip status={opp.status} sub_status={opp.sub_status} />
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">

@@ -23,6 +23,7 @@
  * fetch, and DAG rule is byte-identical to the prior version. Only the
  * visual layout + component composition changed.
  */
+import React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
@@ -1683,20 +1684,53 @@ function KanbanBoard({
   sheetHref: (accountId: string, focus?: string) => string;
   flipReturnHref: string;
 }) {
-  const OPEN_COLUMNS = OPEN_OPP_STATUSES as readonly OpportunityStatus[];
-  // Karan 2026-07-09 Phase A.1: CEO enum drops no_bid (mapped to lost
-  // with lost_reason='no_bid' preserving the distinction for reporting).
-  // Kanban terminal cluster is now just Won + Lost.
+  // v2 (2026-07-13 Katie's model): Kanban splits into two lanes.
+  // Pre-Sale: Qualifying → Estimating → Proposal → Closed(Won/Lost)
+  // Post-Sale: Pre-Construction → In Progress → Billing → Closed(Closeout/Closed)
+  // Both lanes rendered stacked so Alex sees the whole pipeline without a
+  // toggle. The Pre-Sale row leads with the sales flow; Post-Sale below is
+  // the delivery flow. Cards render their sub-status as a small chip.
+  const OPEN_COLUMNS_PRE_SALE: readonly OpportunityStatus[] = [
+    "qualifying",
+    "estimating",
+    "proposal",
+  ];
+  const OPEN_COLUMNS_POST_SALE: readonly OpportunityStatus[] = [
+    "pre_construction",
+    "in_progress",
+    "billing",
+  ];
+  const OPEN_COLUMNS = [
+    ...OPEN_COLUMNS_PRE_SALE,
+    ...OPEN_COLUMNS_POST_SALE,
+  ] as readonly OpportunityStatus[];
+  // Terminal drop targets — Won + Lost sit in the Pre-Sale closed cluster;
+  // Closeout + Closed in the Post-Sale closed cluster. Client submits the
+  // v1 shorthand "won"/"lost" via KanbanDnDColumn's `status` prop which
+  // the compat shim in quickFlipStatusAction translates into the v2 tuple.
   const TERMINAL_COLUMNS: readonly OpportunityStatus[] = ["won", "lost"];
-  const KANBAN_COLUMNS = [...OPEN_COLUMNS, ...TERMINAL_COLUMNS] as readonly OpportunityStatus[];
   const TERMINAL_DISPLAY_CAP = 10;
 
   const byStatus = new Map<OpportunityStatus, CommercialOpportunity[]>();
-  for (const s of KANBAN_COLUMNS) byStatus.set(s, []);
+  for (const s of OPEN_COLUMNS) byStatus.set(s, []);
+  // Terminal drops still keyed by v1 shorthand — the compat layer routes
+  // dropped opps into pre_sale_closed with the correct sub_status.
+  for (const s of TERMINAL_COLUMNS) byStatus.set(s, []);
   const overflowClosed: CommercialOpportunity[] = [];
   for (const o of opps) {
-    if (KANBAN_COLUMNS.includes(o.status as OpportunityStatus)) {
+    // Route the visual sort: any Pre-Sale/Closed opp goes to the Won or
+    // Lost visual bucket based on sub_status; any Post-Sale/Closed opp
+    // to the Post-Sale closed bucket (currently just "closed" key).
+    if (o.status === "pre_sale_closed") {
+      if (o.sub_status === "won") byStatus.get("won" as OpportunityStatus)!.push(o);
+      else byStatus.get("lost" as OpportunityStatus)!.push(o);
+    } else if (OPEN_COLUMNS.includes(o.status as OpportunityStatus)) {
       byStatus.get(o.status as OpportunityStatus)!.push(o);
+    } else if (o.status === "post_sale_closed") {
+      // Post-Sale closed opps land in the overflow list for now — Alex
+      // rarely wants to see historical closed deals in the Kanban; they
+      // show up in the "Older decided deals" details drawer below.
+      overflowClosed.push(o);
     }
   }
   for (const s of TERMINAL_COLUMNS) {
@@ -1724,10 +1758,27 @@ function KanbanBoard({
             Drag a card between stages to move it forward. Drop into <strong>Won / Lost</strong> to close the bid.
           </span>
         </div>
+        {/* v2 (2026-07-13 Katie's model): Pre-Sale + Post-Sale lane
+            labels above the column groups so Alex sees the two-lane
+            structure. Sub-status chip on each card is handled inside
+            KanbanCard. */}
+        <div className="flex flex-wrap items-center gap-3 text-[10.5px] font-bold uppercase tracking-widest">
+          <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-cc-brand-50 text-cc-brand-800 border border-cc-brand-200">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-brand-600" />
+            Pre-Sale · {OPEN_COLUMNS_PRE_SALE.length + TERMINAL_COLUMNS.length} columns
+          </span>
+          <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+            Post-Sale · {OPEN_COLUMNS_POST_SALE.length} columns
+          </span>
+        </div>
         <div className="overflow-x-auto -mx-2 px-2 pb-2">
           <div className="flex gap-3 min-w-max items-stretch">
-            {/* Open pipeline — 8 wide columns for the active flow. */}
-            {OPEN_COLUMNS.map((status) => {
+            {/* Open pipeline — Pre-Sale + Post-Sale columns for the active flow.
+                A subtle vertical divider between the two lanes helps the eye
+                separate the two flows. */}
+            {OPEN_COLUMNS.map((status, idx) => {
+              const showLaneDivider = idx === OPEN_COLUMNS_PRE_SALE.length;
               const colOpps = byStatus.get(status) ?? [];
               const colTotal = colOpps.reduce(
                 (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
@@ -1742,7 +1793,16 @@ function KanbanBoard({
                   ? { col: "bg-cyan-50/40 border-cyan-200", head: "bg-cyan-50 border-cyan-200" }
                   : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
               return (
-                <KanbanDnDColumn key={status} status={status}>
+                <React.Fragment key={status}>
+                  {showLaneDivider && (
+                    <div className="shrink-0 flex items-center px-1">
+                      <div className="h-full w-px bg-emerald-200" />
+                      <span className="ml-1 rotate-180 [writing-mode:vertical-rl] text-[9px] font-bold uppercase tracking-widest text-emerald-700">
+                        Post-Sale
+                      </span>
+                    </div>
+                  )}
+                <KanbanDnDColumn status={status}>
                   <div className={`w-64 sm:w-72 shrink-0 border rounded-xl overflow-hidden flex flex-col h-full ${tone.col}`}>
                     <div className={`px-3 py-2 border-b ${tone.head}`}>
                       <div className="flex items-center justify-between gap-2">
@@ -1785,6 +1845,7 @@ function KanbanBoard({
                     </ul>
                   </div>
                 </KanbanDnDColumn>
+                </React.Fragment>
               );
             })}
 
@@ -2256,7 +2317,7 @@ function OpportunityRow({
                 reading a status label. Terminal deals render a compact
                 closed cap. */}
             <div className="mt-1.5">
-              <DealJourneyStrip status={opportunity.status} />
+              <DealJourneyStrip status={opportunity.status} sub_status={opportunity.sub_status} />
             </div>
 
             {/* Line 2 — account context + bid + confidence. Muted so
