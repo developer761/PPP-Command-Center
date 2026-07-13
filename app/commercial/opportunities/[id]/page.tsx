@@ -26,7 +26,11 @@ import { commercialDb } from "@/lib/commercial/db";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
-import { isTerminalOpportunityStatus } from "@/lib/commercial/opportunities/constants";
+import {
+  isTerminalOpportunityStatus,
+  isWon,
+  isLost,
+} from "@/lib/commercial/opportunities/constants";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
@@ -1281,7 +1285,7 @@ export default async function OpportunityDetailPage({
   // above). Deal detail's visible tabs are Overview / Docs / Activity
   // (+ Debrief on closed deals).
   const isOppTerminal = isTerminalOpportunityStatus(opp.status);
-  const isOppWon = opp.status === "won";
+  const isOppWon = isWon(opp);
   // Karan 2026-07-08: deleted-deal drill-in — the only surfaces that
   // matter are Invoices (record payment / void a straggler) and Overview
   // (see what the deal was). Everything else assumes an active workflow.
@@ -1455,7 +1459,7 @@ export default async function OpportunityDetailPage({
                 invoices/new server route which spins up a draft in one
                 round-trip and lands the user on the invoice detail
                 page. Phase 3 primary conversion action. */}
-            {opp.status === "won" && account && (
+            {isWon(opp) && account && (
               <Link
                 href={`/commercial/invoices?account_id=${account.id}&add=${opp.id}#opp-${opp.id}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
@@ -2765,7 +2769,7 @@ async function DebriefTab({
   const latestDebrief = debriefs[0] ?? null;
   const isDebriefed = Boolean(opp.win_loss_debriefed_at) && latestDebrief !== null;
   const outcomeLabel =
-    opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid";
+    isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid";
 
   return (
     <div className="space-y-4">
@@ -2822,10 +2826,10 @@ async function DebriefTab({
 
 function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
   const outcomeLabel =
-    opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid";
-  const subhead = opp.status === "won"
+    isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid";
+  const subhead = isWon(opp)
     ? "Two quick fields — who you beat and what tipped it your way. Feeds the quarterly Win/Loss report."
-    : opp.status === "lost"
+    : isLost(opp)
     ? "Two quick fields — who won and why. Feeds the quarterly Win/Loss report."
     : "Two quick fields — who took it and why you passed. Feeds the quarterly Win/Loss report.";
   // Karan 2026-07-07 UI overhaul: replaced the amber border-2 shouty
@@ -2888,7 +2892,7 @@ function DebriefReadOnlyView({
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">{opp.status === "won" ? "Win" : opp.status === "lost" ? "Loss" : "No-bid"} debrief on file</h2>
+          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">{isWon(opp) ? "Win" : isLost(opp) ? "Loss" : "No-bid"} debrief on file</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1">
             Recorded {new Date(debrief.debriefed_at).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "America/New_York" })}
             {debriefCount > 1 && ` · ${debriefCount} debriefs on file (this is the most recent)`}
@@ -2897,11 +2901,11 @@ function DebriefReadOnlyView({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field
-          label={opp.status === "won" ? "Beat" : opp.status === "lost" ? "Lost to" : "Competitor"}
+          label={isWon(opp) ? "Beat" : isLost(opp) ? "Lost to" : "Competitor"}
           value={debrief.competitor_name ?? "—"}
         />
         <Field
-          label={opp.status === "won" ? "What sealed it" : "Deciding factor"}
+          label={isWon(opp) ? "What sealed it" : "Deciding factor"}
           value={debrief.deciding_factor
             ? opportunityLossReasonLabel(debrief.deciding_factor as OpportunityLossReason)
             : "—"}
@@ -2910,7 +2914,7 @@ function DebriefReadOnlyView({
       {debrief.lessons_learned && (
         <div className="mt-4">
           <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-            {opp.status === "won" ? "What worked" : "What we'd do differently"}
+            {isWon(opp) ? "What worked" : "What we'd do differently"}
           </div>
           <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
             {debrief.lessons_learned}

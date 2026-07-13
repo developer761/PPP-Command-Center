@@ -16,7 +16,7 @@ import {
   listCommercialOpportunities,
   weightedPipelineCents,
 } from "@/lib/commercial/opportunities/db";
-import { OPEN_OPP_STATUSES, TERMINAL_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { OPEN_OPP_STATUSES, TERMINAL_STATUSES, isWon } from "@/lib/commercial/opportunities/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus } from "@/lib/commercial/invoices/constants";
@@ -83,7 +83,7 @@ export default async function CommercialDashboardPage() {
   const arOverdueCount = invoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
 
   const openOpps = opps.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
-  const wonOpps = opps.filter((o) => o.status === "won");
+  const wonOpps = opps.filter((o) => isWon(o));
   const decidedOpps = opps.filter((o) => TERMINAL_STATUSES.has(o.status));
   const weightedPipeline = openOpps.reduce((acc, o) => acc + weightedPipelineCents(o), 0);
 

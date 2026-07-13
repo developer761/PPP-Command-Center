@@ -717,7 +717,19 @@ async function quickFlipFromAccountAction(formData: FormData) {
   if (!user) redirect("/");
   const account_id = String(formData.get("account_id") ?? "");
   const opp_id = String(formData.get("opp_id") ?? "");
-  const to_status = String(formData.get("to_status") ?? "");
+  const rawToStatus = String(formData.get("to_status") ?? "");
+  const rawToSubStatus = String(formData.get("to_sub_status") ?? "").trim();
+  // v2 (2026-07-13): translate legacy v1 shorthand ("won"/"lost"/"no_bid")
+  // into the v2 (status, sub_status) tuple so both shapes work while the
+  // Kanban rebuild is queued (E-3).
+  let to_status = rawToStatus;
+  let to_sub_status: string | undefined = rawToSubStatus || undefined;
+  const isLostFlip = rawToStatus === "lost" || rawToStatus === "no_bid" ||
+    (rawToStatus === "pre_sale_closed" && rawToSubStatus === "lost");
+  const isWonFlip = rawToStatus === "won" ||
+    (rawToStatus === "pre_sale_closed" && rawToSubStatus === "won");
+  if (rawToStatus === "won") { to_status = "pre_sale_closed"; to_sub_status = "won"; }
+  else if (rawToStatus === "lost" || rawToStatus === "no_bid") { to_status = "pre_sale_closed"; to_sub_status = "lost"; }
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
@@ -727,18 +739,19 @@ async function quickFlipFromAccountAction(formData: FormData) {
   // Won flips immediately, drops the placeholder auto-note, then routes
   // to the opp page so the DebriefOnlyCard is right there for optional
   // structured-debrief follow-through.
-  if (to_status === "lost" || to_status === "no_bid") {
-    redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
+  if (isLostFlip) {
+    redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=pre_sale_closed&to_sub=lost`);
   }
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: to_status as OpportunityStatus,
+    to_sub_status,
     acting_user_id: user.id,
   });
   if (!result.ok) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
   }
-  if (to_status === "won") {
+  if (isWonFlip) {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
     redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
@@ -3164,16 +3177,40 @@ function AccountOpportunityRow({
   );
 }
 
-/** Status pill color tone — mirrors the global pipeline page. */
-function statusPillTone(status: OpportunityStatus | string): { cls: string } {
-  // Karan 2026-07-09 Phase A.1: v1.1 CEO status model.
+/** Status pill color tone — mirrors the global pipeline page.
+ *  Accepts a (status, sub_status) tuple. v2 model:
+ *    Qualifying → Solicitation/RFP/Estimating
+ *    Estimating → Proposal Pending Approval
+ *    Proposal → Sent / Follow Up
+ *    Pre-Sale/Closed → Won / Lost
+ *    Post-Sale statuses (Pre-Construction, In Progress, Billing, Closed).
+ *  Sub-status choice picks the tone when the parent status is ambiguous
+ *  (e.g. Pre-Sale/Closed is either won emerald or lost rose). */
+function statusPillTone(
+  status: OpportunityStatus | string,
+  sub_status?: string | null,
+): { cls: string } {
+  // Terminal (v2 + v1 legacy).
+  if (status === "pre_sale_closed" && sub_status === "won") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+  if (status === "pre_sale_closed" && sub_status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
   if (status === "won") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
   if (status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
+  // v2 Post-Sale lane — pre_construction blue, in_progress cyan, billing amber, closed emerald.
+  if (status === "pre_construction") return { cls: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200" };
+  if (status === "in_progress") return { cls: "bg-cyan-50 text-cyan-800 border-cyan-200" };
+  if (status === "billing") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
+  if (status === "post_sale_closed") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
+  // v2 Pre-Sale intermediate — proposal follow-up pings cyan, proposal sent orange.
+  if (status === "proposal" && sub_status === "follow_up") return { cls: "bg-cyan-50 text-cyan-800 border-cyan-200" };
+  if (status === "proposal") return { cls: "bg-orange-50 text-orange-800 border-orange-200" };
+  if (status === "estimating") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
+  if (status === "qualifying" && sub_status === "rfp") return { cls: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200" };
+  if (status === "qualifying") return { cls: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200" };
+  // v1.1 legacy fallbacks (shouldn't hit post-migration but defensive).
   if (status === "follow_up") return { cls: "bg-cyan-50 text-cyan-800 border-cyan-200" };
   if (status === "proposal_sent") return { cls: "bg-orange-50 text-orange-800 border-orange-200" };
   if (status === "proposal_pending_approval") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
   if (status === "rfp") return { cls: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200" };
-  if (status === "estimating") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
   return { cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100" };
 }
 

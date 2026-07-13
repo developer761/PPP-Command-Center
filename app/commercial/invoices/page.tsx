@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
+import { isWon } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -389,7 +390,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // Won deal from every customer, and clicking one would jump away from
   // Bob's filter context entirely.
   const wonOppsAll = allOpps
-    .filter((o) => o.status === "won")
+    .filter((o) => isWon(o))
     .sort((a, b) => (b.decided_at ?? b.created_at).localeCompare(a.decided_at ?? a.created_at));
   const wonOpps = accountIdFilter
     ? wonOppsAll.filter((o) => o.account_id === accountIdFilter)
@@ -1091,7 +1092,7 @@ function GroupedByOpp({
   sortKey,
 }: {
   invoices: CommercialInvoice[];
-  oppById: Map<string, { id: string; title: string; account_id: string; status: string; client_name: string | null; location_short: string | null }>;
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; location_short: string | null }>;
   accountById: Map<string, { id: string; company_name: string }>;
   sortKey: string;
 }) {
@@ -1491,7 +1492,7 @@ function FullDetailByOpp({
   pickableProducts,
 }: {
   invoices: CommercialInvoice[];
-  oppById: Map<string, { id: string; title: string; account_id: string; status: string; client_name: string | null; location_short: string | null }>;
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; location_short: string | null }>;
   accountById: Map<string, { id: string; company_name: string }>;
   sortKey: string;
   accountId: string;
@@ -1534,7 +1535,7 @@ function FullDetailByOpp({
   // that the opp actually belongs to this account and is Won.
   if (openAddOppId && !groups.has(openAddOppId)) {
     const opp = oppById.get(openAddOppId);
-    if (opp && opp.account_id === accountId && opp.status === "won") {
+    if (opp && opp.account_id === accountId && isWon(opp)) {
       groups.set(openAddOppId, []);
     }
   }
@@ -1989,7 +1990,7 @@ function FullDetailByOpp({
                 terms, message, internal notes. Submits to
                 createInvoiceInlineAction which redirects back here
                 with an anchor to the newly-created row. */}
-            {opp && opp.status === "won" && (
+            {opp && isWon(opp) && (
               <details
                 id={`add-${oppId}`}
                 open={openAddOppId === oppId}

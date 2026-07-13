@@ -16,6 +16,7 @@
  */
 import { redirect } from "next/navigation";
 import { getCommercialOpportunity } from "@/lib/commercial/opportunities/db";
+import { isWon } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 
@@ -33,7 +34,10 @@ export default async function NewInvoiceRedirect({ searchParams }: { searchParam
   if (!opp) {
     redirect("/commercial/invoices?status_error=" + encodeURIComponent("Deal not found"));
   }
-  if (opp!.status !== "won") {
+  // v2: "Won" is (pre_sale_closed, won). We also allow Post-Sale statuses
+  // (Coordination/Ready to Mobilize/etc.) — a project already in delivery
+  // can absolutely be invoiced. The gate is really "past the Won line."
+  if (!isWon(opp!) && opp!.status !== "pre_construction" && opp!.status !== "in_progress" && opp!.status !== "billing" && opp!.status !== "post_sale_closed") {
     // Karan 2026-07-07: stay on the invoicing surface. Sending the user
     // to the opp detail page would be a jump; the "no jumping" mandate
     // says every invoice-adjacent error should land back on the invoice

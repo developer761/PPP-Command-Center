@@ -41,6 +41,7 @@ import {
 import { formatCentsFull, fmtEtDate, parseDollarsToCents, daysBetween } from "@/lib/commercial/invoices/format";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
+import { isWon } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -633,7 +634,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 ability to add another invoice even after the first one
                 is created." Only shown when the parent opp is Won +
                 exists (all created invoices satisfy that but be safe). */}
-            {opp && opp.status === "won" && (
+            {opp && isWon(opp) && (
               <Link
                 href={`/commercial/invoices/new?opp=${opp.id}`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"

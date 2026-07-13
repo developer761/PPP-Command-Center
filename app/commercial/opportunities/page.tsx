@@ -58,6 +58,9 @@ import {
   HOT_DEAL_ACTIVE_STATUSES,
   TERMINAL_STATUSES,
   isTerminalOpportunityStatus,
+  isWon,
+  isLost,
+  isFollowUp,
 } from "@/lib/commercial/opportunities/constants";
 import {
   allowedNextStatuses,
@@ -154,7 +157,23 @@ async function quickFlipStatusAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   const opp_id = String(formData.get("opp_id") ?? "");
-  const to_status = String(formData.get("to_status") ?? "");
+  const rawToStatus = String(formData.get("to_status") ?? "");
+  const rawToSubStatus = String(formData.get("to_sub_status") ?? "").trim();
+  // v2 (2026-07-13): the quick-flip form can still submit legacy v1 status
+  // names ("won"/"lost") because the Kanban rebuild is queued (E-3). Translate
+  // the v1 shorthand into the v2 (status, sub_status) tuple here so both
+  // shapes work while UI catches up.
+  let to_status = rawToStatus;
+  let to_sub_status: string | undefined = rawToSubStatus || undefined;
+  const isLostFlip = rawToStatus === "lost" || (rawToStatus === "pre_sale_closed" && rawToSubStatus === "lost");
+  const isWonFlip = rawToStatus === "won" || (rawToStatus === "pre_sale_closed" && rawToSubStatus === "won");
+  if (rawToStatus === "won") {
+    to_status = "pre_sale_closed";
+    to_sub_status = "won";
+  } else if (rawToStatus === "lost") {
+    to_status = "pre_sale_closed";
+    to_sub_status = "lost";
+  }
   // Sanitize return_href: must start with /commercial/opportunities
   // (open-redirect defense — a malicious form input could otherwise
   // send the user to an off-domain URL after the action).
@@ -164,21 +183,21 @@ async function quickFlipStatusAction(formData: FormData) {
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     redirect(buildFlipReturnHref(returnHref, "status_error", "Invalid status."));
   }
-  // v1.1 (Phase A.1): no_bid moved to loss_reason enum inside the
-  // lost transition — see lib/commercial/opportunities/db.ts. Only
-  // `lost` needs to route through the debrief page for reason capture.
-  if (to_status === "lost") {
-    redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=${to_status}`);
+  // Only Lost routes through the debrief page for reason capture. Won stays
+  // as a direct transition + placeholder auto-note below.
+  if (isLostFlip) {
+    redirect(`/commercial/opportunities/${opp_id}?action=change-status&to=pre_sale_closed&to_sub=lost`);
   }
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: to_status as OpportunityStatus,
+    to_sub_status,
     acting_user_id: user.id,
   });
   if (!result.ok) {
     redirect(buildFlipReturnHref(returnHref, "status_error", result.error));
   }
-  if (to_status === "won") {
+  if (isWonFlip) {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
     redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
@@ -431,7 +450,7 @@ export default async function CommercialOpportunitiesPage({
   // "how'd we do this month" scan.
   const now = new Date();
   const monthStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const wonThisMonth = oppsRaw.filter((o) => o.status === "won" && (o.decided_at ?? "") >= monthStartIso).length;
+  const wonThisMonth = oppsRaw.filter((o) => isWon(o) && (o.decided_at ?? "") >= monthStartIso).length;
 
   // URL builders — behavior unchanged from prior file.
   const baseParams = new URLSearchParams();
