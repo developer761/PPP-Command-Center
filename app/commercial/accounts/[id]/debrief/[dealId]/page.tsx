@@ -498,9 +498,8 @@ function StartProjectCard({
             Ready to start the project?
           </h2>
           <p className="text-[12.5px] text-ppp-charcoal-600 mt-1 leading-relaxed">
-            This hops the deal from Pre-Sale into the delivery pipeline —
-            Pre-Construction / In Progress / Billing / Closed. The Pre-Sale
-            debrief above stays on file.
+            Hand this off to the delivery team. Next stop: Pre-Construction.
+            Your debrief stays here on file.
           </p>
         </div>
       </div>
