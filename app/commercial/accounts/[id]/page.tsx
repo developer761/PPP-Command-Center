@@ -755,7 +755,11 @@ async function quickFlipFromAccountAction(formData: FormData) {
   if (isWonFlip) {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
-    redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
+    // Karan 2026-07-13: debrief now lives under the account, not the
+    // opportunities detail page. Route Won flips fired from the account
+    // page directly to the account-scoped debrief so the user never
+    // hops back to the pipeline surface.
+    redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?just_closed=1`);
   }
   redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
 }
