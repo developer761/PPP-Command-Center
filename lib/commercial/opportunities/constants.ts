@@ -177,6 +177,21 @@ export function opportunityStatusLabel(
   return opportunityStatusLabelV2(s);
 }
 
+/** Display label that collapses the (pre_sale_closed, won/lost) tuple to
+ *  "Won" or "Lost" for pill labels. Karan 2026-07-13: on decided rows the
+ *  user wants the outcome word, not "Closed", so at-a-glance scan reads
+ *  "Won" instead of a bland terminal state. */
+export function oppStatusDisplayLabel(
+  status: string | null | undefined,
+  sub_status: string | null | undefined
+): string {
+  if (status === "pre_sale_closed") {
+    if (sub_status === "won") return "Won";
+    if (sub_status === "lost") return "Lost";
+  }
+  return opportunityStatusLabelV2(status);
+}
+
 const SUB_STATUS_LABELS: Record<string, string> = {
   // qualifying
   solicitation: "Solicitation",

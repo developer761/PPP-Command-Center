@@ -6,6 +6,7 @@ import {
   getCommercialOpportunityIncludingDeleted,
   listCommercialOpportunities,
   opportunityStatusLabel,
+  oppStatusDisplayLabel,
   opportunitySourceLabel,
   opportunityLossReasonLabel,
   formatBidRange,
@@ -2448,7 +2449,7 @@ async function InfoTab({
       )}
       {statusOk && (
         <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
-          <span>Status updated to <strong>{opportunityStatusLabel(opp.status)}</strong>.</span>
+          <span>Status updated to <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>.</span>
           <Link
             href={`/commercial/opportunities/${opp.id}`}
             className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
@@ -2487,7 +2488,7 @@ async function InfoTab({
         }
       >
         <Field label="Title" value={opp.title} />
-        <Field label="Status" value={opportunityStatusLabel(opp.status)} />
+        <Field label="Status" value={oppStatusDisplayLabel(opp.status, opp.sub_status)} />
         <Field
           label="Source"
           value={opp.source ? opportunitySourceLabel(opp.source) : "—"}
@@ -2682,7 +2683,7 @@ function ChangeStatusCard({
             Move this deal forward
           </h2>
           <p className="text-[12px] text-ppp-charcoal-600 mt-1">
-            Currently <strong className="text-ppp-charcoal">{opportunityStatusLabel(opp.status)}</strong>. Pick the next state — closed states (Won / Lost / No-bid) need a short note.
+            Currently <strong className="text-ppp-charcoal">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>. Pick the next state — closed states (Won / Lost / No-bid) need a short note.
           </p>
         </div>
       </div>
@@ -2692,7 +2693,7 @@ function ChangeStatusCard({
           {" "}
           {warnNext.map((s, i) => (
             <span key={s}>
-              <em>{opportunityStatusLabel(opp.status)} → {opportunityStatusLabel(s)}</em>
+              <em>{oppStatusDisplayLabel(opp.status, opp.sub_status)} → {opportunityStatusLabel(s)}</em>
               {i < warnNext.length - 1 ? ", " : ""}
             </span>
           ))}
@@ -2815,7 +2816,7 @@ async function DebriefTab({
       )}
       {(statusOk || justClosed) && !isDebriefed && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
-          Deal saved as <strong>{opportunityStatusLabel(opp.status)}</strong>. Capture the {outcomeLabel.toLowerCase()} debrief below to feed the quarterly Win/Loss report — or skip and come back later.
+          Deal saved as <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>. Capture the {outcomeLabel.toLowerCase()} debrief below to feed the quarterly Win/Loss report — or skip and come back later.
         </div>
       )}
       {debriefSaved && (

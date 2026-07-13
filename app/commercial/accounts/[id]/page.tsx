@@ -64,6 +64,7 @@ import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/
 import {
   listCommercialOpportunities,
   opportunityStatusLabel,
+  oppStatusDisplayLabel,
   formatBidRange,
   weightedPipelineCents,
   derivedOppName,
@@ -3015,7 +3016,7 @@ function AccountOpportunityRow({
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
 }) {
-  const statusInfo = statusPillTone(opp.status);
+  const statusInfo = statusPillTone(opp.status, opp.sub_status);
   const daysInStatus = daysSinceIso(statusEnteredAt);
   const daysTone =
     daysInStatus === null
@@ -3064,7 +3065,7 @@ function AccountOpportunityRow({
               <span
                 className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border shrink-0 ${statusInfo.cls}`}
               >
-                {opportunityStatusLabel(opp.status)}
+                {oppStatusDisplayLabel(opp.status, opp.sub_status)}
               </span>
             </div>
             <div className="mt-1 text-[12.5px] text-ppp-charcoal-600 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
@@ -4731,7 +4732,7 @@ function DealEditSheet({
 }) {
   const bidLabel = formatBidRange(deal.bid_value_low_cents, deal.bid_value_high_cents);
   const weighted = weightedPipelineCents(deal);
-  const statusInfo = statusPillTone(deal.status);
+  const statusInfo = statusPillTone(deal.status, deal.sub_status);
   // ISO date-picker defaults — extract YYYY-MM-DD from the stored UTC
   // timestamps so <input type="date"> renders them correctly.
   const dueDateDefault = deal.proposal_due_at ? deal.proposal_due_at.slice(0, 10) : "";
@@ -4776,7 +4777,7 @@ function DealEditSheet({
                   {deal.title || "(untitled)"}
                 </h2>
                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${statusInfo.cls}`}>
-                  {opportunityStatusLabel(deal.status)}
+                  {oppStatusDisplayLabel(deal.status, deal.sub_status)}
                 </span>
               </div>
               {primaryLead && (

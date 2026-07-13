@@ -34,6 +34,7 @@ import {
   OPPORTUNITY_STATUSES,
   OPPORTUNITY_SOURCES,
   opportunityStatusLabel,
+  oppStatusDisplayLabel,
   opportunitySourceLabel,
   formatBidRange,
   weightedPipelineCents,
@@ -1946,7 +1947,7 @@ function KanbanBoard({
                     {derivedOppName(opp, accountById.get(opp.account_id)?.company_name ?? null)}
                   </Link>
                   <span className="text-[11px] text-ppp-charcoal-500 ml-2">
-                    {opportunityStatusLabel(opp.status)}
+                    {oppStatusDisplayLabel(opp.status, opp.sub_status)}
                   </span>
                 </li>
               ))}
