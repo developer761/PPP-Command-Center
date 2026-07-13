@@ -71,6 +71,7 @@ import {
   clearDebriefFlagOnReopen,
 } from "@/lib/commercial/win-loss/debrief";
 import DebriefFields from "@/components/commercial/debrief-fields";
+import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
 import {
   listOpportunityAttachments,
   archiveOpportunityAttachment,
@@ -225,6 +226,20 @@ async function changeStatusAction(formData: FormData) {
   // hidden input; legacy paths may not, in which case the shim in
   // status.ts falls back to DEFAULT_SUB_STATUS_BY_STATUS).
   const to_sub_status = String(formData.get("to_sub_status") ?? "").trim() || undefined;
+  // Phase E-4: read optional follow-up scheduling. Only pass through
+  // if the picker fired the fields — otherwise `undefined` leaves the
+  // existing value alone in `changeOpportunityStatus`.
+  const toFollowUpAtRaw = String(formData.get("to_follow_up_at") ?? "").trim();
+  const toFollowUpNotesRaw = String(formData.get("to_follow_up_notes") ?? "").trim();
+  const to_follow_up_at =
+    toFollowUpAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(toFollowUpAtRaw)
+      ? toFollowUpAtRaw
+      : toFollowUpAtRaw === "" && formData.has("to_follow_up_at")
+      ? null
+      : undefined;
+  const to_follow_up_notes = formData.has("to_follow_up_notes")
+    ? toFollowUpNotesRaw || null
+    : undefined;
   // Only set loss_reason when the closure is a Lost — v2 tuple is
   // (pre_sale_closed, lost); v1 legacy still accepts raw "lost"/"no_bid".
   const isLossFlip =
@@ -247,6 +262,8 @@ async function changeStatusAction(formData: FormData) {
     acting_user_id: user.id,
     note: noteForStatusLog,
     loss_reason,
+    follow_up_at: to_follow_up_at,
+    follow_up_notes: to_follow_up_notes,
   });
   if (!result.ok) {
     redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent(result.error));
@@ -2707,43 +2724,26 @@ function ChangeStatusCard({
       ) : (
         <form action={changeStatusAction} className="space-y-3">
           <input type="hidden" name="opp_id" value={opp.id} />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-1">
-              <label htmlFor="to_status" className={LABEL_CLS}>
-                Next status <span className="text-rose-700">*</span>
-              </label>
-              <select
-                id="to_status"
-                name="to_status"
-                required
-                defaultValue={defaultTo}
-                className={SELECT_CLS}
-                style={SELECT_BG_STYLE}
-              >
-                <option value="" disabled>
-                  Pick a status
-                </option>
-                {nextStatuses.map((s) => (
-                  <option key={s} value={s}>
-                    {opportunityStatusLabel(s)}
-                    {shouldWarnTransition(opp.status, s) ? " — unusual" : ""}
-                  </option>
-                ))}
-              </select>
-              {defaultTo && shouldWarnTransition(opp.status, defaultTo) && (
-                <p className="text-[11px] text-amber-700 mt-1.5">
-                  Unusual transition — double-check this is intentional.
-                </p>
-              )}
-            </div>
-            {/* Legacy loss_reason + note fields removed 2026-06-24 —
-                Karan flagged them as confusing on non-terminal transitions
-                ("Loss reason (if lost)" showed when picking Estimating
-                → Proposal Sent, which made no sense). DebriefFields
-                below covers terminal cases structurally + non-terminal
-                doesn't need either. changeStatusAction reads from the
-                debrief_deciding_factor + debrief_lessons fields. */}
-          </div>
+          {/* Phase E-4: cascading picker — replaces the raw to_status
+              <select>. Renders `to_status` + `to_sub_status` +
+              optional `to_follow_up_at` / `to_follow_up_notes`.
+              DebriefFields below still hooks the sibling to_status +
+              to_sub_status inputs the picker exposes. */}
+          <StatusSubStatusPicker
+            namePrefix="to_"
+            mode="flip"
+            initialStatus={defaultTo ?? nextStatuses[0]}
+            initialSubStatus={opp.sub_status ?? undefined}
+            initialFollowUpAt={opp.follow_up_at ?? undefined}
+            initialFollowUpNotes={opp.follow_up_notes ?? undefined}
+            allowedStatuses={nextStatuses}
+            statusLabel="Next status"
+          />
+          {defaultTo && shouldWarnTransition(opp.status, defaultTo) && (
+            <p className="text-[11px] text-amber-700 -mt-1">
+              Unusual transition — double-check this is intentional.
+            </p>
+          )}
           {/* Win/Loss Debrief fields — only render when status is terminal.
               Hooks the sibling <select name="to_status"> on the client side
               and fades in. Hides the loss_reason + note siblings above (the

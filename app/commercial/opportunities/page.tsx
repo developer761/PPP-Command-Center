@@ -28,6 +28,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
 import { DealJourneyStrip } from "@/components/commercial/deal-journey-strip";
+import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
 import { createClient } from "@/lib/supabase/server";
 import {
   listCommercialOpportunities,
@@ -230,6 +231,11 @@ async function createDealFromPipelineAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
   const status = String(formData.get("status") ?? "qualifying").trim();
+  // Phase E-4: sub_status + follow_up captured on CREATE via the shared
+  // picker. isValidSubStatus is enforced server-side in mutations.
+  const subStatusRaw = String(formData.get("sub_status") ?? "").trim();
+  const followUpAtRaw = String(formData.get("follow_up_at") ?? "").trim();
+  const followUpNotesRaw = String(formData.get("follow_up_notes") ?? "").trim();
   const source = String(formData.get("source") ?? "").trim();
   const bidLowRaw = String(formData.get("bid_value_low_dollars") ?? "").trim();
   const bidHighRaw = String(formData.get("bid_value_high_dollars") ?? "").trim();
@@ -274,6 +280,12 @@ async function createDealFromPipelineAction(formData: FormData) {
     title,
     description: description || undefined,
     status: status as OpportunityStatus,
+    sub_status: subStatusRaw || null,
+    follow_up_at:
+      followUpAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(followUpAtRaw)
+        ? followUpAtRaw
+        : null,
+    follow_up_notes: followUpNotesRaw ? followUpNotesRaw.slice(0, 200) : null,
     source: source ? (source as OpportunitySource) : undefined,
     bid_value_low_cents: low,
     bid_value_high_cents: high,
@@ -1273,21 +1285,10 @@ function NewDealSlideOut({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="new-deal-status" className={LABEL_CLS}>Status</label>
-              <select
-                id="new-deal-status"
-                name="status"
-                defaultValue="qualifying"
-                className={SELECT_CLS}
-                style={SELECT_BG_STYLE}
-              >
-                {OPPORTUNITY_STATUSES.map((s) => (
-                  <option key={s} value={s}>{opportunityStatusLabel(s)}</option>
-                ))}
-              </select>
-            </div>
+          {/* Phase E-4: cascading status/sub-status + optional follow-up
+              fields. Server action already parses these formData keys. */}
+          <StatusSubStatusPicker mode="create" />
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <label htmlFor="new-deal-source" className={LABEL_CLS}>Source</label>
               <select

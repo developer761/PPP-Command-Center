@@ -89,6 +89,12 @@ export type ChangeStatusInput = {
   note?: string | null;
   /** Required (non-null) when the closure is a Lost. */
   loss_reason?: OpportunityLossReason | null;
+  /** Phase E-4 (2026-07-13): optional follow-up scheduling on the same
+   *  transition. Undefined = don't touch. null = clear. Set only when
+   *  the caller wants the user's choice (e.g., picker showed the
+   *  follow-up fields and got a value) to overwrite the DB row. */
+  follow_up_at?: string | null | undefined;
+  follow_up_notes?: string | null | undefined;
 };
 
 export async function changeOpportunityStatus(
@@ -256,6 +262,16 @@ export async function changeOpportunityStatus(
   } else if (isLost(beforeRow)) {
     patch.loss_reason = null;
     patch.loss_notes = null;
+  }
+  // Phase E-4: follow-up scheduling. If caller passed a value, write it.
+  // On transition INTO a terminal state, always clear the reminder — a
+  // closed deal shouldn't stay on any follow-up list.
+  if (input.follow_up_at !== undefined) patch.follow_up_at = input.follow_up_at;
+  if (input.follow_up_notes !== undefined)
+    patch.follow_up_notes = input.follow_up_notes?.slice(0, 200) ?? null;
+  if (isTerminal && !wasTerminal) {
+    patch.follow_up_at = null;
+    patch.follow_up_notes = null;
   }
 
   const { data: after, error: updateErr } = await sb

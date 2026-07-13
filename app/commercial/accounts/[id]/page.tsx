@@ -44,6 +44,7 @@ import DatePicker from "@/components/commercial/date-picker";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
+import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { CopyToClipboardButton } from "@/components/commercial/copy-to-clipboard-button";
 import {
@@ -787,6 +788,17 @@ async function createDealInlineAction(formData: FormData) {
   const status = (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
     ? (statusRaw as OpportunityStatus)
     : "qualifying";
+  // Phase E-4 (2026-07-13): sub_status + follow-up captured on CREATE
+  // via the shared picker. Server-side isValidSubStatus enforcement lives
+  // in mutations.createCommercialOpportunity, so we forward the raw value.
+  const subStatusRaw = String(formData.get("sub_status") ?? "").trim();
+  const sub_status = subStatusRaw || null;
+  const followUpAtRaw = String(formData.get("follow_up_at") ?? "").trim();
+  const follow_up_at = followUpAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(followUpAtRaw)
+    ? followUpAtRaw
+    : null;
+  const followUpNotesRaw = String(formData.get("follow_up_notes") ?? "").trim();
+  const follow_up_notes = followUpNotesRaw ? followUpNotesRaw.slice(0, 200) : null;
 
   const sourceRaw = String(formData.get("source") ?? "").trim();
   const source = (OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)
@@ -858,6 +870,9 @@ async function createDealInlineAction(formData: FormData) {
     account_id,
     title,
     status,
+    sub_status,
+    follow_up_at,
+    follow_up_notes,
     source,
     bid_value_low_cents,
     bid_value_high_cents,
@@ -2524,41 +2539,25 @@ function NewDealForm({
           className={inputCls}
         />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block">
-          <span className={labelCls}>Status</span>
-          <select
-            name="status"
-            defaultValue="qualifying"
-            className={selectCls}
-            style={SELECT_BG_STYLE}
-          >
-            {/* Filter terminal states out at create time. Closed opps need
-                loss_reason + debrief context that we can't collect from
-                this inline form. Reach Closed via status change on an
-                open opportunity, not by starting there. */}
-            {OPPORTUNITY_STATUSES.filter(
-              (s) => s !== "pre_sale_closed" && s !== "post_sale_closed"
-            ).map((s) => (
-              <option key={s} value={s}>{opportunityStatusLabel(s)}</option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className={labelCls}>Source</span>
-          <select
-            name="source"
-            defaultValue=""
-            className={selectCls}
-            style={SELECT_BG_STYLE}
-          >
-            <option value="">Choose a source</option>
-            {OPPORTUNITY_SOURCES.map((s) => (
-              <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {/* Phase E-4 (2026-07-13): status + sub-status now cascade via a
+          shared client picker (also exposes optional follow-up date +
+          notes for waiting-on-GC bids). Server action already parses
+          sub_status + follow_up_at + follow_up_notes. */}
+      <StatusSubStatusPicker mode="create" />
+      <label className="block">
+        <span className={labelCls}>Source</span>
+        <select
+          name="source"
+          defaultValue=""
+          className={selectCls}
+          style={SELECT_BG_STYLE}
+        >
+          <option value="">Choose a source</option>
+          {OPPORTUNITY_SOURCES.map((s) => (
+            <option key={s} value={s}>{opportunitySourceLabel(s)}</option>
+          ))}
+        </select>
+      </label>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
           <span className={labelCls}>Bid low</span>
@@ -3102,7 +3101,8 @@ function AccountOpportunityRow({
               (submittalStats && submittalStats.awaiting_response > 0) ||
               leadLabel ||
               (!isTerminal && daysInStatus !== null && daysInStatus > 7) ||
-              lastNote
+              lastNote ||
+              (opp.follow_up_at && !isTerminal)
             ) && (
               <div className="mt-1.5 text-[11.5px] flex items-center gap-x-3 gap-y-0.5 flex-wrap text-ppp-charcoal-500">
                 {taskStats && taskStats.overdue > 0 && (
@@ -3125,6 +3125,30 @@ function AccountOpportunityRow({
                     {daysInStatus}d in stage
                   </span>
                 )}
+                {/* Phase E-4: pending follow-up. Rose when overdue, cyan
+                    when upcoming, so Katie's team can scan the pipeline
+                    and know "which bids am I chasing today?" at a glance. */}
+                {opp.follow_up_at && !isTerminal && (() => {
+                  const due = new Date(opp.follow_up_at);
+                  const now = new Date();
+                  const days = Math.round((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  const overdue = days < 0;
+                  const label = overdue
+                    ? `Follow-up ${Math.abs(days)}d overdue`
+                    : days === 0
+                    ? "Follow up today"
+                    : days === 1
+                    ? "Follow up tomorrow"
+                    : `Follow up in ${days}d`;
+                  return (
+                    <span
+                      className={overdue ? "text-rose-700 font-medium" : "text-cyan-700 font-medium"}
+                      title={opp.follow_up_notes ?? undefined}
+                    >
+                      <span aria-hidden>⏰</span> {label}
+                    </span>
+                  );
+                })()}
                 {lastNote && (
                   <span className="truncate max-w-[180px]">
                     Last note {relativeActivity(lastNote.created_at)}
