@@ -778,10 +778,10 @@ async function createDealInlineAction(formData: FormData) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&error=${encodeURIComponent("Deal title is required.")}`);
   }
 
-  const statusRaw = String(formData.get("status") ?? "solicitation").trim();
+  const statusRaw = String(formData.get("status") ?? "qualifying").trim();
   const status = (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
     ? (statusRaw as OpportunityStatus)
-    : "solicitation";
+    : "qualifying";
 
   const sourceRaw = String(formData.get("source") ?? "").trim();
   const source = (OPPORTUNITY_SOURCES as readonly string[]).includes(sourceRaw)
@@ -2524,7 +2524,7 @@ function NewDealForm({
           <span className={labelCls}>Status</span>
           <select
             name="status"
-            defaultValue="solicitation"
+            defaultValue="qualifying"
             className={selectCls}
             style={SELECT_BG_STYLE}
           >

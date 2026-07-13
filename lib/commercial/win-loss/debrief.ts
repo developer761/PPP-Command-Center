@@ -159,7 +159,7 @@ export async function writeDebrief(
   // already been reopened.
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, title, status, win_loss_debriefed_at, deleted_at")
+    .select("id, account_id, title, status, sub_status, loss_reason, win_loss_debriefed_at, deleted_at")
     .eq("id", input.opportunityId)
     .maybeSingle();
   if (!opp || (opp as { deleted_at: string | null }).deleted_at) {
@@ -170,12 +170,26 @@ export async function writeDebrief(
     account_id: string | null;
     title: string;
     status: string;
+    sub_status: string | null;
+    loss_reason: string | null;
     win_loss_debriefed_at: string | null;
   };
-  if (o.status !== input.outcome) {
+  // v2 (2026-07-13): terminal state is (pre_sale_closed, won|lost). Map
+  // the DB tuple to the legacy outcome value the debrief expects.
+  //  - (pre_sale_closed, won) → "won"
+  //  - (pre_sale_closed, lost) with loss_reason='no_bid' → "no_bid"
+  //  - (pre_sale_closed, lost) → "lost"
+  //  - legacy v1 rows still pass through unchanged.
+  let dbOutcome: string = o.status;
+  if (o.status === "pre_sale_closed") {
+    if (o.sub_status === "won") dbOutcome = "won";
+    else if (o.sub_status === "lost" && o.loss_reason === "no_bid") dbOutcome = "no_bid";
+    else if (o.sub_status === "lost") dbOutcome = "lost";
+  }
+  if (dbOutcome !== input.outcome) {
     return {
       ok: false,
-      error: `Opportunity is currently "${o.status}", not "${input.outcome}". Status may have changed since you opened the debrief.`,
+      error: `Opportunity is currently "${dbOutcome}", not "${input.outcome}". Status may have changed since you opened the debrief.`,
     };
   }
 

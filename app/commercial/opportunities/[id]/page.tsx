@@ -159,6 +159,15 @@ async function submitDebriefOnlyAction(formData: FormData) {
   if (!isTerminal) {
     redirect(`/commercial/opportunities/${opp_id}?tab=info`);
   }
+  // v2 (2026-07-13): derive the legacy outcome value from the (status,
+  // sub_status) tuple. writeDebrief expects "won"/"lost"/"no_bid".
+  let outcome: "won" | "lost" | "no_bid";
+  if (opp.status === "pre_sale_closed" && opp.sub_status === "won") outcome = "won";
+  else if (opp.status === "pre_sale_closed" && opp.sub_status === "lost" && opp.loss_reason === "no_bid") outcome = "no_bid";
+  else if (opp.status === "pre_sale_closed" && opp.sub_status === "lost") outcome = "lost";
+  else if (opp.status === "won") outcome = "won";
+  else if (opp.status === "lost") outcome = "lost";
+  else redirect(`/commercial/opportunities/${opp_id}?tab=info`);
   const competitor = String(formData.get("debrief_competitor") ?? "").trim();
   const decidingFactor = String(formData.get("debrief_deciding_factor") ?? "").trim();
   const lessons = String(formData.get("debrief_lessons") ?? "").trim();
@@ -177,7 +186,7 @@ async function submitDebriefOnlyAction(formData: FormData) {
   const statusLogId = (lastLog as { id: string } | null)?.id ?? null;
   const result = await writeDebrief({
     opportunityId: opp_id,
-    outcome: opp.status as "won" | "lost" | "no_bid",
+    outcome,
     competitorName: competitor || null,
     decidingFactor: (decidingFactor && (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(decidingFactor)) ? decidingFactor : null,
     lessonsLearned: lessons || null,
@@ -211,9 +220,18 @@ async function changeStatusAction(formData: FormData) {
   const decidingFactorRaw = String(formData.get("debrief_deciding_factor") ?? "").trim();
   const lessonsRaw = String(formData.get("debrief_lessons") ?? "").trim();
   const internalNotesRaw = String(formData.get("debrief_internal_notes") ?? "").trim();
-  // Only set loss_reason for lost/no_bid (won doesn't carry one).
+  // v2: also read the target sub_status (server actions send it in a
+  // hidden input; legacy paths may not, in which case the shim in
+  // status.ts falls back to DEFAULT_SUB_STATUS_BY_STATUS).
+  const to_sub_status = String(formData.get("to_sub_status") ?? "").trim() || undefined;
+  // Only set loss_reason when the closure is a Lost — v2 tuple is
+  // (pre_sale_closed, lost); v1 legacy still accepts raw "lost"/"no_bid".
+  const isLossFlip =
+    to_status === "lost" ||
+    to_status === "no_bid" ||
+    (to_status === "pre_sale_closed" && to_sub_status === "lost");
   const loss_reason =
-    (to_status === "lost" || to_status === "no_bid") &&
+    isLossFlip &&
     decidingFactorRaw &&
     (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(decidingFactorRaw)
       ? (decidingFactorRaw as OpportunityLossReason)
@@ -224,6 +242,7 @@ async function changeStatusAction(formData: FormData) {
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: to_status as OpportunityStatus,
+    to_sub_status,
     acting_user_id: user.id,
     note: noteForStatusLog,
     loss_reason,
@@ -240,6 +259,13 @@ async function changeStatusAction(formData: FormData) {
   // Re-opening (from terminal → non-terminal) clears the debriefed_at flag
   // so a future re-close requires a new debrief.
   const isTerminal = isTerminalOpportunityStatus(to_status);
+  // v2 (2026-07-13): derive the legacy outcome value from the v2 target
+  // tuple. writeDebrief + postPlaceholderAutoNote expect "won"|"lost"|"no_bid".
+  let flipOutcome: "won" | "lost" | "no_bid" = "won";
+  if (to_status === "pre_sale_closed") {
+    flipOutcome = to_sub_status === "lost" ? "lost" : "won";
+  } else if (to_status === "lost") flipOutcome = "lost";
+  else if (to_status === "no_bid") flipOutcome = "no_bid";
   if (isTerminal) {
     const skip = String(formData.get("debrief_skip") ?? "") === "1";
     const competitor = String(formData.get("debrief_competitor") ?? "").trim();
@@ -262,7 +288,7 @@ async function changeStatusAction(formData: FormData) {
       const statusLogId = (lastLog as { id: string } | null)?.id ?? null;
       const debriefResult = await writeDebrief({
         opportunityId: opp_id,
-        outcome: to_status as "won" | "lost" | "no_bid",
+        outcome: flipOutcome,
         competitorName: competitor || null,
         decidingFactor: decidingFactor || null,
         lessonsLearned: lessons || null,
@@ -288,7 +314,7 @@ async function changeStatusAction(formData: FormData) {
       // will nudge them to come back and fill out the structured debrief.
       await postPlaceholderAutoNote({
         opportunityId: opp_id,
-        outcome: to_status as "won" | "lost" | "no_bid",
+        outcome: flipOutcome,
         actorUserId: user.id,
       });
     }
@@ -325,13 +351,13 @@ async function reopenOpportunityAction(formData: FormData) {
   if (!user) redirect("/");
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
-  // Karan 2026-07-09 Phase A.1: v1.1 dropped `reopened` from the enum.
-  // Terminal → solicitation is the re-engage path (bid starts fresh
-  // at the top of the funnel). See constants.ts ALLOWED_TRANSITIONS:
-  // won/lost only allow → solicitation.
+  // v2 (2026-07-13): re-engage a decided bid by dropping it back at the
+  // top of the funnel. Qualifying / Solicitation is the equivalent of
+  // "fresh lead we might bid again."
   const result = await changeOpportunityStatus({
     opp_id,
-    to_status: "solicitation" as OpportunityStatus,
+    to_status: "qualifying" as OpportunityStatus,
+    to_sub_status: "solicitation",
     acting_user_id: user.id,
   });
   if (!result.ok) {
@@ -2721,7 +2747,7 @@ function ChangeStatusCard({
               Hooks the sibling <select name="to_status"> on the client side
               and fades in. Hides the loss_reason + note siblings above (the
               structured debrief replaces them). */}
-          <DebriefFields initialStatus={defaultTo ?? undefined} />
+          <DebriefFields initialStatus={defaultTo ?? undefined} initialSubStatus={opp.sub_status ?? undefined} />
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
             {/* Secondary action — submits status flip without filling
                 out debrief. Sets a hidden field so changeStatusAction
@@ -2856,7 +2882,7 @@ function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
         {/* DebriefFields normally watches a sibling <select name="to_status">.
             Here the status is already terminal — passing initialStatus
             renders the form fully open without a sibling select. */}
-        <DebriefFields initialStatus={opp.status} />
+        <DebriefFields initialStatus={opp.status} initialSubStatus={opp.sub_status ?? undefined} />
         <div className="flex justify-end pt-3 border-t border-ppp-charcoal-100 mt-4">
           {/* Karan 2026-07-07: "Skip for now" removed — the user is
               already on the Debrief tab intentionally + can just click
@@ -4622,12 +4648,22 @@ async function TimelineTab({ oppId }: { oppId: string }) {
         {log.map((entry) => {
           const when = new Date(entry.changed_at);
           const isTerminal = isTerminalOpportunityStatus(entry.to_status);
-          const isWin = entry.to_status === "won";
+          // v2 (2026-07-13): log stores top-level status only. A
+          // pre_sale_closed row is Won unless it has a loss_reason (Won can
+          // never carry loss_reason; changeOpportunityStatus clears it).
+          const isWin = entry.to_status === "pre_sale_closed" && !entry.loss_reason;
+          const isLossRow =
+            entry.to_status === "pre_sale_closed" && !!entry.loss_reason;
           const cls = isWin
             ? "border-l-emerald-500"
             : isTerminal
             ? "border-l-rose-400"
             : "border-l-ppp-charcoal-200";
+          const toLabel = isWin
+            ? "Won"
+            : isLossRow
+            ? "Lost"
+            : opportunityStatusLabel(entry.to_status);
           return (
             <li key={entry.id} className={`px-4 py-3 border-l-4 ${cls}`}>
               <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1">
@@ -4636,10 +4672,10 @@ async function TimelineTab({ oppId }: { oppId: string }) {
                     <>
                       {opportunityStatusLabel(entry.from_status)}
                       <span aria-hidden className="text-ppp-charcoal-400 mx-1.5">→</span>
-                      {opportunityStatusLabel(entry.to_status)}
+                      {toLabel}
                     </>
                   ) : (
-                    <>Created as {opportunityStatusLabel(entry.to_status)}</>
+                    <>Created as {toLabel}</>
                   )}
                 </div>
                 <span
@@ -4660,7 +4696,7 @@ async function TimelineTab({ oppId }: { oppId: string }) {
                   ever set it on a won row, we don't want the timeline
                   to look like the bid was lost. no_bid distinction now
                   lives inside loss_reason itself (Phase A.1). */}
-              {entry.loss_reason && entry.to_status === "lost" && (
+              {entry.loss_reason && isLossRow && (
                 <div className="text-[12px] text-rose-700 mb-1">
                   Reason: {opportunityLossReasonLabel(entry.loss_reason)}
                 </div>

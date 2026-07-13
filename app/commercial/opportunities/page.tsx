@@ -220,7 +220,7 @@ async function createDealFromPipelineAction(formData: FormData) {
 
   const account_id = String(formData.get("account_id") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
-  const status = String(formData.get("status") ?? "inquiry").trim();
+  const status = String(formData.get("status") ?? "qualifying").trim();
   const source = String(formData.get("source") ?? "").trim();
   const bidLowRaw = String(formData.get("bid_value_low_dollars") ?? "").trim();
   const bidHighRaw = String(formData.get("bid_value_high_dollars") ?? "").trim();
@@ -1269,7 +1269,7 @@ function NewDealSlideOut({
               <select
                 id="new-deal-status"
                 name="status"
-                defaultValue="solicitation"
+                defaultValue="qualifying"
                 className={SELECT_CLS}
                 style={SELECT_BG_STYLE}
               >
@@ -1788,14 +1788,12 @@ function KanbanBoard({
                 (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
                 0
               );
-              // Karan 2026-07-09 Phase A.1: reopened dropped from enum
-              // (v1.0 → v1.1 CEO correction). follow_up gets the tinted
-              // treatment since it's the "waiting on GC" bucket that
-              // benefits from visual differentiation.
-              const tone =
-                status === "follow_up"
-                  ? { col: "bg-cyan-50/40 border-cyan-200", head: "bg-cyan-50 border-cyan-200" }
-                  : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
+              // v2 (2026-07-13): tone the Post-Sale columns emerald-tinted to
+              // read as the delivery flow; Pre-Sale open columns stay neutral.
+              const isPostSale = (OPEN_COLUMNS_POST_SALE as readonly string[]).includes(status);
+              const tone = isPostSale
+                ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-50 border-emerald-200" }
+                : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
               return (
                 <React.Fragment key={status}>
                   {showLaneDivider && (
@@ -1826,7 +1824,7 @@ function KanbanBoard({
                     <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px]">
                       {colOpps.length === 0 ? (
                         <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
-                          {status === "follow_up" ? "Follow-ups waiting on the GC" : "Drop a bid here"}
+                          Drop a bid here
                         </li>
                       ) : (
                         colOpps.map((opp) => (

@@ -128,14 +128,33 @@ export function DealJourneyStrip({
   const lostBid = isLost(oppTuple);
   const inPostSale = lane === "post_sale";
 
+  // Karan 2026-07-13: when a deal is DECIDED at Pre-Sale (Won or Lost),
+  // collapse the journey to a single terminal pill — showing the full
+  // Pre-Sale row with a "Won" cap after it was noisy.
+  if (won || lostBid) {
+    const cap = won
+      ? { bg: "bg-emerald-500", label: "Won" }
+      : { bg: "bg-rose-500", label: "Lost" };
+    return (
+      <div className={`inline-flex items-center gap-2 ${className}`}>
+        <span className="inline-flex items-center h-6 px-2 rounded-md border text-[10px] font-bold uppercase tracking-widest bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200">
+          Pre-Sale
+        </span>
+        <span
+          className={`inline-flex items-center h-7 px-3 rounded-md text-[12px] font-bold text-white border ${cap.bg} border-transparent shadow-sm`}
+        >
+          {cap.label}
+        </span>
+      </div>
+    );
+  }
+
   // Pre-Sale row: always shown. Current index is the actual pre-sale
   // position OR the final "Closed" pill if the deal moved into Post-Sale
   // (i.e. Pre-Sale is fully complete).
   const preSaleActiveIdx =
     lane === "pre_sale" ? preIdx : PRE_SALE_STATUSES.length - 1;
-  const preFinalCap = lostBid ? "lost" : won ? "won" : null;
-  // Show sub-status chip in Pre-Sale row unless already Won (then the
-  // Post-Sale row's sub-status is the meaningful one).
+  // Show sub-status chip in Pre-Sale row.
   const showPreSubStatus = lane === "pre_sale" && !!sub_status;
 
   return (
@@ -147,7 +166,7 @@ export function DealJourneyStrip({
         labels={PRE_SALE_SHORT}
         currentIdx={preSaleActiveIdx}
         activeSubStatus={showPreSubStatus ? sub_status : null}
-        finalCap={preFinalCap}
+        finalCap={null}
       />
       {inPostSale && (
         <LaneRow

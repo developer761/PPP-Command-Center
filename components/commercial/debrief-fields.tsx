@@ -35,13 +35,33 @@ import {
  * sets `debrief_skip="1"` hidden field when the button is clicked).
  */
 
-// Karan 2026-07-09 Phase A.1: CEO enum drops no_bid. no_bid distinction
-// preserved via `lost_reason='no_bid'` on the opportunity row itself.
-// Debrief still fires on won/lost transitions.
-const TERMINAL_STATUSES = new Set(["won", "lost"]);
+// v2 (2026-07-13): terminal is (pre_sale_closed, won|lost). v1 legacy
+// "won"/"lost" values still accepted for backward compat. Maps the incoming
+// (status, sub_status) tuple to the legacy outcome the form + debrief
+// lib expect.
+function outcomeFromTuple(
+  status: string | null | undefined,
+  sub_status: string | null | undefined,
+): "won" | "lost" | "no_bid" | null {
+  if (!status) return null;
+  const s = status.toLowerCase();
+  if (s === "won") return "won";
+  if (s === "lost") return "lost";
+  if (s === "no_bid") return "no_bid";
+  if (s === "pre_sale_closed") {
+    const sub = sub_status?.toLowerCase();
+    if (sub === "won") return "won";
+    if (sub === "lost") return "lost";
+  }
+  return null;
+}
 
 type Props = {
   initialStatus?: string;
+  /** v2 sub_status. Required to distinguish Won vs Lost when the parent
+   *  status is `pre_sale_closed`. Optional for backward compat with v1
+   *  callers that still pass raw "won"/"lost" as initialStatus. */
+  initialSubStatus?: string;
   initialCompetitor?: string;
   initialDecidingFactor?: string;
   initialLessons?: string;
@@ -59,9 +79,10 @@ const DECIDING_FACTORS: Array<{ value: string; label: string }> = [
 ];
 
 export default function DebriefFields(props: Props) {
-  const initial = props.initialStatus?.toLowerCase() ?? "";
+  // v2: derive terminal from (status, sub_status) tuple. Handles both
+  // v2 (pre_sale_closed, won|lost) and v1 (raw "won"/"lost") shapes.
   const [terminal, setTerminal] = useState<"won" | "lost" | "no_bid" | null>(
-    TERMINAL_STATUSES.has(initial) ? (initial as "won" | "lost" | "no_bid") : null
+    outcomeFromTuple(props.initialStatus, props.initialSubStatus)
   );
   const sectionRef = useRef<HTMLElement>(null);
   // Track whether the user (vs the initial-render hydration) caused the
@@ -78,7 +99,11 @@ export default function DebriefFields(props: Props) {
       // Only the real "change" event marks user intent — the initial
       // synthetic call below should not trigger scroll-into-view.
       if (e.type === "change") userInitiatedRef.current = true;
-      setTerminal(TERMINAL_STATUSES.has(v) ? (v as "won" | "lost" | "no_bid") : null);
+      // v2: also check the sibling to_sub_status hidden input if the
+      // form has one (Kanban flip to closed passes both status + sub).
+      const subEl = document.querySelector<HTMLInputElement>('input[name="to_sub_status"]')
+        ?? document.querySelector<HTMLSelectElement>('select[name="to_sub_status"]');
+      setTerminal(outcomeFromTuple(v, subEl?.value));
     };
     select.addEventListener("change", onChange);
     onChange(new Event("init"));
