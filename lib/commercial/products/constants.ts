@@ -21,6 +21,7 @@ export const PRODUCT_UNITS = [
   "each",
   "linear_foot",
   "square_foot",
+  "linear_yard",
 ] as const;
 
 export type ProductUnit = (typeof PRODUCT_UNITS)[number];
@@ -38,6 +39,7 @@ const UNIT_LABELS: Record<ProductUnit, string> = {
   each: "each",
   linear_foot: "linear ft",
   square_foot: "sq ft",
+  linear_yard: "linear yd",
 };
 
 export function productCategoryLabel(c: string): string {
