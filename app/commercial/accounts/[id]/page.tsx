@@ -3134,6 +3134,26 @@ function AccountOpportunityRow({
           </svg>
         </div>
       </Link>
+      {/* Karan 2026-07-13: persistent "Debrief" entry point on decided
+          deal rows. Without it, the only way to reach the debrief was
+          the toast right after a Won drop. Amber pill for pending
+          debrief; emerald for filed. Renders below the row link so it
+          doesn't nest anchors. */}
+      {isTerminal && (
+        <div className="px-4 pb-3 -mt-1">
+          <Link
+            href={`/commercial/accounts/${accountId}/debrief/${opp.id}`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold min-h-[28px] ${
+              opp.win_loss_debriefed_at
+                ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                : "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
+            }`}
+          >
+            {opp.win_loss_debriefed_at ? "View debrief" : "Log debrief"}
+            <span aria-hidden>→</span>
+          </Link>
+        </div>
+      )}
       {/* Karan 2026-07-08 Batch 2: dropped the "QUICK FLIP" caps label —
           the placeholder text inside the select tells the same story
           without shouting. Terminal states still route to detail for
@@ -3586,10 +3606,10 @@ async function NotesTab({ accountId }: { accountId: string }) {
               </div>
               {isAuto && n.source_opportunity_id && (
                 <Link
-                  href={`/commercial/opportunities/${n.source_opportunity_id}`}
+                  href={`/commercial/accounts/${accountId}/debrief/${n.source_opportunity_id}`}
                   className="text-[11px] font-medium text-cc-brand-700 hover:text-cc-brand-800 shrink-0 underline underline-offset-2"
                 >
-                  {n.source_opportunity_title ?? "View opportunity"} →
+                  Open debrief →
                 </Link>
               )}
             </header>
