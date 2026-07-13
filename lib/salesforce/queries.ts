@@ -2473,8 +2473,35 @@ const MATERIALS_BUNDLE_CACHE_KEY = "materials-v1";
  * Generation counter is shared, so any SF writeback that clears full /
  * thin also clears this — consistent invalidation.
  */
-export async function loadMaterialsBundle(): Promise<SalesforceSnapshot> {
-  return cached(MATERIALS_BUNDLE_CACHE_KEY, async () => {
+export async function loadMaterialsBundle(
+  opts?: { forceRebuild?: boolean }
+): Promise<SalesforceSnapshot> {
+  const forceRebuild = !!opts?.forceRebuild;
+
+  const build = async (): Promise<SalesforceSnapshot> => {
+    // Cross-instance fast path — read the PRE-BUILT ~200KB materials bundle
+    // directly (serve-stale up to the 26h cap + background revalidate) instead
+    // of parsing the 5-10MB thin snapshot and re-deriving the bundle on every
+    // cold instance. This is the materials-page analog of the snapshot
+    // serve-stale fix. forceRebuild (cron / background warm) skips it so it
+    // genuinely refreshes.
+    const tSharedStart = Date.now();
+    const sharedHit = forceRebuild ? null : await readSharedSnapshot(MATERIALS_BUNDLE_CACHE_KEY);
+    if (sharedHit) {
+      if (sharedHit.isStale) scheduleBackgroundWarm();
+      console.log(
+        `[SF] materials-bundle ${sharedHit.isStale ? "STALE-HIT (revalidating)" : "WARM-HIT"} in ${Date.now() - tSharedStart}ms`
+      );
+      return sharedHit.snapshot;
+    }
+
+    // Miss → derive from the thin snapshot (itself serve-stale/warm) and
+    // populate the shared bundle cache for the next reader. NOTE: we do NOT
+    // pass forceRebuild down to the thin load even when rebuilding the bundle —
+    // the thin snapshot has its own warm/serve-stale path (and the cron
+    // refreshes it in its own step just before this), so forcing a second live
+    // thin SF pull here would just double the load. We re-derive the bundle
+    // from the latest available thin.
     const tStart = Date.now();
     const thin = await loadSalesforceSnapshot({ thin: true });
     const bundle = buildMaterialsBundle(thin);
@@ -2483,7 +2510,18 @@ export async function loadMaterialsBundle(): Promise<SalesforceSnapshot> {
     );
     void writeSharedSnapshot(MATERIALS_BUNDLE_CACHE_KEY, bundle);
     return bundle;
-  });
+  };
+
+  if (forceRebuild) {
+    const fresh = await build();
+    cache.set(MATERIALS_BUNDLE_CACHE_KEY, {
+      promise: Promise.resolve(fresh),
+      expiresAt: Date.now() + CACHE_TTL_MS,
+      generation: await getCurrentGeneration(),
+    });
+    return fresh;
+  }
+  return cached(MATERIALS_BUNDLE_CACHE_KEY, build);
 }
 
 function buildMaterialsBundle(thin: SalesforceSnapshot): SalesforceSnapshot {

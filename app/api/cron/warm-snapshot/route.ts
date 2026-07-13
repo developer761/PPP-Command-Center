@@ -50,16 +50,20 @@ export async function GET(request: Request) {
   // role/view-as resolution which the cron doesn't need.
   const sp: Record<string, string | string[] | undefined> = {};
 
-  // Rebuild the FULL snapshot first (snapshot-v6 — what the Overview dashboard
-  // reads, and the heaviest pull), then thin + materials in parallel. Running
-  // full on its own keeps us from triple-hammering the SF API at once.
-  // forceRebuild makes these bypass serve-stale so they genuinely refresh.
+  // Rebuild each cache SEQUENTIALLY: full → thin → materials. Two reasons:
+  // (1) we never hammer the SF API with concurrent full-snapshot pulls, and
+  // (2) the materials bundle re-derives from the thin snapshot, so rebuilding
+  // thin first means materials reuses the fresh thin (warm in this instance's
+  // in-memory cache) instead of triggering its own thin pull. forceRebuild
+  // makes each bypass serve-stale so they genuinely refresh.
   const [fullRes] = await Promise.allSettled([
     loadDashboardData(sp, { forceRebuild: true }),
   ]);
-  const [thinRes, matsRes] = await Promise.allSettled([
+  const [thinRes] = await Promise.allSettled([
     loadDashboardData(sp, { thin: true, forceRebuild: true }),
-    loadDashboardData(sp, { materials: true }),
+  ]);
+  const [matsRes] = await Promise.allSettled([
+    loadDashboardData(sp, { materials: true, forceRebuild: true }),
   ]);
 
   const result: Record<string, unknown> = {

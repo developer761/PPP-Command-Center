@@ -141,7 +141,7 @@ export async function loadDashboardData(
     // Falls back to the thin loader implicitly inside loadMaterialsBundle
     // if anything goes wrong (the cached() wrapper retries on rejection).
     const raw = opts?.materials
-      ? await loadMaterialsBundle()
+      ? await loadMaterialsBundle({ forceRebuild: opts?.forceRebuild })
       : await loadSalesforceSnapshot({ thin: opts?.thin, forceRebuild: opts?.forceRebuild });
     if (raw.reps.length === 0) {
       return { source: "mock", reason: "sf_returned_no_reps", snapshot: null, viewer };
