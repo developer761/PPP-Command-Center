@@ -55,6 +55,50 @@ async function requireCommercialUser(): Promise<string> {
   return user.id;
 }
 
+async function startProjectAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const account_id = String(formData.get("account_id") ?? "");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(account_id) || !UUID_RE.test(opp_id)) {
+    redirect("/commercial/accounts");
+  }
+  const opp = await getCommercialOpportunity(opp_id);
+  if (!opp || opp.account_id !== account_id) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+  }
+  // Belt-and-braces: only Won deals can start a project. The button
+  // itself already gates this — but a stale form POST could otherwise
+  // slip through and quietly re-fire the transition.
+  if (opp.status !== "pre_sale_closed" || opp.sub_status !== "won") {
+    redirect(
+      `/commercial/accounts/${account_id}/debrief/${opp_id}?error=` +
+        encodeURIComponent(
+          "Only Won deals can Start Project. Refresh — this deal isn't Won anymore."
+        )
+    );
+  }
+  const { changeOpportunityStatus } = await import(
+    "@/lib/commercial/opportunities/status"
+  );
+  const result = await changeOpportunityStatus({
+    opp_id,
+    to_status: "pre_construction",
+    to_sub_status: "coordination",
+    acting_user_id: userId,
+    note: "Started project — Won deal handed off to delivery.",
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/accounts/${account_id}/debrief/${opp_id}?error=` +
+        encodeURIComponent(result.error)
+    );
+  }
+  redirect(
+    `/commercial/accounts/${account_id}?tab=opportunities&project_started=${opp_id}`
+  );
+}
+
 async function submitDebriefAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
@@ -233,6 +277,14 @@ export default async function AccountDebriefPage({
           <DebriefFormCard opp={opp} accountId={id} />
         )}
 
+        {/* Phase E-6: Start Project handoff. Only surfaced once the debrief
+            is filed on a Won deal that's still at pre_sale_closed. This is
+            Katie's celebrated Won → delivery moment — the deal hops the
+            Pre-Sale / Post-Sale lane divider here. */}
+        {isWon(opp) && isDebriefed && opp.status === "pre_sale_closed" && (
+          <StartProjectCard accountId={id} oppId={dealId} />
+        )}
+
         {/* Legacy loss reason (pre-debrief data) */}
         {!isDebriefed && opp.loss_reason && (
           <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
@@ -403,5 +455,78 @@ function ReadonlyField({ label, value }: { label: string; value: string }) {
       </div>
       <div className="text-sm text-ppp-charcoal-800">{value}</div>
     </div>
+  );
+}
+
+/** Phase E-6 signature moment — Won → Pre-Construction handoff.
+ *  The deal has been Won AND debriefed; PPP is ready to actually deliver.
+ *  Renders emerald so the eye lands on it after the read-only debrief. */
+function StartProjectCard({
+  accountId,
+  oppId,
+}: {
+  accountId: string;
+  oppId: string;
+}) {
+  return (
+    <section className="relative bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 rounded-xl p-5 shadow-sm overflow-hidden">
+      <span
+        aria-hidden
+        className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500"
+      />
+      <div className="flex items-start gap-3 mb-3">
+        <div
+          className="shrink-0 w-9 h-9 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center"
+          aria-hidden
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-emerald-700"
+          >
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+          </svg>
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">
+            Ready to start the project?
+          </h2>
+          <p className="text-[12.5px] text-ppp-charcoal-600 mt-1 leading-relaxed">
+            This hops the deal from Pre-Sale into the delivery pipeline —
+            Pre-Construction / In Progress / Billing / Closed. The Pre-Sale
+            debrief above stays on file.
+          </p>
+        </div>
+      </div>
+      <form action={startProjectAction} className="flex justify-end">
+        <input type="hidden" name="account_id" value={accountId} />
+        <input type="hidden" name="opp_id" value={oppId} />
+        <button
+          type="submit"
+          className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-sm shadow-emerald-600/30 min-h-[44px] touch-manipulation"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          Start project
+        </button>
+      </form>
+    </section>
   );
 }

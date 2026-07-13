@@ -133,14 +133,19 @@ export async function changeOpportunityStatus(
     return { ok: false, error: "Account not found." };
   }
 
-  // Karan 2026-07-13: DAG check TEMPORARILY DISABLED for v2 testing so
-  // any transition works (e.g. Proposal → Pre-Construction skips the
-  // "must win first" gate). Re-enable in Phase E-4 once the cascading
-  // Status/Sub-Status pickers surface the transition rules inline and
-  // Katie's "Start Project" button explicitly walks the Won → Post-Sale
-  // handoff. The DAG data itself lives in ALLOWED_TRANSITIONS and is
-  // preserved for that reintroduction.
-  void isTransitionAllowed; // referenced when re-enabled
+  // Phase E-6 (Karan 2026-07-13): DAG check RE-ENABLED. Skipped when
+  // top-level status isn't changing (sub_status-only flips, e.g.
+  // proposal/sent → proposal/follow_up, don't need DAG scrutiny — the
+  // sub_status whitelist enforces validity at the DB CHECK level).
+  if (
+    beforeRow.status !== input.to_status &&
+    !isTransitionAllowed(beforeRow.status as OpportunityStatus, input.to_status)
+  ) {
+    return {
+      ok: false,
+      error: `Can't move from ${beforeRow.status} to ${input.to_status} directly.`,
+    };
+  }
 
   // Karan 2026-07-08: block reversing a Won deal that already has live
   // invoices attached. Won → reopened → lost is a legal DAG path, but if
@@ -175,18 +180,35 @@ export async function changeOpportunityStatus(
     }
   }
 
-  // Karan 2026-07-13: structural-fields gate (client_name / location_short
-  // / estimator required at estimating+) TEMPORARILY DISABLED so v2
-  // transitions can move freely for testing. Restore when Phase E-4
-  // cascading picker forms + inline field-capture ship — the gate makes
-  // sense once the UI can prompt for the missing fields inline instead
-  // of dead-ending the user in an error toast.
-  //
-  // Also: v2 model — "estimating+" bucket = any status EXCEPT qualifying
-  // and the closed-lost sub (declined bids don't need structural fields).
+  // Phase E-6 (Karan 2026-07-13): structural-fields gate RE-ENABLED.
+  // v2 rule: moving Qualifying → anything else requires the deal to
+  // carry the CEO-mandated structural fields (client_name +
+  // location_short + estimator, either FK'd user or free-text name).
+  // Skipped for:
+  //   - sub_status-only flips within Qualifying (solicitation → rfp → estimating sub)
+  //   - the Lost sub (declined bids don't need structural fields — you
+  //     can no-bid a solicitation without ever pricing it)
+  //   - post-sale transitions (once the deal is Won and moving through
+  //     delivery, the structural fields are already on the row)
   const targetIsLost =
     input.to_status === "pre_sale_closed" && input.to_sub_status === "lost";
-  void targetIsLost; // referenced below when re-enabled
+  const leavingQualifying =
+    beforeRow.status === "qualifying" && input.to_status !== "qualifying";
+  if (leavingQualifying && !targetIsLost) {
+    const missing: string[] = [];
+    if (!beforeRow.client_name?.trim()) missing.push("client name");
+    if (!beforeRow.location_short?.trim()) missing.push("site location");
+    const hasEstimator = Boolean(
+      beforeRow.estimator_user_id?.trim() || beforeRow.estimator_name?.trim()
+    );
+    if (!hasEstimator) missing.push("estimator");
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        error: `Set the ${missing.join(", ")} on this deal before moving out of Qualifying.`,
+      };
+    }
+  }
 
   // Loss-reason enforcement when the closure is a Lost.
   // v2 (migration 052): "Lost" is Pre-Sale/Closed/Lost — i.e. status =

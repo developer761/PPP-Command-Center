@@ -155,6 +155,10 @@ type SP = Promise<{
   new_deal?: string;
   created?: string;
   created_title?: string;
+  /** Phase E-6: "Start project" fired on a Won debrief. Value is the
+   *  opp id that just hopped from Pre-Sale to Pre-Construction so the
+   *  toast can name the deal. */
+  project_started?: string;
   /** Phase B (2026-07-09) — populated by createDealInlineAction when
    *  a match on client_name + location_short exists on this account.
    *  Renders an amber "Possible duplicate" banner on the New Deal form
@@ -550,6 +554,12 @@ export default async function CommercialAccountDetailPage({
           overview={overview}
           openNewDeal={sp.new_deal === "1"}
           createdTitle={sp.created === "1" ? sp.created_title ?? null : null}
+          projectStartedOppId={
+            typeof sp.project_started === "string" &&
+            /^[0-9a-f-]{36}$/i.test(sp.project_started)
+              ? sp.project_started
+              : null
+          }
           editDealId={
             typeof sp.edit === "string" && /^[0-9a-f-]{36}$/i.test(sp.edit)
               ? sp.edit
@@ -2732,11 +2742,15 @@ async function OpportunitiesTab({
   deletedFlash,
   errorMessage,
   duplicateWarning,
+  projectStartedOppId,
 }: {
   accountId: string;
   overview: AccountOverview | null;
   openNewDeal?: boolean;
   createdTitle?: string | null;
+  /** Phase E-6 signature moment: emerald toast when a Won deal was just
+   *  handed off to Pre-Construction via the debrief page's Start Project. */
+  projectStartedOppId?: string | null;
   /** When set, open a right-side slide-out edit sheet for the deal.
    *  Loaded from `?edit=<uuid>` on the URL. Cross-account access
    *  blocked by the account_id-scoped fetch below (the sheet only
@@ -2818,6 +2832,25 @@ async function OpportunitiesTab({
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start justify-between gap-3">
           <span>
             <strong>{decodeURIComponent(createdTitle)}</strong> logged.
+          </span>
+          <Link
+            href={`/commercial/accounts/${accountId}?tab=opportunities`}
+            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+          >
+            Dismiss
+          </Link>
+        </div>
+      )}
+      {projectStartedOppId && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
+          <span className="inline-flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+            <span>
+              Project started — deal moved into <strong>Pre-Construction</strong>.
+              Delivery pipeline takes it from here.
+            </span>
           </span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities`}
