@@ -1765,11 +1765,15 @@ function KanbanBoard({
         <div className="flex flex-wrap items-center gap-3 text-[10.5px] font-bold uppercase tracking-widest">
           <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-cc-brand-50 text-cc-brand-800 border border-cc-brand-200">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-brand-600" />
-            Pre-Sale · {OPEN_COLUMNS_PRE_SALE.length + TERMINAL_COLUMNS.length} columns
+            Pre-Sale (sales flow)
           </span>
           <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-            Post-Sale · {OPEN_COLUMNS_POST_SALE.length} columns
+            Post-Sale (delivery flow)
+          </span>
+          <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 border border-ppp-charcoal-200">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-ppp-charcoal-500" />
+            Closed
           </span>
         </div>
         <div className="overflow-x-auto -mx-2 px-2 pb-2">

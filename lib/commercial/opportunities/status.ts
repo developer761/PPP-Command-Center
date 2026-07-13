@@ -152,50 +152,18 @@ export async function changeOpportunityStatus(
     }
   }
 
-  // Phase B (Plan v1.1) — structural-field guard. Brendan's spec says
-  // Estimating "requires assigning an estimator." Extended to any status
-  // downstream of Qualifying since every downstream stage needs those
-  // fields too.
-  // v2 (migration 052): the "estimating+" bucket in v2 speak is any
-  // status EXCEPT qualifying (and the closed-lost sub, which doesn't need
-  // structural fields to record a decline).
-  const REQUIRES_STRUCTURAL_FIELDS: ReadonlySet<string> = new Set([
-    "estimating",
-    "proposal",
-    "pre_sale_closed",
-    "pre_construction",
-    "in_progress",
-    "billing",
-    "post_sale_closed",
-  ]);
+  // Karan 2026-07-13: structural-fields gate (client_name / location_short
+  // / estimator required at estimating+) TEMPORARILY DISABLED so v2
+  // transitions can move freely for testing. Restore when Phase E-4
+  // cascading picker forms + inline field-capture ship — the gate makes
+  // sense once the UI can prompt for the missing fields inline instead
+  // of dead-ending the user in an error toast.
+  //
+  // Also: v2 model — "estimating+" bucket = any status EXCEPT qualifying
+  // and the closed-lost sub (declined bids don't need structural fields).
   const targetIsLost =
     input.to_status === "pre_sale_closed" && input.to_sub_status === "lost";
-  if (REQUIRES_STRUCTURAL_FIELDS.has(input.to_status) && !targetIsLost) {
-    const missing: string[] = [];
-    if (!beforeRow.client_name?.trim()) missing.push("client name");
-    if (!beforeRow.location_short?.trim()) missing.push("site location");
-    // Karan 2026-07-10: manual estimator entry (migration 049) — accept
-    // either the FK OR a non-empty free-text name to satisfy the
-    // estimating+ gate. Subs / GC-supplied estimators aren't in the
-    // auth.users roster but the deal still needs to move.
-    if (!beforeRow.estimator_user_id && !beforeRow.estimator_name?.trim()) missing.push("estimator");
-    if (missing.length > 0) {
-      const label =
-        missing.length === 1
-          ? missing[0]
-          : missing.slice(0, -1).join(", ") + " and " + missing.slice(-1)[0];
-      // Karan 2026-07-10: pointer used to say "Structure section" but
-      // the audit-fix batch (commit 2ee6fc9) merged Structure + Project
-      // into a single "Details" section on the DealEditSheet. Also
-      // humanize the status name so the toast reads like plain English
-      // instead of a snake_case enum.
-      const toStatusLabel = opportunityStatusLabel(input.to_status).toLowerCase();
-      return {
-        ok: false,
-        error: `Set the ${label} on this opportunity before moving to ${toStatusLabel}. Open the opportunity's Edit sheet → Details section.`,
-      };
-    }
-  }
+  void targetIsLost; // referenced below when re-enabled
 
   // Loss-reason enforcement when the closure is a Lost.
   // v2 (migration 052): "Lost" is Pre-Sale/Closed/Lost — i.e. status =

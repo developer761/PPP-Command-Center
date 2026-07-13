@@ -145,22 +145,24 @@ export function opportunityStatusLabelV2(
   if (!s) return "Unknown";
   const v2 = (STATUS_LABELS as Record<string, string>)[s];
   if (v2) return v2;
-  // v1.1 fallback labels — displayed as "(retired)" so stale UIs are obvious.
+  // v1 legacy labels — these values are still used as Kanban drop-target
+  // keys ("won"/"lost") in the terminal cluster, so the labels here are
+  // plain human-readable strings, not debug-tagged with "(v1)".
   const v1Retired: Record<string, string> = {
-    solicitation: "Solicitation (v1)",
-    rfp: "RFP (v1)",
-    proposal_pending_approval: "Proposal pending (v1)",
-    proposal_sent: "Proposal sent (v1)",
-    follow_up: "Follow up (v1)",
-    won: "Won (v1)",
-    lost: "Lost (v1)",
-    inquiry: "Inquiry (v1.0)",
-    negotiating: "Negotiating (v1.0)",
-    on_hold: "On hold (v1.0)",
-    no_bid: "No bid (v1.0)",
-    reopened: "Reopened (v1.0)",
-    site_visit_scheduled: "Site visit scheduled (v1.0)",
-    site_visit_done: "Site visit done (v1.0)",
+    solicitation: "Solicitation",
+    rfp: "RFP",
+    proposal_pending_approval: "Proposal pending",
+    proposal_sent: "Proposal sent",
+    follow_up: "Follow up",
+    won: "Won",
+    lost: "Lost",
+    inquiry: "Inquiry",
+    negotiating: "Negotiating",
+    on_hold: "On hold",
+    no_bid: "No bid",
+    reopened: "Reopened",
+    site_visit_scheduled: "Site visit scheduled",
+    site_visit_done: "Site visit done",
   };
   return (
     v1Retired[s] ?? s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ")
