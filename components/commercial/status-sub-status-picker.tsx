@@ -177,9 +177,17 @@ export function StatusSubStatusPicker({
           </select>
           <p className={HINT_CLS}>
             {status === "proposal"
-              ? "Sent = quote out with the GC. Follow-up = we're chasing them."
+              ? "Proposal Sent = quote out with the GC. Follow Up = we're chasing them."
               : status === "qualifying"
-              ? "Solicitation = they invited a bid. RFP = formal package. Estimating = we're pricing."
+              ? "Solicitation = they invited a bid. RFP = formal package landed. Estimating = we're putting a price together."
+              : status === "estimating"
+              ? "Estimating = we're pricing. Proposal Pending Approval = priced, waiting on internal sign-off."
+              : status === "in_progress"
+              ? "WIP On Site = crew is actively painting. WIP On Hold = paused (weather, access, GC change order, etc.)."
+              : status === "billing"
+              ? "Substantial Completion = walkthrough done. Completed and Invoiced = final invoice out."
+              : status === "post_sale_closed"
+              ? "Completed / Close-Out Docs = O&M / warranty / attic stock pending. Closed = fully done."
               : "Where this deal sits inside the lane."}
           </p>
         </label>

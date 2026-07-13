@@ -71,7 +71,11 @@ type V2Status = (typeof OPPORTUNITY_STATUSES)[number];
 
 export const SUB_STATUSES_BY_STATUS = {
   qualifying: ["solicitation", "rfp", "estimating"] as const,
-  estimating: ["proposal_pending_approval"] as const,
+  // Katie's 2026-07-13 spec: `estimating` top-level has TWO sub-statuses,
+  // "Estimating" (we're actively pricing) and "Proposal Pending Approval"
+  // (priced, awaiting sign-off). Migration 053 widens the DB CHECK to
+  // match. See supabase/migrations/053_add_estimating_sub_status.sql.
+  estimating: ["estimating", "proposal_pending_approval"] as const,
   proposal: ["sent", "follow_up"] as const,
   pre_sale_closed: ["won", "lost"] as const,
   pre_construction: ["coordination", "ready_to_mobilize"] as const,
@@ -98,10 +102,13 @@ export function isValidSubStatus(
 }
 
 /** Default sub-status when a caller flips to a new status without
- *  specifying one. Chooses the "starting" sub-status of each lane. */
+ *  specifying one. Chooses the "starting" sub-status of each lane —
+ *  the natural entry point when a deal first moves in. Estimating's
+ *  natural entry is "estimating" (we're pricing), not
+ *  "proposal_pending_approval" (that comes AFTER pricing). */
 export const DEFAULT_SUB_STATUS_BY_STATUS: Record<V2Status, string> = {
   qualifying: "solicitation",
-  estimating: "proposal_pending_approval",
+  estimating: "estimating",
   proposal: "sent",
   pre_sale_closed: "won",
   pre_construction: "coordination",
@@ -192,30 +199,34 @@ export function oppStatusDisplayLabel(
   return opportunityStatusLabelV2(status);
 }
 
+// Katie's 2026-07-13 status structure — labels below are copied verbatim
+// from her spec so the UI matches the language she uses with Alex and
+// the delivery team. Do NOT abbreviate ("Sent" → "Proposal Sent",
+// "On site" → "WIP On Site", etc.) without checking with Katie.
 const SUB_STATUS_LABELS: Record<string, string> = {
   // qualifying
   solicitation: "Solicitation",
-  rfp: "RFP",
-  estimating: "Estimating (intake)", // clarify vs the top-level Estimating status
+  rfp: "Request for Proposal (RFP)",
+  estimating: "Estimating",
   // estimating (top-level)
-  proposal_pending_approval: "Pending approval",
+  proposal_pending_approval: "Proposal Pending Approval",
   // proposal
-  sent: "Sent",
-  follow_up: "Follow up",
+  sent: "Proposal Sent",
+  follow_up: "Follow Up",
   // pre_sale_closed
   won: "Won",
   lost: "Lost",
   // pre_construction
   coordination: "Coordination",
-  ready_to_mobilize: "Ready to mobilize",
+  ready_to_mobilize: "Ready to Mobilize",
   // in_progress
-  wip_on_site: "On site",
-  wip_on_hold: "On hold",
+  wip_on_site: "WIP On Site",
+  wip_on_hold: "WIP On Hold",
   // billing
-  substantial_completion: "Substantial completion",
-  completed_and_invoiced: "Completed & invoiced",
+  substantial_completion: "Substantial Completion",
+  completed_and_invoiced: "Completed and Invoiced",
   // post_sale_closed
-  closeout: "Close-out docs",
+  closeout: "Completed / Close-Out Docs",
   closed: "Closed",
 };
 
