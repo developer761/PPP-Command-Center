@@ -57,22 +57,33 @@ export async function POST(
     return NextResponse.json({ error: "invalid_opportunity_id" }, { status: 400 });
   }
 
-  let body: { to_status?: string };
+  let body: { to_status?: string; to_sub_status?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
-  const to_status = String(body.to_status ?? "");
+  const rawToStatus = String(body.to_status ?? "");
+  let to_status = rawToStatus;
+  let to_sub_status: string | undefined = body.to_sub_status ? String(body.to_sub_status) : undefined;
+  // v2 (2026-07-13): translate legacy v1 shorthand "won"/"lost"/"no_bid"
+  // (still used as Kanban drop-target keys) into the v2 (status, sub_status)
+  // tuple. Post-migration-052, "won" alone is not a valid top-level status.
+  const isLostDrop = rawToStatus === "lost" || rawToStatus === "no_bid" ||
+    (rawToStatus === "pre_sale_closed" && to_sub_status === "lost");
+  const isWonDrop = rawToStatus === "won" ||
+    (rawToStatus === "pre_sale_closed" && to_sub_status === "won");
+  if (rawToStatus === "won") { to_status = "pre_sale_closed"; to_sub_status = "won"; }
+  else if (rawToStatus === "lost" || rawToStatus === "no_bid") { to_status = "pre_sale_closed"; to_sub_status = "lost"; }
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     return NextResponse.json({ error: "invalid_status" }, { status: 400 });
   }
-  // Lost / No-bid REQUIRE loss_reason — bounce the user to the detail
-  // page where the structured DebriefFields can capture it. Won flips
-  // immediately (no reason required).
-  if (to_status === "lost" || to_status === "no_bid") {
+  // Lost REQUIRES loss_reason — bounce the user to the detail page where
+  // the structured DebriefFields can capture it. Won flips immediately
+  // (no reason required).
+  if (isLostDrop) {
     return NextResponse.json(
-      { error: "terminal_status_needs_detail_page", to_status },
+      { error: "terminal_status_needs_detail_page", to_status: "pre_sale_closed", to_sub_status: "lost" },
       { status: 409 }
     );
   }
@@ -92,6 +103,7 @@ export async function POST(
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: to_status as OpportunityStatus,
+    to_sub_status,
     acting_user_id: auth.user.id,
   });
   if (!result.ok) {
@@ -101,7 +113,7 @@ export async function POST(
   // reflects the closure instantly. Client redirects to the opp page
   // with `?just_closed=1` so the DebriefOnlyCard surfaces for optional
   // structured-debrief follow-through.
-  if (to_status === "won") {
+  if (isWonDrop) {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({
       opportunityId: opp_id,
