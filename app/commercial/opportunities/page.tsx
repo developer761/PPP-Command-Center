@@ -202,7 +202,15 @@ async function quickFlipStatusAction(formData: FormData) {
   if (isWonFlip) {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
-    redirect(`/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`);
+    // Karan 2026-07-13: debrief now lives under the account. Look up the
+    // deal's account_id and route the Won-drop celebration into the
+    // account-scoped debrief page so the user never leaves the account.
+    const { getCommercialOpportunity } = await import("@/lib/commercial/opportunities/db");
+    const flipped = await getCommercialOpportunity(opp_id);
+    if (flipped) {
+      redirect(`/commercial/accounts/${flipped.account_id}/debrief/${opp_id}?just_closed=1`);
+    }
+    redirect(buildFlipReturnHref(returnHref, "status_ok", "1"));
   }
   redirect(buildFlipReturnHref(returnHref, "status_ok", "1"));
 }

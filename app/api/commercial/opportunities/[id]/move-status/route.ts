@@ -110,9 +110,10 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
   // For Won, drop the placeholder auto-note so the account timeline
-  // reflects the closure instantly. Client redirects to the opp page
-  // with `?just_closed=1` so the DebriefOnlyCard surfaces for optional
-  // structured-debrief follow-through.
+  // reflects the closure instantly. Client redirects to the account-
+  // scoped debrief page (Karan 2026-07-13: debrief no longer lives
+  // under /commercial/opportunities/[id]; it's now under the account).
+  let wonRedirectUrl: string | null = null;
   if (isWonDrop) {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
     await postPlaceholderAutoNote({
@@ -120,6 +121,19 @@ export async function POST(
       outcome: "won",
       actorUserId: auth.user.id,
     });
+    // Look up account_id so the client can jump into the account-
+    // scoped debrief page. Falls back to the opp detail as a last
+    // resort (should never fire — the opp exists because the flip
+    // just succeeded).
+    const { data: flipped } = await sb
+      .from("commercial_opportunities")
+      .select("account_id")
+      .eq("id", opp_id)
+      .maybeSingle();
+    const accountId = (flipped as { account_id: string } | null)?.account_id ?? null;
+    wonRedirectUrl = accountId
+      ? `/commercial/accounts/${accountId}/debrief/${opp_id}?just_closed=1`
+      : `/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`;
   }
   // If the drag flipped a terminal opp back to an active state (e.g.
   // dragged Won → Estimating), clear the debriefed_at flag so a future
@@ -132,5 +146,5 @@ export async function POST(
     const { clearDebriefFlagOnReopen } = await import("@/lib/commercial/win-loss/debrief");
     await clearDebriefFlagOnReopen(opp_id, auth.user.id);
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, redirect_url: wonRedirectUrl });
 }

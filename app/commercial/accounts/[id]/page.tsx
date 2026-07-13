@@ -4808,6 +4808,36 @@ function DealEditSheet({
             swallowed by the outer edit form (Delete button silently
             did nothing). Fixed. */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-ppp-charcoal-50/50">
+        {/* Karan 2026-07-13: on decided deals surface a link to the
+            account-scoped debrief page. Without this the user has no
+            way to reach the debrief form after the initial Won-drop
+            toast disappears. Amber tint on pending, emerald on filed. */}
+        {isTerminalOpportunityStatus(deal.status) && (
+          <div
+            className={`rounded-lg px-4 py-3 flex items-center justify-between gap-3 text-sm ${
+              deal.win_loss_debriefed_at
+                ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                : "bg-amber-50 border border-amber-200 text-amber-800"
+            }`}
+          >
+            <span className="min-w-0">
+              {deal.win_loss_debriefed_at
+                ? "Win/Loss debrief on file. View or add a follow-up."
+                : "Log the Win/Loss debrief — feeds the quarterly report."}
+            </span>
+            <Link
+              href={`/commercial/accounts/${accountId}/debrief/${deal.id}`}
+              className={`shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold min-h-[32px] ${
+                deal.win_loss_debriefed_at
+                  ? "bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                  : "bg-white border border-amber-300 text-amber-800 hover:bg-amber-100"
+              }`}
+            >
+              {deal.win_loss_debriefed_at ? "View debrief" : "Open debrief"}
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
+        )}
         {errorMessage && (
           <div
             role="alert"

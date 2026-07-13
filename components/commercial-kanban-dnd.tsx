@@ -94,14 +94,19 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
         flashError(json.error || "Couldn't move that deal.");
         return;
       }
-      // Won flips like any other status, but we ALSO route the user to
-      // the opp page so the DebriefOnlyCard is right there for optional
-      // structured-debrief follow-through. Server already dropped the
-      // placeholder auto-note in the move-status API.
+      // Won flips route to the account-scoped debrief page (Karan
+      // 2026-07-13: debrief lives under the account, not the opps
+      // detail). The API returns `redirect_url` with the resolved
+      // /commercial/accounts/[id]/debrief/[dealId] path so the client
+      // doesn't need to know account_id up-front.
       if (toStatus === "won") {
         setNavigating("won");
+        const nextUrl =
+          typeof json.redirect_url === "string" && json.redirect_url
+            ? json.redirect_url
+            : `/commercial/opportunities/${oppId}?tab=debrief&just_closed=1`;
         requestAnimationFrame(() => {
-          window.location.href = `/commercial/opportunities/${oppId}?tab=debrief&just_closed=1`;
+          window.location.href = nextUrl;
         });
         return;
       }
