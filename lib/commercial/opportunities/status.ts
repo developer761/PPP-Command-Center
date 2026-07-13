@@ -47,6 +47,22 @@ export function allowedNextStatuses(from: OpportunityStatus): ReadonlyArray<Oppo
   return (ALLOWED_TRANSITIONS[from] ?? []) as ReadonlyArray<OpportunityStatus>;
 }
 
+/** Narrower list for the Kanban / list "Move to…" dropdown. Karan
+ *  2026-07-13: on a Won card the dropdown should only offer "Reopen".
+ *  The pre_sale_closed → pre_construction transition ("Start project")
+ *  is a distinct workflow that lives on the Win debrief page — mixing
+ *  it into "Move to…" makes it look like Won deals can just be moved
+ *  into the delivery pipeline as a quiet status flip. */
+export function quickFlipNextStatuses(
+  from: OpportunityStatus
+): ReadonlyArray<OpportunityStatus> {
+  const all = allowedNextStatuses(from);
+  if (from === "pre_sale_closed") {
+    return all.filter((s) => s === "qualifying") as ReadonlyArray<OpportunityStatus>;
+  }
+  return all;
+}
+
 /** Is `from → to` a valid DAG transition? Returns false for unknown
  *  statuses too (defense in depth). */
 export function isTransitionAllowed(from: OpportunityStatus, to: OpportunityStatus): boolean {

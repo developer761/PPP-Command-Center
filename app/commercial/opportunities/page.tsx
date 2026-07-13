@@ -65,7 +65,7 @@ import {
   isFollowUp,
 } from "@/lib/commercial/opportunities/constants";
 import {
-  allowedNextStatuses,
+  quickFlipNextStatuses,
   changeOpportunityStatus,
   listCurrentStatusEnteredAtByOpp,
 } from "@/lib/commercial/opportunities/status";
@@ -474,9 +474,10 @@ export default async function CommercialOpportunitiesPage({
   const viewToggleHref = (target: "list" | "kanban" | "customer") => {
     const p = new URLSearchParams(baseParams);
     p.delete("view");
-    if (target === "list") p.set("view", "list");
-    else if (target === "kanban") p.set("view", "kanban");
-    // "customer" is the default; no ?view= param.
+    // Karan 2026-07-09 PM flipped default to "list", so "customer" now
+    // needs an explicit ?view=customer param — dropping it made the
+    // "By customer" button silently render as List (2026-07-13 fix).
+    p.set("view", target);
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
     const qs = p.toString();
@@ -1995,7 +1996,7 @@ function KanbanCard({
    *  form + trims the meta band to just title + bid. */
   compact?: boolean;
 }) {
-  const nextStatuses = allowedNextStatuses(opp.status);
+  const nextStatuses = quickFlipNextStatuses(opp.status);
   const days = statusEnteredAt
     ? Math.floor((Date.now() - new Date(statusEnteredAt).getTime()) / MS_PER_DAY)
     : null;
@@ -2284,7 +2285,7 @@ function OpportunityRow({
     : null;
   const defaultProb = DEFAULT_PROBABILITY_BY_STATUS[opportunity.status] ?? null;
   const probOverridden = defaultProb !== null && opportunity.probability_pct !== defaultProb;
-  const nextStatuses = allowedNextStatuses(opportunity.status);
+  const nextStatuses = quickFlipNextStatuses(opportunity.status);
   // Karan 2026-07-11 (signature-moments): days-idle heat treatment on
   // open deals only. Terminal statuses (won/lost/no_bid) aren't "idle"
   // — they closed intentionally. Amber at 7 days stuck, rose at 14.
@@ -2892,7 +2893,7 @@ function CustomerQuickSheet({
               <ul className="space-y-2">
                 {openDeals.map((d) => {
                   const isFocused = d.id === focusOppId;
-                  const nextStatuses = allowedNextStatuses(d.status);
+                  const nextStatuses = quickFlipNextStatuses(d.status);
                   return (
                     <li
                       key={d.id}

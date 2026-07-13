@@ -79,7 +79,7 @@ import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
-  allowedNextStatuses,
+  quickFlipNextStatuses,
   changeOpportunityStatus,
 } from "@/lib/commercial/opportunities/status";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
@@ -3034,7 +3034,7 @@ function AccountOpportunityRow({
   // DAG-filtered next statuses for inline quick-flip. Empty list →
   // dropdown hides (terminal states have no forward motion; reopened
   // is the only legal exit and that's handled on the detail page).
-  const nextStatuses = allowedNextStatuses(opp.status);
+  const nextStatuses = quickFlipNextStatuses(opp.status);
   const isTerminal = TERMINAL_STATUSES.has(opp.status);
   const bidLabel = formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents);
   return (

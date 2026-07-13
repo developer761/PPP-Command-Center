@@ -43,17 +43,15 @@ type SP = Promise<{
 }>;
 
 async function requireCommercialUser(): Promise<string> {
+  // The /commercial layout already gates on has_new_platform_access using
+  // the cached service-role profile fetch. Repeating that check here just
+  // needs to grab the auth user; if the layout let us through, we're in.
+  // (Karan 2026-07-13: an earlier version used the auth-scoped client to
+  // re-check the profile row — RLS timing sometimes made that lookup miss
+  // and bounced the user to `/`, which surfaced as "the redirect is broken".)
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("has_new_platform_access")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (!(profile as { has_new_platform_access?: boolean } | null)?.has_new_platform_access) {
-    redirect("/");
-  }
   return user.id;
 }
 
