@@ -38,6 +38,15 @@ export async function resolveProductPrice({
   atDate?: string;
 }): Promise<ResolvedPrice> {
   const sb = commercialDb();
+  // Reject malformed atDate — the resolution logic below does a raw
+  // string compare (`eff <= today`) which silently misbehaves on
+  // "tomorrow" or "2026-13-40". Better to fail fast than to write an
+  // override that resolves against a wrong anchor.
+  if (atDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(atDate)) {
+    throw new Error(
+      `resolveProductPrice: atDate must be YYYY-MM-DD, got ${JSON.stringify(atDate)}`
+    );
+  }
   // Anchor "today" in America/New_York — PPP's operational timezone.
   const today =
     atDate ??

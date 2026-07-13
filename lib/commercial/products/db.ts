@@ -323,7 +323,53 @@ export async function upsertCustomerPrice(
     })
     .select("*")
     .single();
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // TOCTOU: two concurrent saves can both pass the existence
+    // check above and race to INSERT. The unique index catches it
+    // (Postgres 23505). Instead of surfacing a raw DB error, re-read
+    // the winner and UPDATE it — the end state matches what the user
+    // asked for either way.
+    if (
+      error.code === "23505" ||
+      /duplicate key|unique constraint/i.test(error.message)
+    ) {
+      const { data: winner } = await sb
+        .from("commercial_customer_prices")
+        .select("*")
+        .eq("account_id", input.account_id)
+        .eq("product_id", input.product_id)
+        .filter(
+          "effective_from",
+          effective === null ? "is" : "eq",
+          effective === null ? null : (effective as unknown as string)
+        )
+        .maybeSingle();
+      if (winner) {
+        const before = winner as CommercialCustomerPrice;
+        const { data: after, error: updErr } = await sb
+          .from("commercial_customer_prices")
+          .update({
+            unit_price_cents: input.unit_price_cents,
+            notes: input.notes?.trim() || null,
+            updated_by_user_id: input.actor_user_id ?? null,
+          })
+          .eq("id", before.id)
+          .select("*")
+          .single();
+        if (updErr) return { ok: false, error: updErr.message };
+        const price = after as CommercialCustomerPrice;
+        await logUpdate(
+          "commercial_customer_prices",
+          price.id,
+          before,
+          price,
+          input.actor_user_id ?? null
+        );
+        return { ok: true, price };
+      }
+    }
+    return { ok: false, error: error.message };
+  }
   const price = data as CommercialCustomerPrice;
   await logInsert(
     "commercial_customer_prices",
