@@ -9,6 +9,7 @@ import {
   productCategoryLabel,
   productUnitLabel,
 } from "@/lib/commercial/products/constants";
+import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 /**
  * Product Library — Phase D catalog. Alex + Katie curate the SKU list
@@ -131,7 +132,8 @@ export default async function ProductsCatalogPage({
           <select
             name="category"
             defaultValue={category}
-            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+            className={SELECT_CLS}
+            style={SELECT_BG_STYLE}
           >
             <option value="">All categories</option>
             {PRODUCT_CATEGORIES.map((c) => (
@@ -170,7 +172,7 @@ export default async function ProductsCatalogPage({
           {isAdmin && !q && !category && (
             <Link
               href="/commercial/pre-job/products/new"
-              className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700"
+              className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]"
             >
               Add the first one
             </Link>

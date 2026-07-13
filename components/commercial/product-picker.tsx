@@ -240,7 +240,7 @@ export default function ProductPicker({
                 type="button"
                 onClick={clearPick}
                 aria-label="Clear picked product"
-                className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 inline-flex items-center justify-center rounded-md text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50"
+                className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 inline-flex items-center justify-center rounded-md text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M6 6l12 12 M18 6l-12 12" />
@@ -261,7 +261,7 @@ export default function ProductPicker({
           ref={listRef}
           id="product-picker-listbox"
           role="listbox"
-          className="absolute z-30 left-0 right-0 mt-1 max-h-72 overflow-y-auto rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg"
+          className="absolute z-50 left-0 right-0 mt-1 max-h-72 overflow-y-auto rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg"
         >
           {results.map((p, idx) => (
             <li
@@ -275,7 +275,7 @@ export default function ProductPicker({
                 pick(p);
               }}
               onMouseEnter={() => setHighlight(idx)}
-              className={`px-3 py-2 cursor-pointer border-b border-ppp-charcoal-50 last:border-b-0 ${
+              className={`px-3 py-2 cursor-pointer border-b border-ppp-charcoal-100 last:border-b-0 ${
                 idx === highlight
                   ? "bg-cc-brand-50"
                   : "hover:bg-ppp-charcoal-50"
@@ -302,18 +302,21 @@ export default function ProductPicker({
       )}
 
       {open && query.trim() && results.length === 0 && (
-        <div className="absolute z-30 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg p-3 text-[12.5px] text-ppp-charcoal-500">
-          No products match &ldquo;{query}&rdquo;. Keep typing the row as free
-          text below or{" "}
+        <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg p-3 space-y-2">
+          <div className="text-[12.5px] text-ppp-charcoal-600">
+            No products match <span className="font-semibold text-ppp-charcoal">&ldquo;{query}&rdquo;</span>. Keep typing the row as free text below, or add it to the catalog:
+          </div>
           <a
             href="/commercial/pre-job/products/new"
-            className="text-cc-brand-700 font-semibold hover:underline"
             target="_blank"
             rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800 text-[12.5px] font-semibold hover:bg-cc-brand-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[36px]"
           >
-            add it to the catalog
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            Add to Product Library
           </a>
-          .
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -11,6 +12,7 @@ import {
   productUnitLabel,
 } from "@/lib/commercial/products/constants";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 /**
  * Create-product form. Admin-only (matches archive/edit gate on the
@@ -81,6 +83,12 @@ async function createAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
+  // Bust the catalog cache on every surface that reads listProducts()
+  // so the ProductPicker on the invoice list sees the new SKU without
+  // a hard refresh.
+  revalidatePath("/commercial/pre-job/products");
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
   redirect(
     "/commercial/pre-job/products/" + result.product.id + "?ok=created"
   );
@@ -169,7 +177,8 @@ export default async function NewProductPage({
             <select
               name="category"
               defaultValue="paint"
-              className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
             >
               {PRODUCT_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -185,7 +194,8 @@ export default async function NewProductPage({
             <select
               name="unit"
               defaultValue="gallon"
-              className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
             >
               {PRODUCT_UNITS.map((u) => (
                 <option key={u} value={u}>

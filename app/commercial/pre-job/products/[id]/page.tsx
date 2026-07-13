@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/commercial/products/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 /**
  * Product detail — edit basic fields + per-account price overrides.
@@ -56,6 +58,15 @@ function centsToDollarStr(cents: number | null): string {
 
 function detailPath(id: string, marker?: string): string {
   return `/commercial/pre-job/products/${id}${marker ? "?" + marker : ""}`;
+}
+
+/** Bust the catalog cache on every surface that reads listProducts()
+ *  or resolveProductPrice() so admin edits show up on the picker + on
+ *  the customer-price surface without a hard refresh. */
+function revalidateProductSurfaces(): void {
+  revalidatePath("/commercial/pre-job/products");
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
 }
 
 async function guardAdmin(): Promise<string> {
@@ -108,6 +119,7 @@ async function saveCoreAction(formData: FormData) {
   if (!result.ok) {
     redirect(detailPath(id, "error=" + encodeURIComponent(result.error)));
   }
+  revalidateProductSurfaces();
   redirect(detailPath(id, "ok=updated"));
 }
 
@@ -120,6 +132,7 @@ async function archiveAction(formData: FormData) {
   if (!result.ok) {
     redirect(detailPath(id, "error=" + encodeURIComponent(result.error)));
   }
+  revalidateProductSurfaces();
   redirect("/commercial/pre-job/products?ok=archived");
 }
 
@@ -161,6 +174,7 @@ async function addPriceAction(formData: FormData) {
   if (!result.ok) {
     redirect(detailPath(productId, "error=" + encodeURIComponent(result.error)));
   }
+  revalidateProductSurfaces();
   redirect(detailPath(productId, "ok=price_saved"));
 }
 
@@ -175,6 +189,7 @@ async function removePriceAction(formData: FormData) {
   if (!result.ok) {
     redirect(detailPath(productId, "error=" + encodeURIComponent(result.error)));
   }
+  revalidateProductSurfaces();
   redirect(detailPath(productId, "ok=price_removed"));
 }
 
@@ -298,7 +313,8 @@ export default async function ProductDetailPage({
                 <select
                   name="category"
                   defaultValue={product.category}
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
                 >
                   {PRODUCT_CATEGORIES.map((c) => (
                     <option key={c} value={c}>
@@ -319,7 +335,8 @@ export default async function ProductDetailPage({
                 <select
                   name="unit"
                   defaultValue={product.unit}
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
                 >
                   {PRODUCT_UNITS.map((u) => (
                     <option key={u} value={u}>
@@ -441,11 +458,16 @@ export default async function ProductDetailPage({
                         {formatDollars(row.unit_price_cents)}
                       </span>
                       <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                      <span>
-                        {row.effective_from
-                          ? `from ${row.effective_from}`
-                          : "always"}
-                      </span>
+                      {row.effective_from ? (
+                        <span>from {row.effective_from}</span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cc-brand-50 border border-cc-brand-200 text-[10.5px] font-bold tracking-wider uppercase text-cc-brand-700"
+                          title="No date boundary — this rate always applies"
+                        >
+                          always
+                        </span>
+                      )}
                       {row.notes && (
                         <>
                           <span aria-hidden className="text-ppp-charcoal-300">·</span>
@@ -459,7 +481,7 @@ export default async function ProductDetailPage({
                       <input type="hidden" name="product_id" value={product.id} />
                       <input type="hidden" name="price_id" value={row.id} />
                       <PendingSubmitButton
-                        className="inline-flex items-center px-3 py-2 rounded-md border border-rose-200 text-rose-800 text-xs font-medium hover:bg-rose-50 min-h-[40px]"
+                        className="inline-flex items-center px-3 py-2 rounded-md border border-rose-200 text-rose-800 text-xs font-medium hover:bg-rose-50 min-h-[44px]"
                         pendingLabel="Removing…"
                       >
                         Remove
@@ -475,10 +497,10 @@ export default async function ProductDetailPage({
         {isAdmin && (
           <form
             action={addPriceAction}
-            className="border-t border-ppp-charcoal-100 pt-4 space-y-3"
+            className="bg-ppp-charcoal-50/40 rounded-lg p-3 sm:p-4 space-y-3"
           >
             <input type="hidden" name="product_id" value={product.id} />
-            <h3 className="text-[13px] font-semibold text-ppp-charcoal-700">
+            <h3 className="text-[13px] font-semibold text-ppp-charcoal-800">
               Add or update override
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -490,7 +512,8 @@ export default async function ProductDetailPage({
                   name="account_id"
                   required
                   defaultValue=""
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
                 >
                   <option value="" disabled>
                     Pick an account…
@@ -547,7 +570,7 @@ export default async function ProductDetailPage({
             </div>
             <div className="flex justify-end">
               <PendingSubmitButton
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 disabled:opacity-60 disabled:cursor-not-allowed min-h-[40px]"
+                className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px]"
                 pendingLabel="Saving…"
               >
                 Save override
@@ -557,9 +580,10 @@ export default async function ProductDetailPage({
         )}
       </section>
 
-      {/* Archive */}
+      {/* Archive — neutral border like every other section. The rose comes
+          from the button only (destructive-lite), not the whole container. */}
       {isAdmin && product.is_active && (
-        <section className="bg-white border border-rose-100 rounded-xl p-4 sm:p-6">
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-ppp-charcoal mb-2">
             Archive
           </h2>
@@ -570,7 +594,7 @@ export default async function ProductDetailPage({
           <form action={archiveAction}>
             <input type="hidden" name="id" value={product.id} />
             <PendingSubmitButton
-              className="inline-flex items-center px-4 py-2 rounded-md border border-rose-200 text-rose-800 text-xs font-semibold hover:bg-rose-50 min-h-[40px]"
+              className="inline-flex items-center px-4 py-2.5 rounded-md border border-rose-200 text-rose-800 text-xs font-semibold hover:bg-rose-50 min-h-[44px]"
               pendingLabel="Archiving…"
             >
               Archive product

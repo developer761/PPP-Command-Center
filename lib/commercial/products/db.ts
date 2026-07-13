@@ -367,6 +367,14 @@ export async function upsertCustomerPrice(
         );
         return { ok: true, price };
       }
+      // Extremely rare: 23505 tripped, but the winning row was
+      // deleted between the failed INSERT and this re-SELECT. Surface
+      // a friendlier message than the raw Postgres error.
+      return {
+        ok: false,
+        error:
+          "Another admin just changed this override — please refresh and try again.",
+      };
     }
     return { ok: false, error: error.message };
   }
