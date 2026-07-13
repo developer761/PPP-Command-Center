@@ -25,6 +25,8 @@ import {
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
+import { listProducts } from "@/lib/commercial/products/db";
+import ProductPicker from "@/components/commercial/product-picker";
 
 export const dynamic = "force-dynamic";
 
@@ -162,6 +164,10 @@ async function createInvoiceInlineAction(formData: FormData) {
       description: description.slice(0, 500),
       quantity: 1,
       unit_price_cents: amount_cents!,
+      // Phase D: optional catalog FK — set when the user picked from
+      // ProductPicker. Enables SKU-grouped margin reports later without
+      // rewriting historical unit_price_cents.
+      product_id: UUID_RE.test(String(formData.get("product_id") ?? "")) ? String(formData.get("product_id")) : null,
     }],
   });
   if (!result.ok) {
@@ -342,7 +348,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // At current volumes (< 5K invoices per workspace) this is fast enough
   // to be worth the simplicity. If we hit scale we swap in an RPC that
   // joins commercial_invoices to commercial_opportunities server-side.
-  const [invoicesRaw, accounts, accountFilter, allOpps] = await Promise.all([
+  const [invoicesRaw, accounts, accountFilter, allOpps, products] = await Promise.all([
     listCommercialInvoices({ status: statusFilter, accountId: accountIdFilter, opportunityId: opportunityIdFilter }),
     listCommercialAccounts(),
     // Include-deleted so a deleted-account invoice cluster can render
@@ -350,7 +356,18 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     // filters deleted rows and would return null here).
     accountIdFilter ? getCommercialAccountIncludingDeleted(accountIdFilter) : Promise.resolve(null),
     listCommercialOpportunities({}),
+    listProducts(),
   ]);
+  // Phase D: hand the picker a lean shape so we're not shipping the
+  // full CommercialProduct rows (audit cols, notes, cost) to the client.
+  const pickableProducts = products.map((p) => ({
+    id: p.id,
+    sku: p.sku,
+    name: p.name,
+    category: p.category,
+    unit: p.unit,
+    default_unit_price_cents: p.default_unit_price_cents,
+  }));
   const accountById = new Map(accounts.map((a) => [a.id, a]));
   const oppById = new Map(allOpps.map((o) => [o.id, o]));
   const invoices = search
@@ -1011,6 +1028,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           errorMessage={pickFirst(sp.error) ?? null}
           openAddOppId={pickFirst(sp.add) ?? null}
           wonOppsForAccount={wonOpps}
+          pickableProducts={pickableProducts}
         />
       ) : sorted.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 sm:p-12 text-center">
@@ -1470,6 +1488,7 @@ function FullDetailByOpp({
   errorMessage,
   openAddOppId,
   wonOppsForAccount,
+  pickableProducts,
 }: {
   invoices: CommercialInvoice[];
   oppById: Map<string, { id: string; title: string; account_id: string; status: string; client_name: string | null; location_short: string | null }>;
@@ -1487,6 +1506,17 @@ function FullDetailByOpp({
    *  render the picker (used for the unfiltered overview which uses a
    *  different empty state entirely). */
   wonOppsForAccount?: CommercialOpportunity[];
+  /** Phase D: active-catalog snapshot for the inline "New invoice for
+   *  this deal" ProductPicker. Empty means the picker section is
+   *  skipped and the form falls back to free-text entry. */
+  pickableProducts: Array<{
+    id: string;
+    sku: string;
+    name: string;
+    category: string;
+    unit: string;
+    default_unit_price_cents: number;
+  }>;
 }) {
   const groups = new Map<string, CommercialInvoice[]>();
   for (const inv of invoices) {
@@ -1978,11 +2008,23 @@ function FullDetailByOpp({
                 >
                   <input type="hidden" name="account_id" value={accountId} />
                   <input type="hidden" name="opp_id" value={oppId} />
+                  <input type="hidden" name="product_id" id={`inv-add-${oppId}-product-id`} value="" />
+                  {pickableProducts.length > 0 && (
+                    <ProductPicker
+                      products={pickableProducts}
+                      accountId={accountId}
+                      descriptionInputId={`inv-add-${oppId}-description`}
+                      unitInputId={`inv-add-${oppId}-unit-noop`}
+                      unitPriceInputId={`inv-add-${oppId}-amount`}
+                      productIdInputId={`inv-add-${oppId}-product-id`}
+                    />
+                  )}
                   <div>
                     <label className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
                       What this charge is for
                     </label>
                     <input
+                      id={`inv-add-${oppId}-description`}
                       type="text"
                       name="description"
                       required
@@ -1995,6 +2037,7 @@ function FullDetailByOpp({
                     <label className="block">
                       <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Amount</span>
                       <input
+                        id={`inv-add-${oppId}-amount`}
                         type="text"
                         inputMode="decimal"
                         name="amount"

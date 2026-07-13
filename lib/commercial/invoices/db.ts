@@ -150,6 +150,8 @@ export type CreateInvoiceInput = {
     quantity: number;
     unit?: string | null;
     unit_price_cents: number;
+    /** Phase D: optional catalog FK. NULL for legacy free-text rows. */
+    product_id?: string | null;
   }>;
 };
 
@@ -337,6 +339,7 @@ export async function createCommercialInvoice(
       quantity: li.quantity,
       unit: li.unit ?? null,
       unit_price_cents: li.unit_price_cents,
+      product_id: li.product_id ?? null,
     }));
     const { error: liErr } = await sb.from("commercial_invoice_line_items").insert(rows);
     if (liErr) {
@@ -448,7 +451,16 @@ export async function updateInvoiceCoreFields(
 
 export async function addLineItem(
   invoice_id: string,
-  input: { description: string; quantity: number; unit?: string | null; unit_price_cents: number }
+  input: {
+    description: string;
+    quantity: number;
+    unit?: string | null;
+    unit_price_cents: number;
+    /** Phase D: optional catalog FK when the user picked from ProductPicker.
+     *  The snapshotted unit_price_cents remains the source of truth for the
+     *  invoice — this only lets margin/reporting group by SKU later. */
+    product_id?: string | null;
+  }
 ): Promise<{ ok: boolean; error?: string }> {
   const gate = await verifyEditable(invoice_id);
   if (!gate.ok) return gate;
@@ -472,6 +484,7 @@ export async function addLineItem(
     quantity: input.quantity,
     unit: input.unit ?? null,
     unit_price_cents: input.unit_price_cents,
+    product_id: input.product_id ?? null,
   });
   if (error) return { ok: false, error: error.message };
   await recomputeSubtotal(invoice_id);
