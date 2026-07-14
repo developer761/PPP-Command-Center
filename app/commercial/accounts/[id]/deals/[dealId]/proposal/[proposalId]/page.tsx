@@ -36,6 +36,7 @@ import {
   createLineItem,
   updateLineItem,
   deleteLineItem,
+  getLineItem,
   type CommercialProposalLineItem,
 } from "@/lib/commercial/proposals/db";
 import {
@@ -48,6 +49,7 @@ import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
 import ExclusionPicker from "@/components/commercial/exclusion-picker";
 import ProductPicker from "@/components/commercial/product-picker";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import {
   INPUT_CLS,
   TEXTAREA_CLS,
@@ -222,6 +224,16 @@ async function updateLineItemAction(formData: FormData) {
   const dealId = String(formData.get("deal_id") ?? "");
   const proposalId = String(formData.get("proposal_id") ?? "");
   const id = String(formData.get("id") ?? "");
+  if (![accountId, dealId, proposalId, id].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  // IDOR guard: a forged `id` field must belong to *this* proposal.
+  const owning = await getLineItem(id);
+  if (!owning || owning.proposal_id !== proposalId) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("That line item is not part of this proposal.")}`
+    );
+  }
   const result = await updateLineItem(
     {
       id,
@@ -253,7 +265,22 @@ async function deleteLineItemAction(formData: FormData) {
   const dealId = String(formData.get("deal_id") ?? "");
   const proposalId = String(formData.get("proposal_id") ?? "");
   const id = String(formData.get("id") ?? "");
-  await deleteLineItem(id, userId);
+  if (![accountId, dealId, proposalId, id].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  // Same IDOR guard as update.
+  const owning = await getLineItem(id);
+  if (!owning || owning.proposal_id !== proposalId) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("That line item is not part of this proposal.")}`
+    );
+  }
+  const result = await deleteLineItem(id, userId);
+  if (!result.ok) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+    );
+  }
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
@@ -569,12 +596,12 @@ export default async function ProposalEditorPage({
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         <form action={deleteProposalAction}>
           {hiddenIds}
-          <button
-            type="submit"
-            className="text-[12px] text-rose-700 hover:text-rose-800 underline"
+          <ConfirmSubmitButton
+            message={`Delete this proposal draft (R${proposal.revision_number})? Line items and overrides will be lost.`}
+            className="text-[12px] text-rose-700 hover:text-rose-800 underline disabled:opacity-50"
           >
             Delete this proposal draft
-          </button>
+          </ConfirmSubmitButton>
         </form>
       </section>
     </div>
@@ -631,7 +658,7 @@ function LineItemsTable({
                 Row total: {formatDollars(Math.round(Number(r.quantity) * r.unit_price_cents))}
               </span>
               <div className="flex items-center gap-2">
-                <button type="submit" className="inline-flex items-center px-3 py-1.5 rounded-md bg-ppp-charcoal-800 text-white text-[12px] font-semibold hover:bg-ppp-charcoal-900 min-h-[32px]">
+                <button type="submit" className="inline-flex items-center px-3 py-2 rounded-md bg-ppp-charcoal-800 text-white text-[12px] font-semibold hover:bg-ppp-charcoal-900 min-h-[40px]">
                   Save row
                 </button>
               </div>
@@ -642,9 +669,12 @@ function LineItemsTable({
             <input type="hidden" name="deal_id" value={dealId} />
             <input type="hidden" name="proposal_id" value={proposalId} />
             <input type="hidden" name="id" value={r.id} />
-            <button type="submit" className="text-[11px] text-rose-700 hover:text-rose-800 underline">
+            <ConfirmSubmitButton
+              message="Remove this line item? This can't be undone."
+              className="text-[11px] text-rose-700 hover:text-rose-800 underline disabled:opacity-50"
+            >
               Remove row
-            </button>
+            </ConfirmSubmitButton>
           </form>
         </li>
       ))}
