@@ -122,3 +122,19 @@ WHERE NOT EXISTS (
   SELECT 1 FROM public.commercial_exclusions
   WHERE text = 'Decorative Finish Wall & Ceiling'
 );
+
+-- ═══════════════════════════════════════════════════════════════════
+-- Atomic use_count increment RPC (F.0 post-audit fix).
+-- lib/commercial/exclusions/db.ts bumpExclusionUseCount() calls this
+-- so two proposals hitting the same exclusion at the same time can
+-- never clobber each other's increment.
+-- ═══════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION public.bump_commercial_exclusion_use_count(p_id UUID)
+RETURNS void AS $$
+BEGIN
+  UPDATE public.commercial_exclusions
+     SET use_count = use_count + 1
+   WHERE id = p_id AND deleted_at IS NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

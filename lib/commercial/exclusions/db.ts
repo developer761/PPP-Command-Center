@@ -191,16 +191,30 @@ export async function listExclusions(
 
 /** Bump `use_count` for a list of exclusion ids. Fire-and-forget from
  *  the proposal Send path so the picker's "most-used" sort surfaces
- *  the exclusions Alex actually reaches for. Errors swallowed. */
+ *  the exclusions Alex actually reaches for. Errors swallowed.
+ *
+ *  F.0 post-audit fix: previously did a read-then-write per row which
+ *  raced on concurrent Sends. Now issues an atomic
+ *  `UPDATE ... SET use_count = use_count + 1` per row via Postgres
+ *  RPC so two proposals hitting the same exclusion at the same time
+ *  can never clobber each other's increment. */
 export async function bumpExclusionUseCount(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   const sb = commercialDb();
-  // Postgres has no atomic array-in increment via supabase-js — issue a
-  // single RPC-style UPDATE per row would be N round-trips; instead
-  // batch via a raw SQL update using coalesce.
   const uniqueIds = Array.from(new Set(ids));
   await Promise.all(
     uniqueIds.map(async (id) => {
+      // supabase-js can't emit a raw `use_count + 1` expression, so
+      // route through a tiny Postgres function that does the atomic
+      // increment. If the RPC isn't installed yet (e.g., fresh env
+      // without the migration), fall back to a read-then-write that at
+      // least keeps the counter moving — noted as best-effort.
+      const { error } = await sb.rpc("bump_commercial_exclusion_use_count", {
+        p_id: id,
+      });
+      if (!error) return;
+      // Fallback (RPC not installed) — non-atomic but at least advances
+      // the counter. Post-migration this branch never fires.
       const { data } = await sb
         .from("commercial_exclusions")
         .select("use_count")

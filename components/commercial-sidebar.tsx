@@ -47,7 +47,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Accounts", href: "/commercial/accounts", icon: <IconBuilding /> },
       { label: "Opportunities", href: "/commercial/opportunities", icon: <IconTarget /> },
-      { label: "Proposal builder", href: "/commercial/pre-job/proposals", phase: 7, disabled: true, icon: <IconChart /> },
+      { label: "Proposal builder", href: "/commercial/pre-job/proposals", phase: 6, disabled: true, icon: <IconChart /> },
       { label: "Products", href: "/commercial/pre-job/products", icon: <IconDollar /> },
       { label: "Exclusions", href: "/commercial/pre-job/exclusions", icon: <IconCheckSquare /> },
     ],

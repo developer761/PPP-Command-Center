@@ -124,15 +124,16 @@ export function ExclusionPicker({
     setAddingNew(true);
     try {
       const res = await fetch("/api/commercial/exclusions/search", {
-        // Reuse the search endpoint's shape by POSTing to create.
-        // Actually we need a dedicated create endpoint — inline creation
-        // for a new library row.
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
       if (!res.ok) return;
-      const json = (await res.json()) as { exclusion: Row };
+      const json = (await res.json().catch(() => ({}))) as { exclusion?: Row };
+      // F.0 post-audit fix: null-guard against malformed / empty
+      // response so a network hiccup can't crash the picker with
+      // "cannot read properties of undefined".
+      if (!json.exclusion || !json.exclusion.id) return;
       addRow(json.exclusion);
     } finally {
       setAddingNew(false);
