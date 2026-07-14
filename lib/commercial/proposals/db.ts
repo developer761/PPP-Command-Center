@@ -18,22 +18,47 @@ import type { ProposalStatus } from "./constants";
 
 // ────────────── types ──────────────
 
+/** Cached header block on `commercial_proposals.header_json`. Snapshot
+ *  from the account + deal at create time so the PDF stays stable if
+ *  the source records are edited later. F.3 renderer reads these. */
+export type ProposalHeaderJson = {
+  gc_company?: string;
+  gc_address_lines?: string[];
+  attention?: string;
+  phone?: string;
+  email?: string;
+  project_name?: string;
+  project_address?: string;
+  date_iso?: string;
+  show_capital_improvement_notice?: boolean;
+};
+
+/** Snapshotted estimator sign-off. Frozen at proposal create so the
+ *  PDF footer doesn't shift if the estimator's contact info changes. */
+export type ProposalEstimatorSnapshot = {
+  name?: string;
+  title?: string;
+  phone?: string;
+  email?: string;
+};
+
 export type CommercialProposal = {
   id: string;
   opportunity_id: string;
   revision_number: number;
   parent_proposal_id: string | null;
-  header_json: Record<string, unknown>;
+  header_json: ProposalHeaderJson;
   intro_text_override: string | null;
   alternate_notes: string | null;
   bid_notes: string | null;
   exclusion_ids: string[];
   total_cents: number;
   pdf_show_line_prices: boolean;
-  estimator_snapshot_json: Record<string, unknown>;
+  estimator_snapshot_json: ProposalEstimatorSnapshot;
   status: ProposalStatus;
   sent_at: string | null;
   approved_at: string | null;
+  expired_at: string | null;
   snapshot_document_id: string | null;
   created_at: string;
   updated_at: string;
@@ -60,13 +85,13 @@ export type CommercialProposalLineItem = {
 
 export type CreateProposalInput = {
   opportunity_id: string;
-  header_json?: Record<string, unknown>;
+  header_json?: ProposalHeaderJson;
   intro_text_override?: string | null;
   alternate_notes?: string | null;
   bid_notes?: string | null;
   exclusion_ids?: string[];
   pdf_show_line_prices?: boolean;
-  estimator_snapshot_json?: Record<string, unknown>;
+  estimator_snapshot_json?: ProposalEstimatorSnapshot;
   parent_proposal_id?: string | null;
   created_by_user_id?: string | null;
 };
@@ -78,9 +103,52 @@ export async function createProposal(
   | { ok: false; error: string }
 > {
   const sb = commercialDb();
-  // Auto-pick the next revision number for this opp. If a parent is
-  // supplied, we're bumping — mark the parent superseded after the
-  // insert succeeds.
+  // F.1 post-audit fix: previously did SELECT max + INSERT which raced
+  // on concurrent bumps. Now route through the atomic
+  // create_commercial_proposal_revision(...) RPC that SELECT ... FOR
+  // UPDATEs the parent opportunity row so concurrent bumps queue
+  // instead of colliding. If the RPC isn't installed yet (rare — post-
+  // migration), fall back to the legacy path with the 23505 retry hint.
+  const { data: rpcResult, error: rpcErr } = await sb.rpc(
+    "create_commercial_proposal_revision",
+    {
+      p_opportunity_id: input.opportunity_id,
+      p_parent_proposal_id: input.parent_proposal_id ?? null,
+      p_header_json: input.header_json ?? {},
+      p_intro_text_override: input.intro_text_override ?? null,
+      p_alternate_notes: input.alternate_notes ?? null,
+      p_bid_notes: input.bid_notes ?? null,
+      p_exclusion_ids: input.exclusion_ids ?? [],
+      p_pdf_show_line_prices: input.pdf_show_line_prices ?? false,
+      p_estimator_snapshot_json: input.estimator_snapshot_json ?? {},
+      p_created_by_user_id: input.created_by_user_id ?? null,
+    }
+  );
+  if (!rpcErr && rpcResult) {
+    const newId = rpcResult as string;
+    const { data: row } = await sb
+      .from("commercial_proposals")
+      .select("*")
+      .eq("id", newId)
+      .single();
+    const proposal = row as CommercialProposal;
+    await logInsert(
+      "commercial_proposals",
+      proposal.id,
+      proposal,
+      input.created_by_user_id ?? null
+    );
+    if (input.parent_proposal_id) {
+      await updateProposalStatus({
+        id: input.parent_proposal_id,
+        to_status: "superseded",
+        acting_user_id: input.created_by_user_id ?? null,
+      });
+    }
+    return { ok: true, proposal };
+  }
+
+  // Fallback path (RPC not installed on this env yet).
   const { data: existing } = await sb
     .from("commercial_proposals")
     .select("revision_number")
@@ -90,7 +158,6 @@ export async function createProposal(
     .limit(1);
   const nextRev = ((existing?.[0] as { revision_number?: number } | undefined)
     ?.revision_number ?? 0) + 1;
-
   const { data, error } = await sb
     .from("commercial_proposals")
     .insert({
@@ -115,7 +182,8 @@ export async function createProposal(
     if (error.code === "23505" || /unique/i.test(error.message)) {
       return {
         ok: false,
-        error: "Another revision landed at the same number — reload and try again.",
+        error:
+          "Another revision landed at the same number — reload and try again.",
       };
     }
     return { ok: false, error: error.message };
@@ -127,8 +195,6 @@ export async function createProposal(
     proposal,
     input.created_by_user_id ?? null
   );
-
-  // If bumping, mark the parent superseded.
   if (input.parent_proposal_id) {
     await updateProposalStatus({
       id: input.parent_proposal_id,
@@ -141,13 +207,13 @@ export async function createProposal(
 
 export type UpdateProposalInput = {
   id: string;
-  header_json?: Record<string, unknown>;
+  header_json?: ProposalHeaderJson;
   intro_text_override?: string | null;
   alternate_notes?: string | null;
   bid_notes?: string | null;
   exclusion_ids?: string[];
   pdf_show_line_prices?: boolean;
-  estimator_snapshot_json?: Record<string, unknown>;
+  estimator_snapshot_json?: ProposalEstimatorSnapshot;
   updated_by_user_id?: string | null;
 };
 
@@ -221,6 +287,12 @@ export async function updateProposalStatus(input: {
   if (input.to_status === "sent") patch.sent_at = new Date().toISOString();
   if (input.to_status === "won" || input.to_status === "lost") {
     patch.approved_at = new Date().toISOString();
+  }
+  // F.1 post-audit fix: expired_at was missing. Now stamped on expiry
+  // so AR reporting can distinguish "customer took too long" from
+  // "customer explicitly said no" (Lost).
+  if (input.to_status === "expired") {
+    patch.expired_at = new Date().toISOString();
   }
   const { data: after, error } = await sb
     .from("commercial_proposals")
@@ -452,6 +524,17 @@ export async function listLineItemsForProposal(
   proposalId: string
 ): Promise<CommercialProposalLineItem[]> {
   const sb = commercialDb();
+  // F.1 post-audit fix: soft-delete on the parent proposal shouldn't
+  // leak orphaned line items. Verify the parent is still visible
+  // before returning rows. Cheap: single-row .maybeSingle() then a
+  // guarded fetch.
+  const { data: parent } = await sb
+    .from("commercial_proposals")
+    .select("id")
+    .eq("id", proposalId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!parent) return [];
   const { data } = await sb
     .from("commercial_proposal_line_items")
     .select("*")
@@ -459,6 +542,30 @@ export async function listLineItemsForProposal(
     .order("is_alternate", { ascending: true })
     .order("position", { ascending: true });
   return (data as CommercialProposalLineItem[] | null) ?? [];
+}
+
+/** Single-item read helper — F.2 editor uses this for inline row
+ *  edits ("save this row"). Returns null if the row is missing OR
+ *  its parent proposal is soft-deleted. */
+export async function getLineItem(
+  id: string
+): Promise<CommercialProposalLineItem | null> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_proposal_line_items")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  const row = data as CommercialProposalLineItem;
+  const { data: parent } = await sb
+    .from("commercial_proposals")
+    .select("id")
+    .eq("id", row.proposal_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!parent) return null;
+  return row;
 }
 
 /** Sum non-alternate line items (quantity × unit_price_cents) and

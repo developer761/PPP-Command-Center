@@ -46,10 +46,17 @@ export const PROPOSAL_ALLOWED_TRANSITIONS: Record<
   draft: ["pending_approval", "sent", "superseded"],
   pending_approval: ["draft", "sent", "superseded"],
   sent: ["won", "lost", "expired", "superseded"],
-  won: [], // terminal — proposal contract is signed
-  lost: [], // terminal — bid didn't land
-  expired: ["sent"], // re-issue a proposal after expiry
-  superseded: [], // terminal — a newer revision replaced it
+  // Terminal: won/lost are Katie's final call. If PPP lost the bid + the
+  // GC comes back later asking for a re-quote, the estimator creates a
+  // NEW revision (which supersedes the current one) — they don't revive
+  // a Lost proposal.
+  won: [],
+  lost: [],
+  // Not-quite-terminal: expired means the customer took too long. Alex
+  // can extend the deadline + re-send the SAME revision instead of
+  // bumping, which is faster.
+  expired: ["sent"],
+  superseded: [],
 };
 
 // ────────────── Tomco default intro paragraph ──────────────

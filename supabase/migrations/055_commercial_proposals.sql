@@ -160,3 +160,80 @@ CREATE TRIGGER trg_commercial_proposal_line_items_updated_at
   BEFORE UPDATE ON public.commercial_proposal_line_items
   FOR EACH ROW
   EXECUTE FUNCTION public.set_updated_at_commercial_proposal_line_items();
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 3. Add expired_at (F.1 post-audit fix).
+--
+-- Original schema stamped sent_at + approved_at; expired needed its
+-- own timestamp for AR reporting + "when did we let this slip" audit
+-- trail. Backfill impossible (no prior expired proposals exist).
+-- ═══════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.commercial_proposals
+  ADD COLUMN IF NOT EXISTS expired_at TIMESTAMPTZ;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 4. Atomic revision-bump RPC (F.1 post-audit fix).
+--
+-- createProposal originally did SELECT max(revision_number) + INSERT
+-- which raced on concurrent bumps. The unique index caught the loser
+-- but the caller had to retry. This function serializes via
+-- SELECT ... FOR UPDATE on the parent opportunity row so two
+-- concurrent bumps queue instead of colliding.
+--
+-- Returns the id of the newly-inserted proposal row so the caller can
+-- .select() the full row separately.
+-- ═══════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION public.create_commercial_proposal_revision(
+  p_opportunity_id UUID,
+  p_parent_proposal_id UUID,
+  p_header_json JSONB,
+  p_intro_text_override TEXT,
+  p_alternate_notes TEXT,
+  p_bid_notes TEXT,
+  p_exclusion_ids UUID[],
+  p_pdf_show_line_prices BOOLEAN,
+  p_estimator_snapshot_json JSONB,
+  p_created_by_user_id UUID
+) RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_next_rev INTEGER;
+  v_new_id UUID;
+BEGIN
+  -- Serialize concurrent bumps on the same opp.
+  PERFORM 1 FROM public.commercial_opportunities
+    WHERE id = p_opportunity_id
+    FOR UPDATE;
+
+  SELECT COALESCE(MAX(revision_number), 0) + 1
+    INTO v_next_rev
+    FROM public.commercial_proposals
+    WHERE opportunity_id = p_opportunity_id
+      AND deleted_at IS NULL;
+
+  INSERT INTO public.commercial_proposals (
+    opportunity_id, revision_number, parent_proposal_id,
+    header_json, intro_text_override, alternate_notes, bid_notes,
+    exclusion_ids, pdf_show_line_prices, estimator_snapshot_json,
+    status, total_cents,
+    created_by_user_id, updated_by_user_id
+  )
+  VALUES (
+    p_opportunity_id, v_next_rev, p_parent_proposal_id,
+    COALESCE(p_header_json, '{}'::jsonb),
+    p_intro_text_override, p_alternate_notes, p_bid_notes,
+    COALESCE(p_exclusion_ids, ARRAY[]::UUID[]),
+    COALESCE(p_pdf_show_line_prices, false),
+    COALESCE(p_estimator_snapshot_json, '{}'::jsonb),
+    'draft', 0,
+    p_created_by_user_id, p_created_by_user_id
+  )
+  RETURNING id INTO v_new_id;
+
+  RETURN v_new_id;
+END;
+$$;
