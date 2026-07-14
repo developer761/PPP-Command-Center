@@ -296,7 +296,17 @@ function formatDateLong(iso: string | undefined): string {
   // date (no TZ shift) then format long.
   const [y, m, d] = iso.split("-").map((s) => parseInt(s, 10));
   if (!y || !m || !d) return iso;
+  // Round-3 audit fix: reject out-of-range month/day so a malformed
+  // input like "2026-15-45" doesn't silently roll over via JS Date to
+  // "March 15, 2027". Show the raw ISO instead so Alex sees the bad
+  // input and can fix it in the editor.
+  if (m < 1 || m > 12 || d < 1 || d > 31) return iso;
   const dt = new Date(y, m - 1, d);
+  // Round-trip check: if JS rolled over (e.g., Feb 30), it means the
+  // day was invalid for that month. Show raw ISO to avoid confusion.
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+    return iso;
+  }
   return dt.toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
@@ -390,8 +400,21 @@ function ProjectBlock({ h }: { h: ProposalHeaderJson }) {
   );
 }
 
+/** Spec (project_tomco_proposal_format.md): "Shorter jobs use plain
+ *  lines (no bullets): `Foyer Walls: Prep, prime, and paint 2 coats`".
+ *  Suppress the ● glyph when the description has no bold lead AND is
+ *  short + simple (no colon), rendering as plain text. Longer
+ *  narrative bullets keep the glyph as before. */
 function BulletLine({ text }: { text: string }) {
   const { lead, body } = splitBoldLead(text);
+  const isSimpleShort = !lead && text.trim().length < 60 && !text.includes(":");
+  if (isSimpleShort) {
+    return (
+      <View style={{ marginBottom: 3, paddingRight: 4 }}>
+        <Text style={{ fontSize: 11 }}>{body}</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.bulletRow}>
       <Text style={styles.bulletGlyph}>●</Text>
@@ -595,6 +618,13 @@ export function ProposalPdfDocument({
   const totalLabel = proposalTotalLabel(exclusions);
   const intro = proposal.intro_text_override?.trim() || TOMCO_DEFAULT_INTRO;
   const dateLabel = formatDateLong(proposal.header_json.date_iso);
+  // Round-3 audit fix: pdf_show_line_prices was a dead toggle — the
+  // editor checkbox existed but the renderer ignored it. Now: internal
+  // mode always shows the line-item table (estimator math); customer
+  // mode shows the line-item table when Alex opts in via the toggle
+  // ("Show per-line prices on customer PDF"), otherwise stays on the
+  // Tomco-default narrative-bullets rendering.
+  const showLineTable = mode === "internal" || proposal.pdf_show_line_prices;
 
   return (
     <Document
@@ -612,7 +642,7 @@ export function ProposalPdfDocument({
         <ProjectBlock h={proposal.header_json} />
         <Text style={styles.intro}>{intro}</Text>
 
-        {mode === "internal" ? (
+        {showLineTable ? (
           <InclusionsInternal items={inclusions} />
         ) : (
           <InclusionsCustomer items={inclusions} />
@@ -620,7 +650,7 @@ export function ProposalPdfDocument({
 
         <TotalRow label={totalLabel} cents={proposal.total_cents} />
 
-        {mode === "internal" ? (
+        {showLineTable ? (
           <AlternateSectionInternal
             items={alternates}
             altNotes={proposal.alternate_notes}

@@ -416,6 +416,13 @@ export async function createLineItem(
     return { ok: false, error: "Description is required." };
   if (input.quantity < 0)
     return { ok: false, error: "Quantity must be zero or greater." };
+  // Round-3 audit fix: qty=0 on inclusions produces a $0 row on the
+  // PDF customer sees — semantically odd + likely a typo. Rejected on
+  // inclusions, still allowed on alternates (a $0 alternate is a
+  // legitimate "no-cost add-on if you sign" pattern).
+  if (input.quantity === 0 && !(input.is_alternate ?? false)) {
+    return { ok: false, error: "Quantity must be greater than 0 for inclusions." };
+  }
   if (input.unit_price_cents < 0)
     return { ok: false, error: "Unit price must be zero or greater." };
   const sb = commercialDb();
@@ -483,6 +490,26 @@ export async function updateLineItem(
   if (input.quantity !== undefined) {
     if (input.quantity < 0)
       return { ok: false, error: "Quantity must be zero or greater." };
+    // Round-3 audit fix: reject qty=0 on inclusion updates too. Need
+    // to know whether the row is an alternate — check is_alternate
+    // from the patch if supplied, else re-fetch to be safe.
+    const willBeAlternate = input.is_alternate ?? undefined;
+    if (input.quantity === 0) {
+      if (willBeAlternate === false) {
+        return { ok: false, error: "Quantity must be greater than 0 for inclusions." };
+      }
+      if (willBeAlternate === undefined) {
+        // Fetch existing to know the row's current is_alternate.
+        const { data: existing } = await commercialDb()
+          .from("commercial_proposal_line_items")
+          .select("is_alternate")
+          .eq("id", input.id)
+          .maybeSingle();
+        if (existing && !(existing as { is_alternate: boolean }).is_alternate) {
+          return { ok: false, error: "Quantity must be greater than 0 for inclusions." };
+        }
+      }
+    }
     patch.quantity = input.quantity;
   }
   if (input.unit !== undefined) patch.unit = input.unit;
@@ -732,9 +759,11 @@ export async function sendProposal(input: {
   const libraryTexts = proposal.exclusion_ids
     .map((id) => byId.get(id))
     .filter((t): t is string => Boolean(t && t.trim()));
-  const customTexts = (proposal.custom_exclusions ?? []).filter(
-    (t) => t && t.trim()
-  );
+  // Round-3 audit fix: cap custom exclusion text at 500 chars on the
+  // render path so a direct DB write can't blow the PDF layout.
+  const customTexts = (proposal.custom_exclusions ?? [])
+    .filter((t) => t && t.trim())
+    .map((t) => (t.length > 500 ? t.slice(0, 500) + "…" : t));
   const exclusionTexts = [...libraryTexts, ...customTexts];
 
   const { renderProposalPdf } = await import("./pdf");

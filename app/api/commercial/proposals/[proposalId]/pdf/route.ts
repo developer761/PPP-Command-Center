@@ -95,9 +95,13 @@ export async function GET(
       );
     }
   }
-  const customTexts = (proposal.custom_exclusions ?? []).filter(
-    (t) => t && t.trim()
-  );
+  // Round-3 audit fix: enforce the same 500-char cap on the render
+  // path too — the save action already trims, but a direct DB write
+  // could bypass it. Belt-and-suspenders: cap at render time so a
+  // ~10KB blob can't blow the PDF layout.
+  const customTexts = (proposal.custom_exclusions ?? [])
+    .filter((t) => t && t.trim())
+    .map((t) => (t.length > 500 ? t.slice(0, 500) + "…" : t));
   const exclusions = [...libraryTexts, ...customTexts];
 
   let pdfBuffer: Buffer;
