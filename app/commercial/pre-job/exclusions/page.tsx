@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import {
   listExclusions,
   createExclusion,
@@ -336,12 +337,13 @@ export default async function ExclusionsLibraryPage({
                   </Link>
                   <form action={deleteExclusionAction}>
                     <input type="hidden" name="id" value={r.id} />
-                    <button
-                      type="submit"
-                      className="text-[12px] text-rose-700 hover:text-rose-800 underline"
+                    <ConfirmSubmitButton
+                      message={`Archive "${r.text.slice(0, 80)}${r.text.length > 80 ? "…" : ""}"? Existing proposals that reference it keep the text on their PDF; new proposals won't be able to pick it.`}
+                      pendingLabel="Archiving…"
+                      className="text-[12px] text-rose-700 hover:text-rose-800 underline disabled:opacity-50"
                     >
                       Archive
-                    </button>
+                    </ConfirmSubmitButton>
                   </form>
                 </div>
               )}

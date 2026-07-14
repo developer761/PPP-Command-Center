@@ -634,10 +634,22 @@ export function ProposalPdfDocument({
 
         <ExclusionsBlock exclusions={exclusions} />
 
-        {proposal.header_json.show_capital_improvement_notice && (
+        {/* CIP banner is a customer-facing legal notice — suppress on
+            internal-mode PDFs (Alex/Katie estimator-math view) so the
+            internal snapshot isn't mistaken for a customer copy. */}
+        {mode === "customer" && proposal.header_json.show_capital_improvement_notice && (
           <View style={styles.ciBanner}>
             <Text style={styles.ciText}>
               Subject to Certificate of Capital Improvement or New York State Sales Tax.
+            </Text>
+          </View>
+        )}
+        {/* Internal-mode watermark so a screenshot-shared internal PDF
+            can't be mistaken for what went to the GC. */}
+        {mode === "internal" && (
+          <View style={{ marginTop: 14, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: "#FEF3C7", borderLeftWidth: 3, borderLeftColor: "#F59E0B" }}>
+            <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: "#92400E", textTransform: "uppercase", letterSpacing: 1 }}>
+              Internal · estimator view · not for customer
             </Text>
           </View>
         )}

@@ -695,6 +695,20 @@ export async function sendProposal(input: {
   } | null;
   if (!opp) return { ok: false, error: "Parent opportunity not found." };
 
+  // Post-round-2 audit: verify parent account isn't soft-deleted either.
+  // The opp check alone lets a "ghosted account" scenario slip through
+  // (opp still live but account was archived) — Send would post a note
+  // + bell to an account timeline no one can visit.
+  const { data: acctCheck } = await sb
+    .from("commercial_accounts")
+    .select("id")
+    .eq("id", opp.account_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!acctCheck) {
+    return { ok: false, error: "Customer for this deal is no longer active." };
+  }
+
   // ── 1. Render PDF + snapshot into Documents ─────────────────────
   // Resolve exclusion texts in the order Alex saved them so the PDF
   // matches what the customer PDF button rendered. Merges library
@@ -776,6 +790,10 @@ export async function sendProposal(input: {
     })
     .eq("id", input.proposal_id)
     .eq("status", "draft")
+    // Post-round-2 audit: also guard on deleted_at so a soft-delete
+    // race between the pre-flight fetch and this UPDATE surfaces as a
+    // 0-row result instead of writing to a soft-deleted row.
+    .is("deleted_at", null)
     .select("*")
     .maybeSingle();
   if (updErr) {
@@ -842,11 +860,32 @@ export async function sendProposal(input: {
     console.warn("[sendProposal] account note failed:", err);
   }
 
-  // ── 5. Bell + email fanout to opp team ──────────────────────────
+  // ── 5. Bump use_count on each picked library exclusion ──────────
+  // Post-round-2 audit: sendProposal was firing everything except this,
+  // so the picker's "most-used" sort never learned which exclusions
+  // Alex actually ships. Fire-and-forget with a warn log — a use_count
+  // hiccup should never block Send.
+  if (proposal.exclusion_ids.length > 0) {
+    try {
+      const { bumpExclusionUseCount } = await import(
+        "@/lib/commercial/exclusions/db"
+      );
+      void bumpExclusionUseCount(proposal.exclusion_ids).catch((err) => {
+        console.warn("[sendProposal] use_count bump failed (async):", err);
+      });
+    } catch (err) {
+      console.warn("[sendProposal] use_count bump failed:", err);
+    }
+  }
+
+  // ── 6. Bell + email fanout to opp team ──────────────────────────
   try {
     const { insertCommercialProposalSentNotifications } = await import(
       "@/lib/notifications/commercial-events"
     );
+    // Post-round-2 audit: chain .catch() on the void promise so an
+    // unhandled rejection inside the fanout doesn't crash the Node
+    // process (fire-and-forget still, just observable).
     void insertCommercialProposalSentNotifications({
       proposalId: sentProposal.id,
       revisionNumber: sentProposal.revision_number,
@@ -858,6 +897,8 @@ export async function sendProposal(input: {
       gcCompany: gcLabel ?? null,
       actingUserId: input.actor_user_id,
       actorName,
+    }).catch((err) => {
+      console.warn("[sendProposal] bell fanout failed (async):", err);
     });
   } catch (err) {
     console.warn("[sendProposal] bell fanout failed:", err);

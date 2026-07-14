@@ -90,11 +90,15 @@ export default async function CreateProposalRoute({
   }
 
   // On bump, copy the parent's line items forward so the estimator
-  // only edits the delta.
+  // only edits the delta. Post-round-2 audit: if a copy fails mid-loop,
+  // the new revision would land with partial items and Alex wouldn't
+  // know — surface a warning banner with a count so he can decide
+  // whether to keep the partial revision or delete + retry.
   if (parentProposalId) {
     const parentItems = await listLineItemsForProposal(parentProposalId);
+    const failed: string[] = [];
     for (const item of parentItems) {
-      await createLineItem(
+      const copyResult = await createLineItem(
         {
           proposal_id: result.proposal.id,
           product_id: item.product_id,
@@ -106,6 +110,17 @@ export default async function CreateProposalRoute({
           position: item.position,
         },
         user.id
+      );
+      if (!copyResult.ok) {
+        failed.push(item.description);
+      }
+    }
+    if (failed.length > 0) {
+      // Land on the editor with a warning + preserve query state so
+      // Alex sees exactly which items didn't copy.
+      const msg = `Copied ${parentItems.length - failed.length} of ${parentItems.length} line items forward. Failed: ${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}. Add the rest manually or delete this revision and retry.`;
+      redirect(
+        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?error=${encodeURIComponent(msg)}`
       );
     }
   }
