@@ -153,6 +153,24 @@ async function saveProposalAction(formData: FormData) {
     }
   }
 
+  // F.5: per-proposal one-off exclusion text lines (NOT saved to
+  // library). Parse alongside the UUID list.
+  let customExclusions: string[] = existing.custom_exclusions ?? [];
+  const rawCustom = String(formData.get("custom_exclusions") ?? "").trim();
+  if (rawCustom) {
+    try {
+      const parsed = JSON.parse(rawCustom);
+      if (Array.isArray(parsed)) {
+        customExclusions = parsed
+          .filter((s): s is string => typeof s === "string")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && s.length <= 500);
+      }
+    } catch {
+      // keep existing on malformed JSON
+    }
+  }
+
   const result = await updateProposal({
     id: proposalId,
     header_json: header,
@@ -161,6 +179,7 @@ async function saveProposalAction(formData: FormData) {
     alternate_notes: altNotes || null,
     bid_notes: bidNotes || null,
     exclusion_ids: exclusionIds,
+    custom_exclusions: customExclusions,
     pdf_show_line_prices: pdfShowPrices,
     updated_by_user_id: userId,
   });
@@ -373,7 +392,13 @@ export default async function ProposalEditorPage({
   const inclusions = lineItems.filter((i) => !i.is_alternate);
   const alternates = lineItems.filter((i) => i.is_alternate);
   const oppName = derivedOppName(opp, account.company_name);
-  const totalLabel = proposalTotalLabel(selectedExclusions.map((e) => e.text));
+  // F.5: TOTAL label ("Labor Only TOTAL" flip) considers BOTH library
+  // exclusions and one-off custom lines so a "Materials" exclusion
+  // typed as a one-off still flips the label.
+  const totalLabel = proposalTotalLabel([
+    ...selectedExclusions.map((e) => e.text),
+    ...(proposal.custom_exclusions ?? []),
+  ]);
 
   const listHref = `/commercial/accounts/${accountId}/deals/${dealId}/proposal`;
 
@@ -565,6 +590,7 @@ export default async function ProposalEditorPage({
               category: e.category,
               use_count: e.use_count,
             }))}
+            initialCustom={proposal.custom_exclusions ?? []}
           />
         </section>
 

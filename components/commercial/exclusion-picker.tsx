@@ -32,6 +32,10 @@ export type ExclusionPickerProps = {
   /** Pre-selected exclusion rows (usually the standard-category rows
    *  hydrated server-side for a new proposal). */
   initialSelected?: Row[];
+  /** Phase F.5: text lines added as "one-off for this proposal only".
+   *  Persist to commercial_proposals.custom_exclusions, NOT the shared
+   *  library. Rendered after the library chips. */
+  initialCustom?: string[];
   /** Optional label above the picker. */
   label?: string;
   /** Show the "add to library" inline fallback. */
@@ -42,21 +46,31 @@ export type ExclusionPickerProps = {
 export function ExclusionPicker({
   namePrefix = "",
   initialSelected = [],
+  initialCustom = [],
   label = "Exclusions",
   allowInlineAdd = true,
   className = "",
 }: ExclusionPickerProps) {
   const [selected, setSelected] = useState<Row[]>(initialSelected);
+  const [customLines, setCustomLines] = useState<string[]>(initialCustom);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Row[]>([]);
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [addingNew, setAddingNew] = useState(false);
+  /** F.5: when true, inline-add stores text in customLines instead of
+   *  creating a shared library row. Default OFF (matches prior
+   *  library-add behavior) so existing muscle memory works unchanged. */
+  const [oneOffMode, setOneOffMode] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const rootId = useId();
   const listboxId = `${rootId}-listbox`;
+
+  const standardCount = selected.filter((s) => s.category === "standard").length;
+  const optionalCount = selected.filter((s) => s.category === "optional").length;
+  const customCount = customLines.length;
 
   // Debounced search.
   useEffect(() => {
@@ -89,6 +103,7 @@ export function ExclusionPicker({
   }, [query, open, selected]);
 
   const idsJson = useMemo(() => JSON.stringify(selected.map((s) => s.id)), [selected]);
+  const customJson = useMemo(() => JSON.stringify(customLines), [customLines]);
 
   const addRow = (r: Row) => {
     setSelected((prev) => [...prev, r]);
@@ -100,6 +115,25 @@ export function ExclusionPicker({
 
   const removeRow = (id: string) => {
     setSelected((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const addCustomLine = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    // Deduplicate against existing custom lines (case-insensitive).
+    if (customLines.some((c) => c.trim().toLowerCase() === trimmed.toLowerCase())) {
+      setQuery("");
+      return;
+    }
+    setCustomLines((prev) => [...prev, trimmed]);
+    setQuery("");
+    setResults([]);
+    setHighlightIdx(-1);
+    inputRef.current?.focus();
+  };
+
+  const removeCustomLine = (idx: number) => {
+    setCustomLines((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -121,6 +155,12 @@ export function ExclusionPicker({
   const handleInlineAdd = async () => {
     const text = query.trim();
     if (!text || addingNew) return;
+    // F.5: one-off mode stores text on the proposal only; no shared
+    // library row.
+    if (oneOffMode) {
+      addCustomLine(text);
+      return;
+    }
     setAddingNew(true);
     try {
       const res = await fetch("/api/commercial/exclusions/search", {
@@ -142,17 +182,31 @@ export function ExclusionPicker({
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <label htmlFor={`${rootId}-input`} className="block text-[13px] font-semibold text-ppp-charcoal-800">
-        {label}
-      </label>
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <label htmlFor={`${rootId}-input`} className="block text-[13px] font-semibold text-ppp-charcoal-800">
+          {label}
+        </label>
+        {(selected.length > 0 || customCount > 0) && (
+          <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
+            {standardCount > 0 && <>{standardCount} standard</>}
+            {standardCount > 0 && (optionalCount > 0 || customCount > 0) && " · "}
+            {optionalCount > 0 && <>{optionalCount} optional</>}
+            {optionalCount > 0 && customCount > 0 && " · "}
+            {customCount > 0 && <>{customCount} one-off</>}
+          </span>
+        )}
+      </div>
+      <p className="text-[12px] text-ppp-charcoal-500 leading-snug">
+        Add or remove exclusions for this proposal only. Standard exclusions are pre-added but you can remove any of them. Type a new one to add to the shared library, or toggle <em>one-off</em> below to add it to this proposal only.
+      </p>
 
-      {/* Selected chips */}
+      {/* Selected library chips */}
       {selected.length > 0 && (
         <ul className="flex flex-wrap gap-1.5">
           {selected.map((s) => (
             <li key={s.id}>
               <span
-                className={`inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-md text-[12px] border ${
+                className={`inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-[12px] border ${
                   s.category === "standard"
                     ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
                     : "bg-ppp-charcoal-50 text-ppp-charcoal-800 border-ppp-charcoal-200"
@@ -164,10 +218,11 @@ export function ExclusionPicker({
                 <button
                   type="button"
                   onClick={() => removeRow(s.id)}
-                  aria-label={`Remove ${s.text}`}
-                  className="inline-flex items-center justify-center w-4 h-4 rounded hover:bg-black/10"
+                  aria-label={`Remove ${s.text} from this proposal`}
+                  title="Remove from this proposal"
+                  className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                 >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
                     <path d="M18 6L6 18 M6 6l12 12" />
                   </svg>
                 </button>
@@ -175,6 +230,37 @@ export function ExclusionPicker({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* One-off custom lines (this proposal only, NOT in library) */}
+      {customLines.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+            One-off · this proposal only
+          </p>
+          <ul className="flex flex-wrap gap-1.5">
+            {customLines.map((line, i) => (
+              <li key={`${i}-${line}`}>
+                <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-[12px] border bg-emerald-50 text-emerald-800 border-emerald-200">
+                  <span className="truncate max-w-[260px]" title={line}>
+                    {line}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeCustomLine(i)}
+                    aria-label={`Remove one-off exclusion "${line}"`}
+                    title="Remove this one-off exclusion"
+                    className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
+                      <path d="M18 6L6 18 M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* Combobox input */}
@@ -256,9 +342,17 @@ export function ExclusionPicker({
                     handleInlineAdd();
                   }}
                   disabled={addingNew}
-                  className="text-[12px] font-medium text-cc-brand-700 hover:text-cc-brand-800 disabled:opacity-50"
+                  className={`text-[12px] font-semibold disabled:opacity-50 ${
+                    oneOffMode
+                      ? "text-emerald-700 hover:text-emerald-800"
+                      : "text-cc-brand-700 hover:text-cc-brand-800"
+                  }`}
                 >
-                  {addingNew ? "Adding…" : `Add “${query.trim()}” to library`}
+                  {addingNew
+                    ? "Adding…"
+                    : oneOffMode
+                      ? `+ Add “${query.trim()}” to this proposal only`
+                      : `+ Add “${query.trim()}” to shared library`}
                 </button>
               </li>
             )}
@@ -266,8 +360,26 @@ export function ExclusionPicker({
         )}
       </div>
 
-      {/* Hidden JSON payload for form submit. */}
+      {/* One-off toggle — controls what happens when Alex types a new
+          exclusion and clicks "Add …". Default off = library, on =
+          this-proposal-only. */}
+      {allowInlineAdd && (
+        <label className="inline-flex items-center gap-2 text-[12px] text-ppp-charcoal-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={oneOffMode}
+            onChange={(e) => setOneOffMode(e.target.checked)}
+            className="w-4 h-4 accent-emerald-600"
+          />
+          <span>
+            One-off · new additions go to <strong>this proposal only</strong> (won&rsquo;t appear on future proposals)
+          </span>
+        </label>
+      )}
+
+      {/* Hidden JSON payloads for form submit. */}
       <input type="hidden" name={`${namePrefix}exclusion_ids`} value={idsJson} />
+      <input type="hidden" name={`${namePrefix}custom_exclusions`} value={customJson} />
     </div>
   );
 }

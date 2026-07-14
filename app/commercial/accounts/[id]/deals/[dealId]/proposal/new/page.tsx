@@ -54,6 +54,7 @@ export default async function CreateProposalRoute({
   let alternateNotes: string | null = null;
   let bidNotes: string | null = null;
   let exclusionIds = ctx.standardExclusionIds;
+  let customExclusions: string[] = [];
   let pdfShowLinePrices = false;
 
   if (sp.bump && UUID_RE.test(sp.bump)) {
@@ -64,6 +65,7 @@ export default async function CreateProposalRoute({
       alternateNotes = parent.alternate_notes;
       bidNotes = parent.bid_notes;
       exclusionIds = parent.exclusion_ids;
+      customExclusions = parent.custom_exclusions ?? [];
       pdfShowLinePrices = parent.pdf_show_line_prices;
     }
   }
@@ -73,6 +75,7 @@ export default async function CreateProposalRoute({
     header_json: ctx.header,
     estimator_snapshot_json: ctx.estimator,
     exclusion_ids: exclusionIds,
+    custom_exclusions: customExclusions,
     intro_text_override: intro,
     alternate_notes: alternateNotes,
     bid_notes: bidNotes,

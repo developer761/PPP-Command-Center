@@ -79,22 +79,26 @@ export async function GET(
 
   // Resolve exclusion ids → ordered text list. Preserve the order Alex
   // saved on the proposal (proposal.exclusion_ids drives the sequence).
-  let exclusions: string[] = [];
+  // F.5: also merge per-proposal one-off `custom_exclusions` (text lines
+  // that don't live in the shared library). Custom lines render AFTER
+  // the library-resolved ones, in the order Alex added them.
+  let libraryTexts: string[] = [];
   if (proposal.exclusion_ids.length > 0) {
     const all = await listExclusions({ activeOnly: false });
     const byId = new Map(all.map((e) => [e.id, e.text] as const));
-    exclusions = proposal.exclusion_ids
+    libraryTexts = proposal.exclusion_ids
       .map((id) => byId.get(id))
       .filter((t): t is string => Boolean(t && t.trim()));
-    // Post-audit fix: if any picked exclusion was later soft-deleted,
-    // it silently vanishes from the PDF. Log so we don't ship a
-    // proposal missing exclusions Alex thinks are on it.
-    if (exclusions.length !== proposal.exclusion_ids.length) {
+    if (libraryTexts.length !== proposal.exclusion_ids.length) {
       console.warn(
-        `[proposal-pdf] proposal ${proposalId} references ${proposal.exclusion_ids.length} exclusion ids but only ${exclusions.length} resolved — some may be soft-deleted.`
+        `[proposal-pdf] proposal ${proposalId} references ${proposal.exclusion_ids.length} exclusion ids but only ${libraryTexts.length} resolved — some may be soft-deleted.`
       );
     }
   }
+  const customTexts = (proposal.custom_exclusions ?? []).filter(
+    (t) => t && t.trim()
+  );
+  const exclusions = [...libraryTexts, ...customTexts];
 
   let pdfBuffer: Buffer;
   try {

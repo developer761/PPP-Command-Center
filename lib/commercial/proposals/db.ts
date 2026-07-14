@@ -52,6 +52,10 @@ export type CommercialProposal = {
   alternate_notes: string | null;
   bid_notes: string | null;
   exclusion_ids: string[];
+  /** Phase F.5: per-proposal one-off exclusion text lines that don't
+   *  belong to the shared library. Rendered AFTER exclusion_ids in the
+   *  PDF, in the order Alex added them. */
+  custom_exclusions: string[];
   total_cents: number;
   pdf_show_line_prices: boolean;
   estimator_snapshot_json: ProposalEstimatorSnapshot;
@@ -90,6 +94,7 @@ export type CreateProposalInput = {
   alternate_notes?: string | null;
   bid_notes?: string | null;
   exclusion_ids?: string[];
+  custom_exclusions?: string[];
   pdf_show_line_prices?: boolean;
   estimator_snapshot_json?: ProposalEstimatorSnapshot;
   parent_proposal_id?: string | null;
@@ -126,6 +131,14 @@ export async function createProposal(
   );
   if (!rpcErr && rpcResult) {
     const newId = rpcResult as string;
+    // F.5: custom_exclusions isn't in the RPC signature — apply as a
+    // patch right after so bump-forward works without a new migration.
+    if (input.custom_exclusions && input.custom_exclusions.length > 0) {
+      await sb
+        .from("commercial_proposals")
+        .update({ custom_exclusions: input.custom_exclusions })
+        .eq("id", newId);
+    }
     const { data: row } = await sb
       .from("commercial_proposals")
       .select("*")
@@ -169,6 +182,7 @@ export async function createProposal(
       alternate_notes: input.alternate_notes ?? null,
       bid_notes: input.bid_notes ?? null,
       exclusion_ids: input.exclusion_ids ?? [],
+      custom_exclusions: input.custom_exclusions ?? [],
       pdf_show_line_prices: input.pdf_show_line_prices ?? false,
       estimator_snapshot_json: input.estimator_snapshot_json ?? {},
       status: "draft",
@@ -212,6 +226,7 @@ export type UpdateProposalInput = {
   alternate_notes?: string | null;
   bid_notes?: string | null;
   exclusion_ids?: string[];
+  custom_exclusions?: string[];
   pdf_show_line_prices?: boolean;
   estimator_snapshot_json?: ProposalEstimatorSnapshot;
   updated_by_user_id?: string | null;
@@ -233,6 +248,7 @@ export async function updateProposal(
     patch.alternate_notes = input.alternate_notes;
   if (input.bid_notes !== undefined) patch.bid_notes = input.bid_notes;
   if (input.exclusion_ids !== undefined) patch.exclusion_ids = input.exclusion_ids;
+  if (input.custom_exclusions !== undefined) patch.custom_exclusions = input.custom_exclusions;
   if (input.pdf_show_line_prices !== undefined)
     patch.pdf_show_line_prices = input.pdf_show_line_prices;
   if (input.estimator_snapshot_json !== undefined)
@@ -681,13 +697,19 @@ export async function sendProposal(input: {
 
   // ── 1. Render PDF + snapshot into Documents ─────────────────────
   // Resolve exclusion texts in the order Alex saved them so the PDF
-  // matches what the customer PDF button rendered.
+  // matches what the customer PDF button rendered. Merges library
+  // exclusion_ids (ordered) with per-proposal custom_exclusions
+  // (this-proposal-only text, ordered as added).
   const { listExclusions } = await import("@/lib/commercial/exclusions/db");
   const allEx = await listExclusions({ activeOnly: false });
   const byId = new Map(allEx.map((e) => [e.id, e.text] as const));
-  const exclusionTexts = proposal.exclusion_ids
+  const libraryTexts = proposal.exclusion_ids
     .map((id) => byId.get(id))
     .filter((t): t is string => Boolean(t && t.trim()));
+  const customTexts = (proposal.custom_exclusions ?? []).filter(
+    (t) => t && t.trim()
+  );
+  const exclusionTexts = [...libraryTexts, ...customTexts];
 
   const { renderProposalPdf } = await import("./pdf");
   let pdfBuffer: Buffer;
