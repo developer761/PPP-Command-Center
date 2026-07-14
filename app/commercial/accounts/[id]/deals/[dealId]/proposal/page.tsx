@@ -50,10 +50,13 @@ function statusPillCls(status: string): string {
 
 export default async function ProposalRevisionsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; dealId: string }>;
+  searchParams: Promise<{ deleted?: string; error?: string }>;
 }) {
   const { id: accountId, dealId } = await params;
+  const sp = await searchParams;
   if (!UUID_RE.test(accountId) || !UUID_RE.test(dealId)) notFound();
 
   const supabase = await createClient();
@@ -92,6 +95,20 @@ export default async function ProposalRevisionsPage({
         <span aria-hidden className="text-ppp-charcoal-300">·</span>
         <span className="text-ppp-charcoal-900 font-medium">Proposals</span>
       </nav>
+
+      {/* Post-round-3 audit: cross-action banners so a user landing
+          here from a soft-delete or an error redirect sees confirmation
+          instead of silence. */}
+      {sp.deleted === "1" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-emerald-800">
+          <strong>Draft deleted.</strong> The revision was archived — earlier revisions and any Sent proposals stay on file.
+        </div>
+      )}
+      {sp.error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5 text-sm text-rose-800" role="alert">
+          {decodeURIComponent(sp.error)}
+        </div>
+      )}
 
       {/* Header */}
       <header className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">

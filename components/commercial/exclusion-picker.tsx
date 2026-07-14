@@ -63,6 +63,10 @@ export function ExclusionPicker({
    *  creating a shared library row. Default OFF (matches prior
    *  library-add behavior) so existing muscle memory works unchanged. */
   const [oneOffMode, setOneOffMode] = useState(false);
+  /** Round-3 audit fix: brief transient hint when a duplicate custom
+   *  line is typed so the input clear isn't silent. */
+  const [dupHint, setDupHint] = useState<string | null>(null);
+  const dupHintTimerRef = useRef<number>(0);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const rootId = useId();
@@ -120,11 +124,16 @@ export function ExclusionPicker({
   const addCustomLine = (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    // Deduplicate against existing custom lines (case-insensitive).
+    // Round-3 audit fix: was silent-clear on duplicate; now surfaces a
+    // brief inline hint so Alex sees why the input didn't take.
     if (customLines.some((c) => c.trim().toLowerCase() === trimmed.toLowerCase())) {
+      setDupHint("Already added to this proposal.");
+      window.clearTimeout(dupHintTimerRef.current);
+      dupHintTimerRef.current = window.setTimeout(() => setDupHint(null), 2000);
       setQuery("");
       return;
     }
+    setDupHint(null);
     setCustomLines((prev) => [...prev, trimmed]);
     setQuery("");
     setResults([]);
@@ -359,6 +368,12 @@ export function ExclusionPicker({
           </ul>
         )}
       </div>
+
+      {dupHint && (
+        <p className="text-[12px] text-amber-700 -mt-1" role="status" aria-live="polite">
+          {dupHint}
+        </p>
+      )}
 
       {/* One-off toggle — controls what happens when Alex types a new
           exclusion and clicks "Add …". Default off = library, on =

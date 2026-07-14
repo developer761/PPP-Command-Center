@@ -340,13 +340,25 @@ export async function softDeleteProposal(
     .is("deleted_at", null)
     .maybeSingle();
   if (!before) return { ok: false, error: "Proposal not found." };
+  // Round-3 audit fix: backend guard on status. The editor UI only
+  // shows the Delete button on drafts, but a hand-crafted POST from
+  // devtools or a browser back-button retry could otherwise nuke a
+  // Sent/Won/Lost proposal + orphan its audit trail. Drafts only.
+  const beforeRow = before as CommercialProposal;
+  if (beforeRow.status !== "draft") {
+    return {
+      ok: false,
+      error: `Only draft proposals can be deleted. This one is ${beforeRow.status}. If you need to invalidate it, bump a new revision instead.`,
+    };
+  }
   const { error } = await sb
     .from("commercial_proposals")
     .update({
       deleted_at: new Date().toISOString(),
       updated_by_user_id: actorUserId,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("status", "draft"); // defense in depth against a status flip mid-request
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_proposals", id, before, actorUserId);
   return { ok: true };

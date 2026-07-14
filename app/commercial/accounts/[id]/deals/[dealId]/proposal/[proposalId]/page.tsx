@@ -152,6 +152,23 @@ async function saveProposalAction(formData: FormData) {
       // ignore malformed JSON; keep existing
     }
   }
+  // Round-3 audit fix: drop any picked exclusion IDs that no longer
+  // resolve to a live (non-soft-deleted) library row. If Katie
+  // archived an exclusion between Alex loading the editor and Alex
+  // saving, we don't want to persist the dead ID — it'd render as a
+  // blank chip on refresh and silently vanish from the PDF.
+  if (exclusionIds.length > 0) {
+    const { listExclusions } = await import("@/lib/commercial/exclusions/db");
+    const alive = await listExclusions({ activeOnly: false });
+    const aliveIds = new Set(alive.map((r) => r.id));
+    const dropped = exclusionIds.filter((id) => !aliveIds.has(id));
+    exclusionIds = exclusionIds.filter((id) => aliveIds.has(id));
+    if (dropped.length > 0) {
+      console.warn(
+        `[saveProposal] dropped ${dropped.length} dead exclusion id(s) from proposal ${proposalId}`
+      );
+    }
+  }
 
   // F.5: per-proposal one-off exclusion text lines (NOT saved to
   // library). Parse alongside the UUID list.
@@ -252,6 +269,19 @@ async function updateLineItemAction(formData: FormData) {
   if (!owning || owning.proposal_id !== proposalId) {
     redirect(
       `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("That line item is not part of this proposal.")}`
+    );
+  }
+  // Round-3 audit fix: optimistic lock. If Alex has this row open in
+  // two tabs, edits + saves tab A, then saves tab B with stale form
+  // state, tab B would silently overwrite A's change. The row form
+  // now carries the original updated_at as a hidden input; if it
+  // doesn't match the DB row's current updated_at, someone else
+  // edited it between load and save → reject with a friendly
+  // "refresh to see the latest" so no data is lost silently.
+  const originalUpdatedAt = String(formData.get("original_updated_at") ?? "").trim();
+  if (originalUpdatedAt && originalUpdatedAt !== owning.updated_at) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("This line item was updated in another tab. Refresh to see the latest, then re-apply your change.")}#line-items`
     );
   }
   const result = await updateLineItem(
@@ -752,6 +782,11 @@ function LineItemsTable({
             <input type="hidden" name="proposal_id" value={proposalId} />
             <input type="hidden" name="id" value={r.id} />
             <input type="hidden" name="is_alternate" value={r.is_alternate ? "on" : ""} />
+            {/* Round-3 audit fix: optimistic-lock stamp so a stale
+                two-tab save is rejected before it overwrites a
+                concurrent edit. Server compares against DB's
+                current updated_at. */}
+            <input type="hidden" name="original_updated_at" value={r.updated_at} />
             <div className="grid grid-cols-12 gap-2 items-end">
               <label className="col-span-12 sm:col-span-6 block">
                 <span className={LABEL_CLS}>Description</span>
