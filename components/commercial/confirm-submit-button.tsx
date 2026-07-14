@@ -13,12 +13,17 @@ import { useState } from "react";
 type Props = {
   message: string;
   className?: string;
+  /** Text shown while the form is submitting. Defaults to "Working…"
+   *  so callers that don't care get a sensible fallback (not "Removing…"
+   *  which was the original delete-only hard-code). */
+  pendingLabel?: string;
   children: React.ReactNode;
 };
 
 export default function ConfirmSubmitButton({
   message,
   className,
+  pendingLabel = "Working…",
   children,
 }: Props) {
   const [pending, setPending] = useState(false);
@@ -35,7 +40,7 @@ export default function ConfirmSubmitButton({
         setPending(true);
       }}
     >
-      {pending ? "Removing…" : children}
+      {pending ? pendingLabel : children}
     </button>
   );
 }

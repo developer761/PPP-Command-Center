@@ -739,6 +739,11 @@ export async function sendProposal(input: {
     .eq("id", input.proposal_id)
     .maybeSingle();
   const nowIso = new Date().toISOString();
+  // Post-audit race guard: also filter on status='draft' so two tabs
+  // racing on Send can't both overwrite each other's snapshot_document_id.
+  // If a concurrent tab already flipped it to 'sent', this UPDATE returns
+  // zero rows → maybeSingle returns null → we short-circuit with a
+  // friendly error instead of the .single() PGRST116 crash.
   const { data: after, error: updErr } = await sb
     .from("commercial_proposals")
     .update({
@@ -748,12 +753,20 @@ export async function sendProposal(input: {
       updated_by_user_id: input.actor_user_id,
     })
     .eq("id", input.proposal_id)
+    .eq("status", "draft")
     .select("*")
-    .single();
+    .maybeSingle();
   if (updErr) {
-    // At this point the PDF is in Storage but the proposal isn't
-    // marked sent. Alex can retry.
     return { ok: false, error: `State update failed: ${updErr.message}` };
+  }
+  if (!after) {
+    // The row exists but status !== 'draft' at UPDATE time — a concurrent
+    // Send won the race. The PDF we uploaded above is orphaned; log for
+    // admin cleanup.
+    console.warn(
+      `[sendProposal] concurrent send won the race for ${input.proposal_id}; orphaned snapshot doc ${snapshotDocId}`
+    );
+    return { ok: false, error: "This proposal was just sent from another tab. Reload to see the latest state." };
   }
   const sentProposal = after as CommercialProposal;
   await logUpdate(
@@ -795,7 +808,11 @@ export async function sendProposal(input: {
     await addAccountNote({
       account_id: opp.account_id,
       body: noteBody,
-      kind: "user",
+      // Post-audit fix: this is a system-posted note, not user-typed.
+      // 'auto_debrief' is the existing "system generated" kind so the
+      // timeline UI renders the slate-badge variant + the source-opp
+      // link instead of treating it as a human-authored note.
+      kind: "auto_debrief",
       source_opportunity_id: opp.id,
       author_user_id: input.actor_user_id,
     });

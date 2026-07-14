@@ -35,7 +35,8 @@ type ProposalRow = {
     title: string | null;
     client_name: string | null;
     account_id: string;
-    account: { id: string; company_name: string } | null;
+    deleted_at: string | null;
+    account: { id: string; company_name: string; deleted_at: string | null } | null;
   } | null;
 };
 
@@ -90,7 +91,7 @@ export default async function ProposalsIndexPage({
     .select(
       `id, revision_number, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
        opportunity:commercial_opportunities!inner(
-         id, title, client_name, account_id,
+         id, title, client_name, account_id, deleted_at,
          account:commercial_accounts!inner(id, company_name, deleted_at)
        )`
     )
@@ -101,12 +102,14 @@ export default async function ProposalsIndexPage({
 
   const { data } = await query;
   const rows = ((data as unknown as ProposalRow[]) ?? []).filter((r) => {
-    // Skip proposals whose parent opp or account is soft-deleted (the
-    // FK join succeeds but the row is a data leak otherwise).
-    const acct = r.opportunity?.account as unknown as
-      | { deleted_at?: string | null }
-      | null;
-    return acct && !acct.deleted_at;
+    // Post-audit fix: exclude proposals whose parent opp OR account is
+    // soft-deleted. Supabase's `!inner` join still returns the row when
+    // deleted_at is set (it only filters on FK presence), so we
+    // post-filter for both.
+    if (!r.opportunity || r.opportunity.deleted_at) return false;
+    const acct = r.opportunity.account;
+    if (!acct || acct.deleted_at) return false;
+    return true;
   });
 
   const openCount = rows.filter((r) => !["superseded", "won", "lost", "expired"].includes(r.status)).length;

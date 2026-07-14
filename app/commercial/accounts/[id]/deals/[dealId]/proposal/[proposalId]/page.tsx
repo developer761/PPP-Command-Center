@@ -467,7 +467,8 @@ export default async function ProposalEditorPage({
             <form action={sendProposalAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the customer"}? This snapshots the PDF into Files, flips the deal to Proposal · Sent, and notifies the team. You can still bump a new revision after.`}
+                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the customer"}? This saves the customer PDF into Files as an official sent copy (prior drafts remain), flips the deal to Proposal · Sent, and notifies the team. You can still bump R${proposal.revision_number + 1} after.`}
+                pendingLabel="Sending…"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px] disabled:opacity-50"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
