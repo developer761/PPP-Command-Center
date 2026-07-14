@@ -60,6 +60,21 @@ export async function GET(
   if (!proposal) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
+
+  // Post-audit fix: getProposal only checks proposal.deleted_at. If the
+  // parent opportunity was soft-deleted, this proposal is orphaned —
+  // don't render a PDF for something that shouldn't be visible anywhere
+  // else in the app.
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("id")
+    .eq("id", proposal.opportunity_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!oppRow) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+
   const lineItems = await listLineItemsForProposal(proposalId);
 
   // Resolve exclusion ids → ordered text list. Preserve the order Alex
@@ -71,6 +86,14 @@ export async function GET(
     exclusions = proposal.exclusion_ids
       .map((id) => byId.get(id))
       .filter((t): t is string => Boolean(t && t.trim()));
+    // Post-audit fix: if any picked exclusion was later soft-deleted,
+    // it silently vanishes from the PDF. Log so we don't ship a
+    // proposal missing exclusions Alex thinks are on it.
+    if (exclusions.length !== proposal.exclusion_ids.length) {
+      console.warn(
+        `[proposal-pdf] proposal ${proposalId} references ${proposal.exclusion_ids.length} exclusion ids but only ${exclusions.length} resolved — some may be soft-deleted.`
+      );
+    }
   }
 
   let pdfBuffer: Buffer;
@@ -86,9 +109,12 @@ export async function GET(
       showSignatureBlock,
     });
   } catch (err) {
+    // Post-audit fix: log the full error server-side but return an
+    // opaque message to the client so react-pdf internals + paths
+    // don't leak through the 500 response.
     console.error("[proposal-pdf] render failed:", err);
     return NextResponse.json(
-      { error: "pdf_render_failed", detail: err instanceof Error ? err.message : String(err) },
+      { error: "pdf_render_failed" },
       { status: 500 }
     );
   }

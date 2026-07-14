@@ -306,20 +306,28 @@ function formatDateLong(iso: string | undefined): string {
 
 /** Split "**Bold lead:** rest of the sentence." into the two parts so we
  *  can render the lead in Times-Bold and the rest in Times-Roman.
- *  Tomco's convention is a single colon-terminated bold lead. */
+ *  Tomco's convention is a single colon-terminated bold lead, e.g.
+ *  "GWB Ceiling & Soffit:" or "Doors and Frames:". Reject sentence-medial
+ *  colons — "This is a very long clause: continues past" should NOT split. */
 function splitBoldLead(text: string): { lead: string | null; body: string } {
-  // Explicit **bold** wrapper first (markdown-style)
-  const md = /^\*\*(.+?)\*\*[:：]?\s*(.*)$/.exec(text.trim());
+  const trimmed = text.trim();
+  // Explicit **bold** wrapper first (markdown-style) — always trust it.
+  const md = /^\*\*(.+?)\*\*[:：]?\s*(.*)$/.exec(trimmed);
   if (md) {
     return { lead: md[1].trim(), body: md[2].trim() };
   }
-  // "Lead: body" — accept only when lead is short (<40 chars) so we don't
-  // accidentally bold sentence-medial colons.
-  const colon = text.indexOf(":");
-  if (colon > 0 && colon < 40) {
-    return { lead: text.slice(0, colon).trim(), body: text.slice(colon + 1).trim() };
+  // Bare "Lead: body" — only accept when the lead is short (<30 chars)
+  // AND ≤5 whitespace-delimited words. That rejects long clauses like
+  // "This is a very long clause:" while still catching Tomco item names
+  // like "Doors and Frames:" or "GWB Ceiling & Soffit:".
+  const colon = trimmed.indexOf(":");
+  if (colon > 0 && colon < 30) {
+    const lead = trimmed.slice(0, colon).trim();
+    if (lead.split(/\s+/).length <= 5) {
+      return { lead, body: trimmed.slice(colon + 1).trim() };
+    }
   }
-  return { lead: null, body: text.trim() };
+  return { lead: null, body: trimmed };
 }
 
 // ─── Sub-blocks ─────────────────────────────────────────────────────

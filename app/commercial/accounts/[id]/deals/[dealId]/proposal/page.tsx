@@ -138,10 +138,10 @@ export default async function ProposalRevisionsPage({
       ) : (
         <ul className="bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden">
           {proposals.map((p) => (
-            <li key={p.id}>
+            <li key={p.id} className="flex items-stretch hover:bg-ppp-charcoal-50">
               <Link
                 href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${p.id}`}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-ppp-charcoal-50 min-h-[52px]"
+                className="flex items-center gap-3 px-4 py-3 min-h-[52px] flex-1 min-w-0"
               >
                 <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-bold text-ppp-charcoal">R{p.revision_number}</span>
@@ -157,7 +157,27 @@ export default async function ProposalRevisionsPage({
                 <span className="text-sm font-semibold text-ppp-charcoal-800 tabular-nums shrink-0">
                   {formatDollars(p.total_cents)}
                 </span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 shrink-0" aria-hidden>
+              </Link>
+              <a
+                href={`/api/commercial/proposals/${p.id}/pdf`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-3 py-3 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-white border-l border-ppp-charcoal-100 shrink-0"
+                title="Open the customer PDF in a new tab"
+                aria-label={`Open PDF for revision ${p.revision_number}`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                <span className="hidden sm:inline">PDF</span>
+              </a>
+              <Link
+                href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${p.id}`}
+                aria-label={`Open revision ${p.revision_number}`}
+                className="flex items-center px-3 border-l border-ppp-charcoal-100 shrink-0"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300" aria-hidden>
                   <path d="M9 18l6-6-6-6" />
                 </svg>
               </Link>
