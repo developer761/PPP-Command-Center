@@ -37,6 +37,7 @@ import {
   updateLineItem,
   deleteLineItem,
   getLineItem,
+  sendProposal,
   type CommercialProposalLineItem,
 } from "@/lib/commercial/proposals/db";
 import {
@@ -289,6 +290,32 @@ async function deleteLineItemAction(formData: FormData) {
   );
 }
 
+async function sendProposalAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  const result = await sendProposal({
+    proposal_id: proposalId,
+    actor_user_id: userId,
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+    );
+  }
+  revalidatePath(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
+  );
+  redirect(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?sent=1`
+  );
+}
+
 async function deleteProposalAction(formData: FormData) {
   "use server";
   const userId = await requireAuthed();
@@ -313,7 +340,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -436,6 +463,21 @@ export default async function ProposalEditorPage({
           >
             Bump revision →
           </Link>
+          {proposal.status === "draft" && inclusions.length > 0 && (
+            <form action={sendProposalAction} className="inline-flex">
+              {hiddenIds}
+              <ConfirmSubmitButton
+                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the customer"}? This snapshots the PDF into Files, flips the deal to Proposal · Sent, and notifies the team. You can still bump a new revision after.`}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px] disabled:opacity-50"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+                Send proposal
+              </ConfirmSubmitButton>
+            </form>
+          )}
         </div>
       </header>
 
@@ -445,6 +487,11 @@ export default async function ProposalEditorPage({
       {sp.created === "1" && (
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-2.5 text-sm text-cc-brand-800">
           Proposal created. Header prefilled from the deal — start with inclusions below.
+        </div>
+      )}
+      {sp.sent === "1" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
+          <strong>Proposal sent.</strong> PDF snapshot saved to Files, deal flipped to <em>Proposal · Sent</em>, and the team was notified.
         </div>
       )}
       {sp.error && (

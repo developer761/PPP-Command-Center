@@ -599,3 +599,230 @@ export async function recomputeProposalTotal(
     })
     .eq("id", proposalId);
 }
+
+// ────────────── Phase F.4: Send flow ──────────────
+
+/** Result envelope for sendProposal. */
+export type SendProposalResult =
+  | { ok: true; proposal: CommercialProposal; snapshot_document_id: string | null }
+  | { ok: false; error: string };
+
+/** Send a proposal — the one-click "PDF this and mark it out the door"
+ *  moment Alex cares about. Only callable when status='draft' and the
+ *  proposal has at least one inclusion line item.
+ *
+ *  Side effects, all wrapped in the same call so callers never have to
+ *  compose them:
+ *    1. Render current PDF → upload to Storage under the parent opp's
+ *       Documents (category='proposal', favorited).
+ *    2. Update proposal: status='sent', sent_at=now(), snapshot_document_id.
+ *    3. Flip parent opp status → (proposal, sent) IF it isn't already
+ *       past that lane. Only advances forward; won/lost/pre_construction
+ *       don't get walked back.
+ *    4. Post a system account note ("Proposal R2 sent to WestWood
+ *       Contracting.") so the account timeline shows the moment.
+ *    5. Fire the commercial_proposal_sent bell → team fanout.
+ *
+ *  Failures at step 1 (PDF render/upload) abort the whole flow so the
+ *  DB doesn't end up marking a proposal 'sent' with no PDF to show for
+ *  it. Failures at steps 3-5 are logged but non-fatal — the proposal is
+ *  still recorded as sent (source of truth) and the follow-up bell / opp
+ *  flip / note can be re-fired by admin if needed.
+ */
+export async function sendProposal(input: {
+  proposal_id: string;
+  actor_user_id: string;
+  /** Optional — falls back to a profiles lookup if not passed. */
+  actor_name?: string;
+}): Promise<SendProposalResult> {
+  const sb = commercialDb();
+
+  // Resolve actor display name from profiles when not supplied.
+  let actorName = input.actor_name ?? "";
+  if (!actorName) {
+    const { data: prof } = await sb
+      .from("profiles")
+      .select("sf_user_name, email")
+      .eq("user_id", input.actor_user_id)
+      .maybeSingle();
+    const p = prof as { sf_user_name?: string | null; email?: string | null } | null;
+    actorName = p?.sf_user_name || p?.email || "PPP admin";
+  }
+
+  // Freshly re-read the proposal + do all the pre-flight checks here so
+  // there's a single choke-point.
+  const proposal = await getProposal(input.proposal_id);
+  if (!proposal) return { ok: false, error: "Proposal not found." };
+  if (proposal.status !== "draft") {
+    return { ok: false, error: "Only draft proposals can be sent." };
+  }
+  const lineItems = await listLineItemsForProposal(input.proposal_id);
+  const inclusionCount = lineItems.filter((i) => !i.is_alternate).length;
+  if (inclusionCount === 0) {
+    return { ok: false, error: "Add at least one inclusion before sending." };
+  }
+
+  // Verify parent opp still exists + not soft-deleted (mirrors the same
+  // guard the PDF route uses).
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("id, account_id, title, status, sub_status")
+    .eq("id", proposal.opportunity_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  const opp = oppRow as {
+    id: string;
+    account_id: string;
+    title: string;
+    status: string;
+    sub_status: string | null;
+  } | null;
+  if (!opp) return { ok: false, error: "Parent opportunity not found." };
+
+  // ── 1. Render PDF + snapshot into Documents ─────────────────────
+  // Resolve exclusion texts in the order Alex saved them so the PDF
+  // matches what the customer PDF button rendered.
+  const { listExclusions } = await import("@/lib/commercial/exclusions/db");
+  const allEx = await listExclusions({ activeOnly: false });
+  const byId = new Map(allEx.map((e) => [e.id, e.text] as const));
+  const exclusionTexts = proposal.exclusion_ids
+    .map((id) => byId.get(id))
+    .filter((t): t is string => Boolean(t && t.trim()));
+
+  const { renderProposalPdf } = await import("./pdf");
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await renderProposalPdf({
+      proposal,
+      lineItems,
+      exclusions: exclusionTexts,
+      mode: "customer",
+    });
+  } catch (err) {
+    console.error("[sendProposal] pdf render failed:", err);
+    return { ok: false, error: "PDF render failed. Try Preview PDF first to see the error." };
+  }
+
+  const { uploadDocument } = await import("@/lib/commercial/documents/db");
+  const gc = (proposal.header_json.gc_company ?? "Proposal").replace(/[^A-Za-z0-9._-]+/g, "_");
+  const project = (proposal.header_json.project_name ?? "").replace(/[^A-Za-z0-9._-]+/g, "_");
+  const filename = [gc, project, `R${proposal.revision_number}`]
+    .filter(Boolean)
+    .join("_") + ".pdf";
+
+  const uploaded = await uploadDocument({
+    parent_type: "opportunity",
+    parent_id: proposal.opportunity_id,
+    category: "proposal",
+    file_name: filename,
+    size_bytes: pdfBuffer.length,
+    mime_type: "application/pdf",
+    notes: `Proposal R${proposal.revision_number} snapshot — sent ${new Date().toLocaleDateString("en-US", { timeZone: "America/New_York" })}`,
+    data: new Uint8Array(pdfBuffer),
+    uploaded_by_user_id: input.actor_user_id,
+  });
+  if (!uploaded.ok) {
+    return { ok: false, error: `Snapshot upload failed: ${uploaded.error}` };
+  }
+  const snapshotDocId = uploaded.document.id;
+
+  // Favorite the snapshot so it's pinned at the top of the Files tab.
+  const { favoriteDocument } = await import("@/lib/commercial/documents/db");
+  await favoriteDocument(snapshotDocId, input.actor_user_id).catch((err) => {
+    console.warn("[sendProposal] favorite snapshot failed:", err);
+  });
+
+  // ── 2. Update proposal state (status + sent_at + snapshot ref) ──
+  const { data: before } = await sb
+    .from("commercial_proposals")
+    .select("*")
+    .eq("id", input.proposal_id)
+    .maybeSingle();
+  const nowIso = new Date().toISOString();
+  const { data: after, error: updErr } = await sb
+    .from("commercial_proposals")
+    .update({
+      status: "sent" as ProposalStatus,
+      sent_at: nowIso,
+      snapshot_document_id: snapshotDocId,
+      updated_by_user_id: input.actor_user_id,
+    })
+    .eq("id", input.proposal_id)
+    .select("*")
+    .single();
+  if (updErr) {
+    // At this point the PDF is in Storage but the proposal isn't
+    // marked sent. Alex can retry.
+    return { ok: false, error: `State update failed: ${updErr.message}` };
+  }
+  const sentProposal = after as CommercialProposal;
+  await logUpdate(
+    "commercial_proposals",
+    sentProposal.id,
+    before,
+    sentProposal,
+    input.actor_user_id
+  );
+
+  // ── 3. Flip opp status → (proposal, sent) if not past that lane ─
+  // Terminal + advanced states we never walk backward:
+  const advanced = new Set(["won", "lost", "no_bid", "pre_construction", "wip", "post_construction"]);
+  if (opp.status === "proposal" && opp.sub_status === "sent") {
+    // Already there — no-op.
+  } else if (!advanced.has(opp.status)) {
+    const { changeOpportunityStatus } = await import("@/lib/commercial/opportunities/status");
+    const flip = await changeOpportunityStatus({
+      opp_id: opp.id,
+      to_status: "proposal",
+      to_sub_status: "sent",
+      acting_user_id: input.actor_user_id,
+      note: `Auto-flipped by sendProposal (R${sentProposal.revision_number})`,
+    });
+    if (!flip.ok) {
+      console.warn(
+        `[sendProposal] opp status flip failed for opp ${opp.id}: ${flip.error}`
+      );
+    }
+  }
+
+  // ── 4. Account timeline note ────────────────────────────────────
+  const gcLabel = proposal.header_json.gc_company?.trim();
+  const noteBody = gcLabel
+    ? `Proposal R${sentProposal.revision_number} sent to ${gcLabel}.`
+    : `Proposal R${sentProposal.revision_number} sent.`;
+  try {
+    const { addAccountNote } = await import("@/lib/commercial/account-notes");
+    await addAccountNote({
+      account_id: opp.account_id,
+      body: noteBody,
+      kind: "user",
+      source_opportunity_id: opp.id,
+      author_user_id: input.actor_user_id,
+    });
+  } catch (err) {
+    console.warn("[sendProposal] account note failed:", err);
+  }
+
+  // ── 5. Bell + email fanout to opp team ──────────────────────────
+  try {
+    const { insertCommercialProposalSentNotifications } = await import(
+      "@/lib/notifications/commercial-events"
+    );
+    void insertCommercialProposalSentNotifications({
+      proposalId: sentProposal.id,
+      revisionNumber: sentProposal.revision_number,
+      totalCents: sentProposal.total_cents,
+      opportunityId: opp.id,
+      accountId: opp.account_id,
+      dealId: opp.id,
+      oppTitle: opp.title,
+      gcCompany: gcLabel ?? null,
+      actingUserId: input.actor_user_id,
+      actorName,
+    });
+  } catch (err) {
+    console.warn("[sendProposal] bell fanout failed:", err);
+  }
+
+  return { ok: true, proposal: sentProposal, snapshot_document_id: snapshotDocId };
+}

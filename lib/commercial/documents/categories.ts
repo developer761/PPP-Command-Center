@@ -18,6 +18,11 @@ export const DOCUMENT_CATEGORIES = [
   "contract",          // signed contracts, change orders
   "site_photo",        // pre-existing conditions, progress, punch
   "correspondence",    // letters, emails saved as PDF
+  // Phase F.4 (2026-07-14): Alex clicks Send in the Proposal Builder →
+  // the customer-view PDF snapshots as a Document with this category so
+  // it lives alongside plans/permits/etc. Favorited on create so it
+  // pins to the top of the Files tab.
+  "proposal",
   "other",             // fallback
 ] as const;
 
@@ -33,6 +38,7 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "contract": return "Contract";
     case "site_photo": return "Site Photo";
     case "correspondence": return "Correspondence";
+    case "proposal": return "Proposal";
     case "other": return "Other";
     default: return cat;
   }

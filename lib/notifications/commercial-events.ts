@@ -63,7 +63,11 @@ export type CommercialNotificationKind =
   // daily cron; that fires the same "invoice_paid_full" pattern in reverse.
   | "commercial_invoice_created"
   | "commercial_invoice_payment_recorded"
-  | "commercial_invoice_paid_full";
+  | "commercial_invoice_paid_full"
+  // Phase F.4 (Karan 2026-07-14): sending a proposal is the moment Alex
+  // cares about — the team + estimator want to know it went out so they
+  // can watch for the customer response.
+  | "commercial_proposal_sent";
 
 function adminClient() {
   return createSupabaseAdminClient(
@@ -1049,6 +1053,72 @@ export async function insertCommercialInvoicePaidNotifications(input: {
         recipientUserId: uid,
         actingUserId: input.actingUserId,
         sourceId: input.invoiceId,
+        title,
+        body,
+        link: relativeLink,
+        email: { subject, text, html },
+      });
+      if (r.ok && r.written) fanout += 1;
+    })
+  );
+  return { fanout };
+}
+
+/** Phase F.4 (Karan 2026-07-14): a proposal was Sent by Alex. Fans out
+ *  to the opp team so estimator + team see the moment it left the office
+ *  and can watch for the customer reply. Deep-links to the proposal
+ *  editor so recipients can Preview the PDF that just went out. */
+export async function insertCommercialProposalSentNotifications(input: {
+  proposalId: string;
+  revisionNumber: number;
+  totalCents: number;
+  opportunityId: string;
+  accountId: string;
+  dealId: string;
+  oppTitle: string;
+  gcCompany: string | null;
+  actingUserId: string | null;
+  actorName: string;
+}): Promise<{ fanout: number }> {
+  const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
+  if (recipients.length === 0) return { fanout: 0 };
+
+  const relativeLink = `/commercial/accounts/${input.accountId}/deals/${input.dealId}/proposal/${input.proposalId}`;
+  const emailLink = appendBase(relativeLink);
+  const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
+  const money = formatMoneyCents(input.totalCents);
+  const revLabel = `R${input.revisionNumber}`;
+  const gcSuffix = input.gcCompany ? ` to ${input.gcCompany}` : "";
+  const title = `Proposal sent: ${revLabel} · ${money}`;
+  const body = `${input.actorName} sent ${revLabel}${gcSuffix} on ${shortOppTitle}.`;
+
+  const subject = `Proposal ${revLabel} sent · ${money} · ${input.oppTitle}`;
+  const text = [
+    `Hi,`,
+    ``,
+    `${input.actorName} sent proposal ${revLabel}${gcSuffix} on ${input.oppTitle}:`,
+    `  Total: ${money}`,
+    ``,
+    `Open the proposal: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(input.actorName)}</strong> sent proposal <strong>${escape(revLabel)}</strong>${input.gcCompany ? ` to <strong>${escape(input.gcCompany)}</strong>` : ""} on <strong>${escape(input.oppTitle)}</strong>:</p>
+  <p style="margin:16px 0;padding:12px 16px;background:#f6f7f8;border-radius:8px;"><span style="color:#666;">Total:</span> <strong>${escape(money)}</strong></p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the proposal →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  let fanout = 0;
+  await Promise.allSettled(
+    recipients.map(async (uid) => {
+      const r = await dispatchCommercialNotification({
+        kind: "commercial_proposal_sent",
+        recipientUserId: uid,
+        actingUserId: input.actingUserId,
+        sourceId: input.proposalId,
         title,
         body,
         link: relativeLink,
