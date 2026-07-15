@@ -546,18 +546,15 @@ function BulletLine({ text }: { text: string }) {
       </View>
     );
   }
-  const isLongNarrative = text.trim().length > 80;
-  if (isLongNarrative) {
-    return (
-      <View style={styles.bulletRow}>
-        <View style={styles.bulletDot} />
-        <Text style={styles.bulletBody}>{body}</Text>
-      </View>
-    );
-  }
+  // No bold lead → bullet the line the same way exclusions are
+  // bulleted. Karan 2026-07-15: "Gas Pipes" / "Base Molding - Prep &
+  // Paint 2 Coats" / any item without a colon-bold lead should read
+  // as a bulleted point, matching the Exclusions & Qualifications
+  // section's visual grammar.
   return (
-    <View style={styles.itemLine}>
-      <Text style={{ fontSize: 11 }}>{body}</Text>
+    <View style={styles.bulletRow}>
+      <View style={styles.bulletDot} />
+      <Text style={styles.bulletBody}>{body}</Text>
     </View>
   );
 }

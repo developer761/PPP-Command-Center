@@ -13,7 +13,7 @@
  *   7. Bid notes textarea (hidden on PDF unless populated)
  *   8. Estimator sign-off snapshot (editable inline)
  *   9. PDF options (show line prices toggle)
- *   Bottom: Save all + Bump revision + Delete draft
+ *   Bottom: Save all + New revision (R{n+1}) + Delete draft
  *
  * URL: /commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]
  */
@@ -558,17 +558,22 @@ export default async function ProposalEditorPage({
               )}
             </>
           )}
+          {/* Karan 2026-07-15: "Bump revision" was dev jargon nobody
+              understood. It clones this proposal's data into a fresh
+              R{n+1} draft — for when the customer wants a revised
+              quote after seeing R{n}. Now labeled with what it does. */}
           <Link
             href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${proposalId}`}
             className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
+            title={`Start R${proposal.revision_number + 1} as a fresh draft, copying all this revision's fields as a starting point. Use when the customer wants a revised quote.`}
           >
-            Bump revision →
+            + New revision (R{proposal.revision_number + 1})
           </Link>
           {proposal.status === "draft" && inclusions.length > 0 && (
             <form action={sendProposalAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the customer"}? This saves the customer PDF into Files as an official sent copy (prior drafts remain), flips the deal to Proposal · Sent, and notifies the team. You can still bump R${proposal.revision_number + 1} after.`}
+                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the customer"}? This saves the customer PDF into Files as an official sent copy (prior drafts remain), flips the deal to Proposal · Sent, and notifies the team. You can still start R${proposal.revision_number + 1} after.`}
                 pendingLabel="Sending…"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px] disabled:opacity-50"
               >
