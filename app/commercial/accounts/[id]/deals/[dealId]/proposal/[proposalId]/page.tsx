@@ -631,10 +631,15 @@ export default async function ProposalEditorPage({
           <textarea name="alternate_notes" defaultValue={proposal.alternate_notes ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="e.g. Exterior: Power wash exterior of building." />
         </section>
 
-        {/* Bid notes */}
+        {/* Bid notes — INTERNAL ONLY. Rendered on the ?mode=internal
+            PDF for Alex/Katie's estimator review; never on the customer
+            PDF. Karan 2026-07-15: prior label said "hidden on PDF
+            unless populated" which was misleading — the customer PDF
+            renderer never rendered this field at all. Now honest. */}
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-2">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Bid notes (hidden on PDF unless populated)</h2>
-          <textarea name="bid_notes" defaultValue={proposal.bid_notes ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="Internal notes for the estimator. Leave blank to keep off the customer PDF." />
+          <h2 className="text-sm font-bold text-ppp-charcoal">Bid notes <span className="ml-1 text-[11px] font-semibold uppercase tracking-widest text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Internal only</span></h2>
+          <p className="text-[12px] text-ppp-charcoal-500">Estimator scratch-pad. Visible only on the internal-mode PDF review — never on the customer copy.</p>
+          <textarea name="bid_notes" defaultValue={proposal.bid_notes ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="e.g. Called Michael on Tuesday to confirm scope. Assumes existing HM doors are still on-site." />
         </section>
 
         {/* Estimator sign-off */}

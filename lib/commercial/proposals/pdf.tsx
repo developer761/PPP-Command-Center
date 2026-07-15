@@ -706,14 +706,28 @@ export function ProposalPdfDocument({
             </Text>
           </View>
         )}
-        {/* Internal-mode watermark so a screenshot-shared internal PDF
-            can't be mistaken for what went to the GC. */}
+        {/* Internal-mode watermark + bid notes so a screenshot-shared
+            internal PDF can't be mistaken for what went to the GC, and
+            the estimator scratch-pad from the editor actually surfaces
+            on the review PDF (Karan 2026-07-15). */}
         {mode === "internal" && (
-          <View style={{ marginTop: 14, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: "#FEF3C7", borderLeftWidth: 3, borderLeftColor: "#F59E0B" }}>
-            <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: "#92400E", textTransform: "uppercase", letterSpacing: 1 }}>
-              Internal · estimator view · not for customer
-            </Text>
-          </View>
+          <>
+            <View style={{ marginTop: 14, paddingVertical: 6, paddingHorizontal: 8, backgroundColor: "#FEF3C7", borderLeftWidth: 3, borderLeftColor: "#F59E0B" }}>
+              <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: "#92400E", textTransform: "uppercase", letterSpacing: 1 }}>
+                Internal · estimator view · not for customer
+              </Text>
+            </View>
+            {proposal.bid_notes && proposal.bid_notes.trim() && (
+              <View style={{ marginTop: 10, padding: 8, backgroundColor: "#F3F4F6", borderLeftWidth: 3, borderLeftColor: MUTED }}>
+                <Text style={{ fontSize: 9, fontFamily: "Times-Bold", color: MUTED, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                  Bid notes (internal)
+                </Text>
+                <Text style={{ fontSize: 10, color: CHARCOAL, lineHeight: 1.4 }}>
+                  {proposal.bid_notes.trim()}
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
         {showSignatureBlock && <SignatureBlock />}
