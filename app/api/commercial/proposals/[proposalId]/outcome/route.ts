@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
-import { markProposalOutcome } from "@/lib/commercial/proposals/db";
+import { markProposalOutcome, reopenProposal } from "@/lib/commercial/proposals/db";
 
 /**
  * POST /api/commercial/proposals/[proposalId]/outcome
@@ -50,11 +50,35 @@ export async function POST(
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
   const to = body.to;
-  if (to !== "won" && to !== "lost") {
+  if (to !== "won" && to !== "lost" && to !== "sent") {
     return NextResponse.json(
-      { error: "invalid_outcome", detail: "to must be 'won' or 'lost'" },
+      { error: "invalid_outcome", detail: "to must be 'won', 'lost', or 'sent' (reopen)" },
       { status: 400 }
     );
+  }
+
+  // "sent" = reopen path — un-marks a Won/Lost proposal + un-flips the
+  // parent deal from pre_sale_closed back to Proposal · Sent. Powers
+  // the Karan 2026-07-15 undo-marked-Won flow.
+  if (to === "sent") {
+    const reopened = await reopenProposal({
+      proposal_id: proposalId,
+      actor_user_id: auth.user.id,
+    });
+    if (!reopened.ok) {
+      return NextResponse.json({ error: reopened.error }, { status: 400 });
+    }
+    return NextResponse.json({
+      ok: true,
+      proposal_id: reopened.proposal.id,
+      opportunity_id: reopened.opportunity_id,
+      account_id: reopened.account_id,
+      to,
+      redirect_url: null,
+      reopened: true,
+      deal_reopened: reopened.deal_reopened,
+      deal_current_status: reopened.deal_current_status,
+    });
   }
 
   const result = await markProposalOutcome({

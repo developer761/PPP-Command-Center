@@ -25,25 +25,35 @@ import { createContext, useContext, useRef, useState, useTransition } from "reac
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
-type OutcomeDrop = { to: "won" | "lost" };
+type OutcomeDrop = { to: "won" | "lost" | "sent" };
 
 type Ctx = {
   dragProposalId: string | null;
+  dragSourceStatus: string | null;
   optimisticMove: { proposalId: string; toStatus: string } | null;
   onCardDragStart: (e: React.DragEvent, proposalId: string, sourceStatus: string) => void;
   onCardDragEnd: () => void;
   onColumnDragOver: (e: React.DragEvent) => void;
   onColumnDrop: (e: React.DragEvent, targetStatus: string) => void;
+  isValidDropTarget: (sourceStatus: string, targetStatus: string) => boolean;
 };
 
 const ProposalsDnDContext = createContext<Ctx | null>(null);
 
-// Only Sent proposals can be dropped into Won/Lost — those are the
-// terminal outcome transitions the server helper honors. Any other
-// drop is silently rejected client-side (no toast noise; the card
-// snaps back).
-const OUTCOME_TARGET_STATUSES = new Set(["won", "lost"]);
-const SOURCE_STATUS_FOR_OUTCOME = "sent";
+// Karan 2026-07-15: the kanban supports two flows —
+//   (a) Sent → Won or Sent → Lost  = mark outcome (via markProposalOutcome)
+//   (b) Won → Sent or Lost → Sent  = REOPEN (via reopenProposal) so an
+//       accidental Won drop has an undo path.
+// Any other drop is silently rejected client-side.
+const OUTCOME_TARGETS_FROM_SENT = new Set(["won", "lost"]);
+const REOPEN_SOURCE_STATUSES = new Set(["won", "lost"]);
+const REOPEN_TARGET_STATUS = "sent";
+
+function isValidDropTargetFn(sourceStatus: string, targetStatus: string): boolean {
+  if (sourceStatus === "sent" && OUTCOME_TARGETS_FROM_SENT.has(targetStatus)) return true;
+  if (REOPEN_SOURCE_STATUSES.has(sourceStatus) && targetStatus === REOPEN_TARGET_STATUS) return true;
+  return false;
+}
 
 export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -54,12 +64,19 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
   >(null);
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flashError = (msg: string) => {
     setError(msg);
     if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
     errorTimeoutRef.current = setTimeout(() => setError(null), 4000);
+  };
+  const flashSuccess = (msg: string) => {
+    setSuccess(msg);
+    if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setSuccess(null), 4500);
   };
 
   const onCardDragStart = (
@@ -89,14 +106,10 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
     const sourceStatus = dragSourceStatus;
     setDragProposalId(null);
     setDragSourceStatus(null);
-    if (!proposalId) return;
-    if (!OUTCOME_TARGET_STATUSES.has(targetStatus)) {
-      // Dropped into a column that's not Won/Lost — silently ignore
-      // (server helper only handles those two anyway).
-      return;
-    }
-    if (sourceStatus !== SOURCE_STATUS_FOR_OUTCOME) {
-      flashError("Only Sent proposals can be marked Won or Lost. Bump a new revision instead.");
+    if (!proposalId || !sourceStatus) return;
+    if (!isValidDropTargetFn(sourceStatus, targetStatus)) {
+      // Not a supported transition — silently snap back. E.g. dragging
+      // a Draft into Won, or a Won into Lost (must reopen to Sent first).
       return;
     }
     setOptimisticMove({ proposalId, toStatus: targetStatus });
@@ -106,7 +119,9 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: targetStatus as "won" | "lost" } satisfies OutcomeDrop),
+          body: JSON.stringify({
+            to: targetStatus as "won" | "lost" | "sent",
+          } satisfies OutcomeDrop),
         }
       );
       if (!res.ok) {
@@ -121,17 +136,31 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       }
       const json = (await res.json()) as {
         redirect_url?: string | null;
+        reopened?: boolean;
+        deal_reopened?: boolean;
+        deal_current_status?: string;
       };
       if (json.redirect_url) {
         // Lost → route to the account debrief page so Alex captures
-        // loss_reason. Keep the optimistic-hidden state until nav
-        // happens so the card doesn't flash back into Sent.
+        // loss_reason. Keep optimistic-hidden state until nav lands
+        // so the card doesn't flash back into Sent.
         window.location.href = json.redirect_url;
         return;
       }
-      // Won → refresh the server-rendered board so the card lands in
-      // its new column. Keep the optimistic-hide flag on for another
-      // 200ms so no "sit in old column" flash between refresh + paint.
+      // Success toast so Karan can SEE that the deal was flipped too
+      // (previous silent refresh left him wondering "did the deal
+      // update or just the proposal?").
+      if (targetStatus === "won") {
+        flashSuccess(
+          "🎉 Marked won. Parent deal flipped to Pre-Sale Closed · Won."
+        );
+      } else if (targetStatus === "sent" && json.reopened) {
+        flashSuccess(
+          json.deal_reopened
+            ? "Reopened. Proposal back to Sent, parent deal back to Proposal · Sent."
+            : `Reopened proposal only. Parent deal already moved to ${json.deal_current_status ?? "a later stage"}, left as-is.`
+        );
+      }
       startTransition(() => {
         router.refresh();
         setTimeout(() => setOptimisticMove(null), 200);
@@ -146,11 +175,13 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
     <ProposalsDnDContext.Provider
       value={{
         dragProposalId,
+        dragSourceStatus,
         optimisticMove,
         onCardDragStart,
         onCardDragEnd,
         onColumnDragOver,
         onColumnDrop,
+        isValidDropTarget: isValidDropTargetFn,
       }}
     >
       {error && (
@@ -160,6 +191,15 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
           className="fixed bottom-6 right-6 z-50 max-w-sm bg-rose-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg shadow-lg"
         >
           {error}
+        </div>
+      )}
+      {success && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 right-6 z-50 max-w-sm bg-emerald-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg shadow-lg"
+        >
+          {success}
         </div>
       )}
       {children}
@@ -177,17 +217,24 @@ export function ProposalDnDColumn({
   className?: string;
 }) {
   const ctx = useContext(ProposalsDnDContext);
-  const isOutcomeTarget = OUTCOME_TARGET_STATUSES.has(status);
-  const isActive =
-    ctx?.dragProposalId != null && isOutcomeTarget;
   if (!ctx) return <div className={className}>{children}</div>;
+  const isValidTarget =
+    ctx.dragSourceStatus != null &&
+    ctx.isValidDropTarget(ctx.dragSourceStatus, status);
+  // Won-source dropping into Sent = reopen (blue ring instead of emerald
+  // so it visually reads as "undo" not "close").
+  const isReopenTarget =
+    isValidTarget && ctx.dragSourceStatus !== "sent" && status === "sent";
+  const ringCls = isValidTarget
+    ? isReopenTarget
+      ? "ring-2 ring-cc-brand-500 ring-offset-1"
+      : "ring-2 ring-emerald-400 ring-offset-1"
+    : "";
   return (
     <div
-      className={`${className ?? ""} ${
-        isActive ? "ring-2 ring-emerald-400 ring-offset-1" : ""
-      }`}
-      onDragOver={isOutcomeTarget ? ctx.onColumnDragOver : undefined}
-      onDrop={isOutcomeTarget ? (e) => ctx.onColumnDrop(e, status) : undefined}
+      className={`${className ?? ""} ${ringCls}`}
+      onDragOver={isValidTarget ? ctx.onColumnDragOver : undefined}
+      onDrop={isValidTarget ? (e) => ctx.onColumnDrop(e, status) : undefined}
     >
       {children}
     </div>
@@ -207,7 +254,18 @@ export function ProposalDnDCard({
   if (!ctx) return <>{children}</>;
   const isDragging = ctx.dragProposalId === proposalId;
   const isOptimisticallyMoved = ctx.optimisticMove?.proposalId === proposalId;
-  const draggable = sourceStatus === SOURCE_STATUS_FOR_OUTCOME;
+  // Sent → can be dragged into Won or Lost (mark outcome).
+  // Won / Lost → can be dragged back into Sent (reopen — undo path).
+  // Draft / Pending / Expired / Replaced → not draggable on this board.
+  const draggable =
+    sourceStatus === "sent" ||
+    sourceStatus === "won" ||
+    sourceStatus === "lost";
+  const title = !draggable
+    ? undefined
+    : sourceStatus === "sent"
+      ? "Drag onto Won or Lost to close this bid"
+      : "Dragged you into Won/Lost by mistake? Drag back onto Sent to reopen — the parent deal reopens too.";
   return (
     <div
       draggable={draggable}
@@ -225,7 +283,7 @@ export function ProposalDnDCard({
               : ""
       }`}
       aria-hidden={isOptimisticallyMoved}
-      title={draggable ? "Drag onto the Won or Lost column to mark this proposal's outcome" : undefined}
+      title={title}
     >
       {children}
     </div>

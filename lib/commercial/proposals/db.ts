@@ -438,6 +438,113 @@ export async function markProposalOutcome(input: {
   };
 }
 
+/** Karan 2026-07-15: reverse a Won/Lost proposal back to Sent — the
+ *  undo path for accidentally marking a bid closed. Also un-flips the
+ *  parent deal from pre_sale_closed back to Proposal · Sent so the
+ *  two surfaces stay in sync (mirrors markProposalOutcome, but
+ *  backwards).
+ *
+ *  Guardrail: only touches the parent deal if it's currently in
+ *  pre_sale_closed. If the deal already moved forward (e.g. into
+ *  pre_construction because the crew started the job), we DON'T
+ *  yank it back — that would erase real work state. In that edge
+ *  case the proposal reopens but the deal stays put, and Alex
+ *  sees a warning banner explaining the mismatch. */
+export async function reopenProposal(input: {
+  proposal_id: string;
+  actor_user_id: string | null;
+}): Promise<
+  | {
+      ok: true;
+      proposal: CommercialProposal;
+      opportunity_id: string;
+      account_id: string;
+      deal_reopened: boolean;
+      deal_current_status: string;
+    }
+  | { ok: false; error: string }
+> {
+  const sb = commercialDb();
+  const { data: proposalRow } = await sb
+    .from("commercial_proposals")
+    .select("id, opportunity_id, status")
+    .eq("id", input.proposal_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!proposalRow) return { ok: false, error: "Proposal not found." };
+  const proposalBefore = proposalRow as {
+    id: string;
+    opportunity_id: string;
+    status: string;
+  };
+  if (proposalBefore.status !== "won" && proposalBefore.status !== "lost") {
+    return {
+      ok: false,
+      error: `Only Won or Lost proposals can be reopened. This one is ${proposalBefore.status}.`,
+    };
+  }
+  // Flip the proposal back to Sent. updateProposalStatus stamps sent_at
+  // again; we clear the approved_at flag directly since the helper only
+  // sets it, doesn't clear.
+  const propResult = await updateProposalStatus({
+    id: input.proposal_id,
+    to_status: "sent",
+    acting_user_id: input.actor_user_id,
+  });
+  if (!propResult.ok) return { ok: false, error: propResult.error };
+  // Clear approved_at (updateProposalStatus doesn't handle un-approval).
+  await sb
+    .from("commercial_proposals")
+    .update({ approved_at: null })
+    .eq("id", input.proposal_id);
+
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("account_id, status, sub_status")
+    .eq("id", proposalBefore.opportunity_id)
+    .maybeSingle();
+  const oppData = oppRow as {
+    account_id: string;
+    status: string;
+    sub_status: string | null;
+  } | null;
+  const accountId = oppData?.account_id ?? "";
+  const currentDealStatus = oppData?.status ?? "";
+  let dealReopened = false;
+  // Only un-flip the deal if it's still parked in pre_sale_closed —
+  // otherwise we'd erase real forward progress (e.g. pre_construction).
+  if (oppData && oppData.status === "pre_sale_closed") {
+    try {
+      const { changeOpportunityStatus } = await import(
+        "@/lib/commercial/opportunities/status"
+      );
+      const flip = await changeOpportunityStatus({
+        opp_id: proposalBefore.opportunity_id,
+        to_status: "proposal",
+        to_sub_status: "sent",
+        acting_user_id: input.actor_user_id,
+      });
+      if (flip.ok) {
+        dealReopened = true;
+      } else {
+        console.warn(
+          `[reopenProposal] deal reopen failed for ${proposalBefore.opportunity_id}: ${flip.error}`
+        );
+      }
+    } catch (err) {
+      console.warn(`[reopenProposal] deal reopen threw:`, err);
+    }
+  }
+  return {
+    ok: true,
+    proposal: propResult.proposal,
+    opportunity_id: proposalBefore.opportunity_id,
+    account_id: accountId,
+    deal_reopened: dealReopened,
+    deal_current_status: currentDealStatus,
+  };
+}
+
 /** Karan 2026-07-15: bulk delete every DRAFT proposal under an account
  *  in a single click. Same draft-only guard as softDeleteProposal — we
  *  never nuke a Sent/Won/Lost/Replaced row because those are legal

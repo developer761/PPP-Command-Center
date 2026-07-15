@@ -61,12 +61,13 @@ export const PROPOSAL_ALLOWED_TRANSITIONS: Record<
   draft: ["pending_approval", "sent", "superseded"],
   pending_approval: ["draft", "sent", "superseded"],
   sent: ["won", "lost", "expired", "superseded"],
-  // Terminal: won/lost are Katie's final call. If PPP lost the bid + the
-  // GC comes back later asking for a re-quote, the estimator creates a
-  // NEW revision (which supersedes the current one) — they don't revive
-  // a Lost proposal.
-  won: [],
-  lost: [],
+  // Karan 2026-07-15: won/lost are NO LONGER terminal — if Alex
+  // accidentally marks a proposal Won (or the GC changes their mind
+  // after marking Lost), we need an undo path. Both flip back to
+  // Sent via the `reopenProposal` helper which also un-flips the
+  // parent deal from pre_sale_closed back to Proposal · Sent.
+  won: ["sent"],
+  lost: ["sent"],
   // Not-quite-terminal: expired means the customer took too long. Alex
   // can extend the deadline + re-send the SAME revision instead of
   // bumping, which is faster.

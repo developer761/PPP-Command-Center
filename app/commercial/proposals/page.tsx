@@ -248,6 +248,7 @@ export default async function ProposalsIndexPage({
           <p className="text-[13px] text-ppp-charcoal-500 mt-1">
             Every revision on every deal, grouped by status. Click a card to open the editor.
             {" "}<span className="text-emerald-700 font-medium">Drag Sent cards into Won or Lost</span> to close out a bid — Lost jumps you to the debrief page.
+            {" "}Dropped a card in Won/Lost by mistake? <span className="text-cc-brand-700 font-medium">Drag it back to Sent</span> to reopen — the parent deal reopens too.
           </p>
         </div>
         <NewProposalPicker

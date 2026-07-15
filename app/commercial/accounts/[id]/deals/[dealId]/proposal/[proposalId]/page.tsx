@@ -382,6 +382,39 @@ async function deleteProposalAction(formData: FormData) {
   );
 }
 
+/** Karan 2026-07-15: Reopen a Won/Lost proposal (undo path). Same
+ *  underlying helper the kanban Won→Sent drag uses; see
+ *  lib/commercial/proposals/db.ts `reopenProposal` for the parent-
+ *  deal cascade + guardrails. */
+async function reopenProposalActionForm(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  const { reopenProposal } = await import("@/lib/commercial/proposals/db");
+  const result = await reopenProposal({
+    proposal_id: proposalId,
+    actor_user_id: userId,
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+    );
+  }
+  revalidatePath(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
+  );
+  revalidatePath(`/commercial/accounts/${accountId}`);
+  const flag = result.deal_reopened ? "reopened" : "reopened_solo";
+  redirect(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?outcome=${flag}`
+  );
+}
+
 /** Karan 2026-07-15: Mark a Sent proposal Won or Lost. Delegates all
  *  side-effects (proposal.status flip + parent-deal flip) to the shared
  *  markProposalOutcome() helper so this button, the /commercial/
@@ -435,7 +468,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; outcome?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; outcome?: "won" | "reopened" | "reopened_solo" | string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -585,6 +618,22 @@ export default async function ProposalEditorPage({
               </ConfirmSubmitButton>
             </form>
           )}
+          {/* Karan 2026-07-15: Reopen button on Won/Lost proposals.
+              Undo path for accidental closes. Reverses both the
+              proposal AND the parent deal (if the deal hasn't moved
+              beyond pre_sale_closed — see reopenProposal guardrail). */}
+          {(proposal.status === "won" || proposal.status === "lost") && (
+            <form action={reopenProposalActionForm} className="inline-flex">
+              {hiddenIds}
+              <ConfirmSubmitButton
+                message={`Reopen R${proposal.revision_number}? Flips this proposal back to Sent AND (if the parent deal is still at Pre-Sale Closed) flips the deal back to Proposal · Sent. Use this if you marked ${proposal.status.toUpperCase()} by mistake.`}
+                pendingLabel="Reopening…"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-white text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[36px]"
+              >
+                ↺ Reopen
+              </ConfirmSubmitButton>
+            </form>
+          )}
           {/* Karan 2026-07-15: Won / Lost outcome buttons on Sent
               proposals. Flips both the proposal AND the parent deal so
               Alex doesn't have to touch two surfaces to close out a
@@ -638,6 +687,16 @@ export default async function ProposalEditorPage({
       {sp.outcome === "won" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
           <strong>🎉 Marked won.</strong> Deal flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.
+        </div>
+      )}
+      {sp.outcome === "reopened" && (
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-900">
+          <strong>Reopened.</strong> Proposal is back to Sent and the parent deal is back to <em>Proposal · Sent</em>.
+        </div>
+      )}
+      {sp.outcome === "reopened_solo" && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900">
+          <strong>Reopened proposal only.</strong> The parent deal already moved forward (past Pre-Sale Closed) so it was left as-is. Move it back manually on the pipeline kanban if you meant to reopen the whole deal.
         </div>
       )}
       {sp.error && (
