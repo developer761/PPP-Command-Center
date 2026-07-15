@@ -19,6 +19,17 @@ export const PROPOSAL_STATUSES = [
 ] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 
+/** Which opportunity statuses are eligible to have a new proposal
+ *  started on them. Pre-Sale open lanes only — no starting proposals
+ *  on Won/Lost/Post-Sale deals. Shared by /commercial/proposals's
+ *  <NewProposalPicker> AND the account detail Proposals sub-tab so
+ *  both surfaces stay in sync. */
+export const PROPOSAL_ELIGIBLE_OPP_STATUSES: readonly string[] = [
+  "qualifying",
+  "estimating",
+  "proposal",
+] as const;
+
 const STATUS_LABELS: Record<ProposalStatus, string> = {
   draft: "Draft",
   pending_approval: "Pending Approval",

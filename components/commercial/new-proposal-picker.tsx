@@ -60,18 +60,30 @@ export default function NewProposalPicker({
   const [accountQuery, setAccountQuery] = useState("");
   const [dealQuery, setDealQuery] = useState("");
   const [pending, setPending] = useState(false);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   const accountsById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a] as const)),
     [accounts]
   );
 
+  // Post-audit fix: bumped cap 20 → 50. Tomco has ~30 active
+  // customers today; 50 leaves headroom without dumping 500 rows
+  // into the DOM. Overflow is signaled via the "showing N of M" line.
+  const ACCOUNT_CAP = 50;
   const filteredAccounts = useMemo(() => {
     const q = accountQuery.trim().toLowerCase();
     const rows = q
       ? accounts.filter((a) => a.company_name.toLowerCase().includes(q))
       : accounts;
-    return rows.slice(0, 20);
+    return rows.slice(0, ACCOUNT_CAP);
+  }, [accounts, accountQuery]);
+  const accountsHiddenByCap = useMemo(() => {
+    const q = accountQuery.trim().toLowerCase();
+    const total = q
+      ? accounts.filter((a) => a.company_name.toLowerCase().includes(q)).length
+      : accounts.length;
+    return Math.max(0, total - ACCOUNT_CAP);
   }, [accounts, accountQuery]);
 
   const dealsForAccount = useMemo(() => {
@@ -86,9 +98,29 @@ export default function NewProposalPicker({
   const start = (dealId: string) => {
     if (!pickedAccount || pending) return;
     setPending(true);
-    router.push(
-      `/commercial/accounts/${pickedAccount}/deals/${dealId}/proposal/new`
-    );
+    setErrMsg(null);
+    // Post-audit fix: router.push doesn't throw on client but if the
+    // server route errors before the redirect completes, the button
+    // used to stay disabled forever. Wrap in a promise + safety
+    // timeout so if the redirect takes >8s the button re-enables +
+    // shows an inline error, and Alex can retry.
+    try {
+      router.push(
+        `/commercial/accounts/${pickedAccount}/deals/${dealId}/proposal/new`
+      );
+    } catch (err) {
+      setErrMsg(err instanceof Error ? err.message : "Something went wrong. Try again.");
+      setPending(false);
+      return;
+    }
+    window.setTimeout(() => {
+      // If we're still on the page 8s later something upstream is
+      // stuck — recover so Alex isn't trapped with a disabled button.
+      setPending((p) => {
+        if (p) setErrMsg("Still loading… If nothing happened, refresh and try again.");
+        return false;
+      });
+    }, 8000);
   };
 
   return (
@@ -178,6 +210,11 @@ export default function NewProposalPicker({
                 </ul>
                 <p className="text-[11px] text-ppp-charcoal-400">
                   Customers with no open deals are grayed out.
+                  {accountsHiddenByCap > 0 && (
+                    <>
+                      {" "}Showing {ACCOUNT_CAP} of {ACCOUNT_CAP + accountsHiddenByCap} matches — refine the search to see more.
+                    </>
+                  )}
                 </p>
               </div>
             )}
@@ -231,8 +268,11 @@ export default function NewProposalPicker({
                     ))
                   )}
                 </ul>
-                {pending && (
+                {pending && !errMsg && (
                   <p className="text-[11px] text-cc-brand-700 font-medium">Opening editor…</p>
+                )}
+                {errMsg && (
+                  <p className="text-[11px] text-rose-700 font-medium" role="alert">{errMsg}</p>
                 )}
               </div>
             )}

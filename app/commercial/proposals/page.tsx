@@ -31,6 +31,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import {
   PROPOSAL_STATUSES,
+  PROPOSAL_ELIGIBLE_OPP_STATUSES,
   proposalStatusLabel,
   type ProposalStatus,
 } from "@/lib/commercial/proposals/constants";
@@ -199,28 +200,24 @@ export default async function ProposalsIndexPage({
     byStatus.set(r.status, list);
   }
 
-  // Picker data — only open opps get "pickable" so Alex can't start a
-  // proposal on a lost/no-bid deal.
-  const OPEN_OPP_STATUSES = new Set([
-    "solicitation",
-    "qualifying",
-    "estimating",
-    "proposal",
-    "follow_up",
-  ]);
+  // Picker data — only Pre-Sale-open opps get "pickable" so Alex
+  // can't start a proposal on a lost/no-bid deal. Source list is
+  // PROPOSAL_ELIGIBLE_OPP_STATUSES so /commercial/proposals and the
+  // account detail Proposals sub-tab stay in sync.
+  const eligibleOppStatusSet = new Set(PROPOSAL_ELIGIBLE_OPP_STATUSES);
+  const accountsById = new Map(accountsForPicker.map((a) => [a.id, a] as const));
   const pickerAccounts = accountsForPicker.map((a) => ({
     id: a.id,
     company_name: a.company_name,
   }));
   const pickerDeals = oppsForPicker
-    .filter((o: CommercialOpportunity) => OPEN_OPP_STATUSES.has(o.status))
+    .filter((o: CommercialOpportunity) => eligibleOppStatusSet.has(o.status))
     .map((o: CommercialOpportunity) => ({
       id: o.id,
       account_id: o.account_id,
-      display_name: derivedOppName(
-        o,
-        accountsForPicker.find((a) => a.id === o.account_id)?.company_name ?? null
-      ),
+      display_name:
+        derivedOppName(o, accountsById.get(o.account_id)?.company_name ?? null) ||
+        "(untitled deal)",
       status: o.status,
     }));
 
@@ -412,7 +409,7 @@ function ProposalCard({ row, accentBar }: { row: ProposalRow; accentBar: string 
   const editorHref = `/commercial/accounts/${acctId}/deals/${dealId}/proposal/${row.id}`;
 
   return (
-    <li className="relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+    <li className="group relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
       <div className={`h-1 ${accentBar}`} aria-hidden />
       <Link href={editorHref} className="block px-3 py-2.5 hover:bg-ppp-charcoal-50">
         <div className="flex items-baseline justify-between gap-2 mb-1">

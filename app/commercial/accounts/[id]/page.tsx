@@ -101,7 +101,10 @@ import {
   getAccountRecentActivity,
   describeActivity,
 } from "@/lib/commercial/accounts/recent-activity";
-import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
+import {
+  proposalStatusLabel,
+  PROPOSAL_ELIGIBLE_OPP_STATUSES,
+} from "@/lib/commercial/proposals/constants";
 import NewProposalPicker from "@/components/commercial/new-proposal-picker";
 import { commercialDb } from "@/lib/commercial/db";
 import {
@@ -3318,7 +3321,11 @@ async function AccountProposalsTab({
   accountName: string;
 }) {
   const sb = commercialDb();
-  // Fetch this account's proposals + their parent opps (for grouping + title).
+  // Post-audit fix: previously fetched newest 300 proposals globally
+  // then filtered by account client-side — at scale that silently
+  // truncated older revisions belonging to this account. Push both
+  // scoping filters into SQL so we get every non-deleted proposal
+  // whose parent opp belongs to this live account.
   const { data: proposalsData } = await sb
     .from("commercial_proposals")
     .select(
@@ -3326,6 +3333,8 @@ async function AccountProposalsTab({
        opportunity:commercial_opportunities!inner(id, title, client_name, location_short, account_id, deleted_at)`
     )
     .is("deleted_at", null)
+    .eq("opportunity.account_id", accountId)
+    .is("opportunity.deleted_at", null)
     .order("updated_at", { ascending: false })
     .limit(300);
 
@@ -3347,11 +3356,17 @@ async function AccountProposalsTab({
       deleted_at: string | null;
     } | null;
   };
+  // SQL already enforced account_id + soft-delete filters; defensively
+  // filter again in JS in case the join shape ever drops a row.
   const proposals = ((proposalsData as unknown as Row[]) ?? []).filter(
-    (r) => r.opportunity && !r.opportunity.deleted_at && r.opportunity.account_id === accountId
+    (r) => r.opportunity && !r.opportunity.deleted_at
   );
 
-  // Group by parent deal.
+  // Group by parent deal. Within each deal, sort by revision_number
+  // desc so R3 always appears above R2 above R1 (the query orders by
+  // updated_at desc, which usually matches revision order but not
+  // always — e.g. a Draft R2 last edited yesterday would appear
+  // above a Sent R3 last edited last week).
   const byDeal = new Map<string, { deal: Row["opportunity"]; rows: Row[] }>();
   for (const r of proposals) {
     if (!r.opportunity) continue;
@@ -3360,22 +3375,21 @@ async function AccountProposalsTab({
     bucket.rows.push(r);
     byDeal.set(key, bucket);
   }
+  for (const bucket of byDeal.values()) {
+    bucket.rows.sort((a, b) => b.revision_number - a.revision_number);
+  }
 
   // Pull this account's open deals so the picker can offer them.
+  // Uses the shared PROPOSAL_ELIGIBLE_OPP_STATUSES so /commercial/
+  // proposals and this tab pick from the same eligible-deal set.
   const openOpps = await listCommercialOpportunities({ accountId });
-  const OPEN_STATUSES = new Set([
-    "solicitation",
-    "qualifying",
-    "estimating",
-    "proposal",
-    "follow_up",
-  ]);
+  const eligibleOppStatusSet = new Set(PROPOSAL_ELIGIBLE_OPP_STATUSES);
   const pickerDeals = openOpps
-    .filter((o) => OPEN_STATUSES.has(o.status))
+    .filter((o) => eligibleOppStatusSet.has(o.status))
     .map((o) => ({
       id: o.id,
       account_id: o.account_id,
-      display_name: derivedOppName(o, accountName),
+      display_name: derivedOppName(o, accountName) || "(untitled deal)",
       status: o.status,
     }));
 
