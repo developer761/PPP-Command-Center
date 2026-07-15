@@ -37,7 +37,11 @@ const STATUS_LABELS: Record<ProposalStatus, string> = {
   won: "Won",
   lost: "Lost",
   expired: "Expired",
-  superseded: "Superseded",
+  // Karan 2026-07-15: "Superseded" was too jargon-y. This state means
+  // "an older revision that was replaced by a newer one" — call it
+  // exactly that. DB value stays 'superseded' (renaming would need a
+  // migration + reflow); only the human-facing label changes.
+  superseded: "Replaced by newer",
 };
 
 export function proposalStatusLabel(s: string): string {

@@ -364,6 +364,61 @@ export async function softDeleteProposal(
   return { ok: true };
 }
 
+/** Karan 2026-07-15: bulk delete every DRAFT proposal under an account
+ *  in a single click. Same draft-only guard as softDeleteProposal — we
+ *  never nuke a Sent/Won/Lost/Replaced row because those are legal
+ *  history. Returns counts + optional skipped-because-not-draft list
+ *  so the UI can show "Deleted N drafts. Skipped M non-drafts (they're
+ *  historical, bump a new revision instead)." */
+export async function bulkDeleteProposalDraftsForAccount(
+  accountId: string,
+  actorUserId: string | null
+): Promise<{
+  ok: true;
+  deletedCount: number;
+  skippedNonDraftCount: number;
+} | { ok: false; error: string }> {
+  const sb = commercialDb();
+  // Pull every non-deleted proposal for this account (via inner join on
+  // opportunity → account_id) so we can log + count non-drafts.
+  const { data, error } = await sb
+    .from("commercial_proposals")
+    .select("id, status, opportunity:commercial_opportunities!inner(account_id, deleted_at)")
+    .is("deleted_at", null)
+    .eq("opportunity.account_id", accountId)
+    .is("opportunity.deleted_at", null);
+  if (error) return { ok: false, error: error.message };
+  type Row = {
+    id: string;
+    status: string;
+    opportunity: { account_id: string; deleted_at: string | null } | null;
+  };
+  const rows = ((data as unknown as Row[]) ?? []).filter(
+    (r) => r.opportunity && !r.opportunity.deleted_at
+  );
+  const draftIds = rows.filter((r) => r.status === "draft").map((r) => r.id);
+  const skipped = rows.length - draftIds.length;
+  if (draftIds.length === 0) {
+    return { ok: true, deletedCount: 0, skippedNonDraftCount: skipped };
+  }
+  const now = new Date().toISOString();
+  const { error: delError } = await sb
+    .from("commercial_proposals")
+    .update({ deleted_at: now, updated_by_user_id: actorUserId })
+    .in("id", draftIds)
+    .eq("status", "draft"); // defense-in-depth against status flip mid-request
+  if (delError) return { ok: false, error: delError.message };
+  // Best-effort audit log per row (don't fail the whole op if one fails).
+  await Promise.all(
+    draftIds.map((id) =>
+      logDelete("commercial_proposals", id, { id, bulk: true }, actorUserId).catch(
+        (e) => console.warn(`[bulkDelete] audit log failed for ${id}:`, e)
+      )
+    )
+  );
+  return { ok: true, deletedCount: draftIds.length, skippedNonDraftCount: skipped };
+}
+
 // ────────────── reads ──────────────
 
 export async function getProposal(

@@ -77,7 +77,11 @@ export default async function ProposalRevisionsPage({
   if (!opp || opp.account_id !== accountId) notFound();
 
   const oppName = derivedOppName(opp, account.company_name);
-  const backHref = `/commercial/accounts/${accountId}?tab=opportunities&edit=${dealId}#deal-row-${dealId}`;
+  // Karan 2026-07-15: back nav used to auto-open the Edit Deal drawer
+  // via ?edit=<dealId>, which surprised users hitting Back from
+  // any nested proposal page. Land on the top-level Proposals tab
+  // instead — that's now the natural "where do proposals live?" home.
+  const backHref = `/commercial/accounts/${accountId}?tab=proposals`;
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-5">

@@ -82,28 +82,59 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: RED,
   },
+  // Header row: TOMCO wordmark centered inside a red-dashed rule that
+  // spans the page width, date pinned top-right (also floats above).
+  // The reference PDF's logo is a graphic wordmark with dashed rules
+  // to its left and right — we recreate the dashes with two flex-1
+  // borderTop lines that visually anchor the wordmark.
   headerRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 20,
+    alignItems: "center",
+    marginBottom: 8,
+    marginTop: 2,
+    minHeight: 44,
+  },
+  logoDashLeft: {
+    flex: 1,
+    borderBottomWidth: 1.5,
+    borderBottomColor: RED,
+    borderStyle: "dashed",
+    marginRight: 8,
+    height: 1,
+  },
+  logoDashRight: {
+    flex: 1,
+    borderBottomWidth: 1.5,
+    borderBottomColor: RED,
+    borderStyle: "dashed",
+    marginLeft: 8,
+    height: 1,
   },
   logoBlock: {
     flexDirection: "column",
     alignItems: "center",
-    flex: 1,
   },
   logoText: {
-    fontSize: 26,
+    fontSize: 34,
     fontFamily: "Times-Bold",
     color: RED,
-    letterSpacing: 2,
+    letterSpacing: 4,
+    lineHeight: 1,
   },
   logoSub: {
-    fontSize: 8,
+    fontSize: 9,
     color: RED,
-    letterSpacing: 3,
-    marginTop: 2,
+    letterSpacing: 6,
+    marginTop: 3,
+    fontFamily: "Times-Bold",
+  },
+  dateFloat: {
+    position: "absolute",
+    top: 46,
+    right: 48,
+    fontSize: 12,
+    color: CHARCOAL,
+    fontFamily: "Times-Bold",
   },
   dateText: {
     fontSize: 12,
@@ -359,17 +390,17 @@ function splitBoldLead(text: string): { lead: string | null; body: string } {
 
 function LogoBlock({ dateLabel }: { dateLabel: string }) {
   return (
-    <View style={styles.headerRow}>
-      {/* Spacer to keep logo center */}
-      <View style={{ minWidth: 90 }} />
-      <View style={styles.logoBlock}>
-        <Text style={styles.logoText}>TOMCO</Text>
-        <Text style={styles.logoSub}>PAINTING</Text>
+    <>
+      <View style={styles.headerRow}>
+        <View style={styles.logoDashLeft} />
+        <View style={styles.logoBlock}>
+          <Text style={styles.logoText}>TOMCO</Text>
+          <Text style={styles.logoSub}>PAINTING</Text>
+        </View>
+        <View style={styles.logoDashRight} />
       </View>
-      <View>
-        <Text style={styles.dateText}>{dateLabel || " "}</Text>
-      </View>
-    </View>
+      {dateLabel && <Text style={styles.dateFloat}>{dateLabel}</Text>}
+    </>
   );
 }
 

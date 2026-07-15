@@ -40,6 +40,7 @@ import {
 } from "@/lib/commercial/accounts/documents";
 import CommercialDocumentUploadForm from "@/components/commercial-document-upload-form";
 import AccountInlineCardForm from "@/components/commercial/account-inline-card";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import DatePicker from "@/components/commercial/date-picker";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
@@ -173,6 +174,12 @@ type SP = Promise<{
    *  for display. */
   dup_id?: string;
   dup_label?: string;
+  /** Karan 2026-07-15: bulk-delete-all-proposals toast after the action
+   *  redirects back to ?tab=proposals. `bulk_deleted` is the count of
+   *  drafts nuked; `bulk_skipped` is the count of Sent/Won/Lost/
+   *  Replaced rows that were spared (they're historical). */
+  bulk_deleted?: string;
+  bulk_skipped?: string;
 }>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
@@ -592,7 +599,19 @@ export default async function CommercialAccountDetailPage({
         />
       )}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
-      {tab === "proposals" && <AccountProposalsTab accountId={account.id} accountName={account.company_name} />}
+      {tab === "proposals" && (
+        <AccountProposalsTab
+          accountId={account.id}
+          accountName={account.company_name}
+          bulkDeletedCount={
+            typeof sp.bulk_deleted === "string" ? Number(sp.bulk_deleted) : null
+          }
+          bulkSkippedCount={
+            typeof sp.bulk_skipped === "string" ? Number(sp.bulk_skipped) : null
+          }
+          errorMessage={sp.error}
+        />
+      )}
       {tab === "notes" && <NotesTab accountId={account.id} />}
       {tab === "kpis" && <AccountKpisTab accountId={account.id} overview={overview} rollup={invoiceRollup} />}
       {tab === "invoices" && (
@@ -1132,6 +1151,39 @@ async function deleteDealFromAccountAction(formData: FormData) {
  * the state machine (draft → partial → paid) fires identically and the
  * account's Financial Snapshot rolls up on the very next render.
  */
+/**
+ * Karan 2026-07-15: bulk-delete every DRAFT proposal for this account.
+ * Sent / Won / Lost / Replaced proposals are LEGAL HISTORY — the lib
+ * skips them and the button copy tells Alex how many will be spared.
+ */
+async function bulkDeleteAllProposalsAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const account_id = String(formData.get("account_id") ?? "");
+  const confirm = formData.get("confirm") === "yes";
+  if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
+  if (!confirm) {
+    redirect(
+      `/commercial/accounts/${account_id}?tab=proposals&error=${encodeURIComponent("Confirmation required to delete all proposal drafts.")}`
+    );
+  }
+  const { bulkDeleteProposalDraftsForAccount } = await import(
+    "@/lib/commercial/proposals/db"
+  );
+  const result = await bulkDeleteProposalDraftsForAccount(account_id, user.id);
+  if (!result.ok) {
+    redirect(
+      `/commercial/accounts/${account_id}?tab=proposals&error=${encodeURIComponent(result.error)}`
+    );
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  redirect(
+    `/commercial/accounts/${account_id}?tab=proposals&bulk_deleted=${result.deletedCount}&bulk_skipped=${result.skippedNonDraftCount}`
+  );
+}
+
 async function recordPaymentInlineAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -3321,9 +3373,15 @@ function statusPillTone(
 async function AccountProposalsTab({
   accountId,
   accountName,
+  bulkDeletedCount,
+  bulkSkippedCount,
+  errorMessage,
 }: {
   accountId: string;
   accountName: string;
+  bulkDeletedCount: number | null;
+  bulkSkippedCount: number | null;
+  errorMessage: string | undefined;
 }) {
   const sb = commercialDb();
   // Post-audit fix: previously fetched newest 300 proposals globally
@@ -3335,7 +3393,7 @@ async function AccountProposalsTab({
     .from("commercial_proposals")
     .select(
       `id, revision_number, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
-       opportunity:commercial_opportunities!inner(id, title, client_name, location_short, account_id, deleted_at)`
+       opportunity:commercial_opportunities!inner(id, title, client_name, location_short, account_id, deleted_at, status, sub_status)`
     )
     .is("deleted_at", null)
     .eq("opportunity.account_id", accountId)
@@ -3359,6 +3417,8 @@ async function AccountProposalsTab({
       location_short: string | null;
       account_id: string;
       deleted_at: string | null;
+      status: string;
+      sub_status: string | null;
     } | null;
   };
   // SQL already enforced account_id + soft-delete filters; defensively
@@ -3418,30 +3478,91 @@ async function AccountProposalsTab({
   const fmt = (c: number) =>
     `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
+  // Karan 2026-07-15: color-code each deal group's left border by the
+  // deal's current pipeline status so Alex can scan "which deals are
+  // hot vs closed" at a glance — same visual grammar as the
+  // /commercial/opportunities customer-board rows.
+  const dealBorderColor = (dealStatus: string): string => {
+    switch (dealStatus) {
+      case "qualifying": return "border-l-slate-400";
+      case "estimating": return "border-l-amber-500";
+      case "proposal": return "border-l-cc-brand-600";
+      case "pre_sale_closed": return "border-l-emerald-500"; // Won or Lost — sub_status disambiguates
+      case "pre_construction": return "border-l-purple-500";
+      case "in_progress": return "border-l-cyan-500";
+      case "billing": return "border-l-indigo-500";
+      case "post_sale_closed": return "border-l-slate-300";
+      default: return "border-l-ppp-charcoal-200";
+    }
+  };
+  // Lost overrides the Won color on pre_sale_closed.
+  const dealBorderColorFor = (dealStatus: string, subStatus: string | null): string => {
+    if (dealStatus === "pre_sale_closed" && subStatus === "lost") return "border-l-rose-500";
+    return dealBorderColor(dealStatus);
+  };
+
+  // Count only DRAFT proposals — the bulk-delete button only touches
+  // drafts (Sent/Won/Lost/Replaced are legal history and get skipped
+  // server-side, but showing the button as "Delete N drafts" is honest).
+  const draftCount = proposals.filter((p) => p.status === "draft").length;
+
   return (
     <div className="space-y-4">
+      {/* Bulk delete + create toast banners */}
+      {typeof bulkDeletedCount === "number" && bulkDeletedCount >= 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-emerald-900">
+          <strong>Deleted {bulkDeletedCount} draft{bulkDeletedCount === 1 ? "" : "s"}.</strong>{" "}
+          {bulkSkippedCount && bulkSkippedCount > 0
+            ? `Skipped ${bulkSkippedCount} non-draft (Sent / Won / Lost / Replaced) — those are historical and can't be deleted.`
+            : "Sent / Won / Lost / Replaced proposals are always spared."}
+        </div>
+      )}
+      {errorMessage && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5 text-sm text-rose-800" role="alert">
+          {errorMessage}
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <h2 className="text-base font-bold text-ppp-charcoal">Proposals</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-            Every revision on every deal for this customer, newest first.
+            Every revision on every deal for this customer, newest first. Same-deal revisions are grouped and color-coded by the deal&rsquo;s current pipeline lane.
           </p>
         </div>
-        {pickerDeals.length > 0 ? (
-          <NewProposalPicker
-            accounts={[{ id: accountId, company_name: accountName }]}
-            deals={pickerDeals}
-            lockedAccountId={accountId}
-            buttonLabel="+ Start proposal"
-          />
-        ) : (
-          <span
-            className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-400 text-[12px] font-semibold"
-            title="Add an open deal in the Pipeline tab to start a proposal."
-          >
-            No open deals to bid — add one first
-          </span>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {draftCount > 0 && (
+            <form
+              action={bulkDeleteAllProposalsAction}
+              className="inline-flex"
+            >
+              <input type="hidden" name="account_id" value={accountId} />
+              <input type="hidden" name="confirm" value="yes" />
+              <ConfirmSubmitButton
+                message={`Delete all ${draftCount} draft proposal${draftCount === 1 ? "" : "s"} for ${accountName}? Sent / Won / Lost / Replaced revisions are historical and will be SPARED. This can't be undone.`}
+                pendingLabel="Deleting…"
+                className="inline-flex items-center px-3 py-1.5 rounded-lg border border-rose-300 bg-white text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[36px]"
+              >
+                Delete {draftCount} draft{draftCount === 1 ? "" : "s"}
+              </ConfirmSubmitButton>
+            </form>
+          )}
+          {pickerDeals.length > 0 ? (
+            <NewProposalPicker
+              accounts={[{ id: accountId, company_name: accountName }]}
+              deals={pickerDeals}
+              lockedAccountId={accountId}
+              buttonLabel="+ Start proposal"
+            />
+          ) : (
+            <span
+              className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-400 text-[12px] font-semibold"
+              title="Add an open deal in the Pipeline tab to start a proposal."
+            >
+              No open deals to bid — add one first
+            </span>
+          )}
+        </div>
       </div>
 
       {proposals.length === 0 ? (
@@ -3464,15 +3585,26 @@ async function AccountProposalsTab({
               bucket.deal.client_name?.trim() ||
               bucket.deal.location_short?.trim() ||
               "(untitled deal)";
+            const borderCls = dealBorderColorFor(
+              bucket.deal.status,
+              bucket.deal.sub_status
+            );
             return (
               <section
                 key={dealId}
-                className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden"
+                className={`bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden border-l-4 ${borderCls}`}
               >
                 <header className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
+                    {/* Karan 2026-07-15: was linking with ?edit=<dealId>
+                        which auto-opened the Edit Deal drawer whenever
+                        Alex hit the browser Back button from any
+                        proposal-editor page — the drawer kept
+                        popping up unexpectedly. Now the header just
+                        jumps to the deal's row on the pipeline (no
+                        modal auto-open). */}
                     <Link
-                      href={`/commercial/accounts/${accountId}?tab=deals&sub=opportunities&edit=${dealId}#deal-row-${dealId}`}
+                      href={`/commercial/accounts/${accountId}?tab=deals&sub=opportunities#deal-row-${dealId}`}
                       className="text-[13px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
                     >
                       {dealTitle}

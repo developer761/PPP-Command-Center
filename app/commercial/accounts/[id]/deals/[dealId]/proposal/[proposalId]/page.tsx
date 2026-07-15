@@ -382,6 +382,68 @@ async function deleteProposalAction(formData: FormData) {
   );
 }
 
+/** Karan 2026-07-15: Mark a Sent proposal Won or Lost. Also flips the
+ *  parent deal to pre_sale_closed/{won|lost} so the two stay in sync
+ *  — otherwise Alex had to touch two surfaces to close out a bid. */
+async function markProposalOutcomeAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  const outcome = String(formData.get("outcome") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  if (outcome !== "won" && outcome !== "lost") {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("Invalid outcome.")}`
+    );
+  }
+  const { updateProposalStatus } = await import("@/lib/commercial/proposals/db");
+  const { changeOpportunityStatus } = await import(
+    "@/lib/commercial/opportunities/status"
+  );
+  const propResult = await updateProposalStatus({
+    id: proposalId,
+    to_status: outcome as "won" | "lost",
+    acting_user_id: userId,
+  });
+  if (!propResult.ok) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(propResult.error)}`
+    );
+  }
+  // Flip the parent deal too. Best-effort: if the deal is already
+  // pre_sale_closed the change_status helper is a no-op.
+  const flip = await changeOpportunityStatus({
+    opp_id: dealId,
+    to_status: "pre_sale_closed",
+    to_sub_status: outcome,
+    acting_user_id: userId,
+  });
+  if (!flip.ok) {
+    console.warn(
+      `[markProposalOutcome] opp flip failed for ${dealId}: ${flip.error}`
+    );
+  }
+  revalidatePath(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
+  );
+  revalidatePath(`/commercial/accounts/${accountId}`);
+  // For Lost, route to the account debrief so Alex captures the reason
+  // in the structured form (mirrors kanban Lost flow). For Won, land
+  // back on the proposal editor with a success banner.
+  if (outcome === "lost") {
+    redirect(
+      `/commercial/accounts/${accountId}/debrief/${dealId}?just_closed=1`
+    );
+  }
+  redirect(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?outcome=won`
+  );
+}
+
 // ─────────────── page render ───────────────
 
 export default async function ProposalEditorPage({
@@ -389,7 +451,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; outcome?: string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -534,6 +596,40 @@ export default async function ProposalEditorPage({
               </ConfirmSubmitButton>
             </form>
           )}
+          {/* Karan 2026-07-15: Won / Lost outcome buttons on Sent
+              proposals. Flips both the proposal AND the parent deal so
+              Alex doesn't have to touch two surfaces to close out a
+              bid. Lost routes into the account debrief flow to capture
+              the reason. */}
+          {proposal.status === "sent" && (
+            <>
+              <form action={markProposalOutcomeAction} className="inline-flex">
+                {hiddenIds}
+                <input type="hidden" name="outcome" value="won" />
+                <ConfirmSubmitButton
+                  message={`Mark R${proposal.revision_number} WON? This also flips the deal to Pre-Sale Closed · Won. You'll be able to start the project next.`}
+                  pendingLabel="Marking won…"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm min-h-[40px] disabled:opacity-50"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Mark won
+                </ConfirmSubmitButton>
+              </form>
+              <form action={markProposalOutcomeAction} className="inline-flex">
+                {hiddenIds}
+                <input type="hidden" name="outcome" value="lost" />
+                <ConfirmSubmitButton
+                  message={`Mark R${proposal.revision_number} LOST? You'll be routed to the debrief page to capture the reason (competitor won / price / no response / etc.). This also flips the deal to Pre-Sale Closed · Lost.`}
+                  pendingLabel="Marking lost…"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-300 bg-white text-rose-700 text-[13px] font-semibold hover:bg-rose-50 min-h-[40px] disabled:opacity-50"
+                >
+                  Mark lost
+                </ConfirmSubmitButton>
+              </form>
+            </>
+          )}
         </div>
       </header>
 
@@ -548,6 +644,11 @@ export default async function ProposalEditorPage({
       {sp.sent === "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
           <strong>Proposal sent.</strong> PDF snapshot saved to Files, deal flipped to <em>Proposal · Sent</em>, and the team was notified.
+        </div>
+      )}
+      {sp.outcome === "won" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
+          <strong>🎉 Marked won.</strong> Deal flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.
         </div>
       )}
       {sp.error && (
