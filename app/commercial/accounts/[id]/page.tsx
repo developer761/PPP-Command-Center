@@ -101,6 +101,9 @@ import {
   getAccountRecentActivity,
   describeActivity,
 } from "@/lib/commercial/accounts/recent-activity";
+import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
+import NewProposalPicker from "@/components/commercial/new-proposal-picker";
+import { commercialDb } from "@/lib/commercial/db";
 import {
   listAccountTags,
   listAllDistinctTags,
@@ -193,7 +196,8 @@ type SubTab =
   | "contacts"
   | "notes"
   | "opportunities"
-  | "documents";
+  | "documents"
+  | "proposals";
 const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
   // Karan 2026-07-08 reorder + 2026-07-10 fold: Overview leads
   // (at-a-glance summary — Info · Team · KPIs sub-tabs), then Deals
@@ -220,6 +224,10 @@ const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string 
   ],
   deals: [
     { key: "opportunities", label: "Pipeline" },
+    // Karan 2026-07-15: Proposals sub-tab so every revision on every
+    // deal for this customer lives one click deep from the account
+    // page. "Everything about a customer under one roof."
+    { key: "proposals", label: "Proposals" },
     { key: "documents", label: "Documents" },
   ],
 };
@@ -241,7 +249,7 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
   if (raw === "performance") return { primary: "overview", sub: "kpis" };
   if (raw === "contacts" || raw === "notes") return { primary: "people", sub: raw as SubTab };
-  if (raw === "opportunities" || raw === "documents") return { primary: "deals", sub: raw as SubTab };
+  if (raw === "opportunities" || raw === "documents" || raw === "proposals") return { primary: "deals", sub: raw as SubTab };
   return { primary: "overview", sub: null };
 }
 
@@ -576,6 +584,7 @@ export default async function CommercialAccountDetailPage({
         />
       )}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
+      {tab === "proposals" && <AccountProposalsTab accountId={account.id} accountName={account.company_name} />}
       {tab === "notes" && <NotesTab accountId={account.id} />}
       {tab === "kpis" && <AccountKpisTab accountId={account.id} overview={overview} rollup={invoiceRollup} />}
       {tab === "invoices" && (
@@ -3294,6 +3303,228 @@ function statusPillTone(
   if (status === "proposal_pending_approval") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
   if (status === "rfp") return { cls: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200" };
   return { cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100" };
+}
+
+// ─────────────── Account Proposals sub-tab (Karan 2026-07-15) ───────────────
+// Surfaces every proposal revision on every deal for THIS account, grouped
+// by parent deal so Alex can scan "this customer's whole proposal history"
+// in one place. Includes the same NewProposalPicker (locked to this
+// account) so a new revision can be started without leaving the tab.
+async function AccountProposalsTab({
+  accountId,
+  accountName,
+}: {
+  accountId: string;
+  accountName: string;
+}) {
+  const sb = commercialDb();
+  // Fetch this account's proposals + their parent opps (for grouping + title).
+  const { data: proposalsData } = await sb
+    .from("commercial_proposals")
+    .select(
+      `id, revision_number, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
+       opportunity:commercial_opportunities!inner(id, title, client_name, location_short, account_id, deleted_at)`
+    )
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(300);
+
+  type Row = {
+    id: string;
+    revision_number: number;
+    status: string;
+    total_cents: number;
+    sent_at: string | null;
+    updated_at: string;
+    opportunity_id: string;
+    header_json: { gc_company?: string; project_name?: string } | null;
+    opportunity: {
+      id: string;
+      title: string | null;
+      client_name: string | null;
+      location_short: string | null;
+      account_id: string;
+      deleted_at: string | null;
+    } | null;
+  };
+  const proposals = ((proposalsData as unknown as Row[]) ?? []).filter(
+    (r) => r.opportunity && !r.opportunity.deleted_at && r.opportunity.account_id === accountId
+  );
+
+  // Group by parent deal.
+  const byDeal = new Map<string, { deal: Row["opportunity"]; rows: Row[] }>();
+  for (const r of proposals) {
+    if (!r.opportunity) continue;
+    const key = r.opportunity.id;
+    const bucket = byDeal.get(key) ?? { deal: r.opportunity, rows: [] };
+    bucket.rows.push(r);
+    byDeal.set(key, bucket);
+  }
+
+  // Pull this account's open deals so the picker can offer them.
+  const openOpps = await listCommercialOpportunities({ accountId });
+  const OPEN_STATUSES = new Set([
+    "solicitation",
+    "qualifying",
+    "estimating",
+    "proposal",
+    "follow_up",
+  ]);
+  const pickerDeals = openOpps
+    .filter((o) => OPEN_STATUSES.has(o.status))
+    .map((o) => ({
+      id: o.id,
+      account_id: o.account_id,
+      display_name: derivedOppName(o, accountName),
+      status: o.status,
+    }));
+
+  const pillCls = (status: string): string => {
+    switch (status) {
+      case "sent":
+        return "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200";
+      case "won":
+        return "bg-emerald-50 text-emerald-800 border-emerald-200";
+      case "lost":
+      case "expired":
+        return "bg-rose-50 text-rose-800 border-rose-200";
+      case "pending_approval":
+        return "bg-amber-50 text-amber-800 border-amber-200";
+      case "superseded":
+        return "bg-slate-50 text-slate-600 border-slate-200";
+      default:
+        return "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200";
+    }
+  };
+  const fmt = (c: number) =>
+    `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <h2 className="text-base font-bold text-ppp-charcoal">Proposals</h2>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+            Every revision on every deal for this customer, newest first.
+          </p>
+        </div>
+        {pickerDeals.length > 0 ? (
+          <NewProposalPicker
+            accounts={[{ id: accountId, company_name: accountName }]}
+            deals={pickerDeals}
+            lockedAccountId={accountId}
+            buttonLabel="+ Start proposal"
+          />
+        ) : (
+          <span
+            className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-400 text-[12px] font-semibold"
+            title="Add an open deal in the Pipeline tab to start a proposal."
+          >
+            No open deals to bid — add one first
+          </span>
+        )}
+      </div>
+
+      {proposals.length === 0 ? (
+        <div className="bg-white border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
+          <p className="text-sm font-semibold text-ppp-charcoal mb-1">
+            No proposals for {accountName} yet.
+          </p>
+          <p className="text-[13px] text-ppp-charcoal-500 max-w-md mx-auto">
+            {pickerDeals.length > 0
+              ? "Click + Start proposal above to build the first revision on an open deal."
+              : "Add an open deal in the Pipeline tab, then start a proposal on it."}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {Array.from(byDeal.entries()).map(([dealId, bucket]) => {
+            if (!bucket.deal) return null;
+            const dealTitle =
+              bucket.deal.title?.trim() ||
+              bucket.deal.client_name?.trim() ||
+              bucket.deal.location_short?.trim() ||
+              "(untitled deal)";
+            return (
+              <section
+                key={dealId}
+                className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden"
+              >
+                <header className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/commercial/accounts/${accountId}?tab=deals&sub=opportunities&edit=${dealId}#deal-row-${dealId}`}
+                      className="text-[13px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+                    >
+                      {dealTitle}
+                    </Link>
+                    <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                      {bucket.rows.length} revision{bucket.rows.length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                  <Link
+                    href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new`}
+                    className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
+                  >
+                    + New revision
+                  </Link>
+                </header>
+                <ul className="divide-y divide-ppp-charcoal-100">
+                  {bucket.rows.map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex items-stretch hover:bg-ppp-charcoal-50"
+                    >
+                      <Link
+                        href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${r.id}`}
+                        className="flex items-center gap-3 px-4 py-2.5 min-h-[48px] flex-1 min-w-0"
+                      >
+                        <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums shrink-0">
+                          R{r.revision_number}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${pillCls(r.status)}`}
+                        >
+                          {proposalStatusLabel(r.status)}
+                        </span>
+                        {r.header_json?.gc_company && (
+                          <span className="text-[11.5px] text-ppp-charcoal-600 truncate">
+                            {r.header_json.gc_company}
+                          </span>
+                        )}
+                        {r.sent_at && (
+                          <span className="text-[10.5px] text-ppp-charcoal-500 shrink-0 ml-auto">
+                            sent {new Date(r.sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}
+                          </span>
+                        )}
+                        <span className="text-[13px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ml-2">
+                          {fmt(r.total_cents)}
+                        </span>
+                      </Link>
+                      <a
+                        href={`/api/commercial/proposals/${r.id}/pdf`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-3 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-white border-l border-ppp-charcoal-100 shrink-0"
+                        title="Open the customer PDF in a new tab"
+                        aria-label={`Open PDF for revision ${r.revision_number}`}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <span className="hidden sm:inline">PDF</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 async function DocumentsTab({ accountId, errorMessage }: { accountId: string; errorMessage?: string }) {
