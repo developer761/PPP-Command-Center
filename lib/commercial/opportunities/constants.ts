@@ -392,7 +392,12 @@ export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
   proposal: ["pre_sale_closed", "estimating"],
   // "Start Project" button on the Won debrief modal takes pre_sale_closed
   // (Won) → pre_construction. Losing side just stays put.
-  pre_sale_closed: ["pre_construction", "qualifying"],
+  // Karan 2026-07-15: Alex + Katie also need to reopen a closed deal
+  // directly into estimating or proposal (customer says "re-quote it"
+  // — no need to redo qualifying + estimating from scratch). The
+  // WARN_TRANSITIONS entries below flag these jumps as unusual so the
+  // status picker + kanban surface a soft "are you sure?" hint.
+  pre_sale_closed: ["pre_construction", "qualifying", "estimating", "proposal"],
   pre_construction: ["in_progress", "billing"],
   in_progress: ["billing", "pre_construction"],
   billing: ["post_sale_closed", "in_progress"],
@@ -416,6 +421,8 @@ export const WARN_TRANSITIONS: ReadonlySet<string> = new Set([
   // Terminal reopen
   "post_sale_closed→qualifying",
   "pre_sale_closed→qualifying",
+  "pre_sale_closed→estimating",
+  "pre_sale_closed→proposal",
 ]);
 
 // ═══════════════════════════════════════════════════════════════════
