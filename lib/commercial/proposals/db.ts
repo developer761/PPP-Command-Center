@@ -364,6 +364,80 @@ export async function softDeleteProposal(
   return { ok: true };
 }
 
+/** Karan 2026-07-15: shared "mark proposal Won / Lost" side-effects
+ *  helper. The proposal-editor button, the /commercial/proposals kanban
+ *  drop, and (future) mobile share-sheet all call THIS so the outcome
+ *  is stamped identically everywhere — proposal.status flips, parent
+ *  deal flips to pre_sale_closed/{won|lost}, and the caller decides
+ *  where to redirect the user (Won → stay on proposal; Lost → debrief
+ *  form). */
+export async function markProposalOutcome(input: {
+  proposal_id: string;
+  outcome: "won" | "lost";
+  actor_user_id: string | null;
+}): Promise<
+  | { ok: true; proposal: CommercialProposal; opportunity_id: string; account_id: string }
+  | { ok: false; error: string }
+> {
+  const sb = commercialDb();
+  // Verify the proposal exists + not soft-deleted + get parent opp id.
+  const { data: proposalRow } = await sb
+    .from("commercial_proposals")
+    .select("id, opportunity_id, status")
+    .eq("id", input.proposal_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!proposalRow) return { ok: false, error: "Proposal not found." };
+  const proposalBefore = proposalRow as { id: string; opportunity_id: string; status: string };
+  if (proposalBefore.status !== "sent") {
+    return {
+      ok: false,
+      error: `Only Sent proposals can be marked ${input.outcome}. This one is ${proposalBefore.status}.`,
+    };
+  }
+  // Flip the proposal via the same helper the editor uses.
+  const propResult = await updateProposalStatus({
+    id: input.proposal_id,
+    to_status: input.outcome,
+    acting_user_id: input.actor_user_id,
+  });
+  if (!propResult.ok) return { ok: false, error: propResult.error };
+  // Grab account_id for the caller's redirect (Lost needs to land on
+  // /commercial/accounts/[id]/debrief/[dealId]).
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("account_id")
+    .eq("id", proposalBefore.opportunity_id)
+    .maybeSingle();
+  const accountId = (oppRow as { account_id: string } | null)?.account_id ?? null;
+  // Flip parent deal — best-effort. If it's already pre_sale_closed the
+  // change_status helper is effectively a no-op.
+  try {
+    const { changeOpportunityStatus } = await import(
+      "@/lib/commercial/opportunities/status"
+    );
+    const flip = await changeOpportunityStatus({
+      opp_id: proposalBefore.opportunity_id,
+      to_status: "pre_sale_closed",
+      to_sub_status: input.outcome,
+      acting_user_id: input.actor_user_id,
+    });
+    if (!flip.ok) {
+      console.warn(
+        `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${flip.error}`
+      );
+    }
+  } catch (err) {
+    console.warn(`[markProposalOutcome] opp flip threw:`, err);
+  }
+  return {
+    ok: true,
+    proposal: propResult.proposal,
+    opportunity_id: proposalBefore.opportunity_id,
+    account_id: accountId ?? "",
+  };
+}
+
 /** Karan 2026-07-15: bulk delete every DRAFT proposal under an account
  *  in a single click. Same draft-only guard as softDeleteProposal — we
  *  never nuke a Sent/Won/Lost/Replaced row because those are legal

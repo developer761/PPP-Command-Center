@@ -36,6 +36,11 @@ import {
   type ProposalStatus,
 } from "@/lib/commercial/proposals/constants";
 import NewProposalPicker from "@/components/commercial/new-proposal-picker";
+import {
+  ProposalsKanbanDnDProvider,
+  ProposalDnDColumn,
+  ProposalDnDCard,
+} from "@/components/commercial/proposals-kanban-dnd";
 
 export const dynamic = "force-dynamic";
 
@@ -241,7 +246,8 @@ export default async function ProposalsIndexPage({
             Proposals
           </h1>
           <p className="text-[13px] text-ppp-charcoal-500 mt-1">
-            Every revision on every deal, grouped by status. Drop into any card to open the editor.
+            Every revision on every deal, grouped by status. Click a card to open the editor.
+            {" "}<span className="text-emerald-700 font-medium">Drag Sent cards into Won or Lost</span> to close out a bid — Lost jumps you to the debrief page.
           </p>
         </div>
         <NewProposalPicker
@@ -285,58 +291,65 @@ export default async function ProposalsIndexPage({
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto -mx-3 sm:-mx-6 px-3 sm:px-6 pb-2">
-          <div className="flex gap-3 min-w-max items-stretch">
-            {/* Active columns — Draft → Pending → Sent */}
-            {ACTIVE_COLUMNS.map((status) => (
-              <ProposalColumn
-                key={status}
-                status={status}
-                rows={byStatus.get(status) ?? []}
-                tone={toneForStatus(status)}
-                width="w-64 sm:w-72"
-              />
-            ))}
-
-            {/* Won — the moment Alex cares about */}
-            <ProposalColumn
-              key="won"
-              status="won"
-              rows={byStatus.get("won") ?? []}
-              tone={toneForStatus("won")}
-              width="w-64 sm:w-72"
-            />
-
-            {/* Closed cluster — Lost / Expired / Superseded stack narrow */}
-            <div className="shrink-0 border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
-              <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12px] font-bold text-ppp-charcoal uppercase tracking-wide">
-                    Closed
-                  </span>
-                  <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
-                    {CLOSED_TERMINAL.reduce((acc, s) => acc + (byStatus.get(s)?.length ?? 0), 0)}
-                  </span>
-                </div>
-                <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
-                  Not-awarded / newer revision replaced them
-                </div>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2 p-2">
-                {CLOSED_TERMINAL.map((status) => (
+        <ProposalsKanbanDnDProvider>
+          <div className="overflow-x-auto -mx-3 sm:-mx-6 px-3 sm:px-6 pb-2">
+            <div className="flex gap-3 min-w-max items-stretch">
+              {/* Active columns — Draft → Pending → Sent */}
+              {ACTIVE_COLUMNS.map((status) => (
+                <ProposalDnDColumn key={status} status={status}>
                   <ProposalColumn
-                    key={status}
                     status={status}
                     rows={byStatus.get(status) ?? []}
                     tone={toneForStatus(status)}
-                    width="w-full sm:w-44 lg:w-48"
-                    compact
+                    width="w-64 sm:w-72"
                   />
-                ))}
+                </ProposalDnDColumn>
+              ))}
+
+              {/* Won — the moment Alex cares about (drop target) */}
+              <ProposalDnDColumn key="won" status="won">
+                <ProposalColumn
+                  status="won"
+                  rows={byStatus.get("won") ?? []}
+                  tone={toneForStatus("won")}
+                  width="w-64 sm:w-72"
+                />
+              </ProposalDnDColumn>
+
+              {/* Closed cluster — Lost is a drop target (routes to
+                  debrief). Expired/Replaced are NOT — those are
+                  auto-computed states, not manual outcomes. */}
+              <div className="shrink-0 border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
+                <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[12px] font-bold text-ppp-charcoal uppercase tracking-wide">
+                      Closed
+                    </span>
+                    <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
+                      {CLOSED_TERMINAL.reduce((acc, s) => acc + (byStatus.get(s)?.length ?? 0), 0)}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                    Not-awarded / newer revision replaced them
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 p-2">
+                  {CLOSED_TERMINAL.map((status) => (
+                    <ProposalDnDColumn key={status} status={status}>
+                      <ProposalColumn
+                        status={status}
+                        rows={byStatus.get(status) ?? []}
+                        tone={toneForStatus(status)}
+                        width="w-full sm:w-44 lg:w-48"
+                        compact
+                      />
+                    </ProposalDnDColumn>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </ProposalsKanbanDnDProvider>
       )}
 
       <p className="text-[11px] text-ppp-charcoal-400">
@@ -386,7 +399,9 @@ function ProposalColumn({
           </li>
         ) : (
           rows.map((r) => (
-            <ProposalCard key={r.id} row={r} accentBar={tone.accentBar} />
+            <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
+              <ProposalCard row={r} accentBar={tone.accentBar} />
+            </ProposalDnDCard>
           ))
         )}
       </ul>

@@ -382,9 +382,11 @@ async function deleteProposalAction(formData: FormData) {
   );
 }
 
-/** Karan 2026-07-15: Mark a Sent proposal Won or Lost. Also flips the
- *  parent deal to pre_sale_closed/{won|lost} so the two stay in sync
- *  — otherwise Alex had to touch two surfaces to close out a bid. */
+/** Karan 2026-07-15: Mark a Sent proposal Won or Lost. Delegates all
+ *  side-effects (proposal.status flip + parent-deal flip) to the shared
+ *  markProposalOutcome() helper so this button, the /commercial/
+ *  proposals kanban drop, and any future outcome surfaces are always
+ *  in sync. */
 async function markProposalOutcomeAction(formData: FormData) {
   "use server";
   const userId = await requireAuthed();
@@ -400,40 +402,22 @@ async function markProposalOutcomeAction(formData: FormData) {
       `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("Invalid outcome.")}`
     );
   }
-  const { updateProposalStatus } = await import("@/lib/commercial/proposals/db");
-  const { changeOpportunityStatus } = await import(
-    "@/lib/commercial/opportunities/status"
-  );
-  const propResult = await updateProposalStatus({
-    id: proposalId,
-    to_status: outcome as "won" | "lost",
-    acting_user_id: userId,
+  const { markProposalOutcome } = await import("@/lib/commercial/proposals/db");
+  const result = await markProposalOutcome({
+    proposal_id: proposalId,
+    outcome: outcome as "won" | "lost",
+    actor_user_id: userId,
   });
-  if (!propResult.ok) {
+  if (!result.ok) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(propResult.error)}`
-    );
-  }
-  // Flip the parent deal too. Best-effort: if the deal is already
-  // pre_sale_closed the change_status helper is a no-op.
-  const flip = await changeOpportunityStatus({
-    opp_id: dealId,
-    to_status: "pre_sale_closed",
-    to_sub_status: outcome,
-    acting_user_id: userId,
-  });
-  if (!flip.ok) {
-    console.warn(
-      `[markProposalOutcome] opp flip failed for ${dealId}: ${flip.error}`
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
     );
   }
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
   revalidatePath(`/commercial/accounts/${accountId}`);
-  // For Lost, route to the account debrief so Alex captures the reason
-  // in the structured form (mirrors kanban Lost flow). For Won, land
-  // back on the proposal editor with a success banner.
+  // Lost → route into structured debrief form; Won → stay + toast.
   if (outcome === "lost") {
     redirect(
       `/commercial/accounts/${accountId}/debrief/${dealId}?just_closed=1`
