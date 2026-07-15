@@ -37,7 +37,15 @@ export default function ConfirmSubmitButton({
           e.preventDefault();
           return;
         }
-        setPending(true);
+        // Karan 2026-07-15 bugfix: `setPending(true)` inside the click
+        // handler synchronously disables the submit button before the
+        // browser has finished dispatching the form's submit event —
+        // which cancels the submission entirely (button-disabled-mid-
+        // submit is a browser-level cancel signal). Defer the state
+        // flip to the next macrotask so the form gets to submit
+        // FIRST, then the disabled + label swap happens for the
+        // visible pending state.
+        window.setTimeout(() => setPending(true), 0);
       }}
     >
       {pending ? pendingLabel : children}

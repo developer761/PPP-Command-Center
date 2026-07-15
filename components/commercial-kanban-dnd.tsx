@@ -180,17 +180,28 @@ const KanbanDnDContext = createContext<Ctx | null>(null);
 export function KanbanDnDCard({ oppId, children }: { oppId: string; children: ReactNode }) {
   const ctx = useContext(KanbanDnDContext);
   if (!ctx) return <>{children}</>;
+  // Karan 2026-07-15 bugfix: the parent kanban is server-rendered from
+  // opp.status, so the optimisticMove state was never actually applied
+  // to card positions — cards visually sat in the old column for the
+  // full server-refresh round-trip (300ms–2s on cold start). Now: if
+  // this card is the one that just got dropped, hide it FAST so the
+  // drop reads as instant. On refresh the card reappears in the new
+  // column via the server-rendered payload.
+  const isDragging = ctx.dragOppId === oppId;
+  const isOptimisticallyMoved = ctx.optimisticMove?.oppId === oppId;
   return (
     <div
       draggable
       onDragStart={(e) => ctx.onCardDragStart(e, oppId)}
       onDragEnd={ctx.onCardDragEnd}
-      // Karan 2026-07-09: dropped `transition-opacity` — the 150ms fade
-      // during drag felt like a lag on the way in and on the way out.
-      // Instant opacity switch reads as snappier + more direct.
-      className={`cursor-grab active:cursor-grabbing ${
-        ctx.dragOppId === oppId ? "opacity-40" : "opacity-100"
+      className={`cursor-grab active:cursor-grabbing transition-opacity duration-100 ${
+        isOptimisticallyMoved
+          ? "opacity-0 pointer-events-none absolute -z-10"
+          : isDragging
+            ? "opacity-40"
+            : "opacity-100"
       }`}
+      aria-hidden={isOptimisticallyMoved}
     >
       {children}
     </div>
