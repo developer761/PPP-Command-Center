@@ -106,9 +106,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   dateText: {
-    fontSize: 11,
+    fontSize: 12,
     color: CHARCOAL,
-    fontFamily: "Times-Roman",
+    fontFamily: "Times-Bold",
     minWidth: 90,
     textAlign: "right",
   },
@@ -119,9 +119,14 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 4,
   },
+  addrBlock: {
+    marginLeft: 18,
+    marginTop: 4,
+  },
   addrLine: {
     fontSize: 11,
     color: CHARCOAL,
+    fontFamily: "Times-Bold",
   },
   gcName: {
     fontSize: 11,
@@ -133,8 +138,9 @@ const styles = StyleSheet.create({
   },
   intro: {
     marginTop: 14,
-    marginBottom: 10,
+    marginBottom: 14,
     fontSize: 11,
+    fontFamily: "Times-Bold",
     lineHeight: 1.4,
   },
   bulletRow: {
@@ -154,14 +160,21 @@ const styles = StyleSheet.create({
   bulletLead: {
     fontFamily: "Times-Bold",
   },
+  // Tomco line-item convention (from reference PDF): plain lines with a
+  // bold colon-terminated label, no bullet glyph. e.g.
+  //   Foyer Walls: Prep, prime, and paint 2 coats
+  itemLine: {
+    marginBottom: 6,
+    fontSize: 11,
+  },
   totalRow: {
-    marginTop: 10,
-    marginBottom: 4,
+    marginTop: 18,
+    marginBottom: 6,
     flexDirection: "row",
     justifyContent: "flex-end",
   },
   totalText: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: "Times-Bold",
   },
   altSection: {
@@ -179,31 +192,31 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: "right",
   },
-  ciBanner: {
-    marginTop: 14,
-    padding: 8,
-    backgroundColor: YELLOW_BG,
-    borderLeftWidth: 3,
-    borderLeftColor: YELLOW_BORDER,
+  // Yellow-highlighted CI line — Tomco uses an inline text highlight,
+  // NOT a left-border banner. Matches reference PDF exactly.
+  ciWrap: {
+    marginTop: 18,
+    marginBottom: 2,
   },
   ciText: {
     fontFamily: "Times-Bold",
     fontSize: 11,
+    backgroundColor: YELLOW_BG,
   },
   signBlock: {
-    marginTop: 22,
+    marginTop: 4,
     fontSize: 11,
   },
   signHeading: {
     fontFamily: "Times-Bold",
-    marginBottom: 6,
+    marginBottom: 14,
   },
   signLine: {
-    fontFamily: "Times-Roman",
-    marginTop: 12,
+    fontFamily: "Times-Bold",
+    marginTop: 14,
   },
   estBlock: {
-    marginTop: 18,
+    marginTop: 20,
     fontSize: 11,
   },
   estName: {
@@ -213,6 +226,8 @@ const styles = StyleSheet.create({
   },
   estRow: {
     color: CHARCOAL,
+    fontFamily: "Times-Bold",
+    fontSize: 11,
   },
   footer: {
     position: "absolute",
@@ -359,21 +374,28 @@ function LogoBlock({ dateLabel }: { dateLabel: string }) {
 }
 
 function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
+  const hasAttentionBlock = Boolean(h.attention || h.phone || h.email);
   return (
     <View>
       <Text style={styles.sectionUnderlineHeader}>PROPOSAL SUBMITTED TO:</Text>
-      {h.gc_company && <Text style={styles.gcName}>{h.gc_company}</Text>}
-      {(h.gc_address_lines ?? []).map((line, i) => (
-        <Text key={i} style={styles.addrLine}>{line}</Text>
-      ))}
-      {h.attention && (
-        <Text style={styles.addrLine}>Attention: {h.attention}</Text>
-      )}
-      {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
-      {h.email && (
-        <Text style={styles.addrLine}>
-          <Text style={styles.link}>{h.email}</Text>
-        </Text>
+      {/* Company + address indented + bold (matches Tomco reference PDF). */}
+      <View style={styles.addrBlock}>
+        {h.gc_company && <Text style={styles.addrLine}>{h.gc_company}</Text>}
+        {(h.gc_address_lines ?? []).map((line, i) => (
+          <Text key={i} style={styles.addrLine}>{line}</Text>
+        ))}
+      </View>
+      {/* Blank-line separator + Attention block, also indented + bold. */}
+      {hasAttentionBlock && (
+        <View style={[styles.addrBlock, { marginTop: 10 }]}>
+          {h.attention && (
+            <Text style={styles.addrLine}>Attention:  {h.attention}</Text>
+          )}
+          {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
+          {h.email && (
+            <Text style={styles.addrLine}>{h.email}</Text>
+          )}
+        </View>
       )}
     </View>
   );
@@ -383,60 +405,68 @@ function ProjectBlock({ h }: { h: ProposalHeaderJson }) {
   const name = h.project_name?.trim();
   const addr = h.project_address?.trim();
   if (!name && !addr) return null;
-  // Single-line variant if only one of the two, or if they're short.
-  const inline = name && addr && (name.length + addr.length) < 55;
+  // Tomco reference format is a single "PROJECT: Name, Address" line
+  // (bold + underlined). Always inline unless the joined string would
+  // wrap awkwardly on the header row (>90 chars).
+  const joined = [name, addr].filter(Boolean).join(", ");
+  const inline = joined.length <= 90;
   return (
-    <View style={{ marginTop: 10 }}>
+    <View style={{ marginTop: 4 }}>
       <Text style={styles.sectionUnderlineHeader}>
-        PROJECT:{inline ? ` ${name}, ${addr}` : ""}
+        PROJECT:{inline ? ` ${joined}` : ""}
       </Text>
       {!inline && (
-        <>
-          {name && <Text style={styles.gcName}>{name}</Text>}
+        <View style={styles.addrBlock}>
+          {name && <Text style={styles.addrLine}>{name}</Text>}
           {addr && <Text style={styles.addrLine}>{addr}</Text>}
-        </>
+        </View>
       )}
     </View>
   );
 }
 
-/** Spec (project_tomco_proposal_format.md): "Shorter jobs use plain
- *  lines (no bullets): `Foyer Walls: Prep, prime, and paint 2 coats`".
- *  Suppress the ● glyph when the description has no bold lead AND is
- *  short + simple (no colon), rendering as plain text. Longer
- *  narrative bullets keep the glyph as before. */
+/** Tomco line-item format (verified against reference PDF): plain
+ *  lines with a bold colon-terminated label and regular-weight body.
+ *  Example: **Foyer Walls:** Prep, prime, and paint 2 coats
+ *
+ *  No bullet glyph. If a description has no bold lead (rare), it renders
+ *  as a plain line. If it's a long narrative paragraph with no colon
+ *  (uncommon), we still use the ● glyph so it doesn't run into the
+ *  next line visually — but the default case is plain lines. */
 function BulletLine({ text }: { text: string }) {
   const { lead, body } = splitBoldLead(text);
-  const isSimpleShort = !lead && text.trim().length < 60 && !text.includes(":");
-  if (isSimpleShort) {
+  if (lead) {
     return (
-      <View style={{ marginBottom: 3, paddingRight: 4 }}>
-        <Text style={{ fontSize: 11 }}>{body}</Text>
+      <View style={styles.itemLine}>
+        <Text style={{ fontSize: 11 }}>
+          <Text style={styles.bulletLead}>{lead}:</Text> {body}
+        </Text>
+      </View>
+    );
+  }
+  const isLongNarrative = text.trim().length > 80;
+  if (isLongNarrative) {
+    return (
+      <View style={styles.bulletRow}>
+        <Text style={styles.bulletGlyph}>●</Text>
+        <Text style={styles.bulletBody}>{body}</Text>
       </View>
     );
   }
   return (
-    <View style={styles.bulletRow}>
-      <Text style={styles.bulletGlyph}>●</Text>
-      <Text style={styles.bulletBody}>
-        {lead ? (
-          <>
-            <Text style={styles.bulletLead}>{lead}:</Text>{" "}
-            <Text>{body}</Text>
-          </>
-        ) : (
-          <Text>{body}</Text>
-        )}
-      </Text>
+    <View style={styles.itemLine}>
+      <Text style={{ fontSize: 11 }}>{body}</Text>
     </View>
   );
 }
 
 function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) {
   if (items.length === 0) return null;
+  // Reference PDF has NO "Inclusions:" header — line items just come
+  // right after the intro paragraph. Suppress the header for the
+  // customer-facing render.
   return (
     <View style={{ marginTop: 4 }}>
-      <Text style={styles.sectionUnderlineHeader}>Inclusions:</Text>
       {items.map((it) => (
         <BulletLine key={it.id} text={it.description} />
       ))}
@@ -553,8 +583,8 @@ function AlternateSectionInternal({
 function ExclusionsBlock({ exclusions }: { exclusions: string[] }) {
   if (exclusions.length === 0) return null;
   return (
-    <View style={{ marginTop: 12 }}>
-      <Text style={styles.sectionUnderlineHeader}>Exclusions:</Text>
+    <View style={{ marginTop: 16 }}>
+      <Text style={styles.sectionUnderlineHeader}>Exclusions &amp; Qualifications:</Text>
       {exclusions.map((ex, i) => (
         <View key={i} style={styles.bulletRow}>
           <Text style={styles.bulletGlyph}>●</Text>
@@ -572,11 +602,7 @@ function EstimatorBlock({ e }: { e: ProposalEstimatorSnapshot }) {
       {e.name && <Text style={styles.estName}>{e.name}</Text>}
       {e.title && <Text style={styles.estRow}>{e.title}</Text>}
       {e.phone && <Text style={styles.estRow}>{e.phone}</Text>}
-      {e.email && (
-        <Text style={styles.estRow}>
-          <Text style={styles.link}>{e.email}</Text>
-        </Text>
-      )}
+      {e.email && <Text style={styles.estRow}>{e.email}</Text>}
     </View>
   );
 }
@@ -588,7 +614,7 @@ function SignatureBlock() {
         PLEASE SIGN AND RETURN APPROVED COPY OF PROPOSAL
       </Text>
       <Text style={styles.signLine}>
-        Authorized Client Signature: ________________________________  Date: __________
+        Authorized Client Signature: _____________________________________ Date: _______________
       </Text>
     </View>
   );
@@ -611,7 +637,11 @@ export function ProposalPdfDocument({
   lineItems,
   exclusions,
   mode = "customer",
-  showSignatureBlock = false,
+  // Karan 2026-07-15: Tomco proposals ALWAYS include the sign-and-return
+  // block on customer-facing PDFs. Flip the default so preview / send
+  // both include it — the send route can still opt out via ?signature=0
+  // if we ever add a "internal review PDF, no sign line" flow.
+  showSignatureBlock = true,
 }: RenderProposalArgs) {
   const inclusions = lineItems.filter((i) => !i.is_alternate);
   const alternates = lineItems.filter((i) => i.is_alternate);
@@ -664,11 +694,13 @@ export function ProposalPdfDocument({
 
         <ExclusionsBlock exclusions={exclusions} />
 
-        {/* CIP banner is a customer-facing legal notice — suppress on
-            internal-mode PDFs (Alex/Katie estimator-math view) so the
-            internal snapshot isn't mistaken for a customer copy. */}
+        {/* CIP notice: inline yellow-highlighted bold line above the
+            sign-and-return heading — matches Tomco reference PDF exactly
+            (NOT a full-width left-border banner). Suppressed on
+            internal-mode PDFs so the estimator-math view can't be
+            mistaken for a customer copy. */}
         {mode === "customer" && proposal.header_json.show_capital_improvement_notice && (
-          <View style={styles.ciBanner}>
+          <View style={styles.ciWrap}>
             <Text style={styles.ciText}>
               Subject to Certificate of Capital Improvement or New York State Sales Tax.
             </Text>
@@ -686,6 +718,8 @@ export function ProposalPdfDocument({
 
         {showSignatureBlock && <SignatureBlock />}
 
+        {/* Estimator sign-off sits BELOW the signature line in Tomco's
+            reference PDF, not above the CI notice. */}
         <EstimatorBlock e={proposal.estimator_snapshot_json} />
 
         {/* Footer fixed to bottom of every page */}

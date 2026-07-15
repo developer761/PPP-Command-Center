@@ -59,10 +59,12 @@ export function ExclusionPicker({
   const [highlightIdx, setHighlightIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [addingNew, setAddingNew] = useState(false);
-  /** F.5: when true, inline-add stores text in customLines instead of
-   *  creating a shared library row. Default OFF (matches prior
-   *  library-add behavior) so existing muscle memory works unchanged. */
-  const [oneOffMode, setOneOffMode] = useState(false);
+  /** Karan 2026-07-15: One-off text lives in its own dedicated panel
+   *  with its own input, not toggled off the library combobox. The
+   *  toggle was confusing ("wait, does my typed line go into the
+   *  library or this proposal?") — now the two flows have separate
+   *  UIs so the intent is unambiguous. */
+  const [customDraft, setCustomDraft] = useState("");
   /** Round-3 audit fix: brief transient hint when a duplicate custom
    *  line is typed so the input clear isn't silent. */
   const [dupHint, setDupHint] = useState<string | null>(null);
@@ -164,12 +166,6 @@ export function ExclusionPicker({
   const handleInlineAdd = async () => {
     const text = query.trim();
     if (!text || addingNew) return;
-    // F.5: one-off mode stores text on the proposal only; no shared
-    // library row.
-    if (oneOffMode) {
-      addCustomLine(text);
-      return;
-    }
     setAddingNew(true);
     try {
       const res = await fetch("/api/commercial/exclusions/search", {
@@ -190,76 +186,46 @@ export function ExclusionPicker({
   };
 
   return (
-    <div className={`space-y-2 ${className}`}>
-      <div className="flex items-baseline justify-between gap-2 flex-wrap">
-        <label htmlFor={`${rootId}-input`} className="block text-[13px] font-semibold text-ppp-charcoal-800">
-          {label}
-        </label>
-        {(selected.length > 0 || customCount > 0) && (
-          <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
-            {standardCount > 0 && <>{standardCount} standard</>}
-            {standardCount > 0 && (optionalCount > 0 || customCount > 0) && " · "}
-            {optionalCount > 0 && <>{optionalCount} optional</>}
-            {optionalCount > 0 && customCount > 0 && " · "}
-            {customCount > 0 && <>{customCount} one-off</>}
-          </span>
-        )}
-      </div>
-      <p className="text-[12px] text-ppp-charcoal-500 leading-snug">
-        Add or remove exclusions for this proposal only. Standard exclusions are pre-added but you can remove any of them. Type a new one to add to the shared library, or toggle <em>one-off</em> below to add it to this proposal only.
-      </p>
+    <div className={`space-y-4 ${className}`}>
+      {/* ═══════════ Library panel ═══════════ */}
+      <div>
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <label htmlFor={`${rootId}-input`} className="block text-[13px] font-semibold text-ppp-charcoal-800">
+            {label} <span className="text-ppp-charcoal-500 font-normal">from your library</span>
+          </label>
+          {(standardCount > 0 || optionalCount > 0) && (
+            <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
+              {standardCount > 0 && <>{standardCount} standard</>}
+              {standardCount > 0 && optionalCount > 0 && " · "}
+              {optionalCount > 0 && <>{optionalCount} optional</>}
+            </span>
+          )}
+        </div>
+        <p className="text-[12px] text-ppp-charcoal-500 leading-snug mt-1">
+          Standard exclusions are pre-added to every proposal. Remove any that don&rsquo;t apply. Search to add optional library items — typing a new one adds it to the shared library so it&rsquo;s available on future proposals too.
+        </p>
 
-      {/* Selected library chips */}
-      {selected.length > 0 && (
-        <ul className="flex flex-wrap gap-1.5">
-          {selected.map((s) => (
-            <li key={s.id}>
-              <span
-                className={`inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-[12px] border ${
-                  s.category === "standard"
-                    ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
-                    : "bg-ppp-charcoal-50 text-ppp-charcoal-800 border-ppp-charcoal-200"
-                }`}
-              >
-                <span className="truncate max-w-[260px]" title={s.text}>
-                  {s.text}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeRow(s.id)}
-                  aria-label={`Remove ${s.text} from this proposal`}
-                  title="Remove from this proposal"
-                  className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+        {/* Selected library chips */}
+        {selected.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 mt-2">
+            {selected.map((s) => (
+              <li key={s.id}>
+                <span
+                  className={`inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-[12px] border ${
+                    s.category === "standard"
+                      ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
+                      : "bg-ppp-charcoal-50 text-ppp-charcoal-800 border-ppp-charcoal-200"
+                  }`}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
-                    <path d="M18 6L6 18 M6 6l12 12" />
-                  </svg>
-                </button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* One-off custom lines (this proposal only, NOT in library) */}
-      {customLines.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
-            One-off · this proposal only
-          </p>
-          <ul className="flex flex-wrap gap-1.5">
-            {customLines.map((line, i) => (
-              <li key={`${i}-${line}`}>
-                <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-[12px] border bg-emerald-50 text-emerald-800 border-emerald-200">
-                  <span className="truncate max-w-[260px]" title={line}>
-                    {line}
+                  <span className="truncate max-w-[260px]" title={s.text}>
+                    {s.text}
                   </span>
                   <button
                     type="button"
-                    onClick={() => removeCustomLine(i)}
-                    aria-label={`Remove one-off exclusion "${line}"`}
-                    title="Remove this one-off exclusion"
-                    className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-emerald-600/40"
+                    onClick={() => removeRow(s.id)}
+                    aria-label={`Remove ${s.text} from this proposal`}
+                    title="Remove from this proposal"
+                    className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
                       <path d="M18 6L6 18 M6 6l12 12" />
@@ -269,10 +235,10 @@ export function ExclusionPicker({
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Combobox input */}
+      {/* Combobox input (library scope only) */}
       <div className="relative">
         <input
           ref={inputRef}
@@ -295,7 +261,7 @@ export function ExclusionPicker({
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 120)}
           onKeyDown={handleKeyDown}
-          placeholder="Search exclusions or type a new one…"
+          placeholder="Search library exclusions…"
           className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]"
         />
 
@@ -351,17 +317,9 @@ export function ExclusionPicker({
                     handleInlineAdd();
                   }}
                   disabled={addingNew}
-                  className={`text-[12px] font-semibold disabled:opacity-50 ${
-                    oneOffMode
-                      ? "text-emerald-700 hover:text-emerald-800"
-                      : "text-cc-brand-700 hover:text-cc-brand-800"
-                  }`}
+                  className="text-[12px] font-semibold disabled:opacity-50 text-cc-brand-700 hover:text-cc-brand-800"
                 >
-                  {addingNew
-                    ? "Adding…"
-                    : oneOffMode
-                      ? `+ Add “${query.trim()}” to this proposal only`
-                      : `+ Add “${query.trim()}” to shared library`}
+                  {addingNew ? "Adding…" : `+ Add “${query.trim()}” to shared library`}
                 </button>
               </li>
             )}
@@ -369,28 +327,97 @@ export function ExclusionPicker({
         )}
       </div>
 
-      {dupHint && (
-        <p className="text-[12px] text-amber-700 -mt-1" role="status" aria-live="polite">
-          {dupHint}
+      {/* ═══════════ One-off panel — visually distinct bordered box ═══════════ */}
+      {/* Karan 2026-07-15: this panel is deliberately separated with its
+          own header, bordered box, and dedicated input so Alex is never
+          confused about whether a typed line goes to the shared library
+          or just this one proposal. */}
+      <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/40 p-3 sm:p-4 space-y-2">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <div>
+            <p className="text-[13px] font-semibold text-amber-900">
+              One-off exclusions
+            </p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">
+              This proposal only
+            </p>
+          </div>
+          {customCount > 0 && (
+            <span className="text-[11px] text-amber-700 tabular-nums">
+              {customCount} added
+            </span>
+          )}
+        </div>
+        <p className="text-[12px] text-ppp-charcoal-600 leading-snug">
+          Text lines that apply <em>only to this proposal</em> — they won&rsquo;t appear in the library or on future proposals.
         </p>
-      )}
 
-      {/* One-off toggle — controls what happens when Alex types a new
-          exclusion and clicks "Add …". Default off = library, on =
-          this-proposal-only. */}
-      {allowInlineAdd && (
-        <label className="inline-flex items-center gap-2 text-[12px] text-ppp-charcoal-600 cursor-pointer select-none">
+        {/* One-off chips */}
+        {customLines.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5">
+            {customLines.map((line, i) => (
+              <li key={`${i}-${line}`}>
+                <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-[12px] border bg-white text-amber-900 border-amber-300">
+                  <span className="truncate max-w-[260px]" title={line}>
+                    {line}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeCustomLine(i)}
+                    aria-label={`Remove one-off exclusion "${line}"`}
+                    title="Remove this one-off exclusion"
+                    className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
+                      <path d="M18 6L6 18 M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Dedicated one-off input + add button */}
+        <div className="flex gap-2">
           <input
-            type="checkbox"
-            checked={oneOffMode}
-            onChange={(e) => setOneOffMode(e.target.checked)}
-            className="w-4 h-4 accent-emerald-600"
+            id={`${rootId}-oneoff`}
+            type="text"
+            value={customDraft}
+            onChange={(e) => setCustomDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (customDraft.trim()) {
+                  addCustomLine(customDraft);
+                  setCustomDraft("");
+                }
+              }
+            }}
+            placeholder="Type a one-off exclusion and hit Enter…"
+            className="flex-1 px-3 py-2 text-base sm:text-sm bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 min-h-[40px]"
           />
-          <span>
-            One-off · new additions go to <strong>this proposal only</strong> (won&rsquo;t appear on future proposals)
-          </span>
-        </label>
-      )}
+          <button
+            type="button"
+            onClick={() => {
+              if (customDraft.trim()) {
+                addCustomLine(customDraft);
+                setCustomDraft("");
+              }
+            }}
+            disabled={!customDraft.trim()}
+            className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            + Add
+          </button>
+        </div>
+
+        {dupHint && (
+          <p className="text-[12px] text-amber-800 font-medium" role="status" aria-live="polite">
+            {dupHint}
+          </p>
+        )}
+      </div>
 
       {/* Hidden JSON payloads for form submit. */}
       <input type="hidden" name={`${namePrefix}exclusion_ids`} value={idsJson} />
