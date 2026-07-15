@@ -386,24 +386,31 @@ export const OPEN_OPP_STATUSES: readonly string[] = [
 // within a status are always free (any → any within the parent's whitelist).
 // ═══════════════════════════════════════════════════════════════════
 
+// Karan 2026-07-15 (later): "take out all of these Can't move from X to Y
+// directly — let me move the kanban freely." Real workflows have too
+// many edge cases (Change Order reopens billing→in_progress, verbal-yes
+// jumps qualifying→pre_construction, testing scenarios, mid-flight
+// scope changes) for a strict DAG to protect anything real. The
+// WARN_TRANSITIONS set below still tags the unusual jumps as
+// "are-you-sure" soft warnings; the type enum still guards against
+// junk statuses; but the flat "you can't do that" wall is gone.
+//
+// Every status can now transition to any other status. This map is
+// kept as a mostly-informational surface so callers doing
+// `allowedNextStatuses(status)` for UI purposes get every other
+// status back (excluding self, which isn't a real transition).
+const _ALL_OTHER_STATUSES = (self: string): readonly string[] =>
+  OPPORTUNITY_STATUSES.filter((s) => s !== self);
+
 export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
-  qualifying: ["estimating", "proposal", "pre_sale_closed"],
-  estimating: ["proposal", "qualifying", "pre_sale_closed"],
-  proposal: ["pre_sale_closed", "estimating"],
-  // "Start Project" button on the Won debrief modal takes pre_sale_closed
-  // (Won) → pre_construction. Losing side just stays put.
-  // Karan 2026-07-15: Alex + Katie also need to reopen a closed deal
-  // directly into estimating or proposal (customer says "re-quote it"
-  // — no need to redo qualifying + estimating from scratch). The
-  // WARN_TRANSITIONS entries below flag these jumps as unusual so the
-  // status picker + kanban surface a soft "are you sure?" hint.
-  pre_sale_closed: ["pre_construction", "qualifying", "estimating", "proposal"],
-  pre_construction: ["in_progress", "billing"],
-  in_progress: ["billing", "pre_construction"],
-  billing: ["post_sale_closed", "in_progress"],
-  // Delivered projects can reopen via a new qualifying opp — usually
-  // that's warranty work or a follow-on bid, but the DAG allows it.
-  post_sale_closed: ["qualifying"],
+  qualifying: _ALL_OTHER_STATUSES("qualifying"),
+  estimating: _ALL_OTHER_STATUSES("estimating"),
+  proposal: _ALL_OTHER_STATUSES("proposal"),
+  pre_sale_closed: _ALL_OTHER_STATUSES("pre_sale_closed"),
+  pre_construction: _ALL_OTHER_STATUSES("pre_construction"),
+  in_progress: _ALL_OTHER_STATUSES("in_progress"),
+  billing: _ALL_OTHER_STATUSES("billing"),
+  post_sale_closed: _ALL_OTHER_STATUSES("post_sale_closed"),
 };
 
 /** Transitions that are technically allowed but unusual enough to
