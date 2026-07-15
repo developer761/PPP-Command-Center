@@ -191,7 +191,7 @@ type SP = Promise<{
 // Karan 2026-07-08: added "invoices" + "kpis" as top-level tabs per user
 // ask ("add KPIs tab here as well" + "invoices tab where me kate katie or
 // alex or whoever can quick edit"). Both are leaves — no sub-tabs.
-type PrimaryTab = "overview" | "people" | "deals" | "invoices" | "activity";
+type PrimaryTab = "overview" | "people" | "deals" | "proposals" | "invoices" | "activity";
 type SubTab =
   | "info"
   | "team"
@@ -208,13 +208,20 @@ const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
   // KPIs got folded into Overview because the standalone tab was a
   // scoreboard-only leaf; the sub-tab keeps it discoverable without
   // adding a top-nav slot.
+  //
+  // Karan 2026-07-15: Proposals promoted from a sub-tab under Deals to
+  // its own top-level tab — buried one click deep in a sub-nav meant
+  // Alex + Katie kept asking "where do proposals live?" Now it's one
+  // click from any customer's home. Positioned right after Deals so
+  // the flow reads "pipeline → proposals → invoices" left-to-right.
   { key: "overview", label: "Overview" },
   { key: "deals", label: "Opportunities" },
+  { key: "proposals", label: "Proposals" },
   { key: "invoices", label: "Invoices" },
   { key: "people", label: "People" },
   { key: "activity", label: "Activity" },
 ];
-type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices">;
+type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "proposals">;
 const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
@@ -227,10 +234,6 @@ const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string 
   ],
   deals: [
     { key: "opportunities", label: "Pipeline" },
-    // Karan 2026-07-15: Proposals sub-tab so every revision on every
-    // deal for this customer lives one click deep from the account
-    // page. "Everything about a customer under one roof."
-    { key: "proposals", label: "Proposals" },
     { key: "documents", label: "Documents" },
   ],
 };
@@ -242,7 +245,7 @@ const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
   // Karan 2026-07-08: Overview is the default landing tab.
   if (!raw) return { primary: "overview", sub: null };
-  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "activity" || raw === "invoices") {
+  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "proposals" || raw === "activity" || raw === "invoices") {
     return { primary: raw, sub: null };
   }
   // 2026-07-10: `?tab=kpis` legacy links land on Overview → KPIs sub-tab
@@ -252,7 +255,7 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
   if (raw === "performance") return { primary: "overview", sub: "kpis" };
   if (raw === "contacts" || raw === "notes") return { primary: "people", sub: raw as SubTab };
-  if (raw === "opportunities" || raw === "documents" || raw === "proposals") return { primary: "deals", sub: raw as SubTab };
+  if (raw === "opportunities" || raw === "documents") return { primary: "deals", sub: raw as SubTab };
   return { primary: "overview", sub: null };
 }
 
@@ -274,20 +277,22 @@ export default async function CommercialAccountDetailPage({
   // below that refers to the primary contact record.
   const primaryTab: PrimaryTab = resolvedPrimary;
   // Karan 2026-07-08: invoices + kpis + activity are LEAF tabs — no sub-navigation.
+  // 2026-07-15: proposals promoted to a leaf top-level tab.
   // Only overview / people / deals carry sub-tabs.
   const hasSubTabs = primaryTab === "overview" || primaryTab === "people" || primaryTab === "deals";
   const sub: SubTab | null = !hasSubTabs
     ? null
-    : (rawSub && SUB_TABS_BY_PRIMARY[primaryTab].some((s) => s.key === rawSub))
+    : (rawSub && SUB_TABS_BY_PRIMARY[primaryTab as PrimaryWithSubs].some((s) => s.key === rawSub))
     ? (rawSub as SubTab)
-    : resolvedSub && SUB_TABS_BY_PRIMARY[primaryTab].some((s) => s.key === resolvedSub)
+    : resolvedSub && SUB_TABS_BY_PRIMARY[primaryTab as PrimaryWithSubs].some((s) => s.key === resolvedSub)
     ? resolvedSub
-    : DEFAULT_SUB_BY_PRIMARY[primaryTab];
+    : DEFAULT_SUB_BY_PRIMARY[primaryTab as PrimaryWithSubs];
   // Legacy compat: existing tab dispatchers below check `tab === "info"`
   // etc. Preserve that shape so the sub-tabs still route correctly.
-  const tab: SubTab | "activity" | "invoices" =
+  const tab: SubTab | "activity" | "invoices" | "proposals" =
     primaryTab === "activity" ? "activity"
     : primaryTab === "invoices" ? "invoices"
+    : primaryTab === "proposals" ? "proposals"
     : sub!;
 
   const account = await getCommercialAccount(id);
