@@ -213,7 +213,37 @@ export async function updateCommercialOpportunity(
     patch.title = input.title.trim();
   }
   if (input.description !== undefined) patch.description = input.description?.trim() || null;
-  if (input.status !== undefined) patch.status = input.status;
+  // v2 (migration 052): status + sub_status live under a tuple CHECK
+  // constraint. If a caller flips `status` without also supplying a
+  // matching `sub_status`, the stale sub_status from the old status
+  // lane will violate the CHECK and the whole UPDATE bounces with
+  // "commercial_opportunities_status_check". Default the sub_status to
+  // the target lane's entry point (mirrors changeOpportunityStatus and
+  // createCommercialOpportunity) so /commercial/opportunities/[id]/edit
+  // and any other non-DAG update path doesn't crash.
+  //
+  // Karan 2026-07-15: this is what was tripping the Kanban Won-card
+  // move — the client also went through a code path that patched
+  // status alone.
+  if (input.status !== undefined) {
+    patch.status = input.status;
+    const suppliedSub =
+      input.sub_status && isValidSubStatus(input.status, input.sub_status)
+        ? input.sub_status
+        : null;
+    patch.sub_status =
+      suppliedSub ??
+      (DEFAULT_SUB_STATUS_BY_STATUS as Record<string, string>)[input.status] ??
+      "solicitation";
+  } else if (input.sub_status !== undefined) {
+    // Sub-status-only flip: caller is nudging within a lane. Only
+    // accept if it validates against the CURRENT top-level status
+    // (before-row snapshot) so we never write a busted tuple.
+    const currentStatus = (before as { status: string }).status;
+    if (input.sub_status && isValidSubStatus(currentStatus, input.sub_status)) {
+      patch.sub_status = input.sub_status;
+    }
+  }
   if (input.source !== undefined) patch.source = input.source;
   if (low !== undefined) patch.bid_value_low_cents = low;
   if (high !== undefined) patch.bid_value_high_cents = high;
