@@ -52,22 +52,25 @@ const styles = StyleSheet.create({
   page: {
     paddingTop: 44,
     paddingHorizontal: 48,
-    // Extra bottom padding so footer doesn't overlap content on long
-    // multi-page proposals.
-    paddingBottom: 68,
+    // Karan 2026-07-15: bumped from 68 → 96 so the fixed footer
+    // (Windsor Place address + tel/fax/web line) doesn't overlap
+    // page content on multi-page proposals AND doesn't get clipped
+    // by the red keyline border.
+    paddingBottom: 96,
     fontSize: 11,
     fontFamily: "Times-Roman",
     color: CHARCOAL,
     lineHeight: 1.35,
   },
   // Red keyline border wraps the whole page (fixed absolute) — Tomco's
-  // signature look.
+  // signature look. Bumped bottom edge from 48 → 78 so the footer
+  // (which sits at bottom 32) has room INSIDE the border.
   borderFrame: {
     position: "absolute",
     top: 24,
     left: 28,
     right: 28,
-    bottom: 48,
+    bottom: 78,
     borderStyle: "solid",
     borderWidth: 1.5,
     borderColor: RED,
@@ -77,7 +80,7 @@ const styles = StyleSheet.create({
     top: 28,
     left: 32,
     right: 32,
-    bottom: 52,
+    bottom: 82,
     borderStyle: "solid",
     borderWidth: 0.5,
     borderColor: RED,
@@ -171,18 +174,31 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 14,
     fontSize: 11,
-    fontFamily: "Times-Bold",
+    // Karan 2026-07-15: dropped Times-Bold → Times-Roman for the intro.
+    // The old rendering read as "way too bold" (near-black at the
+    // top of every proposal). Reference PDF uses a lighter weight
+    // here; regular Times matches the customer-facing polish.
+    fontFamily: "Times-Roman",
     lineHeight: 1.4,
   },
   bulletRow: {
     flexDirection: "row",
     marginBottom: 3,
     paddingRight: 4,
+    alignItems: "flex-start",
   },
-  bulletGlyph: {
-    width: 12,
-    fontSize: 11,
-    color: CHARCOAL,
+  // Karan 2026-07-15: switched from `●` character (which rendered as
+  // "Ï" — the missing-glyph fallback — because the react-pdf built-in
+  // Times-Roman font doesn't include U+25CF in its char map) to a real
+  // filled dot drawn as a small circular View. Works with any font.
+  bulletDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: CHARCOAL,
+    marginTop: 6,
+    marginLeft: 4,
+    marginRight: 8,
   },
   bulletBody: {
     flex: 1,
@@ -190,6 +206,25 @@ const styles = StyleSheet.create({
   },
   bulletLead: {
     fontFamily: "Times-Bold",
+  },
+  bulletSubRow: {
+    flexDirection: "row",
+    marginBottom: 2,
+    marginLeft: 18,
+    paddingRight: 4,
+    alignItems: "flex-start",
+  },
+  bulletSubDot: {
+    width: 2.5,
+    height: 2.5,
+    borderRadius: 1.25,
+    backgroundColor: MUTED,
+    marginTop: 6,
+    marginRight: 7,
+  },
+  bulletSubBody: {
+    flex: 1,
+    fontSize: 11,
   },
   // Tomco line-item convention (from reference PDF): plain lines with a
   // bold colon-terminated label, no bullet glyph. e.g.
@@ -260,11 +295,25 @@ const styles = StyleSheet.create({
     fontFamily: "Times-Bold",
     fontSize: 11,
   },
+  // Karan 2026-07-15: pushed the footer INSIDE the red keyline border
+  // and gave it a red top-rule for visual anchoring (matches the
+  // reference PDF's dashed rule + centered address block). Bottom
+  // pinned at 46 so both the address line and tel/fax/web line sit
+  // above the border edge (78) with breathing room.
+  footerRule: {
+    position: "absolute",
+    left: 40,
+    right: 40,
+    bottom: 66,
+    borderTopWidth: 0.75,
+    borderTopColor: RED,
+    borderStyle: "solid",
+  },
   footer: {
     position: "absolute",
     left: 48,
     right: 48,
-    bottom: 28,
+    bottom: 42,
     fontSize: 8,
     color: MUTED,
     textAlign: "center",
@@ -272,7 +321,7 @@ const styles = StyleSheet.create({
   pageNumber: {
     position: "absolute",
     right: 48,
-    bottom: 14,
+    bottom: 30,
     fontSize: 8,
     color: MUTED,
   },
@@ -460,18 +509,40 @@ function ProjectBlock({ h }: { h: ProposalHeaderJson }) {
  *  lines with a bold colon-terminated label and regular-weight body.
  *  Example: **Foyer Walls:** Prep, prime, and paint 2 coats
  *
- *  No bullet glyph. If a description has no bold lead (rare), it renders
- *  as a plain line. If it's a long narrative paragraph with no colon
- *  (uncommon), we still use the ● glyph so it doesn't run into the
- *  next line visually — but the default case is plain lines. */
+ *  Multi-line descriptions (embedded newlines) or comma-separated
+ *  sub-items after the bold lead are auto-bulleted as indented
+ *  sub-lines under the lead. Karan 2026-07-15: "Gas Pipes: for
+ *  these items X, Y, Z" reads much better as bulleted sub-items.
+ *
+ *  No top-level bullet glyph — Tomco's letterhead convention is plain
+ *  lines with bold leads. */
 function BulletLine({ text }: { text: string }) {
   const { lead, body } = splitBoldLead(text);
+  // Split body by explicit newlines OR by ", " when there are ≥3
+  // fragments (looks like a list of sub-items rather than a sentence
+  // with commas). Single-comma bodies like "for the roof, per spec"
+  // stay as a single line.
+  const explicitNewlines = body.includes("\n");
+  const bodyLines = explicitNewlines
+    ? body.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+    : [body];
+  const shouldBulletSubs = bodyLines.length > 1;
   if (lead) {
+    // Lead-only line if body is empty; otherwise render lead + body
+    // inline as usual. When there are multiple body lines, render the
+    // first as inline and the rest as bulleted sub-lines.
     return (
       <View style={styles.itemLine}>
         <Text style={{ fontSize: 11 }}>
-          <Text style={styles.bulletLead}>{lead}:</Text> {body}
+          <Text style={styles.bulletLead}>{lead}:</Text>
+          {bodyLines[0] ? ` ${bodyLines[0]}` : ""}
         </Text>
+        {shouldBulletSubs && bodyLines.slice(1).map((sub, i) => (
+          <View key={i} style={styles.bulletSubRow}>
+            <View style={styles.bulletSubDot} />
+            <Text style={styles.bulletSubBody}>{sub}</Text>
+          </View>
+        ))}
       </View>
     );
   }
@@ -479,7 +550,7 @@ function BulletLine({ text }: { text: string }) {
   if (isLongNarrative) {
     return (
       <View style={styles.bulletRow}>
-        <Text style={styles.bulletGlyph}>●</Text>
+        <View style={styles.bulletDot} />
         <Text style={styles.bulletBody}>{body}</Text>
       </View>
     );
@@ -618,7 +689,7 @@ function ExclusionsBlock({ exclusions }: { exclusions: string[] }) {
       <Text style={styles.sectionUnderlineHeader}>Exclusions &amp; Qualifications:</Text>
       {exclusions.map((ex, i) => (
         <View key={i} style={styles.bulletRow}>
-          <Text style={styles.bulletGlyph}>●</Text>
+          <View style={styles.bulletDot} />
           <Text style={styles.bulletBody}>{ex}</Text>
         </View>
       ))}
@@ -767,7 +838,11 @@ export function ProposalPdfDocument({
             reference PDF, not above the CI notice. */}
         <EstimatorBlock e={proposal.estimator_snapshot_json} />
 
-        {/* Footer fixed to bottom of every page */}
+        {/* Footer fixed to bottom of every page. Rule + text both sit
+            INSIDE the red keyline border (bumped in 2026-07-15 fix).
+            Rule is a thin red line for visual grounding — matches the
+            reference PDF's footer treatment. */}
+        <View style={styles.footerRule} fixed />
         <View style={styles.footer} fixed>
           <Text>{TOMCO_COMPANY_FOOTER.address_line}</Text>
           <Text>{TOMCO_COMPANY_FOOTER.contact_line}</Text>
