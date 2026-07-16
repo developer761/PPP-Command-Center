@@ -75,6 +75,12 @@ export function shouldWarnTransition(from: OpportunityStatus, to: OpportunitySta
 export type ChangeStatusInput = {
   opp_id: string;
   to_status: OpportunityStatus;
+  /** Karan 2026-07-15 (round 5): the DAG check is BACK by default so
+   *  users can't skip multi-step backward (In Progress → Estimating
+   *  is nonsense). But internal cascades (proposal→deal auto-align,
+   *  admin reconciles) need to bypass so the alignment engine can
+   *  move any deal to any target without user-facing validation. */
+  _skipDagCheck?: boolean;
   /** v2 (migration 052): callers should pass the target sub_status too so
    *  the tuple lands whitelisted. If omitted, the DEFAULT_SUB_STATUS_BY_STATUS
    *  fallback for `to_status` is used (e.g. proposal → sent). */
@@ -128,25 +134,28 @@ export async function changeOpportunityStatus(
     return { ok: false, error: "Account not found." };
   }
 
-  // Karan 2026-07-15: removed the DAG check, the "Won with live
-  // invoices" guard, and the "leaving Qualifying needs structural
-  // fields" guard entirely. Every one of these was blocking the
-  // kanban's "let me move deals anywhere" freedom Karan asked for,
-  // AND it was silently failing the proposal→opp cascade (when a
-  // Sent proposal was flipped to Won, changeOpportunityStatus bailed
-  // because the parent opp was still at Qualifying with no structural
-  // fields, so the opp stayed put while the proposal moved to Won).
+  // Karan 2026-07-15 (round 5): DAG check IS BACK — but only for
+  // user-facing status changes, not internal cascades. Blocks nonsense
+  // multi-step backward jumps (In Progress → Estimating). Allowed
+  // transitions: see ALLOWED_TRANSITIONS in constants.ts. Cascades
+  // pass _skipDagCheck=true to bypass — the alignment engine must be
+  // free to move any deal to any target when correcting drift.
   //
-  // App-layer safety left in place:
-  //   - Lost still requires a loss_reason + note (below) — that's
-  //     input validation, not a movement block; the debrief page
-  //     collects the fields before submitting.
-  //   - Structural fields are still enforced ONLY on the debrief flow
-  //     (client_name required for won deals to generate proposals /
-  //     invoices), not on the mere status flip.
+  // Structural-fields guard + Won-with-invoices guard stay OFF per
+  // Karan's earlier "no constraints" (only the DAG is being restored,
+  // not the field-validation gates). Lost still requires loss_reason
+  // + note as input validation.
   //
-  // DB CHECK constraints were dropped in migration 059 for the same
-  // "no constraints whatsoever" reason. This is the app-layer twin.
+  // DB CHECK constraints stay dropped (migration 059).
+  if (!input._skipDagCheck) {
+    const allowed = ALLOWED_TRANSITIONS[beforeRow.status] ?? [];
+    if (!allowed.includes(input.to_status)) {
+      return {
+        ok: false,
+        error: `Can't move from ${opportunityStatusLabel(beforeRow.status)} → ${opportunityStatusLabel(input.to_status)} directly. Move through an intermediate stage first.`,
+      };
+    }
+  }
   const targetIsLost =
     input.to_status === "pre_sale_closed" && input.to_sub_status === "lost";
 
@@ -283,58 +292,79 @@ export async function changeOpportunityStatus(
     input.acting_user_id
   );
 
-  // Karan 2026-07-15: cascade opp → child proposals. If the deal just
-  // closed as Won/Lost, flip its Sent proposal(s) to the matching
-  // outcome so the /commercial/proposals kanban and every proposal
-  // surface reflects reality without the user having to remember to
-  // move both sides. Mirrors markProposalOutcome (which cascades the
-  // OTHER direction: proposal → opp).
+  // Karan 2026-07-15 (round 5): FULL bidirectional cascade — every deal
+  // state change syncs child proposals to the matching state so both
+  // surfaces always stay locked. Previously only pre_sale_closed
+  // transitions cascaded; user-facing symptom: dragging deal
+  // Sent → Drafted on the opp kanban would work, then reconcile
+  // would yank it back on next page load (proposal still Sent).
   //
-  // Reverse cascade: if the deal moved OUT of pre_sale_closed (undo),
-  // flip any Won/Lost proposals back to Sent so we don't strand them
-  // in a terminal state.
+  // Full mapping (deal → intent for child proposals):
+  //   qualifying                                         → demote sent/pending/won/lost proposals back to draft
+  //   estimating + sub=estimating                        → demote sent proposals back to draft (re-pricing)
+  //   estimating + sub=proposal_pending_approval         → sent/won/lost → pending_approval; drafts stay
+  //   proposal + sub=sent (or follow_up)                 → draft/pending → sent; won/lost → sent (reopen)
+  //   pre_sale_closed + sub=won                          → sent → won
+  //   pre_sale_closed + sub=lost                         → sent → lost
+  //   pre_construction / in_progress / billing / post_sale_closed
+  //                                                       → no cascade (delivery-phase, proposals are historical)
   //
-  // Scope: only touches `sent` proposals on the Won/Lost cascade
-  // (drafts + pending-approval are "attempts along the way", never
-  // "the winning proposal") and only `won`/`lost` on the reverse
-  // (expired/replaced are intentional terminal states, not undo-able
-  // via opp movement). SYNCHRONOUS (awaited) — the caller typically
-  // router.refresh()es right after this returns, and we need the
-  // proposal-side flip visible in that first refresh. Best-effort:
-  // a failure here logs a warning but never rolls back the opp update.
+  // Anti-ping-pong: passes _skipOppCascade=true to
+  // updateProposalStatus so the proposal-side cascade doesn't call
+  // back into this function and infinite-loop.
+  //
+  // Best-effort — failures log a warning but never roll back the opp
+  // update.
   try {
-    const enteredPreSaleClosed =
-      input.to_status === "pre_sale_closed" &&
-      beforeRow.status !== "pre_sale_closed";
-    const leftPreSaleClosed =
-      beforeRow.status === "pre_sale_closed" &&
-      input.to_status !== "pre_sale_closed";
-    if (enteredPreSaleClosed || leftPreSaleClosed) {
+    const deriveTargetProposalStatus = (): {
+      demoteFrom: string[];
+      to: string;
+    } | null => {
+      const s = input.to_status;
+      const sub = input.to_sub_status;
+      if (s === "qualifying") {
+        return {
+          demoteFrom: ["pending_approval", "sent", "won", "lost"],
+          to: "draft",
+        };
+      }
+      if (s === "estimating" && sub !== "proposal_pending_approval") {
+        return { demoteFrom: ["sent", "won", "lost"], to: "draft" };
+      }
+      if (s === "estimating" && sub === "proposal_pending_approval") {
+        return { demoteFrom: ["sent", "won", "lost"], to: "pending_approval" };
+      }
+      if (s === "proposal") {
+        return { demoteFrom: ["draft", "pending_approval", "won", "lost"], to: "sent" };
+      }
+      if (s === "pre_sale_closed" && sub === "won") {
+        return { demoteFrom: ["sent"], to: "won" };
+      }
+      if (s === "pre_sale_closed" && sub === "lost") {
+        return { demoteFrom: ["sent"], to: "lost" };
+      }
+      // Delivery-phase transitions don't touch proposals — those are
+      // historical records once the deal is Won.
+      return null;
+    };
+    const target = deriveTargetProposalStatus();
+    if (target) {
       const { updateProposalStatus } = await import(
         "@/lib/commercial/proposals/db"
       );
-      const targetStatuses = enteredPreSaleClosed ? ["sent"] : ["won", "lost"];
-      const nextStatus = enteredPreSaleClosed
-        ? input.to_sub_status === "won"
-          ? "won"
-          : "lost"
-        : "sent";
       const { data: propRows } = await sb
         .from("commercial_proposals")
         .select("id, status")
         .eq("opportunity_id", input.opp_id)
         .is("deleted_at", null)
-        .in("status", targetStatuses);
+        .in("status", target.demoteFrom);
       const proposals =
         (propRows as { id: string; status: string }[] | null) ?? [];
       for (const p of proposals) {
-        if (p.status === nextStatus) continue;
-        // Karan 2026-07-15: pass _skipOppCascade so the proposal-side
-        // cascade doesn't ping-pong back into changeOpportunityStatus
-        // (which would re-fire this loop and stack overflow).
+        if (p.status === target.to) continue;
         const flip = await updateProposalStatus({
           id: p.id,
-          to_status: nextStatus,
+          to_status: target.to as Parameters<typeof updateProposalStatus>[0]["to_status"],
           acting_user_id: input.acting_user_id,
           _skipOppCascade: true,
         });

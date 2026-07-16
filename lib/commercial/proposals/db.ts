@@ -405,6 +405,7 @@ export async function updateProposalStatus(input: {
             to_status: dealStatus as Parameters<typeof changeOpportunityStatus>[0]["to_status"],
             to_sub_status: dealSub,
             acting_user_id: input.acting_user_id,
+            _skipDagCheck: true,
           });
           if (!flip.ok) {
             console.warn(
@@ -517,6 +518,7 @@ export async function markProposalOutcome(input: {
       to_status: "pre_sale_closed",
       to_sub_status: input.outcome,
       acting_user_id: input.actor_user_id,
+      _skipDagCheck: true,
     });
     if (!flip.ok) {
       console.warn(
@@ -619,6 +621,7 @@ export async function reopenProposal(input: {
         to_status: "proposal",
         to_sub_status: "sent",
         acting_user_id: input.actor_user_id,
+        _skipDagCheck: true,
       });
       if (flip.ok) {
         dealReopened = true;
@@ -1203,6 +1206,7 @@ export async function sendProposal(input: {
       to_sub_status: "sent",
       acting_user_id: input.actor_user_id,
       note: `Auto-flipped by sendProposal (R${sentProposal.revision_number})`,
+      _skipDagCheck: true,
     });
     if (!flip.ok) {
       console.warn(
@@ -1379,22 +1383,45 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     }
   };
 
+  // Karan 2026-07-15 (round 5): FORWARD-ONLY reconcile. If the user
+  // manually drags a deal BACKWARD on the kanban (e.g. Proposal Sent
+  // → Proposal Drafted for a re-pricing round), the reconcile must
+  // NOT yank it back forward to match the proposal state. Respect
+  // user's explicit intent — treat the deal state as the ground
+  // truth going forward, and let the changeOpportunityStatus
+  // cascade demote the proposal to match.
+  //
+  // Ordinal ranking: strictly forward stage progression. Reconcile
+  // only fires when derivedOrdinal > currentOrdinal (deal is behind
+  // proposal). Same-or-ahead → leave alone.
+  const stageOrdinal = (status: string, sub: string | null): number => {
+    if (status === "qualifying") return 10;
+    if (status === "estimating" && sub === "proposal_pending_approval") return 30;
+    if (status === "estimating") return 20;
+    if (status === "proposal") return 40;
+    if (status === "pre_sale_closed" && sub === "lost") return 45;
+    if (status === "pre_sale_closed" && sub === "won") return 50;
+    if (status === "pre_construction") return 60;
+    if (status === "in_progress") return 70;
+    if (status === "billing") return 80;
+    if (status === "post_sale_closed") return 90;
+    return 0;
+  };
   let fixed = 0;
   for (const deal of deals) {
-    // Skip if the deal is past pre-sale — don't yank a delivery deal
-    // backward because a proposal draft got shuffled.
     if (postSaleStatuses.has(deal.status)) continue;
     const bestProp = bestByDeal.get(deal.id);
     if (!bestProp) continue;
     const target = derive(bestProp);
     if (!target) continue;
     if (deal.status === target.status && deal.sub_status === target.sub) continue;
-    // Guardrail: never flip Won → Lost or Lost → Won via reconcile —
-    // those are user-intent decisions. Reconcile only aligns non-
-    // terminal drifts + advances toward terminal on first Won/Lost.
     if (deal.status === "pre_sale_closed" && target.status === "pre_sale_closed") {
-      continue; // don't cross-flip won ↔ lost
+      continue; // don't cross-flip won ↔ lost via auto-reconcile
     }
+    // Forward-only guard.
+    const currentOrd = stageOrdinal(deal.status, deal.sub_status);
+    const targetOrd = stageOrdinal(target.status, target.sub);
+    if (targetOrd <= currentOrd) continue;
     const { changeOpportunityStatus } = await import(
       "@/lib/commercial/opportunities/status"
     );
@@ -1403,6 +1430,7 @@ export async function reconcileDealStatesFromProposals(): Promise<{
       to_status: target.status as Parameters<typeof changeOpportunityStatus>[0]["to_status"],
       to_sub_status: target.sub,
       acting_user_id: null,
+      _skipDagCheck: true,
     });
     if (flip.ok) {
       fixed += 1;

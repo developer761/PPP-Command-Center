@@ -399,18 +399,40 @@ export const OPEN_OPP_STATUSES: readonly string[] = [
 // kept as a mostly-informational surface so callers doing
 // `allowedNextStatuses(status)` for UI purposes get every other
 // status back (excluding self, which isn't a real transition).
-const _ALL_OTHER_STATUSES = (self: string): readonly string[] =>
-  OPPORTUNITY_STATUSES.filter((s) => s !== self);
-
+/** Karan 2026-07-15 (round 5): real DAG, no longer any-to-any.
+ *
+ *  Rules:
+ *   - Forward progression is always allowed (Qualifying → Estimating →
+ *     Proposal → Won/Lost → Pre-Con → In Progress → Billing → Closed).
+ *   - One-step backward within Pre-Sale is allowed for revision cycles
+ *     (Proposal → Estimating for re-pricing; Estimating → Qualifying
+ *     for scope reset).
+ *   - Reopen from terminal is allowed (Won/Lost → Proposal, and
+ *     Post-Sale Closed → Billing/In Progress for delivery reopen).
+ *   - Skip-forward is allowed for early wins (Qualifying → Won for a
+ *     verbal-yes repeat customer) and cancellations
+ *     (any pre-sale → Lost).
+ *   - Multi-step backward jumps are BLOCKED (In Progress → Estimating
+ *     is nonsense — the crew is on site; use the proposals page or
+ *     debrief flow if needed).
+ *
+ *  Note on sub-status: this map is top-level status only. Sub-status
+ *  changes within the same top-level status (e.g. proposal/sent →
+ *  proposal/follow_up) always bypass the DAG check — they're just
+ *  refinements of the same stage.
+ */
 export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
-  qualifying: _ALL_OTHER_STATUSES("qualifying"),
-  estimating: _ALL_OTHER_STATUSES("estimating"),
-  proposal: _ALL_OTHER_STATUSES("proposal"),
-  pre_sale_closed: _ALL_OTHER_STATUSES("pre_sale_closed"),
-  pre_construction: _ALL_OTHER_STATUSES("pre_construction"),
-  in_progress: _ALL_OTHER_STATUSES("in_progress"),
-  billing: _ALL_OTHER_STATUSES("billing"),
-  post_sale_closed: _ALL_OTHER_STATUSES("post_sale_closed"),
+  qualifying: ["estimating", "proposal", "pre_sale_closed"],
+  estimating: ["qualifying", "proposal", "pre_sale_closed"],
+  proposal: ["estimating", "pre_sale_closed"],
+  // Reopen: closed pre-sale can go back to any pre-sale stage OR
+  // forward to pre-construction (Won deal starting delivery).
+  pre_sale_closed: ["qualifying", "estimating", "proposal", "pre_construction"],
+  pre_construction: ["in_progress", "billing", "post_sale_closed", "pre_sale_closed"],
+  in_progress: ["pre_construction", "billing", "post_sale_closed"],
+  billing: ["in_progress", "post_sale_closed"],
+  // Reopen delivery: closed post-sale can go back to billing/in_progress.
+  post_sale_closed: ["billing", "in_progress"],
 };
 
 /** Transitions that are technically allowed but unusual enough to
