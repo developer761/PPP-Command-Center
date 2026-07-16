@@ -1279,3 +1279,138 @@ export async function sendProposal(input: {
 
   return { ok: true, proposal: sentProposal, snapshot_document_id: snapshotDocId };
 }
+
+/** Karan 2026-07-15: self-heal any proposal↔deal state drift.
+ *
+ *  Problem: the proposal→opp cascade (added earlier today) only fires
+ *  on NEW state changes. Existing rows that were misaligned when the
+ *  cascade shipped stay drifted until someone manually re-flips them.
+ *  Karan hit this: R4 was already Sent, but the parent Test deal was
+ *  stuck at estimating.proposal_pending_approval ("Proposal Drafted"
+ *  column) — the two surfaces didn't match.
+ *
+ *  This helper scans every non-terminal proposal + its parent deal,
+ *  computes the derived deal tuple from the highest-priority proposal
+ *  state on that deal (won > sent > pending_approval > draft > lost),
+ *  and fixes any mismatched deals in one pass.
+ *
+ *  Idempotent + cheap — one SELECT + one UPDATE per drifted deal.
+ *  Called from the /commercial/proposals page load so drift heals as
+ *  soon as the user visits the surface.
+ *
+ *  Guardrails:
+ *   - Never touches a deal already in delivery (pre_construction /
+ *     in_progress / billing / post_sale_closed) — crews might be on
+ *     site, don't yank the pipeline backward.
+ *   - Never overwrites Won with Lost or vice versa — those are user-
+ *     intent decisions that a reconcile shouldn't second-guess.
+ */
+export async function reconcileDealStatesFromProposals(): Promise<{
+  checked: number;
+  fixed: number;
+}> {
+  const sb = commercialDb();
+  const { data: propRows } = await sb
+    .from("commercial_proposals")
+    .select("id, status, opportunity_id, updated_at")
+    .is("deleted_at", null)
+    .in("status", ["draft", "pending_approval", "sent", "won", "lost"])
+    .order("updated_at", { ascending: false });
+  const proposals =
+    (propRows as {
+      id: string;
+      status: string;
+      opportunity_id: string;
+      updated_at: string;
+    }[] | null) ?? [];
+  if (proposals.length === 0) return { checked: 0, fixed: 0 };
+
+  // Group proposals by deal, pick the highest-priority state per deal.
+  const PRIORITY: Record<string, number> = {
+    won: 5,
+    lost: 4,
+    sent: 3,
+    pending_approval: 2,
+    draft: 1,
+  };
+  const bestByDeal = new Map<string, string>();
+  for (const p of proposals) {
+    const cur = bestByDeal.get(p.opportunity_id);
+    if (!cur || (PRIORITY[p.status] ?? 0) > (PRIORITY[cur] ?? 0)) {
+      bestByDeal.set(p.opportunity_id, p.status);
+    }
+  }
+
+  // Fetch each affected deal's current state so we only UPDATE where
+  // there's actual drift.
+  const dealIds = Array.from(bestByDeal.keys());
+  const { data: dealRows } = await sb
+    .from("commercial_opportunities")
+    .select("id, status, sub_status, deleted_at")
+    .in("id", dealIds)
+    .is("deleted_at", null);
+  const deals =
+    (dealRows as {
+      id: string;
+      status: string;
+      sub_status: string | null;
+    }[] | null) ?? [];
+
+  const postSaleStatuses = new Set([
+    "pre_construction",
+    "in_progress",
+    "billing",
+    "post_sale_closed",
+  ]);
+
+  const derive = (propStatus: string): { status: string; sub: string } | null => {
+    switch (propStatus) {
+      case "draft":
+      case "pending_approval":
+        return { status: "estimating", sub: "proposal_pending_approval" };
+      case "sent":
+        return { status: "proposal", sub: "sent" };
+      case "won":
+        return { status: "pre_sale_closed", sub: "won" };
+      case "lost":
+        return { status: "pre_sale_closed", sub: "lost" };
+      default:
+        return null;
+    }
+  };
+
+  let fixed = 0;
+  for (const deal of deals) {
+    // Skip if the deal is past pre-sale — don't yank a delivery deal
+    // backward because a proposal draft got shuffled.
+    if (postSaleStatuses.has(deal.status)) continue;
+    const bestProp = bestByDeal.get(deal.id);
+    if (!bestProp) continue;
+    const target = derive(bestProp);
+    if (!target) continue;
+    if (deal.status === target.status && deal.sub_status === target.sub) continue;
+    // Guardrail: never flip Won → Lost or Lost → Won via reconcile —
+    // those are user-intent decisions. Reconcile only aligns non-
+    // terminal drifts + advances toward terminal on first Won/Lost.
+    if (deal.status === "pre_sale_closed" && target.status === "pre_sale_closed") {
+      continue; // don't cross-flip won ↔ lost
+    }
+    const { changeOpportunityStatus } = await import(
+      "@/lib/commercial/opportunities/status"
+    );
+    const flip = await changeOpportunityStatus({
+      opp_id: deal.id,
+      to_status: target.status as Parameters<typeof changeOpportunityStatus>[0]["to_status"],
+      to_sub_status: target.sub,
+      acting_user_id: null,
+    });
+    if (flip.ok) {
+      fixed += 1;
+    } else {
+      console.warn(
+        `[reconcileDealStatesFromProposals] deal ${deal.id} flip failed: ${flip.error}`
+      );
+    }
+  }
+  return { checked: deals.length, fixed };
+}

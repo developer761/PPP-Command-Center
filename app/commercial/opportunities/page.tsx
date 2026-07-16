@@ -391,6 +391,18 @@ export default async function CommercialOpportunitiesPage({
     }
   }
 
+  // Karan 2026-07-15: self-heal any deal↔proposal drift on load. If a
+  // proposal state was changed before the auto-cascade shipped (or via
+  // a code path that skipped the cascade), the parent deal could sit
+  // in a stale column. Reconcile scans + fixes those in one pass so
+  // both surfaces always show the same state.
+  const { reconcileDealStatesFromProposals } = await import(
+    "@/lib/commercial/proposals/db"
+  );
+  await reconcileDealStatesFromProposals().catch((err) => {
+    console.warn("[opportunities-page] reconcile failed:", err);
+  });
+
   const [oppsRaw, accounts] = await Promise.all([
     listCommercialOpportunities({ search, status: validStatus }),
     listCommercialAccounts(),

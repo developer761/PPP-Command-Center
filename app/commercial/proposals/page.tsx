@@ -42,6 +42,7 @@ import {
   ProposalDnDColumn,
   ProposalDnDCard,
 } from "@/components/commercial/proposals-kanban-dnd";
+import { reconcileDealStatesFromProposals } from "@/lib/commercial/proposals/db";
 
 export const dynamic = "force-dynamic";
 
@@ -178,6 +179,16 @@ export default async function ProposalsIndexPage({
   // for when the kanban gets unmanageable with 50+ proposals. Default
   // remains kanban.
   const viewMode: "kanban" | "list" = sp.view === "list" ? "list" : "kanban";
+
+  // Karan 2026-07-15: self-heal any deal↔proposal drift on load. Cheap
+  // idempotent scan — for each non-terminal proposal, verify the
+  // parent deal is in the derived column and fix if not. Existing rows
+  // that pre-dated the auto-cascade get reconciled the first time the
+  // user visits this page. Guarded so a delivery-phase deal never
+  // gets yanked backward. See reconcileDealStatesFromProposals() docs.
+  await reconcileDealStatesFromProposals().catch((err) => {
+    console.warn("[proposals-page] reconcile failed:", err);
+  });
 
   const sb = commercialDb();
   let query = sb
