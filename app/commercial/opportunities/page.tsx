@@ -2118,7 +2118,7 @@ function KanbanBoard({
                 </div>
               ) : null;
               const column = (
-                <KanbanDnDColumn key={status} status={status}>
+                <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
                   <div className="w-60 sm:w-64 shrink-0 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-white shadow-sm">
                     {/* Colored accent stripe on top — the whole card is
                         white; only the 3px stripe carries the stage
@@ -2148,7 +2148,7 @@ function KanbanBoard({
                         </li>
                       ) : (
                         colOpps.map((opp) => (
-                          <KanbanDnDCard key={opp.id} oppId={opp.id}>
+                          <KanbanDnDCard key={opp.id} oppId={opp.id} accountId={opp.account_id}>
                             <KanbanCard
                               opp={opp}
                               account={accountById.get(opp.account_id) ?? null}
@@ -2202,7 +2202,7 @@ function KanbanBoard({
                       ? "bg-rose-500"
                       : "bg-slate-400";
                   return (
-                    <KanbanDnDColumn key={status} status={status}>
+                    <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
                       <div className="w-full sm:w-44 lg:w-48 shrink-0 border border-ppp-charcoal-100 rounded-lg overflow-hidden flex flex-col h-full bg-white">
                         <div className={`h-0.5 ${accent}`} aria-hidden />
                         <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-white">
@@ -2222,7 +2222,7 @@ function KanbanBoard({
                             </li>
                           ) : (
                             colOpps.map((opp) => (
-                              <KanbanDnDCard key={opp.id} oppId={opp.id}>
+                              <KanbanDnDCard key={opp.id} oppId={opp.id} accountId={opp.account_id}>
                                 <KanbanCard
                                   opp={opp}
                                   account={accountById.get(opp.account_id) ?? null}

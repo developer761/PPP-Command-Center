@@ -20,6 +20,14 @@ import { useRouter } from "next/navigation";
 export function KanbanDnDProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [dragOppId, setDragOppId] = useState<string | null>(null);
+  // Karan 2026-07-15 (round 5): track the drag source's account id so
+  // the per-account mini-kanbans on /commercial/opportunities can
+  // BLOCK cross-account drops. Dragging card-from-Account-A onto
+  // Account-B's column would technically flip the opp's status (harm-
+  // less server-side, opp.account_id doesn't change) but the card
+  // would visually snap back to Account-A's section on refresh —
+  // confusing. Block the drop before it fires.
+  const [dragAccountId, setDragAccountId] = useState<string | null>(null);
   // Optimistic UI: tracks the (oppId → newStatus) pair while the server
   // catches up. The KanbanDnDCard component uses this to render the
   // card in its NEW column immediately on drop (then snaps back if the
@@ -35,14 +43,22 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
   // drop and the detail page paint).
   const [navigating, setNavigating] = useState<string | null>(null);
 
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, oppId: string) => {
+  const handleDragStart = (
+    e: DragEvent<HTMLDivElement>,
+    oppId: string,
+    accountId?: string
+  ) => {
     if (!e.dataTransfer) return;
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", oppId);
     setDragOppId(oppId);
+    if (accountId) setDragAccountId(accountId);
   };
 
-  const handleDragEnd = () => setDragOppId(null);
+  const handleDragEnd = () => {
+    setDragOppId(null);
+    setDragAccountId(null);
+  };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -156,11 +172,13 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     <KanbanDnDContext.Provider
       value={{
         dragOppId,
+        dragAccountId,
         optimisticMove,
         onCardDragStart: handleDragStart,
         onCardDragEnd: handleDragEnd,
         onColumnDragOver: handleDragOver,
         onColumnDrop: handleDrop,
+        flashError,
       }}
     >
       <div className="relative">
@@ -187,32 +205,38 @@ import { createContext, useContext } from "react";
 
 type Ctx = {
   dragOppId: string | null;
+  dragAccountId: string | null;
   optimisticMove: { oppId: string; toStatus: string } | null;
-  onCardDragStart: (e: DragEvent<HTMLDivElement>, oppId: string) => void;
+  onCardDragStart: (e: DragEvent<HTMLDivElement>, oppId: string, accountId?: string) => void;
   onCardDragEnd: () => void;
   onColumnDragOver: (e: DragEvent<HTMLDivElement>) => void;
   onColumnDrop: (e: DragEvent<HTMLDivElement>, toStatus: string) => void;
+  flashError: (msg: string) => void;
 };
 
 const KanbanDnDContext = createContext<Ctx | null>(null);
 
-/** Wraps a card; makes it draggable. */
-export function KanbanDnDCard({ oppId, children }: { oppId: string; children: ReactNode }) {
+/** Wraps a card; makes it draggable. Optional `accountId` prop lets
+ *  the DnD provider block cross-account drops on the per-account
+ *  mini-kanban layout. Legacy callers without accountId still work —
+ *  cross-account blocking is disabled when the source has no account. */
+export function KanbanDnDCard({
+  oppId,
+  accountId,
+  children,
+}: {
+  oppId: string;
+  accountId?: string;
+  children: ReactNode;
+}) {
   const ctx = useContext(KanbanDnDContext);
   if (!ctx) return <>{children}</>;
-  // Karan 2026-07-15 bugfix: the parent kanban is server-rendered from
-  // opp.status, so the optimisticMove state was never actually applied
-  // to card positions — cards visually sat in the old column for the
-  // full server-refresh round-trip (300ms–2s on cold start). Now: if
-  // this card is the one that just got dropped, hide it FAST so the
-  // drop reads as instant. On refresh the card reappears in the new
-  // column via the server-rendered payload.
   const isDragging = ctx.dragOppId === oppId;
   const isOptimisticallyMoved = ctx.optimisticMove?.oppId === oppId;
   return (
     <div
       draggable
-      onDragStart={(e) => ctx.onCardDragStart(e, oppId)}
+      onDragStart={(e) => ctx.onCardDragStart(e, oppId, accountId)}
       onDragEnd={ctx.onCardDragEnd}
       className={`cursor-grab active:cursor-grabbing transition-opacity duration-100 ${
         isOptimisticallyMoved
@@ -228,26 +252,48 @@ export function KanbanDnDCard({ oppId, children }: { oppId: string; children: Re
   );
 }
 
-/** Wraps a column; makes it a drop target for the given status. */
+/** Wraps a column; makes it a drop target for the given status.
+ *
+ *  Karan 2026-07-15 (round 5): optional `boundToAccountId` prop — if
+ *  set, the column REFUSES drops from cards belonging to a different
+ *  account. Powers the per-account mini-kanban layout where dragging
+ *  Card-from-Account-A into Account-B's Won column would (a) succeed
+ *  server-side (status flips, account_id doesn't change) then (b)
+ *  visually snap back to Account-A's section on refresh — confusing.
+ *  Blocked drop shows a friendly toast instead. */
 export function KanbanDnDColumn({
   status,
+  boundToAccountId,
   children,
 }: {
   status: string;
+  boundToAccountId?: string;
   children: ReactNode;
 }) {
   const ctx = useContext(KanbanDnDContext);
   const [isOver, setIsOver] = useState(false);
   if (!ctx) return <>{children}</>;
+  const dragFromDifferentAccount =
+    !!boundToAccountId &&
+    !!ctx.dragAccountId &&
+    ctx.dragAccountId !== boundToAccountId;
   return (
     <div
       onDragOver={(e) => {
+        if (dragFromDifferentAccount) return; // don't accept drop
         ctx.onColumnDragOver(e);
         if (!isOver) setIsOver(true);
       }}
       onDragLeave={() => setIsOver(false)}
       onDrop={(e) => {
         setIsOver(false);
+        if (dragFromDifferentAccount) {
+          e.preventDefault();
+          ctx.flashError(
+            "Cross-customer drops aren't allowed — drop the card in the same customer's section."
+          );
+          return;
+        }
         void ctx.onColumnDrop(e, status);
       }}
       // Karan 2026-07-15: dropped the emerald ring — it read as a
