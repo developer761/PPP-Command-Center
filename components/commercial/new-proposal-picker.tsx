@@ -144,10 +144,15 @@ export default function NewProposalPicker({
             onClick={() => setOpen(false)}
             aria-hidden
           />
+          {/* Karan 2026-07-15: switched from absolute (which was
+              getting clipped when the trigger sat near the sidebar
+              edge) to fixed positioning anchored to the top-right of
+              the viewport. Now the popover is always fully visible
+              regardless of where the button lives on the page. */}
           <div
             role="dialog"
             aria-label="Start a new proposal"
-            className="absolute right-0 top-full mt-1 z-40 w-[340px] max-w-[calc(100vw-24px)] bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl overflow-hidden"
+            className="fixed right-4 sm:right-6 top-20 z-40 w-[340px] max-w-[calc(100vw-24px)] bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl overflow-hidden"
           >
             <div className="px-4 py-3 border-b border-ppp-charcoal-100">
               <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">

@@ -21,7 +21,7 @@
  * the refresh reveal the card in its new lane.
  */
 
-import { createContext, useContext, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useRef, useState, useTransition, useEffect } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
@@ -65,6 +65,9 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // When Lost is dropped, we stash the debrief URL so the success
+  // toast can include a "Add loss reason" link instead of force-navigating.
+  const [lostDebriefUrl, setLostDebriefUrl] = useState<string | null>(null);
   const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -75,8 +78,14 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
   };
   const flashSuccess = (msg: string) => {
     setSuccess(msg);
+    setLostDebriefUrl(null); // clear any prior lost link on new toast
     if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
-    successTimeoutRef.current = setTimeout(() => setSuccess(null), 4500);
+    // Lost toast gets 8s (needs time to click the debrief link); others 4.5s.
+    const dwell = msg.toLowerCase().includes("lost") ? 8000 : 4500;
+    successTimeoutRef.current = setTimeout(() => {
+      setSuccess(null);
+      setLostDebriefUrl(null);
+    }, dwell);
   };
 
   const onCardDragStart = (
@@ -136,14 +145,14 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       }
       const json = (await res.json()) as {
         redirect_url?: string | null;
+        debrief_url?: string | null;
         reopened?: boolean;
         deal_reopened?: boolean;
         deal_current_status?: string;
       };
       if (json.redirect_url) {
-        // Lost → route to the account debrief page so Alex captures
-        // loss_reason. Keep optimistic-hidden state until nav lands
-        // so the card doesn't flash back into Sent.
+        // Keep optimistic-hidden state until nav lands so the card
+        // doesn't flash back into its source column.
         window.location.href = json.redirect_url;
         return;
       }
@@ -154,6 +163,11 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         flashSuccess(
           "🎉 Marked won. Parent deal flipped to Pre-Sale Closed · Won."
         );
+      } else if (targetStatus === "lost") {
+        // Stash debrief link in state so the toast can render as a
+        // link rather than force-navigating (Karan 2026-07-15).
+        setLostDebriefUrl(json.debrief_url ?? null);
+        flashSuccess("Marked lost. Parent deal flipped to Pre-Sale Closed · Lost.");
       } else if (targetStatus === "sent" && json.reopened) {
         flashSuccess(
           json.deal_reopened
@@ -197,9 +211,17 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 max-w-sm bg-emerald-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg shadow-lg"
+          className="fixed bottom-6 right-6 z-50 max-w-sm bg-emerald-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg shadow-lg flex items-start gap-3"
         >
-          {success}
+          <span className="flex-1">{success}</span>
+          {lostDebriefUrl && (
+            <a
+              href={lostDebriefUrl}
+              className="shrink-0 underline underline-offset-2 hover:text-white/80"
+            >
+              Add loss reason →
+            </a>
+          )}
         </div>
       )}
       {children}
@@ -217,24 +239,45 @@ export function ProposalDnDColumn({
   className?: string;
 }) {
   const ctx = useContext(ProposalsDnDContext);
+  // Karan 2026-07-15: match the opportunity kanban pattern exactly —
+  // per-column `isOver` state + emerald ring on ACTUAL dragover
+  // (not on every column just because SOME card is being dragged).
+  // The old "ring every valid target" pattern lit up multiple boxes at
+  // once and used a red ring for reopen; both were confusing.
+  const [isOver, setIsOver] = useState(false);
+  // If the drag ends (user drops or aborts) while we're still "over",
+  // clear the state so a stale ring doesn't persist.
+  useEffect(() => {
+    if (!ctx?.dragProposalId && isOver) setIsOver(false);
+  }, [ctx?.dragProposalId, isOver]);
   if (!ctx) return <div className={className}>{children}</div>;
   const isValidTarget =
     ctx.dragSourceStatus != null &&
     ctx.isValidDropTarget(ctx.dragSourceStatus, status);
-  // Won-source dropping into Sent = reopen (blue ring instead of emerald
-  // so it visually reads as "undo" not "close").
-  const isReopenTarget =
-    isValidTarget && ctx.dragSourceStatus !== "sent" && status === "sent";
-  const ringCls = isValidTarget
-    ? isReopenTarget
-      ? "ring-2 ring-cc-brand-500 ring-offset-1"
-      : "ring-2 ring-emerald-400 ring-offset-1"
-    : "";
   return (
     <div
-      className={`${className ?? ""} ${ringCls}`}
-      onDragOver={isValidTarget ? ctx.onColumnDragOver : undefined}
-      onDrop={isValidTarget ? (e) => ctx.onColumnDrop(e, status) : undefined}
+      className={`${className ?? ""} ${
+        isOver && isValidTarget
+          ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-white rounded-xl"
+          : ""
+      }`}
+      onDragOver={
+        isValidTarget
+          ? (e) => {
+              ctx.onColumnDragOver(e);
+              if (!isOver) setIsOver(true);
+            }
+          : undefined
+      }
+      onDragLeave={isValidTarget ? () => setIsOver(false) : undefined}
+      onDrop={
+        isValidTarget
+          ? (e) => {
+              setIsOver(false);
+              ctx.onColumnDrop(e, status);
+            }
+          : undefined
+      }
     >
       {children}
     </div>

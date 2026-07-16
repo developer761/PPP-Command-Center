@@ -89,10 +89,12 @@ export async function POST(
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
-  // Lost needs the client to route the user into the debrief form so
-  // the loss_reason gets captured. Won just stays put — the kanban
-  // refresh will land the card in the Won column.
-  const redirect_url =
+  // Karan 2026-07-15: no more forced redirects on Lost. Prior version
+  // yanked the user onto the account debrief page, which was jarring
+  // ("wait, why am I not on the proposals kanban anymore?"). The
+  // debrief link is now surfaced as a link in the success banner
+  // instead — user decides whether to go add the reason now or later.
+  const debrief_url =
     to === "lost" && result.account_id
       ? `/commercial/accounts/${result.account_id}/debrief/${result.opportunity_id}?just_closed=1`
       : null;
@@ -102,6 +104,7 @@ export async function POST(
     opportunity_id: result.opportunity_id,
     account_id: result.account_id,
     to,
-    redirect_url,
+    redirect_url: null,
+    debrief_url,
   });
 }

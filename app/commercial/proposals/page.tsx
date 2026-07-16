@@ -19,6 +19,7 @@
  */
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -153,7 +154,7 @@ function formatShortDate(iso: string): string {
 export default async function ProposalsIndexPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; view?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -169,6 +170,10 @@ export default async function ProposalsIndexPage({
     sp.status && (PROPOSAL_STATUSES as readonly string[]).includes(sp.status)
       ? (sp.status as ProposalStatus)
       : null;
+  // Karan 2026-07-15: view=list gives a grouped-by-account list view
+  // for when the kanban gets unmanageable with 50+ proposals. Default
+  // remains kanban.
+  const viewMode: "kanban" | "list" = sp.view === "list" ? "list" : "kanban";
 
   const sb = commercialDb();
   let query = sb
@@ -247,8 +252,8 @@ export default async function ProposalsIndexPage({
           </h1>
           <p className="text-[13px] text-ppp-charcoal-500 mt-1">
             Every revision on every deal, grouped by status. Click a card to open the editor.
-            {" "}<span className="text-emerald-700 font-medium">Drag Sent cards into Won or Lost</span> to close out a bid — Lost jumps you to the debrief page.
-            {" "}Dropped a card in Won/Lost by mistake? <span className="text-cc-brand-700 font-medium">Drag it back to Sent</span> to reopen — the parent deal reopens too.
+            {" "}<span className="text-emerald-700 font-medium">Drag Sent cards into Won or Lost</span> to close out a bid.
+            {" "}Dropped a card by mistake? Drag it back to Sent to reopen — the parent deal reopens too.
           </p>
         </div>
         <NewProposalPicker
@@ -266,20 +271,64 @@ export default async function ProposalsIndexPage({
         <StatTile label="Outstanding total" value={formatDollars(outstandingCents)} tone="brand" />
       </div>
 
-      {/* Optional status filter chips — same-URL swap */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <StatusChip href="/commercial/proposals" active={!activeStatus} label="All" />
-        {PROPOSAL_STATUSES.map((s) => {
-          const count = byStatus.get(s)?.length ?? 0;
-          return (
-            <StatusChip
-              key={s}
-              href={`/commercial/proposals?status=${s}`}
-              active={activeStatus === s}
-              label={`${proposalStatusLabel(s)}${count > 0 ? ` · ${count}` : ""}`}
-            />
-          );
-        })}
+      {/* View mode + status filter chips — same-URL swap */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <StatusChip
+            href={`/commercial/proposals${viewMode === "list" ? "?view=list" : ""}`}
+            active={!activeStatus}
+            label="All"
+          />
+          {PROPOSAL_STATUSES.map((s) => {
+            const count = byStatus.get(s)?.length ?? 0;
+            const suffix = viewMode === "list" ? `&view=list` : "";
+            return (
+              <StatusChip
+                key={s}
+                href={`/commercial/proposals?status=${s}${suffix}`}
+                active={activeStatus === s}
+                label={`${proposalStatusLabel(s)}${count > 0 ? ` · ${count}` : ""}`}
+              />
+            );
+          })}
+        </div>
+        {/* Karan 2026-07-15: view toggle. Kanban is default; List
+            is for high-volume days when 50 cards scrolling sideways
+            is unreadable. */}
+        <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden text-[12px] font-semibold shrink-0">
+          <Link
+            href={`/commercial/proposals${activeStatus ? `?status=${activeStatus}` : ""}`}
+            className={`px-3 py-1.5 inline-flex items-center gap-1.5 min-h-[36px] ${
+              viewMode === "kanban"
+                ? "bg-cc-brand-600 text-white"
+                : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="3" y="3" width="7" height="18" rx="1" />
+              <rect x="14" y="3" width="7" height="12" rx="1" />
+            </svg>
+            Kanban
+          </Link>
+          <Link
+            href={`/commercial/proposals?view=list${activeStatus ? `&status=${activeStatus}` : ""}`}
+            className={`px-3 py-1.5 inline-flex items-center gap-1.5 min-h-[36px] border-l border-ppp-charcoal-200 ${
+              viewMode === "list"
+                ? "bg-cc-brand-600 text-white border-l-cc-brand-700"
+                : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <circle cx="4" cy="6" r="1" fill="currentColor" />
+              <circle cx="4" cy="12" r="1" fill="currentColor" />
+              <circle cx="4" cy="18" r="1" fill="currentColor" />
+            </svg>
+            List
+          </Link>
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -291,6 +340,8 @@ export default async function ProposalsIndexPage({
             Click <strong>+ New proposal</strong> above to pick a customer + deal and start the first revision.
           </p>
         </div>
+      ) : viewMode === "list" ? (
+        <ProposalsListView rows={rows} />
       ) : (
         <ProposalsKanbanDnDProvider>
           <div className="overflow-x-auto -mx-3 sm:-mx-6 px-3 sm:px-6 pb-2">
@@ -399,15 +450,57 @@ function ProposalColumn({
             {compact ? "—" : "No proposals here"}
           </li>
         ) : (
-          rows.map((r) => (
-            <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
-              <ProposalCard row={r} accentBar={tone.accentBar} />
-            </ProposalDnDCard>
-          ))
+          renderRowsGroupedByAccount(rows, tone.accentBar, compact)
         )}
       </ul>
     </div>
   );
+}
+
+/** Karan 2026-07-15: within each kanban column, cluster cards by
+ *  parent account so multi-proposal customers stack visually. When a
+ *  column has ≥2 rows from the same account, we render a thin
+ *  "Customer name · N" label above the group. Single-account rows
+ *  render as plain cards (no label). Order within group: newest first
+ *  (matches the top-level `updated_at desc` sort from the query). */
+function renderRowsGroupedByAccount(
+  rows: ProposalRow[],
+  accentBar: string,
+  compact: boolean
+): ReactNode[] {
+  const byAccount = new Map<string, ProposalRow[]>();
+  for (const r of rows) {
+    const key = r.opportunity?.account?.id ?? "unknown";
+    const list = byAccount.get(key) ?? [];
+    list.push(r);
+    byAccount.set(key, list);
+  }
+  const nodes: ReactNode[] = [];
+  for (const [key, list] of byAccount) {
+    const acctName =
+      list[0]?.opportunity?.account?.company_name ?? "(no customer)";
+    // Only label groups that actually cluster (≥2 in this column).
+    // Single-row groups render as bare cards, no header noise.
+    if (list.length > 1 && !compact) {
+      nodes.push(
+        <li
+          key={`hdr-${key}`}
+          className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 pt-1 px-1 flex items-center justify-between gap-1"
+        >
+          <span className="truncate" title={acctName}>{acctName}</span>
+          <span className="tabular-nums text-ppp-charcoal-400">·&nbsp;{list.length}</span>
+        </li>
+      );
+    }
+    for (const r of list) {
+      nodes.push(
+        <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
+          <ProposalCard row={r} accentBar={accentBar} />
+        </ProposalDnDCard>
+      );
+    }
+  }
+  return nodes;
 }
 
 function ProposalCard({ row, accentBar }: { row: ProposalRow; accentBar: string }) {
@@ -507,5 +600,206 @@ function StatusChip({
     >
       {label}
     </Link>
+  );
+}
+
+// ─────────────── List view (Karan 2026-07-15) ───────────────
+// Groups proposals by account with clear separators + a per-account
+// header row (company name + total revenue at stake). Within each
+// account, proposals are further split by parent deal so multi-deal
+// accounts stay legible even at 50+ rows. Kills the kanban's
+// horizontal-scroll pain when the volume gets real.
+
+const LIST_STATUS_PILL: Record<string, string> = {
+  draft: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
+  pending_approval: "bg-amber-50 text-amber-800 border-amber-200",
+  sent: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200",
+  won: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  lost: "bg-rose-50 text-rose-800 border-rose-200",
+  expired: "bg-rose-50 text-rose-800 border-rose-200",
+  superseded: "bg-slate-50 text-slate-600 border-slate-200",
+};
+
+function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
+  // Group by account, then by deal within the account.
+  type AcctBucket = {
+    account_id: string;
+    company_name: string;
+    outstandingCents: number;
+    wonCents: number;
+    deals: Map<string, { deal: ProposalRow["opportunity"]; rows: ProposalRow[] }>;
+  };
+  const byAccount = new Map<string, AcctBucket>();
+  for (const r of rows) {
+    if (!r.opportunity?.account) continue;
+    const acctId = r.opportunity.account.id;
+    let bucket = byAccount.get(acctId);
+    if (!bucket) {
+      bucket = {
+        account_id: acctId,
+        company_name: r.opportunity.account.company_name,
+        outstandingCents: 0,
+        wonCents: 0,
+        deals: new Map(),
+      };
+      byAccount.set(acctId, bucket);
+    }
+    if (r.status === "sent" || r.status === "pending_approval") {
+      bucket.outstandingCents += r.total_cents;
+    }
+    if (r.status === "won") bucket.wonCents += r.total_cents;
+    const dealKey = r.opportunity.id;
+    let dealBucket = bucket.deals.get(dealKey);
+    if (!dealBucket) {
+      dealBucket = { deal: r.opportunity, rows: [] };
+      bucket.deals.set(dealKey, dealBucket);
+    }
+    dealBucket.rows.push(r);
+  }
+  // Sort proposals within each deal by revision_number desc, then sort
+  // deals within each account by most-recent activity, then sort
+  // accounts by count of proposals desc (busy customers on top).
+  for (const acct of byAccount.values()) {
+    for (const deal of acct.deals.values()) {
+      deal.rows.sort((a, b) => b.revision_number - a.revision_number);
+    }
+  }
+  const sortedAccounts = Array.from(byAccount.values()).sort((a, b) => {
+    const aTotal = Array.from(a.deals.values()).reduce((s, d) => s + d.rows.length, 0);
+    const bTotal = Array.from(b.deals.values()).reduce((s, d) => s + d.rows.length, 0);
+    if (aTotal !== bTotal) return bTotal - aTotal;
+    return a.company_name.localeCompare(b.company_name);
+  });
+
+  return (
+    <div className="space-y-4">
+      {sortedAccounts.map((acct) => {
+        const totalProposals = Array.from(acct.deals.values()).reduce(
+          (s, d) => s + d.rows.length,
+          0
+        );
+        return (
+          <section
+            key={acct.account_id}
+            className="bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden"
+          >
+            {/* Account header — sticky-feeling with the customer name + roll-up */}
+            <header className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0 flex items-baseline gap-2 flex-wrap">
+                <Link
+                  href={`/commercial/accounts/${acct.account_id}?tab=proposals`}
+                  className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+                >
+                  {acct.company_name}
+                </Link>
+                <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
+                  {totalProposals} proposal{totalProposals === 1 ? "" : "s"} across{" "}
+                  {acct.deals.size} deal{acct.deals.size === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap text-[11px] tabular-nums shrink-0">
+                {acct.outstandingCents > 0 && (
+                  <span className="text-cc-brand-800">
+                    {formatDollars(acct.outstandingCents)} outstanding
+                  </span>
+                )}
+                {acct.wonCents > 0 && (
+                  <span className="text-emerald-700">
+                    {formatDollars(acct.wonCents)} won
+                  </span>
+                )}
+              </div>
+            </header>
+            {/* Deals within this account — each with its own inner header */}
+            <div className="divide-y divide-ppp-charcoal-100">
+              {Array.from(acct.deals.values()).map((dealBucket) => {
+                if (!dealBucket.deal) return null;
+                const dealTitle =
+                  dealBucket.deal.title?.trim() ||
+                  dealBucket.deal.client_name?.trim() ||
+                  dealBucket.deal.location_short?.trim() ||
+                  "(untitled deal)";
+                return (
+                  <div key={dealBucket.deal.id}>
+                    <div className="px-4 py-1.5 bg-white text-[11px] font-semibold text-ppp-charcoal-600 uppercase tracking-wide border-b border-ppp-charcoal-100">
+                      {dealTitle}
+                      <span className="ml-2 text-ppp-charcoal-400 font-normal normal-case tracking-normal">
+                        · {dealBucket.rows.length} revision
+                        {dealBucket.rows.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <ul className="divide-y divide-ppp-charcoal-100">
+                      {dealBucket.rows.map((r) => {
+                        const editorHref = `/commercial/accounts/${acct.account_id}/deals/${dealBucket.deal!.id}/proposal/${r.id}`;
+                        return (
+                          <li
+                            key={r.id}
+                            className="flex items-stretch hover:bg-ppp-charcoal-50/60"
+                          >
+                            <Link
+                              href={editorHref}
+                              className="flex items-center gap-3 px-4 py-2.5 min-h-[48px] flex-1 min-w-0"
+                            >
+                              <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums shrink-0 w-8">
+                                R{r.revision_number}
+                              </span>
+                              <span
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${
+                                  LIST_STATUS_PILL[r.status] ??
+                                  "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200"
+                                }`}
+                              >
+                                {proposalStatusLabel(r.status)}
+                              </span>
+                              {r.header_json?.gc_company && (
+                                <span className="text-[11.5px] text-ppp-charcoal-600 truncate">
+                                  GC: {r.header_json.gc_company}
+                                </span>
+                              )}
+                              {r.sent_at && (
+                                <span className="text-[10.5px] text-ppp-charcoal-500 shrink-0 ml-auto">
+                                  sent {formatShortDate(r.sent_at)}
+                                </span>
+                              )}
+                              <span className="text-[13px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ml-2 w-20 text-right">
+                                {formatDollars(r.total_cents)}
+                              </span>
+                            </Link>
+                            <a
+                              href={`/api/commercial/proposals/${r.id}/pdf`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-white border-l border-ppp-charcoal-100 shrink-0"
+                              title="Open the customer PDF in a new tab"
+                              aria-label={`Open PDF for revision ${r.revision_number}`}
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden
+                              >
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                              </svg>
+                              <span className="hidden sm:inline">PDF</span>
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
   );
 }

@@ -243,6 +243,15 @@ async function deleteDraftAction(formData: FormData) {
   if (!user) redirect("/");
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  // Karan 2026-07-15: honor the `from` context so deleting an invoice
+  // opened from an account/opportunity Invoices tab returns the user
+  // to THAT tab (with the undo toast) instead of dumping them onto
+  // the global /commercial/invoices list. Open-redirect defense: only
+  // accept URLs that start with /commercial to prevent malicious form
+  // input from bouncing the user off-domain.
+  const rawFrom = String(formData.get("from") ?? "").trim();
+  const safeFrom =
+    rawFrom.startsWith("/commercial") ? rawFrom.split("#")[0] : null;
   // Capture context BEFORE the soft-delete so we can revalidate the
   // parent opp + account. After deleted_at is set, the row is still in
   // the DB, but semantically the panel should re-render without it —
@@ -261,9 +270,11 @@ async function deleteDraftAction(formData: FormData) {
   if (ctx.opportunity_id) revalidatePath(`/commercial/opportunities/${ctx.opportunity_id}`);
   if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
   const undoLabel = preInvoice?.invoice_number ?? "";
-  redirect(
-    `/commercial/invoices?deleted=1&undo_id=${invoice_id}&undo_kind=invoice&undo_label=${encodeURIComponent(undoLabel)}`
-  );
+  const undoQuery = `deleted=1&undo_id=${invoice_id}&undo_kind=invoice&undo_label=${encodeURIComponent(undoLabel)}`;
+  const target = safeFrom
+    ? `${safeFrom}${safeFrom.includes("?") ? "&" : "?"}${undoQuery}`
+    : `/commercial/invoices?${undoQuery}`;
+  redirect(target);
 }
 
 /**
@@ -648,6 +659,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             )}
             <form action={deleteDraftAction} className="inline">
               <input type="hidden" name="invoice_id" value={invoice.id} />
+              {/* Karan 2026-07-15: honor `from` so deleting an invoice
+                  opened from an account or opp Invoices tab lands the
+                  undo toast on THAT tab, not the global invoices list. */}
+              {fromRaw && <input type="hidden" name="from" value={fromRaw} />}
               <button
                 type="submit"
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"

@@ -450,14 +450,13 @@ async function markProposalOutcomeAction(formData: FormData) {
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
   revalidatePath(`/commercial/accounts/${accountId}`);
-  // Lost → route into structured debrief form; Won → stay + toast.
-  if (outcome === "lost") {
-    redirect(
-      `/commercial/accounts/${accountId}/debrief/${dealId}?just_closed=1`
-    );
-  }
+  // Karan 2026-07-15: stay on the proposal page for BOTH outcomes.
+  // Prior version auto-redirected Lost drops to the account debrief,
+  // which was jarring ("why am I on the account page now?"). Now the
+  // banner on the proposal page carries a link to the debrief so the
+  // user can go if they want to — no forced navigation.
   redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?outcome=won`
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?outcome=${outcome}`
   );
 }
 
@@ -468,7 +467,7 @@ export default async function ProposalEditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string; dealId: string; proposalId: string }>;
-  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; outcome?: "won" | "reopened" | "reopened_solo" | string }>;
+  searchParams: Promise<{ saved?: string; error?: string; created?: string; sent?: string; outcome?: "won" | "lost" | "reopened" | "reopened_solo" | string }>;
 }) {
   const { id: accountId, dealId, proposalId } = await params;
   const sp = await searchParams;
@@ -509,7 +508,10 @@ export default async function ProposalEditorPage({
     ...(proposal.custom_exclusions ?? []),
   ]);
 
-  const listHref = `/commercial/accounts/${accountId}/deals/${dealId}/proposal`;
+  // Karan 2026-07-15: the per-deal proposal-list page is dead (killed
+  // as a redirect stub); the Proposals tab on the account page is the
+  // single home for every revision. Link back there directly.
+  const listHref = `/commercial/accounts/${accountId}?tab=proposals`;
 
   // Hidden fields shared by every server action on this page.
   const hiddenIds = (
@@ -531,7 +533,7 @@ export default async function ProposalEditorPage({
             <path d="M19 12H5" />
             <path d="m12 19-7-7 7-7" />
           </svg>
-          <span>All revisions</span>
+          <span>Back to {account.company_name} proposals</span>
         </Link>
         <span aria-hidden className="text-ppp-charcoal-300">·</span>
         <span className="text-ppp-charcoal-900 font-medium">{oppName}</span>
@@ -687,6 +689,19 @@ export default async function ProposalEditorPage({
       {sp.outcome === "won" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
           <strong>🎉 Marked won.</strong> Deal flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.
+        </div>
+      )}
+      {sp.outcome === "lost" && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-900 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <strong>Marked lost.</strong> Deal flipped to <em>Pre-Sale Closed · Lost</em>. Please add the loss reason so the Win/Loss report is accurate.
+          </div>
+          <Link
+            href={`/commercial/accounts/${accountId}/debrief/${dealId}?just_closed=1`}
+            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700"
+          >
+            Add loss reason →
+          </Link>
         </div>
       )}
       {sp.outcome === "reopened" && (
