@@ -77,20 +77,13 @@ const ACTIVE_COLUMNS: ProposalStatus[] = ["draft", "pending_approval", "sent"];
 // forever show "0 —" and pretend it does something.
 const CLOSED_TERMINAL: ProposalStatus[] = ["lost", "expired"];
 
-// Karan 2026-07-16: in the per-deal mini-kanban context each column
-// holds AT MOST one card (the current revision). "Draft" reads like a
-// list of drafts; the natural label is "Current draft" so it's obvious
-// the card is THE working proposal, not one of many. Rename applies
-// ONLY inside the DealMiniKanban — status filter chips + full-kanban
-// contexts keep the plain status name.
-const MINI_KANBAN_COLUMN_LABEL: Partial<Record<ProposalStatus, string>> = {
-  draft: "Current draft",
-  pending_approval: "Awaiting approval",
-  sent: "Sent to GC",
-  won: "Won",
-  lost: "Lost",
-  expired: "Expired",
-};
+// Karan 2026-07-16 (round 2): dropped MINI_KANBAN_COLUMN_LABEL — the
+// account-page Proposals tab uses `proposalStatusLabel` for its status
+// pills, and Karan asked for the two surfaces to say the same thing.
+// Kanban columns now use `proposalStatusLabel(status)` too. The mini-
+// kanban already only shows the CURRENT proposal per deal, so "Draft"
+// implicitly means "the current proposal for this deal is in Draft"
+// — no rename needed to make that clear.
 
 type ColumnTone = {
   col: string; // container bg + border
@@ -1024,7 +1017,6 @@ function DealMiniKanban({
                 tone={toneForStatus(status)}
                 width="flex-1 min-w-[120px]"
                 compact
-                labelOverride={MINI_KANBAN_COLUMN_LABEL[status]}
               />
             </ProposalDnDColumn>
           ))}
@@ -1035,7 +1027,6 @@ function DealMiniKanban({
               tone={toneForStatus("won")}
               width="flex-1 min-w-[120px]"
               compact
-              labelOverride={MINI_KANBAN_COLUMN_LABEL.won}
             />
           </ProposalDnDColumn>
           <div className="flex-1 min-w-[120px] border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
@@ -1061,8 +1052,7 @@ function DealMiniKanban({
                     tone={toneForStatus(status)}
                     width="w-full"
                     compact
-                    labelOverride={MINI_KANBAN_COLUMN_LABEL[status]}
-                  />
+                      />
                 </ProposalDnDColumn>
               ))}
             </div>

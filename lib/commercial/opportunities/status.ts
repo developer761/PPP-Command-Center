@@ -123,19 +123,20 @@ export async function changeOpportunityStatus(
   if (!before) return { ok: false, error: "Opportunity not found." };
   const beforeRow = before as CommercialOpportunity;
 
-  // Karan 2026-07-16 (bug hunt): no-op if BOTH status AND sub_status
-  // already match. Prior version early-returned on status-only match,
-  // which silently dropped every sub-status-only cascade — e.g.
-  // proposal Draft → Pending Approval fires a cascade to (estimating,
-  // proposal_pending_approval), but if the deal was already at
-  // (estimating, estimating), the top-level status is unchanged and
-  // the sub_status update never happened. Root cause of Karan's
-  // "cascade works 70% of the time" pain.
+  // Karan 2026-07-16 (round 2 bug hunt): compute the EFFECTIVE
+  // sub_status (default for the target status if caller passes
+  // undefined) BEFORE the no-op check. Otherwise dragging Proposal
+  // Drafted → Estimating (no explicit sub) hits the "same top-level"
+  // early-out and no-ops, when it should actually reset sub_status
+  // to the default ("estimating"). Same root cause as the earlier
+  // sub-only cascade fix — this is the un-passed-sub_status case.
+  const effectiveSubStatus =
+    input.to_sub_status !== undefined && input.to_sub_status !== null
+      ? input.to_sub_status
+      : ((DEFAULT_SUB_STATUS_BY_STATUS as Record<string, string>)[input.to_status] ?? null);
   if (
     beforeRow.status === input.to_status &&
-    (input.to_sub_status === undefined ||
-      input.to_sub_status === null ||
-      beforeRow.sub_status === input.to_sub_status)
+    beforeRow.sub_status === effectiveSubStatus
   ) {
     return { ok: true, opportunity: beforeRow };
   }
