@@ -367,15 +367,20 @@ export async function updateProposalStatus(input: {
         "post_sale_closed",
       ]);
       if (opp && !postSaleStatuses.has(opp.status)) {
-        // Karan 2026-07-16: distinct mappings for draft vs pending_approval.
-        // Draft = Alex is still building the proposal (deal stays in
-        // plain Estimating). Pending Approval = the draft is done and
-        // Katie/Alex is signing off = deal flips to "Proposal Drafted"
-        // (estimating + proposal_pending_approval). Prior version mapped
-        // BOTH proposal states to proposal_pending_approval which made
-        // the opp column say "Proposal Drafted" while the proposal
-        // itself was still in Current draft — semantically wrong and
-        // exactly the mismatch Karan flagged.
+        // Karan 2026-07-16 (round 2) — canonical bidirectional mapping:
+        //   Qualifying / Estimating(plain)            ↔ Draft
+        //   Estimating + Proposal Pending Approval    ↔ Pending Approval
+        //   Proposal (sent / follow_up)               ↔ Sent
+        //   Pre-Con / In Progress / Billing           ← don't touch proposal (delivery-phase; whatever proposal state was, stays)
+        //   Pre-Sale Closed + Won                     ↔ Won
+        //   Pre-Sale Closed + Lost                    ↔ Lost
+        //
+        // Draft special case: valid at BOTH Qualifying and Estimating.
+        // If deal is already Qualifying, don't yank forward to
+        // Estimating — Draft is fine at Qualifying too. Skip.
+        if (input.to_status === "draft" && opp.status === "qualifying") {
+          // Valid deal state for a draft proposal; no cascade needed.
+        } else {
         let dealStatus: string | null = null;
         let dealSub: string | null = null;
         switch (input.to_status) {
@@ -430,6 +435,7 @@ export async function updateProposalStatus(input: {
             );
           }
         }
+        } // end of else (draft-at-qualifying skip)
       }
     } catch (err) {
       console.warn(

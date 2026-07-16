@@ -374,14 +374,27 @@ export async function changeOpportunityStatus(
       if (s === "proposal") {
         return { demoteFrom: ["draft", "pending_approval", "won", "lost"], to: "sent" };
       }
+      // Karan 2026-07-16 (round 2): Won and Lost pull the CURRENT
+      // proposal to Won/Lost from ANY state (draft/pending/sent/lost/won).
+      // Prior narrower [sent] set meant flipping a deal Won while the
+      // proposal was still Draft did nothing on the proposal side,
+      // leaving the column mismatch Karan flagged.
       if (s === "pre_sale_closed" && sub === "won") {
-        return { demoteFrom: ["sent"], to: "won" };
+        return {
+          demoteFrom: ["draft", "pending_approval", "sent", "lost"],
+          to: "won",
+        };
       }
       if (s === "pre_sale_closed" && sub === "lost") {
-        return { demoteFrom: ["sent"], to: "lost" };
+        return {
+          demoteFrom: ["draft", "pending_approval", "sent", "won"],
+          to: "lost",
+        };
       }
-      // Delivery-phase transitions don't touch proposals — those are
-      // historical records once the deal is Won.
+      // Post-sale delivery phases (pre_construction, in_progress,
+      // billing, post_sale_closed) don't cascade to proposals. Per
+      // Karan's spec: whatever the proposal state was, it stays —
+      // proposals aren't rewound when the crew starts on-site.
       return null;
     };
     const target = deriveTargetProposalStatus();

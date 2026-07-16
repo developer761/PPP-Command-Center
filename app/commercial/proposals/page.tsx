@@ -541,87 +541,93 @@ function ProposalCard({
   const editorHref = `/commercial/accounts/${acctId}/deals/${dealId}/proposal/${row.id}`;
 
   return (
-    <li className="group relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+    <li className="group bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
       <div className={`h-1 ${accentBar}`} aria-hidden />
-      {/* Karan 2026-07-16: custom name is the PRIMARY label. Prior
-          layout put R# first + name second (small) — Karan flagged
-          that renames "still say R3" because the R# dominated. Now
-          the name Karan typed reads as the card's title, with R#
-          demoted to a small tabular tag next to it. Fallback shows
-          the deal title so the card is never nameless. */}
-      <Link
-        href={editorHref}
-        className={`block hover:bg-ppp-charcoal-50 ${
-          compact ? "px-2 py-1.5" : "px-3 py-2.5"
-        }`}
-      >
-        <div className="flex items-baseline justify-between gap-2">
-          <div className="min-w-0 flex items-baseline gap-1.5">
-            <span
-              className="text-[12.5px] font-bold text-ppp-charcoal truncate"
-              title={customName || oppTitle}
-            >
-              {customName || oppTitle}
-            </span>
-            <span className="text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums shrink-0">
-              R{row.revision_number}
-            </span>
-          </div>
-          <span className="text-[12px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0">
+      {/* Karan 2026-07-16 (round 2): PDF icon is now INLINE next to
+          the total in the header row. Absolute positioning kept
+          overlapping the $-number no matter where we put it (compact
+          cards are single-line, so top-right + bottom-right both
+          landed on the total). Inline flex means no overlap ever, at
+          the cost of always-visible chrome — that's the right trade. */}
+      <div className={`flex items-baseline justify-between gap-2 ${compact ? "px-2 py-1.5" : "px-3 py-2.5"}`}>
+        <Link
+          href={editorHref}
+          className="min-w-0 flex-1 flex items-baseline gap-1.5 hover:text-cc-brand-700"
+        >
+          <span
+            className="text-[12.5px] font-bold text-ppp-charcoal truncate"
+            title={customName || oppTitle}
+          >
+            {customName || oppTitle}
+          </span>
+          <span className="text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums shrink-0">
+            R{row.revision_number}
+          </span>
+        </Link>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[12px] font-semibold text-ppp-charcoal-800 tabular-nums">
             {formatDollars(row.total_cents)}
           </span>
+          <a
+            href={`/api/commercial/proposals/${row.id}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center w-5 h-5 rounded text-ppp-charcoal-400 hover:text-cc-brand-700 hover:bg-cc-brand-50"
+            title="Open the customer PDF in a new tab"
+            aria-label={`Open PDF for revision ${row.revision_number}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+          </a>
         </div>
-        {compact ? (
-          customName && (
-            // If both custom name AND deal title exist, show deal
-            // title as a small caption so context isn't lost.
-            <div
-              className="text-[10.5px] text-ppp-charcoal-400 truncate mt-0.5"
-              title={oppTitle}
-            >
-              {oppTitle}
-            </div>
-          )
-        ) : (
-          <>
-            <div
-              className="text-[12px] font-semibold text-ppp-charcoal truncate mt-1"
-              title={gc}
-            >
-              {gc}
-            </div>
-            {customName && (
+      </div>
+      {/* Captions row — deal title (custom-name mode), GC, sent date.
+          Wrapped in its own Link so the whole caption block is
+          clickable but doesn't nest an <a> inside another <a>. */}
+      {(compact ? customName : true) && (
+        <Link
+          href={editorHref}
+          className={`block hover:bg-ppp-charcoal-50 ${
+            compact ? "px-2 pb-1.5" : "px-3 pb-2.5"
+          }`}
+        >
+          {compact ? (
+            customName && (
               <div
-                className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5"
+                className="text-[10.5px] text-ppp-charcoal-400 truncate"
                 title={oppTitle}
               >
                 {oppTitle}
               </div>
-            )}
-          </>
-        )}
-        {row.sent_at && !compact && (
-          <div className="text-[10px] text-ppp-charcoal-500 mt-1">
-            sent {formatShortDate(row.sent_at)}
-          </div>
-        )}
-      </Link>
-      {/* Karan 2026-07-16: PDF icon moved from top-right (was covering
-          the total dollar amount on line 1) to bottom-right. Still
-          hover-revealed, no longer overlaps the number. */}
-      <a
-        href={`/api/commercial/proposals/${row.id}/pdf`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="absolute bottom-1.5 right-1.5 inline-flex items-center justify-center w-6 h-6 rounded-md bg-white/95 hover:bg-cc-brand-50 border border-ppp-charcoal-200 text-ppp-charcoal-500 hover:text-cc-brand-700 opacity-0 group-hover:opacity-100 focus:opacity-100 shadow-sm"
-        title="Open the customer PDF in a new tab"
-        aria-label={`Open PDF for revision ${row.revision_number}`}
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
-      </a>
+            )
+          ) : (
+            <>
+              <div
+                className="text-[12px] font-semibold text-ppp-charcoal truncate"
+                title={gc}
+              >
+                {gc}
+              </div>
+              {customName && (
+                <div
+                  className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5"
+                  title={oppTitle}
+                >
+                  {oppTitle}
+                </div>
+              )}
+              {row.sent_at && (
+                <div className="text-[10px] text-ppp-charcoal-500 mt-1">
+                  sent {formatShortDate(row.sent_at)}
+                </div>
+              )}
+            </>
+          )}
+        </Link>
+      )}
     </li>
   );
 }
