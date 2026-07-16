@@ -1539,8 +1539,20 @@ function CustomerBoardRow({
       ? "yesterday"
       : `${daysAgo}d ago`;
 
+  // Karan 2026-07-15: color-per-account left border + avatar chip
+  // (djb2-hue helper matches the /commercial/proposals mini-kanban
+  // grammar so a customer reads visually consistent across surfaces).
+  const acctTone = accountColorTone(account.id);
+  const acctInitials = (account.company_name || "?")
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join("");
   return (
-    <li className="relative p-4 hover:bg-ppp-charcoal-50/40 transition-colors">
+    <li
+      className="relative p-4 hover:bg-ppp-charcoal-50/40 transition-colors border-l-4"
+      style={acctTone.border}
+    >
       {/* Karan 2026-07-09: whole row is clickable — an absolutely-
           positioned Link overlays the entire card so any dead space
           opens the account. Nested links (deal chips + View button)
@@ -1552,51 +1564,70 @@ function CustomerBoardRow({
       />
       <div className="relative z-10 flex items-start justify-between gap-3 flex-wrap">
         {/* Left column — customer identity + signal metadata. */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link
-              href={`/commercial/accounts/${account.id}`}
-              className="text-sm font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 break-words"
-              title={`Open ${account.company_name}'s account`}
-            >
-              {account.company_name}
-            </Link>
-            {account.is_key_relationship && (
-              <span
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200"
-                title="Key relationship — flagged by admin"
+        <div className="min-w-0 flex-1 flex items-start gap-3">
+          <span
+            className="shrink-0 w-10 h-10 rounded-full inline-flex items-center justify-center text-[12px] font-bold shadow-sm ring-1 ring-white"
+            style={acctTone.avatar}
+            aria-hidden
+          >
+            {acctInitials}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link
+                href={`/commercial/accounts/${account.id}`}
+                className="text-[15px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 break-words"
+                title={`Open ${account.company_name}'s account`}
               >
-                <span aria-hidden>★</span> Key
-              </span>
-            )}
-            {account.industry && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200">
-                {account.industry}
-              </span>
-            )}
-          </div>
-          <div className="mt-1.5 text-[12px] text-ppp-charcoal-600 flex items-center gap-x-2 gap-y-1 flex-wrap">
-            <span className="font-semibold text-ppp-charcoal">
-              {open.length} open bid{open.length === 1 ? "" : "s"}
-            </span>
-            {weightedCents > 0 && (
-              <>
-                <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                <span className="text-ppp-charcoal-500">
-                  <strong className="text-ppp-charcoal">{formatCents(weightedCents)}</strong> weighted
+                {account.company_name}
+              </Link>
+              {account.is_key_relationship && (
+                <span
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200"
+                  title="Key relationship — flagged by admin"
+                >
+                  <span aria-hidden>★</span> Key
                 </span>
-              </>
-            )}
-            {closed.length > 0 && (
-              <>
-                <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                <span className="text-ppp-charcoal-500">
+              )}
+              {account.industry && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200">
+                  {account.industry}
+                </span>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200 tabular-nums">
+                <span aria-hidden>▲</span>
+                {open.length}
+                <span className="font-medium text-cc-brand-700">
+                  open bid{open.length === 1 ? "" : "s"}
+                </span>
+              </span>
+              {weightedCents > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-emerald-50 text-emerald-800 border-emerald-200 tabular-nums">
+                  {formatCents(weightedCents)}
+                  <span className="font-medium text-emerald-700">weighted</span>
+                </span>
+              )}
+              {closed.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200 tabular-nums">
                   {closed.length} closed
                 </span>
-              </>
-            )}
-            <span aria-hidden className="text-ppp-charcoal-300">·</span>
-            <span className="text-ppp-charcoal-500">Active {activityLabel}</span>
+              )}
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                  daysAgo !== null && daysAgo <= 1
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : daysAgo !== null && daysAgo <= 7
+                      ? "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200"
+                      : "bg-amber-50 text-amber-800 border-amber-200"
+                }`}
+                title={latestUpdate ? new Date(latestUpdate).toLocaleString() : undefined}
+              >
+                <span aria-hidden>•</span>
+                Active {activityLabel}
+              </span>
+            </div>
           </div>
         </div>
         {/* Right column — "View" button that opens the customer quick
@@ -2633,39 +2664,54 @@ function StageChip({
       </span>
     );
   }
-  // Pre-sale (qualifying / estimating / proposal) — segmented progress bar.
+  // Pre-sale (qualifying / estimating / proposal) — segmented progress bar
+  // with per-stage labels below so it reads like a proper progress
+  // tracker (each segment is captioned; current is bold + tinted).
   const currentIdx = Math.max(0, PRE_SALE_STAGES_COMPACT.findIndex((s) => s.key === status));
   const currentLabel = PRE_SALE_STAGES_COMPACT[currentIdx]?.short ?? "Qualifying";
   const subLabel = sub_status ? opportunitySubStatusLabel(sub_status) : "";
+  // Karan 2026-07-15: dedupe sub-status when it's the same word as
+  // status (e.g. status='estimating' + sub_status='estimating' was
+  // rendering as "Estimating · Estimating" which looked broken).
+  const showSubBelow =
+    subLabel && subLabel.toLowerCase() !== currentLabel.toLowerCase();
   return (
-    <span className="inline-flex flex-col items-start gap-0.5 min-w-0">
-      <span className="flex items-center gap-2">
-        <span className="inline-flex items-stretch h-4 rounded-full overflow-hidden border border-ppp-charcoal-200 bg-white">
-          {PRE_SALE_STAGES_COMPACT.map((s, i) => {
-            const isPast = i < currentIdx;
-            const isCurrent = i === currentIdx;
-            const segCls = isCurrent
-              ? "bg-cc-brand-600"
-              : isPast
-                ? "bg-cc-brand-200"
-                : "bg-white";
-            return (
-              <span
-                key={s.key}
-                className={`inline-block w-6 sm:w-7 ${segCls} ${i > 0 ? "border-l border-ppp-charcoal-200" : ""}`}
-                title={s.short}
-                aria-hidden
-              />
-            );
-          })}
-        </span>
-        <span className="text-[11px] font-semibold text-ppp-charcoal">
-          {currentLabel}
-        </span>
-        {subLabel && (
-          <span className="text-[10.5px] text-ppp-charcoal-500 font-medium truncate max-w-[140px]">
-            {subLabel}
-          </span>
+    <span className="inline-flex flex-col items-start gap-1 min-w-0">
+      <span
+        className="inline-flex items-stretch h-2 rounded-full overflow-hidden border border-ppp-charcoal-200 bg-white"
+        role="progressbar"
+        aria-valuenow={currentIdx + 1}
+        aria-valuemin={1}
+        aria-valuemax={PRE_SALE_STAGES_COMPACT.length}
+        aria-label={`Deal stage: ${currentLabel} (${currentIdx + 1} of ${PRE_SALE_STAGES_COMPACT.length})`}
+      >
+        {PRE_SALE_STAGES_COMPACT.map((s, i) => {
+          const isPast = i < currentIdx;
+          const isCurrent = i === currentIdx;
+          const segCls = isCurrent
+            ? "bg-cc-brand-600"
+            : isPast
+              ? "bg-cc-brand-300"
+              : "bg-white";
+          return (
+            <span
+              key={s.key}
+              className={`inline-block flex-1 min-w-[24px] sm:min-w-[36px] ${segCls} ${i > 0 ? "border-l border-white/70" : ""}`}
+              title={s.short}
+              aria-hidden
+            />
+          );
+        })}
+      </span>
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ppp-charcoal">
+        <span className="text-cc-brand-700">{currentLabel}</span>
+        {showSubBelow && (
+          <>
+            <span aria-hidden className="text-ppp-charcoal-300">·</span>
+            <span className="text-ppp-charcoal-500 font-medium truncate max-w-[160px]">
+              {subLabel}
+            </span>
+          </>
         )}
       </span>
     </span>
