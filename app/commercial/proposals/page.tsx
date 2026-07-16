@@ -494,11 +494,12 @@ function ProposalCard({
   return (
     <li className="group relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
       <div className={`h-1 ${accentBar}`} aria-hidden />
-      {/* Karan 2026-07-15: compact mode collapses the GC line (redundant
-          inside a per-account row) and shrinks padding so cards feel
-          tight. Custom name (header_json.project_name) shows on line 1
-          alongside R#, so Karan can differentiate "R11 · Warehouse
-          Repaint" from "R10 · Office Fit-Out Q3" at a glance. */}
+      {/* Karan 2026-07-16: custom name is the PRIMARY label. Prior
+          layout put R# first + name second (small) — Karan flagged
+          that renames "still say R3" because the R# dominated. Now
+          the name Karan typed reads as the card's title, with R#
+          demoted to a small tabular tag next to it. Fallback shows
+          the deal title so the card is never nameless. */}
       <Link
         href={editorHref}
         className={`block hover:bg-ppp-charcoal-50 ${
@@ -507,26 +508,26 @@ function ProposalCard({
       >
         <div className="flex items-baseline justify-between gap-2">
           <div className="min-w-0 flex items-baseline gap-1.5">
-            <span className="text-[12px] font-bold text-ppp-charcoal tabular-nums shrink-0">
+            <span
+              className="text-[12.5px] font-bold text-ppp-charcoal truncate"
+              title={customName || oppTitle}
+            >
+              {customName || oppTitle}
+            </span>
+            <span className="text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums shrink-0">
               R{row.revision_number}
             </span>
-            {customName && (
-              <span
-                className="text-[11.5px] font-semibold text-ppp-charcoal-700 truncate"
-                title={customName}
-              >
-                {customName}
-              </span>
-            )}
           </div>
           <span className="text-[12px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0">
             {formatDollars(row.total_cents)}
           </span>
         </div>
         {compact ? (
-          !customName && (
+          customName && (
+            // If both custom name AND deal title exist, show deal
+            // title as a small caption so context isn't lost.
             <div
-              className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5"
+              className="text-[10.5px] text-ppp-charcoal-400 truncate mt-0.5"
               title={oppTitle}
             >
               {oppTitle}
@@ -540,7 +541,7 @@ function ProposalCard({
             >
               {gc}
             </div>
-            {!customName && (
+            {customName && (
               <div
                 className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5"
                 title={oppTitle}
