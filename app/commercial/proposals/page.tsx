@@ -440,30 +440,14 @@ function renderRowsGroupedByAccount(
   accentBar: string,
   compact: boolean
 ): ReactNode[] {
-  // Karan 2026-07-15: when a single customer has multiple deals with
-  // proposals under this account, color-separate the cards by deal
-  // using the shared djb2 hue helper (seeded by deal id, not account
-  // id). Same-deal cards read as one visual cluster inside a column;
-  // different-deal cards get different left-border hues so the eye
-  // can scan "which deal is this proposal on" without hovering.
-  //
-  // Rows arriving here are already scoped to one account — deal is
-  // the axis that separates them further. Sort by deal so same-deal
-  // cards clump together within each column.
-  const sorted = [...rows].sort((a, b) => {
-    const da = a.opportunity?.id ?? "";
-    const db = b.opportunity?.id ?? "";
-    if (da !== db) return da.localeCompare(db);
-    return b.revision_number - a.revision_number;
-  });
+  // Karan 2026-07-15 v3: rows arriving here are now already scoped to
+  // ONE deal (the parent DealMiniKanban splits by deal), so no more
+  // per-deal color coding needed inside a column. Just sort revs desc
+  // so R11 shows above R10 above R9.
+  const sorted = [...rows].sort((a, b) => b.revision_number - a.revision_number);
   return sorted.map((r) => (
     <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
-      <ProposalCard
-        row={r}
-        accentBar={accentBar}
-        compact={compact}
-        dealHue={hueForAccountId(r.opportunity?.id ?? null)}
-      />
+      <ProposalCard row={r} accentBar={accentBar} compact={compact} />
     </ProposalDnDCard>
   ));
 }
@@ -472,15 +456,10 @@ function ProposalCard({
   row,
   accentBar,
   compact = false,
-  dealHue,
 }: {
   row: ProposalRow;
   accentBar: string;
   compact?: boolean;
-  /** Per-deal HSL hue — when set, the card gets a colored left border
-   *  keyed to the parent deal so multi-deal accounts read distinctly
-   *  inside a single column (Karan 2026-07-15). */
-  dealHue?: number;
 }) {
   const oppTitle =
     row.opportunity?.title?.trim() ||
@@ -491,29 +470,24 @@ function ProposalCard({
     row.header_json?.gc_company?.trim() ||
     row.opportunity?.account?.company_name ||
     "(missing customer)";
+  // Karan 2026-07-15: user's custom name for this specific revision —
+  // "R11 · Warehouse Repaint" instead of just "R11". Editable on the
+  // proposal editor as the "Project name" field on the header block.
+  // Falls back to nothing if user hasn't named it — R# stays enough
+  // to identify.
+  const customName = row.header_json?.project_name?.trim() ?? "";
   const acctId = row.opportunity?.account_id ?? "";
   const dealId = row.opportunity?.id ?? row.opportunity_id;
   const editorHref = `/commercial/accounts/${acctId}/deals/${dealId}/proposal/${row.id}`;
 
-  // Per-deal left border in mini-kanban context — same djb2 hue helper
-  // as the account color grammar, so cards from Deal A read as one
-  // visual cluster and Deal B's cards read as another inside a single
-  // column. Fallback: 3px transparent border when no dealHue supplied
-  // (list view / legacy flat kanban callsites).
-  const dealBorderStyle =
-    typeof dealHue === "number"
-      ? { borderLeftColor: `hsl(${dealHue}, 62%, 55%)`, borderLeftWidth: "3px" }
-      : undefined;
   return (
-    <li
-      className="group relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
-      style={dealBorderStyle}
-    >
+    <li className="group relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
       <div className={`h-1 ${accentBar}`} aria-hidden />
       {/* Karan 2026-07-15: compact mode collapses the GC line (redundant
           inside a per-account row) and shrinks padding so cards feel
-          tight — the mini-kanban row is already scoped to one account,
-          so the company name every row was pure noise. */}
+          tight. Custom name (header_json.project_name) shows on line 1
+          alongside R#, so Karan can differentiate "R11 · Warehouse
+          Repaint" from "R10 · Office Fit-Out Q3" at a glance. */}
       <Link
         href={editorHref}
         className={`block hover:bg-ppp-charcoal-50 ${
@@ -521,20 +495,32 @@ function ProposalCard({
         }`}
       >
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[12px] font-bold text-ppp-charcoal tabular-nums">
-            R{row.revision_number}
-          </span>
+          <div className="min-w-0 flex items-baseline gap-1.5">
+            <span className="text-[12px] font-bold text-ppp-charcoal tabular-nums shrink-0">
+              R{row.revision_number}
+            </span>
+            {customName && (
+              <span
+                className="text-[11.5px] font-semibold text-ppp-charcoal-700 truncate"
+                title={customName}
+              >
+                {customName}
+              </span>
+            )}
+          </div>
           <span className="text-[12px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0">
             {formatDollars(row.total_cents)}
           </span>
         </div>
         {compact ? (
-          <div
-            className="text-[11px] text-ppp-charcoal-600 truncate mt-0.5"
-            title={oppTitle}
-          >
-            {oppTitle}
-          </div>
+          !customName && (
+            <div
+              className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5"
+              title={oppTitle}
+            >
+              {oppTitle}
+            </div>
+          )
         ) : (
           <>
             <div
@@ -543,12 +529,14 @@ function ProposalCard({
             >
               {gc}
             </div>
-            <div
-              className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5"
-              title={oppTitle}
-            >
-              {oppTitle}
-            </div>
+            {!customName && (
+              <div
+                className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5"
+                title={oppTitle}
+              >
+                {oppTitle}
+              </div>
+            )}
           </>
         )}
         {row.sent_at && !compact && (
@@ -690,70 +678,111 @@ function initialsFor(name: string): string {
   return parts.map((p) => p.charAt(0).toUpperCase()).join("") || "?";
 }
 
-// ─────────────── Per-account mini-kanban boards (Karan 2026-07-15) ───────────────
-// Replaces the flat single kanban that mixed all accounts together.
-// Each account gets its own collapsible <details> card with a mini-
-// kanban strip inside (Draft → Pending → Sent → Won + Closed cluster).
-// Scales cleanly to 50+ proposals — Alex collapses accounts he isn't
-// working on and expands the one he's focused on. Color-coded left
-// border per account (deterministic hue from account_id) matches the
-// opportunities customer-board grammar so the same customer reads
-// visually consistent across surfaces.
+// ─────────────── Per-account → per-deal mini-kanbans (Karan 2026-07-15 v3) ───────────────
+// Structure Karan asked for:
+//   Account collapsible section
+//     └─ Deal A: its own mini-kanban strip
+//     └─ Deal B: its own mini-kanban strip
+//     ...
+// Each account has one section; inside, each deal on that account gets
+// its OWN mini-kanban so proposal revisions on different deals never
+// cluster together. Removes the earlier "one shared kanban per account
+// with color-separated cards" pattern that got confusing at 2+ deals.
 //
-// DnD context wraps the whole thing so any card can be dragged
-// within its own account's mini-kanban (Sent → Won / Sent → Lost /
-// Won → Sent reopen).
+// DnD context wraps the whole thing so any card can drag anywhere.
 
 function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
-  type Bucket = {
-    accountId: string;
-    accountName: string;
+  type DealBucket = {
+    dealId: string;
+    dealTitle: string;
+    dealStatus: string;
+    dealSubStatus: string | null;
     rows: ProposalRow[];
     byStatus: Map<string, ProposalRow[]>;
     openCount: number;
     outstandingCents: number;
     wonCents: number;
   };
-  const byAccount = new Map<string, Bucket>();
+  type AcctBucket = {
+    accountId: string;
+    accountName: string;
+    deals: Map<string, DealBucket>;
+    totalRows: number;
+    openCount: number;
+    outstandingCents: number;
+    wonCents: number;
+  };
+  const byAccount = new Map<string, AcctBucket>();
   for (const r of rows) {
     const acctId = r.opportunity?.account?.id ?? "__none__";
     const acctName = r.opportunity?.account?.company_name ?? "(no customer)";
-    let bucket = byAccount.get(acctId);
-    if (!bucket) {
-      bucket = {
+    const dealId = r.opportunity?.id ?? "__nodeal__";
+    const dealTitle =
+      r.opportunity?.title?.trim() ||
+      r.opportunity?.client_name?.trim() ||
+      r.header_json?.project_name?.trim() ||
+      "(untitled deal)";
+    let acct = byAccount.get(acctId);
+    if (!acct) {
+      acct = {
         accountId: acctId,
         accountName: acctName,
+        deals: new Map(),
+        totalRows: 0,
+        openCount: 0,
+        outstandingCents: 0,
+        wonCents: 0,
+      };
+      byAccount.set(acctId, acct);
+    }
+    let deal = acct.deals.get(dealId);
+    if (!deal) {
+      deal = {
+        dealId,
+        dealTitle,
+        dealStatus: "",
+        dealSubStatus: null,
         rows: [],
         byStatus: new Map(),
         openCount: 0,
         outstandingCents: 0,
         wonCents: 0,
       };
-      byAccount.set(acctId, bucket);
+      acct.deals.set(dealId, deal);
     }
-    bucket.rows.push(r);
-    const list = bucket.byStatus.get(r.status) ?? [];
+    deal.rows.push(r);
+    const list = deal.byStatus.get(r.status) ?? [];
     list.push(r);
-    bucket.byStatus.set(r.status, list);
-    if (!["superseded", "won", "lost", "expired"].includes(r.status)) bucket.openCount += 1;
-    if (r.status === "sent" || r.status === "pending_approval") {
-      bucket.outstandingCents += r.total_cents;
+    deal.byStatus.set(r.status, list);
+    acct.totalRows += 1;
+    if (!["superseded", "won", "lost", "expired"].includes(r.status)) {
+      deal.openCount += 1;
+      acct.openCount += 1;
     }
-    if (r.status === "won") bucket.wonCents += r.total_cents;
+    if (r.status === "sent" || r.status === "pending_approval") {
+      deal.outstandingCents += r.total_cents;
+      acct.outstandingCents += r.total_cents;
+    }
+    if (r.status === "won") {
+      deal.wonCents += r.total_cents;
+      acct.wonCents += r.total_cents;
+    }
   }
-  const buckets = Array.from(byAccount.values()).sort((a, b) => {
-    // Busy customers first — sort by open count desc, then alpha.
+  const accts = Array.from(byAccount.values()).sort((a, b) => {
     if (a.openCount !== b.openCount) return b.openCount - a.openCount;
     return a.accountName.localeCompare(b.accountName);
   });
 
   return (
     <div className="space-y-3">
-      {buckets.map((bucket) => {
-        const colors = accountColorStyles(bucket.accountId);
+      {accts.map((acct) => {
+        const colors = accountColorStyles(acct.accountId);
+        const dealList = Array.from(acct.deals.values()).sort(
+          (a, b) => b.openCount - a.openCount || a.dealTitle.localeCompare(b.dealTitle)
+        );
         return (
           <details
-            key={bucket.accountId}
+            key={acct.accountId}
             open
             className="group border border-ppp-charcoal-200 bg-white rounded-xl overflow-hidden border-l-4"
             style={colors.border}
@@ -764,27 +793,27 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
             >
               <div className="flex items-center gap-3 min-w-0">
                 <span
-                  className="shrink-0 w-8 h-8 rounded-full inline-flex items-center justify-center text-[11px] font-bold"
+                  className="shrink-0 w-9 h-9 rounded-full inline-flex items-center justify-center text-[12px] font-bold"
                   style={colors.avatar}
                   aria-hidden
                 >
-                  {initialsFor(bucket.accountName)}
+                  {initialsFor(acct.accountName)}
                 </span>
                 <div className="min-w-0">
                   <Link
-                    href={`/commercial/accounts/${bucket.accountId}?tab=proposals`}
+                    href={`/commercial/accounts/${acct.accountId}?tab=proposals`}
                     className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
                   >
-                    {bucket.accountName}
+                    {acct.accountName}
                   </Link>
                   <div className="text-[11px] text-ppp-charcoal-500 tabular-nums">
-                    {bucket.rows.length} proposal{bucket.rows.length === 1 ? "" : "s"}
-                    {bucket.openCount > 0 && <> · {bucket.openCount} open</>}
-                    {bucket.outstandingCents > 0 && (
-                      <> · {formatDollars(bucket.outstandingCents)} outstanding</>
+                    {acct.deals.size} deal{acct.deals.size === 1 ? "" : "s"} · {acct.totalRows} proposal{acct.totalRows === 1 ? "" : "s"}
+                    {acct.openCount > 0 && <> · {acct.openCount} open</>}
+                    {acct.outstandingCents > 0 && (
+                      <> · {formatDollars(acct.outstandingCents)} outstanding</>
                     )}
-                    {bucket.wonCents > 0 && (
-                      <> · <span className="text-emerald-700">{formatDollars(bucket.wonCents)} won</span></>
+                    {acct.wonCents > 0 && (
+                      <> · <span className="text-emerald-700">{formatDollars(acct.wonCents)} won</span></>
                     )}
                   </div>
                 </div>
@@ -804,70 +833,122 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
                 <path d="M6 9l6 6 6-6" />
               </svg>
             </summary>
-            {/* Karan 2026-07-15 rework: columns now flex-1 across the
-                container width instead of fixed 240px — no horizontal
-                scroll, uses the whole row. Compact mode kills the total
-                subtitle in each column header (redundant inside a per-
-                account row) and slims the pills. Max-height clamped so
-                the tallest column doesn't blow up the row. */}
-            <div className="border-t border-ppp-charcoal-100 p-2 sm:p-3">
-              <div className="flex gap-2 items-stretch">
-                {ACTIVE_COLUMNS.map((status) => (
-                  <ProposalDnDColumn key={status} status={status}>
-                    <ProposalColumn
-                      status={status}
-                      rows={bucket.byStatus.get(status) ?? []}
-                      tone={toneForStatus(status)}
-                      width="flex-1 min-w-[130px]"
-                      compact
-                    />
-                  </ProposalDnDColumn>
-                ))}
-                <ProposalDnDColumn key="won" status="won">
-                  <ProposalColumn
-                    status="won"
-                    rows={bucket.byStatus.get("won") ?? []}
-                    tone={toneForStatus("won")}
-                    width="flex-1 min-w-[130px]"
-                    compact
-                  />
-                </ProposalDnDColumn>
-                {/* Closed cluster — Lost is a valid drop target
-                    (routes to debrief). Expired / Replaced are read-
-                    only auto-computed states, not manual outcomes. */}
-                <div className="flex-1 min-w-[130px] border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
-                  <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-bold text-ppp-charcoal uppercase tracking-wide">
-                        Closed
-                      </span>
-                      <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-white text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100">
-                        {CLOSED_TERMINAL.reduce(
-                          (acc, s) => acc + (bucket.byStatus.get(s)?.length ?? 0),
-                          0
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1 p-1.5">
-                    {CLOSED_TERMINAL.map((status) => (
-                      <ProposalDnDColumn key={status} status={status}>
-                        <ProposalColumn
-                          status={status}
-                          rows={bucket.byStatus.get(status) ?? []}
-                          tone={toneForStatus(status)}
-                          width="w-full"
-                          compact
-                        />
-                      </ProposalDnDColumn>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            <div className="border-t border-ppp-charcoal-100 divide-y divide-ppp-charcoal-100">
+              {dealList.map((deal) => (
+                <DealMiniKanban
+                  key={deal.dealId}
+                  deal={deal}
+                  accountId={acct.accountId}
+                />
+              ))}
             </div>
           </details>
         );
       })}
+    </div>
+  );
+}
+
+/** One deal's mini-kanban strip. Rendered inside the account
+ *  collapsible section. Each deal has its own header (title + stats +
+ *  quick-add-revision link) and its own kanban row. Cards inside are
+ *  scoped to this deal, so no more cross-deal color confusion. */
+function DealMiniKanban({
+  deal,
+  accountId,
+}: {
+  deal: {
+    dealId: string;
+    dealTitle: string;
+    rows: ProposalRow[];
+    byStatus: Map<string, ProposalRow[]>;
+    openCount: number;
+    outstandingCents: number;
+    wonCents: number;
+  };
+  accountId: string;
+}) {
+  const dealHref = `/commercial/accounts/${accountId}?tab=deals&sub=opportunities#deal-row-${deal.dealId}`;
+  return (
+    <div className="bg-white">
+      <div className="px-3 sm:px-4 pt-3 pb-1.5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex items-center gap-2">
+          <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-ppp-charcoal-400" />
+          <Link
+            href={dealHref}
+            className="text-[12.5px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+            title={`Jump to ${deal.dealTitle} on the pipeline`}
+          >
+            {deal.dealTitle}
+          </Link>
+          <span className="text-[10.5px] text-ppp-charcoal-500 tabular-nums">
+            · {deal.rows.length} rev{deal.rows.length === 1 ? "" : "s"}
+            {deal.openCount > 0 && <> · {deal.openCount} open</>}
+            {deal.outstandingCents > 0 && <> · {formatDollars(deal.outstandingCents)} out</>}
+            {deal.wonCents > 0 && (
+              <> · <span className="text-emerald-700 font-semibold">{formatDollars(deal.wonCents)} won</span></>
+            )}
+          </span>
+        </div>
+        <Link
+          href={`/commercial/accounts/${accountId}/deals/${deal.dealId}/proposal/new`}
+          className="text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 shrink-0"
+        >
+          + New revision
+        </Link>
+      </div>
+      <div className="p-2 sm:p-3 pt-2">
+        <div className="flex gap-2 items-stretch">
+          {ACTIVE_COLUMNS.map((status) => (
+            <ProposalDnDColumn key={status} status={status}>
+              <ProposalColumn
+                status={status}
+                rows={deal.byStatus.get(status) ?? []}
+                tone={toneForStatus(status)}
+                width="flex-1 min-w-[120px]"
+                compact
+              />
+            </ProposalDnDColumn>
+          ))}
+          <ProposalDnDColumn key="won" status="won">
+            <ProposalColumn
+              status="won"
+              rows={deal.byStatus.get("won") ?? []}
+              tone={toneForStatus("won")}
+              width="flex-1 min-w-[120px]"
+              compact
+            />
+          </ProposalDnDColumn>
+          <div className="flex-1 min-w-[120px] border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
+            <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-ppp-charcoal uppercase tracking-wide">
+                  Closed
+                </span>
+                <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-white text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100">
+                  {CLOSED_TERMINAL.reduce(
+                    (acc, s) => acc + (deal.byStatus.get(s)?.length ?? 0),
+                    0
+                  )}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1 p-1.5">
+              {CLOSED_TERMINAL.map((status) => (
+                <ProposalDnDColumn key={status} status={status}>
+                  <ProposalColumn
+                    status={status}
+                    rows={deal.byStatus.get(status) ?? []}
+                    tone={toneForStatus(status)}
+                    width="w-full"
+                    compact
+                  />
+                </ProposalDnDColumn>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
