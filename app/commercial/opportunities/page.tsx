@@ -85,6 +85,31 @@ import DatePicker from "@/components/commercial/date-picker";
 
 const MS_PER_DAY = 86_400_000;
 
+/** Karan 2026-07-15: Move-to dropdown mirrors the visual kanban
+ *  columns exactly — not the raw status enum. Two virtual keys
+ *  (proposal_drafted / proposal_sent) map to (status, sub_status)
+ *  tuples on the server side (see quickFlipStatusAction). Won and
+ *  Lost stay as top-level shortcuts so Alex doesn't have to dig
+ *  through "pre_sale_closed" jargon.
+ *
+ *  The old dropdown listed the raw OPPORTUNITY_STATUSES which meant
+ *  Alex would see "→ Pre-Sale Closed" and had no way to pick "Won" vs.
+ *  "Lost" from the menu — the server defaulted to Won, which read to
+ *  Alex as "nothing happened" because Won isn't a visual column he
+ *  was expecting to see the card land in. */
+const MOVE_TO_COLUMNS: { key: string; label: string }[] = [
+  { key: "qualifying", label: "Qualifying" },
+  { key: "estimating", label: "Estimating" },
+  { key: "proposal_drafted", label: "Proposal Drafted" },
+  { key: "proposal_sent", label: "Proposal Sent" },
+  { key: "won", label: "Won" },
+  { key: "lost", label: "Lost" },
+  { key: "pre_construction", label: "Pre-Construction" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "billing", label: "Billing" },
+  { key: "post_sale_closed", label: "Closed (post-sale)" },
+];
+
 /**
  * Deterministic per-account color tone for the pipeline list-view group
  * cards. Karan 2026-07-10 (rev 6): "would every account color be
@@ -161,10 +186,12 @@ async function quickFlipStatusAction(formData: FormData) {
   const opp_id = String(formData.get("opp_id") ?? "");
   const rawToStatus = String(formData.get("to_status") ?? "");
   const rawToSubStatus = String(formData.get("to_sub_status") ?? "").trim();
-  // v2 (2026-07-13): the quick-flip form can still submit legacy v1 status
-  // names ("won"/"lost") because the Kanban rebuild is queued (E-3). Translate
-  // the v1 shorthand into the v2 (status, sub_status) tuple here so both
-  // shapes work while UI catches up.
+  // Karan 2026-07-15: expanded the shortcut vocabulary so the Move-to
+  // dropdown can target VISUAL KANBAN COLUMNS directly. Two virtual
+  // keys (proposal_drafted / proposal_sent) map to real (status,
+  // sub_status) tuples that would otherwise be hard to reach from a
+  // flat status-only dropdown. Plus the v1 won/lost shortcuts stay
+  // supported for legacy callers.
   let to_status = rawToStatus;
   let to_sub_status: string | undefined = rawToSubStatus || undefined;
   const isLostFlip = rawToStatus === "lost" || (rawToStatus === "pre_sale_closed" && rawToSubStatus === "lost");
@@ -175,6 +202,12 @@ async function quickFlipStatusAction(formData: FormData) {
   } else if (rawToStatus === "lost") {
     to_status = "pre_sale_closed";
     to_sub_status = "lost";
+  } else if (rawToStatus === "proposal_drafted") {
+    to_status = "estimating";
+    to_sub_status = "proposal_pending_approval";
+  } else if (rawToStatus === "proposal_sent") {
+    to_status = "proposal";
+    to_sub_status = "sent";
   }
   // Sanitize return_href: must start with /commercial/opportunities
   // (open-redirect defense — a malicious form input could otherwise
@@ -2223,14 +2256,11 @@ function KanbanCard({
             aria-label={`Move ${opp.title}`}
           >
             <option value="" disabled>Move to…</option>
-            {nextStatuses.map((s) => {
-              const isTerminal = isTerminalOpportunityStatus(s);
-              return (
-                <option key={s} value={s}>
-                  {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
-                </option>
-              );
-            })}
+            {MOVE_TO_COLUMNS.map((col) => (
+              <option key={col.key} value={col.key}>
+                → {col.label}
+              </option>
+            ))}
           </select>
           <button
             type="submit"
@@ -2691,14 +2721,11 @@ function OpportunityRow({
             <option value="" disabled>
               Move to…
             </option>
-            {nextStatuses.map((s) => {
-              const isTerminal = isTerminalOpportunityStatus(s);
-              return (
-                <option key={s} value={s}>
-                  {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
-                </option>
-              );
-            })}
+            {MOVE_TO_COLUMNS.map((col) => (
+              <option key={col.key} value={col.key}>
+                → {col.label}
+              </option>
+            ))}
           </select>
           <button
             type="submit"
@@ -3244,14 +3271,11 @@ function CustomerQuickSheet({
                             style={SELECT_BG_STYLE}
                           >
                             <option value="" disabled>Move to…</option>
-                            {nextStatuses.map((s) => {
-                              const isTerminal = isTerminalOpportunityStatus(s);
-                              return (
-                                <option key={s} value={s}>
-                                  {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
-                                </option>
-                              );
-                            })}
+                            {MOVE_TO_COLUMNS.map((col) => (
+                              <option key={col.key} value={col.key}>
+                                → {col.label}
+                              </option>
+                            ))}
                           </select>
                           <button
                             type="submit"
