@@ -284,6 +284,12 @@ export async function updateProposalStatus(input: {
   id: string;
   to_status: ProposalStatus;
   acting_user_id: string | null;
+  /** Karan 2026-07-15: internal-only flag to skip the parent-opp
+   *  cascade. Set by cascades coming FROM the opp side so we don't
+   *  double-fire (opp cascade → proposal update → proposal cascade →
+   *  opp update → ping-pong). Public callers should leave this false
+   *  so proposal moves always align the opp automatically. */
+  _skipOppCascade?: boolean;
 }): Promise<
   | { ok: true; proposal: CommercialProposal }
   | { ok: false; error: string }
@@ -296,6 +302,7 @@ export async function updateProposalStatus(input: {
     .is("deleted_at", null)
     .maybeSingle();
   if (!before) return { ok: false, error: "Proposal not found." };
+  const beforeRow = before as CommercialProposal;
   const patch: Record<string, unknown> = {
     status: input.to_status,
     updated_by_user_id: input.acting_user_id ?? null,
@@ -325,6 +332,95 @@ export async function updateProposalStatus(input: {
     proposal,
     input.acting_user_id
   );
+
+  // Karan 2026-07-15: cascade proposal state → parent deal column so
+  // both pipeline surfaces always stay aligned no matter which side
+  // the user moves. Mapping:
+  //   proposal.status = draft → deal Proposal Drafted (estimating + proposal_pending_approval)
+  //                              (only if the deal is behind that stage — never yank forward-progress backward)
+  //   proposal.status = pending_approval → deal Proposal Drafted (estimating + proposal_pending_approval)
+  //   proposal.status = sent → deal Proposal Sent (proposal + sent)
+  //   proposal.status = won → deal Won (pre_sale_closed + won)
+  //   proposal.status = lost → deal Lost (pre_sale_closed + lost)
+  //   proposal.status = expired / superseded → no deal cascade
+  //     (expired = customer sat on it; superseded = a newer revision
+  //      exists that's already carrying the deal state)
+  //
+  // Guardrail: never REVERSE a deal that's already past pre_sale (i.e.
+  // in delivery: pre_construction / in_progress / billing). If the
+  // crew is on-site, moving the deal back to Estimating because the
+  // user reshuffled a proposal draft would be catastrophic. Post-sale
+  // deals ignore the cascade.
+  if (!input._skipOppCascade && beforeRow.status !== input.to_status) {
+    try {
+      const { data: oppRow } = await sb
+        .from("commercial_opportunities")
+        .select("id, status, sub_status")
+        .eq("id", beforeRow.opportunity_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+      const opp = oppRow as { id: string; status: string; sub_status: string | null } | null;
+      const postSaleStatuses = new Set([
+        "pre_construction",
+        "in_progress",
+        "billing",
+        "post_sale_closed",
+      ]);
+      if (opp && !postSaleStatuses.has(opp.status)) {
+        // Target opp tuple for this proposal state.
+        let dealStatus: string | null = null;
+        let dealSub: string | null = null;
+        switch (input.to_status) {
+          case "draft":
+          case "pending_approval":
+            dealStatus = "estimating";
+            dealSub = "proposal_pending_approval";
+            break;
+          case "sent":
+            dealStatus = "proposal";
+            dealSub = "sent";
+            break;
+          case "won":
+            dealStatus = "pre_sale_closed";
+            dealSub = "won";
+            break;
+          case "lost":
+            dealStatus = "pre_sale_closed";
+            dealSub = "lost";
+            break;
+          // expired / superseded fall through — no cascade.
+        }
+        // Only fire if the deal isn't already at the target tuple.
+        if (
+          dealStatus &&
+          !(opp.status === dealStatus && opp.sub_status === dealSub)
+        ) {
+          const { changeOpportunityStatus } = await import(
+            "@/lib/commercial/opportunities/status"
+          );
+          const flip = await changeOpportunityStatus({
+            opp_id: beforeRow.opportunity_id,
+            // Cast — the switch above only sets dealStatus to values
+            // that are valid OpportunityStatus enum members.
+            to_status: dealStatus as Parameters<typeof changeOpportunityStatus>[0]["to_status"],
+            to_sub_status: dealSub,
+            acting_user_id: input.acting_user_id,
+          });
+          if (!flip.ok) {
+            console.warn(
+              `[updateProposalStatus] deal cascade failed for ${beforeRow.opportunity_id}: ${flip.error}`
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(
+        "[updateProposalStatus] deal cascade threw:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+
   return { ok: true, proposal };
 }
 

@@ -329,10 +329,14 @@ export async function changeOpportunityStatus(
         (propRows as { id: string; status: string }[] | null) ?? [];
       for (const p of proposals) {
         if (p.status === nextStatus) continue;
+        // Karan 2026-07-15: pass _skipOppCascade so the proposal-side
+        // cascade doesn't ping-pong back into changeOpportunityStatus
+        // (which would re-fire this loop and stack overflow).
         const flip = await updateProposalStatus({
           id: p.id,
           to_status: nextStatus,
           acting_user_id: input.acting_user_id,
+          _skipOppCascade: true,
         });
         if (!flip.ok) {
           console.warn(

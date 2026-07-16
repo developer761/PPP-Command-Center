@@ -321,18 +321,15 @@ export function ProposalDnDCard({
   if (!ctx) return <>{children}</>;
   const isDragging = ctx.dragProposalId === proposalId;
   const isOptimisticallyMoved = ctx.optimisticMove?.proposalId === proposalId;
-  // Sent → can be dragged into Won or Lost (mark outcome).
-  // Won / Lost → can be dragged back into Sent (reopen — undo path).
-  // Draft / Pending / Expired / Replaced → not draggable on this board.
-  const draggable =
-    sourceStatus === "sent" ||
-    sourceStatus === "won" ||
-    sourceStatus === "lost";
-  const title = !draggable
-    ? undefined
-    : sourceStatus === "sent"
-      ? "Drag onto Won or Lost to close this bid"
-      : "Dragged you into Won/Lost by mistake? Drag back onto Sent to reopen — the parent deal reopens too.";
+  // Karan 2026-07-15 (round 3): EVERY proposal is draggable — the API
+  // + shared updateProposalStatus helper accept every source→target
+  // combination now. Previously the client hard-coded `draggable` to
+  // only sent/won/lost sources, so dragging a Draft or Pending Approval
+  // card just failed silently (no cursor change, no error) — read to
+  // Karan as "the kanban is glitching out." Now: pick up any card,
+  // drop it anywhere.
+  const draggable = true;
+  const title = "Drag onto any column to move — parent deal follows automatically.";
   return (
     <div
       draggable={draggable}
