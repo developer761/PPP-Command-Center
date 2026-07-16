@@ -428,9 +428,12 @@ export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
   // Reopen: closed pre-sale can go back to any pre-sale stage OR
   // forward to pre-construction (Won deal starting delivery).
   pre_sale_closed: ["qualifying", "estimating", "proposal", "pre_construction"],
+  // Delivery-phase deals can also go to pre_sale_closed for the rare
+  // "GC pulled the plug mid-project" case (Karan 2026-07-15 edge case
+  // audit — In-Progress cancellation is uncommon but real).
   pre_construction: ["in_progress", "billing", "post_sale_closed", "pre_sale_closed"],
-  in_progress: ["pre_construction", "billing", "post_sale_closed"],
-  billing: ["in_progress", "post_sale_closed"],
+  in_progress: ["pre_construction", "billing", "post_sale_closed", "pre_sale_closed"],
+  billing: ["in_progress", "post_sale_closed", "pre_sale_closed"],
   // Reopen delivery: closed post-sale can go back to billing/in_progress.
   post_sale_closed: ["billing", "in_progress"],
 };
