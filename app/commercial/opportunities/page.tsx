@@ -2571,13 +2571,27 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
 }
 
 /**
- * Karan 2026-07-15: single compact status chip for pipeline rows —
- * replaces the 4-pill DealJourneyStrip that stacked "Proposal · PRE-
- * SALE · Qualifying → Estimating → Proposal → Closed · Proposal Sent"
- * on every row. Renders as one pill: "Status · sub_status", tinted by
- * lane. Won/Lost collapse to a single emerald/rose "Won"/"Lost" pill.
- * The full stepper still lives on the deal detail page.
+ * Karan 2026-07-15: pill progress bar for pipeline rows. Shows the
+ * 4-stage pre-sale progression as a segmented bar with the CURRENT
+ * stage highlighted + sub-status labeled below. Reads like a status
+ * strip on a package-tracking page rather than a stack of loose pills.
+ * Won/Lost collapse to a single emerald/rose pill (no bar).
+ *
+ * Layout:
+ *   ┌──┬──┬══┬──┐
+ *   │Q │E │P │C │  ← 4 segments, "P" is current (filled + labeled)
+ *   └──┴──┴══┴──┘
+ *   Proposal · Proposal Sent
  */
+const PRE_SALE_STAGES_COMPACT: {
+  key: string;
+  short: string;
+}[] = [
+  { key: "qualifying", short: "Qualifying" },
+  { key: "estimating", short: "Estimating" },
+  { key: "proposal", short: "Proposal" },
+  { key: "pre_sale_closed", short: "Closed" },
+];
 function StageChip({
   status,
   sub_status,
@@ -2587,29 +2601,73 @@ function StageChip({
 }) {
   const isWonDeal = status === "pre_sale_closed" && sub_status === "won";
   const isLostDeal = status === "pre_sale_closed" && sub_status === "lost";
-  const displayStatus = oppStatusDisplayLabel(status, sub_status);
-  const showSub =
-    !!sub_status && !isWonDeal && !isLostDeal;
-  const subLabel = showSub ? opportunitySubStatusLabel(sub_status) : "";
-  const cls = isWonDeal
-    ? "bg-emerald-500 text-white border-emerald-500"
-    : isLostDeal
-      ? "bg-rose-500 text-white border-rose-500"
-      : status === "pre_construction" || status === "in_progress" || status === "billing" || status === "post_sale_closed"
-        ? "bg-cyan-50 text-cyan-800 border-cyan-200"
-        : status === "proposal"
-          ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
-          : status === "estimating"
-            ? "bg-amber-50 text-amber-800 border-amber-200"
-            : "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200";
-  return (
-    <span className={`inline-flex items-center h-6 px-2 rounded-full text-[11px] font-semibold border ${cls}`}>
-      {displayStatus}
-      {subLabel && (
-        <span className={`ml-1 pl-1 border-l ${isWonDeal || isLostDeal ? "border-white/40" : "border-current opacity-40"} text-[10.5px] font-medium`}>
-          {subLabel}
+  // Terminal (Won/Lost) → single emerald/rose pill, no bar.
+  if (isWonDeal || isLostDeal) {
+    return (
+      <span
+        className={`inline-flex items-center h-6 px-2.5 rounded-full text-[11px] font-bold border shadow-sm ${
+          isWonDeal
+            ? "bg-emerald-500 text-white border-emerald-500"
+            : "bg-rose-500 text-white border-rose-500"
+        }`}
+      >
+        {isWonDeal ? "Won" : "Lost"}
+      </span>
+    );
+  }
+  // Post-sale statuses (pre_construction / in_progress / billing / post_sale_closed)
+  // — collapse to a cyan single chip; the pre-sale segmented bar
+  // doesn't apply here.
+  const postSaleStatuses = ["pre_construction", "in_progress", "billing", "post_sale_closed"];
+  if (postSaleStatuses.includes(status)) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center h-6 px-2.5 rounded-full text-[11px] font-semibold border bg-cyan-50 text-cyan-800 border-cyan-200">
+          {opportunityStatusLabel(status)}
         </span>
-      )}
+        {sub_status && (
+          <span className="text-[10.5px] text-ppp-charcoal-500 font-medium">
+            {opportunitySubStatusLabel(sub_status)}
+          </span>
+        )}
+      </span>
+    );
+  }
+  // Pre-sale (qualifying / estimating / proposal) — segmented progress bar.
+  const currentIdx = Math.max(0, PRE_SALE_STAGES_COMPACT.findIndex((s) => s.key === status));
+  const currentLabel = PRE_SALE_STAGES_COMPACT[currentIdx]?.short ?? "Qualifying";
+  const subLabel = sub_status ? opportunitySubStatusLabel(sub_status) : "";
+  return (
+    <span className="inline-flex flex-col items-start gap-0.5 min-w-0">
+      <span className="flex items-center gap-2">
+        <span className="inline-flex items-stretch h-4 rounded-full overflow-hidden border border-ppp-charcoal-200 bg-white">
+          {PRE_SALE_STAGES_COMPACT.map((s, i) => {
+            const isPast = i < currentIdx;
+            const isCurrent = i === currentIdx;
+            const segCls = isCurrent
+              ? "bg-cc-brand-600"
+              : isPast
+                ? "bg-cc-brand-200"
+                : "bg-white";
+            return (
+              <span
+                key={s.key}
+                className={`inline-block w-6 sm:w-7 ${segCls} ${i > 0 ? "border-l border-ppp-charcoal-200" : ""}`}
+                title={s.short}
+                aria-hidden
+              />
+            );
+          })}
+        </span>
+        <span className="text-[11px] font-semibold text-ppp-charcoal">
+          {currentLabel}
+        </span>
+        {subLabel && (
+          <span className="text-[10.5px] text-ppp-charcoal-500 font-medium truncate max-w-[140px]">
+            {subLabel}
+          </span>
+        )}
+      </span>
     </span>
   );
 }
