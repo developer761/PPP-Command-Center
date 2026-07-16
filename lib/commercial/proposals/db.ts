@@ -367,11 +367,22 @@ export async function updateProposalStatus(input: {
         "post_sale_closed",
       ]);
       if (opp && !postSaleStatuses.has(opp.status)) {
-        // Target opp tuple for this proposal state.
+        // Karan 2026-07-16: distinct mappings for draft vs pending_approval.
+        // Draft = Alex is still building the proposal (deal stays in
+        // plain Estimating). Pending Approval = the draft is done and
+        // Katie/Alex is signing off = deal flips to "Proposal Drafted"
+        // (estimating + proposal_pending_approval). Prior version mapped
+        // BOTH proposal states to proposal_pending_approval which made
+        // the opp column say "Proposal Drafted" while the proposal
+        // itself was still in Current draft — semantically wrong and
+        // exactly the mismatch Karan flagged.
         let dealStatus: string | null = null;
         let dealSub: string | null = null;
         switch (input.to_status) {
           case "draft":
+            dealStatus = "estimating";
+            dealSub = "estimating";
+            break;
           case "pending_approval":
             dealStatus = "estimating";
             dealSub = "proposal_pending_approval";
@@ -1322,36 +1333,38 @@ export async function reconcileDealStatesFromProposals(): Promise<{
   fixed: number;
 }> {
   const sb = commercialDb();
+  // Karan 2026-07-16: fetch revision_number too so we can align by
+  // CURRENT (highest revision) per deal — matches Option A cascade
+  // semantics. Prior version picked "highest priority" state across
+  // all revisions, which meant a stale R1 Sent could dominate over a
+  // fresh R2 Draft and yank the deal back to Proposal · Sent — user
+  // symptom: "I moved one card and a different card moved."
   const { data: propRows } = await sb
     .from("commercial_proposals")
-    .select("id, status, opportunity_id, updated_at")
+    .select("id, status, opportunity_id, revision_number, updated_at")
     .is("deleted_at", null)
     .in("status", ["draft", "pending_approval", "sent", "won", "lost"])
-    .order("updated_at", { ascending: false });
+    .order("revision_number", { ascending: false });
   const proposals =
     (propRows as {
       id: string;
       status: string;
       opportunity_id: string;
+      revision_number: number;
       updated_at: string;
     }[] | null) ?? [];
   if (proposals.length === 0) return { checked: 0, fixed: 0 };
 
-  // Group proposals by deal, pick the highest-priority state per deal.
-  const PRIORITY: Record<string, number> = {
-    won: 5,
-    lost: 4,
-    sent: 3,
-    pending_approval: 2,
-    draft: 1,
-  };
-  const bestByDeal = new Map<string, string>();
+  // Group proposals by deal, pick the CURRENT (highest revision_number)
+  // one — the same "current" the kanban renders. Order was DESC on
+  // revision_number so first-write wins.
+  const currentByDeal = new Map<string, string>();
   for (const p of proposals) {
-    const cur = bestByDeal.get(p.opportunity_id);
-    if (!cur || (PRIORITY[p.status] ?? 0) > (PRIORITY[cur] ?? 0)) {
-      bestByDeal.set(p.opportunity_id, p.status);
+    if (!currentByDeal.has(p.opportunity_id)) {
+      currentByDeal.set(p.opportunity_id, p.status);
     }
   }
+  const bestByDeal = currentByDeal;
 
   // Fetch each affected deal's current state so we only UPDATE where
   // there's actual drift.
@@ -1377,7 +1390,13 @@ export async function reconcileDealStatesFromProposals(): Promise<{
 
   const derive = (propStatus: string): { status: string; sub: string } | null => {
     switch (propStatus) {
+      // Karan 2026-07-16: distinct draft vs pending_approval mapping
+      // (was: both → proposal_pending_approval, which forced deals to
+      // show "Proposal Drafted" even when the proposal was still being
+      // built). Draft = plain Estimating; Pending Approval = the
+      // priced-and-awaiting-sign-off "Proposal Drafted" state.
       case "draft":
+        return { status: "estimating", sub: "estimating" };
       case "pending_approval":
         return { status: "estimating", sub: "proposal_pending_approval" };
       case "sent":
@@ -1439,6 +1458,12 @@ export async function reconcileDealStatesFromProposals(): Promise<{
       to_sub_status: target.sub,
       acting_user_id: null,
       _skipDagCheck: true,
+      // Karan 2026-07-16: reconcile must NEVER fan back out to
+      // proposals. It's purely a deal-side heal — if it triggered
+      // the deal-side proposal cascade, the reconcile could
+      // promote/demote a proposal the user didn't touch, symptom:
+      // "I moved one card and a different card moved."
+      _skipProposalCascade: true,
     });
     if (flip.ok) {
       fixed += 1;

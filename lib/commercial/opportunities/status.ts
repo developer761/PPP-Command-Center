@@ -359,10 +359,17 @@ export async function changeOpportunityStatus(
         };
       }
       if (s === "estimating" && sub !== "proposal_pending_approval") {
-        return { demoteFrom: ["sent", "won", "lost"], to: "draft" };
+        // Karan 2026-07-16: also demote pending_approval → draft so a
+        // manual deal move from "Proposal Drafted" back to plain
+        // Estimating actually rewinds the proposal state (otherwise
+        // reconcile pulls the deal forward again on next page load).
+        return { demoteFrom: ["pending_approval", "sent", "won", "lost"], to: "draft" };
       }
       if (s === "estimating" && sub === "proposal_pending_approval") {
-        return { demoteFrom: ["sent", "won", "lost"], to: "pending_approval" };
+        // Add draft to the promote-from set so manually flipping the
+        // deal to "Proposal Drafted" also flips the current draft to
+        // pending_approval (they represent the same moment in the flow).
+        return { demoteFrom: ["draft", "sent", "won", "lost"], to: "pending_approval" };
       }
       if (s === "proposal") {
         return { demoteFrom: ["draft", "pending_approval", "won", "lost"], to: "sent" };
