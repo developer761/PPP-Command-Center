@@ -1937,12 +1937,22 @@ function KanbanBoard({
         return sum + mid * prob;
       }, 0);
   }
-  const accountBuckets = Array.from(accountGroups.values()).sort((a, b) => {
-    if (a.openCount !== b.openCount) return b.openCount - a.openCount;
-    const an = a.account?.company_name ?? "";
-    const bn = b.account?.company_name ?? "";
-    return an.localeCompare(bn);
-  });
+  // Karan 2026-07-15 edge-case: if an account's opps are ALL
+  // post_sale_closed, they were pushed to globalOverflow and byStatus
+  // is completely empty for that account. Rendering the section would
+  // show a wall of empty columns. Filter those accounts out — they're
+  // still discoverable via the overflow drawer at the bottom.
+  const accountBuckets = Array.from(accountGroups.values())
+    .filter((a) => {
+      const anyOnBoard = Array.from(a.byStatus.values()).some((list) => list.length > 0);
+      return anyOnBoard;
+    })
+    .sort((a, b) => {
+      if (a.openCount !== b.openCount) return b.openCount - a.openCount;
+      const an = a.account?.company_name ?? "";
+      const bn = b.account?.company_name ?? "";
+      return an.localeCompare(bn);
+    });
   // Column labels + tone tokens. Each column gets a top accent stripe
   // in the header (like the CustomerBoardRow left border) so the eye
   // catches the stage identity in one glance.

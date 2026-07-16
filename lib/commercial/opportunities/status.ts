@@ -162,23 +162,38 @@ export async function changeOpportunityStatus(
   // Loss-reason enforcement when the closure is a Lost.
   // v2 (migration 052): "Lost" is Pre-Sale/Closed/Lost — i.e. status =
   // pre_sale_closed AND sub_status = lost.
+  //
+  // Karan 2026-07-15 (round 5): cascade paths bypass this validation
+  // and auto-inject a placeholder loss_reason/note. Otherwise a
+  // proposal dragged to Lost never cascades to the deal — the debrief
+  // form is the only path that collects loss_reason, and until the
+  // user completes it the two surfaces would sit misaligned. The
+  // placeholder gets overwritten when the user completes the debrief.
   let lossReason: OpportunityLossReason | null = null;
   let lossNote: string | null = null;
   if (targetIsLost) {
-    if (!input.loss_reason || !OPPORTUNITY_LOSS_REASONS.includes(input.loss_reason)) {
-      return {
-        ok: false,
-        error: "Pick a reason for losing (or `no_bid` if we declined to bid).",
-      };
+    if (input._skipDagCheck) {
+      // Cascade path — auto-populate so the deal can flip. User is
+      // expected to complete the debrief form separately to overwrite
+      // these placeholders with the real reason.
+      lossReason = "other";
+      lossNote = "Auto-set by cascade — complete the debrief form to record the real reason.";
+    } else {
+      if (!input.loss_reason || !OPPORTUNITY_LOSS_REASONS.includes(input.loss_reason)) {
+        return {
+          ok: false,
+          error: "Pick a reason for losing (or `no_bid` if we declined to bid).",
+        };
+      }
+      if (!input.note || !input.note.trim()) {
+        return {
+          ok: false,
+          error: "Add a short note explaining the loss.",
+        };
+      }
+      lossReason = input.loss_reason;
+      lossNote = input.note.trim();
     }
-    if (!input.note || !input.note.trim()) {
-      return {
-        ok: false,
-        error: "Add a short note explaining the loss.",
-      };
-    }
-    lossReason = input.loss_reason;
-    lossNote = input.note.trim();
   }
 
   // Decide probability_pct for the patch:
