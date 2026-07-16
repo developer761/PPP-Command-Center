@@ -123,9 +123,20 @@ export async function changeOpportunityStatus(
   if (!before) return { ok: false, error: "Opportunity not found." };
   const beforeRow = before as CommercialOpportunity;
 
-  // No-op if already at the target status. Friendly success — caller
-  // doesn't need to handle this as an error.
-  if (beforeRow.status === input.to_status) {
+  // Karan 2026-07-16 (bug hunt): no-op if BOTH status AND sub_status
+  // already match. Prior version early-returned on status-only match,
+  // which silently dropped every sub-status-only cascade — e.g.
+  // proposal Draft → Pending Approval fires a cascade to (estimating,
+  // proposal_pending_approval), but if the deal was already at
+  // (estimating, estimating), the top-level status is unchanged and
+  // the sub_status update never happened. Root cause of Karan's
+  // "cascade works 70% of the time" pain.
+  if (
+    beforeRow.status === input.to_status &&
+    (input.to_sub_status === undefined ||
+      input.to_sub_status === null ||
+      beforeRow.sub_status === input.to_sub_status)
+  ) {
     return { ok: true, opportunity: beforeRow };
   }
 
@@ -155,12 +166,18 @@ export async function changeOpportunityStatus(
   //
   // DB CHECK constraints stay dropped (migration 059).
   if (!input._skipDagCheck) {
-    const allowed = ALLOWED_TRANSITIONS[beforeRow.status] ?? [];
-    if (!allowed.includes(input.to_status)) {
-      return {
-        ok: false,
-        error: `Can't move from ${opportunityStatusLabel(beforeRow.status)} → ${opportunityStatusLabel(input.to_status)} directly. Move through an intermediate stage first.`,
-      };
+    // Karan 2026-07-16: skip DAG when only the sub_status is changing.
+    // ALL_STATUSES_EXCEPT excludes self, so estimating → estimating (with
+    // a different sub_status) would be REJECTED — but sub-status
+    // refinements within the same top-level stage are always valid.
+    if (beforeRow.status !== input.to_status) {
+      const allowed = ALLOWED_TRANSITIONS[beforeRow.status] ?? [];
+      if (!allowed.includes(input.to_status)) {
+        return {
+          ok: false,
+          error: `Can't move from ${opportunityStatusLabel(beforeRow.status)} → ${opportunityStatusLabel(input.to_status)} directly. Move through an intermediate stage first.`,
+        };
+      }
     }
   }
   const targetIsLost =
@@ -276,33 +293,37 @@ export async function changeOpportunityStatus(
   if (updateErr) return { ok: false, error: updateErr.message };
   const updated = after as CommercialOpportunity;
 
-  // Append the status_log row. Failure here doesn't undo the opp
-  // update — last-write-wins on the opp row is fine, but the log gap
-  // is worth knowing about. Audit-log captures the opp change anyway.
-  const { data: logRow, error: logErr } = await sb
-    .from("commercial_opportunity_status_log")
-    .insert({
-      opportunity_id: input.opp_id,
-      from_status: beforeRow.status,
-      to_status: input.to_status,
-      changed_by_user_id: input.acting_user_id ?? null,
-      note: input.note?.trim() || null,
-      loss_reason: lossReason,
-    })
-    .select("*")
-    .single();
-  if (logErr) {
-    console.warn(
-      "[commercial/opportunities/status] status_log insert failed:",
-      logErr.message
-    );
-  } else if (logRow) {
-    await logInsert(
-      "commercial_opportunity_status_log",
-      (logRow as { id: string }).id,
-      logRow,
-      input.acting_user_id
-    );
+  // Append the status_log row — ONLY for real top-level status changes.
+  // Sub-status-only refinements (e.g. Estimating → Proposal Drafted)
+  // still write the sub_status via the update above but don't add a
+  // status_log entry (would be from_status == to_status, meaningless
+  // noise in the timeline). Audit-log still captures the row diff.
+  if (beforeRow.status !== input.to_status) {
+    const { data: logRow, error: logErr } = await sb
+      .from("commercial_opportunity_status_log")
+      .insert({
+        opportunity_id: input.opp_id,
+        from_status: beforeRow.status,
+        to_status: input.to_status,
+        changed_by_user_id: input.acting_user_id ?? null,
+        note: input.note?.trim() || null,
+        loss_reason: lossReason,
+      })
+      .select("*")
+      .single();
+    if (logErr) {
+      console.warn(
+        "[commercial/opportunities/status] status_log insert failed:",
+        logErr.message
+      );
+    } else if (logRow) {
+      await logInsert(
+        "commercial_opportunity_status_log",
+        (logRow as { id: string }).id,
+        logRow,
+        input.acting_user_id
+      );
+    }
   }
 
   // Audit the opp update with the full before/after snapshot.
@@ -391,10 +412,20 @@ export async function changeOpportunityStatus(
           to: "lost",
         };
       }
-      // Post-sale delivery phases (pre_construction, in_progress,
-      // billing, post_sale_closed) don't cascade to proposals. Per
-      // Karan's spec: whatever the proposal state was, it stays —
-      // proposals aren't rewound when the crew starts on-site.
+      // Karan 2026-07-16 spec: Pre-Con / In-Prog / Billing → proposal
+      // stays in Sent. If the user manually moves a deal into delivery
+      // from ANY prior state, the current proposal should land in Sent
+      // (the "we have a signed bid + crew is executing" state). This
+      // demotes a Draft/Pending/Won/Lost proposal to Sent on that
+      // transition, matching Karan's canonical map.
+      if (s === "pre_construction" || s === "in_progress" || s === "billing") {
+        return {
+          demoteFrom: ["draft", "pending_approval", "won", "lost"],
+          to: "sent",
+        };
+      }
+      // Post-sale closed (project fully done): proposals aren't
+      // touched — they're historical records at this point.
       return null;
     };
     const target = deriveTargetProposalStatus();

@@ -1268,8 +1268,22 @@ export async function sendProposal(input: {
   );
 
   // ── 3. Flip opp status → (proposal, sent) if not past that lane ─
-  // Terminal + advanced states we never walk backward:
-  const advanced = new Set(["won", "lost", "no_bid", "pre_construction", "wip", "post_construction"]);
+  // Karan 2026-07-16: v2 status names. Prior set had v1 legacy names
+  // (won/lost/wip/post_construction) that never match v2 — result was
+  // that sending a proposal on a Won/InProgress/Billing deal walked
+  // the deal backward to Proposal Sent, wiping real state.
+  //
+  // v2 statuses "past" Proposal Sent: pre_sale_closed (Won/Lost),
+  // pre_construction, in_progress, billing, post_sale_closed. Any of
+  // these means the bid has been decided and delivery is (or was)
+  // underway — sending a proposal shouldn't rewind the deal.
+  const advanced = new Set([
+    "pre_sale_closed",
+    "pre_construction",
+    "in_progress",
+    "billing",
+    "post_sale_closed",
+  ]);
   if (opp.status === "proposal" && opp.sub_status === "sent") {
     // Already there — no-op.
   } else if (!advanced.has(opp.status)) {
