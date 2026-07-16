@@ -713,6 +713,10 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
     openCount: number;
     outstandingCents: number;
     wonCents: number;
+    // Karan 2026-07-16: total historical revisions for this deal — we
+    // only render the current (highest revision) in the kanban, but
+    // the header shows "· N older revisions" so history is discoverable.
+    totalRevs: number;
   };
   type AcctBucket = {
     accountId: string;
@@ -724,14 +728,43 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
     wonCents: number;
   };
   const byAccount = new Map<string, AcctBucket>();
+  // Karan 2026-07-16: FIRST-PASS — group all rows by deal so we can find
+  // the "current" (highest revision_number) for each deal. The kanban
+  // should show ONE card per deal (the current revision), NOT every
+  // historical R1/R2/R3 revision — those live on the account page.
+  // Match Option A cascade semantics: current = highest revision, period.
+  type DealScratch = { dealId: string; rows: ProposalRow[] };
+  const dealScratch = new Map<string, DealScratch>();
   for (const r of rows) {
-    const acctId = r.opportunity?.account?.id ?? "__none__";
-    const acctName = r.opportunity?.account?.company_name ?? "(no customer)";
     const dealId = r.opportunity?.id ?? "__nodeal__";
+    let s = dealScratch.get(dealId);
+    if (!s) {
+      s = { dealId, rows: [] };
+      dealScratch.set(dealId, s);
+    }
+    s.rows.push(r);
+  }
+  // SECOND-PASS — for each deal, pick the current (highest revision)
+  // and build the account/deal buckets using ONLY that row.
+  for (const scratch of dealScratch.values()) {
+    // Pick highest revision_number as "current". Ties (shouldn't happen
+    // — DB uniqueness on opportunity_id + revision_number) fall back to
+    // most-recently-updated.
+    const current = [...scratch.rows].sort((a, b) => {
+      if (b.revision_number !== a.revision_number) {
+        return b.revision_number - a.revision_number;
+      }
+      return b.updated_at.localeCompare(a.updated_at);
+    })[0];
+    if (!current) continue;
+    const totalRevs = scratch.rows.length;
+
+    const acctId = current.opportunity?.account?.id ?? "__none__";
+    const acctName = current.opportunity?.account?.company_name ?? "(no customer)";
     const dealTitle =
-      r.opportunity?.title?.trim() ||
-      r.opportunity?.client_name?.trim() ||
-      r.header_json?.project_name?.trim() ||
+      current.opportunity?.title?.trim() ||
+      current.opportunity?.client_name?.trim() ||
+      current.header_json?.project_name?.trim() ||
       "(untitled deal)";
     let acct = byAccount.get(acctId);
     if (!acct) {
@@ -746,38 +779,35 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
       };
       byAccount.set(acctId, acct);
     }
-    let deal = acct.deals.get(dealId);
-    if (!deal) {
-      deal = {
-        dealId,
-        dealTitle,
-        dealStatus: "",
-        dealSubStatus: null,
-        rows: [],
-        byStatus: new Map(),
-        openCount: 0,
-        outstandingCents: 0,
-        wonCents: 0,
-      };
-      acct.deals.set(dealId, deal);
-    }
-    deal.rows.push(r);
-    const list = deal.byStatus.get(r.status) ?? [];
-    list.push(r);
-    deal.byStatus.set(r.status, list);
-    acct.totalRows += 1;
-    if (!["superseded", "won", "lost", "expired"].includes(r.status)) {
-      deal.openCount += 1;
+    // Total rev COUNT keeps history-awareness in the header
+    // ("R7 · current · 6 older revisions"), but only the current
+    // revision renders in the kanban columns.
+    const deal: DealBucket = {
+      dealId: scratch.dealId,
+      dealTitle,
+      dealStatus: "",
+      dealSubStatus: null,
+      rows: [current],
+      byStatus: new Map([[current.status, [current]]]),
+      openCount: 0,
+      outstandingCents: 0,
+      wonCents: 0,
+      totalRevs,
+    };
+    if (!["superseded", "won", "lost", "expired"].includes(current.status)) {
+      deal.openCount = 1;
       acct.openCount += 1;
     }
-    if (r.status === "sent" || r.status === "pending_approval") {
-      deal.outstandingCents += r.total_cents;
-      acct.outstandingCents += r.total_cents;
+    if (current.status === "sent" || current.status === "pending_approval") {
+      deal.outstandingCents = current.total_cents;
+      acct.outstandingCents += current.total_cents;
     }
-    if (r.status === "won") {
-      deal.wonCents += r.total_cents;
-      acct.wonCents += r.total_cents;
+    if (current.status === "won") {
+      deal.wonCents = current.total_cents;
+      acct.wonCents += current.total_cents;
     }
+    acct.deals.set(scratch.dealId, deal);
+    acct.totalRows += 1;
   }
   const accts = Array.from(byAccount.values()).sort((a, b) => {
     if (a.openCount !== b.openCount) return b.openCount - a.openCount;
@@ -876,10 +906,15 @@ function DealMiniKanban({
     openCount: number;
     outstandingCents: number;
     wonCents: number;
+    totalRevs: number;
   };
   accountId: string;
 }) {
   const dealHref = `/commercial/accounts/${accountId}?tab=deals&sub=opportunities#deal-row-${deal.dealId}`;
+  // Karan 2026-07-16: header now says "current · N older" instead of
+  // "N revs" — makes it explicit that older revisions are on the account
+  // Proposals tab, not clogging the kanban.
+  const olderCount = Math.max(0, deal.totalRevs - 1);
   return (
     <div className="bg-white">
       <div className="px-3 sm:px-4 pt-3 pb-1.5 flex items-center justify-between gap-3 flex-wrap">
@@ -893,8 +928,20 @@ function DealMiniKanban({
             {deal.dealTitle}
           </Link>
           <span className="text-[10.5px] text-ppp-charcoal-500 tabular-nums">
-            · {deal.rows.length} rev{deal.rows.length === 1 ? "" : "s"}
-            {deal.openCount > 0 && <> · {deal.openCount} open</>}
+            · current
+            {olderCount > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <Link
+                  href={`/commercial/accounts/${accountId}?tab=proposals#deal-${deal.dealId}`}
+                  className="text-ppp-charcoal-500 hover:text-cc-brand-700 underline underline-offset-2 decoration-dotted"
+                  title={`See ${olderCount} older revision${olderCount === 1 ? "" : "s"} on the account Proposals tab`}
+                >
+                  {olderCount} older
+                </Link>
+              </>
+            )}
             {deal.outstandingCents > 0 && <> · {formatDollars(deal.outstandingCents)} out</>}
             {deal.wonCents > 0 && (
               <> · <span className="text-emerald-700 font-semibold">{formatDollars(deal.wonCents)} won</span></>
@@ -902,8 +949,9 @@ function DealMiniKanban({
           </span>
         </div>
         <Link
-          href={`/commercial/accounts/${accountId}/deals/${deal.dealId}/proposal/new`}
+          href={`/commercial/accounts/${accountId}/deals/${deal.dealId}/proposal/new?bump=${deal.rows[0]?.id ?? ""}`}
           className="text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 shrink-0"
+          title="Bump R+1: copies the current revision forward for edits"
         >
           + New revision
         </Link>

@@ -51,6 +51,7 @@ import { listExclusions } from "@/lib/commercial/exclusions/db";
 import ExclusionPicker from "@/components/commercial/exclusion-picker";
 import ProductPicker from "@/components/commercial/product-picker";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { AutosaveProposalName } from "@/components/commercial/autosave-proposal-name";
 import {
   INPUT_CLS,
   TEXTAREA_CLS,
@@ -208,6 +209,8 @@ async function saveProposalAction(formData: FormData) {
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
+  revalidatePath(`/commercial/accounts/${accountId}`);
+  revalidatePath("/commercial/proposals");
   redirect(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?saved=1`
   );
@@ -248,9 +251,14 @@ async function renameProposalAction(formData: FormData) {
       `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
     );
   }
+  // Karan 2026-07-16: name changes surface on THREE pages (editor +
+  // account page Proposals tab + global proposals kanban). Revalidate
+  // all three so the rename shows up wherever the user checks next.
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
+  revalidatePath(`/commercial/accounts/${accountId}`);
+  revalidatePath("/commercial/proposals");
   redirect(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?saved=1`
   );
@@ -595,31 +603,21 @@ export default async function ProposalEditorPage({
               {totalLabel}: <strong className="text-ppp-charcoal-800">{formatDollars(proposal.total_cents)}</strong>
             </span>
           </div>
-          {/* Karan 2026-07-15: inline-editable proposal name at the top of
-              the editor. Same field as header_json.project_name (also
-              renders as "PROJECT:" on the PDF). Save form below picks
-              this up because the input has `form="proposal-main-form"`
-              — that way one save button covers this + all other edits. */}
+          {/* Karan 2026-07-16: autosaves as you type — no Save button.
+              Fires ~600ms after the user stops typing OR immediately on
+              blur/Enter. Falls through to the same renameProposalAction
+              server flow. Karan's own words: "make it autosave if i
+              want to change the name of the proposals". */}
           <form
             action={renameProposalAction}
             className="flex items-center gap-2"
           >
             {hiddenIds}
-            <input
-              type="text"
-              name="project_name"
-              defaultValue={proposal.header_json.project_name ?? ""}
+            <AutosaveProposalName
+              initialValue={proposal.header_json.project_name ?? ""}
               placeholder={`Name this revision (e.g. "Warehouse Repaint")`}
-              className="text-lg font-bold text-ppp-charcoal bg-transparent border-b border-dashed border-ppp-charcoal-200 focus:border-cc-brand-400 focus:outline-none py-0.5 min-w-0 flex-1 placeholder:text-ppp-charcoal-300 placeholder:italic placeholder:font-normal"
-              aria-label="Proposal name"
+              inputClassName="text-lg font-bold text-ppp-charcoal bg-transparent border-b border-dashed border-ppp-charcoal-200 focus:border-cc-brand-400 focus:outline-none py-0.5 min-w-0 flex-1 placeholder:text-ppp-charcoal-300 placeholder:italic placeholder:font-normal"
             />
-            <button
-              type="submit"
-              className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 shrink-0 px-2 py-1 rounded hover:bg-cc-brand-50"
-              title="Save name — also updates the PROJECT: line on the PDF"
-            >
-              Save name
-            </button>
           </form>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
