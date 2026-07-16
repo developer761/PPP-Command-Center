@@ -2314,23 +2314,27 @@ function OpportunityRow({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            {/* Line 1 — title + status + due chip. Bigger typography so
-                scanning finds titles fast. */}
+            {/* Line 1 — title + due chip. Karan 2026-07-15: dropped
+                the redundant top-level StatusPill — the journey strip
+                below already shows where the deal IS via the
+                highlighted active pill. Two labels for the same thing
+                read as junky ("Proposal · PRE-SALE · Qualifying →
+                Estimating → Proposal → Closed · Proposal Sent"). */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
                 {derivedOppName(opportunity, account?.company_name ?? null)}
               </span>
-              <StatusPill status={opportunity.status} />
               {dueChip && <DueChip {...dueChip} />}
             </div>
 
-            {/* Deal-journey progress strip (Karan 2026-07-11 signature-
-                moments Tier 2). Shows the full pipeline stages inline
-                so users see where the deal IS in the journey without
-                reading a status label. Terminal deals render a compact
+            {/* Deal-journey progress strip in compact mode — no lane
+                overline (context is already implied by the account
+                name + deal title in the surrounding card). Shows the
+                full pipeline with active stage highlighted +
+                sub-status under it. Terminal deals render a compact
                 closed cap. */}
-            <div className="mt-1.5">
-              <DealJourneyStrip status={opportunity.status} sub_status={opportunity.sub_status} />
+            <div className="mt-2">
+              <DealJourneyStrip status={opportunity.status} sub_status={opportunity.sub_status} compact />
             </div>
 
             {/* Line 2 — account context + bid + confidence. Muted so

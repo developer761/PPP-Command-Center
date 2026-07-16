@@ -71,6 +71,7 @@ function LaneRow({
   labels,
   currentIdx,
   activeSubStatus,
+  hideOverline,
 }: {
   laneLabel: string;
   laneTone: "pre" | "post";
@@ -78,12 +79,15 @@ function LaneRow({
   labels: Record<string, string>;
   currentIdx: number;
   activeSubStatus: string | null | undefined;
+  hideOverline?: boolean;
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1.5">
-        {laneLabel}
-      </div>
+      {!hideOverline && (
+        <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1.5">
+          {laneLabel}
+        </div>
+      )}
       <div className="flex items-center gap-0 flex-wrap">
         {stages.map((s, i) => {
           let state: StageState;
@@ -131,10 +135,16 @@ export function DealJourneyStrip({
   status,
   sub_status,
   className = "",
+  compact = false,
 }: {
   status: OpportunityStatus | string;
   sub_status?: string | null;
   className?: string;
+  /** Karan 2026-07-15: compact mode drops the PRE-SALE / POST-SALE
+   *  overline labels for tight surfaces (pipeline list cards where
+   *  the account name + deal title already give lane context). Full
+   *  mode keeps the overlines for the deal detail page hero. */
+  compact?: boolean;
 }) {
   const lane = laneForStatus(status);
   const preIdx = (PRE_SALE_STATUSES as readonly string[]).indexOf(status);
@@ -153,16 +163,11 @@ export function DealJourneyStrip({
       : "bg-rose-500 text-white border-rose-500";
     const label = won ? "Won" : "Lost";
     return (
-      <div className={`inline-flex flex-col gap-1 ${className}`}>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
-          Pre-Sale
-        </span>
-        <span
-          className={`inline-flex items-center h-7 px-3 rounded-full text-[12px] font-bold border shadow-sm w-fit ${cap}`}
-        >
-          {label}
-        </span>
-      </div>
+      <span
+        className={`inline-flex items-center h-6 px-2.5 rounded-full text-[11px] font-bold border shadow-sm w-fit ${cap} ${className}`}
+      >
+        {label}
+      </span>
     );
   }
 
@@ -179,6 +184,7 @@ export function DealJourneyStrip({
         labels={PRE_SALE_SHORT}
         currentIdx={preSaleActiveIdx}
         activeSubStatus={showPreSubStatus ? sub_status : null}
+        hideOverline={compact}
       />
       {inPostSale && (
         <LaneRow
@@ -188,6 +194,7 @@ export function DealJourneyStrip({
           labels={POST_SALE_SHORT}
           currentIdx={postIdx}
           activeSubStatus={sub_status ?? null}
+          hideOverline={compact}
         />
       )}
     </div>
