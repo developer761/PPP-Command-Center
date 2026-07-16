@@ -236,9 +236,36 @@ export default async function ProposalsIndexPage({
     return acct && !acct.deleted_at;
   });
 
-  // Group rows by status for the kanban columns.
-  const byStatus = new Map<string, ProposalRow[]>();
+  // Karan 2026-07-16: KPIs + chip counts must reflect CURRENT-ONLY
+  // proposals, matching what the kanban actually renders. Prior version
+  // counted every revision (so "Draft · 5" would show 5 total drafts
+  // across all deals + revisions, but the kanban only rendered the
+  // current draft per deal). Filter to the highest-revision proposal
+  // per deal first, then bucket by status.
+  const currentByDeal = new Map<string, ProposalRow>();
   for (const r of rows) {
+    const key = r.opportunity?.id ?? r.opportunity_id;
+    const existing = currentByDeal.get(key);
+    if (!existing) {
+      currentByDeal.set(key, r);
+      continue;
+    }
+    // Tie-break on updated_at desc if revisions match (shouldn't).
+    if (
+      r.revision_number > existing.revision_number ||
+      (r.revision_number === existing.revision_number &&
+        r.updated_at > existing.updated_at)
+    ) {
+      currentByDeal.set(key, r);
+    }
+  }
+  const currentRows = Array.from(currentByDeal.values());
+
+  // Group current-only rows by status for the kanban columns +
+  // chip counts. `rows` (all revisions) stays available for list-
+  // view sub-tabs that need the full history.
+  const byStatus = new Map<string, ProposalRow[]>();
+  for (const r of currentRows) {
     const list = byStatus.get(r.status) ?? [];
     list.push(r);
     byStatus.set(r.status, list);
@@ -265,11 +292,12 @@ export default async function ProposalsIndexPage({
       status: o.status,
     }));
 
-  // KPIs
-  const openCount = rows.filter((r) => !["superseded", "won", "lost", "expired"].includes(r.status)).length;
-  const sentCount = rows.filter((r) => r.status === "sent").length;
-  const wonCount = rows.filter((r) => r.status === "won").length;
-  const outstandingCents = rows
+  // KPIs — computed from current-only rows (one per deal) so numbers
+  // line up with what the kanban actually shows.
+  const openCount = currentRows.filter((r) => !["superseded", "won", "lost", "expired"].includes(r.status)).length;
+  const sentCount = currentRows.filter((r) => r.status === "sent").length;
+  const wonCount = currentRows.filter((r) => r.status === "won").length;
+  const outstandingCents = currentRows
     .filter((r) => r.status === "sent" || r.status === "pending_approval")
     .reduce((sum, r) => sum + r.total_cents, 0);
 
@@ -578,11 +606,14 @@ function ProposalCard({
           </div>
         )}
       </Link>
+      {/* Karan 2026-07-16: PDF icon moved from top-right (was covering
+          the total dollar amount on line 1) to bottom-right. Still
+          hover-revealed, no longer overlaps the number. */}
       <a
         href={`/api/commercial/proposals/${row.id}/pdf`}
         target="_blank"
         rel="noopener noreferrer"
-        className="absolute top-2 right-2 inline-flex items-center justify-center w-7 h-7 rounded-md bg-white/90 hover:bg-cc-brand-50 border border-ppp-charcoal-200 text-ppp-charcoal-500 hover:text-cc-brand-700 opacity-0 group-hover:opacity-100 focus:opacity-100"
+        className="absolute bottom-1.5 right-1.5 inline-flex items-center justify-center w-6 h-6 rounded-md bg-white/95 hover:bg-cc-brand-50 border border-ppp-charcoal-200 text-ppp-charcoal-500 hover:text-cc-brand-700 opacity-0 group-hover:opacity-100 focus:opacity-100 shadow-sm"
         title="Open the customer PDF in a new tab"
         aria-label={`Open PDF for revision ${row.revision_number}`}
       >
