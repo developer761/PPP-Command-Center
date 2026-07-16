@@ -71,7 +71,26 @@ type ProposalRow = {
 // Two active-lane columns + Won + a compact "Closed" cluster on the
 // right. Mirrors the shape of /commercial/opportunities Kanban.
 const ACTIVE_COLUMNS: ProposalStatus[] = ["draft", "pending_approval", "sent"];
-const CLOSED_TERMINAL: ProposalStatus[] = ["lost", "expired", "superseded"];
+// Karan 2026-07-16: dropped "superseded" (Replaced by newer) — we only
+// render the CURRENT (highest-revision) proposal per deal on this page,
+// so superseded rows never surface here. Keeping the column would
+// forever show "0 —" and pretend it does something.
+const CLOSED_TERMINAL: ProposalStatus[] = ["lost", "expired"];
+
+// Karan 2026-07-16: in the per-deal mini-kanban context each column
+// holds AT MOST one card (the current revision). "Draft" reads like a
+// list of drafts; the natural label is "Current draft" so it's obvious
+// the card is THE working proposal, not one of many. Rename applies
+// ONLY inside the DealMiniKanban — status filter chips + full-kanban
+// contexts keep the plain status name.
+const MINI_KANBAN_COLUMN_LABEL: Partial<Record<ProposalStatus, string>> = {
+  draft: "Current draft",
+  pending_approval: "Awaiting approval",
+  sent: "Sent to GC",
+  won: "Won",
+  lost: "Lost",
+  expired: "Expired",
+};
 
 type ColumnTone = {
   col: string; // container bg + border
@@ -294,7 +313,7 @@ export default async function ProposalsIndexPage({
             active={!activeStatus}
             label="All"
           />
-          {PROPOSAL_STATUSES.map((s) => {
+          {PROPOSAL_STATUSES.filter((s) => s !== "superseded").map((s) => {
             const count = byStatus.get(s)?.length ?? 0;
             const suffix = viewMode === "list" ? `&view=list` : "";
             return (
@@ -378,12 +397,14 @@ function ProposalColumn({
   tone,
   width,
   compact = false,
+  labelOverride,
 }: {
   status: ProposalStatus;
   rows: ProposalRow[];
   tone: ColumnTone;
   width: string;
   compact?: boolean;
+  labelOverride?: string;
 }) {
   const total = rows.reduce((acc, r) => acc + r.total_cents, 0);
   return (
@@ -402,7 +423,7 @@ function ProposalColumn({
                 : "text-[12px] font-bold text-ppp-charcoal"
             }
           >
-            {proposalStatusLabel(status)}
+            {labelOverride ?? proposalStatusLabel(status)}
           </span>
           <span
             className={`inline-flex items-center justify-center rounded-full font-semibold ${
@@ -967,6 +988,7 @@ function DealMiniKanban({
                 tone={toneForStatus(status)}
                 width="flex-1 min-w-[120px]"
                 compact
+                labelOverride={MINI_KANBAN_COLUMN_LABEL[status]}
               />
             </ProposalDnDColumn>
           ))}
@@ -977,6 +999,7 @@ function DealMiniKanban({
               tone={toneForStatus("won")}
               width="flex-1 min-w-[120px]"
               compact
+              labelOverride={MINI_KANBAN_COLUMN_LABEL.won}
             />
           </ProposalDnDColumn>
           <div className="flex-1 min-w-[120px] border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
@@ -1002,6 +1025,7 @@ function DealMiniKanban({
                     tone={toneForStatus(status)}
                     width="w-full"
                     compact
+                    labelOverride={MINI_KANBAN_COLUMN_LABEL[status]}
                   />
                 </ProposalDnDColumn>
               ))}

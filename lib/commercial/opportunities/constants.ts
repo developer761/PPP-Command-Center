@@ -399,43 +399,37 @@ export const OPEN_OPP_STATUSES: readonly string[] = [
 // kept as a mostly-informational surface so callers doing
 // `allowedNextStatuses(status)` for UI purposes get every other
 // status back (excluding self, which isn't a real transition).
-/** Karan 2026-07-15 (round 5): real DAG, no longer any-to-any.
+/** Karan 2026-07-16: FLATTENED — every status can transition to every
+ *  other status. Prior "real DAG" repeatedly caught legitimate backward
+ *  moves (Billing → Proposal for re-scope, In Progress → Qualifying for
+ *  a Change Order that reopens the bid conversation, Post-Sale → Any
+ *  earlier stage for a rebooked repeat). WARN_TRANSITIONS below still
+ *  soft-flags the unusual ones for the picker UI to caveat; the type
+ *  enum still guards against junk statuses; but there's no more hard
+ *  "you can't do that" wall.
  *
- *  Rules:
- *   - Forward progression is always allowed (Qualifying → Estimating →
- *     Proposal → Won/Lost → Pre-Con → In Progress → Billing → Closed).
- *   - One-step backward within Pre-Sale is allowed for revision cycles
- *     (Proposal → Estimating for re-pricing; Estimating → Qualifying
- *     for scope reset).
- *   - Reopen from terminal is allowed (Won/Lost → Proposal, and
- *     Post-Sale Closed → Billing/In Progress for delivery reopen).
- *   - Skip-forward is allowed for early wins (Qualifying → Won for a
- *     verbal-yes repeat customer) and cancellations
- *     (any pre-sale → Lost).
- *   - Multi-step backward jumps are BLOCKED (In Progress → Estimating
- *     is nonsense — the crew is on site; use the proposals page or
- *     debrief flow if needed).
+ *  Reasoning: strict DAGs assume a linear pipeline. Real construction
+ *  workflows loop — a mid-project scope change reopens the bid; an
+ *  approved-then-rejected quote goes back to estimating; a "wait, let's
+ *  requalify this whole customer" moment happens. Karan's third
+ *  round-trip on this ("still gives me trouble") is the signal to stop
+ *  guessing which moves are wrong. Trust the user.
  *
- *  Note on sub-status: this map is top-level status only. Sub-status
- *  changes within the same top-level status (e.g. proposal/sent →
- *  proposal/follow_up) always bypass the DAG check — they're just
- *  refinements of the same stage.
+ *  Sub-status: the map is top-level only. Sub-status changes within a
+ *  parent status (e.g. proposal/sent → proposal/follow_up) always
+ *  bypass the DAG check — they're refinements, not stage moves.
  */
+const ALL_STATUSES_EXCEPT = (self: string): readonly string[] =>
+  OPPORTUNITY_STATUSES.filter((s) => s !== self);
 export const ALLOWED_TRANSITIONS: Record<string, ReadonlyArray<string>> = {
-  qualifying: ["estimating", "proposal", "pre_sale_closed"],
-  estimating: ["qualifying", "proposal", "pre_sale_closed"],
-  proposal: ["estimating", "pre_sale_closed"],
-  // Reopen: closed pre-sale can go back to any pre-sale stage OR
-  // forward to pre-construction (Won deal starting delivery).
-  pre_sale_closed: ["qualifying", "estimating", "proposal", "pre_construction"],
-  // Delivery-phase deals can also go to pre_sale_closed for the rare
-  // "GC pulled the plug mid-project" case (Karan 2026-07-15 edge case
-  // audit — In-Progress cancellation is uncommon but real).
-  pre_construction: ["in_progress", "billing", "post_sale_closed", "pre_sale_closed"],
-  in_progress: ["pre_construction", "billing", "post_sale_closed", "pre_sale_closed"],
-  billing: ["in_progress", "post_sale_closed", "pre_sale_closed"],
-  // Reopen delivery: closed post-sale can go back to billing/in_progress.
-  post_sale_closed: ["billing", "in_progress"],
+  qualifying: ALL_STATUSES_EXCEPT("qualifying"),
+  estimating: ALL_STATUSES_EXCEPT("estimating"),
+  proposal: ALL_STATUSES_EXCEPT("proposal"),
+  pre_sale_closed: ALL_STATUSES_EXCEPT("pre_sale_closed"),
+  pre_construction: ALL_STATUSES_EXCEPT("pre_construction"),
+  in_progress: ALL_STATUSES_EXCEPT("in_progress"),
+  billing: ALL_STATUSES_EXCEPT("billing"),
+  post_sale_closed: ALL_STATUSES_EXCEPT("post_sale_closed"),
 };
 
 /** Transitions that are technically allowed but unusual enough to
