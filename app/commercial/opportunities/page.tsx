@@ -1841,36 +1841,108 @@ function KanbanBoard({
   const TERMINAL_COLUMNS: readonly string[] = ["won", "lost"];
   const TERMINAL_DISPLAY_CAP = 10;
 
-  const byStatus = new Map<string, CommercialOpportunity[]>();
-  for (const s of OPEN_COLUMNS) byStatus.set(s, []);
-  for (const s of TERMINAL_COLUMNS) byStatus.set(s, []);
-  const overflowClosed: CommercialOpportunity[] = [];
+  /** Per-account bucketer — extracts the current global-kanban logic
+   *  into a helper so we can call it per-account. Returns the same
+   *  {byStatus, overflowClosed} shape the render expects.
+   *
+   *  Karan 2026-07-15 (round 5): powers the per-account mini-kanban
+   *  restructure — each account gets its own instance of this
+   *  bucketing so cards from Account A never mix with Account B in
+   *  any column. */
+  const bucketOpps = (
+    subset: CommercialOpportunity[]
+  ): {
+    byStatus: Map<string, CommercialOpportunity[]>;
+    overflowClosed: CommercialOpportunity[];
+  } => {
+    const bs = new Map<string, CommercialOpportunity[]>();
+    for (const s of OPEN_COLUMNS) bs.set(s, []);
+    for (const s of TERMINAL_COLUMNS) bs.set(s, []);
+    const overflow: CommercialOpportunity[] = [];
+    for (const o of subset) {
+      if (o.status === "pre_sale_closed") {
+        if (o.sub_status === "won") bs.get("won")!.push(o);
+        else bs.get("lost")!.push(o);
+      } else if (o.status === "estimating" && o.sub_status === "proposal_pending_approval") {
+        bs.get(COL_PROPOSAL_DRAFTED)!.push(o);
+      } else if (o.status === "proposal") {
+        bs.get(COL_PROPOSAL_SENT)!.push(o);
+      } else if (OPEN_COLUMNS.includes(o.status)) {
+        bs.get(o.status)!.push(o);
+      } else if (o.status === "post_sale_closed") {
+        overflow.push(o);
+      }
+    }
+    for (const s of TERMINAL_COLUMNS) {
+      const list = bs.get(s) ?? [];
+      list.sort((a, b) => (b.decided_at ?? "").localeCompare(a.decided_at ?? ""));
+      if (list.length > TERMINAL_DISPLAY_CAP) {
+        const visible = list.slice(0, TERMINAL_DISPLAY_CAP);
+        const overf = list.slice(TERMINAL_DISPLAY_CAP);
+        bs.set(s, visible);
+        overflow.push(...overf);
+      }
+    }
+    return { byStatus: bs, overflowClosed: overflow };
+  };
+
+  // Group opps by account for per-account mini-kanbans. Sort accounts
+  // by open-count desc, then alpha. Missing account (shouldn't happen
+  // in prod but defensive) lands in a "__none__" bucket.
+  type AccountKanbanBucket = {
+    accountId: string;
+    account: CommercialAccount | null;
+    opps: CommercialOpportunity[];
+    byStatus: Map<string, CommercialOpportunity[]>;
+    overflowClosed: CommercialOpportunity[];
+    openCount: number;
+    weightedCents: number;
+  };
+  const accountGroups = new Map<string, AccountKanbanBucket>();
   for (const o of opps) {
-    if (o.status === "pre_sale_closed") {
-      if (o.sub_status === "won") byStatus.get("won")!.push(o);
-      else byStatus.get("lost")!.push(o);
-    } else if (o.status === "estimating" && o.sub_status === "proposal_pending_approval") {
-      // Priced + waiting for internal sign-off before it goes out to GC.
-      byStatus.get(COL_PROPOSAL_DRAFTED)!.push(o);
-    } else if (o.status === "proposal") {
-      // Proposal is out to GC (or being chased via follow_up).
-      byStatus.get(COL_PROPOSAL_SENT)!.push(o);
-    } else if (OPEN_COLUMNS.includes(o.status)) {
-      byStatus.get(o.status)!.push(o);
-    } else if (o.status === "post_sale_closed") {
-      overflowClosed.push(o);
+    const key = o.account_id || "__none__";
+    let g = accountGroups.get(key);
+    if (!g) {
+      g = {
+        accountId: key,
+        account: accountById.get(key) ?? null,
+        opps: [],
+        byStatus: new Map(),
+        overflowClosed: [],
+        openCount: 0,
+        weightedCents: 0,
+      };
+      accountGroups.set(key, g);
     }
+    g.opps.push(o);
   }
-  for (const s of TERMINAL_COLUMNS) {
-    const list = byStatus.get(s) ?? [];
-    list.sort((a, b) => (b.decided_at ?? "").localeCompare(a.decided_at ?? ""));
-    if (list.length > TERMINAL_DISPLAY_CAP) {
-      const visible = list.slice(0, TERMINAL_DISPLAY_CAP);
-      const overflow = list.slice(TERMINAL_DISPLAY_CAP);
-      byStatus.set(s, visible);
-      overflowClosed.push(...overflow);
-    }
+  const globalOverflow: CommercialOpportunity[] = [];
+  for (const g of accountGroups.values()) {
+    const bucketed = bucketOpps(g.opps);
+    g.byStatus = bucketed.byStatus;
+    g.overflowClosed = bucketed.overflowClosed;
+    globalOverflow.push(...bucketed.overflowClosed);
+    // Open count = anything not in pre_sale_closed / post_sale_closed
+    g.openCount = g.opps.filter(
+      (o) => o.status !== "pre_sale_closed" && o.status !== "post_sale_closed"
+    ).length;
+    // Weighted midpoint × probability (matches the pipeline KPI logic)
+    g.weightedCents = g.opps
+      .filter((o) => o.status !== "pre_sale_closed" && o.status !== "post_sale_closed")
+      .reduce((sum, o) => {
+        const low = o.bid_value_low_cents ?? 0;
+        const high = o.bid_value_high_cents ?? low;
+        const mid = (low + high) / 2;
+        const prob = (o.probability_pct ?? 0) / 100;
+        return sum + mid * prob;
+      }, 0);
   }
+  const accountBuckets = Array.from(accountGroups.values()).sort((a, b) => {
+    if (a.openCount !== b.openCount) return b.openCount - a.openCount;
+    const an = a.account?.company_name ?? "";
+    const bn = b.account?.company_name ?? "";
+    return an.localeCompare(bn);
+  });
   // Column labels + tone tokens. Each column gets a top accent stripe
   // in the header (like the CustomerBoardRow left border) so the eye
   // catches the stage identity in one glance.
@@ -1926,30 +1998,98 @@ function KanbanBoard({
       (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
       0
     );
-  // Karan 2026-07-05: "so many statuses and its a lot to scroll thru."
-  // Split the board into two flex-groups so users see the OPEN pipeline
-  // (main flow) first, then a narrower "Closed" cluster grouped visually
-  // at the far right. Drag-drop targets stay intact — each terminal
-  // column still exists as a separate drop zone so the debrief flow
-  // still routes correctly on drop.
+  // Karan 2026-07-15 (round 5): per-account mini-kanban restructure.
+  // Each account gets its own collapsible section with its own kanban
+  // strip (mirrors the /commercial/proposals AccountMiniKanbans
+  // layout). Cards from Account A can't visually mingle with Account
+  // B's cards in the same column — deals belong to accounts, and the
+  // eye can scan "everything happening for THIS customer" without
+  // filtering.
+  //
+  // Single KanbanDnDProvider wraps ALL account sections so drag state
+  // is shared. Dropping a card in another account's column would be a
+  // no-op on the DB (opp.account_id doesn't change on status flip) —
+  // so it's harmless. In practice the visual context keeps users from
+  // trying it.
   return (
     <KanbanDnDProvider>
       <div className="space-y-3">
-        {/* Karan 2026-07-15: killed the top lane-chip legend + the
-            rotated-vertical "Post-Sale" divider. They read as clutter
-            once the column headers themselves carry the tone. Left one
-            slim helper line above the board so drag/drop discoverability
-            still lands. */}
         <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-white border border-ppp-charcoal-100 rounded-full px-3 py-1.5">
           <span aria-hidden>💡</span>
           <span>
-            Drag between stages to move a deal forward. Drop into <strong>Won / Lost</strong> to close.
+            Drag between stages inside a customer to move a deal forward. Drop into <strong>Won / Lost</strong> to close.
           </span>
         </div>
-        <div className="overflow-x-auto -mx-2 px-2 pb-2">
-          <div className="flex gap-3 min-w-max items-stretch">
-            {OPEN_COLUMNS.map((status, idx) => {
-              const colOpps = byStatus.get(status) ?? [];
+        {accountBuckets.map((acct) => {
+          const acctName = acct.account?.company_name ?? "(no customer)";
+          const acctInitials = acctName
+            .split(/\s+/)
+            .slice(0, 2)
+            .map((w) => w.charAt(0).toUpperCase())
+            .join("") || "?";
+          const acctTone = accountColorTone(acct.accountId);
+          const totalDeals = acct.opps.length;
+          const closedCount = totalDeals - acct.openCount;
+          return (
+        <details
+          key={acct.accountId}
+          open
+          className="group/acct border border-ppp-charcoal-200 bg-white rounded-xl overflow-hidden border-l-4 shadow-sm"
+          style={acctTone.border}
+        >
+          <summary
+            className="cursor-pointer px-4 py-3 hover:bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap list-none [&::-webkit-details-marker]:hidden"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <span
+                className="shrink-0 w-9 h-9 rounded-full inline-flex items-center justify-center text-[12px] font-bold shadow-sm ring-1 ring-white"
+                style={acctTone.avatar}
+                aria-hidden
+              >
+                {acctInitials}
+              </span>
+              <div className="min-w-0">
+                {acct.account ? (
+                  <Link
+                    href={`/commercial/accounts/${acct.account.id}`}
+                    className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+                  >
+                    {acctName}
+                  </Link>
+                ) : (
+                  <span className="text-[14px] font-bold text-ppp-charcoal-500 italic truncate">
+                    {acctName}
+                  </span>
+                )}
+                <div className="text-[11px] text-ppp-charcoal-500 tabular-nums">
+                  {totalDeals} deal{totalDeals === 1 ? "" : "s"}
+                  {acct.openCount > 0 && <> · {acct.openCount} open</>}
+                  {closedCount > 0 && <> · {closedCount} closed</>}
+                  {acct.weightedCents > 0 && (
+                    <> · <span className="text-emerald-700 font-semibold">{formatCents(acct.weightedCents)} weighted</span></>
+                  )}
+                </div>
+              </div>
+            </div>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              className="shrink-0 text-ppp-charcoal-400 transition-transform group-open/acct:rotate-180"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </summary>
+          <div className="border-t border-ppp-charcoal-100 overflow-x-auto p-2 sm:p-3 bg-ppp-charcoal-50/30">
+            <div className="flex gap-2 min-w-max items-stretch">
+            {OPEN_COLUMNS.map((status) => {
+              const colOpps = acct.byStatus.get(status) ?? [];
               const colTotal = bidRangeTotal(colOpps);
               const meta = COLUMN_META[status] ?? {
                 label: opportunityStatusLabel(status as OpportunityStatus),
@@ -2045,7 +2185,7 @@ function KanbanBoard({
                     Closed
                   </span>
                   <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100 tabular-nums">
-                    {TERMINAL_COLUMNS.reduce((acc, s) => acc + (byStatus.get(s)?.length ?? 0), 0)}
+                    {TERMINAL_COLUMNS.reduce((sum, s) => sum + (acct.byStatus.get(s)?.length ?? 0), 0)}
                   </span>
                 </div>
                 <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
@@ -2054,7 +2194,7 @@ function KanbanBoard({
               </div>
               <div className="flex flex-col sm:flex-row gap-2 p-2 bg-ppp-charcoal-50/30">
                 {TERMINAL_COLUMNS.map((status) => {
-                  const colOpps = byStatus.get(status) ?? [];
+                  const colOpps = acct.byStatus.get(status) ?? [];
                   const accent =
                     status === "won"
                       ? "bg-emerald-500"
@@ -2107,15 +2247,24 @@ function KanbanBoard({
               </div>
             </div>
           </div>
-        </div>
-        {overflowClosed.length > 0 && (
+          </div>
+        </details>
+          );
+        })}
+        {accountBuckets.length === 0 && (
+          <div className="bg-white border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
+            <p className="text-[13px] font-semibold text-ppp-charcoal">No open deals yet.</p>
+            <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">Add a deal above to start populating the pipeline.</p>
+          </div>
+        )}
+        {globalOverflow.length > 0 && (
           <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
             <summary className="px-4 py-2.5 cursor-pointer text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
-              <span>Older decided deals · {overflowClosed.length}</span>
+              <span>Older decided deals · {globalOverflow.length}</span>
               <span aria-hidden className="text-ppp-charcoal-400">▾</span>
             </summary>
             <ul className="divide-y divide-ppp-charcoal-100 px-3 py-2">
-              {overflowClosed.map((opp) => (
+              {globalOverflow.map((opp) => (
                 <li key={opp.id} className="py-2">
                   <Link
                     href={sheetHref(opp.account_id, opp.id)}
