@@ -1479,30 +1479,22 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     }
   };
 
-  // Karan 2026-07-15 (round 5): FORWARD-ONLY reconcile. If the user
-  // manually drags a deal BACKWARD on the kanban (e.g. Proposal Sent
-  // → Proposal Drafted for a re-pricing round), the reconcile must
-  // NOT yank it back forward to match the proposal state. Respect
-  // user's explicit intent — treat the deal state as the ground
-  // truth going forward, and let the changeOpportunityStatus
-  // cascade demote the proposal to match.
+  // Karan 2026-07-16 (round 3): BIDIRECTIONAL reconcile. Forward-only
+  // was preventing drift-healing when the deal was ahead of the current
+  // proposal — e.g. deal at Proposal Sent (from a prior send) but the
+  // user bumped a new Draft revision, current is now Draft. Forward-
+  // only kept the deal at Proposal Sent while the proposal card lived
+  // in the Draft column: exactly the "cascade only works 70% of the
+  // time" pain Karan flagged.
   //
-  // Ordinal ranking: strictly forward stage progression. Reconcile
-  // only fires when derivedOrdinal > currentOrdinal (deal is behind
-  // proposal). Same-or-ahead → leave alone.
-  const stageOrdinal = (status: string, sub: string | null): number => {
-    if (status === "qualifying") return 10;
-    if (status === "estimating" && sub === "proposal_pending_approval") return 30;
-    if (status === "estimating") return 20;
-    if (status === "proposal") return 40;
-    if (status === "pre_sale_closed" && sub === "lost") return 45;
-    if (status === "pre_sale_closed" && sub === "won") return 50;
-    if (status === "pre_construction") return 60;
-    if (status === "in_progress") return 70;
-    if (status === "billing") return 80;
-    if (status === "post_sale_closed") return 90;
-    return 0;
-  };
+  // Guards still in place:
+  //   - Post-sale skip (pre_con / in_prog / billing / post_sale_closed
+  //     deals are never touched — crews are on-site, don't yank
+  //     backward).
+  //   - Won ↔ Lost cross-flip guard — reconcile refuses to auto-flip
+  //     between Won and Lost (user-intent decisions).
+  //   - `_skipProposalCascade: true` on the deal update — reconcile is
+  //     a one-way heal, never fans back out to proposals.
   let fixed = 0;
   for (const deal of deals) {
     if (postSaleStatuses.has(deal.status)) continue;
@@ -1514,10 +1506,6 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     if (deal.status === "pre_sale_closed" && target.status === "pre_sale_closed") {
       continue; // don't cross-flip won ↔ lost via auto-reconcile
     }
-    // Forward-only guard.
-    const currentOrd = stageOrdinal(deal.status, deal.sub_status);
-    const targetOrd = stageOrdinal(target.status, target.sub);
-    if (targetOrd <= currentOrd) continue;
     const { changeOpportunityStatus } = await import(
       "@/lib/commercial/opportunities/status"
     );
