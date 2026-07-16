@@ -157,6 +157,55 @@ export async function createProposal(
         to_status: "superseded",
         acting_user_id: input.created_by_user_id ?? null,
       });
+      // Karan 2026-07-16: bump-forward creates a new Draft that
+      // becomes the current for this deal. The deal state also
+      // needs to align back to (estimating, estimating) if it was
+      // past that stage (Proposal Sent / Won / Lost). Without this
+      // the opp kanban says "Proposal Sent" while the current
+      // proposal is a fresh Draft — semantic mismatch Karan flagged.
+      //
+      // Skip post-sale deals — crews on site, don't yank backward.
+      try {
+        const { data: oppRow } = await sb
+          .from("commercial_opportunities")
+          .select("id, status, sub_status")
+          .eq("id", input.opportunity_id)
+          .is("deleted_at", null)
+          .maybeSingle();
+        const opp = oppRow as {
+          status: string;
+          sub_status: string | null;
+        } | null;
+        const postSaleStatuses = new Set([
+          "pre_construction",
+          "in_progress",
+          "billing",
+          "post_sale_closed",
+        ]);
+        if (
+          opp &&
+          !postSaleStatuses.has(opp.status) &&
+          !(opp.status === "qualifying") &&
+          !(opp.status === "estimating" && opp.sub_status === "estimating")
+        ) {
+          const { changeOpportunityStatus } = await import(
+            "@/lib/commercial/opportunities/status"
+          );
+          await changeOpportunityStatus({
+            opp_id: input.opportunity_id,
+            to_status: "estimating",
+            to_sub_status: "estimating",
+            acting_user_id: input.created_by_user_id ?? null,
+            _skipDagCheck: true,
+            _skipProposalCascade: true,
+          });
+        }
+      } catch (err) {
+        console.warn(
+          "[createProposal] bump-forward deal cascade threw:",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
     }
     return { ok: true, proposal };
   }
