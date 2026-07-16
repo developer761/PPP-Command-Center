@@ -372,13 +372,27 @@ function ProposalColumn({
 }) {
   const total = rows.reduce((acc, r) => acc + r.total_cents, 0);
   return (
-    <div className={`${width} shrink-0 border rounded-xl overflow-hidden flex flex-col ${tone.col}`}>
-      <div className={`px-3 py-2 border-b ${tone.head}`}>
+    <div
+      className={`${width} border rounded-xl overflow-hidden flex flex-col ${tone.col}`}
+    >
+      <div className={`${compact ? "px-2 py-1.5" : "px-3 py-2"} border-b ${tone.head}`}>
         <div className="flex items-center justify-between gap-2">
-          <span className={`text-[${compact ? "11px" : "12px"}] font-bold ${compact ? "uppercase tracking-wide" : "text-ppp-charcoal"}`}>
+          <span
+            className={
+              compact
+                ? "text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal"
+                : "text-[12px] font-bold text-ppp-charcoal"
+            }
+          >
             {proposalStatusLabel(status)}
           </span>
-          <span className={`inline-flex items-center justify-center min-w-[${compact ? "20px" : "24px"}] h-${compact ? "4" : "5"} px-1.5 rounded-full ${tone.count} text-[${compact ? "10px" : "11px"}] font-semibold`}>
+          <span
+            className={`inline-flex items-center justify-center rounded-full font-semibold ${
+              compact
+                ? "min-w-[20px] h-4 px-1 text-[10px]"
+                : "min-w-[24px] h-5 px-1.5 text-[11px]"
+            } ${tone.count}`}
+          >
             {rows.length}
           </span>
         </div>
@@ -388,9 +402,18 @@ function ProposalColumn({
           </div>
         )}
       </div>
-      <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[100px]">
+      {/* Karan 2026-07-15: max-h clamped to ~4 cards in compact mode
+          (mini-kanban) or ~10 cards in full mode (legacy flat kanban).
+          Prior 70vh caused a 500px-tall column per account row, which
+          made the whole page feel like a scroll-hell — cards should
+          feel tight against the account overline. */}
+      <ul
+        className={`p-1.5 space-y-1.5 overflow-y-auto min-h-[80px] ${
+          compact ? "max-h-[260px]" : "max-h-[70vh]"
+        }`}
+      >
         {rows.length === 0 ? (
-          <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
+          <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-4">
             {compact ? "—" : "No proposals here"}
           </li>
         ) : (
@@ -408,16 +431,24 @@ function ProposalColumn({
 function renderRowsGroupedByAccount(
   rows: ProposalRow[],
   accentBar: string,
-  _compact: boolean
+  compact: boolean
 ): ReactNode[] {
   return rows.map((r) => (
     <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
-      <ProposalCard row={r} accentBar={accentBar} />
+      <ProposalCard row={r} accentBar={accentBar} compact={compact} />
     </ProposalDnDCard>
   ));
 }
 
-function ProposalCard({ row, accentBar }: { row: ProposalRow; accentBar: string }) {
+function ProposalCard({
+  row,
+  accentBar,
+  compact = false,
+}: {
+  row: ProposalRow;
+  accentBar: string;
+  compact?: boolean;
+}) {
   const oppTitle =
     row.opportunity?.title?.trim() ||
     row.opportunity?.client_name?.trim() ||
@@ -434,22 +465,48 @@ function ProposalCard({ row, accentBar }: { row: ProposalRow; accentBar: string 
   return (
     <li className="group relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
       <div className={`h-1 ${accentBar}`} aria-hidden />
-      <Link href={editorHref} className="block px-3 py-2.5 hover:bg-ppp-charcoal-50">
-        <div className="flex items-baseline justify-between gap-2 mb-1">
-          <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums">
+      {/* Karan 2026-07-15: compact mode collapses the GC line (redundant
+          inside a per-account row) and shrinks padding so cards feel
+          tight — the mini-kanban row is already scoped to one account,
+          so the company name every row was pure noise. */}
+      <Link
+        href={editorHref}
+        className={`block hover:bg-ppp-charcoal-50 ${
+          compact ? "px-2 py-1.5" : "px-3 py-2.5"
+        }`}
+      >
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[12px] font-bold text-ppp-charcoal tabular-nums">
             R{row.revision_number}
           </span>
-          <span className="text-[13px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0">
+          <span className="text-[12px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0">
             {formatDollars(row.total_cents)}
           </span>
         </div>
-        <div className="text-[12px] font-semibold text-ppp-charcoal truncate" title={gc}>
-          {gc}
-        </div>
-        <div className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5" title={oppTitle}>
-          {oppTitle}
-        </div>
-        {row.sent_at && (
+        {compact ? (
+          <div
+            className="text-[11px] text-ppp-charcoal-600 truncate mt-0.5"
+            title={oppTitle}
+          >
+            {oppTitle}
+          </div>
+        ) : (
+          <>
+            <div
+              className="text-[12px] font-semibold text-ppp-charcoal truncate mt-1"
+              title={gc}
+            >
+              {gc}
+            </div>
+            <div
+              className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5"
+              title={oppTitle}
+            >
+              {oppTitle}
+            </div>
+          </>
+        )}
+        {row.sent_at && !compact && (
           <div className="text-[10px] text-ppp-charcoal-500 mt-1">
             sent {formatShortDate(row.sent_at)}
           </div>
@@ -669,15 +726,22 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
                 <path d="M6 9l6 6 6-6" />
               </svg>
             </summary>
-            <div className="border-t border-ppp-charcoal-100 p-2 sm:p-3 overflow-x-auto">
-              <div className="flex gap-2 min-w-max items-stretch">
+            {/* Karan 2026-07-15 rework: columns now flex-1 across the
+                container width instead of fixed 240px — no horizontal
+                scroll, uses the whole row. Compact mode kills the total
+                subtitle in each column header (redundant inside a per-
+                account row) and slims the pills. Max-height clamped so
+                the tallest column doesn't blow up the row. */}
+            <div className="border-t border-ppp-charcoal-100 p-2 sm:p-3">
+              <div className="flex gap-2 items-stretch">
                 {ACTIVE_COLUMNS.map((status) => (
                   <ProposalDnDColumn key={status} status={status}>
                     <ProposalColumn
                       status={status}
                       rows={bucket.byStatus.get(status) ?? []}
                       tone={toneForStatus(status)}
-                      width="w-56 sm:w-60"
+                      width="flex-1 min-w-[130px]"
+                      compact
                     />
                   </ProposalDnDColumn>
                 ))}
@@ -686,13 +750,14 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
                     status="won"
                     rows={bucket.byStatus.get("won") ?? []}
                     tone={toneForStatus("won")}
-                    width="w-56 sm:w-60"
+                    width="flex-1 min-w-[130px]"
+                    compact
                   />
                 </ProposalDnDColumn>
                 {/* Closed cluster — Lost is a valid drop target
                     (routes to debrief). Expired / Replaced are read-
                     only auto-computed states, not manual outcomes. */}
-                <div className="shrink-0 border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100 w-40 sm:w-44">
+                <div className="flex-1 min-w-[130px] border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
                   <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] font-bold text-ppp-charcoal uppercase tracking-wide">

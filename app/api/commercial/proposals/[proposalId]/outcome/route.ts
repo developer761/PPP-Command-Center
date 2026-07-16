@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
-import { markProposalOutcome, reopenProposal } from "@/lib/commercial/proposals/db";
+import {
+  markProposalOutcome,
+  reopenProposal,
+  updateProposalStatus,
+  getProposal,
+} from "@/lib/commercial/proposals/db";
+import { PROPOSAL_STATUSES, type ProposalStatus } from "@/lib/commercial/proposals/constants";
 
 /**
  * POST /api/commercial/proposals/[proposalId]/outcome
@@ -49,18 +55,38 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
-  const to = body.to;
-  if (to !== "won" && to !== "lost" && to !== "sent") {
+  const to = body.to as ProposalStatus | undefined;
+  if (!to || !(PROPOSAL_STATUSES as readonly string[]).includes(to)) {
     return NextResponse.json(
-      { error: "invalid_outcome", detail: "to must be 'won', 'lost', or 'sent' (reopen)" },
+      {
+        error: "invalid_outcome",
+        detail: `to must be one of: ${PROPOSAL_STATUSES.join(", ")}`,
+      },
       { status: 400 }
     );
   }
 
-  // "sent" = reopen path — un-marks a Won/Lost proposal + un-flips the
-  // parent deal from pre_sale_closed back to Proposal · Sent. Powers
-  // the Karan 2026-07-15 undo-marked-Won flow.
-  if (to === "sent") {
+  // Karan 2026-07-15: read the current status first so we can route
+  // the transition through the right helper. Three flows:
+  //   won/lost              → markProposalOutcome (cascades parent deal
+  //                           to pre_sale_closed/{won|lost})
+  //   sent (from won/lost)  → reopenProposal (uncascades parent deal
+  //                           from pre_sale_closed → proposal/sent)
+  //   any other transition  → updateProposalStatus (no deal cascade,
+  //                           just flips the proposal status; powers
+  //                           Draft ↔ Pending Approval, Sent → Expired,
+  //                           any → Replaced, etc.)
+  const currentProposal = await getProposal(proposalId);
+  if (!currentProposal) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  const currentStatus = currentProposal.status;
+  const isReopenFlow =
+    to === "sent" && (currentStatus === "won" || currentStatus === "lost");
+  const isOutcomeFlow = to === "won" || to === "lost";
+
+  // Reopen path
+  if (isReopenFlow) {
     const reopened = await reopenProposal({
       proposal_id: proposalId,
       actor_user_id: auth.user.id,
@@ -81,30 +107,47 @@ export async function POST(
     });
   }
 
-  const result = await markProposalOutcome({
-    proposal_id: proposalId,
-    outcome: to,
-    actor_user_id: auth.user.id,
-  });
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 400 });
+  // Outcome path (won/lost) — cascades parent deal
+  if (isOutcomeFlow) {
+    const result = await markProposalOutcome({
+      proposal_id: proposalId,
+      outcome: to as "won" | "lost",
+      actor_user_id: auth.user.id,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    const debrief_url =
+      to === "lost" && result.account_id
+        ? `/commercial/accounts/${result.account_id}/debrief/${result.opportunity_id}?just_closed=1`
+        : null;
+    return NextResponse.json({
+      ok: true,
+      proposal_id: result.proposal.id,
+      opportunity_id: result.opportunity_id,
+      account_id: result.account_id,
+      to,
+      redirect_url: null,
+      debrief_url,
+    });
   }
-  // Karan 2026-07-15: no more forced redirects on Lost. Prior version
-  // yanked the user onto the account debrief page, which was jarring
-  // ("wait, why am I not on the proposals kanban anymore?"). The
-  // debrief link is now surfaced as a link in the success banner
-  // instead — user decides whether to go add the reason now or later.
-  const debrief_url =
-    to === "lost" && result.account_id
-      ? `/commercial/accounts/${result.account_id}/debrief/${result.opportunity_id}?just_closed=1`
-      : null;
+
+  // Plain status flip — no parent-deal cascade. Draft ↔ Pending,
+  // Sent → Expired, any → Replaced, etc.
+  const flipped = await updateProposalStatus({
+    id: proposalId,
+    to_status: to,
+    acting_user_id: auth.user.id,
+  });
+  if (!flipped.ok) {
+    return NextResponse.json({ error: flipped.error }, { status: 400 });
+  }
   return NextResponse.json({
     ok: true,
-    proposal_id: result.proposal.id,
-    opportunity_id: result.opportunity_id,
-    account_id: result.account_id,
+    proposal_id: flipped.proposal.id,
+    opportunity_id: currentProposal.opportunity_id,
+    account_id: null,
     to,
     redirect_url: null,
-    debrief_url,
   });
 }

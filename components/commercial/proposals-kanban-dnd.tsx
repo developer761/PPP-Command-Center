@@ -25,7 +25,7 @@ import { createContext, useContext, useRef, useState, useTransition, useEffect }
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
-type OutcomeDrop = { to: "won" | "lost" | "sent" };
+type OutcomeDrop = { to: string };
 
 type Ctx = {
   dragProposalId: string | null;
@@ -40,19 +40,15 @@ type Ctx = {
 
 const ProposalsDnDContext = createContext<Ctx | null>(null);
 
-// Karan 2026-07-15: the kanban supports two flows —
-//   (a) Sent → Won or Sent → Lost  = mark outcome (via markProposalOutcome)
-//   (b) Won → Sent or Lost → Sent  = REOPEN (via reopenProposal) so an
-//       accidental Won drop has an undo path.
-// Any other drop is silently rejected client-side.
-const OUTCOME_TARGETS_FROM_SENT = new Set(["won", "lost"]);
-const REOPEN_SOURCE_STATUSES = new Set(["won", "lost"]);
-const REOPEN_TARGET_STATUS = "sent";
-
+// Karan 2026-07-15: fully free drag — every proposal can move to any
+// other column. Server-side helpers handle the routing:
+//   won/lost              → cascades parent deal via markProposalOutcome
+//   sent (from won/lost)  → uncascades via reopenProposal
+//   any other transition  → plain status flip via updateProposalStatus
+// UI just needs: source status ≠ target status. Same-column drops are
+// no-ops (nothing to change).
 function isValidDropTargetFn(sourceStatus: string, targetStatus: string): boolean {
-  if (sourceStatus === "sent" && OUTCOME_TARGETS_FROM_SENT.has(targetStatus)) return true;
-  if (REOPEN_SOURCE_STATUSES.has(sourceStatus) && targetStatus === REOPEN_TARGET_STATUS) return true;
-  return false;
+  return sourceStatus !== targetStatus;
 }
 
 export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }) {
@@ -128,9 +124,7 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: targetStatus as "won" | "lost" | "sent",
-          } satisfies OutcomeDrop),
+          body: JSON.stringify({ to: targetStatus } satisfies OutcomeDrop),
         }
       );
       if (!res.ok) {
@@ -169,11 +163,18 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         setLostDebriefUrl(json.debrief_url ?? null);
         flashSuccess("Marked lost. Parent deal flipped to Pre-Sale Closed · Lost.");
       } else if (targetStatus === "sent" && json.reopened) {
+        // Reopen path (Won/Lost → Sent) — has its own toast because
+        // the parent-deal cascade may or may not have fired.
         flashSuccess(
           json.deal_reopened
             ? "Reopened. Proposal back to Sent, parent deal back to Proposal · Sent."
             : `Reopened proposal only. Parent deal already moved to ${json.deal_current_status ?? "a later stage"}, left as-is.`
         );
+      } else {
+        // Generic status flip (Draft ↔ Pending, Sent → Expired, any →
+        // Replaced, etc.) — the parent deal is NOT cascaded for these,
+        // just the proposal.
+        flashSuccess(`Moved to ${targetStatus.replace(/_/g, " ")}.`);
       }
       startTransition(() => {
         router.refresh();
