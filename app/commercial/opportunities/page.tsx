@@ -27,7 +27,6 @@ import React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
-import { DealJourneyStrip } from "@/components/commercial/deal-journey-strip";
 import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -64,6 +63,7 @@ import {
   isWon,
   isLost,
   isFollowUp,
+  opportunitySubStatusLabel,
 } from "@/lib/commercial/opportunities/constants";
 import {
   quickFlipNextStatuses,
@@ -2314,27 +2314,22 @@ function OpportunityRow({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            {/* Line 1 — title + due chip. Karan 2026-07-15: dropped
-                the redundant top-level StatusPill — the journey strip
-                below already shows where the deal IS via the
-                highlighted active pill. Two labels for the same thing
-                read as junky ("Proposal · PRE-SALE · Qualifying →
-                Estimating → Proposal → Closed · Proposal Sent"). */}
+            {/* Line 1 — title + single status chip + due chip.
+                Karan 2026-07-15 (round 2): killed the full 4-pill
+                journey strip on pipeline rows — that grammar belongs
+                on the deal detail page where it has room, not
+                stacked on top of every list row. Cards now use ONE
+                compact chip: "Status · sub_status" (e.g. "Proposal ·
+                Proposal Sent" or the display label like "Won" on
+                decided deals). Clean, one-line, scannable at 50+
+                deals per screen. Full DealJourneyStrip lives on the
+                opp detail page. */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
                 {derivedOppName(opportunity, account?.company_name ?? null)}
               </span>
+              <StageChip status={opportunity.status} sub_status={opportunity.sub_status} />
               {dueChip && <DueChip {...dueChip} />}
-            </div>
-
-            {/* Deal-journey progress strip in compact mode — no lane
-                overline (context is already implied by the account
-                name + deal title in the surrounding card). Shows the
-                full pipeline with active stage highlighted +
-                sub-status under it. Terminal deals render a compact
-                closed cap. */}
-            <div className="mt-2">
-              <DealJourneyStrip status={opportunity.status} sub_status={opportunity.sub_status} compact />
             </div>
 
             {/* Line 2 — account context + bid + confidence. Muted so
@@ -2571,6 +2566,50 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}>
       {label}
+    </span>
+  );
+}
+
+/**
+ * Karan 2026-07-15: single compact status chip for pipeline rows —
+ * replaces the 4-pill DealJourneyStrip that stacked "Proposal · PRE-
+ * SALE · Qualifying → Estimating → Proposal → Closed · Proposal Sent"
+ * on every row. Renders as one pill: "Status · sub_status", tinted by
+ * lane. Won/Lost collapse to a single emerald/rose "Won"/"Lost" pill.
+ * The full stepper still lives on the deal detail page.
+ */
+function StageChip({
+  status,
+  sub_status,
+}: {
+  status: string;
+  sub_status: string | null | undefined;
+}) {
+  const isWonDeal = status === "pre_sale_closed" && sub_status === "won";
+  const isLostDeal = status === "pre_sale_closed" && sub_status === "lost";
+  const displayStatus = oppStatusDisplayLabel(status, sub_status);
+  const showSub =
+    !!sub_status && !isWonDeal && !isLostDeal;
+  const subLabel = showSub ? opportunitySubStatusLabel(sub_status) : "";
+  const cls = isWonDeal
+    ? "bg-emerald-500 text-white border-emerald-500"
+    : isLostDeal
+      ? "bg-rose-500 text-white border-rose-500"
+      : status === "pre_construction" || status === "in_progress" || status === "billing" || status === "post_sale_closed"
+        ? "bg-cyan-50 text-cyan-800 border-cyan-200"
+        : status === "proposal"
+          ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
+          : status === "estimating"
+            ? "bg-amber-50 text-amber-800 border-amber-200"
+            : "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200";
+  return (
+    <span className={`inline-flex items-center h-6 px-2 rounded-full text-[11px] font-semibold border ${cls}`}>
+      {displayStatus}
+      {subLabel && (
+        <span className={`ml-1 pl-1 border-l ${isWonDeal || isLostDeal ? "border-white/40" : "border-current opacity-40"} text-[10.5px] font-medium`}>
+          {subLabel}
+        </span>
+      )}
     </span>
   );
 }
