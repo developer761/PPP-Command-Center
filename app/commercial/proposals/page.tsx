@@ -574,6 +574,9 @@ function ProposalCard({
   );
 }
 
+/** Karan 2026-07-15: matched the opportunities/dashboard KpiCard
+ *  grammar. White card, colored left stripe, corner glow, big value.
+ *  Consistent tile shape across every Commercial CC surface. */
 function StatTile({
   label,
   value,
@@ -581,18 +584,48 @@ function StatTile({
 }: {
   label: string;
   value: string;
-  tone: "brand" | "emerald" | "charcoal";
+  tone: "brand" | "emerald" | "charcoal" | "amber";
 }) {
-  const bg =
-    tone === "brand"
-      ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-800"
-      : tone === "emerald"
-        ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-        : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-800";
+  const toneMap: Record<string, { border: string; glow: string; stripe: string }> = {
+    brand: {
+      border: "border-cc-brand-100",
+      glow: "bg-cc-brand-100/60",
+      stripe: "bg-gradient-to-b from-cc-brand-600 to-cc-brand-500",
+    },
+    emerald: {
+      border: "border-emerald-100",
+      glow: "bg-emerald-100/60",
+      stripe: "bg-gradient-to-b from-emerald-600 to-emerald-500",
+    },
+    amber: {
+      border: "border-amber-100",
+      glow: "bg-amber-100/60",
+      stripe: "bg-gradient-to-b from-amber-500 to-amber-400",
+    },
+    charcoal: {
+      border: "border-ppp-charcoal-100",
+      glow: "bg-ppp-charcoal-100/60",
+      stripe: "bg-gradient-to-b from-ppp-charcoal-400 to-ppp-charcoal-300",
+    },
+  };
+  const t = toneMap[tone] ?? toneMap.charcoal;
   return (
-    <div className={`border rounded-xl px-4 py-3 ${bg}`}>
-      <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{label}</div>
-      <div className="text-lg font-bold tabular-nums mt-1">{value}</div>
+    <div
+      className={`relative bg-white border ${t.border} rounded-xl px-4 py-3.5 overflow-hidden shadow-sm`}
+    >
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${t.stripe}`} />
+      <span
+        aria-hidden
+        className={`absolute -top-8 -right-8 h-24 w-24 rounded-full blur-2xl ${t.glow}`}
+      />
+      <div className="relative">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+          {label}
+        </div>
+        <div className="text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-tight tabular-nums">
+          {value}
+        </div>
+      </div>
     </div>
   );
 }

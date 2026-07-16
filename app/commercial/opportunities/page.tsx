@@ -1903,7 +1903,7 @@ function KanbanBoard({
         </div>
         <div className="overflow-x-auto -mx-2 px-2 pb-2">
           <div className="flex gap-3 min-w-max items-stretch">
-            {OPEN_COLUMNS.map((status) => {
+            {OPEN_COLUMNS.map((status, idx) => {
               const colOpps = byStatus.get(status) ?? [];
               const colTotal = bidRangeTotal(colOpps);
               const meta = COLUMN_META[status] ?? {
@@ -1912,7 +1912,27 @@ function KanbanBoard({
                 head: "bg-white",
                 empty: "Drop a bid here",
               };
-              return (
+              // Karan 2026-07-15: bring back the Pre-Sale / Post-Sale
+              // visual boundary he liked from the earlier design, but
+              // as a subtle rule (not the loud rotated-vertical label
+              // + tinted background that made the earlier version look
+              // busy). Inserted right before Pre-Construction (the
+              // first Post-Sale column) so the eye sees the pipeline
+              // split into "selling" and "delivering" at a glance.
+              const isFirstPostSale = status === "pre_construction";
+              const divider = isFirstPostSale ? (
+                <div
+                  key={`lane-divider-${status}`}
+                  className="shrink-0 flex items-center justify-center"
+                  aria-hidden
+                >
+                  <div className="w-px self-stretch bg-gradient-to-b from-transparent via-ppp-charcoal-200 to-transparent" />
+                  <span className="ml-2 mr-1 -rotate-90 origin-center text-[9px] font-bold uppercase tracking-widest text-ppp-charcoal-400 whitespace-nowrap">
+                    Post-Sale
+                  </span>
+                </div>
+              ) : null;
+              const column = (
                 <KanbanDnDColumn key={status} status={status}>
                   <div className="w-60 sm:w-64 shrink-0 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-white shadow-sm">
                     {/* Colored accent stripe on top — the whole card is
@@ -1963,6 +1983,7 @@ function KanbanBoard({
                   </div>
                 </KanbanDnDColumn>
               );
+              return divider ? [divider, column] : column;
             })}
 
             {/* Closed cluster — 2 narrow stacked drop-target columns
@@ -2215,35 +2236,90 @@ function KanbanCard({
  * Slim KPI card — same shape as the accounts page. Consistency across
  * both list pages so users learn the pattern once.
  */
+/** Karan 2026-07-15: KPI tile upgrade. Every tile now carries an icon
+ *  puck top-right (tone-tinted), a corner radial glow, and a beefier
+ *  value size — the earlier flat white version read as weak against the
+ *  kanban below. Same visual grammar as the /commercial dashboard tiles
+ *  so all three surfaces (dashboard + pipeline + proposals) match. */
 function KpiCard({
   tone,
   label,
   value,
   sub,
+  icon,
 }: {
-  tone: "cc-brand" | "blue" | "neutral";
+  tone: "cc-brand" | "blue" | "emerald" | "amber" | "neutral";
   label: string;
   value: string;
   sub: string;
+  icon?: React.ReactNode;
 }) {
-  const ring =
-    tone === "cc-brand"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
-      : tone === "blue"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
-      : "border-ppp-charcoal-100 bg-white";
-  const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-cc-brand-500" : "bg-ppp-charcoal-200";
+  const toneMap: Record<string, { border: string; glow: string; stripe: string; iconBg: string; iconTx: string }> = {
+    "cc-brand": {
+      border: "border-cc-brand-100",
+      glow: "bg-cc-brand-100/60",
+      stripe: "bg-gradient-to-b from-cc-brand-600 to-cc-brand-500",
+      iconBg: "bg-cc-brand-100",
+      iconTx: "text-cc-brand-700",
+    },
+    blue: {
+      border: "border-blue-100",
+      glow: "bg-blue-100/60",
+      stripe: "bg-gradient-to-b from-blue-600 to-blue-500",
+      iconBg: "bg-blue-100",
+      iconTx: "text-blue-700",
+    },
+    emerald: {
+      border: "border-emerald-100",
+      glow: "bg-emerald-100/60",
+      stripe: "bg-gradient-to-b from-emerald-600 to-emerald-500",
+      iconBg: "bg-emerald-100",
+      iconTx: "text-emerald-700",
+    },
+    amber: {
+      border: "border-amber-100",
+      glow: "bg-amber-100/60",
+      stripe: "bg-gradient-to-b from-amber-500 to-amber-400",
+      iconBg: "bg-amber-100",
+      iconTx: "text-amber-700",
+    },
+    neutral: {
+      border: "border-ppp-charcoal-100",
+      glow: "bg-ppp-charcoal-100/60",
+      stripe: "bg-gradient-to-b from-ppp-charcoal-400 to-ppp-charcoal-300",
+      iconBg: "bg-ppp-charcoal-100",
+      iconTx: "text-ppp-charcoal-600",
+    },
+  };
+  const t = toneMap[tone] ?? toneMap.neutral;
   return (
-    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
-      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
-        {label}
+    <div
+      className={`group/kpi relative bg-white border ${t.border} rounded-xl px-4 py-3.5 overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all`}
+    >
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${t.stripe}`} />
+      <span
+        aria-hidden
+        className={`absolute -top-8 -right-8 h-24 w-24 rounded-full blur-2xl ${t.glow}`}
+      />
+      <div className="relative flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+            {label}
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-tight tabular-nums">
+            {value}
+          </div>
+          <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>
+        </div>
+        {icon && (
+          <span
+            className={`shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-lg ${t.iconBg} ${t.iconTx}`}
+            aria-hidden
+          >
+            {icon}
+          </span>
+        )}
       </div>
-      <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1">
-        {value}
-      </div>
-      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>
     </div>
   );
 }
@@ -2684,15 +2760,35 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
  *   └──┴──┴══┴──┘
  *   Proposal · Proposal Sent
  */
-const PRE_SALE_STAGES_COMPACT: {
-  key: string;
-  short: string;
-}[] = [
-  { key: "qualifying", short: "Qualifying" },
-  { key: "estimating", short: "Estimating" },
-  { key: "proposal", short: "Proposal" },
-  { key: "pre_sale_closed", short: "Closed" },
+/** Karan 2026-07-15 rework: full pill-stepper on every pipeline row.
+ *  Same structure as the deal-detail DealJourneyStrip (Pre-Sale row
+ *  or Post-Sale row of stages) but sized tight for list use:
+ *
+ *    ● Qualifying ── Estimating ── ● Proposal ── ─ Closed
+ *                                     └ Sent
+ *
+ *  Each stage is an actual PILL — filled brand-blue when current,
+ *  filled slate when past, outlined white when future. Connectors
+ *  are thin filled bars for completed segments, dashed muted for
+ *  future. Sub-status renders below the current pill.
+ *
+ *  Won/Lost terminal collapses to a single emerald/rose pill (no
+ *  stepper — the decision IS the state). Post-sale shows the
+ *  Post-Sale row of stages instead of Pre-Sale.
+ */
+const PRE_SALE_STEPPER: { key: string; label: string }[] = [
+  { key: "qualifying", label: "Qualifying" },
+  { key: "estimating", label: "Estimating" },
+  { key: "proposal", label: "Proposal" },
+  { key: "pre_sale_closed", label: "Closed" },
 ];
+const POST_SALE_STEPPER: { key: string; label: string }[] = [
+  { key: "pre_construction", label: "Pre-Const" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "billing", label: "Billing" },
+  { key: "post_sale_closed", label: "Closed" },
+];
+
 function StageChip({
   status,
   sub_status,
@@ -2702,7 +2798,8 @@ function StageChip({
 }) {
   const isWonDeal = status === "pre_sale_closed" && sub_status === "won";
   const isLostDeal = status === "pre_sale_closed" && sub_status === "lost";
-  // Terminal (Won/Lost) → single emerald/rose pill, no bar.
+  // Terminal (Won/Lost) → single emerald/rose pill. The stepper is
+  // pointless once the decision is made.
   if (isWonDeal || isLostDeal) {
     return (
       <span
@@ -2716,74 +2813,65 @@ function StageChip({
       </span>
     );
   }
-  // Post-sale statuses (pre_construction / in_progress / billing / post_sale_closed)
-  // — collapse to a cyan single chip; the pre-sale segmented bar
-  // doesn't apply here.
+  // Which lane are we in? Post-sale statuses render the delivery
+  // stepper (Pre-Const → In Progress → Billing → Closed) with cyan
+  // tinting; pre-sale statuses render the sales stepper (Qualifying
+  // → Estimating → Proposal → Closed) with brand blue.
   const postSaleStatuses = ["pre_construction", "in_progress", "billing", "post_sale_closed"];
-  if (postSaleStatuses.includes(status)) {
-    return (
-      <span className="inline-flex items-center gap-1.5">
-        <span className="inline-flex items-center h-6 px-2.5 rounded-full text-[11px] font-semibold border bg-cyan-50 text-cyan-800 border-cyan-200">
-          {opportunityStatusLabel(status)}
-        </span>
-        {sub_status && (
-          <span className="text-[10.5px] text-ppp-charcoal-500 font-medium">
-            {opportunitySubStatusLabel(sub_status)}
-          </span>
-        )}
-      </span>
-    );
-  }
-  // Pre-sale (qualifying / estimating / proposal) — segmented progress bar
-  // with per-stage labels below so it reads like a proper progress
-  // tracker (each segment is captioned; current is bold + tinted).
-  const currentIdx = Math.max(0, PRE_SALE_STAGES_COMPACT.findIndex((s) => s.key === status));
-  const currentLabel = PRE_SALE_STAGES_COMPACT[currentIdx]?.short ?? "Qualifying";
+  const isPostSale = postSaleStatuses.includes(status);
+  const stages = isPostSale ? POST_SALE_STEPPER : PRE_SALE_STEPPER;
+  const laneLabel = isPostSale ? "Post-Sale" : "Pre-Sale";
+  const currentIdx = Math.max(0, stages.findIndex((s) => s.key === status));
+  const currentLabel = stages[currentIdx]?.label ?? "Qualifying";
   const subLabel = sub_status ? opportunitySubStatusLabel(sub_status) : "";
-  // Karan 2026-07-15: dedupe sub-status when it's the same word as
-  // status (e.g. status='estimating' + sub_status='estimating' was
-  // rendering as "Estimating · Estimating" which looked broken).
-  const showSubBelow =
-    subLabel && subLabel.toLowerCase() !== currentLabel.toLowerCase();
+  // Dedupe: "Estimating · Estimating" collapses to just the top pill.
+  const showSubBelow = subLabel && subLabel.toLowerCase() !== currentLabel.toLowerCase();
+  const currentPillCls = isPostSale
+    ? "bg-cyan-600 text-white border-cyan-600 shadow-sm"
+    : "bg-cc-brand-600 text-white border-cc-brand-600 shadow-sm";
   return (
-    <span className="inline-flex flex-col items-start gap-1 min-w-0">
-      <span
-        className="inline-flex items-stretch h-2 rounded-full overflow-hidden border border-ppp-charcoal-200 bg-white"
-        role="progressbar"
-        aria-valuenow={currentIdx + 1}
-        aria-valuemin={1}
-        aria-valuemax={PRE_SALE_STAGES_COMPACT.length}
-        aria-label={`Deal stage: ${currentLabel} (${currentIdx + 1} of ${PRE_SALE_STAGES_COMPACT.length})`}
-      >
-        {PRE_SALE_STAGES_COMPACT.map((s, i) => {
+    <span
+      className="inline-flex flex-col items-start gap-1 min-w-0"
+      role="progressbar"
+      aria-valuenow={currentIdx + 1}
+      aria-valuemin={1}
+      aria-valuemax={stages.length}
+      aria-label={`${laneLabel} stage: ${currentLabel} (${currentIdx + 1} of ${stages.length})`}
+    >
+      <span className="inline-flex items-center flex-wrap gap-y-1">
+        {stages.map((s, i) => {
           const isPast = i < currentIdx;
           const isCurrent = i === currentIdx;
-          const segCls = isCurrent
-            ? "bg-cc-brand-600"
+          const pillCls = isCurrent
+            ? currentPillCls
             : isPast
-              ? "bg-cc-brand-300"
-              : "bg-white";
+              ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
+              : "bg-white text-ppp-charcoal-400 border-ppp-charcoal-200";
+          const connectorCls = isPast
+            ? "bg-ppp-charcoal-300"
+            : "bg-ppp-charcoal-200 opacity-60";
+          const isLast = i === stages.length - 1;
           return (
-            <span
-              key={s.key}
-              className={`inline-block flex-1 min-w-[24px] sm:min-w-[36px] ${segCls} ${i > 0 ? "border-l border-white/70" : ""}`}
-              title={s.short}
-              aria-hidden
-            />
+            <span key={s.key} className="inline-flex items-center">
+              <span
+                className={`inline-flex items-center h-5 px-2 rounded-full border text-[10.5px] font-semibold whitespace-nowrap ${pillCls}`}
+                aria-current={isCurrent ? "step" : undefined}
+              >
+                {s.label}
+              </span>
+              {!isLast && (
+                <span aria-hidden className={`h-px w-2.5 sm:w-3.5 mx-0.5 ${connectorCls}`} />
+              )}
+            </span>
           );
         })}
       </span>
-      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ppp-charcoal">
-        <span className="text-cc-brand-700">{currentLabel}</span>
-        {showSubBelow && (
-          <>
-            <span aria-hidden className="text-ppp-charcoal-300">·</span>
-            <span className="text-ppp-charcoal-500 font-medium truncate max-w-[160px]">
-              {subLabel}
-            </span>
-          </>
-        )}
-      </span>
+      {showSubBelow && (
+        <span className="text-[10.5px] text-ppp-charcoal-500 pl-1 truncate max-w-[220px]">
+          <span aria-hidden className="text-ppp-charcoal-300 mr-1">└</span>
+          {subLabel}
+        </span>
+      )}
     </span>
   );
 }

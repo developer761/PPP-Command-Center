@@ -13,7 +13,6 @@ import {
   TERMINAL_STATUSES,
   WARN_TRANSITIONS,
   isValidSubStatus,
-  isWon,
   isLost,
 } from "./constants";
 import {
@@ -129,82 +128,27 @@ export async function changeOpportunityStatus(
     return { ok: false, error: "Account not found." };
   }
 
-  // Phase E-6 (Karan 2026-07-13): DAG check RE-ENABLED. Skipped when
-  // top-level status isn't changing (sub_status-only flips, e.g.
-  // proposal/sent → proposal/follow_up, don't need DAG scrutiny — the
-  // sub_status whitelist enforces validity at the DB CHECK level).
-  if (
-    beforeRow.status !== input.to_status &&
-    !isTransitionAllowed(beforeRow.status as OpportunityStatus, input.to_status)
-  ) {
-    return {
-      ok: false,
-      error: `Can't move from ${beforeRow.status} to ${input.to_status} directly.`,
-    };
-  }
-
-  // Karan 2026-07-08: block reversing a Won deal that already has live
-  // invoices attached. Won → reopened → lost is a legal DAG path, but if
-  // an invoice was issued (or worse — paid) the financial story on the
-  // account depends on this deal being Won. Force the user to void the
-  // invoices first so the money side and the pipeline side stay in sync.
-  // v2 (migration 052): Won lives as (pre_sale_closed / won). Any move
-  // OUT of pre_sale_closed OR sub-flip to "lost" counts as leaving Won.
-  const wasWon = isWon(beforeRow);
-  const stillWonAfter =
-    input.to_status === "pre_sale_closed" && input.to_sub_status === "won";
-  if (wasWon && !stillWonAfter) {
-    // Karan 2026-07-08 refinement: only customer-visible invoices block
-    // the reversal. Drafts haven't been sent — safe to un-win a deal
-    // that only has drafts attached (drafts can be manually cleaned up
-    // or simply left on the (now-Lost) deal for audit history). Sent /
-    // viewed / partial / paid all mean the customer knows about the
-    // invoice, so reversing Won without voiding those first would be
-    // a data-integrity break.
-    const { data: liveInvoices } = await sb
-      .from("commercial_invoices")
-      .select("id, status")
-      .eq("opportunity_id", input.opp_id)
-      .is("deleted_at", null)
-      .in("status", ["sent", "viewed", "partial", "paid"]);
-    const blocking = (liveInvoices ?? []) as { id: string; status: string }[];
-    if (blocking.length > 0) {
-      return {
-        ok: false,
-        error: `Can't move this off Won — ${blocking.length} customer-visible invoice${blocking.length === 1 ? "" : "s"} still on the deal. Void those first.`,
-      };
-    }
-  }
-
-  // Phase E-6 (Karan 2026-07-13): structural-fields gate RE-ENABLED.
-  // v2 rule: moving Qualifying → anything else requires the deal to
-  // carry the CEO-mandated structural fields (client_name +
-  // location_short + estimator, either FK'd user or free-text name).
-  // Skipped for:
-  //   - sub_status-only flips within Qualifying (solicitation → rfp → estimating sub)
-  //   - the Lost sub (declined bids don't need structural fields — you
-  //     can no-bid a solicitation without ever pricing it)
-  //   - post-sale transitions (once the deal is Won and moving through
-  //     delivery, the structural fields are already on the row)
+  // Karan 2026-07-15: removed the DAG check, the "Won with live
+  // invoices" guard, and the "leaving Qualifying needs structural
+  // fields" guard entirely. Every one of these was blocking the
+  // kanban's "let me move deals anywhere" freedom Karan asked for,
+  // AND it was silently failing the proposal→opp cascade (when a
+  // Sent proposal was flipped to Won, changeOpportunityStatus bailed
+  // because the parent opp was still at Qualifying with no structural
+  // fields, so the opp stayed put while the proposal moved to Won).
+  //
+  // App-layer safety left in place:
+  //   - Lost still requires a loss_reason + note (below) — that's
+  //     input validation, not a movement block; the debrief page
+  //     collects the fields before submitting.
+  //   - Structural fields are still enforced ONLY on the debrief flow
+  //     (client_name required for won deals to generate proposals /
+  //     invoices), not on the mere status flip.
+  //
+  // DB CHECK constraints were dropped in migration 059 for the same
+  // "no constraints whatsoever" reason. This is the app-layer twin.
   const targetIsLost =
     input.to_status === "pre_sale_closed" && input.to_sub_status === "lost";
-  const leavingQualifying =
-    beforeRow.status === "qualifying" && input.to_status !== "qualifying";
-  if (leavingQualifying && !targetIsLost) {
-    const missing: string[] = [];
-    if (!beforeRow.client_name?.trim()) missing.push("client name");
-    if (!beforeRow.location_short?.trim()) missing.push("site location");
-    const hasEstimator = Boolean(
-      beforeRow.estimator_user_id?.trim() || beforeRow.estimator_name?.trim()
-    );
-    if (!hasEstimator) missing.push("estimator");
-    if (missing.length > 0) {
-      return {
-        ok: false,
-        error: `Set the ${missing.join(", ")} on this deal before moving out of Qualifying.`,
-      };
-    }
-  }
 
   // Loss-reason enforcement when the closure is a Lost.
   // v2 (migration 052): "Lost" is Pre-Sale/Closed/Lost — i.e. status =
