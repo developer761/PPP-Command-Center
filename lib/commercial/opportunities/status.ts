@@ -382,14 +382,26 @@ export async function changeOpportunityStatus(
       const { updateProposalStatus } = await import(
         "@/lib/commercial/proposals/db"
       );
+      // Karan 2026-07-15 (Option A): cascade only affects the LATEST
+      // revision on this deal, not every sibling in demoteFrom set.
+      // Rationale: multiple revisions exist because Alex bumped
+      // through negotiation rounds — R11 is the active one, R1-R10
+      // are history. When the deal moves to Won/Lost/Sent/Drafted,
+      // only R11 should follow. R1-R10 stay as-is (usually already
+      // Replaced/Superseded).
+      //
+      // Query all proposals on this deal in demoteFrom, then keep
+      // only the highest revision_number one.
       const { data: propRows } = await sb
         .from("commercial_proposals")
-        .select("id, status")
+        .select("id, status, revision_number")
         .eq("opportunity_id", input.opp_id)
         .is("deleted_at", null)
-        .in("status", target.demoteFrom);
+        .in("status", target.demoteFrom)
+        .order("revision_number", { ascending: false })
+        .limit(1);
       const proposals =
-        (propRows as { id: string; status: string }[] | null) ?? [];
+        (propRows as { id: string; status: string; revision_number: number }[] | null) ?? [];
       for (const p of proposals) {
         if (p.status === target.to) continue;
         const flip = await updateProposalStatus({

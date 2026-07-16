@@ -3620,11 +3620,24 @@ async function AccountProposalsTab({
                     + New revision
                   </Link>
                 </header>
-                <ul className="divide-y divide-ppp-charcoal-100">
-                  {bucket.rows.map((r) => (
+                {(() => {
+                  // Karan 2026-07-15 (Option A): pick the "current"
+                  // revision = highest revision_number that's still
+                  // non-terminal (draft/pending/sent) OR highest
+                  // revision overall if all are terminal. This is
+                  // what the cascade + kanban treat as the active
+                  // proposal for this deal. Renders expanded up top
+                  // with a "Current" pill; older revs collapse into
+                  // a <details> below to cut clutter.
+                  const NON_TERMINAL = new Set(["draft", "pending_approval", "sent"]);
+                  const rows = bucket.rows; // already sorted revision desc
+                  const currentIdx = rows.findIndex((r) => NON_TERMINAL.has(r.status));
+                  const currentRow = currentIdx >= 0 ? rows[currentIdx]! : rows[0]!;
+                  const olderRows = rows.filter((r) => r.id !== currentRow.id);
+                  const renderRow = (r: typeof rows[number], isCurrent: boolean) => (
                     <li
                       key={r.id}
-                      className="flex items-stretch hover:bg-ppp-charcoal-50"
+                      className={`flex items-stretch ${isCurrent ? "bg-emerald-50/40 hover:bg-emerald-50/60" : "hover:bg-ppp-charcoal-50"}`}
                     >
                       <Link
                         href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${r.id}`}
@@ -3633,6 +3646,11 @@ async function AccountProposalsTab({
                         <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums shrink-0">
                           R{r.revision_number}
                         </span>
+                        {isCurrent && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border bg-emerald-100 text-emerald-800 border-emerald-300 shrink-0">
+                            <span aria-hidden>★</span> Current
+                          </span>
+                        )}
                         <span
                           className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${pillCls(r.status)}`}
                         >
@@ -3667,8 +3685,41 @@ async function AccountProposalsTab({
                         <span className="hidden sm:inline">PDF</span>
                       </a>
                     </li>
-                  ))}
-                </ul>
+                  );
+                  return (
+                    <>
+                      <ul className="divide-y divide-ppp-charcoal-100">
+                        {renderRow(currentRow, true)}
+                      </ul>
+                      {olderRows.length > 0 && (
+                        <details className="group/older bg-ppp-charcoal-50/40 border-t border-ppp-charcoal-100">
+                          <summary className="cursor-pointer px-4 py-2 text-[11px] font-semibold text-ppp-charcoal-500 hover:bg-ppp-charcoal-100/40 list-none [&::-webkit-details-marker]:hidden flex items-center justify-between min-h-[36px]">
+                            <span>
+                              Older revisions · {olderRows.length}
+                            </span>
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden
+                              className="text-ppp-charcoal-400 transition-transform group-open/older:rotate-180"
+                            >
+                              <path d="M6 9l6 6 6-6" />
+                            </svg>
+                          </summary>
+                          <ul className="divide-y divide-ppp-charcoal-100 bg-white">
+                            {olderRows.map((r) => renderRow(r, false))}
+                          </ul>
+                        </details>
+                      )}
+                    </>
+                  );
+                })()}
               </section>
             );
           })}
