@@ -209,7 +209,7 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
   );
 }
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 
 type Ctx = {
   dragOppId: string | null;
@@ -280,6 +280,20 @@ export function KanbanDnDColumn({
 }) {
   const ctx = useContext(KanbanDnDContext);
   const [isOver, setIsOver] = useState(false);
+  // Karan 2026-07-16: enter-counter fix (backported from proposals-
+  // kanban-dnd). HTML5 dragleave fires when the pointer crosses INTO
+  // a child element inside the drop target — was making the emerald
+  // ring flicker on the opp kanban as the user moved the card over
+  // inner cards. Increment on dragenter, decrement on dragleave, only
+  // clear when counter hits 0. Also reset defensively when the drag
+  // ends outside.
+  const enterCountRef = useRef(0);
+  useEffect(() => {
+    if (!ctx?.dragOppId) {
+      enterCountRef.current = 0;
+      if (isOver) setIsOver(false);
+    }
+  }, [ctx?.dragOppId, isOver]);
   if (!ctx) return <>{children}</>;
   const dragFromDifferentAccount =
     !!boundToAccountId &&
@@ -287,13 +301,23 @@ export function KanbanDnDColumn({
     ctx.dragAccountId !== boundToAccountId;
   return (
     <div
+      onDragEnter={(e) => {
+        if (dragFromDifferentAccount) return;
+        e.preventDefault();
+        enterCountRef.current += 1;
+        if (!isOver) setIsOver(true);
+      }}
       onDragOver={(e) => {
         if (dragFromDifferentAccount) return; // don't accept drop
         ctx.onColumnDragOver(e);
-        if (!isOver) setIsOver(true);
       }}
-      onDragLeave={() => setIsOver(false)}
+      onDragLeave={() => {
+        if (dragFromDifferentAccount) return;
+        enterCountRef.current = Math.max(0, enterCountRef.current - 1);
+        if (enterCountRef.current === 0) setIsOver(false);
+      }}
       onDrop={(e) => {
+        enterCountRef.current = 0;
         setIsOver(false);
         if (dragFromDifferentAccount) {
           e.preventDefault();

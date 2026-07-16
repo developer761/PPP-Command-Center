@@ -778,6 +778,11 @@ async function quickFlipFromAccountAction(formData: FormData) {
     (rawToStatus === "pre_sale_closed" && rawToSubStatus === "won");
   if (rawToStatus === "won") { to_status = "pre_sale_closed"; to_sub_status = "won"; }
   else if (rawToStatus === "lost" || rawToStatus === "no_bid") { to_status = "pre_sale_closed"; to_sub_status = "lost"; }
+  // Karan 2026-07-16: virtual-column keys from the account-page quick-
+  // flip dropdown map to (status, sub_status) tuples, mirroring the
+  // opp-kanban MOVE_TO_COLUMNS grammar.
+  else if (rawToStatus === "proposal_drafted") { to_status = "estimating"; to_sub_status = "proposal_pending_approval"; }
+  else if (rawToStatus === "proposal_sent") { to_status = "proposal"; to_sub_status = "sent"; }
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
@@ -3287,7 +3292,13 @@ function AccountOpportunityRow({
       {/* Karan 2026-07-08 Batch 2: dropped the "QUICK FLIP" caps label —
           the placeholder text inside the select tells the same story
           without shouting. Terminal states still route to detail for
-          loss_reason + note capture. */}
+          loss_reason + note capture.
+          Karan 2026-07-16: curated list matching MOVE_TO_COLUMNS on the
+          opp kanban. Explicit Won/Lost picks (was falling through to
+          `pre_sale_closed` with a default-to-Won sub_status — silently
+          marked deals as Won when user meant to close as Lost).
+          Also adds "Proposal Drafted" / "Proposal Sent" virtual keys so
+          sub-status refinements work from this surface too. */}
       {nextStatuses.length > 0 && (
         <form
           action={quickFlipFromAccountAction}
@@ -3307,14 +3318,15 @@ function AccountOpportunityRow({
             <option value="" disabled>
               Move to…
             </option>
-            {nextStatuses.map((s) => {
-              const isTerminal = isTerminalOpportunityStatus(s);
-              return (
-                <option key={s} value={s}>
-                  {isTerminal ? "→ Close as " : "→ "}{opportunityStatusLabel(s)}
-                </option>
-              );
-            })}
+            <option value="qualifying">→ Qualifying</option>
+            <option value="estimating">→ Estimating</option>
+            <option value="proposal_drafted">→ Proposal Drafted</option>
+            <option value="proposal_sent">→ Proposal Sent</option>
+            <option value="won">→ Won</option>
+            <option value="lost">→ Lost</option>
+            <option value="pre_construction">→ Pre-Construction</option>
+            <option value="in_progress">→ In Progress</option>
+            <option value="billing">→ Billing</option>
           </select>
           <PendingSubmitButton
             className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation disabled:hover:bg-ppp-charcoal-700"
