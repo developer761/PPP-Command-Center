@@ -1103,8 +1103,11 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                 </svg>
               </div>
             </summary>
-            {/* Deals within this account — each with its own inner header */}
-            <div className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
+            {/* Deals within this account — each deal group gets its own
+                left border tint (djb2 hue keyed by deal id) so a
+                two-deal account reads as two visually distinct blocks
+                even though they share the account section chrome. */}
+            <div className="border-t border-ppp-charcoal-100 space-y-0.5 p-1">
               {Array.from(acct.deals.values()).map((dealBucket) => {
                 if (!dealBucket.deal) return null;
                 const dealTitle =
@@ -1112,18 +1115,33 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                   dealBucket.deal.client_name?.trim() ||
                   dealBucket.deal.location_short?.trim() ||
                   "(untitled deal)";
+                const dealHue = hueForAccountId(dealBucket.deal.id);
+                const dealBorderStyle = {
+                  borderLeftColor: `hsl(${dealHue}, 62%, 55%)`,
+                };
+                const dealTintStyle = {
+                  backgroundColor: `hsl(${dealHue}, 62%, 97%)`,
+                };
                 return (
-                  <div key={dealBucket.deal.id}>
-                    <div className="px-4 py-1.5 bg-white text-[11px] font-semibold text-ppp-charcoal-600 uppercase tracking-wide border-b border-ppp-charcoal-100">
-                      {dealTitle}
-                      <span className="ml-2 text-ppp-charcoal-400 font-normal normal-case tracking-normal">
-                        · {dealBucket.rows.length} revision
+                  <div
+                    key={dealBucket.deal.id}
+                    className="border-l-4 rounded-r-md overflow-hidden bg-white"
+                    style={dealBorderStyle}
+                  >
+                    <div
+                      className="px-4 py-2 text-[12px] font-bold text-ppp-charcoal border-b border-ppp-charcoal-100 flex items-center justify-between gap-2"
+                      style={dealTintStyle}
+                    >
+                      <span className="truncate">{dealTitle}</span>
+                      <span className="text-ppp-charcoal-500 font-normal shrink-0">
+                        {dealBucket.rows.length} revision
                         {dealBucket.rows.length === 1 ? "" : "s"}
                       </span>
                     </div>
                     <ul className="divide-y divide-ppp-charcoal-100">
                       {dealBucket.rows.map((r) => {
                         const editorHref = `/commercial/accounts/${acct.account_id}/deals/${dealBucket.deal!.id}/proposal/${r.id}`;
+                        const customName = r.header_json?.project_name?.trim();
                         return (
                           <li
                             key={r.id}
@@ -1144,7 +1162,15 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               >
                                 {proposalStatusLabel(r.status)}
                               </span>
-                              {r.header_json?.gc_company && (
+                              {customName && (
+                                <span
+                                  className="text-[12px] font-semibold text-ppp-charcoal-800 truncate"
+                                  title={customName}
+                                >
+                                  {customName}
+                                </span>
+                              )}
+                              {r.header_json?.gc_company && !customName && (
                                 <span className="text-[11.5px] text-ppp-charcoal-600 truncate">
                                   GC: {r.header_json.gc_company}
                                 </span>

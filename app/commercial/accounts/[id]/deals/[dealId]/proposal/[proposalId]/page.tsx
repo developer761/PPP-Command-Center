@@ -213,6 +213,49 @@ async function saveProposalAction(formData: FormData) {
   );
 }
 
+/** Karan 2026-07-15: dedicated rename action — patches ONLY the
+ *  project_name in header_json without touching any other field. The
+ *  main saveProposalAction wipes fields missing from formData (fine
+ *  when it's the full editor form, catastrophic when someone submits
+ *  just the rename input at the top of the page). */
+async function renameProposalAction(formData: FormData) {
+  "use server";
+  const userId = await requireAuthed();
+  const accountId = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("deal_id") ?? "");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  if (![accountId, dealId, proposalId].every((v) => UUID_RE.test(v))) {
+    redirect("/commercial");
+  }
+  const existing = await getProposal(proposalId);
+  if (!existing || existing.opportunity_id !== dealId) notFound();
+  const nextName = String(formData.get("project_name") ?? "").trim() || undefined;
+  const header = { ...existing.header_json, project_name: nextName };
+  const result = await updateProposal({
+    id: proposalId,
+    header_json: header,
+    estimator_snapshot_json: existing.estimator_snapshot_json,
+    intro_text_override: existing.intro_text_override,
+    exclusion_ids: existing.exclusion_ids,
+    custom_exclusions: existing.custom_exclusions,
+    alternate_notes: existing.alternate_notes,
+    bid_notes: existing.bid_notes,
+    pdf_show_line_prices: existing.pdf_show_line_prices,
+    updated_by_user_id: userId,
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
+    );
+  }
+  revalidatePath(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
+  );
+  redirect(
+    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?saved=1`
+  );
+}
+
 async function addLineItemAction(formData: FormData) {
   "use server";
   const userId = await requireAuthed();
@@ -540,14 +583,44 @@ export default async function ProposalEditorPage({
       </nav>
 
       <header className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h1 className="text-lg font-bold text-ppp-charcoal">Proposal R{proposal.revision_number}</h1>
-          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200">
-            {proposalStatusLabel(proposal.status)}
-          </span>
-          <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
-            {totalLabel}: <strong className="text-ppp-charcoal-800">{formatDollars(proposal.total_cents)}</strong>
-          </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-[11px] font-bold text-ppp-charcoal-500 uppercase tracking-widest tabular-nums">
+              R{proposal.revision_number}
+            </span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200">
+              {proposalStatusLabel(proposal.status)}
+            </span>
+            <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
+              {totalLabel}: <strong className="text-ppp-charcoal-800">{formatDollars(proposal.total_cents)}</strong>
+            </span>
+          </div>
+          {/* Karan 2026-07-15: inline-editable proposal name at the top of
+              the editor. Same field as header_json.project_name (also
+              renders as "PROJECT:" on the PDF). Save form below picks
+              this up because the input has `form="proposal-main-form"`
+              — that way one save button covers this + all other edits. */}
+          <form
+            action={renameProposalAction}
+            className="flex items-center gap-2"
+          >
+            {hiddenIds}
+            <input
+              type="text"
+              name="project_name"
+              defaultValue={proposal.header_json.project_name ?? ""}
+              placeholder={`Name this revision (e.g. "Warehouse Repaint")`}
+              className="text-lg font-bold text-ppp-charcoal bg-transparent border-b border-dashed border-ppp-charcoal-200 focus:border-cc-brand-400 focus:outline-none py-0.5 min-w-0 flex-1 placeholder:text-ppp-charcoal-300 placeholder:italic placeholder:font-normal"
+              aria-label="Proposal name"
+            />
+            <button
+              type="submit"
+              className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 shrink-0 px-2 py-1 rounded hover:bg-cc-brand-50"
+              title="Save name — also updates the PROJECT: line on the PDF"
+            >
+              Save name
+            </button>
+          </form>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {inclusions.length === 0 ? (

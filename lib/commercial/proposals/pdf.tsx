@@ -561,11 +561,13 @@ function BulletLine({ text }: { text: string }) {
 
 function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) {
   if (items.length === 0) return null;
-  // Reference PDF has NO "Inclusions:" header — line items just come
-  // right after the intro paragraph. Suppress the header for the
-  // customer-facing render.
+  // Karan 2026-07-15: line-items section now gets an underlined header
+  // like Exclusions & Qualifications does, so the reader sees the
+  // structure at a glance: "Scope of Work" (what we're doing) vs.
+  // "Exclusions & Qualifications" (what we're NOT doing).
   return (
-    <View style={{ marginTop: 4 }}>
+    <View style={{ marginTop: 12 }}>
+      <Text style={styles.sectionUnderlineHeader}>Scope of Work:</Text>
       {items.map((it) => (
         <BulletLine key={it.id} text={it.description} />
       ))}
