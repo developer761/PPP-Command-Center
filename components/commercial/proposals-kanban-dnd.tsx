@@ -262,9 +262,9 @@ export function ProposalDnDColumn({
     ctx.isValidDropTarget(ctx.dragSourceStatus, status);
   return (
     <div
-      className={`${className ?? ""} ${
+      className={`${className ?? ""} transition-colors rounded-xl ${
         isOver && isValidTarget
-          ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-white rounded-xl"
+          ? "bg-cc-brand-50/60 outline outline-1 outline-cc-brand-300 outline-offset-0"
           : ""
       }`}
       onDragEnter={

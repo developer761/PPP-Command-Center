@@ -79,56 +79,60 @@ type ColumnTone = {
   accentBar: string; // 3px top accent on each card
 };
 
+/** Karan 2026-07-15 palette clean-up: every column is a white card with
+ *  a single colored accent stripe at the top. The prior tinted-background
+ *  variant (amber/pink/emerald/rose columns side by side) read as loud +
+ *  disjointed; a row of white cards with color-coded spines reads like a
+ *  proper GHL-style board. Tone stays semantic (rose = bad, emerald =
+ *  won, blue = active, gray = neutral) but only in the 3px stripe + the
+ *  count pill so the eye can scan the board at a glance. */
 function toneForStatus(status: ProposalStatus): ColumnTone {
+  const shared = {
+    col: "bg-white border-ppp-charcoal-100",
+    head: "bg-white border-ppp-charcoal-100",
+  };
   switch (status) {
     case "draft":
       return {
-        col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100",
-        head: "bg-white border-ppp-charcoal-100",
-        count: "bg-ppp-charcoal-100 text-ppp-charcoal-700",
-        accentBar: "bg-ppp-charcoal-300",
+        ...shared,
+        count: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border border-ppp-charcoal-100",
+        accentBar: "bg-slate-400",
       };
     case "pending_approval":
       return {
-        col: "bg-amber-50/40 border-amber-200",
-        head: "bg-amber-50 border-amber-200",
-        count: "bg-amber-100 text-amber-800",
+        ...shared,
+        count: "bg-amber-50 text-amber-800 border border-amber-100",
         accentBar: "bg-amber-400",
       };
     case "sent":
       return {
-        col: "bg-cc-brand-50/40 border-cc-brand-200",
-        head: "bg-cc-brand-50 border-cc-brand-200",
-        count: "bg-cc-brand-100 text-cc-brand-800",
+        ...shared,
+        count: "bg-cc-brand-50 text-cc-brand-800 border border-cc-brand-100",
         accentBar: "bg-cc-brand-500",
       };
     case "won":
       return {
-        col: "bg-emerald-50/40 border-emerald-200",
-        head: "bg-emerald-50 border-emerald-200",
-        count: "bg-emerald-100 text-emerald-800",
+        ...shared,
+        count: "bg-emerald-50 text-emerald-800 border border-emerald-100",
         accentBar: "bg-emerald-500",
       };
     case "lost":
       return {
-        col: "bg-rose-50/40 border-rose-200",
-        head: "bg-rose-100 border-rose-200 text-rose-800",
-        count: "bg-white/70 text-rose-800",
+        ...shared,
+        count: "bg-rose-50 text-rose-800 border border-rose-100",
         accentBar: "bg-rose-400",
       };
     case "expired":
       return {
-        col: "bg-amber-50/50 border-amber-200",
-        head: "bg-amber-100 border-amber-200 text-amber-800",
-        count: "bg-white/70 text-amber-800",
+        ...shared,
+        count: "bg-amber-50 text-amber-700 border border-amber-100",
         accentBar: "bg-amber-500",
       };
     case "superseded":
     default:
       return {
-        col: "bg-slate-50 border-slate-200",
-        head: "bg-slate-100 border-slate-200 text-slate-700",
-        count: "bg-white/70 text-slate-700",
+        ...shared,
+        count: "bg-ppp-charcoal-50 text-ppp-charcoal-500 border border-ppp-charcoal-100",
         accentBar: "bg-slate-300",
       };
   }
@@ -373,8 +377,11 @@ function ProposalColumn({
   const total = rows.reduce((acc, r) => acc + r.total_cents, 0);
   return (
     <div
-      className={`${width} border rounded-xl overflow-hidden flex flex-col ${tone.col}`}
+      className={`${width} border rounded-xl overflow-hidden flex flex-col shadow-sm ${tone.col}`}
     >
+      {/* Karan 2026-07-15: colored accent stripe at the top of the
+          column — the only tinted element on an otherwise-white board. */}
+      <div className={`h-1 ${tone.accentBar}`} aria-hidden />
       <div className={`${compact ? "px-2 py-1.5" : "px-3 py-2"} border-b ${tone.head}`}>
         <div className="flex items-center justify-between gap-2">
           <span

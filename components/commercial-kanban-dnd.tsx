@@ -73,11 +73,31 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     // card back. Eliminates the 200-500ms "card sits stale" lag.
     setOptimisticMove({ oppId, toStatus });
 
+    // Karan 2026-07-15: the Kanban now surfaces "Proposal Drafted" and
+    // "Proposal Sent" as two separate visual columns instead of one
+    // "Proposal" column with a sub-status chip. Both map to real DB
+    // (status, sub_status) tuples via the mini-shim below — the API
+    // itself doesn't need to know these column keys exist.
+    //   proposal_drafted → estimating + proposal_pending_approval
+    //   proposal_sent    → proposal   + sent
+    let apiToStatus = toStatus;
+    let apiToSubStatus: string | undefined;
+    if (toStatus === "proposal_drafted") {
+      apiToStatus = "estimating";
+      apiToSubStatus = "proposal_pending_approval";
+    } else if (toStatus === "proposal_sent") {
+      apiToStatus = "proposal";
+      apiToSubStatus = "sent";
+    }
+
     try {
       const res = await fetch(`/api/commercial/opportunities/${oppId}/move-status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to_status: toStatus }),
+        body: JSON.stringify({
+          to_status: apiToStatus,
+          ...(apiToSubStatus ? { to_sub_status: apiToSubStatus } : {}),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.status === 409 && json.error === "terminal_status_needs_detail_page") {
@@ -230,11 +250,14 @@ export function KanbanDnDColumn({
         setIsOver(false);
         void ctx.onColumnDrop(e, status);
       }}
-      // No transition — the ring should snap in/out as the card enters
-      // and leaves the column so the drop feels precise, not delayed.
-      className={`h-full ${
+      // Karan 2026-07-15: dropped the emerald ring — it read as a
+      // floating outline that never felt "seamless." Now we tint the
+      // whole column brand-blue on hover with a hairline outline; the
+      // drop feels like the target snaps to a soft state rather than
+      // wrapping in a badge.
+      className={`h-full transition-colors rounded-xl ${
         isOver && ctx.dragOppId
-          ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-ppp-charcoal-50 rounded-xl"
+          ? "bg-cc-brand-50/60 outline outline-1 outline-cc-brand-300"
           : ""
       }`}
     >

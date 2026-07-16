@@ -23,7 +23,6 @@
  * fetch, and DAG rule is byte-identical to the prior version. Only the
  * visual layout + component composition changed.
  */
-import React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
@@ -1648,41 +1647,74 @@ function CustomerBoardRow({
           View
         </Link>
       </div>
-      {/* Deal chip strip — subtle pills for each deal so users can drill
-          straight into a specific deal without opening the account first.
-          Open bids show as blue pills; closed dim to charcoal so the eye
-          reads open-work first. `relative z-10` keeps these chips
-          clickable above the whole-row stretched-link overlay. */}
+      {/* Karan 2026-07-15: bring back the progress-bar pill per deal
+          (from before the row redesign). Each open deal now renders as
+          a mini card with the segmented Pre-Sale progress bar (or the
+          Post-Sale cyan chip for delivery-phase deals) + the deal
+          title + bid range + confidence. Closed deals stay compact as
+          small pills below so the eye still leads with open work. */}
       {(open.length > 0 || closed.length > 0) && (
-        <div className="relative z-10 mt-2.5 flex flex-wrap gap-1.5">
-          {open.map((o) => (
-            <Link
-              key={o.id}
-              href={sheetHref(account.id, o.id)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-cc-brand-200 bg-cc-brand-50 text-cc-brand-800 text-[11.5px] font-medium hover:bg-cc-brand-100 hover:border-cc-brand-300 max-w-[280px] truncate"
-              title={`View ${account.company_name} · ${o.title} — ${opportunityStatusLabel(o.status)}`}
-            >
-              <span className="truncate">{o.title}</span>
-            </Link>
-          ))}
-          {closed.slice(0, 3).map((o) => (
-            <Link
-              key={o.id}
-              href={sheetHref(account.id, o.id)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600 text-[11.5px] font-medium hover:bg-ppp-charcoal-100 max-w-[280px] truncate"
-              title={`View ${account.company_name} · ${o.title} — ${opportunityStatusLabel(o.status)}`}
-            >
-              <span className="truncate">{o.title}</span>
-            </Link>
-          ))}
-          {closed.length > 3 && (
-            <Link
-              href={`/commercial/accounts/${account.id}`}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-200 bg-white text-ppp-charcoal-500 text-[11.5px] font-medium hover:bg-ppp-charcoal-50"
-              title={`See all ${closed.length} closed deals`}
-            >
-              +{closed.length - 3} more
-            </Link>
+        <div className="relative z-10 mt-3 space-y-1.5">
+          {open.map((o) => {
+            const bidRange = o.bid_value_high_cents
+              ? `${formatCents(o.bid_value_low_cents ?? 0)}–${formatCents(o.bid_value_high_cents)}`
+              : o.bid_value_low_cents
+              ? formatCents(o.bid_value_low_cents)
+              : null;
+            const prob =
+              o.probability_pct ??
+              DEFAULT_PROBABILITY_BY_STATUS[o.status] ??
+              null;
+            return (
+              <Link
+                key={o.id}
+                href={sheetHref(account.id, o.id)}
+                className="group/deal flex items-center gap-3 px-2.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-white hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
+                title={`View ${account.company_name} · ${o.title} — ${opportunityStatusLabel(o.status)}`}
+              >
+                <div className="min-w-[160px] max-w-[220px] shrink-0">
+                  <StageChip status={o.status} sub_status={o.sub_status} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12.5px] font-semibold text-ppp-charcoal truncate group-hover/deal:text-cc-brand-800">
+                    {o.title}
+                  </div>
+                  {(bidRange || prob !== null) && (
+                    <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 tabular-nums flex items-center gap-1.5 flex-wrap">
+                      {bidRange && <span>{bidRange} bid</span>}
+                      {bidRange && prob !== null && <span aria-hidden className="text-ppp-charcoal-300">·</span>}
+                      {prob !== null && <span>{prob}% confident</span>}
+                    </div>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+          {closed.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {closed.slice(0, 3).map((o) => (
+                <Link
+                  key={o.id}
+                  href={sheetHref(account.id, o.id)}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-ppp-charcoal-50/70 text-ppp-charcoal-600 text-[11px] font-medium hover:bg-ppp-charcoal-100 max-w-[220px] truncate"
+                  title={`${o.title} — ${opportunityStatusLabel(o.status)}`}
+                >
+                  <span aria-hidden className={o.sub_status === "won" ? "text-emerald-600" : "text-rose-500"}>
+                    {o.sub_status === "won" ? "✓" : "✗"}
+                  </span>
+                  <span className="truncate">{o.title}</span>
+                </Link>
+              ))}
+              {closed.length > 3 && (
+                <Link
+                  href={`/commercial/accounts/${account.id}`}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-white text-ppp-charcoal-500 text-[11px] font-medium hover:bg-ppp-charcoal-50"
+                  title={`See all ${closed.length} closed deals`}
+                >
+                  +{closed.length - 3} more closed
+                </Link>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1726,52 +1758,61 @@ function KanbanBoard({
   sheetHref: (accountId: string, focus?: string) => string;
   flipReturnHref: string;
 }) {
-  // v2 (2026-07-13 Katie's model): Kanban splits into two lanes.
-  // Pre-Sale: Qualifying → Estimating → Proposal → Closed(Won/Lost)
-  // Post-Sale: Pre-Construction → In Progress → Billing → Closed(Closeout/Closed)
-  // Both lanes rendered stacked so Alex sees the whole pipeline without a
-  // toggle. The Pre-Sale row leads with the sales flow; Post-Sale below is
-  // the delivery flow. Cards render their sub-status as a small chip.
-  const OPEN_COLUMNS_PRE_SALE: readonly OpportunityStatus[] = [
-    "qualifying",
-    "estimating",
-    "proposal",
+  // v2 (2026-07-13 Katie's model + Karan 2026-07-15 refinement):
+  // Kanban splits into two lanes.
+  //   Pre-Sale: Qualifying → Estimating → Proposal Drafted → Proposal Sent → Closed(Won/Lost)
+  //   Post-Sale: Pre-Construction → In Progress → Billing → Closed(Closeout/Closed)
+  //
+  // "Proposal Drafted" + "Proposal Sent" are VIRTUAL columns, not real
+  // top-level statuses. Under the hood:
+  //   Proposal Drafted = status=estimating AND sub_status=proposal_pending_approval
+  //   Proposal Sent    = status=proposal (any sub_status)
+  // The KanbanDnDProvider client shim translates the virtual keys back
+  // into real (status, sub_status) tuples on drop. Estimating column
+  // therefore only shows opps in `estimating` WITHOUT the drafted sub.
+  const COL_QUALIFYING = "qualifying";
+  const COL_ESTIMATING = "estimating";
+  const COL_PROPOSAL_DRAFTED = "proposal_drafted";
+  const COL_PROPOSAL_SENT = "proposal_sent";
+  const OPEN_COLUMNS_PRE_SALE: readonly string[] = [
+    COL_QUALIFYING,
+    COL_ESTIMATING,
+    COL_PROPOSAL_DRAFTED,
+    COL_PROPOSAL_SENT,
   ];
-  const OPEN_COLUMNS_POST_SALE: readonly OpportunityStatus[] = [
+  const OPEN_COLUMNS_POST_SALE: readonly string[] = [
     "pre_construction",
     "in_progress",
     "billing",
   ];
-  const OPEN_COLUMNS = [
+  const OPEN_COLUMNS: readonly string[] = [
     ...OPEN_COLUMNS_PRE_SALE,
     ...OPEN_COLUMNS_POST_SALE,
-  ] as readonly OpportunityStatus[];
+  ];
   // Terminal drop targets — Won + Lost sit in the Pre-Sale closed cluster;
   // Closeout + Closed in the Post-Sale closed cluster. Client submits the
   // v1 shorthand "won"/"lost" via KanbanDnDColumn's `status` prop which
   // the compat shim in quickFlipStatusAction translates into the v2 tuple.
-  const TERMINAL_COLUMNS: readonly OpportunityStatus[] = ["won", "lost"];
+  const TERMINAL_COLUMNS: readonly string[] = ["won", "lost"];
   const TERMINAL_DISPLAY_CAP = 10;
 
-  const byStatus = new Map<OpportunityStatus, CommercialOpportunity[]>();
+  const byStatus = new Map<string, CommercialOpportunity[]>();
   for (const s of OPEN_COLUMNS) byStatus.set(s, []);
-  // Terminal drops still keyed by v1 shorthand — the compat layer routes
-  // dropped opps into pre_sale_closed with the correct sub_status.
   for (const s of TERMINAL_COLUMNS) byStatus.set(s, []);
   const overflowClosed: CommercialOpportunity[] = [];
   for (const o of opps) {
-    // Route the visual sort: any Pre-Sale/Closed opp goes to the Won or
-    // Lost visual bucket based on sub_status; any Post-Sale/Closed opp
-    // to the Post-Sale closed bucket (currently just "closed" key).
     if (o.status === "pre_sale_closed") {
-      if (o.sub_status === "won") byStatus.get("won" as OpportunityStatus)!.push(o);
-      else byStatus.get("lost" as OpportunityStatus)!.push(o);
-    } else if (OPEN_COLUMNS.includes(o.status as OpportunityStatus)) {
-      byStatus.get(o.status as OpportunityStatus)!.push(o);
+      if (o.sub_status === "won") byStatus.get("won")!.push(o);
+      else byStatus.get("lost")!.push(o);
+    } else if (o.status === "estimating" && o.sub_status === "proposal_pending_approval") {
+      // Priced + waiting for internal sign-off before it goes out to GC.
+      byStatus.get(COL_PROPOSAL_DRAFTED)!.push(o);
+    } else if (o.status === "proposal") {
+      // Proposal is out to GC (or being chased via follow_up).
+      byStatus.get(COL_PROPOSAL_SENT)!.push(o);
+    } else if (OPEN_COLUMNS.includes(o.status)) {
+      byStatus.get(o.status)!.push(o);
     } else if (o.status === "post_sale_closed") {
-      // Post-Sale closed opps land in the overflow list for now — Alex
-      // rarely wants to see historical closed deals in the Kanban; they
-      // show up in the "Older decided deals" details drawer below.
       overflowClosed.push(o);
     }
   }
@@ -1785,6 +1826,61 @@ function KanbanBoard({
       overflowClosed.push(...overflow);
     }
   }
+  // Column labels + tone tokens. Each column gets a top accent stripe
+  // in the header (like the CustomerBoardRow left border) so the eye
+  // catches the stage identity in one glance.
+  const COLUMN_META: Record<
+    string,
+    { label: string; accent: string; head: string; empty: string }
+  > = {
+    qualifying: {
+      label: "Qualifying",
+      accent: "bg-slate-400",
+      head: "bg-white",
+      empty: "Drop a bid here",
+    },
+    estimating: {
+      label: "Estimating",
+      accent: "bg-indigo-400",
+      head: "bg-white",
+      empty: "Drop while we're pricing",
+    },
+    proposal_drafted: {
+      label: "Proposal Drafted",
+      accent: "bg-amber-400",
+      head: "bg-white",
+      empty: "Drop when the proposal is ready",
+    },
+    proposal_sent: {
+      label: "Proposal Sent",
+      accent: "bg-cc-brand-500",
+      head: "bg-white",
+      empty: "Drop once the proposal is out to GC",
+    },
+    pre_construction: {
+      label: "Pre-Construction",
+      accent: "bg-teal-400",
+      head: "bg-white",
+      empty: "Drop when scheduling with GC",
+    },
+    in_progress: {
+      label: "In Progress",
+      accent: "bg-cyan-500",
+      head: "bg-white",
+      empty: "Drop when crews start",
+    },
+    billing: {
+      label: "Billing",
+      accent: "bg-fuchsia-400",
+      head: "bg-white",
+      empty: "Drop when we're closing out",
+    },
+  };
+  const bidRangeTotal = (list: CommercialOpportunity[]) =>
+    list.reduce(
+      (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
+      0
+    );
   // Karan 2026-07-05: "so many statuses and its a lot to scroll thru."
   // Split the board into two flex-groups so users see the OPEN pipeline
   // (main flow) first, then a narrower "Closed" cluster grouped visually
@@ -1794,79 +1890,56 @@ function KanbanBoard({
   return (
     <KanbanDnDProvider>
       <div className="space-y-3">
-        <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-full px-3 py-1.5">
+        {/* Karan 2026-07-15: killed the top lane-chip legend + the
+            rotated-vertical "Post-Sale" divider. They read as clutter
+            once the column headers themselves carry the tone. Left one
+            slim helper line above the board so drag/drop discoverability
+            still lands. */}
+        <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-white border border-ppp-charcoal-100 rounded-full px-3 py-1.5">
           <span aria-hidden>💡</span>
           <span>
-            Drag a card between stages to move it forward. Drop into <strong>Won / Lost</strong> to close the bid.
-          </span>
-        </div>
-        {/* v2 (2026-07-13 Katie's model): Pre-Sale + Post-Sale lane
-            labels above the column groups so Alex sees the two-lane
-            structure. Sub-status chip on each card is handled inside
-            KanbanCard. */}
-        <div className="flex flex-wrap items-center gap-3 text-[10.5px] font-bold uppercase tracking-widest">
-          <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-cc-brand-50 text-cc-brand-800 border border-cc-brand-200">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-brand-600" />
-            Pre-Sale (sales flow)
-          </span>
-          <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-            Post-Sale (delivery flow)
-          </span>
-          <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 border border-ppp-charcoal-200">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-ppp-charcoal-500" />
-            Closed
+            Drag between stages to move a deal forward. Drop into <strong>Won / Lost</strong> to close.
           </span>
         </div>
         <div className="overflow-x-auto -mx-2 px-2 pb-2">
           <div className="flex gap-3 min-w-max items-stretch">
-            {/* Open pipeline — Pre-Sale + Post-Sale columns for the active flow.
-                A subtle vertical divider between the two lanes helps the eye
-                separate the two flows. */}
-            {OPEN_COLUMNS.map((status, idx) => {
-              const showLaneDivider = idx === OPEN_COLUMNS_PRE_SALE.length;
+            {OPEN_COLUMNS.map((status) => {
               const colOpps = byStatus.get(status) ?? [];
-              const colTotal = colOpps.reduce(
-                (acc, o) => acc + (o.bid_value_high_cents ?? o.bid_value_low_cents ?? 0),
-                0
-              );
-              // v2 (2026-07-13): tone the Post-Sale columns emerald-tinted to
-              // read as the delivery flow; Pre-Sale open columns stay neutral.
-              const isPostSale = (OPEN_COLUMNS_POST_SALE as readonly string[]).includes(status);
-              const tone = isPostSale
-                ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-50 border-emerald-200" }
-                : { col: "bg-ppp-charcoal-50/60 border-ppp-charcoal-100", head: "bg-white border-ppp-charcoal-100" };
+              const colTotal = bidRangeTotal(colOpps);
+              const meta = COLUMN_META[status] ?? {
+                label: opportunityStatusLabel(status as OpportunityStatus),
+                accent: "bg-ppp-charcoal-300",
+                head: "bg-white",
+                empty: "Drop a bid here",
+              };
               return (
-                <React.Fragment key={status}>
-                  {showLaneDivider && (
-                    <div className="shrink-0 flex items-center px-1">
-                      <div className="h-full w-px bg-emerald-200" />
-                      <span className="ml-1 rotate-180 [writing-mode:vertical-rl] text-[9px] font-bold uppercase tracking-widest text-emerald-700">
-                        Post-Sale
-                      </span>
-                    </div>
-                  )}
-                <KanbanDnDColumn status={status}>
-                  <div className={`w-64 sm:w-72 shrink-0 border rounded-xl overflow-hidden flex flex-col h-full ${tone.col}`}>
-                    <div className={`px-3 py-2 border-b ${tone.head}`}>
+                <KanbanDnDColumn key={status} status={status}>
+                  <div className="w-60 sm:w-64 shrink-0 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-white shadow-sm">
+                    {/* Colored accent stripe on top — the whole card is
+                        white; only the 3px stripe carries the stage
+                        tone, so a row of 7 columns reads as a unified
+                        board with color-coded "spines" rather than 7
+                        clashing pastel boxes. */}
+                    <div className={`h-1 ${meta.accent}`} aria-hidden />
+                    <div className={`px-3 py-2 border-b border-ppp-charcoal-100 ${meta.head}`}>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[12px] font-bold text-ppp-charcoal">
-                          {opportunityStatusLabel(status)}
+                        <span className="text-[12px] font-bold text-ppp-charcoal tracking-tight">
+                          {meta.label}
                         </span>
-                        <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white/70 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
+                        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100 tabular-nums">
                           {colOpps.length}
                         </span>
                       </div>
                       {colTotal > 0 && (
-                        <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                        <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 tabular-nums">
                           {formatCents(colTotal)} top-of-range
                         </div>
                       )}
                     </div>
-                    <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px]">
+                    <ul className="p-2 space-y-2 overflow-y-auto max-h-[70vh] min-h-[120px] bg-ppp-charcoal-50/30">
                       {colOpps.length === 0 ? (
                         <li className="text-[11px] text-ppp-charcoal-400 italic text-center py-6">
-                          Drop a bid here
+                          {meta.empty}
                         </li>
                       ) : (
                         colOpps.map((opp) => (
@@ -1889,52 +1962,49 @@ function KanbanBoard({
                     </ul>
                   </div>
                 </KanbanDnDColumn>
-                </React.Fragment>
               );
             })}
 
-            {/* Closed cluster — 3 narrow stacked drop-target columns.
-                Visually grouped inside a single "Closed" outer card so
-                the eye reads them as one section. Each is still a
-                separate KanbanDnDColumn so drag-to-Won vs drag-to-Lost
-                still triggers the correct debrief routing. Narrower
-                (w-44) so all 3 fit in the horizontal space one normal
-                column used to take. */}
-            <div className="shrink-0 border rounded-xl overflow-hidden flex flex-col h-full bg-white border-ppp-charcoal-100">
-              <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
+            {/* Closed cluster — 2 narrow stacked drop-target columns
+                grouped inside a single "Closed" outer card. Same accent-
+                stripe treatment as the open pipeline: white card body,
+                emerald/rose stripe on top of each sub-column. Reads as
+                a single Closed section rather than two loud tinted
+                boxes shouting for attention. */}
+            <div className="shrink-0 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-white shadow-sm">
+              <div className="h-1 bg-ppp-charcoal-300" aria-hidden />
+              <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-white">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12px] font-bold text-ppp-charcoal uppercase tracking-wide">
+                  <span className="text-[12px] font-bold text-ppp-charcoal tracking-tight">
                     Closed
                   </span>
-                  <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
+                  <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100 tabular-nums">
                     {TERMINAL_COLUMNS.reduce((acc, s) => acc + (byStatus.get(s)?.length ?? 0), 0)}
                   </span>
                 </div>
                 <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
-                  Drop here to close the deal
+                  Drop here to close
                 </div>
               </div>
-              {/* Cluster interior — stacks vertically on narrow phones (<640px)
-                  so the 3 sub-columns don't force horizontal scroll inside
-                  the already-narrow board layout. Side-by-side from sm+. */}
-              <div className="flex flex-col sm:flex-row gap-2 p-2">
+              <div className="flex flex-col sm:flex-row gap-2 p-2 bg-ppp-charcoal-50/30">
                 {TERMINAL_COLUMNS.map((status) => {
                   const colOpps = byStatus.get(status) ?? [];
-                  const tone =
+                  const accent =
                     status === "won"
-                      ? { col: "bg-emerald-50/40 border-emerald-200", head: "bg-emerald-100 border-emerald-200 text-emerald-800" }
+                      ? "bg-emerald-500"
                       : status === "lost"
-                      ? { col: "bg-rose-50/40 border-rose-200", head: "bg-rose-100 border-rose-200 text-rose-800" }
-                      : { col: "bg-slate-50 border-slate-200", head: "bg-slate-100 border-slate-200 text-slate-700" };
+                      ? "bg-rose-500"
+                      : "bg-slate-400";
                   return (
                     <KanbanDnDColumn key={status} status={status}>
-                      <div className={`w-full sm:w-44 lg:w-48 shrink-0 border rounded-lg overflow-hidden flex flex-col h-full ${tone.col}`}>
-                        <div className={`px-2 py-1.5 border-b ${tone.head}`}>
+                      <div className="w-full sm:w-44 lg:w-48 shrink-0 border border-ppp-charcoal-100 rounded-lg overflow-hidden flex flex-col h-full bg-white">
+                        <div className={`h-0.5 ${accent}`} aria-hidden />
+                        <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-white">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="text-[11px] font-bold uppercase tracking-wide">
-                              {opportunityStatusLabel(status)}
+                            <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal">
+                              {opportunityStatusLabel(status as OpportunityStatus)}
                             </span>
-                            <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-white/80 text-ppp-charcoal-700 text-[10px] font-semibold">
+                            <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100">
                               {colOpps.length}
                             </span>
                           </div>
