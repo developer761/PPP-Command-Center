@@ -486,12 +486,14 @@ export async function markProposalOutcome(input: {
     .maybeSingle();
   if (!proposalRow) return { ok: false, error: "Proposal not found." };
   const proposalBefore = proposalRow as { id: string; opportunity_id: string; status: string };
-  if (proposalBefore.status !== "sent") {
-    return {
-      ok: false,
-      error: `Only Sent proposals can be marked ${input.outcome}. This one is ${proposalBefore.status}.`,
-    };
-  }
+  // Karan 2026-07-15 (round 5): dropped the "only Sent can be Won/Lost"
+  // guard. The proposals kanban is fully free-drag now — a user might
+  // decide a Draft proposal represents a verbal-yes deal and drag it
+  // straight to Won, skipping the send step. Same for verbal-no →
+  // Lost. Refusing the transition would block valid workflows. The
+  // proposal→deal cascade handles the alignment regardless of source.
+  // (Won/Lost from won/lost still gets caught by outcome-route reopen
+  // detection before this helper fires.)
   // Flip the proposal via the same helper the editor uses.
   const propResult = await updateProposalStatus({
     id: input.proposal_id,
