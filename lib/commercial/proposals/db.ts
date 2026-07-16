@@ -1506,6 +1506,15 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     if (deal.status === "pre_sale_closed" && target.status === "pre_sale_closed") {
       continue; // don't cross-flip won ↔ lost via auto-reconcile
     }
+    // Karan 2026-07-16 (audit fix): if deal is already Won/Lost, do NOT
+    // auto-un-close it via reconcile. The user explicitly closed the
+    // deal; a drift-heal that silently rewinds Won → Proposal Sent
+    // would erase real intent. If the proposal state disagrees, the
+    // user needs to reopen manually (drag Won proposal back to Sent
+    // via kanban, which fires reopenProposal end-to-end).
+    if (deal.status === "pre_sale_closed" && target.status !== "pre_sale_closed") {
+      continue;
+    }
     const { changeOpportunityStatus } = await import(
       "@/lib/commercial/opportunities/status"
     );
