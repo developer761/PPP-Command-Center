@@ -77,13 +77,15 @@ const ACTIVE_COLUMNS: ProposalStatus[] = ["draft", "pending_approval", "sent"];
 // forever show "0 —" and pretend it does something.
 const CLOSED_TERMINAL: ProposalStatus[] = ["lost", "expired"];
 
-// Karan 2026-07-16 (round 2): dropped MINI_KANBAN_COLUMN_LABEL — the
-// account-page Proposals tab uses `proposalStatusLabel` for its status
-// pills, and Karan asked for the two surfaces to say the same thing.
-// Kanban columns now use `proposalStatusLabel(status)` too. The mini-
-// kanban already only shows the CURRENT proposal per deal, so "Draft"
-// implicitly means "the current proposal for this deal is in Draft"
-// — no rename needed to make that clear.
+// Karan 2026-07-16 (round 3): "change draft to current proposal".
+// Draft column on the mini-kanban gets renamed since we only render
+// THE current revision here — "Draft" reads like a list of drafts,
+// "Current proposal" makes it explicit that this IS the working
+// proposal. Other statuses keep proposalStatusLabel to stay in sync
+// with the account-page Proposals tab pills.
+const MINI_KANBAN_COLUMN_LABEL: Partial<Record<ProposalStatus, string>> = {
+  draft: "Current proposal",
+};
 
 type ColumnTone = {
   col: string; // container bg + border
@@ -1017,6 +1019,7 @@ function DealMiniKanban({
                 tone={toneForStatus(status)}
                 width="flex-1 min-w-[120px]"
                 compact
+                labelOverride={MINI_KANBAN_COLUMN_LABEL[status]}
               />
             </ProposalDnDColumn>
           ))}
