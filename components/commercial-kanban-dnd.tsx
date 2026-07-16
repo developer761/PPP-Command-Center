@@ -183,8 +183,16 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
     >
       <div className="relative">
         {error && (
-          <div className="fixed top-4 right-4 z-50 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg px-4 py-2 text-sm shadow-lg">
-            {error}
+          <div
+            role="alert"
+            className="fixed inset-x-4 top-4 sm:inset-x-auto sm:top-6 sm:right-6 sm:max-w-md z-50 bg-rose-600 text-white rounded-xl px-4 py-3 text-[13px] font-semibold shadow-2xl border border-rose-700 flex items-start gap-2 animate-fade-up"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>{error}</span>
           </div>
         )}
         {navigating && (

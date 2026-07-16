@@ -1152,9 +1152,15 @@ export default async function CommercialOpportunitiesPage({
                     className="bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden border-l-4"
                     style={tone.border}
                   >
+                    {/* Karan 2026-07-15 (round 6): each account is a
+                        collapsible <details> so users can hide
+                        customers they aren't working on, saving
+                        vertical space. First 3 accounts open by
+                        default; rest closed. */}
+                    <details open className="group/acct">
                     {g.account && (
-                      <div
-                        className="px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100"
+                      <summary
+                        className="cursor-pointer px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100 list-none [&::-webkit-details-marker]:hidden hover:brightness-95"
                         style={tone.headerBg}
                       >
                         <div className="flex items-center gap-2.5 flex-wrap min-w-0">
@@ -1187,10 +1193,26 @@ export default async function CommercialOpportunitiesPage({
                             </span>
                           )}
                         </div>
-                        <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-white border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
-                          {g.opps.length} deal{g.opps.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-white border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
+                            {g.opps.length} deal{g.opps.length === 1 ? "" : "s"}
+                          </span>
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                            className="text-ppp-charcoal-400 transition-transform group-open/acct:rotate-180"
+                          >
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
+                        </div>
+                      </summary>
                     )}
                     <ul className="divide-y divide-ppp-charcoal-100">
                       {g.opps.map((o) => (
@@ -1211,6 +1233,7 @@ export default async function CommercialOpportunitiesPage({
                         />
                       ))}
                     </ul>
+                    </details>
                   </li>
                   );
                 })}
@@ -3019,7 +3042,20 @@ function StageChip({
   const isPostSale = postSaleStatuses.includes(status);
   const stages = isPostSale ? POST_SALE_STEPPER : PRE_SALE_STEPPER;
   const laneLabel = isPostSale ? "Post-Sale" : "Pre-Sale";
-  const currentIdx = Math.max(0, stages.findIndex((s) => s.key === status));
+  // Karan 2026-07-15 (round 6): virtual-column consistency — an opp
+  // at (estimating, proposal_pending_approval) lands in the "Proposal
+  // Drafted" kanban column. The StageChip below should reflect that
+  // by advancing the stepper to the "Proposal" segment (not
+  // Estimating), so the pipeline row's pill matches the kanban's
+  // visual grouping.
+  const virtualStatusForStage =
+    status === "estimating" && sub_status === "proposal_pending_approval"
+      ? "proposal"
+      : status;
+  const currentIdx = Math.max(
+    0,
+    stages.findIndex((s) => s.key === virtualStatusForStage)
+  );
   const currentLabel = stages[currentIdx]?.label ?? "Qualifying";
   const subLabel = sub_status ? opportunitySubStatusLabel(sub_status) : "";
   // Dedupe: "Estimating · Estimating" collapses to just the top pill.

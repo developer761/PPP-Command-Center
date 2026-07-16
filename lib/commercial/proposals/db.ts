@@ -406,6 +406,12 @@ export async function updateProposalStatus(input: {
             to_sub_status: dealSub,
             acting_user_id: input.acting_user_id,
             _skipDagCheck: true,
+            // Karan 2026-07-15 (round 6): don't let the deal update
+            // fan back out to sibling proposals — this cascade was
+            // triggered by a proposal move, so promoting/demoting
+            // siblings would make "one card moved" look like "all
+            // cards moved together" on the proposal kanban.
+            _skipProposalCascade: true,
           });
           if (!flip.ok) {
             console.warn(

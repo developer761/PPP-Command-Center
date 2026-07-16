@@ -81,6 +81,13 @@ export type ChangeStatusInput = {
    *  admin reconciles) need to bypass so the alignment engine can
    *  move any deal to any target without user-facing validation. */
   _skipDagCheck?: boolean;
+  /** Karan 2026-07-15 (round 6): when a cascade FROM a proposal move
+   *  fires this deal update, we must NOT let the deal update then
+   *  cascade BACK to sibling proposals — that promotes/demotes cards
+   *  the user never touched, making the proposal kanban look like
+   *  "everything moves as one." Set true from the proposal→deal
+   *  cascade path in updateProposalStatus. */
+  _skipProposalCascade?: boolean;
   /** v2 (migration 052): callers should pass the target sub_status too so
    *  the tuple lands whitelisted. If omitted, the DEFAULT_SUB_STATUS_BY_STATUS
    *  fallback for `to_status` is used (e.g. proposal → sent). */
@@ -330,7 +337,15 @@ export async function changeOpportunityStatus(
   //
   // Best-effort — failures log a warning but never roll back the opp
   // update.
-  try {
+  // Karan 2026-07-15 (round 6): the proposal cascade block below fans
+  // out to sibling proposals on the same deal. That's correct when
+  // the DEAL was moved (e.g., user drags deal to Won → all Sent
+  // proposals should become Won). It's WRONG when this deal update
+  // was itself triggered BY a proposal move — the sibling proposals
+  // aren't touched by the user's intent and shouldn't be dragged
+  // along. Caller signals this via _skipProposalCascade.
+  if (!input._skipProposalCascade) {
+   try {
     const deriveTargetProposalStatus = (): {
       demoteFrom: string[];
       to: string;
@@ -395,6 +410,7 @@ export async function changeOpportunityStatus(
       "[changeOpportunityStatus] proposal cascade threw:",
       err instanceof Error ? err.message : String(err)
     );
+  }
   }
 
   // Fan out a bell + email to every active team member on the opp

@@ -3478,27 +3478,24 @@ async function AccountProposalsTab({
   const fmt = (c: number) =>
     `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
-  // Karan 2026-07-15: color-code each deal group's left border by the
-  // deal's current pipeline status so Alex can scan "which deals are
-  // hot vs closed" at a glance — same visual grammar as the
-  // /commercial/opportunities customer-board rows.
-  const dealBorderColor = (dealStatus: string): string => {
-    switch (dealStatus) {
-      case "qualifying": return "border-l-slate-400";
-      case "estimating": return "border-l-amber-500";
-      case "proposal": return "border-l-cc-brand-600";
-      case "pre_sale_closed": return "border-l-emerald-500"; // Won or Lost — sub_status disambiguates
-      case "pre_construction": return "border-l-purple-500";
-      case "in_progress": return "border-l-cyan-500";
-      case "billing": return "border-l-indigo-500";
-      case "post_sale_closed": return "border-l-slate-300";
-      default: return "border-l-ppp-charcoal-200";
+  // Karan 2026-07-15 (round 6): color-code each deal group by its
+  // DEAL ID (djb2 hue) so two deals under the same account with the
+  // same status don't blur into the same color. Matches the
+  // /commercial/proposals mini-kanban grammar (deal-hue on cards)
+  // so a customer's deals read as distinct sections everywhere.
+  //
+  // Was previously status-based which meant TEST + TEST 2 (both at
+  // Estimating with proposal_pending_approval) rendered identical
+  // orange borders. New scheme: hash the deal.id to a stable HSL hue
+  // that skips the blue band (Karan's brand rule).
+  const dealHueFor = (dealId: string): number => {
+    let h = 5381;
+    for (let i = 0; i < dealId.length; i++) {
+      h = ((h << 5) + h + dealId.charCodeAt(i)) >>> 0;
     }
-  };
-  // Lost overrides the Won color on pre_sale_closed.
-  const dealBorderColorFor = (dealStatus: string, subStatus: string | null): string => {
-    if (dealStatus === "pre_sale_closed" && subStatus === "lost") return "border-l-rose-500";
-    return dealBorderColor(dealStatus);
+    let hue = h % 300;
+    if (hue >= 200) hue = (hue + 60) % 360;
+    return hue;
   };
 
   // Count only DRAFT proposals — the bulk-delete button only touches
@@ -3585,16 +3582,19 @@ async function AccountProposalsTab({
               bucket.deal.client_name?.trim() ||
               bucket.deal.location_short?.trim() ||
               "(untitled deal)";
-            const borderCls = dealBorderColorFor(
-              bucket.deal.status,
-              bucket.deal.sub_status
-            );
+            const hue = dealHueFor(dealId);
+            const borderStyle = { borderLeftColor: `hsl(${hue}, 62%, 55%)` };
+            const headerBgStyle = { backgroundColor: `hsl(${hue}, 62%, 96%)` };
             return (
               <section
                 key={dealId}
-                className={`bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden border-l-4 ${borderCls}`}
+                className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden border-l-4"
+                style={borderStyle}
               >
-                <header className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap">
+                <header
+                  className="px-4 py-2.5 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap"
+                  style={headerBgStyle}
+                >
                   <div className="min-w-0">
                     {/* Karan 2026-07-15: was linking with ?edit=<dealId>
                         which auto-opened the Edit Deal drawer whenever
