@@ -344,63 +344,7 @@ export default async function ProposalsIndexPage({
         <ProposalsListView rows={rows} />
       ) : (
         <ProposalsKanbanDnDProvider>
-          <div className="overflow-x-auto -mx-3 sm:-mx-6 px-3 sm:px-6 pb-2">
-            <div className="flex gap-3 min-w-max items-stretch">
-              {/* Active columns — Draft → Pending → Sent */}
-              {ACTIVE_COLUMNS.map((status) => (
-                <ProposalDnDColumn key={status} status={status}>
-                  <ProposalColumn
-                    status={status}
-                    rows={byStatus.get(status) ?? []}
-                    tone={toneForStatus(status)}
-                    width="w-64 sm:w-72"
-                  />
-                </ProposalDnDColumn>
-              ))}
-
-              {/* Won — the moment Alex cares about (drop target) */}
-              <ProposalDnDColumn key="won" status="won">
-                <ProposalColumn
-                  status="won"
-                  rows={byStatus.get("won") ?? []}
-                  tone={toneForStatus("won")}
-                  width="w-64 sm:w-72"
-                />
-              </ProposalDnDColumn>
-
-              {/* Closed cluster — Lost is a drop target (routes to
-                  debrief). Expired/Replaced are NOT — those are
-                  auto-computed states, not manual outcomes. */}
-              <div className="shrink-0 border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
-                <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12px] font-bold text-ppp-charcoal uppercase tracking-wide">
-                      Closed
-                    </span>
-                    <span className="inline-flex items-center justify-center min-w-[24px] h-5 px-1.5 rounded-full bg-white text-ppp-charcoal-700 text-[11px] font-semibold border border-ppp-charcoal-100">
-                      {CLOSED_TERMINAL.reduce((acc, s) => acc + (byStatus.get(s)?.length ?? 0), 0)}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
-                    Not-awarded / newer revision replaced them
-                  </div>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2 p-2">
-                  {CLOSED_TERMINAL.map((status) => (
-                    <ProposalDnDColumn key={status} status={status}>
-                      <ProposalColumn
-                        status={status}
-                        rows={byStatus.get(status) ?? []}
-                        tone={toneForStatus(status)}
-                        width="w-full sm:w-44 lg:w-48"
-                        compact
-                      />
-                    </ProposalDnDColumn>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <AccountMiniKanbans rows={rows} />
         </ProposalsKanbanDnDProvider>
       )}
 
@@ -457,50 +401,20 @@ function ProposalColumn({
   );
 }
 
-/** Karan 2026-07-15: within each kanban column, cluster cards by
- *  parent account so multi-proposal customers stack visually. When a
- *  column has ≥2 rows from the same account, we render a thin
- *  "Customer name · N" label above the group. Single-account rows
- *  render as plain cards (no label). Order within group: newest first
- *  (matches the top-level `updated_at desc` sort from the query). */
+/** Karan 2026-07-15 (round 2): the per-account mini-kanban rework
+ *  made the inline "Customer · N" cluster label redundant — every
+ *  card inside a mini-kanban is already scoped to one account by
+ *  construction. Just render the cards. */
 function renderRowsGroupedByAccount(
   rows: ProposalRow[],
   accentBar: string,
-  compact: boolean
+  _compact: boolean
 ): ReactNode[] {
-  const byAccount = new Map<string, ProposalRow[]>();
-  for (const r of rows) {
-    const key = r.opportunity?.account?.id ?? "unknown";
-    const list = byAccount.get(key) ?? [];
-    list.push(r);
-    byAccount.set(key, list);
-  }
-  const nodes: ReactNode[] = [];
-  for (const [key, list] of byAccount) {
-    const acctName =
-      list[0]?.opportunity?.account?.company_name ?? "(no customer)";
-    // Only label groups that actually cluster (≥2 in this column).
-    // Single-row groups render as bare cards, no header noise.
-    if (list.length > 1 && !compact) {
-      nodes.push(
-        <li
-          key={`hdr-${key}`}
-          className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 pt-1 px-1 flex items-center justify-between gap-1"
-        >
-          <span className="truncate" title={acctName}>{acctName}</span>
-          <span className="tabular-nums text-ppp-charcoal-400">·&nbsp;{list.length}</span>
-        </li>
-      );
-    }
-    for (const r of list) {
-      nodes.push(
-        <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
-          <ProposalCard row={r} accentBar={accentBar} />
-        </ProposalDnDCard>
-      );
-    }
-  }
-  return nodes;
+  return rows.map((r) => (
+    <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
+      <ProposalCard row={r} accentBar={accentBar} />
+    </ProposalDnDCard>
+  ));
 }
 
 function ProposalCard({ row, accentBar }: { row: ProposalRow; accentBar: string }) {
@@ -603,12 +517,224 @@ function StatusChip({
   );
 }
 
+// ─────────────── Shared account-color hue (Karan 2026-07-15) ───────────────
+// Matches the /commercial/opportunities customer-board pattern —
+// djb2 hash → HSL that skips the blue band so no account's border
+// color collides with the cc-brand red used for section chrome.
+// Consistent hue across kanban + list view so an account "reads"
+// the same in either mode.
+function hueForAccountId(accountId: string | null): number {
+  const key = accountId || "__no_account__";
+  let h = 5381;
+  for (let i = 0; i < key.length; i++) {
+    h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
+  }
+  let hue = h % 300;
+  if (hue >= 200) hue = (hue + 60) % 360;
+  return hue;
+}
+
+function accountColorStyles(accountId: string | null): {
+  border: { borderLeftColor: string };
+  headerBg: { backgroundColor: string };
+  avatar: { backgroundColor: string; color: string };
+} {
+  const hue = hueForAccountId(accountId);
+  return {
+    border: { borderLeftColor: `hsl(${hue}, 62%, 55%)` },
+    headerBg: { backgroundColor: `hsl(${hue}, 62%, 96%)` },
+    avatar: {
+      backgroundColor: `hsl(${hue}, 55%, 88%)`,
+      color: `hsl(${hue}, 55%, 28%)`,
+    },
+  };
+}
+
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p.charAt(0).toUpperCase()).join("") || "?";
+}
+
+// ─────────────── Per-account mini-kanban boards (Karan 2026-07-15) ───────────────
+// Replaces the flat single kanban that mixed all accounts together.
+// Each account gets its own collapsible <details> card with a mini-
+// kanban strip inside (Draft → Pending → Sent → Won + Closed cluster).
+// Scales cleanly to 50+ proposals — Alex collapses accounts he isn't
+// working on and expands the one he's focused on. Color-coded left
+// border per account (deterministic hue from account_id) matches the
+// opportunities customer-board grammar so the same customer reads
+// visually consistent across surfaces.
+//
+// DnD context wraps the whole thing so any card can be dragged
+// within its own account's mini-kanban (Sent → Won / Sent → Lost /
+// Won → Sent reopen).
+
+function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
+  type Bucket = {
+    accountId: string;
+    accountName: string;
+    rows: ProposalRow[];
+    byStatus: Map<string, ProposalRow[]>;
+    openCount: number;
+    outstandingCents: number;
+    wonCents: number;
+  };
+  const byAccount = new Map<string, Bucket>();
+  for (const r of rows) {
+    const acctId = r.opportunity?.account?.id ?? "__none__";
+    const acctName = r.opportunity?.account?.company_name ?? "(no customer)";
+    let bucket = byAccount.get(acctId);
+    if (!bucket) {
+      bucket = {
+        accountId: acctId,
+        accountName: acctName,
+        rows: [],
+        byStatus: new Map(),
+        openCount: 0,
+        outstandingCents: 0,
+        wonCents: 0,
+      };
+      byAccount.set(acctId, bucket);
+    }
+    bucket.rows.push(r);
+    const list = bucket.byStatus.get(r.status) ?? [];
+    list.push(r);
+    bucket.byStatus.set(r.status, list);
+    if (!["superseded", "won", "lost", "expired"].includes(r.status)) bucket.openCount += 1;
+    if (r.status === "sent" || r.status === "pending_approval") {
+      bucket.outstandingCents += r.total_cents;
+    }
+    if (r.status === "won") bucket.wonCents += r.total_cents;
+  }
+  const buckets = Array.from(byAccount.values()).sort((a, b) => {
+    // Busy customers first — sort by open count desc, then alpha.
+    if (a.openCount !== b.openCount) return b.openCount - a.openCount;
+    return a.accountName.localeCompare(b.accountName);
+  });
+
+  return (
+    <div className="space-y-3">
+      {buckets.map((bucket) => {
+        const colors = accountColorStyles(bucket.accountId);
+        return (
+          <details
+            key={bucket.accountId}
+            open
+            className="group border border-ppp-charcoal-200 bg-white rounded-xl overflow-hidden border-l-4"
+            style={colors.border}
+          >
+            <summary
+              className="cursor-pointer px-4 py-3 hover:bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap list-none [&::-webkit-details-marker]:hidden"
+              style={colors.headerBg}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span
+                  className="shrink-0 w-8 h-8 rounded-full inline-flex items-center justify-center text-[11px] font-bold"
+                  style={colors.avatar}
+                  aria-hidden
+                >
+                  {initialsFor(bucket.accountName)}
+                </span>
+                <div className="min-w-0">
+                  <Link
+                    href={`/commercial/accounts/${bucket.accountId}?tab=proposals`}
+                    className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {bucket.accountName}
+                  </Link>
+                  <div className="text-[11px] text-ppp-charcoal-500 tabular-nums">
+                    {bucket.rows.length} proposal{bucket.rows.length === 1 ? "" : "s"}
+                    {bucket.openCount > 0 && <> · {bucket.openCount} open</>}
+                    {bucket.outstandingCents > 0 && (
+                      <> · {formatDollars(bucket.outstandingCents)} outstanding</>
+                    )}
+                    {bucket.wonCents > 0 && (
+                      <> · <span className="text-emerald-700">{formatDollars(bucket.wonCents)} won</span></>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+                className="shrink-0 text-ppp-charcoal-400 transition-transform group-open:rotate-180"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </summary>
+            <div className="border-t border-ppp-charcoal-100 p-2 sm:p-3 overflow-x-auto">
+              <div className="flex gap-2 min-w-max items-stretch">
+                {ACTIVE_COLUMNS.map((status) => (
+                  <ProposalDnDColumn key={status} status={status}>
+                    <ProposalColumn
+                      status={status}
+                      rows={bucket.byStatus.get(status) ?? []}
+                      tone={toneForStatus(status)}
+                      width="w-56 sm:w-60"
+                    />
+                  </ProposalDnDColumn>
+                ))}
+                <ProposalDnDColumn key="won" status="won">
+                  <ProposalColumn
+                    status="won"
+                    rows={bucket.byStatus.get("won") ?? []}
+                    tone={toneForStatus("won")}
+                    width="w-56 sm:w-60"
+                  />
+                </ProposalDnDColumn>
+                {/* Closed cluster — Lost is a valid drop target
+                    (routes to debrief). Expired / Replaced are read-
+                    only auto-computed states, not manual outcomes. */}
+                <div className="shrink-0 border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100 w-40 sm:w-44">
+                  <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-ppp-charcoal uppercase tracking-wide">
+                        Closed
+                      </span>
+                      <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-white text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100">
+                        {CLOSED_TERMINAL.reduce(
+                          (acc, s) => acc + (bucket.byStatus.get(s)?.length ?? 0),
+                          0
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 p-1.5">
+                    {CLOSED_TERMINAL.map((status) => (
+                      <ProposalDnDColumn key={status} status={status}>
+                        <ProposalColumn
+                          status={status}
+                          rows={bucket.byStatus.get(status) ?? []}
+                          tone={toneForStatus(status)}
+                          width="w-full"
+                          compact
+                        />
+                      </ProposalDnDColumn>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─────────────── List view (Karan 2026-07-15) ───────────────
-// Groups proposals by account with clear separators + a per-account
-// header row (company name + total revenue at stake). Within each
-// account, proposals are further split by parent deal so multi-deal
-// accounts stay legible even at 50+ rows. Kills the kanban's
-// horizontal-scroll pain when the volume gets real.
+// Groups proposals by account. Each account is a <details> card
+// with color-coded left border (same hue helper as the mini-kanbans)
+// so an account reads the same across both views. Collapsed by
+// default beyond the first 3 to keep scroll manageable at 50+ rows.
 
 const LIST_STATUS_PILL: Record<string, string> = {
   draft: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
@@ -672,30 +798,50 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
   });
 
   return (
-    <div className="space-y-4">
-      {sortedAccounts.map((acct) => {
+    <div className="space-y-3">
+      {sortedAccounts.map((acct, idx) => {
         const totalProposals = Array.from(acct.deals.values()).reduce(
           (s, d) => s + d.rows.length,
           0
         );
+        const colors = accountColorStyles(acct.account_id);
+        // Default open the first 3; rest collapsed so 50+ accounts
+        // don't produce a wall of scroll on page load. User can
+        // expand any individual account by clicking its header.
+        const defaultOpen = idx < 3;
         return (
-          <section
+          <details
             key={acct.account_id}
-            className="bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden"
+            open={defaultOpen}
+            className="group bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden border-l-4"
+            style={colors.border}
           >
-            {/* Account header — sticky-feeling with the customer name + roll-up */}
-            <header className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap">
-              <div className="min-w-0 flex items-baseline gap-2 flex-wrap">
-                <Link
-                  href={`/commercial/accounts/${acct.account_id}?tab=proposals`}
-                  className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+            {/* Account header — clickable to collapse/expand */}
+            <summary
+              className="cursor-pointer px-4 py-2.5 hover:bg-ppp-charcoal-50/60 flex items-center justify-between gap-3 flex-wrap list-none [&::-webkit-details-marker]:hidden"
+              style={colors.headerBg}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span
+                  className="shrink-0 w-8 h-8 rounded-full inline-flex items-center justify-center text-[11px] font-bold"
+                  style={colors.avatar}
+                  aria-hidden
                 >
-                  {acct.company_name}
-                </Link>
-                <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
-                  {totalProposals} proposal{totalProposals === 1 ? "" : "s"} across{" "}
-                  {acct.deals.size} deal{acct.deals.size === 1 ? "" : "s"}
+                  {initialsFor(acct.company_name)}
                 </span>
+                <div className="min-w-0">
+                  <Link
+                    href={`/commercial/accounts/${acct.account_id}?tab=proposals`}
+                    className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {acct.company_name}
+                  </Link>
+                  <div className="text-[11px] text-ppp-charcoal-500 tabular-nums">
+                    {totalProposals} proposal{totalProposals === 1 ? "" : "s"} across{" "}
+                    {acct.deals.size} deal{acct.deals.size === 1 ? "" : "s"}
+                  </div>
+                </div>
               </div>
               <div className="flex items-center gap-3 flex-wrap text-[11px] tabular-nums shrink-0">
                 {acct.outstandingCents > 0 && (
@@ -708,10 +854,24 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                     {formatDollars(acct.wonCents)} won
                   </span>
                 )}
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                  className="shrink-0 text-ppp-charcoal-400 transition-transform group-open:rotate-180"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
               </div>
-            </header>
+            </summary>
             {/* Deals within this account — each with its own inner header */}
-            <div className="divide-y divide-ppp-charcoal-100">
+            <div className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
               {Array.from(acct.deals.values()).map((dealBucket) => {
                 if (!dealBucket.deal) return null;
                 const dealTitle =
@@ -797,7 +957,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                 );
               })}
             </div>
-          </section>
+          </details>
         );
       })}
     </div>

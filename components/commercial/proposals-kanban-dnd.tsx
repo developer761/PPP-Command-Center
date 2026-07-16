@@ -239,16 +239,21 @@ export function ProposalDnDColumn({
   className?: string;
 }) {
   const ctx = useContext(ProposalsDnDContext);
-  // Karan 2026-07-15: match the opportunity kanban pattern exactly —
-  // per-column `isOver` state + emerald ring on ACTUAL dragover
-  // (not on every column just because SOME card is being dragged).
-  // The old "ring every valid target" pattern lit up multiple boxes at
-  // once and used a red ring for reopen; both were confusing.
+  // Karan 2026-07-15 (round 2): HTML5 DnD's `dragleave` fires when
+  // the pointer crosses INTO a child element (leaves the parent
+  // boundary momentarily). That's why the emerald ring was flickering
+  // + sometimes sticking after Karan moved a card around. Fix: track
+  // enter/leave with a counter ref — increment on dragenter, decrement
+  // on dragleave; only clear the ring when the counter hits 0.
   const [isOver, setIsOver] = useState(false);
-  // If the drag ends (user drops or aborts) while we're still "over",
-  // clear the state so a stale ring doesn't persist.
+  const enterCountRef = useRef(0);
+  // Reset defensively when the drag ends (user aborts by hitting Esc,
+  // or drops outside any column). Without this the ring can linger.
   useEffect(() => {
-    if (!ctx?.dragProposalId && isOver) setIsOver(false);
+    if (!ctx?.dragProposalId) {
+      enterCountRef.current = 0;
+      if (isOver) setIsOver(false);
+    }
   }, [ctx?.dragProposalId, isOver]);
   if (!ctx) return <div className={className}>{children}</div>;
   const isValidTarget =
@@ -261,18 +266,36 @@ export function ProposalDnDColumn({
           ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-white rounded-xl"
           : ""
       }`}
-      onDragOver={
+      onDragEnter={
         isValidTarget
           ? (e) => {
-              ctx.onColumnDragOver(e);
+              e.preventDefault();
+              enterCountRef.current += 1;
               if (!isOver) setIsOver(true);
             }
           : undefined
       }
-      onDragLeave={isValidTarget ? () => setIsOver(false) : undefined}
+      onDragOver={
+        isValidTarget
+          ? (e) => {
+              // preventDefault is what tells the browser this element
+              // is a valid drop target (fires the drop event).
+              ctx.onColumnDragOver(e);
+            }
+          : undefined
+      }
+      onDragLeave={
+        isValidTarget
+          ? () => {
+              enterCountRef.current = Math.max(0, enterCountRef.current - 1);
+              if (enterCountRef.current === 0) setIsOver(false);
+            }
+          : undefined
+      }
       onDrop={
         isValidTarget
           ? (e) => {
+              enterCountRef.current = 0;
               setIsOver(false);
               ctx.onColumnDrop(e, status);
             }
