@@ -220,10 +220,29 @@ export async function writeDebrief(
   const debrief = debriefInserted as WinLossDebrief;
   await logInsert("commercial_win_loss_debrief", debrief.id, debrief, input.actorUserId);
 
-  // Set the debriefed_at flag so the amber "Debrief needed" banner disappears.
+  // Set the debriefed_at flag so the amber "Debrief needed" banner
+  // disappears. Karan 2026-07-15: when this write is for a Lost opp,
+  // also overwrite opp.loss_reason + opp.loss_notes with the real
+  // deciding_factor + lessons_learned from the debrief. Otherwise the
+  // cascade-injected placeholder ("other" + "Auto-set by cascade")
+  // would linger on the opp row forever, polluting the win/loss
+  // report's slice-by-reason. Debriefs are the source of truth for
+  // loss data — this ties the opp-row summary to the debrief row.
+  const oppPatch: Record<string, unknown> = {
+    win_loss_debriefed_at: new Date().toISOString(),
+  };
+  if (
+    (input.outcome === "lost" || input.outcome === "no_bid") &&
+    input.decidingFactor
+  ) {
+    oppPatch.loss_reason = input.decidingFactor;
+    if (input.lessonsLearned?.trim()) {
+      oppPatch.loss_notes = input.lessonsLearned.trim();
+    }
+  }
   const { error: flagErr } = await sb
     .from("commercial_opportunities")
-    .update({ win_loss_debriefed_at: new Date().toISOString() })
+    .update(oppPatch)
     .eq("id", input.opportunityId);
   if (flagErr) {
     // Debrief row written but the banner-clear flag failed — surface
