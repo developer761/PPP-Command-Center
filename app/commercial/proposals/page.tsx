@@ -440,9 +440,30 @@ function renderRowsGroupedByAccount(
   accentBar: string,
   compact: boolean
 ): ReactNode[] {
-  return rows.map((r) => (
+  // Karan 2026-07-15: when a single customer has multiple deals with
+  // proposals under this account, color-separate the cards by deal
+  // using the shared djb2 hue helper (seeded by deal id, not account
+  // id). Same-deal cards read as one visual cluster inside a column;
+  // different-deal cards get different left-border hues so the eye
+  // can scan "which deal is this proposal on" without hovering.
+  //
+  // Rows arriving here are already scoped to one account — deal is
+  // the axis that separates them further. Sort by deal so same-deal
+  // cards clump together within each column.
+  const sorted = [...rows].sort((a, b) => {
+    const da = a.opportunity?.id ?? "";
+    const db = b.opportunity?.id ?? "";
+    if (da !== db) return da.localeCompare(db);
+    return b.revision_number - a.revision_number;
+  });
+  return sorted.map((r) => (
     <ProposalDnDCard key={r.id} proposalId={r.id} sourceStatus={r.status}>
-      <ProposalCard row={r} accentBar={accentBar} compact={compact} />
+      <ProposalCard
+        row={r}
+        accentBar={accentBar}
+        compact={compact}
+        dealHue={hueForAccountId(r.opportunity?.id ?? null)}
+      />
     </ProposalDnDCard>
   ));
 }
@@ -451,10 +472,15 @@ function ProposalCard({
   row,
   accentBar,
   compact = false,
+  dealHue,
 }: {
   row: ProposalRow;
   accentBar: string;
   compact?: boolean;
+  /** Per-deal HSL hue — when set, the card gets a colored left border
+   *  keyed to the parent deal so multi-deal accounts read distinctly
+   *  inside a single column (Karan 2026-07-15). */
+  dealHue?: number;
 }) {
   const oppTitle =
     row.opportunity?.title?.trim() ||
@@ -469,8 +495,20 @@ function ProposalCard({
   const dealId = row.opportunity?.id ?? row.opportunity_id;
   const editorHref = `/commercial/accounts/${acctId}/deals/${dealId}/proposal/${row.id}`;
 
+  // Per-deal left border in mini-kanban context — same djb2 hue helper
+  // as the account color grammar, so cards from Deal A read as one
+  // visual cluster and Deal B's cards read as another inside a single
+  // column. Fallback: 3px transparent border when no dealHue supplied
+  // (list view / legacy flat kanban callsites).
+  const dealBorderStyle =
+    typeof dealHue === "number"
+      ? { borderLeftColor: `hsl(${dealHue}, 62%, 55%)`, borderLeftWidth: "3px" }
+      : undefined;
   return (
-    <li className="group relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+    <li
+      className="group relative bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+      style={dealBorderStyle}
+    >
       <div className={`h-1 ${accentBar}`} aria-hidden />
       {/* Karan 2026-07-15: compact mode collapses the GC line (redundant
           inside a per-account row) and shrinks padding so cards feel

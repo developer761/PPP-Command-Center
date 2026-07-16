@@ -339,6 +339,71 @@ export async function changeOpportunityStatus(
     input.acting_user_id
   );
 
+  // Karan 2026-07-15: cascade opp → child proposals. If the deal just
+  // closed as Won/Lost, flip its Sent proposal(s) to the matching
+  // outcome so the /commercial/proposals kanban and every proposal
+  // surface reflects reality without the user having to remember to
+  // move both sides. Mirrors markProposalOutcome (which cascades the
+  // OTHER direction: proposal → opp).
+  //
+  // Reverse cascade: if the deal moved OUT of pre_sale_closed (undo),
+  // flip any Won/Lost proposals back to Sent so we don't strand them
+  // in a terminal state.
+  //
+  // Scope: only touches `sent` proposals on the Won/Lost cascade
+  // (drafts + pending-approval are "attempts along the way", never
+  // "the winning proposal") and only `won`/`lost` on the reverse
+  // (expired/replaced are intentional terminal states, not undo-able
+  // via opp movement). SYNCHRONOUS (awaited) — the caller typically
+  // router.refresh()es right after this returns, and we need the
+  // proposal-side flip visible in that first refresh. Best-effort:
+  // a failure here logs a warning but never rolls back the opp update.
+  try {
+    const enteredPreSaleClosed =
+      input.to_status === "pre_sale_closed" &&
+      beforeRow.status !== "pre_sale_closed";
+    const leftPreSaleClosed =
+      beforeRow.status === "pre_sale_closed" &&
+      input.to_status !== "pre_sale_closed";
+    if (enteredPreSaleClosed || leftPreSaleClosed) {
+      const { updateProposalStatus } = await import(
+        "@/lib/commercial/proposals/db"
+      );
+      const targetStatuses = enteredPreSaleClosed ? ["sent"] : ["won", "lost"];
+      const nextStatus = enteredPreSaleClosed
+        ? input.to_sub_status === "won"
+          ? "won"
+          : "lost"
+        : "sent";
+      const { data: propRows } = await sb
+        .from("commercial_proposals")
+        .select("id, status")
+        .eq("opportunity_id", input.opp_id)
+        .is("deleted_at", null)
+        .in("status", targetStatuses);
+      const proposals =
+        (propRows as { id: string; status: string }[] | null) ?? [];
+      for (const p of proposals) {
+        if (p.status === nextStatus) continue;
+        const flip = await updateProposalStatus({
+          id: p.id,
+          to_status: nextStatus,
+          acting_user_id: input.acting_user_id,
+        });
+        if (!flip.ok) {
+          console.warn(
+            `[changeOpportunityStatus] proposal cascade failed for ${p.id} (opp ${input.opp_id}): ${flip.error}`
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[changeOpportunityStatus] proposal cascade threw:",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+
   // Fan out a bell + email to every active team member on the opp
   // (minus the actor). Fire-and-forget — never blocks the status flip.
   // Helper handles the self-skip + inactive-skip + fanout query.
