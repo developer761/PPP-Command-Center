@@ -639,7 +639,6 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
                   <Link
                     href={`/commercial/accounts/${bucket.accountId}?tab=proposals`}
                     className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
-                    onClick={(e) => e.stopPropagation()}
                   >
                     {bucket.accountName}
                   </Link>
@@ -833,7 +832,6 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                   <Link
                     href={`/commercial/accounts/${acct.account_id}?tab=proposals`}
                     className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
-                    onClick={(e) => e.stopPropagation()}
                   >
                     {acct.company_name}
                   </Link>
