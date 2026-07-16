@@ -66,6 +66,18 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
   const [lostDebriefUrl, setLostDebriefUrl] = useState<string | null>(null);
   const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Karan 2026-07-16: in-flight guard. Root cause of "took 3 tries and
+  // moved 2 other cards too": each drop fires an API call. If the user
+  // doesn't see immediate feedback (router.refresh() takes 200-500ms),
+  // they drag AGAIN. If the SOURCE card was already hidden by the
+  // optimistic UI, the second drag grabs a DIFFERENT card, third drag
+  // grabs a third. Result: three API calls, three cards moved.
+  //
+  // Ref (not state) so the check inside the async handler always sees
+  // the latest value without a stale closure. Also drives a full-page
+  // "Moving proposal…" overlay so the user knows the drop registered.
+  const inFlightRef = useRef(false);
+  const [inFlight, setInFlight] = useState(false);
 
   const flashError = (msg: string) => {
     setError(msg);
@@ -113,10 +125,21 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
     setDragSourceStatus(null);
     if (!proposalId || !sourceStatus) return;
     if (!isValidDropTargetFn(sourceStatus, targetStatus)) {
-      // Not a supported transition — silently snap back. E.g. dragging
-      // a Draft into Won, or a Won into Lost (must reopen to Sent first).
+      // Not a supported transition — silently snap back. E.g. same
+      // column drop, or invalid combination.
       return;
     }
+    // Karan 2026-07-16: block concurrent drops. If a move is in flight,
+    // silently ignore new drops until the current one finishes + the
+    // page has refreshed. Prior behavior: 3 fast drags = 3 API calls
+    // = 3 cards moved (each drag caught a different card because the
+    // previous source was already hidden by optimistic UI).
+    if (inFlightRef.current) {
+      flashError("Still moving — hold on a second and try again.");
+      return;
+    }
+    inFlightRef.current = true;
+    setInFlight(true);
     setOptimisticMove({ proposalId, toStatus: targetStatus });
     try {
       const res = await fetch(
@@ -129,6 +152,8 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       );
       if (!res.ok) {
         setOptimisticMove(null);
+        inFlightRef.current = false;
+        setInFlight(false);
         let msg = "Move failed.";
         try {
           const j = (await res.json()) as { error?: string };
@@ -146,7 +171,8 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       };
       if (json.redirect_url) {
         // Keep optimistic-hidden state until nav lands so the card
-        // doesn't flash back into its source column.
+        // doesn't flash back into its source column. Leave inFlight
+        // set — the page is navigating away, no more drops possible.
         window.location.href = json.redirect_url;
         return;
       }
@@ -178,10 +204,22 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       }
       startTransition(() => {
         router.refresh();
-        setTimeout(() => setOptimisticMove(null), 200);
+        // Give the refresh a bit more time (600ms) to paint the new
+        // state before we clear optimistic + release the in-flight
+        // lock. If we release too early the user can drag again while
+        // the server-rendered payload is still in flight — same class
+        // of "3 tries moved 3 cards" bug the lock is designed to
+        // prevent.
+        setTimeout(() => {
+          setOptimisticMove(null);
+          inFlightRef.current = false;
+          setInFlight(false);
+        }, 600);
       });
     } catch {
       setOptimisticMove(null);
+      inFlightRef.current = false;
+      setInFlight(false);
       flashError("Network error — try again.");
     }
   };
@@ -199,6 +237,34 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         isValidDropTarget: isValidDropTargetFn,
       }}
     >
+      {/* Karan 2026-07-16: visible "Moving…" pill so the user knows
+          the drop registered. Prior UI hid the source card only; on a
+          slow refresh the user thought nothing happened and dragged
+          again — three tries dragged three cards. Now the pill sits
+          top-center while the move is in flight (~600ms) and drops
+          are blocked. */}
+      {inFlight && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-ppp-charcoal-900 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-fade-up"
+        >
+          <svg
+            className="animate-spin"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            aria-hidden
+          >
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+          Moving proposal…
+        </div>
+      )}
       {error && (
         <div
           role="status"

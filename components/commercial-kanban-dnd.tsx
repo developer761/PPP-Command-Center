@@ -42,6 +42,12 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
   // (without it the user sees a 300-800ms blank white between the
   // drop and the detail page paint).
   const [navigating, setNavigating] = useState<string | null>(null);
+  // Karan 2026-07-16: in-flight guard — same fix as the proposals
+  // kanban. Prevents "3 fast drops = 3 different cards moved" when
+  // the user doesn't see instant feedback and drags again on top of
+  // a different card.
+  const inFlightRef = useRef(false);
+  const [inFlight, setInFlight] = useState(false);
 
   const handleDragStart = (
     e: DragEvent<HTMLDivElement>,
@@ -82,6 +88,16 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
+
+    // In-flight guard: refuse concurrent drops while a move is
+    // resolving. Same "hold on a second" ergonomics as the proposals
+    // kanban.
+    if (inFlightRef.current) {
+      flashError("Still moving — hold on a second and try again.");
+      return;
+    }
+    inFlightRef.current = true;
+    setInFlight(true);
 
     // OPTIMISTIC UI for non-terminal moves — card visually jumps to
     // the new column IMMEDIATELY. Server call happens in the background;
@@ -127,6 +143,8 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
       }
       if (!res.ok || !json.ok) {
         setOptimisticMove(null); // revert
+        inFlightRef.current = false;
+        setInFlight(false);
         flashError(json.error || "Couldn't move that deal.");
         return;
       }
@@ -154,10 +172,19 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
       // adding a perceptible "sit and wait" feeling after every drop.
       startTransition(() => {
         router.refresh();
-        setTimeout(() => setOptimisticMove(null), 200);
+        // Longer window (600ms) so refresh paints before we release
+        // the lock — otherwise fast users trigger the same "3 drops
+        // = 3 moves" ghost the lock was added to prevent.
+        setTimeout(() => {
+          setOptimisticMove(null);
+          inFlightRef.current = false;
+          setInFlight(false);
+        }, 600);
       });
     } catch {
       setOptimisticMove(null);
+      inFlightRef.current = false;
+      setInFlight(false);
       flashError("Network error — try again.");
     }
   };
@@ -201,6 +228,22 @@ export function KanbanDnDProvider({ children }: { children: ReactNode }) {
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
             </svg>
             Opening {navigating === "won" ? "Win" : navigating === "lost" ? "Loss" : "No-bid"} debrief…
+          </div>
+        )}
+        {/* Karan 2026-07-16: visible "Moving…" pill so the user knows
+            the drop registered. Prior UI hid the source card only,
+            leaving the user unsure the action fired — three tries
+            moved three different cards. */}
+        {inFlight && !navigating && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-ppp-charcoal-900 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-fade-up"
+          >
+            <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            Moving deal…
           </div>
         )}
         {children}
