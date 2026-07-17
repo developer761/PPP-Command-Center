@@ -3471,20 +3471,24 @@ async function AccountProposalsTab({
     }));
 
   const pillCls = (status: string): string => {
+    // Karan 2026-07-17: toned down per meeting — "looks really tacky".
+    // Cleaner subtle pills, less carnival-color. Semantic meaning kept
+    // (brand for sent, emerald for won, rose for lost/expired) but with
+    // reduced saturation so pills sit quietly next to the row content.
     switch (status) {
       case "sent":
-        return "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200";
+        return "bg-cc-brand-50 text-cc-brand-800 border-transparent";
       case "won":
-        return "bg-emerald-50 text-emerald-800 border-emerald-200";
+        return "bg-emerald-50 text-emerald-800 border-transparent";
       case "lost":
       case "expired":
-        return "bg-rose-50 text-rose-800 border-rose-200";
+        return "bg-rose-50 text-rose-700 border-transparent";
       case "pending_approval":
-        return "bg-amber-50 text-amber-800 border-amber-200";
+        return "bg-amber-50 text-amber-800 border-transparent";
       case "superseded":
-        return "bg-slate-50 text-slate-600 border-slate-200";
+        return "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-transparent";
       default:
-        return "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200";
+        return "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-transparent";
     }
   };
   const fmt = (c: number) =>
@@ -3536,7 +3540,7 @@ async function AccountProposalsTab({
         <div className="min-w-0">
           <h2 className="text-base font-bold text-ppp-charcoal">Proposals</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-            Every revision on every deal for this customer, newest first. Same-deal revisions are grouped and color-coded by the deal&rsquo;s current pipeline lane.
+            Every revision on every deal for this customer. The current revision is at the top of each deal; older revisions collapse below.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -3594,40 +3598,31 @@ async function AccountProposalsTab({
               bucket.deal.client_name?.trim() ||
               bucket.deal.location_short?.trim() ||
               "(untitled deal)";
-            const hue = dealHueFor(dealId);
-            const borderStyle = { borderLeftColor: `hsl(${hue}, 62%, 55%)` };
-            const headerBgStyle = { backgroundColor: `hsl(${hue}, 62%, 96%)` };
+            // Karan 2026-07-17: killed the deal-hue border + tinted
+            // header per meeting feedback ("looks really tacky"). Clean
+            // neutral card now: white bg, single subtle border, standard
+            // ppp-charcoal typography for the deal name. The current-row
+            // emerald tint below still signals which revision is active.
             return (
               <section
                 key={dealId}
-                className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden border-l-4"
-                style={borderStyle}
+                className="bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm"
               >
-                <header
-                  className="px-4 py-2.5 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap"
-                  style={headerBgStyle}
-                >
+                <header className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap bg-white">
                   <div className="min-w-0">
-                    {/* Karan 2026-07-15: was linking with ?edit=<dealId>
-                        which auto-opened the Edit Deal drawer whenever
-                        Alex hit the browser Back button from any
-                        proposal-editor page — the drawer kept
-                        popping up unexpectedly. Now the header just
-                        jumps to the deal's row on the pipeline (no
-                        modal auto-open). */}
                     <Link
                       href={`/commercial/accounts/${accountId}?tab=deals&sub=opportunities#deal-row-${dealId}`}
-                      className="text-[13px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+                      className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
                     >
                       {dealTitle}
                     </Link>
-                    <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                    <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                       {bucket.rows.length} revision{bucket.rows.length === 1 ? "" : "s"}
                     </div>
                   </div>
                   <Link
                     href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new`}
-                    className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
+                    className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-1"
                   >
                     + New revision
                   </Link>
@@ -3662,6 +3657,23 @@ async function AccountProposalsTab({
                     const canMakeCurrent =
                       !isCurrent &&
                       (r.status === "draft" || r.status === "pending_approval");
+                    // Karan 2026-07-17: sent_at lingers on the row even
+                    // after the proposal is moved back to Draft/Pending
+                    // via the kanban (schema doesn't clear the
+                    // timestamp on revert — it's a bid history record).
+                    // Only surface the "sent Jul 15" chip when the
+                    // proposal is CURRENTLY still in a sent-derived
+                    // state (sent / won / lost / expired). For
+                    // draft/pending_approval revisions with a stale
+                    // sent_at, hide the chip — the user reverted, the
+                    // proposal isn't currently sent, showing "sent"
+                    // is misleading.
+                    const showSentDate =
+                      r.sent_at &&
+                      (r.status === "sent" ||
+                        r.status === "won" ||
+                        r.status === "lost" ||
+                        r.status === "expired");
                     return (
                       <li
                         key={r.id}
@@ -3675,12 +3687,12 @@ async function AccountProposalsTab({
                             R{r.revision_number}
                           </span>
                           {isCurrent && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border bg-emerald-100 text-emerald-800 border-emerald-300 shrink-0">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 shrink-0">
                               <span aria-hidden>★</span> Current
                             </span>
                           )}
                           <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${pillCls(r.status)}`}
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${pillCls(r.status)}`}
                           >
                             {proposalStatusLabel(r.status)}
                           </span>
@@ -3697,12 +3709,12 @@ async function AccountProposalsTab({
                               {r.header_json.gc_company}
                             </span>
                           )}
-                          {r.sent_at && (
+                          {showSentDate && (
                             <span className="text-[10.5px] text-ppp-charcoal-500 shrink-0 ml-auto">
-                              sent {new Date(r.sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}
+                              sent {new Date(r.sent_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}
                             </span>
                           )}
-                          <span className="text-[13px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ml-2">
+                          <span className={`text-[13px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ${showSentDate ? "ml-2" : "ml-auto"}`}>
                             {fmt(r.total_cents)}
                           </span>
                         </Link>
