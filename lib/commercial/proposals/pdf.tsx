@@ -7,6 +7,9 @@ import {
   View,
   StyleSheet,
   Image,
+  Svg,
+  Rect,
+  Circle,
   renderToBuffer,
   Font,
 } from "@react-pdf/renderer";
@@ -72,12 +75,80 @@ const MUTED = "#4B5563";
 const YELLOW_BG = "#FEF3C7";
 const YELLOW_BORDER = "#F59E0B";
 const LINK_BLUE = "#1D4ED8";
-// Karan 2026-07-17 (round 2): flat cream (#F7F0DC) read as YELLOW on
-// screen — too saturated. Reverted to white so the logo image (which
-// has a white JPG background) blends cleanly with the page instead of
-// looking like a white sticker on a yellow page. True mottled parchment
-// texture requires a real image asset — flagged as follow-up.
-const PARCHMENT = "#FFFFFF";
+// Karan 2026-07-17 (round 3): actual textured parchment via inline SVG.
+// Base is a soft warm ivory (paler than the reference to avoid the
+// "too yellow" read Karan flagged earlier). Overlay is 800+ tiny
+// semi-transparent darker specks drawn via <Circle> primitives —
+// deterministic seed so the texture stays identical across renders and
+// doesn't shift on refresh. Rendered as a fixed background <Svg>
+// behind everything else on every page.
+const PARCHMENT_BASE = "#F5EFDE";
+const PARCHMENT_SPECK = "#8B7355";
+
+/** LETTER page size in PDF units (72 dpi) = 612 × 792. */
+const PAGE_W = 612;
+const PAGE_H = 792;
+
+/** Precomputed at module load — deterministic PRNG so specks land in
+ *  the same spots every render. Two layers: bigger fainter specks +
+ *  smaller slightly darker specks for depth. */
+type Speck = { x: number; y: number; r: number; opacity: number };
+function computeParchmentSpecks(): Speck[] {
+  let seed = 12345;
+  const rand = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+  const specks: Speck[] = [];
+  // Layer 1: larger faint specks (paper grain background)
+  for (let i = 0; i < 500; i++) {
+    specks.push({
+      x: Math.floor(rand() * PAGE_W),
+      y: Math.floor(rand() * PAGE_H),
+      r: 0.6 + rand() * 1.4,
+      opacity: 0.06 + rand() * 0.09,
+    });
+  }
+  // Layer 2: smaller sharper specks (fiber texture)
+  for (let i = 0; i < 350; i++) {
+    specks.push({
+      x: Math.floor(rand() * PAGE_W),
+      y: Math.floor(rand() * PAGE_H),
+      r: 0.3 + rand() * 0.5,
+      opacity: 0.14 + rand() * 0.14,
+    });
+  }
+  return specks;
+}
+const PARCHMENT_SPECKS = computeParchmentSpecks();
+
+function ParchmentBackground() {
+  return (
+    <Svg
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: PAGE_W,
+        height: PAGE_H,
+      }}
+      viewBox={`0 0 ${PAGE_W} ${PAGE_H}`}
+      fixed
+    >
+      <Rect x={0} y={0} width={PAGE_W} height={PAGE_H} fill={PARCHMENT_BASE} />
+      {PARCHMENT_SPECKS.map((s, i) => (
+        <Circle
+          key={i}
+          cx={s.x}
+          cy={s.y}
+          r={s.r}
+          fill={PARCHMENT_SPECK}
+          fillOpacity={s.opacity}
+        />
+      ))}
+    </Svg>
+  );
+}
 
 const styles = StyleSheet.create({
   page: {
@@ -93,7 +164,7 @@ const styles = StyleSheet.create({
     fontFamily: "Times-Roman",
     color: CHARCOAL,
     lineHeight: 1.35,
-    backgroundColor: PARCHMENT,
+    backgroundColor: PARCHMENT_BASE,
   },
   // Red keyline border wraps the whole page (fixed absolute) — Tomco's
   // signature look. Bottom edge pushed to 92 so the footer (which sits
@@ -878,6 +949,10 @@ export function ProposalPdfDocument({
       subject={proposal.header_json.project_name ?? "Proposal"}
     >
       <Page size="LETTER" style={styles.page}>
+        {/* Karan 2026-07-17: parchment texture layer sits behind
+            everything on every page. Deterministic speck pattern via
+            inline SVG so no image asset is needed. */}
+        <ParchmentBackground />
         {/* Fixed red keyline border wraps every page */}
         <View style={styles.borderFrame} fixed />
         <View style={styles.borderInner} fixed />
