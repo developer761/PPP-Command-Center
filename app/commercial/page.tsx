@@ -102,50 +102,133 @@ export default async function CommercialDashboardPage() {
   const winRatePct =
     decidedOpps.length > 0 ? Math.round((wonOpps.length / decidedOpps.length) * 100) : null;
 
+  // Karan 2026-07-17: derived numbers for the polished hero.
+  const wonThisMonthCents = wonThisMonth.reduce(
+    (acc, o) => acc + (o.bid_value_low_cents || 0),
+    0
+  );
+  const totalDecidedForMonth = decidedOpps.filter(
+    (o) => (o.decided_at ?? "") >= monthStart
+  ).length;
+  const monthWinPct =
+    totalDecidedForMonth > 0
+      ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)
+      : null;
+  // Biggest open bid in the pipeline right now — surface at a glance
+  // so Alex sees "the one to close" every time he opens the platform.
+  const biggestOpenOpp = openOpps
+    .slice()
+    .sort((a, b) => (b.bid_value_low_cents ?? 0) - (a.bid_value_low_cents ?? 0))[0];
+  const biggestAccount = biggestOpenOpp
+    ? accounts.find((a) => a.id === biggestOpenOpp.account_id)?.company_name ??
+      "Unknown customer"
+    : null;
+
   return (
     <div className="space-y-6 sm:space-y-8">
-      {/* Karan 2026-07-08 polish: hero got a subtle red-tinted gradient
-          card so the landing has more energy without shouting. Title
-          scale bumped one step for anchor weight. Live badge shifted
-          to the phase pill's role — the "Live" state is what matters,
-          not the phase number. */}
-      <header className="relative bg-gradient-to-br from-cc-brand-50/60 via-white to-white border border-cc-brand-100 rounded-2xl p-5 sm:p-6 overflow-hidden">
-        <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
-        <div className="relative">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
-              Commercial Command Center
-            </h1>
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-widest uppercase text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-              <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live
-            </span>
+      {/* Karan 2026-07-17: PPP-style bold hero card. Dark charcoal
+          gradient (matches PPP dashboard's Today card), font-condensed
+          for the big number, sub-metrics laid out in the right rail.
+          Anchor of the whole page. */}
+      <header className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
+        {/* Primary hero — dark gradient, big number */}
+        <div className="lg:col-span-2 relative bg-gradient-to-br from-ppp-charcoal-900 via-ppp-charcoal to-ppp-charcoal-800 text-white rounded-2xl p-5 sm:p-7 shadow-lg shadow-ppp-charcoal/20 overflow-hidden">
+          {/* Corner glow */}
+          <span aria-hidden className="pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-cc-brand-500/20 blur-3xl" />
+          <span aria-hidden className="pointer-events-none absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-cc-brand-500/10 blur-3xl" />
+          <div className="relative">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+                Commercial Command Center
+              </div>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-widest uppercase text-emerald-100 bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 rounded-full">
+                <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                Live
+              </span>
+            </div>
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <div className="font-condensed text-5xl sm:text-6xl font-black text-white leading-none tracking-tight">
+                {formatCentsCompact(weightedPipeline)}
+              </div>
+              <div className="text-sm text-white/70">
+                weighted pipeline · {openOpps.length} open
+              </div>
+            </div>
+            {biggestOpenOpp && (
+              <div className="mt-5 pt-4 border-t border-white/15">
+                <div className="text-[10px] uppercase tracking-widest font-bold text-white/60 mb-1">
+                  Biggest open bid
+                </div>
+                <Link
+                  href={`/commercial/accounts/${biggestOpenOpp.account_id}?tab=deals&sub=opportunities#deal-row-${biggestOpenOpp.id}`}
+                  className="group inline-flex items-baseline gap-2 hover:text-cc-brand-200"
+                >
+                  <span className="font-condensed text-2xl font-bold">
+                    {formatCentsCompact(biggestOpenOpp.bid_value_low_cents ?? 0)}
+                  </span>
+                  <span className="text-sm text-white/80 group-hover:text-cc-brand-100 truncate">
+                    {biggestAccount}
+                  </span>
+                  <span aria-hidden className="text-white/40 group-hover:text-cc-brand-200">→</span>
+                </Link>
+              </div>
+            )}
           </div>
-          <p className="text-sm text-ppp-charcoal-600 leading-relaxed max-w-2xl">
-            From bid intake to closeout, all in one record. Numbers below refresh live from Postgres.
-          </p>
+        </div>
+
+        {/* Wins this month — secondary hero */}
+        <div className="relative bg-white border border-emerald-100 rounded-2xl p-5 sm:p-6 shadow-sm overflow-hidden">
+          <span aria-hidden className="pointer-events-none absolute -top-12 -right-12 h-32 w-32 rounded-full bg-emerald-100/60 blur-2xl" />
+          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-600 to-emerald-400" />
+          <div className="relative">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+              Wins this month
+            </div>
+            <div className="flex items-baseline gap-2 mt-2">
+              <div className="font-condensed text-5xl font-black text-ppp-charcoal leading-none tracking-tight">
+                {wonThisMonth.length}
+              </div>
+              {monthWinPct !== null && (
+                <div className="text-sm text-emerald-700 font-semibold">
+                  {monthWinPct}% win rate
+                </div>
+              )}
+            </div>
+            <div className="mt-2 text-[13px] text-ppp-charcoal-600">
+              {wonThisMonthCents > 0 ? (
+                <>
+                  <span className="font-semibold text-ppp-charcoal">
+                    {formatCentsCompact(wonThisMonthCents)}
+                  </span>{" "}
+                  awarded value (low estimate)
+                </>
+              ) : wonThisMonth.length === 0 ? (
+                "No wins recorded yet this month"
+              ) : (
+                "Awarded value not set on wins"
+              )}
+            </div>
+            <Link
+              href="/commercial/reports/win-loss"
+              className="mt-4 inline-flex items-center gap-1 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
+            >
+              Full win/loss report <span aria-hidden>→</span>
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Live KPI strip. Red-accent tile = primary metric (open pipeline
-          motion). Blue = supporting (accounts / wins). Left accent stripe
-          + subtle gradient background gives visual weight without shouting. */}
-      <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      {/* KPI strip — supporting metrics. Cleaner four-tile row with
+          bigger condensed numbers. Colored stripe on the left of each
+          tile signals which surface it links to. */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiTile
           tone="cc-brand"
           value={openOpps.length.toLocaleString()}
           label="Open opportunities"
-          sub={`${decidedOpps.length} decided`}
+          sub={`${decidedOpps.length} decided all-time`}
           href="/commercial/opportunities"
           icon={<IconTarget />}
-        />
-        <KpiTile
-          tone="cc-brand"
-          value={formatCentsCompact(weightedPipeline)}
-          label="Weighted pipeline"
-          sub="Σ midpoint × probability"
-          href="/commercial/opportunities?view=list"
-          icon={<IconChart />}
         />
         <KpiTile
           tone={arOverdueCount > 0 ? "rose" : "blue"}
@@ -153,10 +236,10 @@ export default async function CommercialDashboardPage() {
           label="Outstanding AR"
           sub={
             arOutstandingCents === 0
-              ? "nothing unpaid"
+              ? "Nothing unpaid"
               : arOverdueCount > 0
               ? `${arOverdueCount} overdue`
-              : "unpaid balance"
+              : "Unpaid balance"
           }
           href={
             arOverdueCount > 0
@@ -168,16 +251,16 @@ export default async function CommercialDashboardPage() {
         <KpiTile
           tone="blue"
           value={accounts.length.toLocaleString()}
-          label="Active accounts"
-          sub={accounts.length === 1 ? "customer of record" : "customers of record"}
+          label="Active customers"
+          sub={accounts.length === 1 ? "GC of record" : "GCs of record"}
           href="/commercial/accounts"
           icon={<IconBuilding />}
         />
         <KpiTile
           tone="blue"
-          value={wonThisMonth.length.toLocaleString()}
-          label="Wins this month"
-          sub={winRatePct !== null ? `${winRatePct}% overall win rate` : "no history yet"}
+          value={wonOpps.length.toLocaleString()}
+          label="All-time wins"
+          sub={winRatePct !== null ? `${winRatePct}% overall win rate` : "No history yet"}
           href="/commercial/reports/win-loss"
           icon={<IconTrophy />}
         />
@@ -319,7 +402,7 @@ function KpiTile({
             {icon}
           </span>
         </div>
-        <div className="text-2xl sm:text-3xl font-bold text-ppp-charcoal leading-none tracking-tight">
+        <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight">
           {value}
         </div>
         <div className="mt-2 text-[11px] text-ppp-charcoal-500 leading-snug">
