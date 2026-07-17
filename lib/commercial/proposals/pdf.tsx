@@ -6,10 +6,13 @@ import {
   Text,
   View,
   StyleSheet,
+  Image,
   renderToBuffer,
   Font,
 } from "@react-pdf/renderer";
 import * as React from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   TOMCO_COMPANY_FOOTER,
@@ -40,6 +43,28 @@ import type {
  */
 
 Font.registerHyphenationCallback((word) => [word]);
+
+// Karan 2026-07-17: Tomco logo from Alex. Cached at module load — read
+// the file once, reuse the Buffer on every render. If the file goes
+// missing (dev env without the asset, or bad deploy), fall back to the
+// text wordmark gracefully so PDF rendering never crashes.
+let cachedLogoBuffer: Buffer | null | undefined = undefined;
+function getLogoBuffer(): Buffer | null {
+  if (cachedLogoBuffer !== undefined) return cachedLogoBuffer;
+  try {
+    cachedLogoBuffer = readFileSync(
+      join(process.cwd(), "public", "brand", "tomco-logo.jpg")
+    );
+    return cachedLogoBuffer;
+  } catch (err) {
+    console.warn(
+      "[proposal-pdf] tomco-logo.jpg not found in public/brand/ — falling back to text wordmark:",
+      err instanceof Error ? err.message : String(err)
+    );
+    cachedLogoBuffer = null;
+    return null;
+  }
+}
 
 const RED = "#B91C1C"; // Tomco brand red — matches cc-brand-700
 const CHARCOAL = "#1F2937";
@@ -101,6 +126,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     marginBottom: 8,
     marginTop: 2,
     minHeight: 44,
@@ -124,6 +150,15 @@ const styles = StyleSheet.create({
   logoBlock: {
     flexDirection: "column",
     alignItems: "center",
+  },
+  // Karan 2026-07-17: real Tomco logo image (public/brand/tomco-logo.jpg).
+  // Source is 268×131px so aspect is ~2.05:1 — width 150 gives height ~73.
+  // objectFit contain preserves the aspect ratio if the container is
+  // taller/wider than expected.
+  logoImage: {
+    width: 150,
+    height: 73,
+    objectFit: "contain",
   },
   logoText: {
     fontSize: 34,
@@ -469,15 +504,22 @@ function splitBoldLead(text: string): { lead: string | null; body: string } {
 // ─── Sub-blocks ─────────────────────────────────────────────────────
 
 function LogoBlock({ dateLabel }: { dateLabel: string }) {
+  // Karan 2026-07-17: real Tomco logo image from Alex, cached at module
+  // load. If the file is missing (dev without asset, deploy hiccup),
+  // fall back to the text wordmark so the PDF still renders — never
+  // crash a customer-facing send on a missing asset.
+  const logo = getLogoBuffer();
   return (
     <>
       <View style={styles.headerRow}>
-        <View style={styles.logoDashLeft} />
-        <View style={styles.logoBlock}>
-          <Text style={styles.logoText}>TOMCO</Text>
-          <Text style={styles.logoSub}>PAINTING</Text>
-        </View>
-        <View style={styles.logoDashRight} />
+        {logo ? (
+          <Image src={logo} style={styles.logoImage} />
+        ) : (
+          <View style={styles.logoBlock}>
+            <Text style={styles.logoText}>TOMCO</Text>
+            <Text style={styles.logoSub}>PAINTING</Text>
+          </View>
+        )}
       </View>
       {dateLabel && <Text style={styles.dateFloat}>{dateLabel}</Text>}
     </>
