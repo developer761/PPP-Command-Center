@@ -646,9 +646,21 @@ function BulletLine({ text }: { text: string }) {
   // render as plain lines. Bullets are reserved for the Exclusions &
   // Qualifications section only. Prior behavior added a dot to
   // dot-less items, which visually clashed with the reference.
-  return (
-    <Text style={styles.itemLine}>{body}</Text>
-  );
+  //
+  // Multi-line body (embedded newlines) with no bold lead: render each
+  // line as its own plain paragraph so line breaks the user typed
+  // survive to the PDF. Prior single-Text render dropped multi-line
+  // grammar for no-lead items.
+  if (bodyLines.length > 1) {
+    return (
+      <View style={styles.itemLine}>
+        {bodyLines.map((line, i) => (
+          <Text key={i} style={{ fontSize: 11 }}>{line}</Text>
+        ))}
+      </View>
+    );
+  }
+  return <Text style={styles.itemLine}>{body}</Text>;
 }
 
 function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) {
