@@ -3516,11 +3516,13 @@ async function AccountProposalsTab({
         </div>
       )}
 
-      {/* Karan 2026-07-17: proposals tab header now leads with a
-          summary strip — total revisions / sent / won / outstanding
-          $ — so the tab feels like a customer scorecard, not just a
-          list. Matches the "dashboard, not directory" energy Karan
-          asked for. */}
+      {/* Karan 2026-07-17 (round 2): dark hero looked out of place
+          on the nested account tab (it competed with the page-level
+          hero and clashed with the surrounding white surfaces).
+          Switched to a light card that fits the account page theme:
+          white bg + cc-brand red accent stripe + light-blue tint for
+          sent, emerald for won. Same scorecard shape, colors that
+          match. */}
       {(() => {
         const sentCount = proposals.filter((p) => p.status === "sent").length;
         const wonCount = proposals.filter((p) => p.status === "won").length;
@@ -3528,29 +3530,30 @@ async function AccountProposalsTab({
           .filter((p) => p.status === "sent" || p.status === "pending_approval")
           .reduce((s, p) => s + p.total_cents, 0);
         return (
-          <div className="bg-gradient-to-br from-ppp-charcoal-900 via-ppp-charcoal to-ppp-charcoal-800 text-white rounded-xl p-4 sm:p-5 shadow-md shadow-ppp-charcoal/10 overflow-hidden relative">
-            <span aria-hidden className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-cc-brand-500/20 blur-2xl" />
+          <div className="relative bg-white border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
+            <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-cc-brand-600 to-cc-brand-500" />
+            <span aria-hidden className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-cc-brand-100/50 blur-2xl" />
             <div className="relative flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">Proposals</div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1">Proposals</div>
                 <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className="font-condensed text-3xl sm:text-4xl font-black text-white leading-none">{proposals.length}</span>
-                  <span className="text-[12px] text-white/70">total revision{proposals.length === 1 ? "" : "s"} · {byDeal.size} deal{byDeal.size === 1 ? "" : "s"}</span>
+                  <span className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none">{proposals.length}</span>
+                  <span className="text-[12px] text-ppp-charcoal-500">total revision{proposals.length === 1 ? "" : "s"} · {byDeal.size} deal{byDeal.size === 1 ? "" : "s"}</span>
                 </div>
               </div>
               <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
                 <div>
-                  <div className="text-[9px] font-bold uppercase tracking-widest text-white/60">Sent</div>
-                  <div className="font-condensed text-xl font-bold text-white leading-none mt-0.5">{sentCount}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-cc-brand-700">Sent</div>
+                  <div className="font-condensed text-xl font-bold text-ppp-charcoal leading-none mt-0.5">{sentCount}</div>
                 </div>
                 <div>
-                  <div className="text-[9px] font-bold uppercase tracking-widest text-emerald-200/80">Won</div>
-                  <div className="font-condensed text-xl font-bold text-emerald-100 leading-none mt-0.5">{wonCount}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-emerald-700">Won</div>
+                  <div className="font-condensed text-xl font-bold text-emerald-700 leading-none mt-0.5">{wonCount}</div>
                 </div>
                 {outstandingCents > 0 && (
                   <div>
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-white/60">Outstanding</div>
-                    <div className="font-condensed text-xl font-bold text-white leading-none mt-0.5">{fmt(outstandingCents)}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-ppp-charcoal-500">Outstanding</div>
+                    <div className="font-condensed text-xl font-bold text-ppp-charcoal leading-none mt-0.5">{fmt(outstandingCents)}</div>
                   </div>
                 )}
               </div>
@@ -3562,7 +3565,7 @@ async function AccountProposalsTab({
                     <ConfirmSubmitButton
                       message={`Delete all ${draftCount} draft proposal${draftCount === 1 ? "" : "s"} for ${accountName}? Sent / Won / Lost / Replaced revisions are historical and will be SPARED. This can't be undone.`}
                       pendingLabel="Deleting…"
-                      className="inline-flex items-center px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 text-white text-[11px] font-semibold hover:bg-white/20 min-h-[32px]"
+                      className="inline-flex items-center px-3 py-1.5 rounded-lg border border-rose-200 bg-white text-rose-700 text-[11px] font-semibold hover:bg-rose-50 min-h-[32px]"
                     >
                       Delete {draftCount} draft{draftCount === 1 ? "" : "s"}
                     </ConfirmSubmitButton>
@@ -3577,7 +3580,7 @@ async function AccountProposalsTab({
                   />
                 ) : (
                   <span
-                    className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-white/25 bg-white/5 text-white/50 text-[11px] font-semibold"
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-400 text-[11px] font-semibold"
                     title="Add an open deal in the Pipeline tab to start a proposal."
                   >
                     Add a deal first

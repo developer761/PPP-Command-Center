@@ -347,43 +347,45 @@ function KpiTile({
   // top-right corner tinted by tone — adds depth without visual noise.
   // Hover lifts more decisively (shadow-lg + -translate-y-1) and the
   // stripe brightens on hover so users feel the interaction.
+  // Karan 2026-07-17 (round 4): richer KPI tile treatment. Full-height
+  // vertical accent stripe, larger icon puck with backdrop gradient,
+  // subtle diagonal shine on hover so the tile feels alive without
+  // shouting. Number stays condensed for read-at-a-glance weight.
   const ring =
     tone === "cc-brand"
-      ? "border-cc-brand-100 bg-white hover:border-cc-brand-300"
+      ? "border-cc-brand-100/70 bg-white hover:border-cc-brand-300"
       : tone === "rose"
-      ? "border-rose-100 bg-white hover:border-rose-300"
-      : "border-cc-brand-100 bg-white hover:border-cc-brand-300";
+      ? "border-rose-100/70 bg-white hover:border-rose-300"
+      : "border-blue-100/70 bg-white hover:border-blue-300";
   const glow =
     tone === "cc-brand"
-      ? "bg-cc-brand-100/50"
+      ? "bg-cc-brand-100/60"
       : tone === "rose"
-      ? "bg-rose-100/50"
-      : "bg-cc-brand-100/50";
+      ? "bg-rose-100/60"
+      : "bg-blue-100/50";
   const stripe =
-    tone === "cc-brand" ? "bg-gradient-to-b from-cc-brand-600 to-cc-brand-500"
-    : tone === "rose" ? "bg-gradient-to-b from-rose-600 to-rose-500"
-    : "bg-gradient-to-b from-blue-600 to-blue-500";
+    tone === "cc-brand" ? "bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400"
+    : tone === "rose" ? "bg-gradient-to-b from-rose-600 via-rose-500 to-rose-400"
+    : "bg-gradient-to-b from-blue-600 via-blue-500 to-blue-400";
   const iconCls =
     tone === "cc-brand"
-      ? "bg-cc-brand-100 text-cc-brand-700 group-hover/kpi:bg-cc-brand-600 group-hover/kpi:text-white"
+      ? "bg-gradient-to-br from-cc-brand-100 to-cc-brand-50 text-cc-brand-700 group-hover/kpi:from-cc-brand-600 group-hover/kpi:to-cc-brand-500 group-hover/kpi:text-white"
       : tone === "rose"
-      ? "bg-rose-100 text-rose-700 group-hover/kpi:bg-rose-600 group-hover/kpi:text-white"
-      : "bg-cc-brand-100 text-cc-brand-700 group-hover/kpi:bg-cc-brand-600 group-hover/kpi:text-white";
+      ? "bg-gradient-to-br from-rose-100 to-rose-50 text-rose-700 group-hover/kpi:from-rose-600 group-hover/kpi:to-rose-500 group-hover/kpi:text-white"
+      : "bg-gradient-to-br from-blue-100 to-blue-50 text-blue-700 group-hover/kpi:from-blue-600 group-hover/kpi:to-blue-500 group-hover/kpi:text-white";
   return (
     <Link
       href={href}
-      className={`group/kpi relative block border rounded-xl px-4 py-4 overflow-hidden shadow-sm transition-all hover:shadow-lg hover:-translate-y-1 touch-manipulation ${ring}`}
+      className={`group/kpi relative block border rounded-xl px-4 py-4 overflow-hidden shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 touch-manipulation ${ring}`}
     >
-      {/* Corner glow — subtle radial tint that reinforces the tone
-          without cluttering the main content area. */}
-      <span aria-hidden className={`pointer-events-none absolute -top-8 -right-8 w-24 h-24 rounded-full blur-xl opacity-70 ${glow}`} />
-      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="relative">
+      <span aria-hidden className={`pointer-events-none absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl opacity-80 ${glow}`} />
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${stripe}`} />
+      <div className="relative pl-1">
         <div className="flex items-start justify-between gap-2 mb-2.5">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+          <span className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
             {label}
           </span>
-          <span aria-hidden className={`inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors ${iconCls}`}>
+          <span aria-hidden className={`inline-flex items-center justify-center h-9 w-9 rounded-xl shadow-sm transition-all group-hover/kpi:shadow-md ${iconCls}`}>
             {icon}
           </span>
         </div>
@@ -411,30 +413,37 @@ function QuickAction({
   sub: string;
   icon: React.ReactNode;
 }) {
-  // Karan 2026-07-08 polish: primary card gets red-tinted gradient
-  // + icon puck flips color on hover. All cards hover with a stronger
-  // lift + shadow so they feel truly clickable, and the icon puck
-  // reverses (fill → white on brand) to reinforce the click affordance.
+  // Karan 2026-07-17: richer QuickAction cards. Primary card gets a
+  // stronger red-tinted top gradient with a visible left stripe and
+  // bigger icon puck. All cards animate the icon on hover (bg fills
+  // to brand red, icon flips white) so the click affordance is
+  // unmistakable. Corner glow adds depth.
   const shell = primary
-    ? "group/qa bg-gradient-to-br from-cc-brand-50/40 via-white to-white border-cc-brand-200 text-ppp-charcoal hover:border-cc-brand-400 shadow-sm shadow-cc-brand-100/50 relative overflow-hidden"
+    ? "group/qa bg-gradient-to-br from-cc-brand-100/40 via-white to-white border-cc-brand-200 text-ppp-charcoal hover:border-cc-brand-400 shadow-sm shadow-cc-brand-100/40 relative overflow-hidden"
     : "group/qa bg-white border-ppp-charcoal-100 text-ppp-charcoal hover:border-cc-brand-300 shadow-sm relative overflow-hidden";
   const iconCls = primary
-    ? "bg-cc-brand-100 text-cc-brand-700 group-hover/qa:bg-cc-brand-600 group-hover/qa:text-white"
-    : "bg-cc-brand-50 text-cc-brand-700 group-hover/qa:bg-cc-brand-600 group-hover/qa:text-white";
+    ? "bg-gradient-to-br from-cc-brand-500 to-cc-brand-600 text-white shadow-md shadow-cc-brand-200 group-hover/qa:from-cc-brand-600 group-hover/qa:to-cc-brand-700"
+    : "bg-gradient-to-br from-cc-brand-100 to-cc-brand-50 text-cc-brand-700 group-hover/qa:from-cc-brand-600 group-hover/qa:to-cc-brand-500 group-hover/qa:text-white group-hover/qa:shadow-md group-hover/qa:shadow-cc-brand-200";
   const subCls = "text-ppp-charcoal-500";
   return (
     <Link
       href={href}
-      className={`block border rounded-xl px-4 py-4 transition-all hover:shadow-lg hover:-translate-y-1 touch-manipulation ${shell}`}
+      className={`block border rounded-xl px-4 py-4 transition-all hover:shadow-lg hover:-translate-y-0.5 touch-manipulation ${shell}`}
     >
-      {primary && (
-        <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-cc-brand-600 to-cc-brand-500" />
-      )}
-      <span aria-hidden className={`inline-flex items-center justify-center h-10 w-10 rounded-xl mb-3 transition-colors ${iconCls}`}>
-        {icon}
-      </span>
-      <div className="text-sm font-bold leading-tight tracking-tight">{title}</div>
-      <div className={`mt-1 text-[12px] leading-snug ${subCls}`}>{sub}</div>
+      {primary ? (
+        <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
+      ) : null}
+      <span aria-hidden className={`pointer-events-none absolute -top-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-70 ${primary ? "bg-cc-brand-100/60" : "bg-cc-brand-50/60 group-hover/qa:bg-cc-brand-100/70"}`} />
+      <div className={`relative ${primary ? "pl-1" : ""}`}>
+        <span aria-hidden className={`inline-flex items-center justify-center h-11 w-11 rounded-xl mb-3 transition-all ${iconCls}`}>
+          {icon}
+        </span>
+        <div className="text-sm font-bold leading-tight tracking-tight flex items-center gap-1.5">
+          {title}
+          <span aria-hidden className="text-cc-brand-400 opacity-0 group-hover/qa:opacity-100 group-hover/qa:translate-x-1 transition-all">→</span>
+        </div>
+        <div className={`mt-1 text-[12px] leading-snug ${subCls}`}>{sub}</div>
+      </div>
     </Link>
   );
 }
