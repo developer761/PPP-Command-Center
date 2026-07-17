@@ -3494,26 +3494,6 @@ async function AccountProposalsTab({
   const fmt = (c: number) =>
     `$${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
-  // Karan 2026-07-15 (round 6): color-code each deal group by its
-  // DEAL ID (djb2 hue) so two deals under the same account with the
-  // same status don't blur into the same color. Matches the
-  // /commercial/proposals mini-kanban grammar (deal-hue on cards)
-  // so a customer's deals read as distinct sections everywhere.
-  //
-  // Was previously status-based which meant TEST + TEST 2 (both at
-  // Estimating with proposal_pending_approval) rendered identical
-  // orange borders. New scheme: hash the deal.id to a stable HSL hue
-  // that skips the blue band (Karan's brand rule).
-  const dealHueFor = (dealId: string): number => {
-    let h = 5381;
-    for (let i = 0; i < dealId.length; i++) {
-      h = ((h << 5) + h + dealId.charCodeAt(i)) >>> 0;
-    }
-    let hue = h % 300;
-    if (hue >= 200) hue = (hue + 60) % 360;
-    return hue;
-  };
-
   // Count only DRAFT proposals — the bulk-delete button only touches
   // drafts (Sent/Won/Lost/Replaced are legal history and get skipped
   // server-side, but showing the button as "Delete N drafts" is honest).
@@ -3651,10 +3631,30 @@ async function AccountProposalsTab({
                   const renderRow = (r: typeof rows[number], isCurrent: boolean) => {
                     const projectName = r.header_json?.project_name?.trim();
                     const gcCompany = r.header_json?.gc_company?.trim();
-                    const caption = projectName || gcCompany || null;
-                    const canMakeCurrent =
-                      !isCurrent &&
-                      (r.status === "draft" || r.status === "pending_approval");
+                    // Karan 2026-07-17: hide the caption if it just
+                    // duplicates the deal title (very common — Alex
+                    // often names proposals the same as the deal).
+                    // Prevents visual noise like "Testtt 5" showing
+                    // twice per row (header + row caption).
+                    const captionRaw = projectName || gcCompany || null;
+                    const caption =
+                      captionRaw && captionRaw !== dealTitle ? captionRaw : null;
+                    // Karan 2026-07-17: Make Current now works from
+                    // ANY older revision (draft / pending / sent /
+                    // won / lost / expired) — it creates a fresh R+1
+                    // draft based on the picked revision, giving a
+                    // clean path to reopen a Lost bid or spin off a
+                    // revised copy of a Won proposal. Superseded is
+                    // still excluded (it's already a historical
+                    // replacement — no reason to bump twice).
+                    const canMakeCurrent = !isCurrent && r.status !== "superseded";
+                    // Copy label — "Make current" for open work,
+                    // "Reopen" for closed outcomes so the button reads
+                    // like the action it performs.
+                    const bumpLabel =
+                      r.status === "lost" || r.status === "won" || r.status === "expired"
+                        ? "Reopen as R+1"
+                        : "Make current";
                     // Only render "sent Jul 15" chip when the row's
                     // current status is sent-derived (sent/won/lost/
                     // expired). Draft/Pending rows with a stale sent_at
@@ -3722,13 +3722,17 @@ async function AccountProposalsTab({
                               <Link
                                 href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${r.id}`}
                                 className="inline-flex items-center gap-1 px-3 h-full text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 border-r border-ppp-charcoal-100"
-                                title={`Bump R${r.revision_number} forward as a new revision — becomes the current draft.`}
-                                aria-label={`Make R${r.revision_number} the current draft`}
+                                title={
+                                  bumpLabel === "Reopen as R+1"
+                                    ? `Reopen R${r.revision_number} as a new R+1 draft — line items copy forward, parent deal returns to Estimating.`
+                                    : `Bump R${r.revision_number} forward as a new revision — becomes the current draft.`
+                                }
+                                aria-label={`${bumpLabel}: use R${r.revision_number} as the base for a new revision`}
                               >
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                                   <polyline points="9 18 15 12 9 6" />
                                 </svg>
-                                <span className="hidden sm:inline">Make current</span>
+                                <span className="hidden sm:inline">{bumpLabel}</span>
                               </Link>
                             )}
                             <a

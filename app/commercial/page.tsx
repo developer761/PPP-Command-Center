@@ -31,6 +31,10 @@ export const dynamic = "force-dynamic";
 const SHIPPED = "bg-emerald-50 text-emerald-700 border-emerald-200";
 const UP_NEXT = "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200";
 const QUEUED = "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
+// Karan 2026-07-17: roadmap synced to reality — Phase D/E/F all
+// shipped (Product Library, Exclusions Library, Proposal Builder +
+// PDF). H (Project post-sale) is the only queued restructure phase.
+// Light/dark mode dropped from priority list — not on Alex's ask.
 const PHASES = [
   // ── Foundation (shipped before the CEO restructure) ──
   { num: 1, name: "Account Management", status: "Shipped", color: SHIPPED },
@@ -42,11 +46,10 @@ const PHASES = [
   { num: "A", name: "Sidebar split + Deal→Opp rename", status: "Shipped", color: SHIPPED },
   { num: "B", name: "Structural fields + estimator", status: "Shipped", color: SHIPPED },
   { num: "C", name: "Documents (polymorphic + versions)", status: "Shipped", color: SHIPPED },
-  { num: "D", name: "Product Library + Tomco prices", status: "Up next", color: UP_NEXT },
-  { num: "E", name: "Exclusions Library", status: "Queued", color: QUEUED },
-  { num: "F", name: "Light / dark mode", status: "Queued", color: QUEUED },
-  { num: "G", name: "Proposal Builder + PDF export", status: "Queued", color: QUEUED },
-  { num: "H", name: "Project (post-sale) + Won→Project", status: "Queued", color: QUEUED },
+  { num: "D", name: "Product Library + Tomco prices", status: "Shipped", color: SHIPPED },
+  { num: "E", name: "Exclusions Library", status: "Shipped", color: SHIPPED },
+  { num: "F", name: "Proposal Builder + PDF export", status: "Shipped", color: SHIPPED },
+  { num: "H", name: "Project (post-sale) + Won→Project", status: "Up next", color: UP_NEXT },
 ];
 
 function formatCentsCompact(cents: number): string {
