@@ -178,9 +178,19 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 46,
     right: 48,
-    fontSize: 12,
+    fontSize: 11,
     color: CHARCOAL,
     fontFamily: "Times-Bold",
+    textAlign: "right",
+  },
+  dateNumber: {
+    position: "absolute",
+    top: 62,
+    right: 48,
+    fontSize: 11,
+    color: CHARCOAL,
+    fontFamily: "Times-Bold",
+    textAlign: "right",
   },
   dateText: {
     fontSize: 12,
@@ -503,7 +513,13 @@ function splitBoldLead(text: string): { lead: string | null; body: string } {
 
 // ─── Sub-blocks ─────────────────────────────────────────────────────
 
-function LogoBlock({ dateLabel }: { dateLabel: string }) {
+function LogoBlock({
+  dateLabel,
+  proposalNumber,
+}: {
+  dateLabel: string;
+  proposalNumber: string | null;
+}) {
   // Karan 2026-07-17: real Tomco logo image from Alex, cached at module
   // load. If the file is missing (dev without asset, deploy hiccup),
   // fall back to the text wordmark so the PDF still renders — never
@@ -522,6 +538,10 @@ function LogoBlock({ dateLabel }: { dateLabel: string }) {
         )}
       </View>
       {dateLabel && <Text style={styles.dateFloat}>{dateLabel}</Text>}
+      {/* Karan 2026-07-17 (Tomco 1:1): "No. ALT0125" line below the
+          date, matching reference PDF. Renders when proposal_number is
+          set on the header block (Alex enters it on the editor). */}
+      {proposalNumber && <Text style={styles.dateNumber}>{proposalNumber}</Text>}
     </>
   );
 }
@@ -538,7 +558,9 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
           <Text key={i} style={styles.addrLine}>{line}</Text>
         ))}
       </View>
-      {/* Blank-line separator + Attention block, also indented + bold. */}
+      {/* Blank-line separator + Attention block, also indented + bold.
+          Karan 2026-07-17 (Tomco 1:1): email renders as blue underlined
+          link to match reference PDF. */}
       {hasAttentionBlock && (
         <View style={[styles.addrBlock, { marginTop: 10 }]}>
           {h.attention && (
@@ -546,7 +568,7 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
           )}
           {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
           {h.email && (
-            <Text style={styles.addrLine}>{h.email}</Text>
+            <Text style={[styles.addrLine, styles.link]}>{h.email}</Text>
           )}
         </View>
       )}
@@ -619,16 +641,13 @@ function BulletLine({ text }: { text: string }) {
       </View>
     );
   }
-  // No bold lead → bullet the line the same way exclusions are
-  // bulleted. Karan 2026-07-15: "Gas Pipes" / "Base Molding - Prep &
-  // Paint 2 Coats" / any item without a colon-bold lead should read
-  // as a bulleted point, matching the Exclusions & Qualifications
-  // section's visual grammar.
+  // Karan 2026-07-17 (1:1 reference match): reference PDF has NO
+  // bullet dots on inclusion items. Even items without a bold lead
+  // render as plain lines. Bullets are reserved for the Exclusions &
+  // Qualifications section only. Prior behavior added a dot to
+  // dot-less items, which visually clashed with the reference.
   return (
-    <View style={styles.bulletRow}>
-      <View style={styles.bulletDot} />
-      <Text style={styles.bulletBody}>{body}</Text>
-    </View>
+    <Text style={styles.itemLine}>{body}</Text>
   );
 }
 
@@ -826,6 +845,12 @@ export function ProposalPdfDocument({
   const totalLabel = proposalTotalLabel(exclusions);
   const intro = proposal.intro_text_override?.trim() || TOMCO_DEFAULT_INTRO;
   const dateLabel = formatDateLong(proposal.header_json.date_iso);
+  // Karan 2026-07-17 (Tomco 1:1): render "No. ALT0125"-style line
+  // under the date. Falls back to R{n} if no explicit number was set
+  // (matches the internal revision label).
+  const proposalNumber =
+    proposal.header_json.proposal_number?.trim() ||
+    `R${proposal.revision_number}`;
   // Round-3 audit fix: pdf_show_line_prices was a dead toggle — the
   // editor checkbox existed but the renderer ignored it. Now: internal
   // mode always shows the line-item table (estimator math); customer
@@ -845,7 +870,7 @@ export function ProposalPdfDocument({
         <View style={styles.borderFrame} fixed />
         <View style={styles.borderInner} fixed />
 
-        <LogoBlock dateLabel={dateLabel} />
+        <LogoBlock dateLabel={dateLabel} proposalNumber={proposalNumber} />
         <SubmittedToBlock h={proposal.header_json} />
         <ProjectBlock h={proposal.header_json} />
         <Text style={styles.intro}>{intro}</Text>

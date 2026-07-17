@@ -31,6 +31,11 @@ export type ProposalHeaderJson = {
   project_address?: string;
   date_iso?: string;
   show_capital_improvement_notice?: boolean;
+  // Karan 2026-07-17 (Tomco 1:1 reference match): optional proposal
+  // number rendered right-aligned below the date, e.g. "No. ALT0125".
+  // Free-text so Alex can use whatever numbering scheme the GC wants.
+  // Falls back to `R{revision_number}` on the PDF if absent.
+  proposal_number?: string;
 };
 
 /** Snapshotted estimator sign-off. Frozen at proposal create so the
