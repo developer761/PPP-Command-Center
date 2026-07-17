@@ -47,30 +47,38 @@ const MUTED = "#4B5563";
 const YELLOW_BG = "#FEF3C7";
 const YELLOW_BORDER = "#F59E0B";
 const LINK_BLUE = "#1D4ED8";
+// Karan 2026-07-17 (Katie feedback): parchment cream background so the
+// PDF reads as printed letterhead rather than plain white. True mottled
+// texture requires an image asset (see /public/brand/tomco-parchment.jpg
+// FOLLOW-UP — pending logo/texture files from Alex). This warm cream is
+// the closest single-color match to the reference PDF's paper look.
+const PARCHMENT = "#F7F0DC";
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 44,
-    paddingHorizontal: 48,
-    // Karan 2026-07-15: bumped from 68 → 96 so the fixed footer
-    // (Windsor Place address + tel/fax/web line) doesn't overlap
-    // page content on multi-page proposals AND doesn't get clipped
-    // by the red keyline border.
-    paddingBottom: 96,
+    paddingTop: 88, // room for logo + date block up top
+    paddingHorizontal: 54,
+    // Karan 2026-07-17 (Katie feedback: "Footer is getting cut off"):
+    // increased paddingBottom to 110 so multi-page proposals never push
+    // body content into the fixed footer or clip the footer text
+    // against the red keyline border edge. Also bumped side + top
+    // padding so the text sits comfortably away from the border rules.
+    paddingBottom: 110,
     fontSize: 11,
     fontFamily: "Times-Roman",
     color: CHARCOAL,
     lineHeight: 1.35,
+    backgroundColor: PARCHMENT,
   },
   // Red keyline border wraps the whole page (fixed absolute) — Tomco's
-  // signature look. Bumped bottom edge from 48 → 78 so the footer
-  // (which sits at bottom 32) has room INSIDE the border.
+  // signature look. Bottom edge pushed to 92 so the footer (which sits
+  // at bottom 48-62) has room INSIDE the border with real breathing.
   borderFrame: {
     position: "absolute",
     top: 24,
     left: 28,
     right: 28,
-    bottom: 78,
+    bottom: 92,
     borderStyle: "solid",
     borderWidth: 1.5,
     borderColor: RED,
@@ -80,7 +88,7 @@ const styles = StyleSheet.create({
     top: 28,
     left: 32,
     right: 32,
-    bottom: 82,
+    bottom: 96,
     borderStyle: "solid",
     borderWidth: 0.5,
     borderColor: RED,
@@ -285,43 +293,66 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontSize: 11,
   },
+  // Karan 2026-07-17 (Katie feedback): match reference PDF — "Estimator:"
+  // is a bold+underlined header, then the name / phone / email lines are
+  // each bold + underlined. Prior version had only the name bold and no
+  // header at all.
+  estHeader: {
+    fontFamily: "Times-Bold",
+    textDecoration: "underline",
+    fontSize: 11,
+    marginBottom: 2,
+  },
   estName: {
     fontFamily: "Times-Bold",
-    fontSize: 12,
-    marginBottom: 2,
+    textDecoration: "underline",
+    fontSize: 11,
+    marginBottom: 1,
   },
   estRow: {
     color: CHARCOAL,
     fontFamily: "Times-Bold",
+    textDecoration: "underline",
     fontSize: 11,
+    marginBottom: 1,
   },
-  // Karan 2026-07-15: pushed the footer INSIDE the red keyline border
-  // and gave it a red top-rule for visual anchoring (matches the
-  // reference PDF's dashed rule + centered address block). Bottom
-  // pinned at 46 so both the address line and tel/fax/web line sit
-  // above the border edge (78) with breathing room.
-  footerRule: {
+  // Karan 2026-07-17 (Katie feedback: footer clipping + match reference):
+  // footer sits well inside the red keyline border, single centered line
+  // "77-13 Windsor Place • Central Islip, NY 11722 • Tel: 631.582.2770 •
+  // Fax: 631.582.2771 • Web: www.tomcopainting.com" with Tel/Fax/Web
+  // labels rendered in RED bold to match the reference PDF letterhead.
+  // Positioned at bottom 60 so it's inside the border (bottom 92) with
+  // ~30pt clearance — no more clip risk.
+  footerRow: {
     position: "absolute",
     left: 40,
     right: 40,
-    bottom: 66,
-    borderTopWidth: 0.75,
-    borderTopColor: RED,
-    borderStyle: "solid",
+    bottom: 60,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
   },
-  footer: {
-    position: "absolute",
-    left: 48,
-    right: 48,
-    bottom: 42,
+  footerRuleFlank: {
+    // Short red rule flanks on either side of the footer text — visually
+    // matches the reference PDF's letterhead footer ("— … —").
+    width: 18,
+    height: 0.75,
+    backgroundColor: RED,
+  },
+  footerText: {
     fontSize: 8,
-    color: MUTED,
+    color: CHARCOAL,
     textAlign: "center",
+  },
+  footerLabel: {
+    color: RED,
+    fontFamily: "Times-Bold",
   },
   pageNumber: {
     position: "absolute",
     right: 48,
-    bottom: 30,
+    bottom: 42,
     fontSize: 8,
     color: MUTED,
   },
@@ -700,6 +731,10 @@ function EstimatorBlock({ e }: { e: ProposalEstimatorSnapshot }) {
   if (!e.name && !e.email && !e.phone) return null;
   return (
     <View style={styles.estBlock}>
+      {/* Karan 2026-07-17 (Katie feedback): reference PDF has an
+          "Estimator:" bold+underlined header above the block, then
+          name/phone/email each on their own line, all bold+underlined. */}
+      <Text style={styles.estHeader}>Estimator:</Text>
       {e.name && <Text style={styles.estName}>{e.name}</Text>}
       {e.title && <Text style={styles.estRow}>{e.title}</Text>}
       {e.phone && <Text style={styles.estRow}>{e.phone}</Text>}
@@ -837,14 +872,21 @@ export function ProposalPdfDocument({
             reference PDF, not above the CI notice. */}
         <EstimatorBlock e={proposal.estimator_snapshot_json} />
 
-        {/* Footer fixed to bottom of every page. Rule + text both sit
-            INSIDE the red keyline border (bumped in 2026-07-15 fix).
-            Rule is a thin red line for visual grounding — matches the
-            reference PDF's footer treatment. */}
-        <View style={styles.footerRule} fixed />
-        <View style={styles.footer} fixed>
-          <Text>{TOMCO_COMPANY_FOOTER.address_line}</Text>
-          <Text>{TOMCO_COMPANY_FOOTER.contact_line}</Text>
+        {/* Footer fixed to bottom of every page. Karan 2026-07-17
+            (Katie feedback: "Footer is getting cut off"): moved 30pt
+            higher inside the red keyline border with real breathing
+            room. Single centered line with short red rule flanks +
+            RED bold labels for Tel/Fax/Web — matches the reference
+            PDF letterhead. */}
+        <View style={styles.footerRow} fixed>
+          <View style={styles.footerRuleFlank} />
+          <Text style={styles.footerText}>
+            77-13 Windsor Place • Central Islip, NY 11722 •{" "}
+            <Text style={styles.footerLabel}>Tel:</Text> 631.582.2770 •{" "}
+            <Text style={styles.footerLabel}>Fax:</Text> 631.582.2771 •{" "}
+            <Text style={styles.footerLabel}>Web:</Text> www.tomcopainting.com
+          </Text>
+          <View style={styles.footerRuleFlank} />
         </View>
         <Text
           style={styles.pageNumber}
