@@ -3516,47 +3516,78 @@ async function AccountProposalsTab({
         </div>
       )}
 
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <h2 className="text-base font-bold text-ppp-charcoal">Proposals</h2>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-            Every revision on every deal for this customer. The current revision is at the top of each deal; older revisions collapse below.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {draftCount > 0 && (
-            <form
-              action={bulkDeleteAllProposalsAction}
-              className="inline-flex"
-            >
-              <input type="hidden" name="account_id" value={accountId} />
-              <input type="hidden" name="confirm" value="yes" />
-              <ConfirmSubmitButton
-                message={`Delete all ${draftCount} draft proposal${draftCount === 1 ? "" : "s"} for ${accountName}? Sent / Won / Lost / Replaced revisions are historical and will be SPARED. This can't be undone.`}
-                pendingLabel="Deleting…"
-                className="inline-flex items-center px-3 py-1.5 rounded-lg border border-rose-300 bg-white text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[36px]"
-              >
-                Delete {draftCount} draft{draftCount === 1 ? "" : "s"}
-              </ConfirmSubmitButton>
-            </form>
-          )}
-          {pickerDeals.length > 0 ? (
-            <NewProposalPicker
-              accounts={[{ id: accountId, company_name: accountName }]}
-              deals={pickerDeals}
-              lockedAccountId={accountId}
-              buttonLabel="+ Start proposal"
-            />
-          ) : (
-            <span
-              className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-400 text-[12px] font-semibold"
-              title="Add an open deal in the Pipeline tab to start a proposal."
-            >
-              No open deals to bid — add one first
-            </span>
-          )}
-        </div>
-      </div>
+      {/* Karan 2026-07-17: proposals tab header now leads with a
+          summary strip — total revisions / sent / won / outstanding
+          $ — so the tab feels like a customer scorecard, not just a
+          list. Matches the "dashboard, not directory" energy Karan
+          asked for. */}
+      {(() => {
+        const sentCount = proposals.filter((p) => p.status === "sent").length;
+        const wonCount = proposals.filter((p) => p.status === "won").length;
+        const outstandingCents = proposals
+          .filter((p) => p.status === "sent" || p.status === "pending_approval")
+          .reduce((s, p) => s + p.total_cents, 0);
+        return (
+          <div className="bg-gradient-to-br from-ppp-charcoal-900 via-ppp-charcoal to-ppp-charcoal-800 text-white rounded-xl p-4 sm:p-5 shadow-md shadow-ppp-charcoal/10 overflow-hidden relative">
+            <span aria-hidden className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-cc-brand-500/20 blur-2xl" />
+            <div className="relative flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/60 mb-1">Proposals</div>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="font-condensed text-3xl sm:text-4xl font-black text-white leading-none">{proposals.length}</span>
+                  <span className="text-[12px] text-white/70">total revision{proposals.length === 1 ? "" : "s"} · {byDeal.size} deal{byDeal.size === 1 ? "" : "s"}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-white/60">Sent</div>
+                  <div className="font-condensed text-xl font-bold text-white leading-none mt-0.5">{sentCount}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-emerald-200/80">Won</div>
+                  <div className="font-condensed text-xl font-bold text-emerald-100 leading-none mt-0.5">{wonCount}</div>
+                </div>
+                {outstandingCents > 0 && (
+                  <div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-white/60">Outstanding</div>
+                    <div className="font-condensed text-xl font-bold text-white leading-none mt-0.5">{fmt(outstandingCents)}</div>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {draftCount > 0 && (
+                  <form action={bulkDeleteAllProposalsAction} className="inline-flex">
+                    <input type="hidden" name="account_id" value={accountId} />
+                    <input type="hidden" name="confirm" value="yes" />
+                    <ConfirmSubmitButton
+                      message={`Delete all ${draftCount} draft proposal${draftCount === 1 ? "" : "s"} for ${accountName}? Sent / Won / Lost / Replaced revisions are historical and will be SPARED. This can't be undone.`}
+                      pendingLabel="Deleting…"
+                      className="inline-flex items-center px-3 py-1.5 rounded-lg border border-white/20 bg-white/10 text-white text-[11px] font-semibold hover:bg-white/20 min-h-[32px]"
+                    >
+                      Delete {draftCount} draft{draftCount === 1 ? "" : "s"}
+                    </ConfirmSubmitButton>
+                  </form>
+                )}
+                {pickerDeals.length > 0 ? (
+                  <NewProposalPicker
+                    accounts={[{ id: accountId, company_name: accountName }]}
+                    deals={pickerDeals}
+                    lockedAccountId={accountId}
+                    buttonLabel="+ Start proposal"
+                  />
+                ) : (
+                  <span
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg border border-dashed border-white/25 bg-white/5 text-white/50 text-[11px] font-semibold"
+                    title="Add an open deal in the Pipeline tab to start a proposal."
+                  >
+                    Add a deal first
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {proposals.length === 0 ? (
         <div className="bg-white border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">

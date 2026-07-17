@@ -125,95 +125,80 @@ export default async function CommercialDashboardPage() {
     : null;
 
   return (
-    <div className="space-y-6 sm:space-y-8">
+    <div className="space-y-4 sm:space-y-6">
       {/* Karan 2026-07-17: PPP-style bold hero card. Dark charcoal
           gradient (matches PPP dashboard's Today card), font-condensed
           for the big number, sub-metrics laid out in the right rail.
           Anchor of the whole page. */}
-      <header className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-        {/* Primary hero — dark gradient, big number */}
-        <div className="lg:col-span-2 relative bg-gradient-to-br from-ppp-charcoal-900 via-ppp-charcoal to-ppp-charcoal-800 text-white rounded-2xl p-5 sm:p-7 shadow-lg shadow-ppp-charcoal/20 overflow-hidden">
-          {/* Corner glow */}
-          <span aria-hidden className="pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-cc-brand-500/20 blur-3xl" />
-          <span aria-hidden className="pointer-events-none absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-cc-brand-500/10 blur-3xl" />
-          <div className="relative">
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-white/60">
-                Commercial Command Center
+      <header className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* Primary hero — dark gradient, big number. Tightened per
+            Karan feedback: smaller padding, condensed heading, tighter
+            biggest-bid callout inline instead of stacked. */}
+        <div className="lg:col-span-2 relative bg-gradient-to-br from-ppp-charcoal-900 via-ppp-charcoal to-ppp-charcoal-800 text-white rounded-xl p-4 sm:p-5 shadow-md shadow-ppp-charcoal/20 overflow-hidden">
+          <span aria-hidden className="pointer-events-none absolute -top-12 -right-12 h-40 w-40 rounded-full bg-cc-brand-500/20 blur-2xl" />
+          <div className="relative flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+                  Commercial Command Center
+                </div>
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase text-emerald-100 bg-emerald-500/20 border border-emerald-400/40 px-1.5 py-0.5 rounded-full">
+                  <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
+                  Live
+                </span>
               </div>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold tracking-widest uppercase text-emerald-100 bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 rounded-full">
-                <span aria-hidden className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                Live
-              </span>
-            </div>
-            <div className="flex items-baseline gap-3 flex-wrap">
-              <div className="font-condensed text-5xl sm:text-6xl font-black text-white leading-none tracking-tight">
-                {formatCentsCompact(weightedPipeline)}
-              </div>
-              <div className="text-sm text-white/70">
-                weighted pipeline · {openOpps.length} open
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <div className="font-condensed text-3xl sm:text-4xl font-black text-white leading-none tracking-tight">
+                  {formatCentsCompact(weightedPipeline)}
+                </div>
+                <div className="text-[12px] text-white/70">
+                  weighted · {openOpps.length} open
+                </div>
               </div>
             </div>
             {biggestOpenOpp && (
-              <div className="mt-5 pt-4 border-t border-white/15">
-                <div className="text-[10px] uppercase tracking-widest font-bold text-white/60 mb-1">
-                  Biggest open bid
-                </div>
-                <Link
-                  href={`/commercial/accounts/${biggestOpenOpp.account_id}?tab=deals&sub=opportunities#deal-row-${biggestOpenOpp.id}`}
-                  className="group inline-flex items-baseline gap-2 hover:text-cc-brand-200"
-                >
-                  <span className="font-condensed text-2xl font-bold">
-                    {formatCentsCompact(biggestOpenOpp.bid_value_low_cents ?? 0)}
-                  </span>
-                  <span className="text-sm text-white/80 group-hover:text-cc-brand-100 truncate">
-                    {biggestAccount}
-                  </span>
-                  <span aria-hidden className="text-white/40 group-hover:text-cc-brand-200">→</span>
-                </Link>
-              </div>
+              <Link
+                href={`/commercial/accounts/${biggestOpenOpp.account_id}?tab=deals&sub=opportunities#deal-row-${biggestOpenOpp.id}`}
+                className="group inline-flex items-baseline gap-2 shrink-0 border-l border-white/15 pl-4 hover:text-cc-brand-200"
+              >
+                <div className="text-[9px] font-bold uppercase tracking-widest text-white/60">Top bid</div>
+                <span className="font-condensed text-lg font-bold">
+                  {formatCentsCompact(biggestOpenOpp.bid_value_low_cents ?? 0)}
+                </span>
+                <span className="text-[11px] text-white/80 group-hover:text-cc-brand-100 truncate max-w-[140px]">
+                  {biggestAccount}
+                </span>
+                <span aria-hidden className="text-white/40 group-hover:text-cc-brand-200">→</span>
+              </Link>
             )}
           </div>
         </div>
 
-        {/* Wins this month — secondary hero */}
-        <div className="relative bg-white border border-emerald-100 rounded-2xl p-5 sm:p-6 shadow-sm overflow-hidden">
-          <span aria-hidden className="pointer-events-none absolute -top-12 -right-12 h-32 w-32 rounded-full bg-emerald-100/60 blur-2xl" />
-          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-600 to-emerald-400" />
+        {/* Wins this month — secondary hero, tightened */}
+        <div className="relative bg-white border border-emerald-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
+          <span aria-hidden className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-emerald-100/60 blur-2xl" />
+          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-emerald-600 to-emerald-400" />
           <div className="relative">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1.5">
               Wins this month
             </div>
-            <div className="flex items-baseline gap-2 mt-2">
-              <div className="font-condensed text-5xl font-black text-ppp-charcoal leading-none tracking-tight">
+            <div className="flex items-baseline gap-2">
+              <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight">
                 {wonThisMonth.length}
               </div>
               {monthWinPct !== null && (
-                <div className="text-sm text-emerald-700 font-semibold">
+                <div className="text-[12px] text-emerald-700 font-semibold">
                   {monthWinPct}% win rate
                 </div>
               )}
             </div>
-            <div className="mt-2 text-[13px] text-ppp-charcoal-600">
-              {wonThisMonthCents > 0 ? (
-                <>
-                  <span className="font-semibold text-ppp-charcoal">
-                    {formatCentsCompact(wonThisMonthCents)}
-                  </span>{" "}
-                  awarded value (low estimate)
-                </>
-              ) : wonThisMonth.length === 0 ? (
-                "No wins recorded yet this month"
-              ) : (
-                "Awarded value not set on wins"
-              )}
+            <div className="mt-1.5 text-[11px] text-ppp-charcoal-500 truncate">
+              {wonThisMonthCents > 0
+                ? `${formatCentsCompact(wonThisMonthCents)} awarded value`
+                : wonThisMonth.length === 0
+                ? "No wins recorded yet this month"
+                : "Awarded value not set on wins"}
             </div>
-            <Link
-              href="/commercial/reports/win-loss"
-              className="mt-4 inline-flex items-center gap-1 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
-            >
-              Full win/loss report <span aria-hidden>→</span>
-            </Link>
           </div>
         </div>
       </header>
@@ -402,10 +387,10 @@ function KpiTile({
             {icon}
           </span>
         </div>
-        <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight">
+        <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal leading-none tracking-tight">
           {value}
         </div>
-        <div className="mt-2 text-[11px] text-ppp-charcoal-500 leading-snug">
+        <div className="mt-1.5 text-[11px] text-ppp-charcoal-500 leading-snug">
           {sub}
         </div>
       </div>
