@@ -3641,110 +3641,112 @@ async function AccountProposalsTab({
                   const currentIdx = rows.findIndex((r) => NON_TERMINAL.has(r.status));
                   const currentRow = currentIdx >= 0 ? rows[currentIdx]! : rows[0]!;
                   const olderRows = rows.filter((r) => r.id !== currentRow.id);
+                  // Karan 2026-07-17 (round 2): full row redesign — prior
+                  // layout crammed R# + Current pill + status pill +
+                  // project name + sent date + total all on one line
+                  // which read as noise. Two-line rows now: primary
+                  // row (revision + status + total + actions), caption
+                  // row (project name / GC name), so the hierarchy is
+                  // scannable at a glance.
                   const renderRow = (r: typeof rows[number], isCurrent: boolean) => {
-                    // Karan 2026-07-16: surface the custom name Karan
-                    // set on the proposal editor (header_json.project_name)
-                    // so renames actually show up here. Without this,
-                    // rows only showed R# + gc_company and the name
-                    // change felt invisible.
                     const projectName = r.header_json?.project_name?.trim();
-                    // "Make current" — bumps this older revision forward
-                    // to be the new R{max+1}, which becomes the current.
-                    // Shown only on non-current, non-terminal drafts so
-                    // the button doesn't clutter the row for Sent/Won/
-                    // Lost historical revisions (those can be reopened
-                    // from the editor if needed).
+                    const gcCompany = r.header_json?.gc_company?.trim();
+                    const caption = projectName || gcCompany || null;
                     const canMakeCurrent =
                       !isCurrent &&
                       (r.status === "draft" || r.status === "pending_approval");
-                    // Karan 2026-07-17: sent_at lingers on the row even
-                    // after the proposal is moved back to Draft/Pending
-                    // via the kanban (schema doesn't clear the
-                    // timestamp on revert — it's a bid history record).
-                    // Only surface the "sent Jul 15" chip when the
-                    // proposal is CURRENTLY still in a sent-derived
-                    // state (sent / won / lost / expired). For
-                    // draft/pending_approval revisions with a stale
-                    // sent_at, hide the chip — the user reverted, the
-                    // proposal isn't currently sent, showing "sent"
-                    // is misleading.
+                    // Only render "sent Jul 15" chip when the row's
+                    // current status is sent-derived (sent/won/lost/
+                    // expired). Draft/Pending rows with a stale sent_at
+                    // (reverted via kanban) hide it — proposal isn't
+                    // currently out with the customer.
                     const showSentDate =
                       r.sent_at &&
                       (r.status === "sent" ||
                         r.status === "won" ||
                         r.status === "lost" ||
                         r.status === "expired");
+                    const editorHref = `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${r.id}`;
                     return (
                       <li
                         key={r.id}
-                        className={`flex items-stretch ${isCurrent ? "bg-emerald-50/40 hover:bg-emerald-50/60" : "hover:bg-ppp-charcoal-50"}`}
+                        className={
+                          isCurrent
+                            ? "border-l-4 border-emerald-500 bg-emerald-50/50 hover:bg-emerald-50 transition-colors"
+                            : "hover:bg-ppp-charcoal-50/60 transition-colors"
+                        }
                       >
-                        <Link
-                          href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/${r.id}`}
-                          className="flex items-center gap-3 px-4 py-2.5 min-h-[48px] flex-1 min-w-0"
-                        >
-                          <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums shrink-0">
-                            R{r.revision_number}
-                          </span>
-                          {isCurrent && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 shrink-0">
-                              <span aria-hidden>★</span> Current
-                            </span>
-                          )}
-                          <span
-                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${pillCls(r.status)}`}
-                          >
-                            {proposalStatusLabel(r.status)}
-                          </span>
-                          {projectName && (
-                            <span
-                              className="text-[13px] font-semibold text-ppp-charcoal-800 truncate min-w-0"
-                              title={projectName}
-                            >
-                              {projectName}
-                            </span>
-                          )}
-                          {r.header_json?.gc_company && !projectName && (
-                            <span className="text-[11.5px] text-ppp-charcoal-600 truncate">
-                              {r.header_json.gc_company}
-                            </span>
-                          )}
-                          {showSentDate && (
-                            <span className="text-[10.5px] text-ppp-charcoal-500 shrink-0 ml-auto">
-                              sent {new Date(r.sent_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}
-                            </span>
-                          )}
-                          <span className={`text-[13px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ${showSentDate ? "ml-2" : "ml-auto"}`}>
-                            {fmt(r.total_cents)}
-                          </span>
-                        </Link>
-                        {canMakeCurrent && (
+                        <div className="flex items-stretch">
+                          {/* Primary content — clickable, opens the editor */}
                           <Link
-                            href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${r.id}`}
-                            className="inline-flex items-center gap-1 px-3 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-l border-ppp-charcoal-100 shrink-0"
-                            title={`Bump R${r.revision_number} forward as a new revision — becomes the current draft. The R{n+1} copy shows on the kanban.`}
-                            aria-label={`Make R${r.revision_number} the current draft`}
+                            href={editorHref}
+                            className={`flex-1 min-w-0 flex flex-col justify-center ${isCurrent ? "px-4 py-3" : "px-4 py-2"} min-h-[52px]`}
                           >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                              <polyline points="9 18 15 12 9 6" />
-                            </svg>
-                            <span className="hidden sm:inline">Make current</span>
+                            {/* Row 1: R# + Current pill + status pill + total */}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`font-bold text-ppp-charcoal tabular-nums shrink-0 ${isCurrent ? "text-[15px]" : "text-[12.5px] text-ppp-charcoal-600"}`}>
+                                R{r.revision_number}
+                              </span>
+                              {isCurrent && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider bg-emerald-600 text-white shrink-0">
+                                  <span aria-hidden>★</span> Current
+                                </span>
+                              )}
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 ${pillCls(r.status)}`}
+                              >
+                                {proposalStatusLabel(r.status)}
+                              </span>
+                              {showSentDate && (
+                                <span className="text-[10.5px] text-ppp-charcoal-500 shrink-0">
+                                  sent {new Date(r.sent_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}
+                                </span>
+                              )}
+                              <span className={`ml-auto font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ${isCurrent ? "text-[15px]" : "text-[12.5px]"}`}>
+                                {fmt(r.total_cents)}
+                              </span>
+                            </div>
+                            {/* Row 2: caption (project name or GC) — only render if there IS a caption */}
+                            {caption && (
+                              <div
+                                className={`truncate mt-0.5 ${isCurrent ? "text-[12.5px] font-semibold text-ppp-charcoal-700" : "text-[11.5px] text-ppp-charcoal-500"}`}
+                                title={caption}
+                              >
+                                {caption}
+                              </div>
+                            )}
                           </Link>
-                        )}
-                        <a
-                          href={`/api/commercial/proposals/${r.id}/pdf`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-3 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-white border-l border-ppp-charcoal-100 shrink-0"
-                          title="Open the customer PDF in a new tab"
-                          aria-label={`Open PDF for revision ${r.revision_number}`}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                            <polyline points="14 2 14 8 20 8" />
-                          </svg>
-                          <span className="hidden sm:inline">PDF</span>
-                        </a>
+                          {/* Action buttons — vertically centered */}
+                          <div className="flex items-center border-l border-ppp-charcoal-100">
+                            {canMakeCurrent && (
+                              <Link
+                                href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${r.id}`}
+                                className="inline-flex items-center gap-1 px-3 h-full text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 border-r border-ppp-charcoal-100"
+                                title={`Bump R${r.revision_number} forward as a new revision — becomes the current draft.`}
+                                aria-label={`Make R${r.revision_number} the current draft`}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                  <polyline points="9 18 15 12 9 6" />
+                                </svg>
+                                <span className="hidden sm:inline">Make current</span>
+                              </Link>
+                            )}
+                            <a
+                              href={`/api/commercial/proposals/${r.id}/pdf`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 h-full text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-cc-brand-50"
+                              title="Open the customer PDF in a new tab"
+                              aria-label={`Open PDF for revision ${r.revision_number}`}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <polyline points="14 2 14 8 20 8" />
+                              </svg>
+                              <span className="hidden sm:inline">PDF</span>
+                            </a>
+                          </div>
+                        </div>
                       </li>
                     );
                   };

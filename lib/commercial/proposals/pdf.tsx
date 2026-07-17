@@ -72,12 +72,12 @@ const MUTED = "#4B5563";
 const YELLOW_BG = "#FEF3C7";
 const YELLOW_BORDER = "#F59E0B";
 const LINK_BLUE = "#1D4ED8";
-// Karan 2026-07-17 (Katie feedback): parchment cream background so the
-// PDF reads as printed letterhead rather than plain white. True mottled
-// texture requires an image asset (see /public/brand/tomco-parchment.jpg
-// FOLLOW-UP — pending logo/texture files from Alex). This warm cream is
-// the closest single-color match to the reference PDF's paper look.
-const PARCHMENT = "#F7F0DC";
+// Karan 2026-07-17 (round 2): flat cream (#F7F0DC) read as YELLOW on
+// screen — too saturated. Reverted to white so the logo image (which
+// has a white JPG background) blends cleanly with the page instead of
+// looking like a white sticker on a yellow page. True mottled parchment
+// texture requires a real image asset — flagged as follow-up.
+const PARCHMENT = "#FFFFFF";
 
 const styles = StyleSheet.create({
   page: {
