@@ -49,3 +49,27 @@ export function productCategoryLabel(c: string): string {
 export function productUnitLabel(u: string): string {
   return (UNIT_LABELS as Record<string, string>)[u] ?? u;
 }
+
+// F.6 (2026-07-19): surface_area facet. Katie asked for Interior /
+// Exterior grouping in the product library. Kept as a TEXT column with
+// application-enforced enum so admins can add specialized values
+// (e.g. "high_reach", "metal") without a schema change.
+export const PRODUCT_SURFACE_AREAS = [
+  "interior",
+  "exterior",
+  "both",
+  "other",
+] as const;
+
+export type ProductSurfaceArea = (typeof PRODUCT_SURFACE_AREAS)[number];
+
+const SURFACE_AREA_LABELS: Record<ProductSurfaceArea, string> = {
+  interior: "Interior",
+  exterior: "Exterior",
+  both: "Interior + Exterior",
+  other: "Other",
+};
+
+export function productSurfaceAreaLabel(s: string): string {
+  return (SURFACE_AREA_LABELS as Record<string, string>)[s] ?? s;
+}

@@ -86,6 +86,10 @@ export type CommercialProposalLineItem = {
   unit_price_cents: number;
   is_alternate: boolean;
   position: number;
+  // F.6 (2026-07-19): optional phase label ("Phase 1", "Base contract").
+  // NULL = ungrouped. Renderer groups by phase when any item has one set;
+  // otherwise falls back to flat rendering for pre-F.6 proposals.
+  phase: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -817,6 +821,8 @@ export type CreateLineItemInput = {
   unit_price_cents: number;
   is_alternate?: boolean;
   position?: number;
+  /** F.6: optional phase label. Trimmed on write; empty → NULL. */
+  phase?: string | null;
 };
 
 export async function createLineItem(
@@ -852,6 +858,13 @@ export async function createLineItem(
       .limit(1);
     position = ((last?.[0] as { position?: number } | undefined)?.position ?? -1) + 1;
   }
+  // F.6: normalize phase text — trim, empty → NULL, cap at 60 chars so
+  // a runaway paste can't blow the PDF header layout.
+  const phaseNormalized = (() => {
+    const raw = input.phase?.trim();
+    if (!raw) return null;
+    return raw.length > 60 ? raw.slice(0, 60) : raw;
+  })();
   const { data, error } = await sb
     .from("commercial_proposal_line_items")
     .insert({
@@ -863,6 +876,7 @@ export async function createLineItem(
       unit_price_cents: input.unit_price_cents,
       is_alternate: input.is_alternate ?? false,
       position,
+      phase: phaseNormalized,
     })
     .select("*")
     .single();
@@ -886,6 +900,8 @@ export type UpdateLineItemInput = {
   unit_price_cents?: number;
   is_alternate?: boolean;
   position?: number;
+  /** F.6: phase label. Pass empty string or null to clear. */
+  phase?: string | null;
 };
 
 export async function updateLineItem(
@@ -934,6 +950,10 @@ export async function updateLineItem(
   }
   if (input.is_alternate !== undefined) patch.is_alternate = input.is_alternate;
   if (input.position !== undefined) patch.position = input.position;
+  if (input.phase !== undefined) {
+    const raw = input.phase?.trim();
+    patch.phase = raw ? (raw.length > 60 ? raw.slice(0, 60) : raw) : null;
+  }
   const sb = commercialDb();
   const { data: before } = await sb
     .from("commercial_proposal_line_items")

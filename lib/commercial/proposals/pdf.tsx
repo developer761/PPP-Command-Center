@@ -681,12 +681,56 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
   // Karan 2026-07-19 (1:1 reference match): reference PDF has NO
   // section header above the scope items — they flow straight after
   // the intro paragraph. Previous "Scope of Work:" underlined heading
-  // read as foreign vs. the reference letterhead. Just render the
-  // items directly.
+  // read as foreign vs. the reference letterhead.
+  //
+  // F.6 (2026-07-19): Katie's ask — group by phase when any line item
+  // has a phase set. If NONE do, fall back to flat rendering (backward
+  // compat with every existing proposal). Phase-null items when some
+  // items DO have phases collect under a "General scope" section at
+  // the top.
+  const anyHasPhase = items.some((it) => it.phase && it.phase.trim());
+  if (!anyHasPhase) {
+    return (
+      <View style={{ marginTop: 4 }}>
+        {items.map((it) => (
+          <BulletLine key={it.id} text={it.description} />
+        ))}
+      </View>
+    );
+  }
+  // Group + preserve insertion order per phase. Ungrouped items surface
+  // first as "General scope".
+  type Group = { key: string; label: string; rows: CommercialProposalLineItem[] };
+  const groups: Group[] = [];
+  const byKey = new Map<string, Group>();
+  const ungroupedKey = "__ungrouped__";
+  for (const it of items) {
+    const raw = it.phase?.trim();
+    const key = raw || ungroupedKey;
+    const label = raw || "General Scope";
+    let g = byKey.get(key);
+    if (!g) {
+      g = { key, label, rows: [] };
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    g.rows.push(it);
+  }
+  // Move ungrouped to the front so unphased items always render first.
+  groups.sort((a, b) => {
+    if (a.key === ungroupedKey) return -1;
+    if (b.key === ungroupedKey) return 1;
+    return 0;
+  });
   return (
     <View style={{ marginTop: 4 }}>
-      {items.map((it) => (
-        <BulletLine key={it.id} text={it.description} />
+      {groups.map((g) => (
+        <View key={g.key} wrap={false} style={{ marginTop: 6 }}>
+          <Text style={styles.sectionUnderlineHeader}>{g.label}:</Text>
+          {g.rows.map((it) => (
+            <BulletLine key={it.id} text={it.description} />
+          ))}
+        </View>
       ))}
     </View>
   );

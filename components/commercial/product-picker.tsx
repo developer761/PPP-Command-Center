@@ -25,6 +25,13 @@ export type PickableProduct = {
   category: string;
   unit: string;
   default_unit_price_cents: number;
+  // F.6: variation grouping + description flow.
+  variation_label?: string | null;
+  description?: string | null;
+  /** F.6: parent-only products (rows with children in the catalog)
+   *  render as browse-only headers — picking them shows a helper hint
+   *  to pick a variation instead, and blocks the pick. */
+  is_parent_only?: boolean;
 };
 
 function centsToDollarStr(cents: number): string {
@@ -75,15 +82,24 @@ export default function ProductPicker({
     if (!q) return products.slice(0, 25);
     // Prefix match first (SKU + name), then substring — mirrors the
     // Karan-approved SearchableSelect behavior across the platform.
+    // F.6: also match variation_label so typing "Seal & Poly" finds
+    // the variation directly.
     const prefixSku: PickableProduct[] = [];
     const prefixName: PickableProduct[] = [];
     const substring: PickableProduct[] = [];
     for (const p of products) {
       const sku = p.sku.toLowerCase();
       const name = p.name.toLowerCase();
+      const variation = (p.variation_label ?? "").toLowerCase();
       if (sku.startsWith(q)) prefixSku.push(p);
       else if (name.startsWith(q)) prefixName.push(p);
-      else if (sku.includes(q) || name.includes(q)) substring.push(p);
+      else if (
+        sku.includes(q) ||
+        name.includes(q) ||
+        variation.includes(q)
+      ) {
+        substring.push(p);
+      }
     }
     return [...prefixSku, ...prefixName, ...substring].slice(0, 25);
   }, [products, query]);
@@ -126,13 +142,30 @@ export default function ProductPicker({
   }
 
   async function pick(p: PickableProduct) {
+    // F.6: refuse to pick parent-only products. They're catalog headers
+    // for their variations, not sellable items themselves.
+    if (p.is_parent_only) {
+      setQuery(p.name + " — pick a variation below");
+      // Keep the picker open so the user can pick a variation.
+      return;
+    }
     setPicked(p);
-    setQuery(p.name);
+    // F.6: display combines parent name + variation label so the picker
+    // input shows "HM Frame & Wood Door (Seal & Poly)" after pick.
+    const displayName = p.variation_label
+      ? `${p.name} (${p.variation_label})`
+      : p.name;
+    setQuery(displayName);
     setOpen(false);
     setFormValue(productIdInputId, p.id);
     // Instant defaults so the row is usable even before the price
-    // resolve API returns.
-    setFormValue(descriptionInputId, p.name);
+    // resolve API returns. Description prefill:
+    //   - Standalone: use description (fallback: name)
+    //   - Variation:  "{parent name} — {variation label}: {description}"
+    const descriptionSeed = p.variation_label
+      ? `${displayName}${p.description ? ": " + p.description : ""}`
+      : p.description || p.name;
+    setFormValue(descriptionInputId, descriptionSeed);
     setFormValue(unitInputId, p.unit);
     setFormValue(unitPriceInputId, centsToDollarStr(p.default_unit_price_cents));
     setPriceNote(
@@ -283,18 +316,38 @@ export default function ProductPicker({
             >
               <div className="flex items-baseline justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
-                    {p.name}
+                  <div className="text-[13px] font-semibold text-ppp-charcoal truncate flex items-center gap-1.5">
+                    <span className="truncate">
+                      {p.name}
+                      {p.variation_label && (
+                        <span className="text-cc-brand-700 font-normal">
+                          {" "}({p.variation_label})
+                        </span>
+                      )}
+                    </span>
+                    {p.is_parent_only && (
+                      <span className="inline-flex items-center text-[9px] font-bold tracking-widest uppercase text-ppp-charcoal-500 bg-ppp-charcoal-100 px-1.5 py-0.5 rounded shrink-0">
+                        pick a variation
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2">
                     <span className="font-mono">{p.sku}</span>
                     <span aria-hidden className="text-ppp-charcoal-300">·</span>
                     <span>per {p.unit}</span>
+                    {p.description && (
+                      <>
+                        <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                        <span className="truncate">{p.description}</span>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="text-[12.5px] font-bold tabular-nums text-ppp-charcoal shrink-0">
-                  {formatDollars(p.default_unit_price_cents)}
-                </div>
+                {!p.is_parent_only && (
+                  <div className="text-[12.5px] font-bold tabular-nums text-ppp-charcoal shrink-0">
+                    {formatDollars(p.default_unit_price_cents)}
+                  </div>
+                )}
               </div>
             </li>
           ))}

@@ -18,6 +18,11 @@ export type CommercialProduct = {
   default_unit_cost_cents: number | null;
   default_unit_price_cents: number;
   notes: string | null;
+  // F.6 (2026-07-19): Katie's proposal notes → parent/variation + surface_area + description.
+  parent_product_id: string | null;
+  variation_label: string | null;
+  surface_area: string;
+  description: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -25,6 +30,18 @@ export type CommercialProduct = {
   created_by_user_id: string | null;
   updated_by_user_id: string | null;
 };
+
+/** F.6: is this product sellable on a proposal? Parent products (rows
+ *  that have children pointing at them via parent_product_id) are
+ *  browse-only — Alex must pick a specific variation. Standalone
+ *  products (no parent, no children) and variations (has a parent)
+ *  are both sellable. */
+export function isVariationParent(
+  product: CommercialProduct,
+  allProducts: CommercialProduct[]
+): boolean {
+  return allProducts.some((p) => p.parent_product_id === product.id);
+}
 
 export type CommercialCustomerPrice = {
   id: string;
@@ -49,6 +66,11 @@ export type CreateProductInput = {
   default_unit_cost_cents?: number | null;
   default_unit_price_cents: number;
   notes?: string | null;
+  // F.6: variation + surface + description.
+  parent_product_id?: string | null;
+  variation_label?: string | null;
+  surface_area?: string;
+  description?: string | null;
   is_active?: boolean;
   created_by_user_id?: string | null;
 };
@@ -69,6 +91,46 @@ export async function createProduct(
   ) {
     return { ok: false, error: "Default cost must be zero or greater." };
   }
+  // F.6 validation: variation label required when parent is set; and
+  // parent can't itself be a variation (only two-level hierarchy).
+  if (input.parent_product_id && !input.variation_label?.trim()) {
+    return {
+      ok: false,
+      error:
+        "Variation label is required when picking a parent product (e.g. \"Seal & Poly\").",
+    };
+  }
+  if (!input.parent_product_id && input.variation_label?.trim()) {
+    return {
+      ok: false,
+      error:
+        "Variation label only applies when this product is a variation of a parent.",
+    };
+  }
+  if (input.parent_product_id) {
+    // Reject nested variations — parent must be a top-level product.
+    const sb0 = commercialDb();
+    const { data: parentCheck } = await sb0
+      .from("commercial_products")
+      .select("id, parent_product_id, deleted_at")
+      .eq("id", input.parent_product_id)
+      .maybeSingle();
+    const parent = parentCheck as {
+      id: string;
+      parent_product_id: string | null;
+      deleted_at: string | null;
+    } | null;
+    if (!parent || parent.deleted_at) {
+      return { ok: false, error: "Parent product not found or archived." };
+    }
+    if (parent.parent_product_id) {
+      return {
+        ok: false,
+        error:
+          "Cannot nest variations. Pick a top-level product as the parent.",
+      };
+    }
+  }
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_products")
@@ -80,6 +142,10 @@ export async function createProduct(
       default_unit_cost_cents: input.default_unit_cost_cents ?? null,
       default_unit_price_cents: input.default_unit_price_cents,
       notes: input.notes?.trim() || null,
+      parent_product_id: input.parent_product_id ?? null,
+      variation_label: input.variation_label?.trim() || null,
+      surface_area: input.surface_area ?? "other",
+      description: input.description?.trim() || null,
       is_active: input.is_active ?? true,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
@@ -157,6 +223,48 @@ export async function updateProduct(
     patch.default_unit_price_cents = input.default_unit_price_cents;
   }
   if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
+  // F.6: variation + surface + description patches. Same guards as create.
+  if (input.parent_product_id !== undefined) {
+    if (
+      input.parent_product_id &&
+      !(input.variation_label ?? (before as CommercialProduct).variation_label)?.trim()
+    ) {
+      return {
+        ok: false,
+        error:
+          "Variation label is required when picking a parent product.",
+      };
+    }
+    if (input.parent_product_id === input.id) {
+      return { ok: false, error: "A product cannot be its own parent." };
+    }
+    if (input.parent_product_id) {
+      const { data: parentCheck } = await sb
+        .from("commercial_products")
+        .select("id, parent_product_id, deleted_at")
+        .eq("id", input.parent_product_id)
+        .maybeSingle();
+      const parent = parentCheck as {
+        id: string;
+        parent_product_id: string | null;
+        deleted_at: string | null;
+      } | null;
+      if (!parent || parent.deleted_at) {
+        return { ok: false, error: "Parent product not found or archived." };
+      }
+      if (parent.parent_product_id) {
+        return { ok: false, error: "Cannot nest variations." };
+      }
+    }
+    patch.parent_product_id = input.parent_product_id;
+  }
+  if (input.variation_label !== undefined) {
+    patch.variation_label = input.variation_label?.trim() || null;
+  }
+  if (input.surface_area !== undefined) patch.surface_area = input.surface_area;
+  if (input.description !== undefined) {
+    patch.description = input.description?.trim() || null;
+  }
   if (input.is_active !== undefined) patch.is_active = input.is_active;
   patch.updated_by_user_id = input.updated_by_user_id ?? null;
 
@@ -227,6 +335,7 @@ export async function getProduct(id: string): Promise<CommercialProduct | null> 
 export type ListProductsFilters = {
   q?: string;
   category?: string;
+  surface_area?: string;
   includeInactive?: boolean;
 };
 
@@ -240,11 +349,16 @@ export async function listProducts(
     .is("deleted_at", null);
   if (!filters.includeInactive) query = query.eq("is_active", true);
   if (filters.category) query = query.eq("category", filters.category);
+  if (filters.surface_area) query = query.eq("surface_area", filters.surface_area);
   if (filters.q?.trim()) {
     const q = filters.q.trim();
     // Escape LIKE wildcards + backslash (same pattern as palette-search).
+    // F.6: search also matches variation_label so typing "Seal & Poly"
+    // finds the variation row directly.
     const safe = q.replace(/[\\%_]/g, "\\$&");
-    query = query.or(`sku.ilike.%${safe}%,name.ilike.%${safe}%`);
+    query = query.or(
+      `sku.ilike.%${safe}%,name.ilike.%${safe}%,variation_label.ilike.%${safe}%`
+    );
   }
   const { data, error } = await query.order("name", { ascending: true }).limit(500);
   if (error) return [];

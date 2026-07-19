@@ -275,11 +275,25 @@ async function addLineItemAction(formData: FormData) {
   }
   const productIdRaw = String(formData.get("product_id") ?? "").trim();
   const product_id = productIdRaw && UUID_RE.test(productIdRaw) ? productIdRaw : null;
+  // F.6: server-side reject if the picked product is a parent-header
+  // (has children). Client picker blocks this but we guard here too so
+  // a forged POST can't insert a $0 parent-only row.
+  if (product_id) {
+    const catalog = await listProducts({ includeInactive: true });
+    const isParent = catalog.some((c) => c.parent_product_id === product_id);
+    if (isParent) {
+      redirect(
+        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("That product is a browse header — pick one of its variations (e.g. Seal & Poly).")}`
+      );
+    }
+  }
   const description = String(formData.get("description") ?? "").trim();
   const quantity = Number(String(formData.get("quantity") ?? "1"));
   const unit = String(formData.get("unit") ?? "each").trim() || "each";
   const unit_price_cents = dollarsInputToCents(String(formData.get("unit_price") ?? "0"));
   const is_alternate = formData.get("is_alternate") === "on";
+  const phaseRaw = String(formData.get("phase") ?? "").trim();
+  const phase = phaseRaw || null;
   const result = await createLineItem(
     {
       proposal_id: proposalId,
@@ -289,6 +303,7 @@ async function addLineItemAction(formData: FormData) {
       unit,
       unit_price_cents,
       is_alternate,
+      phase,
     },
     userId
   );
@@ -335,6 +350,12 @@ async function updateLineItemAction(formData: FormData) {
       `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("This line item was updated in another tab. Refresh to see the latest, then re-apply your change.")}#line-items`
     );
   }
+  // F.6: phase is optional. Empty string → null → clears the phase.
+  const phaseInput = formData.get("phase");
+  const phase: string | null | undefined =
+    phaseInput === null
+      ? undefined
+      : String(phaseInput).trim() || null;
   const result = await updateLineItem(
     {
       id,
@@ -343,6 +364,7 @@ async function updateLineItemAction(formData: FormData) {
       unit: String(formData.get("unit") ?? "each"),
       unit_price_cents: dollarsInputToCents(String(formData.get("unit_price") ?? "0")),
       is_alternate: formData.get("is_alternate") === "on",
+      phase,
     },
     userId
   );
@@ -545,6 +567,13 @@ export default async function ProposalEditorPage({
     listProducts({ includeInactive: false }),
     listExclusions({ activeOnly: true }),
   ]);
+  // F.6: mark parent-only products (rows that have children) so the
+  // picker can render them as browse-only headers + block picks.
+  const parentIdsWithChildren = new Set(
+    products
+      .filter((p) => p.parent_product_id)
+      .map((p) => p.parent_product_id!)
+  );
   const selectedExclusions = allExclusions.filter((e) =>
     proposal.exclusion_ids.includes(e.id)
   );
@@ -948,7 +977,10 @@ export default async function ProposalEditorPage({
           accountId={accountId}
           dealId={dealId}
           proposalId={proposalId}
-          products={products}
+          products={products.map((p) => ({
+            ...p,
+            is_parent_only: parentIdsWithChildren.has(p.id),
+          }))}
           submitAction={addLineItemAction}
           isAlternate={false}
         />
@@ -973,7 +1005,10 @@ export default async function ProposalEditorPage({
           accountId={accountId}
           dealId={dealId}
           proposalId={proposalId}
-          products={products}
+          products={products.map((p) => ({
+            ...p,
+            is_parent_only: parentIdsWithChildren.has(p.id),
+          }))}
           submitAction={addLineItemAction}
           isAlternate={true}
         />
@@ -1028,19 +1063,32 @@ function LineItemsTable({
                 current updated_at. */}
             <input type="hidden" name="original_updated_at" value={r.updated_at} />
             <div className="grid grid-cols-12 gap-2 items-end">
-              <label className="col-span-12 sm:col-span-6 block">
+              <label className="col-span-12 sm:col-span-4 block">
                 <span className={LABEL_CLS}>Description</span>
                 <input type="text" name="description" defaultValue={r.description} className={INPUT_CLS} required />
               </label>
-              <label className="col-span-4 sm:col-span-2 block">
+              {/* F.6: phase label. Free-text so Alex can use "Phase 1",
+                  "Base contract", etc. NULL = ungrouped. */}
+              <label className="col-span-6 sm:col-span-2 block">
+                <span className={LABEL_CLS}>Phase</span>
+                <input
+                  type="text"
+                  name="phase"
+                  defaultValue={r.phase ?? ""}
+                  maxLength={60}
+                  placeholder="—"
+                  className={INPUT_CLS}
+                />
+              </label>
+              <label className="col-span-3 sm:col-span-2 block">
                 <span className={LABEL_CLS}>Qty</span>
                 <input type="text" inputMode="decimal" name="quantity" defaultValue={String(r.quantity)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
-              <label className="col-span-4 sm:col-span-2 block">
+              <label className="col-span-3 sm:col-span-1 block">
                 <span className={LABEL_CLS}>Unit</span>
                 <input type="text" name="unit" defaultValue={r.unit} className={INPUT_CLS} />
               </label>
-              <label className="col-span-4 sm:col-span-2 block">
+              <label className="col-span-6 sm:col-span-3 block">
                 <span className={LABEL_CLS}>Unit price</span>
                 <input type="text" inputMode="decimal" name="unit_price" defaultValue={centsToDollarInput(r.unit_price_cents)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
@@ -1092,6 +1140,10 @@ function AddLineItemForm({
     category: string;
     unit: string;
     default_unit_price_cents: number;
+    // F.6
+    variation_label?: string | null;
+    description?: string | null;
+    is_parent_only?: boolean;
   }>;
   submitAction: (formData: FormData) => Promise<void>;
   isAlternate: boolean;
@@ -1113,6 +1165,9 @@ function AddLineItemForm({
               category: p.category,
               unit: p.unit,
               default_unit_price_cents: p.default_unit_price_cents,
+              variation_label: p.variation_label ?? null,
+              description: p.description ?? null,
+              is_parent_only: p.is_parent_only ?? false,
             }))}
             accountId={accountId}
             descriptionInputId={`${prefix}-desc`}
@@ -1124,19 +1179,30 @@ function AddLineItemForm({
       ) : null}
       <input type="hidden" id={`${prefix}-pid`} name="product_id" defaultValue="" />
       <div className="grid grid-cols-12 gap-2 items-end">
-        <label className="col-span-12 sm:col-span-6 block">
+        <label className="col-span-12 sm:col-span-4 block">
           <span className={LABEL_CLS}>Description</span>
           <input type="text" id={`${prefix}-desc`} name="description" required placeholder="e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte." className={INPUT_CLS} />
         </label>
-        <label className="col-span-4 sm:col-span-2 block">
+        {/* F.6: phase label. Optional — leave blank for ungrouped. */}
+        <label className="col-span-6 sm:col-span-2 block">
+          <span className={LABEL_CLS}>Phase</span>
+          <input
+            type="text"
+            name="phase"
+            maxLength={60}
+            placeholder="e.g. Phase 1"
+            className={INPUT_CLS}
+          />
+        </label>
+        <label className="col-span-3 sm:col-span-2 block">
           <span className={LABEL_CLS}>Qty</span>
           <input type="text" inputMode="decimal" name="quantity" defaultValue="1" className={`${INPUT_CLS} tabular-nums`} />
         </label>
-        <label className="col-span-4 sm:col-span-2 block">
+        <label className="col-span-3 sm:col-span-1 block">
           <span className={LABEL_CLS}>Unit</span>
           <input type="text" id={`${prefix}-unit`} name="unit" defaultValue="each" className={INPUT_CLS} />
         </label>
-        <label className="col-span-4 sm:col-span-2 block">
+        <label className="col-span-6 sm:col-span-3 block">
           <span className={LABEL_CLS}>Unit price</span>
           <input type="text" id={`${prefix}-price`} inputMode="decimal" name="unit_price" defaultValue="0.00" className={`${INPUT_CLS} tabular-nums`} />
         </label>

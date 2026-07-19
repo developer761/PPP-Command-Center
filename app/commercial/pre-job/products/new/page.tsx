@@ -4,11 +4,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { createProduct } from "@/lib/commercial/products/db";
+import { createProduct, listProducts } from "@/lib/commercial/products/db";
 import {
   PRODUCT_CATEGORIES,
+  PRODUCT_SURFACE_AREAS,
   PRODUCT_UNITS,
   productCategoryLabel,
+  productSurfaceAreaLabel,
   productUnitLabel,
 } from "@/lib/commercial/products/constants";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
@@ -50,6 +52,13 @@ async function createAction(formData: FormData) {
   const price = parseDollarsToCents(formData.get("default_unit_price"));
   const cost = parseDollarsToCents(formData.get("default_unit_cost"));
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  // F.6: variation + surface_area + description.
+  const parentRaw = String(formData.get("parent_product_id") ?? "").trim();
+  const parent_product_id = parentRaw || null;
+  const variation_label =
+    String(formData.get("variation_label") ?? "").trim() || null;
+  const surface_area = String(formData.get("surface_area") ?? "other");
+  const description = String(formData.get("description") ?? "").trim() || null;
 
   if (!sku)
     redirect(
@@ -75,6 +84,10 @@ async function createAction(formData: FormData) {
     default_unit_price_cents: price,
     default_unit_cost_cents: cost,
     notes,
+    parent_product_id,
+    variation_label,
+    surface_area,
+    description,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -111,6 +124,13 @@ export default async function NewProductPage({
   if (!isAdmin) redirect("/commercial/pre-job/products");
 
   const sp = await searchParams;
+  // F.6: fetch top-level products (no parent) for the "Variation of…"
+  // picker. Only top-level products can be parents (enforced server-side
+  // too — no nested variations).
+  const allProducts = await listProducts({ includeInactive: false });
+  const parentCandidates = allProducts
+    .filter((p) => !p.parent_product_id)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="max-w-2xl space-y-5">
@@ -236,9 +256,83 @@ export default async function NewProductPage({
             </span>
           </label>
         </div>
+        {/* F.6: Interior/Exterior facet + parent/variation grouping. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="block">
+            <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
+              Surface area
+            </span>
+            <select
+              name="surface_area"
+              defaultValue="other"
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
+            >
+              {PRODUCT_SURFACE_AREAS.map((s) => (
+                <option key={s} value={s}>
+                  {productSurfaceAreaLabel(s)}
+                </option>
+              ))}
+            </select>
+            <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+              Interior / Exterior grouping in the catalog browser.
+            </span>
+          </label>
+          <label className="block">
+            <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
+              Variation of…
+            </span>
+            <select
+              name="parent_product_id"
+              defaultValue=""
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
+            >
+              <option value="">— Standalone product —</option>
+              {parentCandidates.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+              Pick a parent to make this a variation (e.g. Seal & Poly).
+            </span>
+          </label>
+        </div>
         <label className="block">
           <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-            Notes
+            Variation label
+          </span>
+          <input
+            type="text"
+            name="variation_label"
+            maxLength={80}
+            placeholder="Seal & Poly"
+            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+          />
+          <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+            Required when a parent is picked. Shows as "{'{parent name}'} ({'{label}'})" in the picker.
+          </span>
+        </label>
+        <label className="block">
+          <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
+            Description
+          </span>
+          <textarea
+            name="description"
+            maxLength={2000}
+            rows={2}
+            placeholder="Frame paint + wood door clear finish."
+            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
+          />
+          <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+            Shown under the line item on the customer proposal PDF.
+          </span>
+        </label>
+        <label className="block">
+          <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
+            Internal notes
           </span>
           <textarea
             name="notes"
@@ -247,6 +341,9 @@ export default async function NewProductPage({
             placeholder="Internal reference — spec, min-order, retailer contact."
             className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
           />
+          <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+            Never shown to customers. Team-only reference.
+          </span>
         </label>
         <div className="flex flex-col sm:flex-row-reverse gap-2 pt-2 border-t border-ppp-charcoal-100">
           <PendingSubmitButton

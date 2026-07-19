@@ -8,14 +8,17 @@ import {
   getProduct,
   updateProduct,
   softDeleteProduct,
+  listProducts,
   listCustomerPricesForProduct,
   upsertCustomerPrice,
   deleteCustomerPrice,
 } from "@/lib/commercial/products/db";
 import {
   PRODUCT_CATEGORIES,
+  PRODUCT_SURFACE_AREAS,
   PRODUCT_UNITS,
   productCategoryLabel,
+  productSurfaceAreaLabel,
   productUnitLabel,
 } from "@/lib/commercial/products/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
@@ -104,6 +107,8 @@ async function saveCoreAction(formData: FormData) {
       )
     );
 
+  // F.6: variation + surface + description patches.
+  const parentRaw = String(formData.get("parent_product_id") ?? "").trim();
   const result = await updateProduct({
     id,
     sku: String(formData.get("sku") ?? "").trim(),
@@ -113,6 +118,12 @@ async function saveCoreAction(formData: FormData) {
     default_unit_price_cents: price,
     default_unit_cost_cents: costPayload,
     notes: String(formData.get("notes") ?? "").trim() || null,
+    parent_product_id: parentRaw || null,
+    variation_label:
+      String(formData.get("variation_label") ?? "").trim() || null,
+    surface_area: String(formData.get("surface_area") ?? "other"),
+    description:
+      String(formData.get("description") ?? "").trim() || null,
     is_active: formData.get("is_active") === "on",
     updated_by_user_id: userId,
   });
@@ -213,15 +224,34 @@ export default async function ProductDetailPage({
   const { id } = await params;
   const sp = await searchParams;
 
-  const [product, customerPrices, accounts] = await Promise.all([
+  const [product, customerPrices, accounts, allProducts] = await Promise.all([
     getProduct(id),
     listCustomerPricesForProduct(id),
     listCommercialAccounts(),
+    listProducts({ includeInactive: true }),
   ]);
   if (!product) notFound();
 
   // Map account_id → account for override rendering.
   const accountById = new Map(accounts.map((a) => [a.id, a]));
+  // F.6: parent candidates for the "Variation of…" picker. Exclude self
+  // and exclude any product that already has children (nested variations
+  // are rejected server-side too).
+  const childProductIds = new Set(
+    allProducts.filter((p) => p.parent_product_id).map((p) => p.parent_product_id!)
+  );
+  const parentCandidates = allProducts
+    .filter(
+      (p) =>
+        p.id !== product.id &&
+        !p.parent_product_id &&
+        !p.deleted_at &&
+        p.is_active
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
+  // If THIS product has variations pointing at it, it's a parent — warn
+  // the user that removing its parent status would orphan the variations.
+  const isParent = childProductIds.has(product.id);
 
   return (
     <div className="max-w-3xl space-y-5">
@@ -375,9 +405,86 @@ export default async function ProductDetailPage({
                 />
               </label>
             </div>
+            {/* F.6: surface_area + parent/variation grouping. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="block">
+                <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
+                  Surface area
+                </span>
+                <select
+                  name="surface_area"
+                  defaultValue={product.surface_area || "other"}
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
+                >
+                  {PRODUCT_SURFACE_AREAS.map((s) => (
+                    <option key={s} value={s}>
+                      {productSurfaceAreaLabel(s)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
+                  Variation of…
+                </span>
+                <select
+                  name="parent_product_id"
+                  defaultValue={product.parent_product_id ?? ""}
+                  disabled={isParent}
+                  className={SELECT_CLS}
+                  style={SELECT_BG_STYLE}
+                >
+                  <option value="">— Standalone product —</option>
+                  {parentCandidates.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+                  {isParent
+                    ? "Locked — this product has variations under it. Archive or reassign those first."
+                    : "Pick a parent to make this a variation."}
+                </span>
+              </label>
+            </div>
             <label className="block">
               <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-                Notes
+                Variation label
+              </span>
+              <input
+                type="text"
+                name="variation_label"
+                maxLength={80}
+                defaultValue={product.variation_label ?? ""}
+                placeholder="Seal & Poly"
+                disabled={isParent}
+                className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] disabled:bg-ppp-charcoal-50 disabled:cursor-not-allowed"
+              />
+              <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+                Required when a parent is picked.
+              </span>
+            </label>
+            <label className="block">
+              <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
+                Description
+              </span>
+              <textarea
+                name="description"
+                maxLength={2000}
+                rows={2}
+                defaultValue={product.description ?? ""}
+                placeholder="Frame paint + wood door clear finish."
+                className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
+              />
+              <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+                Shown under the line item on the customer proposal PDF.
+              </span>
+            </label>
+            <label className="block">
+              <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
+                Internal notes
               </span>
               <textarea
                 name="notes"
@@ -386,6 +493,9 @@ export default async function ProductDetailPage({
                 defaultValue={product.notes ?? ""}
                 className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
               />
+              <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
+                Never shown to customers. Team-only reference.
+              </span>
             </label>
             <label className="inline-flex items-center gap-2 text-[13px] text-ppp-charcoal-700 min-h-[44px]">
               <input
