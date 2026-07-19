@@ -300,7 +300,7 @@ export async function updateProduct(
 export async function softDeleteProduct(
   id: string,
   deletedByUserId?: string | null
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; cascadedCount: number } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
     .from("commercial_products")
@@ -309,16 +309,51 @@ export async function softDeleteProduct(
     .is("deleted_at", null)
     .maybeSingle();
   if (!before) return { ok: false, error: "Product not found." };
+  const now = new Date().toISOString();
   const { error } = await sb
     .from("commercial_products")
     .update({
-      deleted_at: new Date().toISOString(),
+      deleted_at: now,
       updated_by_user_id: deletedByUserId ?? null,
     })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_products", id, before, deletedByUserId ?? null);
-  return { ok: true };
+
+  // F.6 audit fix: soft-deleting a parent must cascade to its variations.
+  // Schema has ON DELETE CASCADE on parent_product_id but that only fires
+  // on hard DELETE — we soft-delete via `deleted_at`. Without this,
+  // orphan variations stay visible in the picker referencing a "ghost"
+  // parent that was archived. Cascade is best-effort; failure logs
+  // (parent stays archived) so we don't block the primary action.
+  let cascadedCount = 0;
+  const { data: children, error: childErr } = await sb
+    .from("commercial_products")
+    .update({ deleted_at: now, updated_by_user_id: deletedByUserId ?? null })
+    .eq("parent_product_id", id)
+    .is("deleted_at", null)
+    .select("id");
+  if (childErr) {
+    console.warn(
+      `[softDeleteProduct] variation cascade failed for parent ${id}: ${childErr.message}`
+    );
+  } else if (children && children.length > 0) {
+    cascadedCount = children.length;
+    // Best-effort audit trail per child.
+    await Promise.all(
+      (children as Array<{ id: string }>).map((c) =>
+        logDelete(
+          "commercial_products",
+          c.id,
+          { id: c.id, cascaded_from_parent: id },
+          deletedByUserId ?? null
+        ).catch((e) =>
+          console.warn(`[softDeleteProduct] audit log failed for child ${c.id}:`, e)
+        )
+      )
+    );
+  }
+  return { ok: true, cascadedCount };
 }
 
 export async function getProduct(id: string): Promise<CommercialProduct | null> {

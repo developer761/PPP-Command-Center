@@ -1069,7 +1069,10 @@ function LineItemsTable({
               </label>
               {/* F.6: phase label. Free-text so Alex can use "Phase 1",
                   "Base contract", etc. NULL = ungrouped. */}
-              <label className="col-span-6 sm:col-span-2 block">
+              <label
+                className="col-span-6 sm:col-span-2 block"
+                title="Groups this item under a section header on the PDF. Leave blank for ungrouped."
+              >
                 <span className={LABEL_CLS}>Phase</span>
                 <input
                   type="text"
@@ -1183,9 +1186,13 @@ function AddLineItemForm({
           <span className={LABEL_CLS}>Description</span>
           <input type="text" id={`${prefix}-desc`} name="description" required placeholder="e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte." className={INPUT_CLS} />
         </label>
-        {/* F.6: phase label. Optional — leave blank for ungrouped. */}
-        <label className="col-span-6 sm:col-span-2 block">
-          <span className={LABEL_CLS}>Phase</span>
+        {/* F.6: phase label. Optional — leave blank for ungrouped.
+            When ANY line item on this proposal has a phase, the PDF
+            groups items under section headers ("Phase 1:", etc.).
+            Ungrouped items collect under a "General:" section. When
+            NO items have a phase, the PDF renders as a flat list. */}
+        <label className="col-span-6 sm:col-span-2 block" title="Groups this item under a section header on the PDF, e.g. 'Phase 1'. Leave blank for ungrouped. If any items have a phase, ungrouped items appear under 'General'.">
+          <span className={LABEL_CLS}>Phase (optional)</span>
           <input
             type="text"
             name="phase"

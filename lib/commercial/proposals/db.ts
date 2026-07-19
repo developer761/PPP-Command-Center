@@ -858,10 +858,12 @@ export async function createLineItem(
       .limit(1);
     position = ((last?.[0] as { position?: number } | undefined)?.position ?? -1) + 1;
   }
-  // F.6: normalize phase text — trim, empty → NULL, cap at 60 chars so
-  // a runaway paste can't blow the PDF header layout.
+  // F.6: normalize phase text — trim, strip newlines + zero-width
+  // chars (paste-in poison), empty → NULL, cap at 60 chars so a
+  // runaway paste can't blow the PDF header layout.
   const phaseNormalized = (() => {
-    const raw = input.phase?.trim();
+    let raw = input.phase?.trim() ?? "";
+    raw = raw.replace(/[​-‍﻿]/g, "").replace(/[\r\n]+/g, " ").trim();
     if (!raw) return null;
     return raw.length > 60 ? raw.slice(0, 60) : raw;
   })();
@@ -951,7 +953,11 @@ export async function updateLineItem(
   if (input.is_alternate !== undefined) patch.is_alternate = input.is_alternate;
   if (input.position !== undefined) patch.position = input.position;
   if (input.phase !== undefined) {
-    const raw = input.phase?.trim();
+    // F.6 audit fix: strip newlines + zero-width chars so a paste-in
+    // with control chars can't blow up the PDF header. Cap at 60 chars.
+    let raw = input.phase?.trim() ?? "";
+    raw = raw.replace(/[​-‍﻿]/g, "").replace(/[\r\n]+/g, " ");
+    raw = raw.trim();
     patch.phase = raw ? (raw.length > 60 ? raw.slice(0, 60) : raw) : null;
   }
   const sb = commercialDb();

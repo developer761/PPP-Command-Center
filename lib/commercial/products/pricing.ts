@@ -57,35 +57,13 @@ export async function resolveProductPrice({
       day: "2-digit",
     }).format(new Date());
 
-  // First: customer override, most recent effective_from that's still
-  // in effect. NULL effective_from = "always" and sorts as oldest via
-  // COALESCE below so a dated override wins if both exist.
-  if (accountId) {
-    const { data: overrides } = await sb
-      .from("commercial_customer_prices")
-      .select("id, unit_price_cents, effective_from")
-      .eq("account_id", accountId)
-      .eq("product_id", productId)
-      .order("effective_from", { ascending: false, nullsFirst: false })
-      .limit(50);
-    const applicable = (overrides ?? []).find((row) => {
-      const eff = (row as { effective_from: string | null }).effective_from;
-      if (!eff) return true; // "always"
-      return eff <= today;
-    }) as { id: string; unit_price_cents: number } | undefined;
-    if (applicable) {
-      return {
-        unit_price_cents: applicable.unit_price_cents,
-        source: "customer_override",
-        override_id: applicable.id,
-      };
-    }
-  }
-
-  // Fall back to catalog default.
+  // F.6 audit fix: look up parent_product_id so parent-level customer
+  // overrides can be inherited by variations (e.g. "Tomco gets 10% off
+  // HM Frame & Wood Door" applies to every variation of that parent).
+  // One extra round-trip vs the pre-F.6 fetch, worth it for correctness.
   const { data: product } = await sb
     .from("commercial_products")
-    .select("default_unit_price_cents")
+    .select("default_unit_price_cents, parent_product_id")
     .eq("id", productId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -96,9 +74,47 @@ export async function resolveProductPrice({
       override_id: null,
     };
   }
+  const productRow = product as {
+    default_unit_price_cents: number;
+    parent_product_id: string | null;
+  };
+
+  // First: customer override on the SPECIFIC product (variation-level
+  // override wins over parent-level override — most specific first).
+  if (accountId) {
+    const productIdsToCheck = productRow.parent_product_id
+      ? [productId, productRow.parent_product_id]
+      : [productId];
+    const { data: overrides } = await sb
+      .from("commercial_customer_prices")
+      .select("id, product_id, unit_price_cents, effective_from")
+      .eq("account_id", accountId)
+      .in("product_id", productIdsToCheck)
+      .order("effective_from", { ascending: false, nullsFirst: false })
+      .limit(100);
+    // Walk product_id specificity: try the variation's own overrides
+    // first (most specific), then the parent's (inherited).
+    for (const pid of productIdsToCheck) {
+      const applicable = (overrides ?? [])
+        .filter((r) => (r as { product_id: string }).product_id === pid)
+        .find((row) => {
+          const eff = (row as { effective_from: string | null }).effective_from;
+          if (!eff) return true;
+          return eff <= today;
+        }) as { id: string; unit_price_cents: number } | undefined;
+      if (applicable) {
+        return {
+          unit_price_cents: applicable.unit_price_cents,
+          source: "customer_override",
+          override_id: applicable.id,
+        };
+      }
+    }
+  }
+
+  // Fall back to catalog default.
   return {
-    unit_price_cents: (product as { default_unit_price_cents: number })
-      .default_unit_price_cents,
+    unit_price_cents: productRow.default_unit_price_cents,
     source: "catalog_default",
     override_id: null,
   };

@@ -707,7 +707,11 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
   for (const it of items) {
     const raw = it.phase?.trim();
     const key = raw || ungroupedKey;
-    const label = raw || "General Scope";
+    // F.6 audit fix: bucket label "General Scope" would collide with a
+    // literal user-typed phase named "General Scope". Use a sentinel
+    // label ("General") that's short + unlikely to be typed as a phase
+    // name (Alex uses "Phase 1", "Base Contract", etc.).
+    const label = raw || "General";
     let g = byKey.get(key);
     if (!g) {
       g = { key, label, rows: [] };
@@ -722,16 +726,27 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
     if (b.key === ungroupedKey) return 1;
     return 0;
   });
+  // F.6 audit fix: don't wrap={false} the whole group — a phase with
+  // 30+ line items would refuse to break across pages and overflow.
+  // Instead, keep just the section header + FIRST row atomic (so a
+  // header never orphans at the bottom of a page), then let subsequent
+  // rows flow normally.
   return (
     <View style={{ marginTop: 4 }}>
-      {groups.map((g) => (
-        <View key={g.key} wrap={false} style={{ marginTop: 6 }}>
-          <Text style={styles.sectionUnderlineHeader}>{g.label}:</Text>
-          {g.rows.map((it) => (
-            <BulletLine key={it.id} text={it.description} />
-          ))}
-        </View>
-      ))}
+      {groups.map((g) => {
+        const [firstRow, ...restRows] = g.rows;
+        return (
+          <View key={g.key} style={{ marginTop: 6 }}>
+            <View wrap={false}>
+              <Text style={styles.sectionUnderlineHeader}>{g.label}:</Text>
+              {firstRow && <BulletLine text={firstRow.description} />}
+            </View>
+            {restRows.map((it) => (
+              <BulletLine key={it.id} text={it.description} />
+            ))}
+          </View>
+        );
+      })}
     </View>
   );
 }
