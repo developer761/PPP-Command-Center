@@ -7,9 +7,6 @@ import {
   View,
   StyleSheet,
   Image,
-  Svg,
-  Rect,
-  Circle,
   renderToBuffer,
   Font,
 } from "@react-pdf/renderer";
@@ -75,80 +72,11 @@ const MUTED = "#4B5563";
 const YELLOW_BG = "#FEF3C7";
 const YELLOW_BORDER = "#F59E0B";
 const LINK_BLUE = "#1D4ED8";
-// Karan 2026-07-17 (round 3): actual textured parchment via inline SVG.
-// Base is a soft warm ivory (paler than the reference to avoid the
-// "too yellow" read Karan flagged earlier). Overlay is 800+ tiny
-// semi-transparent darker specks drawn via <Circle> primitives —
-// deterministic seed so the texture stays identical across renders and
-// doesn't shift on refresh. Rendered as a fixed background <Svg>
-// behind everything else on every page.
-const PARCHMENT_BASE = "#F5EFDE";
-const PARCHMENT_SPECK = "#8B7355";
-
-/** LETTER page size in PDF units (72 dpi) = 612 × 792. */
-const PAGE_W = 612;
-const PAGE_H = 792;
-
-/** Precomputed at module load — deterministic PRNG so specks land in
- *  the same spots every render. Two layers: bigger fainter specks +
- *  smaller slightly darker specks for depth. */
-type Speck = { x: number; y: number; r: number; opacity: number };
-function computeParchmentSpecks(): Speck[] {
-  let seed = 12345;
-  const rand = () => {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-  };
-  const specks: Speck[] = [];
-  // Layer 1: larger faint specks (paper grain background)
-  for (let i = 0; i < 500; i++) {
-    specks.push({
-      x: Math.floor(rand() * PAGE_W),
-      y: Math.floor(rand() * PAGE_H),
-      r: 0.6 + rand() * 1.4,
-      opacity: 0.06 + rand() * 0.09,
-    });
-  }
-  // Layer 2: smaller sharper specks (fiber texture)
-  for (let i = 0; i < 350; i++) {
-    specks.push({
-      x: Math.floor(rand() * PAGE_W),
-      y: Math.floor(rand() * PAGE_H),
-      r: 0.3 + rand() * 0.5,
-      opacity: 0.14 + rand() * 0.14,
-    });
-  }
-  return specks;
-}
-const PARCHMENT_SPECKS = computeParchmentSpecks();
-
-function ParchmentBackground() {
-  return (
-    <Svg
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: PAGE_W,
-        height: PAGE_H,
-      }}
-      viewBox={`0 0 ${PAGE_W} ${PAGE_H}`}
-      fixed
-    >
-      <Rect x={0} y={0} width={PAGE_W} height={PAGE_H} fill={PARCHMENT_BASE} />
-      {PARCHMENT_SPECKS.map((s, i) => (
-        <Circle
-          key={i}
-          cx={s.x}
-          cy={s.y}
-          r={s.r}
-          fill={PARCHMENT_SPECK}
-          fillOpacity={s.opacity}
-        />
-      ))}
-    </Svg>
-  );
-}
+// Karan 2026-07-19: back to pure white paper — the reference PDF is
+// on plain white letterhead, not parchment/ivory. Every prior attempt
+// (F7F0DC cream, F5EFDE ivory + texture) read as "too yellow" for
+// Karan. Deleted the ParchmentBackground SVG + specks entirely.
+const PAPER_BG = "#FFFFFF";
 
 const styles = StyleSheet.create({
   page: {
@@ -164,11 +92,12 @@ const styles = StyleSheet.create({
     fontFamily: "Times-Roman",
     color: CHARCOAL,
     lineHeight: 1.35,
-    backgroundColor: PARCHMENT_BASE,
+    backgroundColor: PAPER_BG,
   },
-  // Red keyline border wraps the whole page (fixed absolute) — Tomco's
-  // signature look. Bottom edge pushed to 92 so the footer (which sits
-  // at bottom 48-62) has room INSIDE the border with real breathing.
+  // Karan 2026-07-19: single red keyline border, matching reference PDF
+  // exactly (no inner double-line — the double-border rendition read as
+  // fussy/wrong). Bottom edge sits at 92 so the fixed footer inside has
+  // ~30pt of breathing room and never clips.
   borderFrame: {
     position: "absolute",
     top: 24,
@@ -177,16 +106,6 @@ const styles = StyleSheet.create({
     bottom: 92,
     borderStyle: "solid",
     borderWidth: 1.5,
-    borderColor: RED,
-  },
-  borderInner: {
-    position: "absolute",
-    top: 28,
-    left: 32,
-    right: 32,
-    bottom: 96,
-    borderStyle: "solid",
-    borderWidth: 0.5,
     borderColor: RED,
   },
   // Header row: TOMCO wordmark centered inside a red-dashed rule that
@@ -736,13 +655,13 @@ function BulletLine({ text }: { text: string }) {
 
 function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) {
   if (items.length === 0) return null;
-  // Karan 2026-07-15: line-items section now gets an underlined header
-  // like Exclusions & Qualifications does, so the reader sees the
-  // structure at a glance: "Scope of Work" (what we're doing) vs.
-  // "Exclusions & Qualifications" (what we're NOT doing).
+  // Karan 2026-07-19 (1:1 reference match): reference PDF has NO
+  // section header above the scope items — they flow straight after
+  // the intro paragraph. Previous "Scope of Work:" underlined heading
+  // read as foreign vs. the reference letterhead. Just render the
+  // items directly.
   return (
-    <View style={{ marginTop: 12 }}>
-      <Text style={styles.sectionUnderlineHeader}>Scope of Work:</Text>
+    <View style={{ marginTop: 4 }}>
       {items.map((it) => (
         <BulletLine key={it.id} text={it.description} />
       ))}
@@ -949,13 +868,9 @@ export function ProposalPdfDocument({
       subject={proposal.header_json.project_name ?? "Proposal"}
     >
       <Page size="LETTER" style={styles.page}>
-        {/* Karan 2026-07-17: parchment texture layer sits behind
-            everything on every page. Deterministic speck pattern via
-            inline SVG so no image asset is needed. */}
-        <ParchmentBackground />
-        {/* Fixed red keyline border wraps every page */}
+        {/* Karan 2026-07-19: single red keyline border wraps every
+            page. Background is pure white — no parchment/texture. */}
         <View style={styles.borderFrame} fixed />
-        <View style={styles.borderInner} fixed />
 
         <LogoBlock dateLabel={dateLabel} proposalNumber={proposalNumber} />
         <SubmittedToBlock h={proposal.header_json} />
@@ -967,8 +882,6 @@ export function ProposalPdfDocument({
         ) : (
           <InclusionsCustomer items={inclusions} />
         )}
-
-        <TotalRow label={totalLabel} cents={proposal.total_cents} />
 
         {showLineTable ? (
           <AlternateSectionInternal
@@ -982,7 +895,12 @@ export function ProposalPdfDocument({
           />
         )}
 
+        {/* Karan 2026-07-19 (1:1 reference match): Exclusions come
+            BEFORE the TOTAL row, not after. Reference flow is
+            intro → scope items → exclusions → TOTAL → estimator. */}
         <ExclusionsBlock exclusions={exclusions} />
+
+        <TotalRow label={totalLabel} cents={proposal.total_cents} />
 
         {/* CIP notice: inline yellow-highlighted bold line above the
             sign-and-return heading — matches Tomco reference PDF exactly
@@ -1020,11 +938,14 @@ export function ProposalPdfDocument({
           </>
         )}
 
-        {showSignatureBlock && <SignatureBlock />}
-
-        {/* Estimator sign-off sits BELOW the signature line in Tomco's
-            reference PDF, not above the CI notice. */}
+        {/* Karan 2026-07-19 (1:1 reference match): Estimator block sits
+            RIGHT after the TOTAL / CI notice — bottom-left of the page
+            in the reference. Sign-and-return line comes last, well
+            below the estimator, so it doesn't split the natural
+            "here's the number, here's who to reach" flow. */}
         <EstimatorBlock e={proposal.estimator_snapshot_json} />
+
+        {showSignatureBlock && <SignatureBlock />}
 
         {/* Footer fixed to bottom of every page. Karan 2026-07-17
             (Katie feedback: "Footer is getting cut off"): moved 30pt
