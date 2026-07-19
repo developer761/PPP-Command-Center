@@ -80,18 +80,17 @@ const PAPER_BG = "#FFFFFF";
 
 const styles = StyleSheet.create({
   page: {
-    // Karan 2026-07-19 (round 2 1:1): tightened top padding so the logo
-    // sits close to the top red keyline (reference has the logo
-    // essentially touching the border top). Side padding matches
-    // reference's tighter margins. Bottom stays generous for the
-    // fixed footer.
-    paddingTop: 70,
-    paddingHorizontal: 48,
-    paddingBottom: 100,
+    // Karan 2026-07-19 (round 3.1 1:1): must fit everything on ONE
+    // page like reference. paddingTop 92 → 82, lineHeight tightened
+    // 1.4 → 1.3 to keep body compact while section spacing stays
+    // generous. Side padding stays 52 (matches reference proportions).
+    paddingTop: 82,
+    paddingHorizontal: 52,
+    paddingBottom: 96,
     fontSize: 11,
     fontFamily: "Times-Roman",
     color: CHARCOAL,
-    lineHeight: 1.35,
+    lineHeight: 1.3,
     backgroundColor: PAPER_BG,
   },
   // Karan 2026-07-19 (round 2): single red keyline border, tighter to
@@ -166,9 +165,13 @@ const styles = StyleSheet.create({
     fontFamily: "Times-Bold",
   },
   dateFloat: {
+    // Karan 2026-07-19 (round 3 1:1): moved date down from top:46 to
+    // top:78 so it sits well INSIDE the border top (border top = 18)
+    // with real breathing room, matching reference. Reference has
+    // date at roughly the same vertical position as the logo bottom.
     position: "absolute",
-    top: 46,
-    right: 48,
+    top: 78,
+    right: 54,
     fontSize: 11,
     color: CHARCOAL,
     fontFamily: "Times-Bold",
@@ -176,8 +179,8 @@ const styles = StyleSheet.create({
   },
   dateNumber: {
     position: "absolute",
-    top: 62,
-    right: 48,
+    top: 94,
+    right: 54,
     fontSize: 11,
     color: CHARCOAL,
     fontFamily: "Times-Bold",
@@ -191,15 +194,19 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   sectionUnderlineHeader: {
+    // Karan 2026-07-19 (round 3.1 1:1): section headers have real
+    // breathing room above but tuned so full content fits on one page.
+    // 20 → 14 for section headers; still visibly separated but not
+    // pushing content off.
     fontSize: 11,
     fontFamily: "Times-Bold",
     textDecoration: "underline",
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: 14,
+    marginBottom: 5,
   },
   addrBlock: {
-    marginLeft: 18,
-    marginTop: 4,
+    marginLeft: 22,
+    marginTop: 6,
   },
   addrLine: {
     fontSize: 11,
@@ -215,8 +222,9 @@ const styles = StyleSheet.create({
     textDecoration: "underline",
   },
   intro: {
+    // Karan 2026-07-19 (round 3.1 1:1): tighter to fit on one page.
     marginTop: 14,
-    marginBottom: 14,
+    marginBottom: 12,
     fontSize: 11,
     // Karan 2026-07-19 (round 2 1:1 verify): reference PDF renders the
     // intro paragraph in Times-Bold. Rendered the reference to PNG
@@ -277,11 +285,18 @@ const styles = StyleSheet.create({
   // bold colon-terminated label, no bullet glyph. e.g.
   //   Foyer Walls: Prep, prime, and paint 2 coats
   itemLine: {
-    marginBottom: 6,
+    // Karan 2026-07-19 (round 3 1:1): tighter line spacing between
+    // scope items (reference has single-line spacing). Bumped 6 → 4
+    // so items sit closer together like reference.
+    marginBottom: 4,
     fontSize: 11,
   },
   totalRow: {
-    marginTop: 18,
+    // Karan 2026-07-19 (round 3.1 1:1): reference has visible space
+    // above TOTAL but not enormous — 22 keeps it clearly separated
+    // from Exclusions bullets while leaving room for Estimator on
+    // page 1.
+    marginTop: 22,
     marginBottom: 6,
     flexDirection: "row",
     justifyContent: "flex-end",
