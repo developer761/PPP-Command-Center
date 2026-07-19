@@ -141,13 +141,15 @@ const styles = StyleSheet.create({
     flexDirection: "column",
     alignItems: "center",
   },
-  // Karan 2026-07-17: real Tomco logo image (public/brand/tomco-logo.jpg).
-  // Source is 268×131px so aspect is ~2.05:1 — width 150 gives height ~73.
-  // objectFit contain preserves the aspect ratio if the container is
-  // taller/wider than expected.
+  // Karan 2026-07-19 (Katie feedback: "PAINTING looks squished"):
+  // enlarged logo from 150×73 → 190×93 so the PAINTING red banner
+  // reads at proper proportion instead of feeling compressed. Source
+  // is 268×131px (ratio 2.046); new dimensions preserve aspect
+  // exactly (190/93 = 2.043). objectFit contain still preserves
+  // aspect if the container is off.
   logoImage: {
-    width: 150,
-    height: 73,
+    width: 190,
+    height: 93,
     objectFit: "contain",
   },
   logoText: {
@@ -572,8 +574,10 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
           link to match reference PDF. */}
       {hasAttentionBlock && (
         <View style={[styles.addrBlock, { marginTop: 10 }]}>
+          {/* Karan 2026-07-19 (Katie feedback): "Attn:" not "Attention:"
+              to match Katie's canonical formatting. */}
           {h.attention && (
-            <Text style={styles.addrLine}>Attention:  {h.attention}</Text>
+            <Text style={styles.addrLine}>Attn: {h.attention}</Text>
           )}
           {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
           {h.email && (
