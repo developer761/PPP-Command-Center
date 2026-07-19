@@ -80,46 +80,47 @@ const PAPER_BG = "#FFFFFF";
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 88, // room for logo + date block up top
-    paddingHorizontal: 54,
-    // Karan 2026-07-17 (Katie feedback: "Footer is getting cut off"):
-    // increased paddingBottom to 110 so multi-page proposals never push
-    // body content into the fixed footer or clip the footer text
-    // against the red keyline border edge. Also bumped side + top
-    // padding so the text sits comfortably away from the border rules.
-    paddingBottom: 110,
+    // Karan 2026-07-19 (round 2 1:1): tightened top padding so the logo
+    // sits close to the top red keyline (reference has the logo
+    // essentially touching the border top). Side padding matches
+    // reference's tighter margins. Bottom stays generous for the
+    // fixed footer.
+    paddingTop: 70,
+    paddingHorizontal: 48,
+    paddingBottom: 100,
     fontSize: 11,
     fontFamily: "Times-Roman",
     color: CHARCOAL,
     lineHeight: 1.35,
     backgroundColor: PAPER_BG,
   },
-  // Karan 2026-07-19: single red keyline border, matching reference PDF
-  // exactly (no inner double-line — the double-border rendition read as
-  // fussy/wrong). Bottom edge sits at 92 so the fixed footer inside has
-  // ~30pt of breathing room and never clips.
+  // Karan 2026-07-19 (round 2): single red keyline border, tighter to
+  // paper edge (matches reference PDF proportions — narrower outer
+  // white margin, larger content area).
   borderFrame: {
     position: "absolute",
-    top: 24,
-    left: 28,
-    right: 28,
-    bottom: 92,
+    top: 18,
+    left: 22,
+    right: 22,
+    bottom: 82,
     borderStyle: "solid",
     borderWidth: 1.5,
     borderColor: RED,
   },
-  // Header row: TOMCO wordmark centered inside a red-dashed rule that
-  // spans the page width, date pinned top-right (also floats above).
-  // The reference PDF's logo is a graphic wordmark with dashed rules
-  // to its left and right — we recreate the dashes with two flex-1
-  // borderTop lines that visually anchor the wordmark.
+  // Karan 2026-07-19 (round 2 1:1): logo sits at the very top of the
+  // page and visually straddles the red border top line (matches
+  // reference PDF letterhead where "PAINTING" red bar merges with
+  // the border). Absolutely positioned so it doesn't push content
+  // down.
   headerRow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
-    marginTop: 2,
-    minHeight: 44,
+    minHeight: 60,
   },
   logoDashLeft: {
     flex: 1,
@@ -217,11 +218,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 14,
     fontSize: 11,
-    // Karan 2026-07-15: dropped Times-Bold → Times-Roman for the intro.
-    // The old rendering read as "way too bold" (near-black at the
-    // top of every proposal). Reference PDF uses a lighter weight
-    // here; regular Times matches the customer-facing polish.
-    fontFamily: "Times-Roman",
+    // Karan 2026-07-19 (round 2 1:1 verify): reference PDF renders the
+    // intro paragraph in Times-Bold. Rendered the reference to PNG
+    // and confirmed side-by-side — the "Tomco is pleased to
+    // provide..." line is clearly bold weight. Prior 2026-07-15 switch
+    // to Times-Roman was based on a bad memory of "too bold" — the
+    // reference proves otherwise.
+    fontFamily: "Times-Bold",
     lineHeight: 1.4,
   },
   bulletRow: {
@@ -230,18 +233,19 @@ const styles = StyleSheet.create({
     paddingRight: 4,
     alignItems: "flex-start",
   },
-  // Karan 2026-07-15: switched from `●` character (which rendered as
-  // "Ï" — the missing-glyph fallback — because the react-pdf built-in
-  // Times-Roman font doesn't include U+25CF in its char map) to a real
-  // filled dot drawn as a small circular View. Works with any font.
+  // Karan 2026-07-19 (round 2 1:1): reference bullets are large filled
+  // black circles clearly visible next to Exclusions items. Bumped
+  // from 3pt (barely visible in the render) to 5pt to match the
+  // reference weight. Kept as View not glyph so it works across
+  // any font.
   bulletDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: CHARCOAL,
-    marginTop: 6,
+    marginTop: 5,
     marginLeft: 4,
-    marginRight: 8,
+    marginRight: 10,
   },
   bulletBody: {
     flex: 1,
@@ -777,9 +781,11 @@ function AlternateSectionInternal({
 
 function ExclusionsBlock({ exclusions }: { exclusions: string[] }) {
   if (exclusions.length === 0) return null;
+  // Karan 2026-07-19 (round 2 1:1): reference header is just
+  // "Exclusions:" — no "& Qualifications" suffix.
   return (
     <View style={{ marginTop: 16 }}>
-      <Text style={styles.sectionUnderlineHeader}>Exclusions &amp; Qualifications:</Text>
+      <Text style={styles.sectionUnderlineHeader}>Exclusions:</Text>
       {exclusions.map((ex, i) => (
         <View key={i} style={styles.bulletRow}>
           <View style={styles.bulletDot} />
@@ -836,11 +842,14 @@ export function ProposalPdfDocument({
   lineItems,
   exclusions,
   mode = "customer",
-  // Karan 2026-07-15: Tomco proposals ALWAYS include the sign-and-return
-  // block on customer-facing PDFs. Flip the default so preview / send
-  // both include it — the send route can still opt out via ?signature=0
-  // if we ever add a "internal review PDF, no sign line" flow.
-  showSignatureBlock = true,
+  // Karan 2026-07-19 (round 2 1:1): reference PDF does NOT include a
+  // "PLEASE SIGN AND RETURN APPROVED COPY OF PROPOSAL" line — the
+  // rendered reference ends with Estimator sign-off + footer. Prior
+  // "always sign" default was based on Katie feedback that turned out
+  // not to match Alex's actual customer-facing letterhead. Default
+  // OFF; callers can flip it on explicitly if a specific proposal
+  // needs the sign line.
+  showSignatureBlock = false,
 }: RenderProposalArgs) {
   const inclusions = lineItems.filter((i) => !i.is_alternate);
   const alternates = lineItems.filter((i) => i.is_alternate);
