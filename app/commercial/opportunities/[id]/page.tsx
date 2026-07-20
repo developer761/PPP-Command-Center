@@ -23,6 +23,10 @@ import {
   softDeleteCommercialOpportunity,
   createCommercialOpportunity,
 } from "@/lib/commercial/opportunities/mutations";
+import {
+  archiveOpportunity,
+  unarchiveOpportunity,
+} from "@/lib/commercial/opportunities/db";
 import { commercialDb } from "@/lib/commercial/db";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -422,6 +426,52 @@ async function softDeleteOpportunityAction(formData: FormData) {
     redirect(`/commercial/accounts/${account_id}?tab=deals&deleted=${encodeURIComponent(title)}`);
   }
   redirect(`/commercial/accounts?deleted=${encodeURIComponent(title)}`);
+}
+
+// Migration 067 (Phase G Q3) — archive / unarchive server actions.
+async function archiveOpportunityAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const sb = commercialDb();
+  const { data: pre } = await sb
+    .from("commercial_opportunities")
+    .select("account_id")
+    .eq("id", opp_id)
+    .maybeSingle();
+  const account_id = (pre as { account_id?: string } | null)?.account_id ?? null;
+  const result = await archiveOpportunity(opp_id, user.id);
+  if (!result.ok) {
+    if (account_id) {
+      redirect(`/commercial/accounts/${account_id}?tab=deals&error=${encodeURIComponent(result.error)}`);
+    }
+    redirect(`/commercial/accounts?error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath("/commercial/opportunities");
+  if (account_id) {
+    revalidatePath(`/commercial/accounts/${account_id}`);
+    redirect(`/commercial/accounts/${account_id}?tab=deals&archived=1`);
+  }
+  redirect(`/commercial/accounts?archived=1`);
+}
+
+async function unarchiveOpportunityAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const result = await unarchiveOpportunity(opp_id, user.id);
+  if (!result.ok) {
+    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath("/commercial/opportunities");
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  redirect(`/commercial/opportunities/${opp_id}?unarchived=1`);
 }
 
 /**
@@ -2615,6 +2665,44 @@ async function InfoTab({
           </p>
         </Card>
       )}
+
+      {/* Migration 067 (Phase G Q3) — archive/unarchive row above delete.
+          Archive hides the deal from active pipeline but keeps
+          dependents (proposals + invoices + submittals) visible in
+          their own lists. Reversible. Karan 2026-07-20. */}
+      <div className="lg:col-span-2 mt-4 pt-4 border-t border-ppp-charcoal-100">
+        {opp.archived_at ? (
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-[12px] text-ppp-charcoal-500">
+              This deal is archived — hidden from the active pipeline. Unarchive to bring it back.
+            </div>
+            <form action={unarchiveOpportunityAction}>
+              <input type="hidden" name="opp_id" value={opp.id} />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cc-brand-200 text-cc-brand-800 text-[12px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
+              >
+                ↺ Unarchive deal
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-[12px] text-ppp-charcoal-500">
+              Done with this deal but want to keep the record? Archive it — hides from pipeline, dependents stay.
+            </div>
+            <form action={archiveOpportunityAction}>
+              <input type="hidden" name="opp_id" value={opp.id} />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+              >
+                📁 Archive deal
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
 
       {/* Danger zone — soft-delete the opportunity. The confirm panel
           uses an HTML anchor (#danger-zone) so clicking "Delete" jumps

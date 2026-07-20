@@ -61,6 +61,9 @@ export async function hydrateProposalContext(
       .filter(Boolean)
       .join(", "),
   ].filter(Boolean);
+  // Karan 2026-07-20 (Phase G Q2): structural address is canonical.
+  // Legacy location_short is kept as a defensive tertiary fallback for
+  // rows that predate migration 066 backfill (should be zero rows).
   const projectAddress =
     siteAddressParts.length > 0
       ? siteAddressParts.join(", ")
@@ -73,6 +76,11 @@ export async function hydrateProposalContext(
     project_address: projectAddress || undefined,
     date_iso: new Date().toISOString().slice(0, 10),
     show_capital_improvement_notice: false,
+    // Migration 065 (Phase G Q1): snapshot the deal number ("ALT-0125")
+    // into header_json.proposal_number so the PDF LogoBlock renders
+    // "No. ALT-0125" under the date — matches Tomco's letterhead
+    // convention from the JD Sports reference PDF.
+    proposal_number: opp.deal_number ?? undefined,
   };
 
   // Attention/phone/email — pull the primary contact if set.

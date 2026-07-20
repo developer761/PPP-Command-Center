@@ -139,6 +139,10 @@ export type CommercialOpportunity = {
   // level; changeOpportunityStatus enforces required-at-estimating for
   // client_name / location_short / estimator_user_id.
   client_name: string | null;
+  /** @deprecated Migration 066 backfilled this into property_street.
+   *  Column drop pending in migration 068 once all code readers are
+   *  removed. Kept in the type for TS-compat with any surviving reader;
+   *  new code should read property_street directly. */
   location_short: string | null;
   estimator_user_id: string | null;
   // Migration 049 (Karan 2026-07-10) — free-text estimator name for
@@ -151,40 +155,73 @@ export type CommercialOpportunity = {
   // Migration 045 — snapshot of previous status; preserves context for
   // rows migrated from v1.0's `reopened` value.
   previous_status: string | null;
+  // Migration 065 (Phase G Q1) — per-account sequential deal ID,
+  // e.g. "ALT-0125". Assigned automatically on insert by
+  // assignDealNumber(). Nullable at row level (backward compat) but
+  // every new opp gets one via createCommercialOpportunity.
+  deal_number: string | null;
+  // Migration 067 (Phase G Q3) — archive support. Archived opps are
+  // hidden from active pipeline/list by default; toggle "Include
+  // archived" filter to see them. Reversible via unarchive.
+  archived_at: string | null;
+  archived_by_user_id: string | null;
 };
 
 /**
- * Derived display name — {account} - {client_name} - {location_short}.
+ * Derived display name — {account} — {client_name} — {property_street}.
  * Falls back to opp.title when structural fields are unpopulated (which
  * is the state of every row created before Phase B ships).
  *
- * Called from every place that displays an opportunity name: list rows,
- * kanban cards, hero titles, breadcrumbs, CSV exports, bell + email
- * notification bodies. Keep this the single source of truth — direct
- * `opp.title` reads on customer-facing surfaces will drift.
+ * Karan 2026-07-20 (Phase G Q2): read structural property_street instead
+ * of the deprecated location_short (migration 066 backfilled). Keeps
+ * location_short as a last-resort tertiary fallback for rows that
+ * predate the backfill (defensive — should be zero rows after 066).
+ *
+ * Called from every place that displays an opportunity name.
  */
 export function derivedOppName(
-  opp: Pick<CommercialOpportunity, "title" | "client_name" | "location_short">,
+  opp: Pick<CommercialOpportunity, "title" | "client_name" | "location_short"> & {
+    // Optional so callers that only SELECT the legacy fields don't have
+    // to break — falls back to location_short when property_street isn't
+    // in the row shape. Post-migration-066 the two are equivalent.
+    property_street?: string | null;
+  },
   accountName: string | null | undefined,
 ): string {
   const parts: string[] = [];
   if (accountName && accountName.trim()) parts.push(accountName.trim());
   if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
-  if (opp.location_short && opp.location_short.trim()) parts.push(opp.location_short.trim());
-  // Structural form needs at least client_name + location_short (the
-  // two Phase B fields). Falls back to opp.title otherwise — including
-  // for accounts-only titles like "Solicitation from BobCo" where we
-  // haven't captured the client/location yet.
-  if (parts.length >= 2 && opp.client_name && opp.location_short) {
+  const location =
+    (opp.property_street && opp.property_street.trim()) ||
+    (opp.location_short && opp.location_short.trim()) ||
+    "";
+  if (location) parts.push(location);
+  if (parts.length >= 2 && opp.client_name && location) {
     return parts.join(" — ");
   }
   return opp.title || parts.join(" — ") || "Untitled opportunity";
+}
+
+/** Format a deal number for display. Prefixes "No. " to match Tomco's
+ *  letterhead convention ("No. ALT-0125"). Renders empty string if the
+ *  opp has no deal_number yet (pre-migration-065 or migration failure). */
+export function formatDealNumber(dealNumber: string | null | undefined): string {
+  const raw = dealNumber?.trim();
+  if (!raw) return "";
+  return /^no\./i.test(raw) ? raw : `No. ${raw}`;
 }
 
 export type OpportunitiesListFilters = {
   search?: string;
   status?: OpportunityStatus;
   accountId?: string;
+  /** Migration 067 (Phase G Q3): default = false, hides archived opps
+   *  from the active pipeline / list. Pass true on the /archived view
+   *  to render only archived rows for unarchive. */
+  includeArchived?: boolean;
+  /** When true, list ONLY archived opps (the archived-view page).
+   *  Combine with an account filter to see one GC's archived deals. */
+  onlyArchived?: boolean;
 };
 
 /** List non-deleted opportunities, optionally scoped by status / search /
@@ -204,6 +241,16 @@ export async function listCommercialOpportunities(
     .select("*, account:commercial_accounts!inner(deleted_at)")
     .is("deleted_at", null)
     .is("account.deleted_at", null);
+
+  // Archive filter — mutually exclusive modes:
+  //   onlyArchived=true  → archived_at IS NOT NULL (archived-view page)
+  //   includeArchived=true → no filter (show both)
+  //   default            → archived_at IS NULL (active pipeline)
+  if (filters.onlyArchived) {
+    q = q.not("archived_at", "is", null);
+  } else if (!filters.includeArchived) {
+    q = q.is("archived_at", null);
+  }
 
   if (filters.search) {
     const term = `%${filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
@@ -302,4 +349,147 @@ export function weightedPipelineCents(opp: CommercialOpportunity): number {
       ? (low + high) / 2
       : (low ?? high) ?? 0;
   return Math.round((mid * opp.probability_pct) / 100);
+}
+
+// ────────────── Migration 065 (Phase G Q1) — deal number ──────────────
+
+/** Assign the next per-account sequential deal number ("ALT-0125").
+ *  Atomic via `UPDATE ... RETURNING` on the counter table. Auto-seeds
+ *  the counter row if none exists. Falls back to "GC" prefix if the
+ *  account has no derivable code (rare — backfill migration set one).
+ *
+ *  Returns null on error rather than throwing so a failed counter
+ *  doesn't block opportunity creation — the row inserts with
+ *  deal_number = NULL and can be repaired later via admin. */
+export async function assignDealNumber(
+  accountId: string
+): Promise<string | null> {
+  const sb = commercialDb();
+
+  // Ensure counter row exists (idempotent — first insert on new account
+  // sets next_seq = 1; subsequent calls no-op via ON CONFLICT).
+  const { error: seedErr } = await sb
+    .from("commercial_account_deal_counter")
+    .upsert({ account_id: accountId }, { onConflict: "account_id", ignoreDuplicates: true });
+  if (seedErr) {
+    console.warn("[assignDealNumber] seed counter failed:", seedErr.message);
+    return null;
+  }
+
+  // Atomically increment via RPC-less pattern: select current, update
+  // with CAS-like WHERE (retry on conflict). Two round-trips but simple.
+  // For real concurrent-safety a Postgres function would be better; this
+  // is fine at Tomco's volume (dozens of deals/month, not thousands/sec).
+  const { data: cur } = await sb
+    .from("commercial_account_deal_counter")
+    .select("next_seq")
+    .eq("account_id", accountId)
+    .maybeSingle();
+  const currentSeq = (cur as { next_seq?: number } | null)?.next_seq ?? 1;
+
+  const { data: upd, error: updErr } = await sb
+    .from("commercial_account_deal_counter")
+    .update({ next_seq: currentSeq + 1, updated_at: new Date().toISOString() })
+    .eq("account_id", accountId)
+    .eq("next_seq", currentSeq)
+    .select("next_seq")
+    .maybeSingle();
+  if (updErr || !upd) {
+    // CAS lost — someone else incremented between our SELECT and UPDATE.
+    // Retry once with the fresh value.
+    const { data: retryCur } = await sb
+      .from("commercial_account_deal_counter")
+      .select("next_seq")
+      .eq("account_id", accountId)
+      .maybeSingle();
+    const retrySeq = (retryCur as { next_seq?: number } | null)?.next_seq;
+    if (typeof retrySeq !== "number") return null;
+    const { error: retryUpdErr } = await sb
+      .from("commercial_account_deal_counter")
+      .update({ next_seq: retrySeq + 1, updated_at: new Date().toISOString() })
+      .eq("account_id", accountId)
+      .eq("next_seq", retrySeq);
+    if (retryUpdErr) {
+      console.warn("[assignDealNumber] CAS retry failed:", retryUpdErr.message);
+      return null;
+    }
+    return await formatDealNumberForAccount(accountId, retrySeq);
+  }
+
+  return await formatDealNumberForAccount(accountId, currentSeq);
+}
+
+async function formatDealNumberForAccount(
+  accountId: string,
+  seq: number
+): Promise<string | null> {
+  const sb = commercialDb();
+  const { data: acc } = await sb
+    .from("commercial_accounts")
+    .select("deal_code_prefix")
+    .eq("id", accountId)
+    .maybeSingle();
+  const prefix =
+    (acc as { deal_code_prefix?: string | null } | null)?.deal_code_prefix?.trim() || "GC";
+  return `${prefix}-${String(seq).padStart(4, "0")}`;
+}
+
+// ────────────── Migration 067 (Phase G Q3) — archive ──────────────
+
+/** Archive an opp — hides from active pipeline/list but keeps
+ *  dependents (proposals, invoices, submittals) visible in their own
+ *  views. Reversible via unarchiveOpportunity. Idempotent — already
+ *  archived rows return { ok: true } without a re-stamp. */
+export async function archiveOpportunity(
+  id: string,
+  actorUserId: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_opportunities")
+    .select("id, archived_at")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "Deal not found." };
+  const b = before as { archived_at: string | null };
+  if (b.archived_at) return { ok: true }; // already archived — idempotent
+  const { error } = await sb
+    .from("commercial_opportunities")
+    .update({
+      archived_at: new Date().toISOString(),
+      archived_by_user_id: actorUserId,
+      updated_by_user_id: actorUserId,
+    })
+    .eq("id", id)
+    .is("archived_at", null); // CAS guard against double-archive race
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/** Unarchive an opp — restores to active pipeline. Idempotent. */
+export async function unarchiveOpportunity(
+  id: string,
+  actorUserId: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_opportunities")
+    .select("id, archived_at")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "Deal not found." };
+  const b = before as { archived_at: string | null };
+  if (!b.archived_at) return { ok: true }; // already active
+  const { error } = await sb
+    .from("commercial_opportunities")
+    .update({
+      archived_at: null,
+      archived_by_user_id: null,
+      updated_by_user_id: actorUserId,
+    })
+    .eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }

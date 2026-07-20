@@ -9,6 +9,7 @@ import {
   isValidSubStatus,
   FULLY_CLOSED_SUB_STATUSES,
 } from "./constants";
+import { assignDealNumber } from "./db";
 import type {
   CommercialOpportunity,
   OpportunityStatus,
@@ -107,6 +108,13 @@ export async function createCommercialOpportunity(
     if (primary) primaryContactId = (primary as { contact_id: string }).contact_id;
   }
 
+  // Migration 065 (Phase G Q1): assign per-account sequential deal
+  // number ("ALT-0125") BEFORE the insert. Fire-and-forget style —
+  // if the counter fails, we still create the opp with deal_number=NULL
+  // and let admin repair via re-assignment. Matches Tomco's "No. ALT0125"
+  // convention on the JD Sports reference PDF.
+  const dealNumber = await assignDealNumber(input.account_id);
+
   const { data, error } = await sb
     .from("commercial_opportunities")
     .insert({
@@ -141,6 +149,7 @@ export async function createCommercialOpportunity(
       estimator_name: input.estimator_user_id
         ? null
         : input.estimator_name?.trim() || null,
+      deal_number: dealNumber,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
     })

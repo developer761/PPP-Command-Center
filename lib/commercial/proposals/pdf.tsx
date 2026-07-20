@@ -540,15 +540,23 @@ function splitBoldLead(text: string): { lead: string | null; body: string } {
 
 // ─── Sub-blocks ─────────────────────────────────────────────────────
 
-function LogoBlock({ dateLabel }: { dateLabel: string }) {
+function LogoBlock({
+  dateLabel,
+  dealNumber,
+}: {
+  dateLabel: string;
+  dealNumber: string | null;
+}) {
   // Karan 2026-07-17: real Tomco logo image from Alex, cached at module
   // load. If the file is missing (dev without asset, deploy hiccup),
   // fall back to the text wordmark so the PDF still renders — never
   // crash a customer-facing send on a missing asset.
   //
-  // Karan 2026-07-20: killed the "No. R22" line under the date.
-  // Revision counter is internal tracking noise on a customer-facing
-  // doc — Tomco doesn't ship revision numbers on the letterhead.
+  // Karan 2026-07-20 (Phase G Q1): restored the "No. ALT-0125" line
+  // under the date, now sourced from opp.deal_number (per-account
+  // sequential, matches Tomco's JD Sports reference "No. ALT0125"
+  // convention). Only renders when the header carries a real deal
+  // number — legacy proposals with no deal_number show only the date.
   const logo = getLogoBuffer();
   return (
     <>
@@ -563,6 +571,7 @@ function LogoBlock({ dateLabel }: { dateLabel: string }) {
         )}
       </View>
       {dateLabel && <Text style={styles.dateFloat}>{dateLabel}</Text>}
+      {dealNumber && <Text style={styles.dateNumber}>No. {dealNumber}</Text>}
     </>
   );
 }
@@ -1008,7 +1017,10 @@ export function ProposalPdfDocument({
             page. Background is pure white — no parchment/texture. */}
         <View style={styles.borderFrame} fixed />
 
-        <LogoBlock dateLabel={dateLabel} />
+        <LogoBlock
+          dateLabel={dateLabel}
+          dealNumber={proposal.header_json.proposal_number?.trim() || null}
+        />
         <SubmittedToBlock h={proposal.header_json} />
         <ProjectBlock h={proposal.header_json} />
         <Text style={styles.intro}>{intro}</Text>

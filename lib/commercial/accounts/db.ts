@@ -41,6 +41,11 @@ export type CommercialAccount = {
   // Surfaces as a ★ badge on every list/card so high-value accounts pop.
   // Optional in type so code keeps working on a pre-034 row.
   is_key_relationship?: boolean | null;
+  // Migration 065 (Phase G Q1) — per-account prefix for the deal_number
+  // format ("ALT" produces "ALT-0125"). Backfill derives 3-char alpha
+  // from company_name; admin can override in account settings for
+  // prefix collisions. Optional at type-level for pre-065 read safety.
+  deal_code_prefix?: string | null;
   created_at: string;
   updated_at: string;
   created_by_user_id: string | null;
