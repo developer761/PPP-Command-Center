@@ -575,6 +575,7 @@ export default async function CommercialAccountDetailPage({
       {tab === "opportunities" && (
         <OpportunitiesTab
           accountId={account.id}
+          account={account}
           overview={overview}
           openNewDeal={sp.new_deal === "1"}
           createdTitle={sp.created === "1" ? sp.created_title ?? null : null}
@@ -2587,10 +2588,26 @@ function NewDealForm({
   accountId,
   estimators,
   duplicateWarning,
+  account,
 }: {
   accountId: string;
   estimators: EligibleEstimator[];
   duplicateWarning: { id: string; label: string } | null;
+  /** F.6+ (Katie 2026-07-19): new-deal form now pre-fills client_name
+   *  and property_* defaults from the parent account so Alex isn't
+   *  retyping the same address every deal. Alex can override for
+   *  a specific site contact / off-site project. */
+  account: {
+    company_name: string | null;
+    billing_street: string | null;
+    billing_city: string | null;
+    billing_state: string | null;
+    billing_zip: string | null;
+    site_street: string | null;
+    site_city: string | null;
+    site_state: string | null;
+    site_zip: string | null;
+  };
 }) {
   const inputCls =
     "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 bg-white";
@@ -2690,6 +2707,7 @@ function NewDealForm({
             type="text"
             name="client_name"
             maxLength={200}
+            defaultValue={account.company_name ?? ""}
             placeholder="e.g. Tomco Painting"
             className={inputCls}
           />
@@ -2788,18 +2806,45 @@ function NewDealForm({
             />
           </label>
           <div>
-            <div className={labelCls}>Project address <span className="font-normal text-ppp-charcoal-400">(if different from the account address)</span></div>
+            <div className={labelCls}>
+              Project address{" "}
+              <span className="font-normal text-ppp-charcoal-400">
+                (pre-filled from the customer&apos;s site/billing address — edit if this deal is at a different location)
+              </span>
+            </div>
             <input
               type="text"
               name="property_street"
               maxLength={200}
+              defaultValue={account.site_street ?? account.billing_street ?? ""}
               placeholder="Street"
               className={inputCls}
             />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-              <input type="text" name="property_city" maxLength={80} placeholder="City" className={inputCls} />
-              <input type="text" name="property_state" maxLength={2} placeholder="State" className={inputCls} />
-              <input type="text" name="property_zip" maxLength={10} placeholder="ZIP" className={inputCls} />
+              <input
+                type="text"
+                name="property_city"
+                maxLength={80}
+                defaultValue={account.site_city ?? account.billing_city ?? ""}
+                placeholder="City"
+                className={inputCls}
+              />
+              <input
+                type="text"
+                name="property_state"
+                maxLength={2}
+                defaultValue={account.site_state ?? account.billing_state ?? ""}
+                placeholder="State"
+                className={inputCls}
+              />
+              <input
+                type="text"
+                name="property_zip"
+                maxLength={10}
+                defaultValue={account.site_zip ?? account.billing_zip ?? ""}
+                placeholder="ZIP"
+                className={inputCls}
+              />
             </div>
           </div>
         </div>
@@ -2818,6 +2863,7 @@ function NewDealForm({
 
 async function OpportunitiesTab({
   accountId,
+  account,
   overview,
   openNewDeal,
   createdTitle,
@@ -2829,6 +2875,10 @@ async function OpportunitiesTab({
   projectStartedOppId,
 }: {
   accountId: string;
+  /** Katie 2026-07-19: new-deal form pre-fills client_name + property
+   *  address from this account so Alex isn't retyping the same info
+   *  every deal. */
+  account: CommercialAccount;
   overview: AccountOverview | null;
   openNewDeal?: boolean;
   createdTitle?: string | null;
@@ -2898,7 +2948,7 @@ async function OpportunitiesTab({
               </p>
             </div>
           </div>
-          <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} />
+          <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} account={account} />
         </div>
       </div>
     );
@@ -3041,7 +3091,7 @@ async function OpportunitiesTab({
           <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0">▾</span>
         </summary>
         <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
-          <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} />
+          <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} account={account} />
         </div>
       </details>
 
