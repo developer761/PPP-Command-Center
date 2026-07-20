@@ -1270,9 +1270,14 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums shrink-0 w-8">
                                 R{r.revision_number}
                               </span>
+              {/* Audit fix: align breakpoint with the kanban card
+                  (hidden sm:inline) so the PROP-#### chip surfaces at
+                  the same width across surfaces. List view has more
+                  horizontal room than the kanban card, so if kanban
+                  can show at sm, list can too. */}
                               {r.proposal_seq != null && (
                                 <span
-                                  className="text-[10.5px] font-mono text-ppp-charcoal-400 shrink-0 hidden md:inline"
+                                  className="text-[10.5px] font-mono text-ppp-charcoal-400 shrink-0 hidden sm:inline"
                                   title="Unique proposal ID"
                                 >
                                   PROP-{String(r.proposal_seq).padStart(4, "0")}

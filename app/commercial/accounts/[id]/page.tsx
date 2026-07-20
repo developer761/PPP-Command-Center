@@ -2720,13 +2720,13 @@ function NewDealForm({
       </div>
       {/* Katie 2026-07-20: RFP Received on its own row so the two
           bid-lifecycle dates (RFP in / Proposal out) sit visually
-          grouped and power the time-to-proposal metric. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <span className={labelCls}>RFP received</span>
-          <DatePicker name="rfp_received_at" placeholder="When the bid request arrived" ariaLabel="RFP received date" />
-          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the deal card.</span>
-        </div>
+          grouped and power the time-to-proposal metric. Single column —
+          audit fix: was `grid-cols-1 sm:grid-cols-2` with only one child,
+          left a dead half-column on tablet. */}
+      <div>
+        <span className={labelCls}>RFP received</span>
+        <DatePicker name="rfp_received_at" placeholder="When the RFP / bid request arrived" ariaLabel="RFP received date" />
+        <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the deal card.</span>
       </div>
       {/* Phase B (Plan v1.1) — CEO structural fields. All optional at
           Solicitation; the changeOpportunityStatus validator blocks the
@@ -3114,7 +3114,10 @@ async function OpportunitiesTab({
         <div className="flex items-center justify-end -mt-1">
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities${includeArchived ? "" : "&archived=1"}#deal-list`}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-medium border min-h-[28px] transition-colors ${
+            // Audit fix: min-h 44px on mobile (tap target standard),
+            // 28px on desktop where it's a chip. Vertical padding
+            // scales the same so text stays centered.
+            className={`inline-flex items-center gap-1.5 px-3 py-2.5 sm:px-2.5 sm:py-1 rounded-full text-[11.5px] font-medium border min-h-[44px] sm:min-h-[28px] transition-colors touch-manipulation ${
               includeArchived
                 ? "bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200"
                 : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
