@@ -27,6 +27,7 @@ import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import {
   getCommercialOpportunity,
   derivedOppName,
+  listCommercialOpportunities,
 } from "@/lib/commercial/opportunities/db";
 import {
   getProposal,
@@ -52,6 +53,8 @@ import ExclusionPicker from "@/components/commercial/exclusion-picker";
 import ProductPicker from "@/components/commercial/product-picker";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { AutosaveProposalName } from "@/components/commercial/autosave-proposal-name";
+import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
+import { FillProjectFromDeal } from "@/components/commercial/fill-project-from-deal";
 import {
   INPUT_CLS,
   TEXTAREA_CLS,
@@ -564,11 +567,38 @@ export default async function ProposalEditorPage({
   if (!opp || opp.account_id !== accountId) notFound();
   if (!proposal || proposal.opportunity_id !== dealId) notFound();
 
-  const [lineItems, products, allExclusions] = await Promise.all([
+  const [lineItems, products, allExclusions, accountDeals] = await Promise.all([
     listLineItemsForProposal(proposalId),
     listProducts({ includeInactive: false }),
     listExclusions({ activeOnly: true }),
+    // Karan 2026-07-20: fill-PROJECT-from-deal picker needs every deal
+    // under this account so Alex can hot-swap the PROJECT block from
+    // any sibling deal's structured data. Filter to non-deleted only.
+    listCommercialOpportunities({ accountId }),
   ]);
+  // Deals list for the fill-project-from-deal client picker. Skip the
+  // current deal (nothing to fill from itself) + skip deals with no
+  // usable name (label would be blank).
+  const fillableDeals = accountDeals
+    .filter((d) => d.id !== dealId)
+    .map((d) => {
+      const projectName = d.client_name?.trim() || d.title?.trim() || "";
+      const addrParts = [
+        d.property_street?.trim(),
+        [d.property_city?.trim(), d.property_state?.trim()]
+          .filter(Boolean)
+          .join(", "),
+      ].filter(Boolean);
+      const projectAddress =
+        addrParts.length > 0 ? addrParts.join(", ") : d.location_short?.trim() || "";
+      return {
+        id: d.id,
+        label: [projectName, projectAddress].filter(Boolean).join(" · "),
+        projectName,
+        projectAddress,
+      };
+    })
+    .filter((d) => d.label.length > 0);
   // F.6: mark parent-only products (rows that have children) so the
   // picker can render them as browse-only headers + block picks.
   const parentIdsWithChildren = new Set(
@@ -827,8 +857,11 @@ export default async function ProposalEditorPage({
         </div>
       )}
 
-      {/* MAIN SAVE FORM — wraps every editable section EXCEPT line items. */}
-      <form action={saveProposalAction} className="space-y-4">
+      {/* MAIN AUTOSAVE FORM — wraps every editable section EXCEPT line
+          items. Karan 2026-07-20: no manual Save button, every field
+          change debounces (800ms) → server action fires. AutosaveProposalForm
+          renders its own <form> with a "Saving… / Saved" status pill. */}
+      <AutosaveProposalForm action={saveProposalAction}>
         {hiddenIds}
 
         {/* Header block. Karan 2026-07-20: relabeled to reflect the
@@ -875,20 +908,31 @@ export default async function ProposalEditorPage({
           </div>
 
           <div className="space-y-3 pt-3 border-t border-ppp-charcoal-100">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-cc-brand-800">
-              Project — the deal / job site
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-widest text-cc-brand-800">
+                  Project — the deal / job site
+                </div>
+                <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">
+                  The specific customer + site this proposal covers. Prints as &ldquo;PROJECT: {"{"}Name{"}"}, {"{"}Address{"}"}&rdquo; on the PDF.
+                </p>
+              </div>
+              {fillableDeals.length > 0 && (
+                <FillProjectFromDeal
+                  deals={fillableDeals}
+                  projectNameInputId="header-project-name"
+                  projectAddressInputId="header-project-address"
+                />
+              )}
             </div>
-            <p className="text-[11.5px] text-ppp-charcoal-500 -mt-1">
-              The specific customer + site this proposal covers. Prints as &ldquo;PROJECT: {"{"}Name{"}"}, {"{"}Address{"}"}&rdquo; on the PDF.
-            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className={LABEL_CLS}>Project name</span>
-                <input type="text" name="project_name" defaultValue={proposal.header_json.project_name ?? ""} className={INPUT_CLS} placeholder="e.g. JD Sports" />
+                <input id="header-project-name" type="text" name="project_name" defaultValue={proposal.header_json.project_name ?? ""} className={INPUT_CLS} placeholder="e.g. JD Sports" />
               </label>
               <label className="block">
                 <span className={LABEL_CLS}>Project address</span>
-                <input type="text" name="project_address" defaultValue={proposal.header_json.project_address ?? ""} className={INPUT_CLS} placeholder="e.g. 37-38 Junction Blvd, Queens" />
+                <input id="header-project-address" type="text" name="project_address" defaultValue={proposal.header_json.project_address ?? ""} className={INPUT_CLS} placeholder="e.g. 37-38 Junction Blvd, Queens" />
               </label>
             </div>
           </div>
@@ -971,16 +1015,14 @@ export default async function ProposalEditorPage({
           </label>
         </section>
 
-        {/* Footer save row */}
-        <div className="flex items-center justify-between gap-3 flex-wrap sticky bottom-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <button type="submit" className="inline-flex items-center px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[44px]">
-              Save proposal
-            </button>
-            <span className="text-[12px] text-ppp-charcoal-500">Line items save independently below.</span>
-          </div>
-        </div>
-      </form>
+        {/* Karan 2026-07-20: killed the manual "Save proposal" button.
+            AutosaveProposalForm debounces every field change (800ms) →
+            fires saveProposalAction and shows a "Saving… / Saved" pill
+            top-right. Line items still save independently below. */}
+        <p className="text-[12px] text-ppp-charcoal-500 text-center">
+          Changes save automatically. Line items save independently below.
+        </p>
+      </AutosaveProposalForm>
 
       {/* Line items — separate form outside the main save form so
           each row is its own action. */}

@@ -540,17 +540,15 @@ function splitBoldLead(text: string): { lead: string | null; body: string } {
 
 // ─── Sub-blocks ─────────────────────────────────────────────────────
 
-function LogoBlock({
-  dateLabel,
-  proposalNumber,
-}: {
-  dateLabel: string;
-  proposalNumber: string | null;
-}) {
+function LogoBlock({ dateLabel }: { dateLabel: string }) {
   // Karan 2026-07-17: real Tomco logo image from Alex, cached at module
   // load. If the file is missing (dev without asset, deploy hiccup),
   // fall back to the text wordmark so the PDF still renders — never
   // crash a customer-facing send on a missing asset.
+  //
+  // Karan 2026-07-20: killed the "No. R22" line under the date.
+  // Revision counter is internal tracking noise on a customer-facing
+  // doc — Tomco doesn't ship revision numbers on the letterhead.
   const logo = getLogoBuffer();
   return (
     <>
@@ -565,10 +563,6 @@ function LogoBlock({
         )}
       </View>
       {dateLabel && <Text style={styles.dateFloat}>{dateLabel}</Text>}
-      {/* Karan 2026-07-17 (Tomco 1:1): "No. ALT0125" line below the
-          date, matching reference PDF. Renders when proposal_number is
-          set on the header block (Alex enters it on the editor). */}
-      {proposalNumber && <Text style={styles.dateNumber}>{proposalNumber}</Text>}
     </>
   );
 }
@@ -995,14 +989,6 @@ export function ProposalPdfDocument({
   const totalLabel = proposalTotalLabel(exclusions);
   const intro = proposal.intro_text_override?.trim() || TOMCO_DEFAULT_INTRO;
   const dateLabel = formatDateLong(proposal.header_json.date_iso);
-  // Karan 2026-07-19 (Tomco 1:1 re-check vs JD Sports ref "No. ALT0125"):
-  // render as "No. <value>" — either the explicit header_json.proposal_number
-  // OR fallback to "No. R{n}" so the reference-consistent "No. " prefix
-  // always shows.
-  const rawNum =
-    proposal.header_json.proposal_number?.trim() ||
-    `R${proposal.revision_number}`;
-  const proposalNumber = /^no\./i.test(rawNum) ? rawNum : `No. ${rawNum}`;
   // Round-3 audit fix: pdf_show_line_prices was a dead toggle — the
   // editor checkbox existed but the renderer ignored it. Now: internal
   // mode always shows the line-item table (estimator math); customer
@@ -1022,7 +1008,7 @@ export function ProposalPdfDocument({
             page. Background is pure white — no parchment/texture. */}
         <View style={styles.borderFrame} fixed />
 
-        <LogoBlock dateLabel={dateLabel} proposalNumber={proposalNumber} />
+        <LogoBlock dateLabel={dateLabel} />
         <SubmittedToBlock h={proposal.header_json} />
         <ProjectBlock h={proposal.header_json} />
         <Text style={styles.intro}>{intro}</Text>
