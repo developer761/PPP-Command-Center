@@ -354,7 +354,7 @@ export default async function ProductDetailPage({
                   {!(PRODUCT_CATEGORIES as readonly string[]).includes(
                     product.category
                   ) && (
-                    <option value={product.category}>{product.category}</option>
+                    <option value={product.category}>{productCategoryLabel(product.category)}</option>
                   )}
                 </select>
               </label>
@@ -375,7 +375,7 @@ export default async function ProductDetailPage({
                   ))}
                   {!(PRODUCT_UNITS as readonly string[]).includes(
                     product.unit
-                  ) && <option value={product.unit}>{product.unit}</option>}
+                  ) && <option value={product.unit}>{productUnitLabel(product.unit)}</option>}
                 </select>
               </label>
               <label className="block">

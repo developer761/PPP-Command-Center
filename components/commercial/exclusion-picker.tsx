@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { exclusionCategoryLabel } from "@/lib/commercial/exclusions/constants";
 
 type Row = {
   id: string;
@@ -298,7 +299,7 @@ export function ExclusionPicker({
                       : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
                   }`}
                 >
-                  {r.category}
+                  {exclusionCategoryLabel(r.category)}
                 </span>
                 <span className="flex-1">{r.text}</span>
                 {r.use_count > 0 && (

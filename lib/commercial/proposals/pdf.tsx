@@ -19,6 +19,7 @@ import {
   TOMCO_DEFAULT_INTRO,
   proposalTotalLabel,
 } from "./constants";
+import { productUnitLabel } from "@/lib/commercial/products/constants";
 import type {
   CommercialProposal,
   CommercialProposalLineItem,
@@ -776,7 +777,7 @@ function LineItemTable({
               {it.description}
             </Text>
             <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
-            <Text style={[styles.liCell, styles.liCellUnit]}>{it.unit}</Text>
+            <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
             <Text style={[styles.liCell, styles.liCellPrice]}>
               {formatDollars(it.unit_price_cents)}
             </Text>

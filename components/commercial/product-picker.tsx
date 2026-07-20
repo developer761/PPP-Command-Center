@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { productUnitLabel } from "@/lib/commercial/products/constants";
 
 export type PickableProduct = {
   id: string;
@@ -197,7 +198,12 @@ export default function ProductPicker({
       ? `${displayName}${p.description ? ": " + p.description : ""}`
       : p.description || p.name;
     setFormValue(descriptionInputId, descriptionSeed);
-    setFormValue(unitInputId, p.unit);
+    // Audit fix (2026-07-19): write the FRIENDLY unit label ("linear ft"
+    // not raw enum "linear_foot") so the tiny unit input doesn't
+    // truncate to "linea…" and the customer sees a real unit on the PDF.
+    // Line items store free-text unit; the friendly label round-trips
+    // cleanly through save + reload + PDF render.
+    setFormValue(unitInputId, productUnitLabel(p.unit));
     setFormValue(unitPriceInputId, centsToDollarStr(p.default_unit_price_cents));
     setPriceNote(
       `catalog default · ${formatDollars(p.default_unit_price_cents)}`
@@ -411,7 +417,7 @@ export default function ProductPicker({
                   <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2">
                     <span className="font-mono">{p.sku}</span>
                     <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                    <span>per {p.unit}</span>
+                    <span>per {productUnitLabel(p.unit)}</span>
                     {p.description && (
                       <>
                         <span aria-hidden className="text-ppp-charcoal-300">·</span>

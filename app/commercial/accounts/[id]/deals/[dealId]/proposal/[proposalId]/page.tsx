@@ -1063,7 +1063,7 @@ function LineItemsTable({
                 current updated_at. */}
             <input type="hidden" name="original_updated_at" value={r.updated_at} />
             <div className="grid grid-cols-12 gap-2 items-end">
-              <label className="col-span-12 sm:col-span-4 block">
+              <label className="col-span-12 sm:col-span-3 block">
                 <span className={LABEL_CLS}>Description</span>
                 <input type="text" name="description" defaultValue={r.description} className={INPUT_CLS} required />
               </label>
@@ -1087,9 +1087,9 @@ function LineItemsTable({
                 <span className={LABEL_CLS}>Qty</span>
                 <input type="text" inputMode="decimal" name="quantity" defaultValue={String(r.quantity)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
-              <label className="col-span-3 sm:col-span-1 block">
+              <label className="col-span-3 sm:col-span-2 block">
                 <span className={LABEL_CLS}>Unit</span>
-                <input type="text" name="unit" defaultValue={r.unit} className={INPUT_CLS} />
+                <input type="text" name="unit" defaultValue={productUnitLabel(r.unit)} className={INPUT_CLS} />
               </label>
               <label className="col-span-6 sm:col-span-3 block">
                 <span className={LABEL_CLS}>Unit price</span>
@@ -1186,7 +1186,7 @@ function AddLineItemForm({
       ) : null}
       <input type="hidden" id={`${prefix}-pid`} name="product_id" defaultValue="" />
       <div className="grid grid-cols-12 gap-2 items-end">
-        <label className="col-span-12 sm:col-span-4 block">
+        <label className="col-span-12 sm:col-span-3 block">
           <span className={LABEL_CLS}>Description</span>
           <input type="text" id={`${prefix}-desc`} name="description" required placeholder="e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte." className={INPUT_CLS} />
         </label>
@@ -1209,7 +1209,7 @@ function AddLineItemForm({
           <span className={LABEL_CLS}>Qty</span>
           <input type="text" inputMode="decimal" name="quantity" defaultValue="1" className={`${INPUT_CLS} tabular-nums`} />
         </label>
-        <label className="col-span-3 sm:col-span-1 block">
+        <label className="col-span-3 sm:col-span-2 block">
           <span className={LABEL_CLS}>Unit</span>
           <input type="text" id={`${prefix}-unit`} name="unit" defaultValue="each" className={INPUT_CLS} />
         </label>

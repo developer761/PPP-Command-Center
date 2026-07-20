@@ -39,6 +39,7 @@ import {
   type InvoiceStatus,
 } from "@/lib/commercial/invoices/constants";
 import { formatCentsFull, fmtEtDate, parseDollarsToCents, daysBetween } from "@/lib/commercial/invoices/format";
+import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { isWon } from "@/lib/commercial/opportunities/constants";
@@ -850,7 +851,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     <td className="py-2.5 pr-3 text-right text-ppp-charcoal-700 tabular-nums align-top">
                       {li.quantity.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                     </td>
-                    <td className="py-2.5 pr-3 text-ppp-charcoal-600 align-top">{li.unit ?? "—"}</td>
+                    <td className="py-2.5 pr-3 text-ppp-charcoal-600 align-top">{li.unit ? productUnitLabel(li.unit) : "—"}</td>
                     <td className="py-2.5 pr-3 text-right text-ppp-charcoal-700 tabular-nums align-top">{formatCentsFull(li.unit_price_cents)}</td>
                     <td className="py-2.5 pr-3 text-right font-semibold text-ppp-charcoal tabular-nums align-top">{formatCentsFull(li.subtotal_cents)}</td>
                     <td className="py-2.5 pl-2 text-right align-top">
