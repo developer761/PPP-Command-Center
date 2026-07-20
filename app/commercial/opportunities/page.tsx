@@ -352,6 +352,10 @@ export default async function CommercialOpportunitiesPage({
   const validStatus = statusFilter && (OPPORTUNITY_STATUSES as readonly string[]).includes(statusFilter)
     ? (statusFilter as OpportunityStatus)
     : undefined;
+  // Phase G Q3 (2026-07-20): `?archived=1` toggle to include archived
+  // opps in the active list/kanban. Default hides them so the pipeline
+  // stays focused on live deals. Chip in the toolbar flips the URL.
+  const includeArchived = pickFirst(sp.archived) === "1";
   const created = pickFirst(sp.created) === "1";
   const createdTitle = pickFirst(sp.created_title);
   const statusOk = pickFirst(sp.status_ok) === "1";
@@ -437,7 +441,7 @@ export default async function CommercialOpportunitiesPage({
   });
 
   const [oppsRaw, accounts] = await Promise.all([
-    listCommercialOpportunities({ search, status: validStatus }),
+    listCommercialOpportunities({ search, status: validStatus, includeArchived }),
     listCommercialAccounts(),
   ]);
   const accountById = new Map<string, CommercialAccount>(accounts.map((a) => [a.id, a]));
@@ -553,6 +557,16 @@ export default async function CommercialOpportunitiesPage({
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   })();
+  // Phase G Q3: toggle URL for the archived-inclusion chip.
+  const toggleArchivedHref = (() => {
+    const p = new URLSearchParams(baseParams);
+    if (!includeArchived) p.set("archived", "1");
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  })();
+  const archivedCount = oppsRaw.filter((o) => o.archived_at).length;
   const toggleSourceHref = (src: OpportunitySource) => {
     const p = new URLSearchParams(baseParams);
     const next = new Set(sourceSet);
@@ -890,6 +904,16 @@ export default async function CommercialOpportunitiesPage({
                     active={staleFilter}
                     label={`Stale > ${STALE_OPP_DAYS}d`}
                     description={`Open opps with no update in over ${STALE_OPP_DAYS} days.`}
+                  />
+                  <FilterOption
+                    href={toggleArchivedHref}
+                    active={includeArchived}
+                    label={
+                      includeArchived && archivedCount > 0
+                        ? `📁 Include archived (${archivedCount})`
+                        : "📁 Include archived"
+                    }
+                    description="Archived deals are hidden from the active pipeline. Toggle to include them, marked with a small chip."
                   />
                 </div>
               </div>
@@ -2726,11 +2750,27 @@ function OpportunityRow({
                 deals per screen. Full DealJourneyStrip lives on the
                 opp detail page. */}
             <div className="flex items-center gap-2 flex-wrap">
+              {opportunity.deal_number && (
+                <span
+                  className="inline-flex items-center px-1.5 py-0.5 rounded bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800 text-[10px] font-bold tracking-wide font-mono shrink-0"
+                  title={`Deal ID: No. ${opportunity.deal_number}`}
+                >
+                  {opportunity.deal_number}
+                </span>
+              )}
               <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
                 {derivedOppName(opportunity, account?.company_name ?? null)}
               </span>
               <StageChip status={opportunity.status} sub_status={opportunity.sub_status} />
               {dueChip && <DueChip {...dueChip} />}
+              {opportunity.archived_at && (
+                <span
+                  className="inline-flex items-center px-1.5 py-0.5 rounded bg-ppp-charcoal-100 border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[9px] font-bold uppercase tracking-widest"
+                  title="Archived — visible because 'Include archived' is on."
+                >
+                  archived
+                </span>
+              )}
             </div>
 
             {/* Line 2 — account context + bid + confidence. Muted so

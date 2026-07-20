@@ -1507,6 +1507,17 @@ export default async function OpportunityDetailPage({
               {derivedOppName(opp, account?.company_name ?? null)}
             </h1>
             <div className="text-sm text-ppp-charcoal-500 mt-1 flex items-center gap-2 flex-wrap">
+              {opp.deal_number && (
+                <>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-md bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800 text-[11px] font-bold tracking-wide font-mono"
+                    title="Per-account deal number — matches the 'No.' line on the Tomco proposal PDF."
+                  >
+                    No. {opp.deal_number}
+                  </span>
+                  <span aria-hidden>·</span>
+                </>
+              )}
               {account && (
                 <Link
                   href={`/commercial/accounts/${account.id}`}
@@ -1517,6 +1528,17 @@ export default async function OpportunityDetailPage({
               )}
               <span aria-hidden>·</span>
               <StatusPill status={opp.status} />
+              {opp.archived_at && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-md bg-ppp-charcoal-100 border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[11px] font-semibold uppercase tracking-widest"
+                    title="This deal is archived — hidden from active pipeline. Dependents still visible in their own lists."
+                  >
+                    Archived
+                  </span>
+                </>
+              )}
             </div>
             {/* Karan 2026-07-11 signature-moments Tier 2: deal-journey
                 strip on the hero — visualize the pipeline stages so
