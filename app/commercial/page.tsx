@@ -125,7 +125,7 @@ export default async function CommercialDashboardPage() {
     .sort((a, b) => (b.bid_value_low_cents ?? 0) - (a.bid_value_low_cents ?? 0))[0];
   const biggestAccount = biggestOpenOpp
     ? accounts.find((a) => a.id === biggestOpenOpp.account_id)?.company_name ??
-      "Unknown customer"
+      "Unknown account"
     : null;
 
   return (

@@ -1213,7 +1213,20 @@ function LineItemsTable({
             <div className="grid grid-cols-12 gap-2 items-end">
               <label className="col-span-12 sm:col-span-3 block">
                 <span className={LABEL_CLS}>Description</span>
-                <input type="text" name="description" defaultValue={r.description} className={INPUT_CLS} required />
+                {/* Katie 2026-07-20: line item description = "description
+                    area" — multi-line so Alex can add scope detail
+                    beyond a single line. PDF renderer (BulletLine in
+                    pdf.tsx) already parses \n as sub-item markers, so
+                    each newline becomes an indented bullet on the
+                    customer PDF. */}
+                <textarea
+                  name="description"
+                  defaultValue={r.description}
+                  className={`${INPUT_CLS} min-h-[80px] py-2`}
+                  required
+                  rows={3}
+                  placeholder="e.g. Prep, prime, and paint 2 coats. New line = sub-item bullet on the PDF."
+                />
               </label>
               {/* F.6: phase label. Free-text so Alex can use "Phase 1",
                   "Base contract", etc. NULL = ungrouped. */}
@@ -1337,13 +1350,15 @@ function AddLineItemForm({
       <div className="grid grid-cols-12 gap-2 items-end">
         <label className="col-span-12 sm:col-span-3 block">
           <span className={LABEL_CLS}>Description</span>
-          <input
-            type="text"
+          {/* Katie 2026-07-20: multi-line description; newline → PDF
+              sub-item bullet via BulletLine's \n parser. */}
+          <textarea
             id={`${prefix}-desc`}
             name="description"
             required
-            placeholder={isLabor ? "e.g. Skilled painters — prep + prime + 2 coats" : "e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte."}
-            className={INPUT_CLS}
+            rows={3}
+            placeholder={isLabor ? "e.g. Skilled painters — prep + prime + 2 coats" : "e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte.\n(New line = sub-item bullet on the PDF)"}
+            className={`${INPUT_CLS} min-h-[80px] py-2`}
           />
         </label>
         {/* F.6: phase label. Optional — leave blank for ungrouped.

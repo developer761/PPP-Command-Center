@@ -1852,7 +1852,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal">Add contact</h2>
         <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 mt-0.5 leading-snug">
-          People at the <strong>customer&apos;s company</strong> — decision-maker, PM, estimator, AP contact, etc.
+          People at the <strong>account&apos;s (GC) company</strong> — decision-maker, PM, estimator, AP contact, etc.
           For PPP staff working this account, use the <strong>Team</strong> tab under Overview.
         </p>
         <form action={addContactAction} className="space-y-3">
@@ -1907,7 +1907,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
       {/* Existing contacts */}
       {contacts.length === 0 ? (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-          No contacts yet. Add the decision-maker, estimator, PM, or anyone else from the customer side.
+          No contacts yet. Add the decision-maker, estimator, PM, or anyone else from the account (GC) side.
         </div>
       ) : (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -2797,7 +2797,7 @@ function NewDealForm({
         <div className={labelCls}>
           Project address{" "}
           <span className="font-normal text-ppp-charcoal-400">
-            (pre-filled from the customer&apos;s site/billing address — edit if this deal is at a different location)
+            (pre-filled from the account&apos;s site/billing address — edit if this deal is at a different location)
           </span>
         </div>
         <input
