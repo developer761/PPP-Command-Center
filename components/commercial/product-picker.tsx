@@ -43,6 +43,13 @@ function centsToDollarStr(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+/** Collapse runs of tabs/spaces to a single space so descriptions like
+ *  "Install\tlabor priced by square foot" render clean on the PDF.
+ *  Preserves newlines (BulletLine treats them as sub-item markers). */
+function normalizeWs(s: string): string {
+  return s.replace(/[\t ]+/g, " ").replace(/ *\n */g, "\n").trim();
+}
+
 function formatDollars(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -77,43 +84,45 @@ export default function ProductPicker({
   const [picked, setPicked] = useState<PickableProduct | null>(null);
   const [priceNote, setPriceNote] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
-  // F.6 audit fix (2026-07-19): when the user clicks a parent-only
-  // "PICK A VARIATION" row, drop the picker into a filtered "show only
-  // variations of X" mode until they either pick a variation or clear
-  // it. Fixes the dead-end Karan hit where clicking the parent did
-  // nothing visible even though variations were listed below it.
-  const [parentFilter, setParentFilter] = useState<PickableProduct | null>(null);
+  // F.6 audit fix v2 (2026-07-19, Karan): switched from mode-based
+  // "parentFilter" to inline accordion expansion. Clicking a parent row
+  // reveals its variations RIGHT BELOW the parent as indented children.
+  // Second click collapses. Kills all the state-race + focus-loss edge
+  // cases the mode-switch version hit ("nothing comes up when I click
+  // pick a variation").
+  const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const results = useMemo(() => {
-    // F.6 audit fix: parent-filter mode wins over free-text search.
-    // Show every ACTIVE variation of the selected parent, sorted by
-    // variation label so "Per Linear Yard" reliably appears above
-    // "Per Square Foot" (matches Product Library display).
-    if (parentFilter) {
-      return products
-        .filter((p) => p.parent_product_id === parentFilter.id)
-        .sort((a, b) =>
-          (a.variation_label ?? "").localeCompare(b.variation_label ?? "")
-        );
+  // Variations grouped by parent id for O(1) inline-expand lookup.
+  const variationsByParent = useMemo(() => {
+    const m = new Map<string, PickableProduct[]>();
+    for (const p of products) {
+      if (!p.parent_product_id) continue;
+      const arr = m.get(p.parent_product_id) ?? [];
+      arr.push(p);
+      m.set(p.parent_product_id, arr);
     }
-    // F.6 audit fix (2026-07-19, Karan): in global (non-parent-filter)
-    // mode HIDE every variation row. Only show parents + standalone
-    // products. This kills the clutter where searching "wall" listed
-    // the parent AND its two variations AND another product side-by-side.
-    // Clicking a parent drops into parent-filter mode which then exposes
-    // ONLY that parent's variations.
+    for (const arr of m.values()) {
+      arr.sort((a, b) =>
+        (a.variation_label ?? "").localeCompare(b.variation_label ?? "")
+      );
+    }
+    return m;
+  }, [products]);
+
+  const results = useMemo(() => {
+    // F.6 audit fix (2026-07-19, Karan): hide variation rows from the
+    // flat list — parent renders with "PICK A VARIATION" chip and its
+    // variations expand inline as indented children when clicked.
     const catalog = products.filter((p) => !p.parent_product_id);
     const q = query.trim().toLowerCase();
     if (!q) return catalog.slice(0, 25);
-    // Prefix match first (SKU + name), then substring — mirrors the
-    // Karan-approved SearchableSelect behavior across the platform.
-    // Variation-label matching also runs against the parent so typing
-    // "Seal & Poly" still surfaces the parent row (user picks parent →
-    // sees the Seal & Poly variation in the filtered list).
+    // Prefix match first (SKU + name), then substring. Variation-label
+    // matching maps back to the parent so typing "Seal & Poly" surfaces
+    // the parent row — user clicks parent, variations expand inline.
     const variationParentIds = new Set(
       products
         .filter((p) => {
@@ -136,7 +145,7 @@ export default function ProductPicker({
       }
     }
     return [...prefixSku, ...prefixName, ...substring].slice(0, 25);
-  }, [products, query, parentFilter]);
+  }, [products, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -176,26 +185,20 @@ export default function ProductPicker({
   }
 
   async function pick(p: PickableProduct) {
-    // F.6 audit fix (2026-07-19): clicking a parent header now drops
-    // the picker into "variations-of-X" mode instead of silently
-    // no-op'ing. Karan's bug: clicking the parent row did nothing
-    // visible even though variations were already listed below.
-    // Now the list re-filters to just this parent's variations and a
-    // banner appears at the top with a "← back to all" affordance.
+    // F.6 audit fix v2 (2026-07-19, Karan): clicking a parent-only row
+    // toggles its variations open/closed as indented sub-items in the
+    // SAME list. No mode switch, no state race — variations always
+    // render below the parent when expanded.
     if (p.is_parent_only) {
-      setParentFilter(p);
-      setHighlight(0);
-      setOpen(true);
-      // Focus the search input so keyboard nav works immediately +
-      // typing anything cancels the filter (see input onChange).
+      setExpandedParentId((cur) => (cur === p.id ? null : p.id));
       inputRef.current?.focus();
       return;
     }
-    // Any real pick clears any active parent filter.
-    setParentFilter(null);
+    // A variation pick collapses its parent's expansion.
+    setExpandedParentId(null);
     setPicked(p);
-    // F.6: display combines parent name + variation label so the picker
-    // input shows "HM Frame & Wood Door (Seal & Poly)" after pick.
+    // Display combines parent name + variation label so the picker input
+    // shows "HM Frame & Wood Door (Seal & Poly)" after pick.
     const displayName = p.variation_label
       ? `${p.name} (${p.variation_label})`
       : p.name;
@@ -205,10 +208,17 @@ export default function ProductPicker({
     // Instant defaults so the row is usable even before the price
     // resolve API returns. Description prefill:
     //   - Standalone: use description (fallback: name)
-    //   - Variation:  "{parent name} — {variation label}: {description}"
+    //   - Variation:  "**{parent name} ({variation label}):** {description}"
+    //     Markdown-bold wrapper so PDF splitBoldLead renders the item
+    //     name in Times-Bold regardless of length (bypasses 30-char
+    //     heuristic that rejects long parent+variation combos).
+    //   `normalizeWs` collapses tabs / runs of spaces so descriptions
+    //   with stray whitespace ("Install\tlabor priced by…") render as
+    //   single-space "Install labor priced by…" on the PDF.
+    const desc = normalizeWs(p.description ?? "");
     const descriptionSeed = p.variation_label
-      ? `${displayName}${p.description ? ": " + p.description : ""}`
-      : p.description || p.name;
+      ? `**${displayName}:**${desc ? " " + desc : ""}`
+      : desc || p.name;
     setFormValue(descriptionInputId, descriptionSeed);
     // Audit fix (2026-07-19): write the FRIENDLY unit label ("linear ft"
     // not raw enum "linear_foot") so the tiny unit input doesn't
@@ -263,7 +273,7 @@ export default function ProductPicker({
     setPicked(null);
     setQuery("");
     setPriceNote(null);
-    setParentFilter(null);
+    setExpandedParentId(null);
     setFormValue(productIdInputId, "");
     // Deliberately DON'T clear description/unit/unit_price — the user
     // might want to keep them as-is with a manual tweak.
@@ -284,10 +294,9 @@ export default function ProductPicker({
               onChange={(e) => {
                 setQuery(e.target.value);
                 setOpen(true);
-                // Typing cancels the "variations-of-X" filter — back to
-                // global search. Prevents Alex being stuck in a filtered
-                // view he can't escape without hitting the ×.
-                if (parentFilter) setParentFilter(null);
+                // Typing collapses any expanded parent so the search
+                // results always start fresh.
+                if (expandedParentId) setExpandedParentId(null);
                 if (picked && e.target.value !== picked.name) {
                   setPicked(null);
                   setFormValue(productIdInputId, "");
@@ -343,114 +352,122 @@ export default function ProductPicker({
         )}
       </div>
 
-      {/* F.6 audit fix: parent-filter mode empty state — if the parent
-          has no active variations, tell the user instead of showing an
-          empty dropdown. */}
-      {open && parentFilter && results.length === 0 && (
-        <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-3 py-2 bg-cc-brand-50 border-b border-cc-brand-100">
-            <span className="text-[12px] font-semibold text-cc-brand-800 truncate">
-              Choose a variation of {parentFilter.name}
-            </span>
-            <button
-              type="button"
-              onClick={() => setParentFilter(null)}
-              className="text-[11px] font-medium text-cc-brand-700 hover:text-cc-brand-900 shrink-0"
-            >
-              ← Back to all
-            </button>
-          </div>
-          <div className="px-3 py-4 text-[12.5px] text-ppp-charcoal-600 text-center">
-            No active variations yet under this product.
-          </div>
-        </div>
-      )}
-
       {open && results.length > 0 && (
         <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg overflow-hidden">
-          {/* F.6 audit fix: banner header when the user is filtered to a
-              parent's variations. Gives them an unambiguous way to see
-              what they're picking from + get back. */}
-          {parentFilter && (
-            <div className="flex items-center justify-between gap-2 px-3 py-2 bg-cc-brand-50 border-b border-cc-brand-100">
-              <span className="text-[12px] font-semibold text-cc-brand-800 truncate">
-                Choose a variation of {parentFilter.name}
-              </span>
-              <button
-                type="button"
-                onClick={() => setParentFilter(null)}
-                className="text-[11px] font-medium text-cc-brand-700 hover:text-cc-brand-900 shrink-0"
-              >
-                ← Back to all
-              </button>
-            </div>
-          )}
           <ul
             ref={listRef}
             id="product-picker-listbox"
             role="listbox"
             className="max-h-72 overflow-y-auto"
           >
-          {results.map((p, idx) => (
-            <li
-              key={p.id}
-              id={`product-picker-option-${idx}`}
-              data-idx={idx}
-              role="option"
-              aria-selected={idx === highlight}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                pick(p);
-              }}
-              onMouseEnter={() => setHighlight(idx)}
-              className={`px-3 py-2 cursor-pointer border-b border-ppp-charcoal-100 last:border-b-0 ${
-                idx === highlight
-                  ? "bg-cc-brand-50"
-                  : "hover:bg-ppp-charcoal-50"
-              }`}
-            >
-              <div className="flex items-baseline justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-ppp-charcoal truncate flex items-center gap-1.5">
-                    <span className="truncate">
-                      {p.name}
-                      {p.variation_label && (
-                        <span className="text-cc-brand-700 font-normal">
-                          {" "}({p.variation_label})
-                        </span>
-                      )}
-                    </span>
-                    {p.is_parent_only && (
-                      <span className="inline-flex items-center text-[9px] font-bold tracking-widest uppercase text-ppp-charcoal-500 bg-ppp-charcoal-100 px-1.5 py-0.5 rounded shrink-0">
-                        pick a variation
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2">
-                    <span className="font-mono">{p.sku}</span>
-                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                    <span>per {productUnitLabel(p.unit)}</span>
-                    {p.description && (
-                      <>
-                        <span aria-hidden className="text-ppp-charcoal-300">·</span>
-                        <span className="truncate">{p.description}</span>
-                      </>
+          {results.map((p, idx) => {
+            const variations = variationsByParent.get(p.id) ?? [];
+            const isExpanded = expandedParentId === p.id && p.is_parent_only;
+            return (
+              <li key={p.id} className="border-b border-ppp-charcoal-100 last:border-b-0">
+                <div
+                  id={`product-picker-option-${idx}`}
+                  data-idx={idx}
+                  role="option"
+                  aria-selected={idx === highlight}
+                  aria-expanded={p.is_parent_only ? isExpanded : undefined}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pick(p);
+                  }}
+                  onMouseEnter={() => setHighlight(idx)}
+                  className={`px-3 py-2 cursor-pointer ${
+                    idx === highlight
+                      ? "bg-cc-brand-50"
+                      : "hover:bg-ppp-charcoal-50"
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-semibold text-ppp-charcoal truncate flex items-center gap-1.5">
+                        <span className="truncate">{p.name}</span>
+                        {p.is_parent_only && (
+                          <span className="inline-flex items-center text-[9px] font-bold tracking-widest uppercase text-cc-brand-800 bg-cc-brand-100 px-1.5 py-0.5 rounded shrink-0">
+                            {isExpanded ? "▾ pick below" : "▸ pick a variation"}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2">
+                        <span className="font-mono">{p.sku}</span>
+                        {!p.is_parent_only && (
+                          <>
+                            <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                            <span>per {productUnitLabel(p.unit)}</span>
+                          </>
+                        )}
+                        {p.description && (
+                          <>
+                            <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                            <span className="truncate">{p.description}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {!p.is_parent_only && (
+                      <div className="text-[12.5px] font-bold tabular-nums text-ppp-charcoal shrink-0">
+                        {formatDollars(p.default_unit_price_cents)}
+                      </div>
                     )}
                   </div>
                 </div>
-                {!p.is_parent_only && (
-                  <div className="text-[12.5px] font-bold tabular-nums text-ppp-charcoal shrink-0">
-                    {formatDollars(p.default_unit_price_cents)}
-                  </div>
+                {/* Inline-expanded variations under the parent */}
+                {isExpanded && (
+                  variations.length === 0 ? (
+                    <div className="px-3 py-3 pl-8 bg-ppp-charcoal-25 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-600 italic">
+                      No active variations yet — add one on the Product Library.
+                    </div>
+                  ) : (
+                    <ul className="border-t border-ppp-charcoal-100 bg-ppp-charcoal-25">
+                      {variations.map((v) => (
+                        <li
+                          key={v.id}
+                          role="option"
+                          aria-selected={false}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            pick(v);
+                          }}
+                          className="pl-8 pr-3 py-2 cursor-pointer hover:bg-cc-brand-50 border-b border-ppp-charcoal-100 last:border-b-0"
+                        >
+                          <div className="flex items-baseline justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[12.5px] font-semibold text-ppp-charcoal truncate">
+                                {v.variation_label ?? v.name}
+                              </div>
+                              <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2">
+                                <span className="font-mono">{v.sku}</span>
+                                <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                                <span>per {productUnitLabel(v.unit)}</span>
+                                {v.description && (
+                                  <>
+                                    <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                                    <span className="truncate">{v.description}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-[12.5px] font-bold tabular-nums text-ppp-charcoal shrink-0">
+                              {formatDollars(v.default_unit_price_cents)}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )
                 )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
           </ul>
         </div>
       )}
 
-      {open && !parentFilter && query.trim() && results.length === 0 && (
+      {open && query.trim() && results.length === 0 && (
         <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg p-3 space-y-2">
           <div className="text-[12.5px] text-ppp-charcoal-600">
             No products match <span className="font-semibold text-ppp-charcoal">&ldquo;{query}&rdquo;</span>. Keep typing the row as free text below, or add it to the catalog:

@@ -292,6 +292,7 @@ async function addLineItemAction(formData: FormData) {
   const unit = String(formData.get("unit") ?? "each").trim() || "each";
   const unit_price_cents = dollarsInputToCents(String(formData.get("unit_price") ?? "0"));
   const is_alternate = formData.get("is_alternate") === "on";
+  const is_labor = formData.get("is_labor") === "on";
   const phaseRaw = String(formData.get("phase") ?? "").trim();
   const phase = phaseRaw || null;
   const result = await createLineItem(
@@ -304,6 +305,7 @@ async function addLineItemAction(formData: FormData) {
       unit_price_cents,
       is_alternate,
       phase,
+      is_labor: is_labor && !is_alternate,
     },
     userId
   );
@@ -577,7 +579,12 @@ export default async function ProposalEditorPage({
   const selectedExclusions = allExclusions.filter((e) =>
     proposal.exclusion_ids.includes(e.id)
   );
-  const inclusions = lineItems.filter((i) => !i.is_alternate);
+  // Three buckets: inclusions (default), alternates (excluded from TOTAL),
+  // labor (included in TOTAL, own PDF section). Migration 063 (2026-07-19,
+  // Katie's ask): labor rows are inclusion-like (roll into TOTAL) but
+  // render separately on the customer PDF so Alex can call out hourly work.
+  const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
+  const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
   const oppName = derivedOppName(opp, account.company_name);
   // F.5: TOTAL label ("Labor Only TOTAL" flip) considers BOTH library
@@ -986,6 +993,46 @@ export default async function ProposalEditorPage({
         />
       </section>
 
+      {/* Labor — migration 063 (2026-07-19, Katie). Included in TOTAL
+          (same as inclusions) but renders under its own "Labor:" PDF
+          section. Row shape: qty=hours, unit="hour", price=hourly rate. */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-sm font-bold text-ppp-charcoal">
+            Labor <span className="font-normal text-ppp-charcoal-500 text-[12px]">(rolls into TOTAL · renders as its own PDF section)</span>
+          </h2>
+          {laborRows.length > 0 && (
+            <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
+              {laborRows.reduce((a, r) => a + Number(r.quantity), 0)} hrs · {formatDollars(laborRows.reduce((a, r) => a + Math.round(Number(r.quantity) * r.unit_price_cents), 0))}
+            </span>
+          )}
+        </div>
+        {laborRows.length === 0 ? (
+          <p className="text-[13px] text-ppp-charcoal-500 italic py-2">No labor rows — add hours + rate below if you're billing labor separately.</p>
+        ) : (
+          <LineItemsTable
+            rows={laborRows}
+            accountId={accountId}
+            dealId={dealId}
+            proposalId={proposalId}
+            updateAction={updateLineItemAction}
+            deleteAction={deleteLineItemAction}
+          />
+        )}
+        <AddLineItemForm
+          accountId={accountId}
+          dealId={dealId}
+          proposalId={proposalId}
+          products={products.map((p) => ({
+            ...p,
+            is_parent_only: parentIdsWithChildren.has(p.id),
+          }))}
+          submitAction={addLineItemAction}
+          isAlternate={false}
+          isLabor={true}
+        />
+      </section>
+
       {/* Alternates */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-4">
         <h2 className="text-sm font-bold text-ppp-charcoal">Alternates <span className="font-normal text-ppp-charcoal-500 text-[12px]">(excluded from TOTAL)</span></h2>
@@ -1132,6 +1179,7 @@ function AddLineItemForm({
   products,
   submitAction,
   isAlternate,
+  isLabor = false,
 }: {
   accountId: string;
   dealId: string;
@@ -1151,15 +1199,17 @@ function AddLineItemForm({
   }>;
   submitAction: (formData: FormData) => Promise<void>;
   isAlternate: boolean;
+  isLabor?: boolean;
 }) {
-  const prefix = isAlternate ? "alt" : "inc";
+  const prefix = isLabor ? "labor" : isAlternate ? "alt" : "inc";
   return (
     <form action={submitAction} className="border-t border-ppp-charcoal-100 pt-3 space-y-2">
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="deal_id" value={dealId} />
       <input type="hidden" name="proposal_id" value={proposalId} />
       {isAlternate && <input type="hidden" name="is_alternate" value="on" />}
-      {products.length > 0 ? (
+      {isLabor && <input type="hidden" name="is_labor" value="on" />}
+      {!isLabor && products.length > 0 ? (
         <div className="max-w-sm">
           <ProductPicker
             products={products.map((p) => ({
@@ -1172,8 +1222,6 @@ function AddLineItemForm({
               variation_label: p.variation_label ?? null,
               description: p.description ?? null,
               is_parent_only: p.is_parent_only ?? false,
-              // F.6 audit fix: pass parent_product_id so clicking a
-              // parent row can filter the picker to its variations.
               parent_product_id: p.parent_product_id ?? null,
             }))}
             accountId={accountId}
@@ -1188,13 +1236,18 @@ function AddLineItemForm({
       <div className="grid grid-cols-12 gap-2 items-end">
         <label className="col-span-12 sm:col-span-3 block">
           <span className={LABEL_CLS}>Description</span>
-          <input type="text" id={`${prefix}-desc`} name="description" required placeholder="e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte." className={INPUT_CLS} />
+          <input
+            type="text"
+            id={`${prefix}-desc`}
+            name="description"
+            required
+            placeholder={isLabor ? "e.g. Skilled painters — prep + prime + 2 coats" : "e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte."}
+            className={INPUT_CLS}
+          />
         </label>
         {/* F.6: phase label. Optional — leave blank for ungrouped.
             When ANY line item on this proposal has a phase, the PDF
-            groups items under section headers ("Phase 1:", etc.).
-            Ungrouped items collect under a "General:" section. When
-            NO items have a phase, the PDF renders as a flat list. */}
+            groups items under section headers ("Phase 1:", etc.). */}
         <label className="col-span-6 sm:col-span-2 block" title="Groups this item under a section header on the PDF, e.g. 'Phase 1'. Leave blank for ungrouped. If any items have a phase, ungrouped items appear under 'General'.">
           <span className={LABEL_CLS}>Phase (optional)</span>
           <input
@@ -1206,21 +1259,21 @@ function AddLineItemForm({
           />
         </label>
         <label className="col-span-3 sm:col-span-2 block">
-          <span className={LABEL_CLS}>Qty</span>
-          <input type="text" inputMode="decimal" name="quantity" defaultValue="1" className={`${INPUT_CLS} tabular-nums`} />
+          <span className={LABEL_CLS}>{isLabor ? "Hours" : "Qty"}</span>
+          <input type="text" inputMode="decimal" name="quantity" defaultValue={isLabor ? "8" : "1"} className={`${INPUT_CLS} tabular-nums`} />
         </label>
         <label className="col-span-3 sm:col-span-2 block">
           <span className={LABEL_CLS}>Unit</span>
-          <input type="text" id={`${prefix}-unit`} name="unit" defaultValue="each" className={INPUT_CLS} />
+          <input type="text" id={`${prefix}-unit`} name="unit" defaultValue={isLabor ? "hour" : "each"} className={INPUT_CLS} />
         </label>
         <label className="col-span-6 sm:col-span-3 block">
-          <span className={LABEL_CLS}>Unit price</span>
+          <span className={LABEL_CLS}>{isLabor ? "$ / hour" : "Unit price"}</span>
           <input type="text" id={`${prefix}-price`} inputMode="decimal" name="unit_price" defaultValue="0.00" className={`${INPUT_CLS} tabular-nums`} />
         </label>
       </div>
       <div className="flex justify-end">
         <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[40px]">
-          Add {isAlternate ? "alternate" : "inclusion"}
+          Add {isLabor ? "labor row" : isAlternate ? "alternate" : "inclusion"}
         </button>
       </div>
     </form>

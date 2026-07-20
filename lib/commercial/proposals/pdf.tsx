@@ -497,14 +497,25 @@ function formatDateLong(iso: string | undefined): string {
   });
 }
 
+/** Collapse tabs / runs of spaces to a single space; preserve newlines.
+ *  Applied before splitBoldLead so descriptions like "Install\tlabor
+ *  priced by square foot" render clean on the PDF instead of "Install
+ *  \tlabor…" or wide gaps. */
+function normalizeWs(s: string): string {
+  return s.replace(/[\t ]+/g, " ").replace(/ *\n */g, "\n").trim();
+}
+
 /** Split "**Bold lead:** rest of the sentence." into the two parts so we
  *  can render the lead in Times-Bold and the rest in Times-Roman.
  *  Tomco's convention is a single colon-terminated bold lead, e.g.
  *  "GWB Ceiling & Soffit:" or "Doors and Frames:". Reject sentence-medial
  *  colons — "This is a very long clause: continues past" should NOT split. */
 function splitBoldLead(text: string): { lead: string | null; body: string } {
-  const trimmed = text.trim();
-  // Explicit **bold** wrapper first (markdown-style) — always trust it.
+  const trimmed = normalizeWs(text);
+  // Explicit **bold** wrapper first (markdown-style) — always trust it,
+  // bypasses the length + word-count heuristic below. Used by the
+  // ProductPicker when seeding descriptions for parent+variation picks
+  // ("**Wallcovering Install (Per Square Foot):** Install labor…").
   const md = /^\*\*(.+?)\*\*[:：]?\s*(.*)$/.exec(trimmed);
   if (md) {
     return { lead: md[1].trim(), body: md[2].trim() };
@@ -571,14 +582,13 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
         ))}
       </View>
       {/* Blank-line separator + Attention block, also indented + bold.
-          Karan 2026-07-17 (Tomco 1:1): email renders as blue underlined
-          link to match reference PDF. */}
+          Karan 2026-07-19 (Tomco 1:1 re-check against JD Sports ref PDF):
+          reverted "Attn:" back to "Attention:" — reference PDF ALT0125
+          spells it out fully. Email renders as blue underlined link. */}
       {hasAttentionBlock && (
         <View style={[styles.addrBlock, { marginTop: 10 }]}>
-          {/* Karan 2026-07-19 (Katie feedback): "Attn:" not "Attention:"
-              to match Katie's canonical formatting. */}
           {h.attention && (
-            <Text style={styles.addrLine}>Attn: {h.attention}</Text>
+            <Text style={styles.addrLine}>Attention: {h.attention}</Text>
           )}
           {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
           {h.email && (
@@ -644,7 +654,7 @@ function BulletLine({ text }: { text: string }) {
       <View style={styles.itemLine}>
         <Text style={{ fontSize: 11 }}>
           <Text style={styles.bulletLead}>{lead}:</Text>
-          {bodyLines[0] ? ` ${bodyLines[0]}` : ""}
+          {bodyLines[0] ? <Text>{" " + bodyLines[0]}</Text> : null}
         </Text>
         {shouldBulletSubs && bodyLines.slice(1).map((sub, i) => (
           <View key={i} style={styles.bulletSubRow}>
@@ -875,6 +885,42 @@ function ExclusionsBlock({ exclusions }: { exclusions: string[] }) {
   );
 }
 
+/** Migration 063 (2026-07-19, Katie): "Labor:" PDF section for
+ *  hourly-billed work. Renders under a bold "Labor:" header with each
+ *  labor row as an indented sub-bullet showing "{description} — {hours}
+ *  hrs @ {rate}/hr = {subtotal}". Rolls into TOTAL as part of the
+ *  standard rollup (same math as inclusions). Suppressed when zero
+ *  labor rows so old proposals render unchanged. */
+function LaborSection({ items }: { items: CommercialProposalLineItem[] }) {
+  if (items.length === 0) return null;
+  const totalCents = items.reduce(
+    (acc, it) => acc + Math.round(Number(it.quantity) * it.unit_price_cents),
+    0
+  );
+  const totalHours = items.reduce((acc, it) => acc + Number(it.quantity), 0);
+  return (
+    <View style={{ marginTop: 6 }} wrap={false}>
+      <Text style={styles.bulletLead}>Labor:</Text>
+      {items.map((it) => {
+        const subtotal = Math.round(Number(it.quantity) * it.unit_price_cents);
+        const hrs = Number(it.quantity);
+        const rate = it.unit_price_cents / 100;
+        return (
+          <View key={it.id} style={styles.bulletSubRow}>
+            <View style={styles.bulletSubDot} />
+            <Text style={styles.bulletSubBody}>
+              {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"} @ ${rate.toFixed(2)}/hr = ${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+          </View>
+        );
+      })}
+      <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
+        Labor subtotal: {totalHours} {totalHours === 1 ? "hr" : "hrs"} — ${(totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </Text>
+    </View>
+  );
+}
+
 function EstimatorBlock({ e }: { e: ProposalEstimatorSnapshot }) {
   if (!e.name && !e.email && !e.phone) return null;
   return (
@@ -930,17 +976,24 @@ export function ProposalPdfDocument({
   // needs the sign line.
   showSignatureBlock = false,
 }: RenderProposalArgs) {
-  const inclusions = lineItems.filter((i) => !i.is_alternate);
+  // Migration 063 (2026-07-19): labor rows render in their own PDF
+  // section between Inclusions and Alternates. Rolls into TOTAL like
+  // inclusions (which is why we filter them out of the inclusions
+  // bucket here — they'd double-count the TOTAL otherwise).
+  const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
+  const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
   const totalLabel = proposalTotalLabel(exclusions);
   const intro = proposal.intro_text_override?.trim() || TOMCO_DEFAULT_INTRO;
   const dateLabel = formatDateLong(proposal.header_json.date_iso);
-  // Karan 2026-07-17 (Tomco 1:1): render "No. ALT0125"-style line
-  // under the date. Falls back to R{n} if no explicit number was set
-  // (matches the internal revision label).
-  const proposalNumber =
+  // Karan 2026-07-19 (Tomco 1:1 re-check vs JD Sports ref "No. ALT0125"):
+  // render as "No. <value>" — either the explicit header_json.proposal_number
+  // OR fallback to "No. R{n}" so the reference-consistent "No. " prefix
+  // always shows.
+  const rawNum =
     proposal.header_json.proposal_number?.trim() ||
     `R${proposal.revision_number}`;
+  const proposalNumber = /^no\./i.test(rawNum) ? rawNum : `No. ${rawNum}`;
   // Round-3 audit fix: pdf_show_line_prices was a dead toggle — the
   // editor checkbox existed but the renderer ignored it. Now: internal
   // mode always shows the line-item table (estimator math); customer
@@ -969,6 +1022,16 @@ export function ProposalPdfDocument({
           <InclusionsInternal items={inclusions} />
         ) : (
           <InclusionsCustomer items={inclusions} />
+        )}
+
+        {/* Migration 063 (2026-07-19, Katie): Labor:
+            hourly-billed rows render as their own bullet section between
+            Inclusions and Alternates. Included in TOTAL. Internal-mode
+            renders labor rows inline in the standard line-item table
+            (they carry price + qty just like inclusions). */}
+        {!showLineTable && <LaborSection items={laborRows} />}
+        {showLineTable && laborRows.length > 0 && (
+          <InclusionsInternal items={laborRows} />
         )}
 
         {showLineTable ? (

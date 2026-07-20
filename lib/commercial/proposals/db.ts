@@ -90,6 +90,11 @@ export type CommercialProposalLineItem = {
   // NULL = ungrouped. Renderer groups by phase when any item has one set;
   // otherwise falls back to flat rendering for pre-F.6 proposals.
   phase: string | null;
+  // Migration 063 (2026-07-19, Katie): labor row flag. Labor rows have
+  // qty = hours, unit = "hour", unit_price_cents = hourly rate. They
+  // roll into TOTAL like inclusions but render under a "Labor:" section
+  // on the customer PDF.
+  is_labor: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -823,6 +828,10 @@ export type CreateLineItemInput = {
   position?: number;
   /** F.6: optional phase label. Trimmed on write; empty → NULL. */
   phase?: string | null;
+  /** Migration 063: labor row flag. Rolls into TOTAL like inclusions but
+   *  renders in the "Labor:" PDF section. Cannot be true + is_alternate
+   *  simultaneously (rejected at the action layer). */
+  is_labor?: boolean;
 };
 
 export async function createLineItem(
@@ -879,6 +888,8 @@ export async function createLineItem(
       is_alternate: input.is_alternate ?? false,
       position,
       phase: phaseNormalized,
+      // Migration 063: labor flag. Cannot coexist with is_alternate.
+      is_labor: input.is_labor ?? false,
     })
     .select("*")
     .single();
