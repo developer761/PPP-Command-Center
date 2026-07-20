@@ -5,7 +5,9 @@
  *   - Retainage deferred to a later phase (add later).
  *   - No auto-email; "Mark as sent" flips status only.
  *   - USD only. NYC-uniform tax → flat tax_pct field per invoice.
- *   - Numbering starts at PPP-INV-0001.
+ *   - Numbering: new invoices are INV-#### (Katie 2026-07-20 rename).
+ *     Pre-2026-07-20 invoices keep their original PPP-INV-#### numbers
+ *     — immutable audit trail. Sibling-nav regex handles both prefixes.
  */
 
 /** Status DAG for invoices. Terminal-ish states: paid + void.
