@@ -70,6 +70,7 @@ import {
   formatBidRange,
   weightedPipelineCents,
   derivedOppName,
+  getCommercialOpportunity,
   OPPORTUNITY_STATUSES,
   OPPORTUNITY_SOURCES,
   opportunitySourceLabel,
@@ -787,6 +788,15 @@ async function quickFlipFromAccountAction(formData: FormData) {
   if (!UUID_RE.test(opp_id)) redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Invalid status.")}`);
+  }
+  // Audit fix (IDOR): verify the opp belongs to THIS account. A forged
+  // opp_id belonging to a different account would otherwise let a user
+  // flip that account's deals from the wrong URL.
+  const ownershipCheck = await getCommercialOpportunity(opp_id);
+  if (!ownershipCheck || ownershipCheck.account_id !== account_id) {
+    redirect(
+      `/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("That deal doesn't belong to this customer.")}`
+    );
   }
   // Lost / No-bid need loss_reason capture — bounce to detail page.
   // Won flips immediately, drops the placeholder auto-note, then routes

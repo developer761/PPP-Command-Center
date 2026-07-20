@@ -103,10 +103,14 @@ export default async function CommercialDashboardPage() {
     decidedOpps.length > 0 ? Math.round((wonOpps.length / decidedOpps.length) * 100) : null;
 
   // Karan 2026-07-17: derived numbers for the polished hero.
-  const wonThisMonthCents = wonThisMonth.reduce(
-    (acc, o) => acc + (o.bid_value_low_cents || 0),
-    0
-  );
+  // Audit fix: use midpoint of the bid range (matches weightedPipelineCents
+  // math elsewhere). Was using low-cents only, which under-reported won
+  // value + rendered $0 for point-estimate deals that only set the high.
+  const wonThisMonthCents = wonThisMonth.reduce((acc, o) => {
+    const lo = o.bid_value_low_cents ?? 0;
+    const hi = o.bid_value_high_cents ?? lo;
+    return acc + Math.round((lo + hi) / 2);
+  }, 0);
   const totalDecidedForMonth = decidedOpps.filter(
     (o) => (o.decided_at ?? "") >= monthStart
   ).length;
@@ -214,7 +218,7 @@ export default async function CommercialDashboardPage() {
           icon={<IconTarget />}
         />
         <KpiTile
-          tone={arOverdueCount > 0 ? "rose" : "blue"}
+          tone={arOutstandingCents > 0 && arOverdueCount > 0 ? "rose" : "blue"}
           value={formatCentsCompact(arOutstandingCents)}
           label="Outstanding AR"
           sub={

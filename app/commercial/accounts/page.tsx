@@ -373,7 +373,7 @@ export default async function CommercialAccountsPage({
             tone="cc-brand"
             label="Total accounts"
             value={universeCount.toLocaleString()}
-            sub={universeCount === 1 ? "in your book" : "in your book"}
+            sub={universeCount === 1 ? "customer in your book" : "customers in your book"}
           />
           <KpiCard
             tone="blue"

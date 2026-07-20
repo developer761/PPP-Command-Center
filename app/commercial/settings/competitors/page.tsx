@@ -183,12 +183,12 @@ export default async function CompetitorsAdminPage({
   // back to total encounters, then alphabetical.
   const active = [...activeUnsorted].sort((a, b) => {
     const sa = statsById.get(a.id);
-    const sb2 = statsById.get(b.id);
+    const sb = statsById.get(b.id);
     const lostA = sa?.lost_count ?? 0;
-    const lostB = sb2?.lost_count ?? 0;
+    const lostB = sb?.lost_count ?? 0;
     if (lostA !== lostB) return lostB - lostA;
     const totA = sa?.total_count ?? 0;
-    const totB = sb2?.total_count ?? 0;
+    const totB = sb?.total_count ?? 0;
     if (totA !== totB) return totB - totA;
     return a.name.localeCompare(b.name);
   });

@@ -449,11 +449,13 @@ function KpiCard({
   value: string;
   sub: string;
 }) {
+  // Audit fix: blue tone ring was inheriting cc-brand-200 border + blue
+  // stripe was actually rendering cc-brand-500 (red). Both now match tone.
   const ring =
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
       : tone === "rose"
       ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
       : "border-ppp-charcoal-100 bg-white";
@@ -461,7 +463,7 @@ function KpiCard({
     tone === "cc-brand"
       ? "bg-cc-brand-600"
       : tone === "blue"
-      ? "bg-cc-brand-500"
+      ? "bg-blue-500"
       : tone === "rose"
       ? "bg-rose-500"
       : "bg-ppp-charcoal-200";

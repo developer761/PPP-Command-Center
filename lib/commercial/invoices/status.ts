@@ -53,11 +53,12 @@ export async function changeInvoiceStatus(
 
   const { data: before } = await sb
     .from("commercial_invoices")
-    .select("status, deleted_at")
+    .select("status, deleted_at, issued_at")
     .eq("id", input.invoice_id)
     .maybeSingle();
   if (!before || before.deleted_at) return { ok: false, error: "invoice_not_found" };
   const from_status = before.status as InvoiceStatus;
+  const priorIssuedAt = (before as { issued_at: string | null }).issued_at;
 
   if (!isTransitionAllowed(from_status, input.to_status)) {
     return { ok: false, error: `disallowed_transition:${from_status}->${input.to_status}` };
@@ -71,9 +72,12 @@ export async function changeInvoiceStatus(
 
   // Lifecycle timestamps — set on the state entry, don't overwrite prior
   // ones (a sent → viewed → sent flip shouldn't clear sent_at).
+  // Audit fix: issued_at is the FIRST send date (source of truth for
+  // AR aging + audit trail). Only stamp it if NULL; don't clobber the
+  // original on a re-send. sent_at can re-stamp (most-recent send).
   if (input.to_status === "sent") {
     patch.sent_at = now;
-    patch.issued_at = now;
+    if (!priorIssuedAt) patch.issued_at = now;
   }
   if (input.to_status === "viewed") {
     patch.viewed_at = now;
