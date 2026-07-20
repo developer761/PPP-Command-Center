@@ -28,6 +28,7 @@ import {
   unarchiveOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { commercialDb } from "@/lib/commercial/db";
+import { fetchOpportunityLifecycle, formatDurationDays } from "@/lib/commercial/opportunities/lifecycle";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
@@ -2529,6 +2530,12 @@ async function InfoTab({
   // including terminal ones (won/lost/no_bid) because we have room for
   // the loss-reason picker. List-page quick-flip hides terminals.
   const nextStatuses = allowedNextStatuses(opp.status);
+  // Katie 2026-07-20: lifecycle strip — 4 canonical dates + 2 derived
+  // durations. fetch happens here (server component, one extra query)
+  // so the Bid lifecycle card renders in the same paint. Time metrics
+  // are null-safe: null → "—", so a fresh deal with no RFP renders
+  // clean instead of "NaN days".
+  const lifecycle = await fetchOpportunityLifecycle(opp);
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {errorMessage && (
@@ -2589,8 +2596,55 @@ async function InfoTab({
           tooltip="Likelihood we win this bid. Defaults from status; override if you have a stronger read."
         />
       </Card>
+      {/* Katie 2026-07-20: canonical bid-lifecycle card. 4 dates that
+          define a bid's life + 2 derived durations. Time-to-proposal
+          answers "how long from RFP to sending" (measures Alex's
+          throughput); time-to-sale answers "how long from sending to
+          close" (measures customer decision speed / follow-up
+          discipline). Data null-safe: missing endpoints render "—". */}
       <Card
-        title="Bid + dates"
+        title="Bid lifecycle"
+        tone="blue"
+        icon={
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 6v6l4 2" />
+          </svg>
+        }
+      >
+        <Field
+          label="RFP received"
+          value={lifecycle.rfp_received_at?.slice(0, 10) ?? "—"}
+          tooltip="Date the bid request arrived from the GC. Set on the deal edit sheet. Starts the time-to-proposal clock."
+        />
+        <Field
+          label="Proposal submitted"
+          value={lifecycle.proposal_submitted_at?.slice(0, 10) ?? "—"}
+          tooltip="First time a proposal was Sent (MIN sent_at across revisions). Auto-computed from proposals — no manual entry."
+        />
+        <Field
+          label="Due date"
+          value={opp.proposal_due_at?.slice(0, 10) ?? "—"}
+          tooltip="When the customer is expecting our proposal. Drives Hot-deals + the Decision countdown on the KPI strip."
+        />
+        <Field
+          label="Close date"
+          value={opp.decided_at?.slice(0, 10) ?? "—"}
+          tooltip="Date the deal closed — set automatically when status flips to Won, Lost, or No-bid."
+        />
+        <Field
+          label="Time to proposal"
+          value={formatDurationDays(lifecycle.time_to_proposal_days)}
+          tooltip="RFP received → Proposal submitted. How long we took to respond."
+        />
+        <Field
+          label="Time to sale"
+          value={formatDurationDays(lifecycle.time_to_sale_days)}
+          tooltip="Proposal submitted → Close date. How long the customer took to decide."
+        />
+      </Card>
+      <Card
+        title="Bid + project timing"
         tone="blue"
         icon={
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2607,16 +2661,6 @@ async function InfoTab({
           label="Weighted"
           value={formatCentsCompact(weightedPipelineCents(opp))}
           tooltip="Probability × midpoint bid. Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing."
-        />
-        <Field
-          label="Proposal due"
-          value={opp.proposal_due_at?.slice(0, 10) ?? "—"}
-          tooltip="When the customer is expecting our proposal. Drives the Decision in countdown on the KPI strip + the Hot deals filter when the bid is also $50k+."
-        />
-        <Field
-          label="Decided"
-          value={opp.decided_at?.slice(0, 10) ?? "—"}
-          tooltip="Date the deal closed — set automatically when status flips to Won, Lost, or No-bid. Used to compute average days-to-close on the customer's account."
         />
         <Field
           label="Proposed start"

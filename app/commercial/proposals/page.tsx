@@ -49,6 +49,8 @@ export const dynamic = "force-dynamic";
 type ProposalRow = {
   id: string;
   revision_number: number;
+  // Migration 069 — global PROP-#### id.
+  proposal_seq: number | null;
   status: string;
   total_cents: number;
   sent_at: string | null;
@@ -208,7 +210,7 @@ export default async function ProposalsIndexPage({
   let query = sb
     .from("commercial_proposals")
     .select(
-      `id, revision_number, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
+      `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
        opportunity:commercial_opportunities!inner(
          id, title, client_name, property_street, account_id, deleted_at,
          account:commercial_accounts!inner(id, company_name, deleted_at)
@@ -558,6 +560,18 @@ function ProposalCard({
           <span className="text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums shrink-0">
             R{row.revision_number}
           </span>
+          {/* Katie 2026-07-20 (migration 069): PROP-#### is the global
+              unique identifier; R# is the per-deal revision cursor. Show
+              both so Alex can copy PROP-0042 into an email + Katie can
+              still see this is R2 vs R1. */}
+          {row.proposal_seq != null && (
+            <span
+              className="hidden sm:inline text-[9.5px] font-mono text-ppp-charcoal-400 shrink-0"
+              title="Unique proposal ID"
+            >
+              PROP-{String(row.proposal_seq).padStart(4, "0")}
+            </span>
+          )}
         </Link>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-[12px] font-semibold text-ppp-charcoal-800 tabular-nums">
@@ -1256,6 +1270,14 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               <span className="text-[13px] font-bold text-ppp-charcoal tabular-nums shrink-0 w-8">
                                 R{r.revision_number}
                               </span>
+                              {r.proposal_seq != null && (
+                                <span
+                                  className="text-[10.5px] font-mono text-ppp-charcoal-400 shrink-0 hidden md:inline"
+                                  title="Unique proposal ID"
+                                >
+                                  PROP-{String(r.proposal_seq).padStart(4, "0")}
+                                </span>
+                              )}
                               <span
                                 className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${
                                   LIST_STATUS_PILL[r.status] ??

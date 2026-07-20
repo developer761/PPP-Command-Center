@@ -181,6 +181,9 @@ type SP = Promise<{
    *  Replaced rows that were spared (they're historical). */
   bulk_deleted?: string;
   bulk_skipped?: string;
+  /** Katie 2026-07-20: per-account "Include archived" toggle on the
+   *  Deals tab. `?archived=1` reveals archived deals; default hides. */
+  archived?: string;
 }>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
@@ -598,6 +601,7 @@ export default async function CommercialAccountDetailPage({
               ? { id: sp.dup_id, label: typeof sp.dup_label === "string" ? sp.dup_label : "" }
               : null
           }
+          includeArchived={sp.archived === "1"}
         />
       )}
       {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
@@ -876,6 +880,13 @@ async function createDealInlineAction(formData: FormData) {
   const proposal_due_at = proposalDueRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposalDueRaw)
     ? `${proposalDueRaw}T16:00:00.000Z`
     : null;
+  // Migration 069 (Katie 2026-07-20) — RFP received. Captured at
+  // create-time when the deal originates from a fresh bid request so
+  // time-to-proposal starts counting from day 1.
+  const rfpReceivedRaw = String(formData.get("rfp_received_at") ?? "").trim();
+  const rfp_received_at = rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw)
+    ? `${rfpReceivedRaw}T12:00:00.000Z`
+    : null;
 
   const description = String(formData.get("description") ?? "").trim() || null;
   const property_street = String(formData.get("property_street") ?? "").trim() || null;
@@ -952,6 +963,7 @@ async function createDealInlineAction(formData: FormData) {
     client_name,
     estimator_user_id,
     estimator_name,
+    rfp_received_at,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -1029,6 +1041,12 @@ async function editDealFromAccountAction(formData: FormData) {
   const proposed_end_at = proposedEndRaw && /^\d{4}-\d{2}-\d{2}$/.test(proposedEndRaw)
     ? `${proposedEndRaw}T17:00:00.000Z`
     : null;
+  // Migration 069 — RFP arrival date. Anchor at noon UTC so the ET
+  // display doesn't drift a day either side of the date line.
+  const rfpReceivedRaw = String(formData.get("rfp_received_at") ?? "").trim();
+  const rfp_received_at = rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw)
+    ? `${rfpReceivedRaw}T12:00:00.000Z`
+    : null;
 
   const description = String(formData.get("description") ?? "").trim() || null;
   const property_street = String(formData.get("property_street") ?? "").trim() || null;
@@ -1043,6 +1061,9 @@ async function editDealFromAccountAction(formData: FormData) {
   // Migration 049 — free-text estimator name (see createDealInlineAction).
   const estimatorNameSheetRaw = String(formData.get("estimator_name") ?? "").trim();
   const estimator_name = estimatorNameSheetRaw ? estimatorNameSheetRaw.slice(0, 120) : null;
+  // Migration 069 — user-supplied custom display name. Blank = clear.
+  const titleOverrideRaw = String(formData.get("title_override") ?? "").trim();
+  const title_override = titleOverrideRaw ? titleOverrideRaw.slice(0, 200) : null;
 
   const result = await updateCommercialOpportunity({
     id: opp_id,
@@ -1054,6 +1075,7 @@ async function editDealFromAccountAction(formData: FormData) {
     proposal_due_at,
     proposed_start_at,
     proposed_end_at,
+    rfp_received_at,
     description,
     property_street,
     property_city,
@@ -1062,6 +1084,7 @@ async function editDealFromAccountAction(formData: FormData) {
     client_name,
     estimator_user_id,
     estimator_name,
+    title_override,
     updated_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -2695,6 +2718,16 @@ function NewDealForm({
           <DatePicker name="proposal_due_at" placeholder="Pick a due date" ariaLabel="Proposal due date" />
         </div>
       </div>
+      {/* Katie 2026-07-20: RFP Received on its own row so the two
+          bid-lifecycle dates (RFP in / Proposal out) sit visually
+          grouped and power the time-to-proposal metric. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <span className={labelCls}>RFP received</span>
+          <DatePicker name="rfp_received_at" placeholder="When the bid request arrived" ariaLabel="RFP received date" />
+          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the deal card.</span>
+        </div>
+      </div>
       {/* Phase B (Plan v1.1) — CEO structural fields. All optional at
           Solicitation; the changeOpportunityStatus validator blocks the
           Estimating transition until all three are set. Hint below the
@@ -2869,6 +2902,7 @@ async function OpportunitiesTab({
   errorMessage,
   duplicateWarning,
   projectStartedOppId,
+  includeArchived = false,
 }: {
   accountId: string;
   /** Katie 2026-07-19: new-deal form pre-fills client_name + property
@@ -2895,8 +2929,21 @@ async function OpportunitiesTab({
    *  an existing non-deleted opp on this account. The NewDealForm
    *  renders a "Create anyway" resubmit path when this is populated. */
   duplicateWarning?: { id: string; label: string } | null;
+  /** Katie 2026-07-20: per-account "Include archived" toggle. URL
+   *  param ?archived=1 on ?tab=opportunities. When true, listing
+   *  fetches archived opps too — otherwise they're hidden (matches
+   *  the pipeline pattern shipped 2026-07-20). */
+  includeArchived?: boolean;
 }) {
-  const all = await listCommercialOpportunities({ accountId });
+  // Pass includeArchived through — listCommercialOpportunities defaults
+  // to hiding archived (active pipeline behavior). Also fetch archived
+  // count separately so the chip label shows "(N)" even when the toggle
+  // is off, so users know the button will surface something.
+  const [all, archivedRows] = await Promise.all([
+    listCommercialOpportunities({ accountId, includeArchived }),
+    listCommercialOpportunities({ accountId, onlyArchived: true }),
+  ]);
+  const archivedCount = archivedRows.length;
   const ids = all.map((o) => o.id);
 
   // Bulk-fetch every row signal in parallel — keeps the tab a single
@@ -3056,6 +3103,38 @@ async function OpportunitiesTab({
           />
         );
       })()}
+
+      {/* Katie 2026-07-20 (Phase G Q3 per-account variant): "Include
+          archived" toggle scoped to THIS account. Mirrors the pipeline
+          chip pattern. Shows archived count in the label so users know
+          the button will surface deals even when the toggle is off.
+          Rendered only when there's at least one archived deal (or the
+          toggle is currently ON) — no dead chip on brand-new accounts. */}
+      {(archivedCount > 0 || includeArchived) && (
+        <div className="flex items-center justify-end -mt-1">
+          <Link
+            href={`/commercial/accounts/${accountId}?tab=opportunities${includeArchived ? "" : "&archived=1"}#deal-list`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11.5px] font-medium border min-h-[28px] transition-colors ${
+              includeArchived
+                ? "bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200"
+                : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+            }`}
+            aria-pressed={includeArchived}
+            title={
+              includeArchived
+                ? "Currently showing archived deals — click to hide"
+                : "Archived deals are hidden by default. Click to include them in the list."
+            }
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="2" y="4" width="20" height="4" rx="1" />
+              <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+              <line x1="10" y1="13" x2="14" y2="13" />
+            </svg>
+            {includeArchived ? "Hide archived" : `Include archived (${archivedCount})`}
+          </Link>
+        </div>
+      )}
 
       <details
         open={openNewDeal || open.length === 0}
@@ -5410,6 +5489,7 @@ function DealEditSheet({
   const dueDateDefault = deal.proposal_due_at ? deal.proposal_due_at.slice(0, 10) : "";
   const startDateDefault = deal.proposed_start_at ? deal.proposed_start_at.slice(0, 10) : "";
   const endDateDefault = deal.proposed_end_at ? deal.proposed_end_at.slice(0, 10) : "";
+  const rfpDateDefault = deal.rfp_received_at ? deal.rfp_received_at.slice(0, 10) : "";
   const closeHref = `/commercial/accounts/${accountId}?tab=opportunities`;
   const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]";
   // Karan 2026-07-10 (arrows-coming-down flag): all selects get an
@@ -5541,6 +5621,31 @@ function DealEditSheet({
                 defaultValue={deal.title ?? ""}
                 className={inputCls}
               />
+              <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
+                Internal working title. Public display name is auto-derived
+                — override below to lock in a specific label.
+              </span>
+            </div>
+            {/* Katie 2026-07-20 (migration 069): title_override input.
+                Displayed name uses this verbatim when set; falls back to
+                {account} - {client} - {street} otherwise. Empty clears
+                the override so the auto-derived name takes over again. */}
+            <div>
+              <label htmlFor="edit-title-override" className={labelCls}>
+                Custom display name{" "}
+                <span className="font-normal text-ppp-charcoal-400">
+                  (overrides auto — leave blank for auto)
+                </span>
+              </label>
+              <input
+                id="edit-title-override"
+                name="title_override"
+                type="text"
+                maxLength={200}
+                defaultValue={deal.title_override ?? ""}
+                placeholder="e.g. JD Sports 37-38 Junction Blvd"
+                className={inputCls}
+              />
             </div>
             <div>
               <label htmlFor="edit-source" className={labelCls}>How did this come in?</label>
@@ -5612,8 +5717,19 @@ function DealEditSheet({
           {/* ─── Section: Timeline ─── */}
           <SheetSection
             title="Timeline"
-            hint="When is the proposal due, and when might we start + finish the work?"
+            hint="When did the RFP arrive, when is the proposal due, and when might we start + finish the work?"
           >
+            {/* Katie 2026-07-20: RFP received sits above the work-timing
+                trio because it's the LIFECYCLE start (bid intake) vs the
+                other three which are project timing. Two separate groups
+                so users don't mistake RFP received for the start date. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="edit-rfp" className={labelCls}>RFP received</label>
+                <DatePicker id="edit-rfp" name="rfp_received_at" defaultValue={rfpDateDefault} placeholder="When the bid request arrived" ariaLabel="RFP received date" />
+                <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">Powers time-to-proposal and time-to-sale metrics.</span>
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="edit-due" className={labelCls}>Proposal due</label>

@@ -57,6 +57,10 @@ export type CreateOpportunityInput = {
   estimator_user_id?: string | null;
   // Migration 049 — free-text estimator name (subs / off-roster).
   estimator_name?: string | null;
+  // Migration 069 (Katie 2026-07-20) — RFP arrival date + custom name
+  // override. Both nullable; NULL is the default state.
+  rfp_received_at?: string | null;
+  title_override?: string | null;
   created_by_user_id?: string | null;
 };
 
@@ -148,6 +152,9 @@ export async function createCommercialOpportunity(
         ? null
         : input.estimator_name?.trim() || null,
       deal_number: dealNumber,
+      // Migration 069 — new nullable fields, insert as-supplied.
+      rfp_received_at: input.rfp_received_at ?? null,
+      title_override: input.title_override?.trim() || null,
       created_by_user_id: input.created_by_user_id ?? null,
       updated_by_user_id: input.created_by_user_id ?? null,
     })
@@ -287,6 +294,15 @@ export async function updateCommercialOpportunity(
     // Picker chose a user → clear any stale free-text left over from
     // a prior manual entry.
     patch.estimator_name = null;
+  }
+  // Migration 069 (Katie 2026-07-20) — RFP date + custom name. Empty
+  // string trims to null so a user can clear either by blanking the
+  // input.
+  if (input.rfp_received_at !== undefined) {
+    patch.rfp_received_at = input.rfp_received_at || null;
+  }
+  if (input.title_override !== undefined) {
+    patch.title_override = input.title_override?.trim() || null;
   }
 
   const { data: after, error } = await sb

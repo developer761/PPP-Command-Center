@@ -74,7 +74,19 @@ export type CommercialProposal = {
   created_by_user_id: string | null;
   updated_by_user_id: string | null;
   deleted_at: string | null;
+  // Migration 069 (Katie 2026-07-20) — global sequential ID rendered
+  // as PROP-#### in every proposal surface. Assigned by DB trigger on
+  // insert; nullable at column level for backfill compat only.
+  proposal_seq: number | null;
 };
+
+/** Format a proposal_seq int → "PROP-0001" for UI. Null → empty
+ *  string so callers can `{formatProposalNumber(p.proposal_seq)}`
+ *  without a truthy check. */
+export function formatProposalNumber(seq: number | null | undefined): string {
+  if (seq == null) return "";
+  return `PROP-${String(seq).padStart(4, "0")}`;
+}
 
 export type CommercialProposalLineItem = {
   id: string;

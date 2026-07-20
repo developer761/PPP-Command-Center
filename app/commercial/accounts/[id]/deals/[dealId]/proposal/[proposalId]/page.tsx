@@ -666,6 +666,19 @@ export default async function ProposalEditorPage({
             <span className="text-[11px] font-bold text-ppp-charcoal-500 uppercase tracking-widest tabular-nums">
               R{proposal.revision_number}
             </span>
+            {/* Katie 2026-07-20 (migration 069): PROP-#### chip = the
+                global unique identifier for this proposal. Distinct
+                from R# (per-deal revision) and from the parent deal's
+                ALT-#### id. Renders as a subtle mono chip alongside
+                the status pill. */}
+            {proposal.proposal_seq != null && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold border border-cc-brand-200 bg-cc-brand-50 text-cc-brand-800"
+                title="Unique proposal ID (copy for emails or reference)"
+              >
+                PROP-{String(proposal.proposal_seq).padStart(4, "0")}
+              </span>
+            )}
             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200">
               {proposalStatusLabel(proposal.status)}
             </span>
