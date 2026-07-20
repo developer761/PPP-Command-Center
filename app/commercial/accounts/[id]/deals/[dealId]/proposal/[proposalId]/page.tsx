@@ -831,46 +831,71 @@ export default async function ProposalEditorPage({
       <form action={saveProposalAction} className="space-y-4">
         {hiddenIds}
 
-        {/* Header block */}
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-3">
+        {/* Header block. Karan 2026-07-20: relabeled to reflect the
+            real model — the GC is the Account holder (the company we
+            send the proposal TO), the Project is the specific deal /
+            job at THEIR customer's site. Two separate blocks visually
+            so Alex knows exactly which fields go where. */}
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-5">
           <h2 className="text-sm font-bold text-ppp-charcoal">Header</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="block">
-              <span className={LABEL_CLS}>GC / Customer name</span>
-              <input type="text" name="gc_company" defaultValue={proposal.header_json.gc_company ?? ""} className={INPUT_CLS} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>Proposal date</span>
-              <input type="date" name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} className={INPUT_CLS} />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className={LABEL_CLS}>GC address (one line per row)</span>
-              <textarea name="gc_address_lines" defaultValue={gcAddrText} rows={2} className={TEXTAREA_CLS} placeholder="Line 1&#10;City, State ZIP" />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>Attention</span>
-              <input type="text" name="attention" defaultValue={proposal.header_json.attention ?? ""} className={INPUT_CLS} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>Phone</span>
-              <input type="text" name="phone" defaultValue={proposal.header_json.phone ?? ""} className={INPUT_CLS} />
-            </label>
-            <label className="block sm:col-span-2">
-              <span className={LABEL_CLS}>Email</span>
-              <input type="email" name="email" defaultValue={proposal.header_json.email ?? ""} className={INPUT_CLS} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>PROJECT name</span>
-              <input type="text" name="project_name" defaultValue={proposal.header_json.project_name ?? ""} className={INPUT_CLS} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>PROJECT address</span>
-              <input type="text" name="project_address" defaultValue={proposal.header_json.project_address ?? ""} className={INPUT_CLS} />
-            </label>
+
+          <div className="space-y-3">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-cc-brand-800">
+              Send To — GC (Account holder)
+            </div>
+            <p className="text-[11.5px] text-ppp-charcoal-500 -mt-1">
+              The company Tomco has a relationship with. This block prints under &ldquo;PROPOSAL SUBMITTED TO:&rdquo; on the PDF.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block">
+                <span className={LABEL_CLS}>GC name</span>
+                <input type="text" name="gc_company" defaultValue={proposal.header_json.gc_company ?? ""} className={INPUT_CLS} placeholder="e.g. Alta Construction East Inc." />
+              </label>
+              <label className="block">
+                <span className={LABEL_CLS}>Proposal date</span>
+                <input type="date" name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} className={INPUT_CLS} />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className={LABEL_CLS}>GC address (one line per row)</span>
+                <textarea name="gc_address_lines" defaultValue={gcAddrText} rows={2} className={TEXTAREA_CLS} placeholder="143 West 29th Street, Fl 12&#10;New York, NY 10001" />
+              </label>
+              <label className="block">
+                <span className={LABEL_CLS}>Attention</span>
+                <input type="text" name="attention" defaultValue={proposal.header_json.attention ?? ""} className={INPUT_CLS} placeholder="e.g. Bryon" />
+              </label>
+              <label className="block">
+                <span className={LABEL_CLS}>Phone</span>
+                <input type="text" name="phone" defaultValue={proposal.header_json.phone ?? ""} className={INPUT_CLS} placeholder="e.g. 212-912-0011" />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className={LABEL_CLS}>Email</span>
+                <input type="email" name="email" defaultValue={proposal.header_json.email ?? ""} className={INPUT_CLS} placeholder="e.g. bryon@altaconstruction-inc.net" />
+              </label>
+            </div>
           </div>
-          <label className="inline-flex items-center gap-2">
+
+          <div className="space-y-3 pt-3 border-t border-ppp-charcoal-100">
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-cc-brand-800">
+              Project — the deal / job site
+            </div>
+            <p className="text-[11.5px] text-ppp-charcoal-500 -mt-1">
+              The specific customer + site this proposal covers. Prints as &ldquo;PROJECT: {"{"}Name{"}"}, {"{"}Address{"}"}&rdquo; on the PDF.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block">
+                <span className={LABEL_CLS}>Project name (customer)</span>
+                <input type="text" name="project_name" defaultValue={proposal.header_json.project_name ?? ""} className={INPUT_CLS} placeholder="e.g. JD Sports" />
+              </label>
+              <label className="block">
+                <span className={LABEL_CLS}>Project address</span>
+                <input type="text" name="project_address" defaultValue={proposal.header_json.project_address ?? ""} className={INPUT_CLS} placeholder="e.g. 37-38 Junction Blvd, Queens" />
+              </label>
+            </div>
+          </div>
+
+          <label className="inline-flex items-center gap-2 pt-2 border-t border-ppp-charcoal-100 w-full">
             <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? false} className="w-4 h-4 accent-cc-brand-600" />
-            <span className="text-[13px] text-ppp-charcoal-700">Show yellow "Capital Improvement / NY Sales Tax" banner on PDF</span>
+            <span className="text-[13px] text-ppp-charcoal-700">Show yellow &ldquo;Capital Improvement / NY Sales Tax&rdquo; banner on PDF</span>
           </label>
         </section>
 

@@ -516,9 +516,13 @@ function splitBoldLead(text: string): { lead: string | null; body: string } {
   // bypasses the length + word-count heuristic below. Used by the
   // ProductPicker when seeding descriptions for parent+variation picks
   // ("**Wallcovering Install (Per Square Foot):** Install labor…").
+  //
+  // Bug fix 2026-07-20: strip trailing colon from the captured lead
+  // BEFORE render appends its own `:`. Prior code returned lead with
+  // the colon in it, so render printed "Lead::" (double colon).
   const md = /^\*\*(.+?)\*\*[:：]?\s*(.*)$/.exec(trimmed);
   if (md) {
-    return { lead: md[1].trim(), body: md[2].trim() };
+    return { lead: md[1].trim().replace(/[:：]+\s*$/, ""), body: md[2].trim() };
   }
   // Bare "Lead: body" — only accept when the lead is short (<30 chars)
   // AND ≤5 whitespace-delimited words. That rejects long clauses like
@@ -689,23 +693,26 @@ function BulletLine({ text }: { text: string }) {
 
 function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) {
   if (items.length === 0) return null;
-  // Karan 2026-07-19 (1:1 reference match): reference PDF has NO
-  // section header above the scope items — they flow straight after
-  // the intro paragraph. Previous "Scope of Work:" underlined heading
-  // read as foreign vs. the reference letterhead.
+  // Karan 2026-07-20: reference PDF flows scope straight after the
+  // intro, but our proposals mix inclusions + labor + exclusions and
+  // Alex asked for section headings so each block is unmistakably
+  // delineated. Adds an underlined "Scope of Work:" heading above
+  // inclusions (matches the "Exclusions:" + "Labor:" heading style).
   //
   // F.6 (2026-07-19): Katie's ask — group by phase when any line item
   // has a phase set. If NONE do, fall back to flat rendering (backward
   // compat with every existing proposal). Phase-null items when some
-  // items DO have phases collect under a "General scope" section at
-  // the top.
+  // items DO have phases collect under a "General" section at the top.
   const anyHasPhase = items.some((it) => it.phase && it.phase.trim());
   if (!anyHasPhase) {
     return (
-      <View style={{ marginTop: 4 }}>
-        {items.map((it) => (
-          <BulletLine key={it.id} text={it.description} />
-        ))}
+      <View style={{ marginTop: 14 }}>
+        <Text style={styles.sectionUnderlineHeader}>Scope of Work:</Text>
+        <View style={{ marginTop: 4 }}>
+          {items.map((it) => (
+            <BulletLine key={it.id} text={it.description} />
+          ))}
+        </View>
       </View>
     );
   }
@@ -899,24 +906,26 @@ function LaborSection({ items }: { items: CommercialProposalLineItem[] }) {
   );
   const totalHours = items.reduce((acc, it) => acc + Number(it.quantity), 0);
   return (
-    <View style={{ marginTop: 6 }} wrap={false}>
-      <Text style={styles.bulletLead}>Labor:</Text>
-      {items.map((it) => {
-        const subtotal = Math.round(Number(it.quantity) * it.unit_price_cents);
-        const hrs = Number(it.quantity);
-        const rate = it.unit_price_cents / 100;
-        return (
-          <View key={it.id} style={styles.bulletSubRow}>
-            <View style={styles.bulletSubDot} />
-            <Text style={styles.bulletSubBody}>
-              {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"} @ ${rate.toFixed(2)}/hr = ${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </Text>
-          </View>
-        );
-      })}
-      <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
-        Labor subtotal: {totalHours} {totalHours === 1 ? "hr" : "hrs"} — ${(totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </Text>
+    <View style={{ marginTop: 14 }} wrap={false}>
+      <Text style={styles.sectionUnderlineHeader}>Labor:</Text>
+      <View style={{ marginTop: 4 }}>
+        {items.map((it) => {
+          const subtotal = Math.round(Number(it.quantity) * it.unit_price_cents);
+          const hrs = Number(it.quantity);
+          const rate = it.unit_price_cents / 100;
+          return (
+            <View key={it.id} style={styles.bulletSubRow}>
+              <View style={styles.bulletSubDot} />
+              <Text style={styles.bulletSubBody}>
+                {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"} @ ${rate.toFixed(2)}/hr = ${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+          );
+        })}
+        <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
+          Labor subtotal: {totalHours} {totalHours === 1 ? "hr" : "hrs"} — ${(totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </Text>
+      </View>
     </View>
   );
 }

@@ -45,8 +45,26 @@ export async function hydrateProposalContext(
     .join(", ");
   if (cityLine) gcAddressLines.push(cityLine);
 
-  const projectName = derivedOppName(opp, account?.company_name ?? null);
-  const projectAddress = opp.location_short?.trim() || null;
+  // Karan 2026-07-20 (Tomco 1:1 vs JD Sports ref):
+  //   PROJECT: JD Sports 37-38 Junction Blvd, Queens
+  // The project NAME is the actual end-customer / job label
+  // (opp.client_name), NOT the "Account — Client — Location" combined
+  // string derivedOppName produces (that's a list-view display). The
+  // address is the site address on the opp (property_street + city) —
+  // falls back to location_short if the structural fields aren't set.
+  const projectName =
+    opp.client_name?.trim() ||
+    derivedOppName(opp, account?.company_name ?? null);
+  const siteAddressParts = [
+    opp.property_street?.trim(),
+    [opp.property_city?.trim(), opp.property_state?.trim()]
+      .filter(Boolean)
+      .join(", "),
+  ].filter(Boolean);
+  const projectAddress =
+    siteAddressParts.length > 0
+      ? siteAddressParts.join(", ")
+      : opp.location_short?.trim() || null;
 
   const header: ProposalHeaderJson = {
     gc_company: account?.company_name ?? undefined,
