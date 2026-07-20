@@ -32,6 +32,10 @@ export type PickableProduct = {
    *  render as browse-only headers — picking them shows a helper hint
    *  to pick a variation instead, and blocks the pick. */
   is_parent_only?: boolean;
+  /** F.6: when this row IS a variation, the parent product's id.
+   *  Used to filter the picker into "variations-of-this-parent" mode
+   *  when the user clicks a parent header row. */
+  parent_product_id?: string | null;
 };
 
 function centsToDollarStr(cents: number): string {
@@ -72,12 +76,29 @@ export default function ProductPicker({
   const [picked, setPicked] = useState<PickableProduct | null>(null);
   const [priceNote, setPriceNote] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
+  // F.6 audit fix (2026-07-19): when the user clicks a parent-only
+  // "PICK A VARIATION" row, drop the picker into a filtered "show only
+  // variations of X" mode until they either pick a variation or clear
+  // it. Fixes the dead-end Karan hit where clicking the parent did
+  // nothing visible even though variations were listed below it.
+  const [parentFilter, setParentFilter] = useState<PickableProduct | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const results = useMemo(() => {
+    // F.6 audit fix: parent-filter mode wins over free-text search.
+    // Show every ACTIVE variation of the selected parent, sorted by
+    // variation label so "Per Linear Yard" reliably appears above
+    // "Per Square Foot" (matches Product Library display).
+    if (parentFilter) {
+      return products
+        .filter((p) => p.parent_product_id === parentFilter.id)
+        .sort((a, b) =>
+          (a.variation_label ?? "").localeCompare(b.variation_label ?? "")
+        );
+    }
     const q = query.trim().toLowerCase();
     if (!q) return products.slice(0, 25);
     // Prefix match first (SKU + name), then substring — mirrors the
@@ -102,7 +123,7 @@ export default function ProductPicker({
       }
     }
     return [...prefixSku, ...prefixName, ...substring].slice(0, 25);
-  }, [products, query]);
+  }, [products, query, parentFilter]);
 
   useEffect(() => {
     if (!open) return;
@@ -142,13 +163,23 @@ export default function ProductPicker({
   }
 
   async function pick(p: PickableProduct) {
-    // F.6: refuse to pick parent-only products. They're catalog headers
-    // for their variations, not sellable items themselves.
+    // F.6 audit fix (2026-07-19): clicking a parent header now drops
+    // the picker into "variations-of-X" mode instead of silently
+    // no-op'ing. Karan's bug: clicking the parent row did nothing
+    // visible even though variations were already listed below.
+    // Now the list re-filters to just this parent's variations and a
+    // banner appears at the top with a "← back to all" affordance.
     if (p.is_parent_only) {
-      setQuery(p.name + " — pick a variation below");
-      // Keep the picker open so the user can pick a variation.
+      setParentFilter(p);
+      setHighlight(0);
+      setOpen(true);
+      // Focus the search input so keyboard nav works immediately +
+      // typing anything cancels the filter (see input onChange).
+      inputRef.current?.focus();
       return;
     }
+    // Any real pick clears any active parent filter.
+    setParentFilter(null);
     setPicked(p);
     // F.6: display combines parent name + variation label so the picker
     // input shows "HM Frame & Wood Door (Seal & Poly)" after pick.
@@ -214,6 +245,7 @@ export default function ProductPicker({
     setPicked(null);
     setQuery("");
     setPriceNote(null);
+    setParentFilter(null);
     setFormValue(productIdInputId, "");
     // Deliberately DON'T clear description/unit/unit_price — the user
     // might want to keep them as-is with a manual tweak.
@@ -234,6 +266,10 @@ export default function ProductPicker({
               onChange={(e) => {
                 setQuery(e.target.value);
                 setOpen(true);
+                // Typing cancels the "variations-of-X" filter — back to
+                // global search. Prevents Alex being stuck in a filtered
+                // view he can't escape without hitting the ×.
+                if (parentFilter) setParentFilter(null);
                 if (picked && e.target.value !== picked.name) {
                   setPicked(null);
                   setFormValue(productIdInputId, "");
@@ -289,13 +325,54 @@ export default function ProductPicker({
         )}
       </div>
 
+      {/* F.6 audit fix: parent-filter mode empty state — if the parent
+          has no active variations, tell the user instead of showing an
+          empty dropdown. */}
+      {open && parentFilter && results.length === 0 && (
+        <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg overflow-hidden">
+          <div className="flex items-center justify-between gap-2 px-3 py-2 bg-cc-brand-50 border-b border-cc-brand-100">
+            <span className="text-[12px] font-semibold text-cc-brand-800 truncate">
+              Choose a variation of {parentFilter.name}
+            </span>
+            <button
+              type="button"
+              onClick={() => setParentFilter(null)}
+              className="text-[11px] font-medium text-cc-brand-700 hover:text-cc-brand-900 shrink-0"
+            >
+              ← Back to all
+            </button>
+          </div>
+          <div className="px-3 py-4 text-[12.5px] text-ppp-charcoal-600 text-center">
+            No active variations yet under this product.
+          </div>
+        </div>
+      )}
+
       {open && results.length > 0 && (
-        <ul
-          ref={listRef}
-          id="product-picker-listbox"
-          role="listbox"
-          className="absolute z-50 left-0 right-0 mt-1 max-h-72 overflow-y-auto rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg"
-        >
+        <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg overflow-hidden">
+          {/* F.6 audit fix: banner header when the user is filtered to a
+              parent's variations. Gives them an unambiguous way to see
+              what they're picking from + get back. */}
+          {parentFilter && (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 bg-cc-brand-50 border-b border-cc-brand-100">
+              <span className="text-[12px] font-semibold text-cc-brand-800 truncate">
+                Choose a variation of {parentFilter.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => setParentFilter(null)}
+                className="text-[11px] font-medium text-cc-brand-700 hover:text-cc-brand-900 shrink-0"
+              >
+                ← Back to all
+              </button>
+            </div>
+          )}
+          <ul
+            ref={listRef}
+            id="product-picker-listbox"
+            role="listbox"
+            className="max-h-72 overflow-y-auto"
+          >
           {results.map((p, idx) => (
             <li
               key={p.id}
@@ -351,10 +428,11 @@ export default function ProductPicker({
               </div>
             </li>
           ))}
-        </ul>
+          </ul>
+        </div>
       )}
 
-      {open && query.trim() && results.length === 0 && (
+      {open && !parentFilter && query.trim() && results.length === 0 && (
         <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg p-3 space-y-2">
           <div className="text-[12.5px] text-ppp-charcoal-600">
             No products match <span className="font-semibold text-ppp-charcoal">&ldquo;{query}&rdquo;</span>. Keep typing the row as free text below, or add it to the catalog:

@@ -1147,6 +1147,7 @@ function AddLineItemForm({
     variation_label?: string | null;
     description?: string | null;
     is_parent_only?: boolean;
+    parent_product_id?: string | null;
   }>;
   submitAction: (formData: FormData) => Promise<void>;
   isAlternate: boolean;
@@ -1171,6 +1172,9 @@ function AddLineItemForm({
               variation_label: p.variation_label ?? null,
               description: p.description ?? null,
               is_parent_only: p.is_parent_only ?? false,
+              // F.6 audit fix: pass parent_product_id so clicking a
+              // parent row can filter the picker to its variations.
+              parent_product_id: p.parent_product_id ?? null,
             }))}
             accountId={accountId}
             descriptionInputId={`${prefix}-desc`}
