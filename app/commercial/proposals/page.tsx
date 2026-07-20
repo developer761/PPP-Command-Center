@@ -574,7 +574,11 @@ function ProposalCard({
           )}
         </Link>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[12px] font-semibold text-ppp-charcoal-800 tabular-nums">
+          {/* Karan 2026-07-20 UI/UX pass: total was font-semibold text-[12px];
+              bumped to font-bold text-[13px] to match the kanban Bid line
+              on /commercial/opportunities so both surfaces read the same
+              way. Money is the primary signal on both. */}
+          <span className="text-[13px] font-bold text-ppp-charcoal-900 tabular-nums">
             {formatDollars(row.total_cents)}
           </span>
           <a

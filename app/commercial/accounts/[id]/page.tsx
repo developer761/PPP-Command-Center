@@ -548,9 +548,15 @@ export default async function CommercialAccountDetailPage({
       </nav>
 
       {/* Sub-tab pill row — only when the primary has sub-tabs.
-          Activity / Invoices are single-view leaves with no sub-nav. */}
+          Activity / Invoices / Proposals are single-view leaves with no sub-nav.
+          Karan 2026-07-20 UI/UX pass: added a "View:" prefix so users
+          don't read the pills as a second row of primary tabs (Karan
+          screenshotted 9 items back-to-back that looked flat). */}
       {hasSubTabs && (
         <div className="flex flex-wrap items-center gap-1.5">
+          <span aria-hidden className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-400 mr-1">
+            View
+          </span>
           {SUB_TABS_BY_PRIMARY[primaryTab as PrimaryWithSubs].map((s) => {
             const active = s.key === sub;
             return (
