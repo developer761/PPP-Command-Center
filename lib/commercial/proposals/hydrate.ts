@@ -50,8 +50,7 @@ export async function hydrateProposalContext(
   // The project NAME is the actual end-customer / job label
   // (opp.client_name), NOT the "Account — Client — Location" combined
   // string derivedOppName produces (that's a list-view display). The
-  // address is the site address on the opp (property_street + city) —
-  // falls back to location_short if the structural fields aren't set.
+  // address is the site address on the opp (property_street + city).
   const projectName =
     opp.client_name?.trim() ||
     derivedOppName(opp, account?.company_name ?? null);
@@ -61,13 +60,9 @@ export async function hydrateProposalContext(
       .filter(Boolean)
       .join(", "),
   ].filter(Boolean);
-  // Karan 2026-07-20 (Phase G Q2): structural address is canonical.
-  // Legacy location_short is kept as a defensive tertiary fallback for
-  // rows that predate migration 066 backfill (should be zero rows).
-  const projectAddress =
-    siteAddressParts.length > 0
-      ? siteAddressParts.join(", ")
-      : opp.location_short?.trim() || null;
+  // Karan 2026-07-20 (Phase G Q2): property_street is canonical after
+  // migration 066 backfill. location_short reader removed with the sweep.
+  const projectAddress = siteAddressParts.length > 0 ? siteAddressParts.join(", ") : null;
 
   const header: ProposalHeaderJson = {
     gc_company: account?.company_name ?? undefined,

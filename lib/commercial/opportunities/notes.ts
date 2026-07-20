@@ -233,8 +233,8 @@ export async function addOpportunityNote(
   const sb = commercialDb();
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    // Phase B: pull client_name + location_short for derivedOppName.
-    .select("id, account_id, title, client_name, location_short, deleted_at")
+    // Phase B: pull client_name + property_street for derivedOppName.
+    .select("id, account_id, title, client_name, property_street, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
@@ -299,7 +299,7 @@ export async function addOpportunityNote(
       const oppRow = opp as {
         title: string;
         client_name: string | null;
-        location_short: string | null;
+        property_street: string | null;
       };
       const acctRow = acct as { company_name: string };
       const displayName = derivedOppName(oppRow, acctRow.company_name);

@@ -72,7 +72,7 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
     const { data, error } = await sb
       .from("commercial_opportunities")
       .select(
-        `id, title, client_name, location_short, updated_at, created_by_user_id,
+        `id, title, client_name, property_street, updated_at, created_by_user_id,
          account:commercial_accounts!inner(id, company_name, deleted_at)`
       )
       .in("status", HOT_DEAL_ACTIVE_STATUSES as readonly string[])
@@ -91,7 +91,7 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
       id: string;
       title: string;
       client_name: string | null;
-      location_short: string | null;
+      property_street: string | null;
       updated_at: string;
       created_by_user_id: string | null;
       account:

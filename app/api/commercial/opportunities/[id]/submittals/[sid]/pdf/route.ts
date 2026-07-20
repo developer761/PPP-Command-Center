@@ -70,7 +70,7 @@ export async function GET(
   // a thin re-fetch is safe.
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
-    .select("title, ppp_job_number, account_id, client_name, location_short")
+    .select("title, ppp_job_number, account_id, client_name, property_street")
     .eq("id", opportunity_id)
     .maybeSingle();
   const oppRowTyped = oppRow as {
@@ -78,13 +78,13 @@ export async function GET(
     ppp_job_number: string | null;
     account_id?: string | null;
     client_name?: string | null;
-    location_short?: string | null;
+    property_street?: string | null;
   } | null;
   const opp = oppRowTyped ?? {
     title: "(opportunity not found)",
     ppp_job_number: null,
     client_name: null,
-    location_short: null,
+    property_street: null,
   };
   let accountName: string | null = null;
   if (oppRowTyped?.account_id) {

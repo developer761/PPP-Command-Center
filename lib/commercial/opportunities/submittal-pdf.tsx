@@ -301,7 +301,7 @@ type SubmittalPdfInput = {
     // Phase B: structural fields so the transmittal PDF matches what
     // users see in the UI. Nullable — legacy rows fall back to title.
     client_name?: string | null;
-    location_short?: string | null;
+    property_street?: string | null;
   };
   accountName?: string | null;
   fromCompany: string; // PPP entity name — hardcoded for now, could be tenant-configurable
@@ -422,7 +422,7 @@ function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromC
             <View style={styles.metaBox}>
               <Text style={styles.metaLabel}>Job no.</Text>
               <Text style={styles.metaValueMono}>{opp.ppp_job_number ?? "—"}</Text>
-              <Text style={styles.metaValue}>{derivedOppName({ title: opp.title, client_name: opp.client_name ?? null, location_short: opp.location_short ?? null }, accountName ?? null)}</Text>
+              <Text style={styles.metaValue}>{derivedOppName({ title: opp.title, client_name: opp.client_name ?? null, property_street: opp.property_street ?? null }, accountName ?? null)}</Text>
             </View>
             <View style={styles.metaBox}>
               <Text style={styles.metaLabel}>RE</Text>

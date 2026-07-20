@@ -594,8 +594,7 @@ export default async function ProposalEditorPage({
           .filter(Boolean)
           .join(", "),
       ].filter(Boolean);
-      const projectAddress =
-        addrParts.length > 0 ? addrParts.join(", ") : d.location_short?.trim() || "";
+      const projectAddress = addrParts.length > 0 ? addrParts.join(", ") : "";
       return {
         id: d.id,
         label: [projectName, projectAddress].filter(Boolean).join(" · "),

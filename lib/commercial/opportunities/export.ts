@@ -177,7 +177,7 @@ export async function exportOpportunitiesCsv(
         csvEscape(o.title),
         csvEscape(accountName),
         csvEscape(o.client_name ?? ""),
-        csvEscape(o.location_short ?? ""),
+        csvEscape(o.property_street ?? ""),
         // Migration 049 — estimator_name (free-text) wins over the FK
         // lookup so manual entries land in the CSV under the same
         // "Estimator" column.

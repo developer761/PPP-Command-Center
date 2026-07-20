@@ -321,9 +321,9 @@ async function notifyAssignment(
   const [oppRes, userRes, byRes] = await Promise.all([
     sb
       .from("commercial_opportunities")
-      // Phase B: pull client_name + location_short so derivedOppName can
+      // Phase B: pull client_name + property_street so derivedOppName can
       // return the CEO's {account} - {client} - {location} format.
-      .select("title, client_name, location_short, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)")
+      .select("title, client_name, property_street, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)")
       .eq("id", opportunity_id)
       .maybeSingle(),
     sb.from("profiles").select("email, sf_user_name").eq("user_id", user_id).maybeSingle(),
@@ -334,7 +334,7 @@ async function notifyAssignment(
   type OppRow = {
     title?: string;
     client_name?: string | null;
-    location_short?: string | null;
+    property_street?: string | null;
     account?: { company_name?: string } | Array<{ company_name?: string }> | null;
   };
   const oppData = oppRes.data as OppRow | null;
@@ -348,7 +348,7 @@ async function notifyAssignment(
         {
           title: oppData.title ?? "an opportunity",
           client_name: oppData.client_name ?? null,
-          location_short: oppData.location_short ?? null,
+          property_street: oppData.property_street ?? null,
         },
         accountName ?? null,
       )

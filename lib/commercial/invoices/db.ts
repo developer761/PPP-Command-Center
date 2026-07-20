@@ -48,13 +48,13 @@ async function fetchOppTitle(opp_id: string): Promise<string | null> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_opportunities")
-    .select("title, client_name, location_short, account_id")
+    .select("title, client_name, property_street, account_id")
     .eq("id", opp_id)
     .maybeSingle();
   const row = data as {
     title?: string | null;
     client_name?: string | null;
-    location_short?: string | null;
+    property_street?: string | null;
     account_id?: string | null;
   } | null;
   if (!row?.title) return null;
@@ -71,7 +71,7 @@ async function fetchOppTitle(opp_id: string): Promise<string | null> {
     {
       title: row.title,
       client_name: row.client_name ?? null,
-      location_short: row.location_short ?? null,
+      property_street: row.property_street ?? null,
     },
     accountName,
   );

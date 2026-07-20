@@ -168,7 +168,7 @@ type SP = Promise<{
    *  toast can name the deal. */
   project_started?: string;
   /** Phase B (2026-07-09) — populated by createDealInlineAction when
-   *  a match on client_name + location_short exists on this account.
+   *  a match on client_name + property_street exists on this account.
    *  Renders an amber "Possible duplicate" banner on the New Deal form
    *  with a "Create anyway" button. dup_id is the matched opp's UUID
    *  (drill-in link); dup_label is either its project_number or title
@@ -883,8 +883,9 @@ async function createDealInlineAction(formData: FormData) {
   const property_state = String(formData.get("property_state") ?? "").trim() || null;
   const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
   // Phase B (Plan v1.1) — CEO structural fields.
+  // Phase G Q2 (2026-07-20): location_short retired; property_street is
+  // the canonical site address now. Duplicate check keyed on the same.
   const client_name = String(formData.get("client_name") ?? "").trim() || null;
-  const location_short = String(formData.get("location_short") ?? "").trim() || null;
   const estimatorRaw = String(formData.get("estimator_user_id") ?? "").trim();
   const estimator_user_id = estimatorRaw && UUID_RE.test(estimatorRaw) ? estimatorRaw : null;
   // Migration 049 (Karan 2026-07-10) — free-text estimator name for
@@ -912,12 +913,13 @@ async function createDealInlineAction(formData: FormData) {
 
   // Duplicate check (Phase B). Skipped when the user submits with the
   // hidden `confirm_duplicate=1` field from the "Create anyway" button.
+  // Phase G Q2: keyed on property_street now (was location_short).
   const forceCreate = String(formData.get("confirm_duplicate") ?? "") === "1";
-  if (!forceCreate && client_name && location_short) {
+  if (!forceCreate && client_name && property_street) {
     const dups = await findDuplicateOpportunities({
       accountId: account_id,
       clientName: client_name,
-      locationShort: location_short,
+      propertyStreet: property_street,
     });
     if (dups.length > 0) {
       const first = dups[0];
@@ -948,7 +950,6 @@ async function createDealInlineAction(formData: FormData) {
     property_state,
     property_zip,
     client_name,
-    location_short,
     estimator_user_id,
     estimator_name,
     created_by_user_id: user.id,
@@ -1035,8 +1036,8 @@ async function editDealFromAccountAction(formData: FormData) {
   const property_state = String(formData.get("property_state") ?? "").trim() || null;
   const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
   // Phase B (Plan v1.1) — CEO structural fields.
+  // Phase G Q2 (2026-07-20): location_short retired; property_street is canonical.
   const client_name = String(formData.get("client_name") ?? "").trim() || null;
-  const location_short = String(formData.get("location_short") ?? "").trim() || null;
   const estimatorSheetRaw = String(formData.get("estimator_user_id") ?? "").trim();
   const estimator_user_id = estimatorSheetRaw && UUID_RE.test(estimatorSheetRaw) ? estimatorSheetRaw : null;
   // Migration 049 — free-text estimator name (see createDealInlineAction).
@@ -1059,7 +1060,6 @@ async function editDealFromAccountAction(formData: FormData) {
     property_state,
     property_zip,
     client_name,
-    location_short,
     estimator_user_id,
     estimator_name,
     updated_by_user_id: user.id,
@@ -1114,14 +1114,14 @@ async function deleteDealFromAccountAction(formData: FormData) {
   // is missing.
   const { data: pre } = await sb
     .from("commercial_opportunities")
-    .select("title, account_id, client_name, location_short")
+    .select("title, account_id, client_name, property_street")
     .eq("id", opp_id)
     .eq("account_id", account_id)
     .maybeSingle();
   if (!pre) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent("Opportunity not found on this account.")}`);
   }
-  const preRow = pre as { title?: string; client_name?: string | null; location_short?: string | null };
+  const preRow = pre as { title?: string; client_name?: string | null; property_street?: string | null };
   const { data: preAcct } = await sb
     .from("commercial_accounts")
     .select("company_name")
@@ -1132,7 +1132,7 @@ async function deleteDealFromAccountAction(formData: FormData) {
     {
       title: preRow.title || "Opportunity",
       client_name: preRow.client_name ?? null,
-      location_short: preRow.location_short ?? null,
+      property_street: preRow.property_street ?? null,
     },
     acctName,
   );
@@ -2716,7 +2716,7 @@ function NewDealForm({
           <span className={labelCls}>Site location</span>
           <input
             type="text"
-            name="location_short"
+            name="property_street"
             maxLength={200}
             placeholder="e.g. 1234 Main St, Central Islip"
             className={inputCls}
@@ -3465,7 +3465,7 @@ async function AccountProposalsTab({
     .from("commercial_proposals")
     .select(
       `id, revision_number, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
-       opportunity:commercial_opportunities!inner(id, title, client_name, location_short, account_id, deleted_at, status, sub_status)`
+       opportunity:commercial_opportunities!inner(id, title, client_name, property_street, account_id, deleted_at, status, sub_status)`
     )
     .is("deleted_at", null)
     .eq("opportunity.account_id", accountId)
@@ -3486,7 +3486,7 @@ async function AccountProposalsTab({
       id: string;
       title: string | null;
       client_name: string | null;
-      location_short: string | null;
+      property_street: string | null;
       account_id: string;
       deleted_at: string | null;
       status: string;
@@ -3670,7 +3670,7 @@ async function AccountProposalsTab({
             const dealTitle =
               bucket.deal.title?.trim() ||
               bucket.deal.client_name?.trim() ||
-              bucket.deal.location_short?.trim() ||
+              bucket.deal.property_street?.trim() ||
               "(untitled deal)";
             // Karan 2026-07-17: killed the deal-hue border + tinted
             // header per meeting feedback ("looks really tacky"). Clean
@@ -5638,7 +5638,7 @@ function DealEditSheet({
                 block 2026-07-10. Two panels felt like duplicate context;
                 everything from client-name to address override is now a
                 single scroll. Phase B (Plan v1.1) — CEO structural
-                fields (client_name, location_short, estimator) stay at
+                fields (client_name, property_street, estimator) stay at
                 the top; site address override + description follow. All
                 fields optional at Solicitation; changeOpportunityStatus
                 blocks the move to Estimating until the three CEO fields
@@ -5665,10 +5665,10 @@ function DealEditSheet({
               <label className="block">
                 <span className={labelCls}>Site location</span>
                 <input
-                  name="location_short"
+                  name="property_street"
                   type="text"
                   maxLength={200}
-                  defaultValue={deal.location_short ?? ""}
+                  defaultValue={deal.property_street ?? ""}
                   placeholder="e.g. 1234 Main St, Central Islip"
                   className={inputCls}
                 />

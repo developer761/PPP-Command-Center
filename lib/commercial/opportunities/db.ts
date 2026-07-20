@@ -180,11 +180,12 @@ export type CommercialOpportunity = {
  * Called from every place that displays an opportunity name.
  */
 export function derivedOppName(
-  opp: Pick<CommercialOpportunity, "title" | "client_name" | "location_short"> & {
-    // Optional so callers that only SELECT the legacy fields don't have
-    // to break — falls back to location_short when property_street isn't
-    // in the row shape. Post-migration-066 the two are equivalent.
+  opp: Pick<CommercialOpportunity, "title" | "client_name"> & {
+    // Both optional so callers with either field-shape work. property_street
+    // is canonical (Phase G Q2); location_short is a defensive tertiary
+    // fallback for any pre-migration-066 row that somehow slipped through.
     property_street?: string | null;
+    location_short?: string | null;
   },
   accountName: string | null | undefined,
 ): string {

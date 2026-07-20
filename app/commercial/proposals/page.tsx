@@ -59,7 +59,7 @@ type ProposalRow = {
     id: string;
     title: string | null;
     client_name: string | null;
-    location_short: string | null;
+    property_street: string | null;
     account_id: string;
     deleted_at: string | null;
     account: { id: string; company_name: string; deleted_at: string | null } | null;
@@ -210,7 +210,7 @@ export default async function ProposalsIndexPage({
     .select(
       `id, revision_number, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
        opportunity:commercial_opportunities!inner(
-         id, title, client_name, location_short, account_id, deleted_at,
+         id, title, client_name, property_street, account_id, deleted_at,
          account:commercial_accounts!inner(id, company_name, deleted_at)
        )`
     )
@@ -1215,7 +1215,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                 const dealTitle =
                   dealBucket.deal.title?.trim() ||
                   dealBucket.deal.client_name?.trim() ||
-                  dealBucket.deal.location_short?.trim() ||
+                  dealBucket.deal.property_street?.trim() ||
                   "(untitled deal)";
                 const dealHue = hueForAccountId(dealBucket.deal.id);
                 const dealBorderStyle = {

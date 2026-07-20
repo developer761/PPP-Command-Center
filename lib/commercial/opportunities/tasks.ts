@@ -114,9 +114,9 @@ export async function createOpportunityTask(
   const sb = commercialDb();
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    // Phase B: pull client_name + location_short so we can compute the
+    // Phase B: pull client_name + property_street so we can compute the
     // derived opp name for the task_assigned notification body.
-    .select("id, account_id, title, client_name, location_short, deleted_at")
+    .select("id, account_id, title, client_name, property_street, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
@@ -185,7 +185,7 @@ export async function createOpportunityTask(
         const oppRow = opp as {
           title: string;
           client_name: string | null;
-          location_short: string | null;
+          property_street: string | null;
         };
         const acctRow = acct as { company_name: string };
         const displayName = derivedOppName(oppRow, acctRow.company_name);

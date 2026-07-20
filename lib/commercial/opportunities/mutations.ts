@@ -54,7 +54,6 @@ export type CreateOpportunityInput = {
   // Migration 046 (Phase B) — CEO structural fields. All nullable at
   // solicitation; changeOpportunityStatus enforces required-at-estimating.
   client_name?: string | null;
-  location_short?: string | null;
   estimator_user_id?: string | null;
   // Migration 049 — free-text estimator name (subs / off-roster).
   estimator_name?: string | null;
@@ -142,7 +141,6 @@ export async function createCommercialOpportunity(
       property_state: input.property_state?.trim() || null,
       property_zip: input.property_zip?.trim() || null,
       client_name: input.client_name?.trim() || null,
-      location_short: input.location_short?.trim() || null,
       estimator_user_id: input.estimator_user_id ?? null,
       // If the picker chose a user, clear the free-text field (and vice
       // versa). Prevents "old typo lingers after switching to the FK."
@@ -277,7 +275,6 @@ export async function updateCommercialOpportunity(
   if (input.property_zip !== undefined) patch.property_zip = input.property_zip?.trim() || null;
   // Migration 046 (Phase B) — CEO structural fields.
   if (input.client_name !== undefined) patch.client_name = input.client_name?.trim() || null;
-  if (input.location_short !== undefined) patch.location_short = input.location_short?.trim() || null;
   if (input.estimator_user_id !== undefined) patch.estimator_user_id = input.estimator_user_id || null;
   // Migration 049 — free-text estimator. When both come through in one
   // patch (unusual but possible if the UI sends both), the picker wins

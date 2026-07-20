@@ -1092,7 +1092,7 @@ function GroupedByOpp({
   sortKey,
 }: {
   invoices: CommercialInvoice[];
-  oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; location_short: string | null }>;
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; property_street: string | null }>;
   accountById: Map<string, { id: string; company_name: string }>;
   sortKey: string;
 }) {
@@ -1492,7 +1492,7 @@ function FullDetailByOpp({
   pickableProducts,
 }: {
   invoices: CommercialInvoice[];
-  oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; location_short: string | null }>;
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; property_street: string | null }>;
   accountById: Map<string, { id: string; company_name: string }>;
   sortKey: string;
   accountId: string;

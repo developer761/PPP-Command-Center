@@ -103,7 +103,6 @@ async function updateAction(formData: FormData) {
     // Phase B — CEO structural fields. Empty strings → null so the
     // server-side validator sees a truly missing value instead of "".
     client_name: (formData.get("client_name") as string)?.trim() || null,
-    location_short: (formData.get("location_short") as string)?.trim() || null,
     estimator_user_id: (formData.get("estimator_user_id") as string) || null,
     // Migration 049 — free-text estimator (subs/off-roster).
     estimator_name: (formData.get("estimator_name") as string)?.trim().slice(0, 120) || null,

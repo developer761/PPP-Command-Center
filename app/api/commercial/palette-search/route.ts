@@ -62,10 +62,10 @@ export async function GET(request: Request) {
       .limit(MAX_PER_KIND),
     sb
       .from("commercial_opportunities")
-      .select("id, title, client_name, location_short, project_number, account_id, status")
+      .select("id, title, client_name, property_street, project_number, account_id, status")
       .is("deleted_at", null)
       .or(
-        `title.ilike.${pattern},client_name.ilike.${pattern},location_short.ilike.${pattern},project_number.ilike.${pattern}`
+        `title.ilike.${pattern},client_name.ilike.${pattern},property_street.ilike.${pattern},project_number.ilike.${pattern}`
       )
       .order("updated_at", { ascending: false })
       .limit(MAX_PER_KIND),
@@ -100,13 +100,13 @@ export async function GET(request: Request) {
     id: string;
     title: string;
     client_name: string | null;
-    location_short: string | null;
+    property_street: string | null;
     project_number: string | null;
     account_id: string;
     status: string;
   }[]) {
     const derived =
-      [o.client_name, o.location_short].filter(Boolean).join(" — ") || o.title || "(untitled)";
+      [o.client_name, o.property_street].filter(Boolean).join(" — ") || o.title || "(untitled)";
     const hint = o.project_number ? `#${o.project_number} · ${o.status}` : o.status;
     results.push({
       kind: "opportunity",
