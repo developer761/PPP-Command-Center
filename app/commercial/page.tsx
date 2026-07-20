@@ -243,7 +243,7 @@ export default async function CommercialDashboardPage() {
         <KpiTile
           tone="blue"
           value={accounts.length.toLocaleString()}
-          label="Active customers"
+          label="Active GCs"
           sub={accounts.length === 1 ? "GC of record" : "GCs of record"}
           href="/commercial/accounts"
           icon={<IconBuilding />}
@@ -270,15 +270,15 @@ export default async function CommercialDashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <QuickAction
             primary
-            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the customer first — opportunities live under their account.")}`}
+            href={`/commercial/accounts?status_error=${encodeURIComponent("Pick the GC (account) first — deals live under the GC.")}`}
             title="Start a bid"
-            sub="Pick a customer to log the opportunity under."
+            sub="Pick a GC to log the deal under."
             icon={<IconPlus />}
           />
           <QuickAction
             href="/commercial/accounts/new"
-            title="Add customer"
-            sub="Create a commercial account."
+            title="Add GC (account)"
+            sub="Create a new commercial GC account."
             icon={<IconBuilding />}
           />
           <QuickAction

@@ -715,7 +715,7 @@ export default async function ProposalEditorPage({
             <form action={sendProposalAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the customer"}? This saves the customer PDF into Files as an official sent copy (prior drafts remain), flips the deal to Proposal · Sent, and notifies the team. You can still start R${proposal.revision_number + 1} after.`}
+                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the GC"}? This saves the sent PDF into Files as an official copy (prior drafts remain), flips the deal to Proposal · Sent, and notifies the team. You can still start R${proposal.revision_number + 1} after.`}
                 pendingLabel="Sending…"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px] disabled:opacity-50"
               >
@@ -883,7 +883,7 @@ export default async function ProposalEditorPage({
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <span className={LABEL_CLS}>Project name (customer)</span>
+                <span className={LABEL_CLS}>Project name</span>
                 <input type="text" name="project_name" defaultValue={proposal.header_json.project_name ?? ""} className={INPUT_CLS} placeholder="e.g. JD Sports" />
               </label>
               <label className="block">

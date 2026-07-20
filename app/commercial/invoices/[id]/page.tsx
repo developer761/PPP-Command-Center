@@ -1109,12 +1109,12 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               and internal notes sit side-by-side without wrapping. */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label htmlFor="dt-msg" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Message to customer</label>
-              <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={isVoid} placeholder="Optional — appears above line items on the customer's copy." className={TEXTAREA_CLS} />
+              <label htmlFor="dt-msg" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Message to GC</label>
+              <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={isVoid} placeholder="Optional — appears above line items on the GC's copy." className={TEXTAREA_CLS} />
             </div>
             <div>
               <label htmlFor="dt-notes" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Internal notes</label>
-              <textarea id="dt-notes" name="notes" rows={2} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={isVoid} placeholder="Never on the customer copy." className={TEXTAREA_CLS} />
+              <textarea id="dt-notes" name="notes" rows={2} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={isVoid} placeholder="Never on the GC copy." className={TEXTAREA_CLS} />
             </div>
           </div>
           {!isVoid && (

@@ -276,7 +276,7 @@ async function createDealFromPipelineAction(formData: FormData) {
 
   const backHref = "/commercial/opportunities?new_deal=1#new-deal-sheet";
   if (!UUID_RE.test(account_id)) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Pick a customer from the list.")}#new-deal-sheet`);
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Pick a GC (account) from the list.")}#new-deal-sheet`);
   }
   if (!title || title.length > 200) {
     redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Deal name is required (max 200 chars).")}#new-deal-sheet`);
@@ -1310,7 +1310,7 @@ function NewDealSlideOut({
           <div>
             <h2 className="text-base font-bold text-ppp-charcoal">New deal</h2>
             <p className="text-xs text-ppp-charcoal-500 mt-0.5">
-              Pick the customer, name the deal, click Create.
+              Pick the GC (account), name the deal, click Create.
             </p>
           </div>
           <Link
@@ -3218,7 +3218,7 @@ function CustomerQuickSheet({
       {/* Backdrop — full-viewport link that closes the sheet. */}
       <Link
         href={closeHref}
-        aria-label="Close customer sheet"
+        aria-label="Close GC account sheet"
         className="absolute inset-0 bg-ppp-charcoal/40 backdrop-blur-[1px]"
       />
       {/* Sheet — right-aligned slide-out. Wider than deal peek (480px)
@@ -3232,7 +3232,7 @@ function CustomerQuickSheet({
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-0.5">
-                Customer
+                GC / Account
               </div>
               <h2 id="customer-sheet-title" className="text-xl font-bold text-ppp-charcoal leading-tight break-words">
                 {account.company_name}
