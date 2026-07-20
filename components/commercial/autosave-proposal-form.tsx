@@ -31,10 +31,16 @@ export function AutosaveProposalForm({
   children,
   action,
   debounceMs = 800,
+  disabled = false,
 }: {
   children: React.ReactNode;
   action: (formData: FormData) => Promise<void>;
   debounceMs?: number;
+  /** Karan 2026-07-20: pass `true` for non-draft proposals (sent/won/lost)
+   *  so autosave stops firing. Prevents repeated "Save failed" pings on
+   *  frozen proposals where the server-side draft-only guard rejects
+   *  every write. Fields render as read-only via `fieldset[disabled]`. */
+  disabled?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,11 +50,13 @@ export function AutosaveProposalForm({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
   function scheduleSave() {
+    if (disabled) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(fireSave, debounceMs);
   }
 
   function fireSave() {
+    if (disabled) return;
     if (!formRef.current) return;
     if (inFlightRef.current) {
       // A save is already running — queue one more after it lands.
@@ -67,6 +75,7 @@ export function AutosaveProposalForm({
   useEffect(() => {
     const form = formRef.current;
     if (!form) return;
+    if (disabled) return;
     const handler = () => scheduleSave();
     form.addEventListener("input", handler);
     form.addEventListener("change", handler);
@@ -75,7 +84,7 @@ export function AutosaveProposalForm({
       form.removeEventListener("change", handler);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [disabled]);
 
   // Warn if the user tries to navigate away mid-save.
   useEffect(() => {
@@ -115,13 +124,19 @@ export function AutosaveProposalForm({
 
   return (
     <div className="relative">
-      <StatusPill status={status} lastSavedAt={lastSavedAt} />
+      {!disabled && <StatusPill status={status} lastSavedAt={lastSavedAt} />}
       <form
         ref={formRef}
         action={wrappedAction}
         className="space-y-4"
       >
-        {children}
+        {disabled ? (
+          <fieldset disabled className="space-y-4 opacity-70 pointer-events-none">
+            {children}
+          </fieldset>
+        ) : (
+          children
+        )}
       </form>
     </div>
   );
@@ -154,7 +169,7 @@ function StatusPill({
   return (
     <div
       aria-live="polite"
-      className={`sticky top-2 z-30 ml-auto mb-2 w-fit inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border shadow-sm ${color}`}
+      className={`sticky top-16 z-30 ml-auto mb-2 w-fit max-w-[calc(100%-1rem)] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border shadow-sm ${color}`}
     >
       {status === "saving" && (
         <svg width="10" height="10" viewBox="0 0 24 24" className="animate-spin" aria-hidden>

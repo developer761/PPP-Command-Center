@@ -325,10 +325,23 @@ export async function updateProposal(
     .is("deleted_at", null)
     .maybeSingle();
   if (!before) return { ok: false, error: "Proposal not found." };
+  // Karan 2026-07-20 (autosave fix): draft-only guard. A Sent/Won/Lost
+  // proposal is the frozen legal record — editing it silently would
+  // corrupt the audit trail + let autosave reset customer-visible
+  // fields on a document the GC already has a PDF copy of. Reject
+  // with a friendly error so the client can render a read-only banner.
+  const beforeStatus = (before as { status?: string }).status;
+  if (beforeStatus && beforeStatus !== "draft") {
+    return {
+      ok: false,
+      error: `Only draft proposals can be edited. This one is ${beforeStatus}. Bump a new revision to make changes.`,
+    };
+  }
   const { data: after, error } = await sb
     .from("commercial_proposals")
     .update(patch)
     .eq("id", input.id)
+    .eq("status", "draft") // defense-in-depth against status flip mid-request
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };

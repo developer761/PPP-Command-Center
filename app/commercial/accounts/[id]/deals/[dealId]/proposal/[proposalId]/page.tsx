@@ -205,18 +205,23 @@ async function saveProposalAction(formData: FormData) {
     updated_by_user_id: userId,
   });
   if (!result.ok) {
-    redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent(result.error)}`
-    );
+    // Karan 2026-07-20 (autosave fix): throw instead of redirect so the
+    // AutosaveProposalForm wrapper's try/catch sets status="error" and
+    // renders the "Save failed" pill in-place — no jarring navigation
+    // that wipes the user's in-flight typing.
+    throw new Error(result.error);
   }
   revalidatePath(
     `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}`
   );
   revalidatePath(`/commercial/accounts/${accountId}`);
   revalidatePath("/commercial/proposals");
-  redirect(
-    `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?saved=1`
-  );
+  // NO redirect on success. Autosave fires this action every ~800ms;
+  // a redirect would trigger a full navigation on every save, blowing
+  // away input focus + cursor position mid-typing. revalidatePath is
+  // enough — React reconciles the server-rendered snapshot without a
+  // page load, and uncontrolled inputs (defaultValue) keep the user's
+  // in-flight text.
 }
 
 /** Karan 2026-07-15: dedicated rename action — patches ONLY the
@@ -683,6 +688,7 @@ export default async function ProposalEditorPage({
               initialValue={proposal.header_json.project_name ?? ""}
               placeholder={`Name this revision (e.g. "Warehouse Repaint")`}
               inputClassName="text-lg font-bold text-ppp-charcoal bg-transparent border-b border-dashed border-ppp-charcoal-200 focus:border-cc-brand-400 focus:outline-none py-0.5 min-w-0 flex-1 placeholder:text-ppp-charcoal-300 placeholder:italic placeholder:font-normal"
+              disabled={proposal.status !== "draft"}
             />
           </form>
         </div>
@@ -857,11 +863,27 @@ export default async function ProposalEditorPage({
         </div>
       )}
 
+      {/* Sent/Won/Lost proposals are frozen — the GC already has a
+          PDF copy, editing would break the audit trail + updateProposal
+          rejects the write anyway. Show a clear amber banner instead
+          of an autosaving form that would flash "Save failed" every
+          800ms. Alex needs to bump a new revision to make changes. */}
+      {proposal.status !== "draft" && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-[13px] text-amber-900" role="status">
+          <div className="font-semibold mb-0.5">
+            This proposal is {proposalStatusLabel(proposal.status).toLowerCase()} — read-only.
+          </div>
+          <div className="text-[12.5px] text-amber-800">
+            The GC already has this copy on file. To make changes, use the &ldquo;+ New revision&rdquo; button at the top to start a fresh draft.
+          </div>
+        </div>
+      )}
+
       {/* MAIN AUTOSAVE FORM — wraps every editable section EXCEPT line
           items. Karan 2026-07-20: no manual Save button, every field
-          change debounces (800ms) → server action fires. AutosaveProposalForm
-          renders its own <form> with a "Saving… / Saved" status pill. */}
-      <AutosaveProposalForm action={saveProposalAction}>
+          change debounces (800ms) → server action fires. Only wired on
+          draft proposals — sent/won/lost render read-only above. */}
+      <AutosaveProposalForm action={saveProposalAction} disabled={proposal.status !== "draft"}>
         {hiddenIds}
 
         {/* Header block. Karan 2026-07-20: relabeled to reflect the

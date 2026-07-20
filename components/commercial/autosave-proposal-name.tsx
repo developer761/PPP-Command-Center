@@ -30,10 +30,15 @@ export function AutosaveProposalName({
   initialValue,
   placeholder = "Name this revision",
   inputClassName = "",
+  disabled = false,
 }: {
   initialValue: string;
   placeholder?: string;
   inputClassName?: string;
+  /** Karan 2026-07-20: sent/won/lost proposals are frozen — the
+   *  server-side draft-only guard on updateProposal rejects renames.
+   *  Pass true to render read-only and skip autosave. */
+  disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -90,33 +95,42 @@ export function AutosaveProposalName({
         type="text"
         name="project_name"
         defaultValue={initialValue}
-        onInput={() => {
-          setStatus("dirty");
-          if (timerRef.current) clearTimeout(timerRef.current);
-          timerRef.current = setTimeout(submit, 600);
-        }}
-        onBlur={submit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            submit();
-            e.currentTarget.blur();
-          }
-          if (e.key === "Escape") {
-            e.currentTarget.value = savedValueRef.current;
-            setStatus("idle");
-            if (timerRef.current) {
-              clearTimeout(timerRef.current);
-              timerRef.current = null;
-            }
-            e.currentTarget.blur();
-          }
-        }}
+        readOnly={disabled}
+        onInput={
+          disabled
+            ? undefined
+            : () => {
+                setStatus("dirty");
+                if (timerRef.current) clearTimeout(timerRef.current);
+                timerRef.current = setTimeout(submit, 600);
+              }
+        }
+        onBlur={disabled ? undefined : submit}
+        onKeyDown={
+          disabled
+            ? undefined
+            : (e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submit();
+                  e.currentTarget.blur();
+                }
+                if (e.key === "Escape") {
+                  e.currentTarget.value = savedValueRef.current;
+                  setStatus("idle");
+                  if (timerRef.current) {
+                    clearTimeout(timerRef.current);
+                    timerRef.current = null;
+                  }
+                  e.currentTarget.blur();
+                }
+              }
+        }
         placeholder={placeholder}
         className={inputClassName}
-        aria-label="Proposal name (autosaves)"
+        aria-label={disabled ? "Proposal name (frozen — read-only)" : "Proposal name (autosaves)"}
       />
-      <StatusPill status={status} onManualSave={submit} />
+      {!disabled && <StatusPill status={status} onManualSave={submit} />}
     </>
   );
 }
