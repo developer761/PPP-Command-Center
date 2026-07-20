@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 /**
  * In-app notification bell (Katie + Alex 2026-06-12).
@@ -150,6 +151,37 @@ export default function NotificationBell() {
 
   const badgeText = unread > 9 ? "9+" : String(unread);
 
+  // Audit fix: bell used to be hard-coded ppp-blue (residential palette).
+  // Now derives from route — commercial surface uses cc-brand (red),
+  // everywhere else keeps ppp-blue. Single source of truth for the
+  // accent tone across hover/badge/dropdown-row states.
+  const pathname = usePathname();
+  const isCommercial = (pathname ?? "").startsWith("/commercial");
+  const tone = useMemo(() => {
+    if (isCommercial) {
+      return {
+        hoverBg: "hover:bg-cc-brand-50",
+        hoverBorder: "hover:border-cc-brand-200",
+        activeBg: "active:bg-cc-brand-100",
+        badgeBg: "bg-cc-brand-600",
+        linkText: "text-cc-brand-700 hover:text-cc-brand-800",
+        rowUnreadBg: "bg-cc-brand-50/40",
+        rowHoverBg: "hover:bg-cc-brand-50/60",
+        dotBg: "bg-cc-brand-600",
+      };
+    }
+    return {
+      hoverBg: "hover:bg-ppp-blue-50",
+      hoverBorder: "hover:border-ppp-blue-200",
+      activeBg: "active:bg-ppp-blue-100",
+      badgeBg: "bg-ppp-blue",
+      linkText: "text-ppp-blue hover:text-ppp-blue-700",
+      rowUnreadBg: "bg-ppp-blue-50/40",
+      rowHoverBg: "hover:bg-ppp-blue-50/60",
+      dotBg: "bg-ppp-blue",
+    };
+  }, [isCommercial]);
+
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -158,7 +190,7 @@ export default function NotificationBell() {
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="relative flex items-center justify-center h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal hover:bg-ppp-blue-50 hover:border-ppp-blue-200 active:bg-ppp-blue-100 transition-colors touch-manipulation"
+        className={`relative flex items-center justify-center h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal ${tone.hoverBg} ${tone.hoverBorder} ${tone.activeBg} transition-colors touch-manipulation`}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
@@ -173,7 +205,7 @@ export default function NotificationBell() {
               className="absolute -top-1 -right-1 h-5 min-w-[20px] rounded-full bg-emerald-500 opacity-40 animate-ping"
             />
             <span
-              className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full bg-ppp-blue text-white text-[10px] font-semibold flex items-center justify-center"
+              className={`absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full ${tone.badgeBg} text-white text-[10px] font-semibold flex items-center justify-center`}
               aria-hidden
             >
               {badgeText}
@@ -193,7 +225,7 @@ export default function NotificationBell() {
               <button
                 type="button"
                 onClick={markAll}
-                className="text-xs font-medium text-ppp-blue hover:text-ppp-blue-700"
+                className={`text-xs font-medium ${tone.linkText}`}
               >
                 Mark all read
               </button>
@@ -212,9 +244,9 @@ export default function NotificationBell() {
                 {items.map((it) => {
                   const unreadRow = !it.read_at;
                   const body = (
-                    <div className={`px-4 py-3 ${unreadRow ? "bg-ppp-blue-50/40" : ""} hover:bg-ppp-blue-50/60 transition-colors`}>
+                    <div className={`px-4 py-3 ${unreadRow ? tone.rowUnreadBg : ""} ${tone.rowHoverBg} transition-colors`}>
                       <div className="flex items-start gap-3">
-                        {unreadRow && <span className="mt-1.5 h-2 w-2 rounded-full bg-ppp-blue shrink-0" aria-hidden />}
+                        {unreadRow && <span className={`mt-1.5 h-2 w-2 rounded-full ${tone.dotBg} shrink-0`} aria-hidden />}
                         <div className="min-w-0 flex-1">
                           <p className={`text-sm ${unreadRow ? "font-semibold text-ppp-charcoal" : "text-ppp-charcoal-700"} leading-snug`}>
                             {it.title}

@@ -2055,7 +2055,7 @@ function FullDetailByOpp({
                         defaultValue={(() => {
                           const d = new Date();
                           d.setDate(d.getDate() + 30);
-                          return d.toLocaleDateString("en-CA");
+                          return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
                         })()}
                         className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                       />

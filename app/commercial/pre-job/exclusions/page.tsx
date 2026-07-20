@@ -218,7 +218,7 @@ export default async function ExclusionsLibraryPage({
         </label>
         <button
           type="submit"
-          className="inline-flex items-center px-4 py-2 rounded-lg bg-ppp-charcoal-800 text-white text-sm font-semibold hover:bg-ppp-charcoal-900 min-h-[40px]"
+          className="inline-flex items-center px-4 py-2 rounded-lg bg-ppp-charcoal-800 text-white text-sm font-semibold hover:bg-ppp-charcoal-900 min-h-[44px]"
         >
           Apply
         </button>
@@ -286,7 +286,7 @@ export default async function ExclusionsLibraryPage({
           )}
           <button
             type="submit"
-            className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[40px]"
+            className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px]"
           >
             {editing ? "Save changes" : "Add exclusion"}
           </button>

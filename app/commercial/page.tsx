@@ -176,10 +176,15 @@ export default async function CommercialDashboardPage() {
           </div>
         </div>
 
-        {/* Wins this month — secondary hero, tightened */}
-        <div className="relative bg-white border border-emerald-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
-          <span aria-hidden className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-emerald-100/60 blur-2xl" />
-          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-emerald-600 to-emerald-400" />
+        {/* Wins this month — secondary hero.
+            Audit fix (2026-07-19): border + corner glow pulled to the
+            same charcoal-neutral treatment as the primary hero's
+            cc-brand-100 so the two cards read as cohesive. Emerald
+            stays ONLY on the semantic win signals (stripe + "% win
+            rate" text). */}
+        <div className="relative bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
+          <span aria-hidden className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-emerald-100/40 blur-2xl" />
+          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400" />
           <div className="relative">
             <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1.5">
               Wins this month

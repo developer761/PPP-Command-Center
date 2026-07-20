@@ -980,7 +980,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="pmt-date" className={LABEL_CLS}>Paid on</label>
-              <DatePicker id="pmt-date" name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA")} placeholder="Payment date" ariaLabel="Payment date" />
+              <DatePicker id="pmt-date" name="paid_at" defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" })} placeholder="Payment date" ariaLabel="Payment date" />
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="pmt-method" className={LABEL_CLS}>Method</label>
