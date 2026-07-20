@@ -531,15 +531,15 @@ export default async function CommercialOpportunitiesPage({
   if (viewMode === "list") baseParams.set("view", "list");
   else if (viewMode === "kanban") baseParams.set("view", "kanban");
 
+  // Phase G audit CRITICAL/HIGH: all three preserve `archived` alongside
+  // stale + hot so toggling one filter doesn't silently drop the others.
   const viewToggleHref = (target: "list" | "kanban" | "customer") => {
     const p = new URLSearchParams(baseParams);
     p.delete("view");
-    // Karan 2026-07-09 PM flipped default to "list", so "customer" now
-    // needs an explicit ?view=customer param — dropping it made the
-    // "By customer" button silently render as List (2026-07-13 fix).
     p.set("view", target);
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -547,6 +547,7 @@ export default async function CommercialOpportunitiesPage({
     const p = new URLSearchParams(baseParams);
     if (!staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   })();
@@ -554,6 +555,7 @@ export default async function CommercialOpportunitiesPage({
     const p = new URLSearchParams(baseParams);
     if (!hotFilter) p.set("hot", "1");
     if (staleFilter) p.set("stale", "1");
+    if (includeArchived) p.set("archived", "1");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   })();

@@ -514,7 +514,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M15 18l-6-6 6-6" />
                 </svg>
-                <span className="font-mono">{prevSibling.invoice_number.replace(/^PPP-INV-/, "…")}</span>
+                <span className="font-mono">{prevSibling.invoice_number.replace(/^(PPP-INV|INV)-/, "…")}</span>
               </Link>
             ) : (
               <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-100 text-[12px] font-medium text-ppp-charcoal-300 min-h-[36px]" aria-hidden>
@@ -530,7 +530,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 aria-label={`Next invoice: ${nextSibling.invoice_number}`}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
               >
-                <span className="font-mono">{nextSibling.invoice_number.replace(/^PPP-INV-/, "…")}</span>
+                <span className="font-mono">{nextSibling.invoice_number.replace(/^(PPP-INV|INV)-/, "…")}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M9 18l6-6-6-6" />
                 </svg>

@@ -165,30 +165,41 @@ export type CommercialOpportunity = {
   // archived" filter to see them. Reversible via unarchive.
   archived_at: string | null;
   archived_by_user_id: string | null;
+  // Migration 069 (Katie 2026-07-20) — RFP arrival date. Powers the
+  // time-to-proposal metric (proposal.sent_at - rfp_received_at).
+  rfp_received_at: string | null;
+  // Migration 069 (Katie 2026-07-20) — user-supplied custom deal name.
+  // When set, derivedOppName returns this verbatim instead of the
+  // computed {account}—{client}—{street}. Leave NULL to auto-derive.
+  title_override: string | null;
 };
 
 /**
- * Derived display name — {account} — {client_name} — {property_street}.
- * Falls back to opp.title when structural fields are unpopulated (which
- * is the state of every row created before Phase B ships).
+ * Derived display name — {account} - {client_name} - {property_street}.
+ * Priority order:
+ *   1. opp.title_override (migration 069) — user's custom name wins if set.
+ *   2. Computed {account} - {client} - {street}. If client_name is blank,
+ *      it's dropped from the join so we get {account} - {street}.
+ *   3. opp.title fallback for legacy rows created before Phase B.
  *
- * Karan 2026-07-20 (Phase G Q2): read structural property_street instead
- * of the deprecated location_short (migration 066 backfilled). Keeps
- * location_short as a last-resort tertiary fallback for rows that
- * predate the backfill (defensive — should be zero rows after 066).
- *
- * Called from every place that displays an opportunity name.
+ * Katie 2026-07-20: switched separator em-dash `—` → hyphen ` - ` to
+ * match her verbatim spec + made client_name-drop explicit + added
+ * title_override precedence for editable names.
  */
 export function derivedOppName(
   opp: Pick<CommercialOpportunity, "title" | "client_name"> & {
-    // Both optional so callers with either field-shape work. property_street
-    // is canonical (Phase G Q2); location_short is a defensive tertiary
-    // fallback for any pre-migration-066 row that somehow slipped through.
     property_street?: string | null;
     location_short?: string | null;
+    title_override?: string | null;
   },
   accountName: string | null | undefined,
 ): string {
+  // (1) Explicit user override wins.
+  const override = opp.title_override?.trim();
+  if (override) return override;
+
+  // (2) Computed. client_name is optional per Katie's spec: "If Client
+  //     Name is blank, then leave it out."
   const parts: string[] = [];
   if (accountName && accountName.trim()) parts.push(accountName.trim());
   if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
@@ -197,10 +208,14 @@ export function derivedOppName(
     (opp.location_short && opp.location_short.trim()) ||
     "";
   if (location) parts.push(location);
-  if (parts.length >= 2 && opp.client_name && location) {
-    return parts.join(" — ");
-  }
-  return opp.title || parts.join(" — ") || "Untitled opportunity";
+
+  // Need at least 2 parts to render the join; solo account name alone
+  // is uninformative next to opp.title. Otherwise: {account} - {client}
+  // or {account} - {street} or full {account} - {client} - {street}.
+  if (parts.length >= 2) return parts.join(" - ");
+
+  // (3) Legacy fallback — Phase B structural fields not populated yet.
+  return opp.title || parts[0] || "Untitled opportunity";
 }
 
 /** Format a deal number for display. Prefixes "No. " to match Tomco's
@@ -377,47 +392,49 @@ export async function assignDealNumber(
     return null;
   }
 
-  // Atomically increment via RPC-less pattern: select current, update
-  // with CAS-like WHERE (retry on conflict). Two round-trips but simple.
-  // For real concurrent-safety a Postgres function would be better; this
-  // is fine at Tomco's volume (dozens of deals/month, not thousands/sec).
-  const { data: cur } = await sb
-    .from("commercial_account_deal_counter")
-    .select("next_seq")
-    .eq("account_id", accountId)
-    .maybeSingle();
-  const currentSeq = (cur as { next_seq?: number } | null)?.next_seq ?? 1;
-
-  const { data: upd, error: updErr } = await sb
-    .from("commercial_account_deal_counter")
-    .update({ next_seq: currentSeq + 1, updated_at: new Date().toISOString() })
-    .eq("account_id", accountId)
-    .eq("next_seq", currentSeq)
-    .select("next_seq")
-    .maybeSingle();
-  if (updErr || !upd) {
-    // CAS lost — someone else incremented between our SELECT and UPDATE.
-    // Retry once with the fresh value.
-    const { data: retryCur } = await sb
+  // Atomically increment via SELECT-then-UPDATE-WHERE-next_seq=X CAS.
+  // Bounded retry loop (5 tries) instead of retry-once. Phase G audit
+  // finding: at Tomco's volume the odds of two consecutive CAS losses
+  // are astronomically low, but "return null → NULL deal_number → admin
+  // repair" is enough of a mess that a bounded loop is worth the code.
+  // 5 tries handles theoretical thundering-herd across CSV imports.
+  const MAX_TRIES = 5;
+  for (let attempt = 0; attempt < MAX_TRIES; attempt++) {
+    const { data: cur } = await sb
       .from("commercial_account_deal_counter")
       .select("next_seq")
       .eq("account_id", accountId)
       .maybeSingle();
-    const retrySeq = (retryCur as { next_seq?: number } | null)?.next_seq;
-    if (typeof retrySeq !== "number") return null;
-    const { error: retryUpdErr } = await sb
-      .from("commercial_account_deal_counter")
-      .update({ next_seq: retrySeq + 1, updated_at: new Date().toISOString() })
-      .eq("account_id", accountId)
-      .eq("next_seq", retrySeq);
-    if (retryUpdErr) {
-      console.warn("[assignDealNumber] CAS retry failed:", retryUpdErr.message);
+    const currentSeq = (cur as { next_seq?: number } | null)?.next_seq;
+    if (typeof currentSeq !== "number") {
+      console.warn("[assignDealNumber] counter row missing for", accountId);
       return null;
     }
-    return await formatDealNumberForAccount(accountId, retrySeq);
+    const { data: upd, error: updErr } = await sb
+      .from("commercial_account_deal_counter")
+      .update({ next_seq: currentSeq + 1, updated_at: new Date().toISOString() })
+      .eq("account_id", accountId)
+      .eq("next_seq", currentSeq)
+      .select("next_seq")
+      .maybeSingle();
+    if (upd && !updErr) {
+      return await formatDealNumberForAccount(accountId, currentSeq);
+    }
+    if (updErr) {
+      console.warn(
+        `[assignDealNumber] attempt ${attempt + 1}/${MAX_TRIES} DB error:`,
+        updErr.message
+      );
+      return null;
+    }
+    // upd is null → CAS lost; another concurrent insert won this seq.
+    // Loop tries again with a fresh SELECT.
   }
-
-  return await formatDealNumberForAccount(accountId, currentSeq);
+  console.warn(
+    `[assignDealNumber] all ${MAX_TRIES} CAS attempts lost for account`,
+    accountId
+  );
+  return null;
 }
 
 async function formatDealNumberForAccount(
@@ -483,6 +500,10 @@ export async function unarchiveOpportunity(
   if (!before) return { ok: false, error: "Deal not found." };
   const b = before as { archived_at: string | null };
   if (!b.archived_at) return { ok: true }; // already active
+  // Phase G audit MEDIUM: mirror the archive UPDATE's guard —
+  // .is("deleted_at", null) on the UPDATE (defense-in-depth against
+  // a soft-delete race). Also .not("archived_at", "is", null) CAS
+  // guards against a concurrent unarchive click.
   const { error } = await sb
     .from("commercial_opportunities")
     .update({
@@ -490,7 +511,9 @@ export async function unarchiveOpportunity(
       archived_by_user_id: null,
       updated_by_user_id: actorUserId,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .is("deleted_at", null)
+    .not("archived_at", "is", null);
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }

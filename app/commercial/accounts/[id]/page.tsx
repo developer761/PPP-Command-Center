@@ -2700,7 +2700,14 @@ function NewDealForm({
           Estimating transition until all three are set. Hint below the
           Estimator picker explains the gate so users know why they'd
           fill these in later. */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Karan 2026-07-20 (Katie ask): Site Location + Project Address
+          were TWO inputs both writing to name="property_street" —
+          last-in-wins silently, confused the user, and the shorter
+          top-of-form field always got clobbered by the fuller expando
+          version below. Merged into one: the full Project address
+          block (street + city + state + zip) below is now the only
+          address input on this form. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block">
           <span className={labelCls}>Client name</span>
           <input
@@ -2709,16 +2716,6 @@ function NewDealForm({
             maxLength={200}
             defaultValue={account.company_name ?? ""}
             placeholder="e.g. Tomco Painting"
-            className={inputCls}
-          />
-        </label>
-        <label className="block">
-          <span className={labelCls}>Site location</span>
-          <input
-            type="text"
-            name="property_street"
-            maxLength={200}
-            placeholder="e.g. 1234 Main St, Central Islip"
             className={inputCls}
           />
         </label>
@@ -2759,6 +2756,52 @@ function NewDealForm({
           </span>
         </label>
       </div>
+      {/* Project address — hoisted out of the "optional" expando 2026-07-20
+          per Katie: address is a first-class deal field, not a hidden
+          nice-to-have. Pre-filled from the account's site/billing so
+          the common case is one glance + go. */}
+      <div>
+        <div className={labelCls}>
+          Project address{" "}
+          <span className="font-normal text-ppp-charcoal-400">
+            (pre-filled from the customer&apos;s site/billing address — edit if this deal is at a different location)
+          </span>
+        </div>
+        <input
+          type="text"
+          name="property_street"
+          maxLength={200}
+          defaultValue={account.site_street ?? account.billing_street ?? ""}
+          placeholder="Street"
+          className={inputCls}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+          <input
+            type="text"
+            name="property_city"
+            maxLength={80}
+            defaultValue={account.site_city ?? account.billing_city ?? ""}
+            placeholder="City"
+            className={inputCls}
+          />
+          <input
+            type="text"
+            name="property_state"
+            maxLength={2}
+            defaultValue={account.site_state ?? account.billing_state ?? ""}
+            placeholder="State"
+            className={inputCls}
+          />
+          <input
+            type="text"
+            name="property_zip"
+            maxLength={10}
+            defaultValue={account.site_zip ?? account.billing_zip ?? ""}
+            placeholder="ZIP"
+            className={inputCls}
+          />
+        </div>
+      </div>
       <details className="group/more">
         <summary className="list-none cursor-pointer text-[11.5px] font-medium text-cc-brand-700 hover:text-cc-brand-800 min-h-[28px] flex items-center gap-1.5 select-none">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
@@ -2767,11 +2810,6 @@ function NewDealForm({
           Show optional fields
         </summary>
         <div className="mt-2 space-y-3">
-          {/* Karan 2026-07-08: expanded per user "it should ask me all
-              these questions when i'm making a new deal because it
-              doesnt right now". Captures probability override,
-              proposed start/end, description, project address at
-              create time so users don't have to bounce through Edit. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="block">
               <span className={labelCls}>Probability %</span>
@@ -2805,48 +2843,6 @@ function NewDealForm({
               className={`${inputCls} min-h-[60px]`}
             />
           </label>
-          <div>
-            <div className={labelCls}>
-              Project address{" "}
-              <span className="font-normal text-ppp-charcoal-400">
-                (pre-filled from the customer&apos;s site/billing address — edit if this deal is at a different location)
-              </span>
-            </div>
-            <input
-              type="text"
-              name="property_street"
-              maxLength={200}
-              defaultValue={account.site_street ?? account.billing_street ?? ""}
-              placeholder="Street"
-              className={inputCls}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
-              <input
-                type="text"
-                name="property_city"
-                maxLength={80}
-                defaultValue={account.site_city ?? account.billing_city ?? ""}
-                placeholder="City"
-                className={inputCls}
-              />
-              <input
-                type="text"
-                name="property_state"
-                maxLength={2}
-                defaultValue={account.site_state ?? account.billing_state ?? ""}
-                placeholder="State"
-                className={inputCls}
-              />
-              <input
-                type="text"
-                name="property_zip"
-                maxLength={10}
-                defaultValue={account.site_zip ?? account.billing_zip ?? ""}
-                placeholder="ZIP"
-                className={inputCls}
-              />
-            </div>
-          </div>
         </div>
       </details>
       <div className="flex justify-end pt-1">
@@ -5647,10 +5643,11 @@ function DealEditSheet({
             title="Details"
             hint="Client name, site location, and estimator are required before this deal can move to Estimating."
           >
-            {/* Karan 2026-07-10: tighter 3-col layout for the required
-                Phase B fields so users see them together as a group + it
-                saves vertical scroll. On mobile they stack (grid-cols-1). */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Karan 2026-07-20 (was 3-col): Client + Estimator side-by-side
+                after Site location was killed as a duplicate write to
+                property_street. Address is now the dedicated "Address
+                override" block below. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <span className={labelCls}>Client name</span>
                 <input
@@ -5662,17 +5659,12 @@ function DealEditSheet({
                   className={inputCls}
                 />
               </label>
-              <label className="block">
-                <span className={labelCls}>Site location</span>
-                <input
-                  name="property_street"
-                  type="text"
-                  maxLength={200}
-                  defaultValue={deal.property_street ?? ""}
-                  placeholder="e.g. 1234 Main St, Central Islip"
-                  className={inputCls}
-                />
-              </label>
+              {/* Karan 2026-07-20 (Katie ask): removed the duplicate
+                  "Site location" input that also wrote to
+                  name="property_street" — the "Address override" block
+                  below is the canonical address input on the edit
+                  sheet. Two inputs with the same name silently
+                  clobbered user edits on submit. */}
               <label className="block">
                 <span className={labelCls}>Estimator</span>
                 {/* Karan 2026-07-10 (searchable-dropdowns rule):

@@ -92,8 +92,11 @@ export const PAYMENT_METHODS: ReadonlyArray<{ key: string; label: string }> = [
 
 /** Invoice number prefix — matches the seed in commercial_settings
  *  (see lib/commercial/settings.ts). Kept here as a compile-time
- *  default; the runtime uses the settings-table value if present. */
-export const DEFAULT_INVOICE_PREFIX = "PPP-INV";
+ *  default; the runtime uses the settings-table value if present.
+ *  Karan 2026-07-20 (Katie ask): renamed PPP-INV → INV. Existing
+ *  invoices keep their original PPP-INV numbers (immutable + audit
+ *  trail); only new invoices get the shorter INV-#### format. */
+export const DEFAULT_INVOICE_PREFIX = "INV";
 
 /**
  * Predicate — is an invoice past-due right now?
