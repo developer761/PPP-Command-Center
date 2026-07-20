@@ -36,6 +36,7 @@ import {
   oppStatusDisplayLabel,
   opportunitySourceLabel,
   formatBidRange,
+  formatDealNumber,
   weightedPipelineCents,
   derivedOppName,
   type CommercialOpportunity,
@@ -2387,13 +2388,26 @@ function KanbanCard({
   const leadFirst = primaryLead
     ? primaryLead.user_full_name?.split(" ")[0] ?? primaryLead.user_email.split("@")[0]
     : null;
+  // Karan 2026-07-20 UI/UX rebuild: card meta band was dense emoji-
+  // suffixed text ("· 📎 3 · 🎨 2 · 📋 1"); replaced with a compact
+  // icon-strip that only renders signals with count > 0. Also:
+  // - deal_number chip surfaces on the card header (ALT-####)
+  // - bid amount promoted to a bolder line (primary money signal)
+  // - "days here" only shown when > 3 (fresh moves don't need it)
+  // - probability only shown when it differs from the status default
+  //   (skips the noisy "· 10%" that shows on every fresh Solicitation)
+  const dealCode = formatDealNumber(opp.deal_number);
+  const showDays = days !== null && days > 3;
+
   if (compact) {
-    // Compact mode — used inside the narrow "Closed" cluster. Just
-    // title + account + bid; no quick-flip form (closed deals shouldn't
-    // be re-routed by drag, they go through the Reopen action instead).
     return (
       <li className="bg-white border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
         <Link href={sheetHref(opp.account_id, opp.id)} className="block">
+          {dealCode && (
+            <div className="text-[9px] font-mono text-ppp-charcoal-400 mb-0.5">
+              {dealCode}
+            </div>
+          )}
           <div className="text-[11px] font-semibold text-ppp-charcoal leading-snug break-words line-clamp-2">
             {derivedOppName(opp, account?.company_name ?? null)}
           </div>
@@ -2402,7 +2416,7 @@ function KanbanCard({
               {account.company_name}
             </div>
           )}
-          <div className="text-[10px] font-medium text-ppp-charcoal-700 mt-0.5">
+          <div className="text-[10.5px] font-semibold text-ppp-charcoal-800 mt-0.5 tabular-nums">
             {formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
           </div>
         </Link>
@@ -2410,11 +2424,30 @@ function KanbanCard({
     );
   }
   return (
-    <li className="bg-white border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 transition-colors">
+    <li className="bg-white border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 hover:shadow-sm transition-all">
       <Link
         href={sheetHref(opp.account_id, opp.id)}
         className="block"
       >
+        {/* Header row: deal-number chip (subtle) + optional overdue red dot. */}
+        {(dealCode || (taskStats && taskStats.overdue > 0)) && (
+          <div className="flex items-center justify-between gap-2 mb-1">
+            {dealCode ? (
+              <span className="text-[9.5px] font-mono text-ppp-charcoal-400" title="Deal ID">
+                {dealCode}
+              </span>
+            ) : <span />}
+            {taskStats && taskStats.overdue > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-[9.5px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-full"
+                title={`${taskStats.overdue} overdue task${taskStats.overdue === 1 ? "" : "s"}`}
+              >
+                <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                {taskStats.overdue}
+              </span>
+            )}
+          </div>
+        )}
         <div className="text-[13px] font-semibold text-ppp-charcoal leading-snug mb-1 break-words">
           {derivedOppName(opp, account?.company_name ?? null)}
         </div>
@@ -2423,33 +2456,66 @@ function KanbanCard({
             {account.company_name}
           </div>
         )}
-        <div className="text-[12px] font-medium text-ppp-charcoal-800">
+        {/* Bid line — bumped weight so it reads as the primary money signal */}
+        <div className="text-[13px] font-bold text-ppp-charcoal-900 tabular-nums">
           {formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
         </div>
-        <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
-          <span>{opp.probability_pct}%</span>
-          {days !== null && (
-            <span className={daysTone}>· {days}d here</span>
-          )}
-          {leadFirst && (
-            <span>· <span aria-hidden>★</span> {leadFirst}</span>
-          )}
-          {taskStats && taskStats.overdue > 0 && (
-            <span className="text-rose-600">· {taskStats.overdue} overdue</span>
-          )}
-          {fileCount > 0 && (
-            <span>· <span aria-hidden>📎</span> {fileCount}</span>
-          )}
-          {finishCount > 0 && (
-            <span>· <span aria-hidden>🎨</span> {finishCount}</span>
-          )}
-          {submittalStats && submittalStats.total > 0 && (
-            <span className={submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : undefined}>
-              · <span aria-hidden>📋</span> {submittalStats.total}
-              {submittalStats.awaiting_response > 0 && ` (${submittalStats.awaiting_response} awaiting)`}
-            </span>
-          )}
-        </div>
+        {/* Compact icon strip — only renders when there's something to show.
+            No more emoji + "· " noise; small SVG icons keep the row scannable. */}
+        {(showDays || leadFirst || fileCount > 0 || finishCount > 0 || (submittalStats && submittalStats.total > 0)) && (
+          <div className="text-[10.5px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2.5 gap-y-1 flex-wrap">
+            {showDays && (
+              <span className={`${daysTone} font-semibold`} title={`In current stage for ${days}d`}>
+                {days}d here
+              </span>
+            )}
+            {leadFirst && (
+              <span className="inline-flex items-center gap-1" title={`Primary lead: ${primaryLead?.user_full_name ?? primaryLead?.user_email ?? ""}`}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                {leadFirst}
+              </span>
+            )}
+            {fileCount > 0 && (
+              <span className="inline-flex items-center gap-0.5 tabular-nums" title={`${fileCount} file${fileCount === 1 ? "" : "s"}`}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+                {fileCount}
+              </span>
+            )}
+            {finishCount > 0 && (
+              <span className="inline-flex items-center gap-0.5 tabular-nums" title={`${finishCount} finish${finishCount === 1 ? "" : "es"} in the schedule`}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                  <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                  <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                  <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                  <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+                </svg>
+                {finishCount}
+              </span>
+            )}
+            {submittalStats && submittalStats.total > 0 && (
+              <span
+                className={`inline-flex items-center gap-0.5 tabular-nums ${submittalStats.awaiting_response > 0 ? "text-sky-700 font-semibold" : ""}`}
+                title={
+                  submittalStats.awaiting_response > 0
+                    ? `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"} · ${submittalStats.awaiting_response} awaiting GC response`
+                    : `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"}`
+                }
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                {submittalStats.total}
+              </span>
+            )}
+          </div>
+        )}
       </Link>
       {nextStatuses.length > 0 && (
         <form action={quickFlipStatusAction} className="mt-2 pt-2 border-t border-ppp-charcoal-100 flex items-center gap-1.5">
