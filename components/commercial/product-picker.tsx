@@ -100,26 +100,38 @@ export default function ProductPicker({
           (a.variation_label ?? "").localeCompare(b.variation_label ?? "")
         );
     }
+    // F.6 audit fix (2026-07-19, Karan): in global (non-parent-filter)
+    // mode HIDE every variation row. Only show parents + standalone
+    // products. This kills the clutter where searching "wall" listed
+    // the parent AND its two variations AND another product side-by-side.
+    // Clicking a parent drops into parent-filter mode which then exposes
+    // ONLY that parent's variations.
+    const catalog = products.filter((p) => !p.parent_product_id);
     const q = query.trim().toLowerCase();
-    if (!q) return products.slice(0, 25);
+    if (!q) return catalog.slice(0, 25);
     // Prefix match first (SKU + name), then substring — mirrors the
     // Karan-approved SearchableSelect behavior across the platform.
-    // F.6: also match variation_label so typing "Seal & Poly" finds
-    // the variation directly.
+    // Variation-label matching also runs against the parent so typing
+    // "Seal & Poly" still surfaces the parent row (user picks parent →
+    // sees the Seal & Poly variation in the filtered list).
+    const variationParentIds = new Set(
+      products
+        .filter((p) => {
+          if (!p.parent_product_id) return false;
+          const variation = (p.variation_label ?? "").toLowerCase();
+          return variation.includes(q);
+        })
+        .map((p) => p.parent_product_id as string)
+    );
     const prefixSku: PickableProduct[] = [];
     const prefixName: PickableProduct[] = [];
     const substring: PickableProduct[] = [];
-    for (const p of products) {
+    for (const p of catalog) {
       const sku = p.sku.toLowerCase();
       const name = p.name.toLowerCase();
-      const variation = (p.variation_label ?? "").toLowerCase();
       if (sku.startsWith(q)) prefixSku.push(p);
       else if (name.startsWith(q)) prefixName.push(p);
-      else if (
-        sku.includes(q) ||
-        name.includes(q) ||
-        variation.includes(q)
-      ) {
+      else if (sku.includes(q) || name.includes(q) || variationParentIds.has(p.id)) {
         substring.push(p);
       }
     }
