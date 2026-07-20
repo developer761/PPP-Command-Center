@@ -3539,18 +3539,24 @@ async function AccountProposalsTab({
   const { data: proposalsData } = await sb
     .from("commercial_proposals")
     .select(
-      `id, revision_number, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
-       opportunity:commercial_opportunities!inner(id, title, client_name, property_street, account_id, deleted_at, status, sub_status)`
+      `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
+       opportunity:commercial_opportunities!inner(id, title, title_override, client_name, property_street, account_id, deleted_at, archived_at, status, sub_status)`
     )
     .is("deleted_at", null)
     .eq("opportunity.account_id", accountId)
     .is("opportunity.deleted_at", null)
+    // Katie 2026-07-20 audit fix (HIGH): archived deals' proposals were
+    // leaking into this tab even though the parent deal is hidden from
+    // the Deals tab. Mirror the Deals tab behavior — archived deals'
+    // proposals hide by default. Toggle at Deals tab reveals them.
+    .is("opportunity.archived_at", null)
     .order("updated_at", { ascending: false })
     .limit(300);
 
   type Row = {
     id: string;
     revision_number: number;
+    proposal_seq: number | null;
     status: string;
     total_cents: number;
     sent_at: string | null;
@@ -3560,18 +3566,20 @@ async function AccountProposalsTab({
     opportunity: {
       id: string;
       title: string | null;
+      title_override: string | null;
       client_name: string | null;
       property_street: string | null;
       account_id: string;
       deleted_at: string | null;
+      archived_at: string | null;
       status: string;
       sub_status: string | null;
     } | null;
   };
-  // SQL already enforced account_id + soft-delete filters; defensively
-  // filter again in JS in case the join shape ever drops a row.
+  // SQL already enforced account_id + soft-delete + archived filters;
+  // defensively filter again in JS in case the join shape ever drops a row.
   const proposals = ((proposalsData as unknown as Row[]) ?? []).filter(
-    (r) => r.opportunity && !r.opportunity.deleted_at
+    (r) => r.opportunity && !r.opportunity.deleted_at && !r.opportunity.archived_at
   );
 
   // Group by parent deal. Within each deal, sort by revision_number

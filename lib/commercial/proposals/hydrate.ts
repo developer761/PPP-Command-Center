@@ -45,13 +45,18 @@ export async function hydrateProposalContext(
     .join(", ");
   if (cityLine) gcAddressLines.push(cityLine);
 
-  // Karan 2026-07-20 (Tomco 1:1 vs JD Sports ref):
-  //   PROJECT: JD Sports 37-38 Junction Blvd, Queens
-  // The project NAME is the actual end-customer / job label
-  // (opp.client_name), NOT the "Account — Client — Location" combined
-  // string derivedOppName produces (that's a list-view display). The
-  // address is the site address on the opp (property_street + city).
+  // Katie 2026-07-20 audit fix (CRITICAL): title_override MUST win here
+  // so a user's explicit "Custom display name" on the deal edit sheet
+  // also drives the proposal PDF's PROJECT field. Prior order silently
+  // dropped the override when client_name was set — a user who typed
+  // "The Big Job at Jones" saw "Jones Property" on the PDF instead.
+  //
+  // Priority:
+  //   1. opp.title_override — user's explicit custom name (wins everywhere)
+  //   2. opp.client_name    — Tomco JD-Sports convention (end-customer label)
+  //   3. derivedOppName     — computed {account} - {client} - {street}
   const projectName =
+    opp.title_override?.trim() ||
     opp.client_name?.trim() ||
     derivedOppName(opp, account?.company_name ?? null);
   const siteAddressParts = [
