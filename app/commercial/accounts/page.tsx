@@ -1004,10 +1004,6 @@ function AccountRow({
   const cityState = [account.billing_city, account.billing_state].filter(Boolean).join(", ");
   const activity = overview ? relativeActivity(overview.last_activity_at) : null;
   const tone = overview ? activityTone(overview.last_activity_at) : null;
-  // Karan 2026-07-08 GHL-style: activity chip now has bg + border to
-  // match the other SignalPill chips. Old text-only rendering read as
-  // "extra grey noise" at the end of the row; this makes it a proper
-  // freshness signal that scans as important at a glance.
   const activityCls =
     tone === "ok"
       ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
@@ -1018,182 +1014,252 @@ function AccountRow({
       : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
   const visibleTags = tags.slice(0, 4);
   const extraTagCount = Math.max(0, tags.length - visibleTags.length);
-  return (
-    <li className="flex items-start gap-1 hover:bg-cc-brand-50/30 transition-colors group/row">
-      {/* Checkbox — big tap area, sits OUTSIDE the Link so clicking it
-          doesn't navigate. Label wraps for wider tap. */}
-      <label className="pl-3 sm:pl-4 pt-5 cursor-pointer touch-manipulation shrink-0">
-        <input
-          type="checkbox"
-          name="account_id"
-          value={account.id}
-          aria-label={`Select ${account.company_name} for bulk actions`}
-          className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40 cursor-pointer"
-        />
-      </label>
 
-      <Link
-        href={`/commercial/accounts/${account.id}`}
-        className="flex-1 block pr-3 sm:pr-4 py-4 touch-manipulation min-w-0"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            {/* Line 1 — company name + status badges. Bigger typography
-                than the meta lines so scanning finds the name fast.
-                Karan 2026-07-11: colored initials avatar so Bob is
-                recognizably-Bob before you even read the name. */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <AccountAvatar accountId={account.id} name={account.company_name} size="sm" />
-              {account.is_key_relationship && (
-                <span
-                  className="inline-flex items-center text-amber-500 text-base leading-none"
-                  title="★ Key Relationship — strategic partnership"
-                  aria-label="Key Relationship"
-                >
-                  ★
+  // Karan 2026-07-20 UI/UX rebuild: the old row rendered every signal
+  // (0 contacts, 0 on team, 0 docs, "Not started" compliance) as a
+  // color chip regardless of value — the whole row read as clutter.
+  // New rules: (a) suppress "Not started" default compliance chip,
+  // (b) suppress zero-count signals unless there's genuinely nothing
+  // else on the account, (c) surface Open Bids as the primary
+  // right-side metric with dollar amount, (d) freshness stays on
+  // the top-right so scanners see "active today" without hunting.
+  const openBids = overview?.open_opps_count ?? 0;
+  const bidRange =
+    overview && openBids > 0
+      ? formatBidCents(overview.total_active_bid_low_cents, overview.total_active_bid_high_cents)
+      : null;
+  const contactCount = overview?.contact_count ?? 0;
+  const teamCount = overview?.ppp_team_count ?? 0;
+  const docCount = overview?.active_document_count ?? 0;
+  const hasAnyEngagement = contactCount + teamCount + docCount + openBids > 0;
+
+  return (
+    <li className="hover:bg-cc-brand-50/30 transition-colors group/row">
+      <div className="flex items-stretch gap-0">
+        {/* Checkbox — big tap area, sits OUTSIDE the Link. */}
+        <label className="pl-3 sm:pl-4 pr-2 pt-5 cursor-pointer touch-manipulation shrink-0">
+          <input
+            type="checkbox"
+            name="account_id"
+            value={account.id}
+            aria-label={`Select ${account.company_name} for bulk actions`}
+            className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40 cursor-pointer"
+          />
+        </label>
+
+        <Link
+          href={`/commercial/accounts/${account.id}`}
+          className="flex-1 block pr-3 sm:pr-4 py-4 touch-manipulation min-w-0"
+        >
+          <div className="flex items-start justify-between gap-4">
+            {/* ─── LEFT COLUMN — identity + meta ─── */}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <AccountAvatar accountId={account.id} name={account.company_name} size="sm" />
+                {account.is_key_relationship && (
+                  <span
+                    className="inline-flex items-center text-amber-500 text-base leading-none"
+                    title="★ Key Relationship — strategic partnership"
+                    aria-label="Key Relationship"
+                  >
+                    ★
+                  </span>
+                )}
+                <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
+                  {account.company_name}
                 </span>
+                {account.dba && (
+                  <span className="text-[11px] text-ppp-charcoal-500">d/b/a {account.dba}</span>
+                )}
+                {account.rating && <RatingPill rating={account.rating} />}
+                {/* Only show the compliance pill for non-default states.
+                    "not_started" was the default on every fresh account;
+                    surfacing it as a gray chip on every row was clutter. */}
+                {account.vendor_compliance_status &&
+                  account.vendor_compliance_status !== "not_started" && (
+                    <CompliancePill status={account.vendor_compliance_status} />
+                  )}
+                {overview && overview.expired_document_count > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-rose-100 text-rose-800 border border-rose-200"
+                    title={`${overview.expired_document_count} expired compliance doc${overview.expired_document_count === 1 ? "" : "s"}`}
+                  >
+                    Lapsed
+                  </span>
+                ) : overview && overview.expiring_soon_document_count > 0 ? (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-200"
+                    title={`${overview.expiring_soon_document_count} doc${overview.expiring_soon_document_count === 1 ? "" : "s"} expiring within 30 days`}
+                  >
+                    Expiring
+                  </span>
+                ) : null}
+              </div>
+
+              {(account.industry || cityState || account.phone) && (
+                <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+                  {account.industry && <span>{account.industry}</span>}
+                  {account.industry && cityState && <span aria-hidden>·</span>}
+                  {cityState && <span>{cityState}</span>}
+                  {account.phone && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span>{account.phone}</span>
+                    </>
+                  )}
+                </div>
               )}
-              <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
-                {account.company_name}
-              </span>
-              {account.dba && (
-                <span className="text-[11px] text-ppp-charcoal-500">d/b/a {account.dba}</span>
+
+              {/* Signal pills — only render pills with count > 0. When
+                  the entire account has zero engagement (brand new /
+                  test account), show a single soft muted line instead
+                  of a wall of zero chips. */}
+              {overview && hasAnyEngagement && (
+                <div className="text-[12px] mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap text-ppp-charcoal-600">
+                  {contactCount > 0 && (
+                    <SignalPill icon="contacts" label={`${contactCount} contact${contactCount === 1 ? "" : "s"}`} />
+                  )}
+                  {teamCount > 0 && <SignalPill icon="team" label={`${teamCount} on team`} />}
+                  {docCount > 0 && (
+                    <SignalPill
+                      icon="docs"
+                      label={`${docCount} doc${docCount === 1 ? "" : "s"}`}
+                      tone={
+                        overview.expired_document_count > 0
+                          ? "rose"
+                          : overview.expiring_soon_document_count > 0
+                          ? "amber"
+                          : "neutral"
+                      }
+                      suffix={
+                        overview.expired_document_count > 0
+                          ? ` · ${overview.expired_document_count} expired`
+                          : overview.expiring_soon_document_count > 0
+                          ? ` · ${overview.expiring_soon_document_count} expiring`
+                          : undefined
+                      }
+                    />
+                  )}
+                  {(overview.won_opps_count ?? 0) > 0 && (
+                    <SignalPill
+                      icon="star"
+                      tone="amber"
+                      label="Repeat customer"
+                      title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account.`}
+                    />
+                  )}
+                </div>
               )}
-              {account.rating && <RatingPill rating={account.rating} />}
-              {account.vendor_compliance_status && (
-                <CompliancePill status={account.vendor_compliance_status} />
+              {overview && !hasAnyEngagement && (
+                <div className="mt-2 text-[11.5px] text-ppp-charcoal-400 italic">
+                  Fresh account — no contacts, docs, or bids yet.
+                </div>
               )}
-              {overview && overview.expired_document_count > 0 ? (
-                <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-rose-100 text-rose-800 border border-rose-200"
-                  title={`${overview.expired_document_count} expired compliance doc${overview.expired_document_count === 1 ? "" : "s"}`}
-                >
-                  Lapsed
-                </span>
-              ) : overview && overview.expiring_soon_document_count > 0 ? (
-                <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-200"
-                  title={`${overview.expiring_soon_document_count} doc${overview.expiring_soon_document_count === 1 ? "" : "s"} expiring within 30 days`}
-                >
-                  Expiring
-                </span>
-              ) : null}
+
+              {tags.length > 0 && (
+                <div className="mt-2 flex items-center gap-1 flex-wrap">
+                  {visibleTags.map((t) => (
+                    <span
+                      key={t.id}
+                      className="inline-flex items-center px-2 py-0.5 rounded-full bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200 text-[10px] font-medium"
+                    >
+                      {t.tag}
+                    </span>
+                  ))}
+                  {extraTagCount > 0 && (
+                    <span className="text-[10px] text-ppp-charcoal-500 px-1">+{extraTagCount} more</span>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Line 2 — muted meta: industry · city · phone. */}
-            {(account.industry || cityState || account.phone) && (
-              <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
-                {account.industry && <span>{account.industry}</span>}
-                {account.industry && cityState && <span aria-hidden>·</span>}
-                {cityState && <span>{cityState}</span>}
-                {account.phone && (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span>{account.phone}</span>
-                  </>
-                )}
-              </div>
-            )}
+            {/* ─── RIGHT COLUMN — primary metric + freshness + chevron ───
+                Open bids get the number-first treatment (large tabular
+                figure + dollar range) so a scanner instantly clocks
+                "where's the money?" without reading pill text. */}
+            <div className="hidden sm:flex flex-col items-end shrink-0 min-w-[120px] max-w-[180px] gap-1.5">
+              {openBids > 0 ? (
+                <div className="text-right">
+                  <div className="flex items-baseline gap-1.5 justify-end">
+                    <span className="font-condensed text-2xl font-black text-cc-brand-700 tabular-nums leading-none">
+                      {openBids}
+                    </span>
+                    <span className="text-[10.5px] font-semibold text-ppp-charcoal-500 uppercase tracking-wide">
+                      open bid{openBids === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {bidRange && bidRange !== "—" && (
+                    <div className="text-[11px] font-semibold text-ppp-charcoal-700 tabular-nums mt-0.5">
+                      {bidRange}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="text-[11px] text-ppp-charcoal-300 italic">No open bids</span>
+              )}
 
-            {/* Line 3 — Account 360 signals: contacts, team, docs, open
-                bids, ★ repeat, activity. Same data as the prior row's
-                stats row but with cleaner visual grouping. */}
-            {overview && (
-              <div className="text-[12px] mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap text-ppp-charcoal-600">
-                <SignalPill icon="contacts" label={`${overview.contact_count} contact${overview.contact_count === 1 ? "" : "s"}`} />
-                <SignalPill icon="team" label={`${overview.ppp_team_count} on team`} />
-                <SignalPill
-                  icon="docs"
-                  label={`${overview.active_document_count} doc${overview.active_document_count === 1 ? "" : "s"}`}
-                  tone={
-                    overview.expired_document_count > 0
-                      ? "rose"
-                      : overview.expiring_soon_document_count > 0
-                      ? "amber"
-                      : "neutral"
-                  }
-                  suffix={
-                    overview.expired_document_count > 0
-                      ? ` · ${overview.expired_document_count} expired`
-                      : overview.expiring_soon_document_count > 0
-                      ? ` · ${overview.expiring_soon_document_count} expiring`
-                      : undefined
-                  }
-                />
-                {(overview.open_opps_count ?? 0) > 0 && (
-                  <SignalPill
-                    icon="bids"
-                    tone="blue"
-                    label={(() => {
-                      const bidRange = formatBidCents(
-                        overview.total_active_bid_low_cents,
-                        overview.total_active_bid_high_cents
-                      );
-                      const base = `${overview.open_opps_count} open bid${overview.open_opps_count === 1 ? "" : "s"}`;
-                      return bidRange !== "—" ? `${base} · ${bidRange}` : base;
-                    })()}
-                  />
-                )}
-                {(overview.won_opps_count ?? 0) > 0 && (
-                  <SignalPill
-                    icon="star"
-                    tone="amber"
-                    label="Repeat customer"
-                    title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account.`}
-                  />
-                )}
-                {activity && (
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${activityCls}`}
-                    title={`Last touched: ${overview.last_activity_at ?? "unknown"}`}
-                  >
-                    {(() => {
-                      // Karan 2026-07-08 GHL-style: subtle pulse dot when
-                      // the account was touched within the last 7 days
-                      // ("hot"), solid dot for older activity. Makes the
-                      // freshness signal readable at a glance.
-                      const isHot = overview.last_activity_at
-                        ? Date.now() - new Date(overview.last_activity_at).getTime() < 7 * 24 * 60 * 60 * 1000
-                        : false;
-                      return (
-                        <span aria-hidden className="relative inline-flex w-1.5 h-1.5">
-                          {isHot && (
-                            <span className="absolute inline-flex w-full h-full rounded-full bg-current opacity-60 animate-ping" />
-                          )}
-                          <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-current" />
-                        </span>
-                      );
-                    })()}
-                    Active {activity}
-                  </span>
-                )}
-              </div>
-            )}
+              {activity && (
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10.5px] font-semibold ${activityCls}`}
+                  title={`Last touched: ${overview?.last_activity_at ?? "unknown"}`}
+                >
+                  {(() => {
+                    const isHot = overview?.last_activity_at
+                      ? Date.now() - new Date(overview.last_activity_at).getTime() <
+                        7 * 24 * 60 * 60 * 1000
+                      : false;
+                    return (
+                      <span aria-hidden className="relative inline-flex w-1.5 h-1.5">
+                        {isHot && (
+                          <span className="absolute inline-flex w-full h-full rounded-full bg-current opacity-60 animate-ping" />
+                        )}
+                        <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-current" />
+                      </span>
+                    );
+                  })()}
+                  {activity}
+                </span>
+              )}
+            </div>
 
-            {/* Line 4 — tag pills. Only renders when there are tags. */}
-            {tags.length > 0 && (
-              <div className="mt-2 flex items-center gap-1 flex-wrap">
-                {visibleTags.map((t) => (
-                  <span
-                    key={t.id}
-                    className="inline-flex items-center px-2 py-0.5 rounded-full bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200 text-[10px] font-medium"
-                  >
-                    {t.tag}
-                  </span>
-                ))}
-                {extraTagCount > 0 && (
-                  <span className="text-[10px] text-ppp-charcoal-500 px-1">+{extraTagCount} more</span>
-                )}
-              </div>
-            )}
+            {/* Mobile-only inline metric — sm:hidden so we don't double-render */}
+            <div className="sm:hidden flex flex-col items-end shrink-0 gap-1 text-right">
+              {openBids > 0 && (
+                <div>
+                  <div className="text-[14px] font-black text-cc-brand-700 tabular-nums leading-none">
+                    {openBids}
+                  </div>
+                  <div className="text-[9px] font-semibold text-ppp-charcoal-500 uppercase tracking-wider">
+                    open
+                  </div>
+                </div>
+              )}
+              {activity && (
+                <span
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[9.5px] font-semibold whitespace-nowrap ${activityCls}`}
+                >
+                  {activity}
+                </span>
+              )}
+            </div>
+
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-ppp-charcoal-300 group-hover/row:text-cc-brand-600 shrink-0 mt-1 transition-colors self-start"
+              aria-hidden
+            >
+              <path d="M9 18l6-6-6-6" />
+            </svg>
           </div>
-
-          {/* Right chevron — navigation hint. Aligns to the first line. */}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/row:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-        </div>
-      </Link>
+        </Link>
+      </div>
     </li>
   );
 }
