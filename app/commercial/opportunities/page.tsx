@@ -913,8 +913,8 @@ export default async function CommercialOpportunitiesPage({
                     active={includeArchived}
                     label={
                       includeArchived && archivedCount > 0
-                        ? `📁 Include archived (${archivedCount})`
-                        : "📁 Include archived"
+                        ? `Include archived (${archivedCount})`
+                        : "Include archived"
                     }
                     description="Archived deals are hidden from the active pipeline. Toggle to include them, marked with a small chip."
                   />
@@ -2917,25 +2917,39 @@ function OpportunityRow({
                   </span>
                 )}
                 {fileCount > 0 && (
-                  <span className="text-ppp-charcoal-600" title="Plans & Specs attachments">
-                    <span aria-hidden>📎</span> {fileCount} {fileCount === 1 ? "file" : "files"}
+                  <span className="text-ppp-charcoal-600 inline-flex items-center gap-1" title="Plans & Specs attachments">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                    {fileCount} {fileCount === 1 ? "file" : "files"}
                   </span>
                 )}
                 {finishCount > 0 && (
-                  <span className="text-ppp-charcoal-600" title={`${finishCount} finish-schedule code${finishCount === 1 ? "" : "s"} defined`}>
-                    <span aria-hidden>🎨</span> {finishCount} {finishCount === 1 ? "finish" : "finishes"}
+                  <span className="text-ppp-charcoal-600 inline-flex items-center gap-1" title={`${finishCount} finish-schedule code${finishCount === 1 ? "" : "s"} defined`}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                      <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                      <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                      <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+                    </svg>
+                    {finishCount} {finishCount === 1 ? "finish" : "finishes"}
                   </span>
                 )}
                 {submittalStats && submittalStats.total > 0 && (
                   <span
-                    className={submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : "text-ppp-charcoal-600"}
+                    className={`inline-flex items-center gap-1 ${submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : "text-ppp-charcoal-600"}`}
                     title={
                       submittalStats.awaiting_response > 0
                         ? `${submittalStats.awaiting_response} awaiting GC response`
                         : `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"} closed`
                     }
                   >
-                    <span aria-hidden>📋</span> {submittalStats.total}
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                    {submittalStats.total}
                     {submittalStats.awaiting_response > 0 && (
                       <span className="ml-1 inline-flex items-center px-1 py-0 rounded bg-sky-100 text-sky-800 text-[10px] font-bold uppercase tracking-wider">
                         {submittalStats.awaiting_response} awaiting
@@ -2964,7 +2978,13 @@ function OpportunityRow({
               href={`/commercial/opportunities/${opportunity.id}?tab=finishes`}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-100 hover:bg-cc-brand-100 transition-colors min-h-[28px] touch-manipulation"
             >
-              <span aria-hidden>🎨</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+              </svg>
               <span>{finishCount} {finishCount === 1 ? "finish" : "finishes"} →</span>
             </Link>
           )}
@@ -2977,7 +2997,10 @@ function OpportunityRow({
                   : "text-ppp-charcoal-700 bg-ppp-charcoal-50 border-ppp-charcoal-100 hover:bg-ppp-charcoal-100/70"
               }`}
             >
-              <span aria-hidden>📋</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
               <span>
                 {submittalStats.total} submittal{submittalStats.total === 1 ? "" : "s"}
                 {submittalStats.awaiting_response > 0 && (

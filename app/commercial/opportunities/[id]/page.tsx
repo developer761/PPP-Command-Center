@@ -2763,7 +2763,12 @@ async function InfoTab({
                 type="submit"
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
               >
-                📁 Archive deal
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect x="2" y="4" width="20" height="4" rx="1" />
+                  <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+                  <line x1="10" y1="13" x2="14" y2="13" />
+                </svg>
+                Archive deal
               </button>
             </form>
           </div>
@@ -4083,9 +4088,12 @@ async function FinishesTab({
           <p className="mt-3 text-[12px]">
             <Link
               href={`/commercial/opportunities/${oppId}?tab=plans`}
-              className="text-sky-700 hover:text-sky-900 underline underline-offset-2"
+              className="inline-flex items-center gap-1 text-sky-700 hover:text-sky-900 underline underline-offset-2"
             >
-              📎 Check Plans &amp; Specs
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+              Check Plans &amp; Specs
             </Link>
             {" — most finish codes live in the architect drawings."}
           </p>
