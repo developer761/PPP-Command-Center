@@ -174,11 +174,19 @@ export function SearchableSelect({
             setQuery(next);
             setOpen(true);
             setHighlight(0);
-            // When the user is typing, the current selection is no
-            // longer valid unless the typed text exactly matches an
-            // option label. In allowFreeText mode we sync the hidden
-            // input to the raw text; otherwise we clear the value so a
-            // half-typed query doesn't submit stale UUIDs.
+            // Sync the hidden value to what the user is typing.
+            //   • exact label match      → select that option
+            //   • allowFreeText          → submit the raw text
+            //   • field emptied          → clear the selection (unset)
+            //   • otherwise (partial)    → KEEP the current selection
+            // 2026-07-21 re-audit (#5): the old code cleared the value on
+            // ANY partial/non-matching keystroke, so focusing an existing
+            // selection and typing one character (without clicking a
+            // result) then saving silently nulled it — e.g. reverting a
+            // product variation to standalone, losing its parent link.
+            // Preserving the last valid selection until the user actively
+            // picks a new one, clears via ×, or empties the field avoids
+            // that destructive path. (Native <select> couldn't null it.)
             const exact = options.find(
               (o) => o.label.toLowerCase() === next.trim().toLowerCase()
             );
@@ -186,9 +194,10 @@ export function SearchableSelect({
               setSelectedValue(exact.value);
             } else if (allowFreeText) {
               setSelectedValue(next.trim());
-            } else {
+            } else if (next.trim() === "") {
               setSelectedValue("");
             }
+            // else: partial non-match — leave selectedValue untouched.
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}

@@ -250,6 +250,19 @@ export default async function ProductDetailPage({
         p.is_active
     )
     .sort((a, b) => a.name.localeCompare(b.name));
+  // Options for the searchable parent picker. Edge case (2026-07-21):
+  // parentCandidates excludes archived (is_active=false) products, so a
+  // variation whose parent was later archived would have no matching
+  // option — SearchableSelect would then display the raw parent UUID.
+  // Ensure the current parent is always present (labeled "(archived)").
+  const parentOptions = parentCandidates.map((p) => ({ value: p.id, label: p.name }));
+  if (
+    product.parent_product_id &&
+    !parentOptions.some((o) => o.value === product.parent_product_id)
+  ) {
+    const cur = allProducts.find((p) => p.id === product.parent_product_id);
+    if (cur) parentOptions.unshift({ value: cur.id, label: `${cur.name} (archived)` });
+  }
   // If THIS product has variations pointing at it, it's a parent — warn
   // the user that removing its parent status would orphan the variations.
   const isParent = childProductIds.has(product.id);
@@ -486,7 +499,7 @@ export default async function ProductDetailPage({
                     filter instead of a flat select of every product. */}
                 <SearchableSelect
                   name="parent_product_id"
-                  options={parentCandidates.map((p) => ({ value: p.id, label: p.name }))}
+                  options={parentOptions}
                   defaultValue={product.parent_product_id ?? ""}
                   disabled={isParent}
                   placeholder="Standalone — type to pick a parent…"

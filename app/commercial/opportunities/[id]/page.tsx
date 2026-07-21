@@ -1344,6 +1344,12 @@ export default async function OpportunityDetailPage({
     // auto-open the edit sheet (Karan 2026-07-08: "when i click an
     // existing deal it focuses the deal i dont like that").
     const q = new URLSearchParams({ tab: "opportunities" });
+    // 2026-07-21 re-audit (Finding A): an archived deal reached via the
+    // command palette bounced here WITHOUT ?archived=1, so the account
+    // tab (which hides archived by default) rendered neither the row nor
+    // the #deal-row anchor target — the clicked deal vanished. Carry the
+    // archived flag so the row is present + scrolled to.
+    if (opp.archived_at) q.set("archived", "1");
     const err = pickFirst(sp.error);
     const editedOk = pickFirst(sp.edited);
     const statusOk = pickFirst(sp.status_ok);

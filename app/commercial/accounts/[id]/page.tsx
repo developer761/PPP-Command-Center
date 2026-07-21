@@ -100,10 +100,12 @@ import {
   isTerminalOpportunityStatus,
   isWon,
   isLost,
+  isPostSale,
 } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
 import { BidLifecycleTimeline } from "@/components/commercial/bid-lifecycle-timeline";
 import { IconClock, IconAlertTriangle, IconFileDoc, IconStar } from "@/components/commercial/inline-icons";
+import { HashReveal } from "@/components/commercial/hash-reveal";
 import {
   getAccountRecentActivity,
   describeActivity,
@@ -335,6 +337,11 @@ export default async function CommercialAccountDetailPage({
 
   return (
     <div className="space-y-5">
+      {/* 2026-07-21 re-audit (Finding B): open collapsed <details> (e.g.
+          the "Decided" deals accordion) around a #deal-row hash target and
+          scroll to it, so cross-page links / the command palette don't land
+          on hidden content. */}
+      <HashReveal />
       {/* Toast surface from the new-account team-on-create flow. Fades
           out via reload (no client component needed — the user navigating
           away clears the query string naturally). */}
@@ -5650,7 +5657,12 @@ function DealEditSheet({
         {lifecycle && (
           <BidLifecycleTimeline
             lifecycle={lifecycle}
-            closeOutcome={isWon(deal) ? "won" : isLost(deal) ? "lost" : null}
+            // Re-audit (#1): post_sale_closed (and delivery statuses) are
+            // won deals that advanced — you can't deliver a lost bid — so
+            // the Close node must read "Won", not a neutral "Close".
+            closeOutcome={
+              isWon(deal) || isPostSale(deal) ? "won" : isLost(deal) ? "lost" : null
+            }
           />
         )}
         {/* Karan 2026-07-13: on decided deals surface a link to the

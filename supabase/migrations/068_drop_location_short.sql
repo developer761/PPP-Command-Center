@@ -6,9 +6,9 @@
 -- drop to "migration 068 (later batch) after code readers are removed."
 -- That migration was never written — the folder jumped 067 → 069, leaving
 -- the schema half-migrated: the dead column was still live, still in the
--- TS type, and still read as a fallback in derivedOppName. Migration 069's
--- dedup-index cleanup (section E) is explicitly predicated on 068 having
--- run. This closes the gap.
+-- TS type, and still read as a fallback in derivedOppName. This closes the
+-- gap. (069 section E independently built the new property_street dedup
+-- index; the OLD location_short index from migration 046 is dropped here.)
 --
 -- PRECONDITION (satisfied 2026-07-21): every code reader of
 -- `location_short` has been removed —
