@@ -6,7 +6,7 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import {
   listCommercialOpportunities,
   derivedOppName,
-  formatDealNumber,
+  formatOpportunityNumber,
   unarchiveOpportunity,
   opportunityStatusLabel,
 } from "@/lib/commercial/opportunities/db";
@@ -202,7 +202,7 @@ export default async function ArchivedDealsPage({
                 {archived.map((o) => {
                   const accountName = accountNameById.get(o.account_id) ?? null;
                   const display = derivedOppName(o, accountName);
-                  const dealCode = formatDealNumber(o.deal_number);
+                  const oppCode = formatOpportunityNumber(o.project_number);
                   const archivedAt = o.archived_at
                     ? new Date(o.archived_at).toLocaleDateString("en-US", {
                         timeZone: "America/New_York",
@@ -231,9 +231,9 @@ export default async function ArchivedDealsPage({
                             {display}
                           </Link>
                         </div>
-                        {dealCode && (
+                        {oppCode && (
                           <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 font-mono">
-                            {dealCode}
+                            {oppCode}
                           </div>
                         )}
                       </td>
@@ -273,7 +273,7 @@ export default async function ArchivedDealsPage({
             {archived.map((o) => {
               const accountName = accountNameById.get(o.account_id) ?? null;
               const display = derivedOppName(o, accountName);
-              const dealCode = formatDealNumber(o.deal_number);
+              const oppCode = formatOpportunityNumber(o.project_number);
               const archivedAt = o.archived_at
                 ? new Date(o.archived_at).toLocaleDateString("en-US", {
                     timeZone: "America/New_York",
@@ -305,7 +305,7 @@ export default async function ArchivedDealsPage({
                       {accountName ?? "—"}
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-[11px] text-ppp-charcoal-500 flex-wrap">
-                      {dealCode && <span className="font-mono">{dealCode}</span>}
+                      {oppCode && <span className="font-mono">{oppCode}</span>}
                       <span className="inline-flex items-center rounded bg-ppp-charcoal-100 px-1.5 py-0.5 font-medium text-ppp-charcoal-700">
                         {opportunityStatusLabel(o.status)}
                       </span>

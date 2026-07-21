@@ -36,7 +36,7 @@ import {
   oppStatusDisplayLabel,
   opportunitySourceLabel,
   formatBidRange,
-  formatDealNumber,
+  formatOpportunityNumber,
   weightedPipelineCents,
   derivedOppName,
   type CommercialOpportunity,
@@ -2409,21 +2409,23 @@ function KanbanCard({
   // Karan 2026-07-20 UI/UX rebuild: card meta band was dense emoji-
   // suffixed text ("· 📎 3 · 🎨 2 · 📋 1"); replaced with a compact
   // icon-strip that only renders signals with count > 0. Also:
-  // - deal_number chip surfaces on the card header (ALT-####)
+  // - OPP-#### chip surfaces on the card header (the global opportunity id)
   // - bid amount promoted to a bolder line (primary money signal)
   // - "days here" only shown when > 3 (fresh moves don't need it)
   // - probability only shown when it differs from the status default
   //   (skips the noisy "· 10%" that shows on every fresh Solicitation)
-  const dealCode = formatDealNumber(opp.deal_number);
+  // Karan 2026-07-21: chip now shows the canonical OPP-2026-#### id (from
+  // project_number) instead of the confusing per-account deal_number.
+  const oppCode = formatOpportunityNumber(opp.project_number);
   const showDays = days !== null && days > 3;
 
   if (compact) {
     return (
       <li className="bg-white border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
         <Link href={sheetHref(opp.account_id, opp.id)} className="block">
-          {dealCode && (
-            <div className="text-[9px] font-mono text-ppp-charcoal-400 mb-0.5">
-              {dealCode}
+          {oppCode && (
+            <div className="text-[9px] font-mono text-ppp-navy-500 mb-0.5">
+              {oppCode}
             </div>
           )}
           <div className="text-[11px] font-semibold text-ppp-charcoal leading-snug break-words line-clamp-2">
@@ -2447,12 +2449,12 @@ function KanbanCard({
         href={sheetHref(opp.account_id, opp.id)}
         className="block"
       >
-        {/* Header row: deal-number chip (subtle) + optional overdue red dot. */}
-        {(dealCode || (taskStats && taskStats.overdue > 0)) && (
+        {/* Header row: OPP-#### chip (subtle) + optional overdue red dot. */}
+        {(oppCode || (taskStats && taskStats.overdue > 0)) && (
           <div className="flex items-center justify-between gap-2 mb-1">
-            {dealCode ? (
-              <span className="text-[9.5px] font-mono text-ppp-charcoal-400" title="Deal ID">
-                {dealCode}
+            {oppCode ? (
+              <span className="text-[9.5px] font-mono text-ppp-navy-600" title="Opportunity ID">
+                {oppCode}
               </span>
             ) : <span />}
             {taskStats && taskStats.overdue > 0 && (
@@ -2836,12 +2838,12 @@ function OpportunityRow({
                 deals per screen. Full DealJourneyStrip lives on the
                 opp detail page. */}
             <div className="flex items-center gap-2 flex-wrap">
-              {opportunity.deal_number && (
+              {formatOpportunityNumber(opportunity.project_number) && (
                 <span
-                  className="inline-flex items-center px-1.5 py-0.5 rounded bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800 text-[10px] font-bold tracking-wide font-mono shrink-0"
-                  title={`Deal ID: No. ${opportunity.deal_number}`}
+                  className="inline-flex items-center px-1.5 py-0.5 rounded bg-ppp-navy-50 border border-ppp-navy-100 text-ppp-navy-700 text-[10px] font-bold tracking-wide font-mono shrink-0"
+                  title={`Opportunity ID · ${formatOpportunityNumber(opportunity.project_number)}`}
                 >
-                  {opportunity.deal_number}
+                  {formatOpportunityNumber(opportunity.project_number)}
                 </span>
               )}
               <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">

@@ -68,6 +68,7 @@ import {
   opportunityStatusLabel,
   oppStatusDisplayLabel,
   formatBidRange,
+  formatOpportunityNumber,
   weightedPipelineCents,
   derivedOppName,
   getCommercialOpportunity,
@@ -3377,6 +3378,16 @@ function AccountOpportunityRow({
               </span>
             </div>
             <div className="mt-1 text-[12.5px] text-ppp-charcoal-600 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+              {/* Karan 2026-07-21: OPP-#### id chip for scannable cross-ref
+                  (consistent with kanban + pipeline list). */}
+              {formatOpportunityNumber(opp.project_number) && (
+                <>
+                  <span className="font-mono text-[10.5px] text-ppp-navy-600">
+                    {formatOpportunityNumber(opp.project_number)}
+                  </span>
+                  <span aria-hidden className="text-ppp-charcoal-300">·</span>
+                </>
+              )}
               <span className="font-semibold text-ppp-charcoal-800">
                 {bidLabel !== "—" ? bidLabel : "No bid set"}
               </span>
@@ -5943,10 +5954,33 @@ function DealEditSheet({
                 </span>
               </label>
             </div>
-            {deal.project_number && (
-              <div className="text-[11.5px] text-ppp-charcoal-500 tabular-nums inline-flex items-center gap-1">
-                Project #: <span className="font-mono text-ppp-charcoal-800">{deal.project_number}</span>
-                <CopyToClipboardButton value={deal.project_number} label="Project # copied" ariaLabel={`Copy project number ${deal.project_number}`} />
+            {/* Karan 2026-07-21: OPP-2026-#### is the canonical opportunity
+                id (from project_number). deal_number is demoted to a
+                secondary "Job No." — the Tomco proposal-letterhead ref. */}
+            {(deal.project_number || deal.deal_number) && (
+              <div className="flex flex-col gap-1 text-[11.5px] text-ppp-charcoal-500">
+                {formatOpportunityNumber(deal.project_number) && (
+                  <div className="inline-flex items-center gap-1 tabular-nums">
+                    Opportunity ID:{" "}
+                    <span className="font-mono font-semibold text-ppp-navy-700">
+                      {formatOpportunityNumber(deal.project_number)}
+                    </span>
+                    <CopyToClipboardButton
+                      value={formatOpportunityNumber(deal.project_number)}
+                      label="Opportunity ID copied"
+                      ariaLabel="Copy opportunity ID"
+                    />
+                  </div>
+                )}
+                {deal.deal_number && (
+                  <div className="inline-flex items-center gap-1 tabular-nums">
+                    Job No.:{" "}
+                    <span className="font-mono text-ppp-charcoal-700">{deal.deal_number}</span>
+                    <span className="normal-case tracking-normal text-ppp-charcoal-400">
+                      — on the Tomco proposal
+                    </span>
+                  </div>
+                )}
               </div>
             )}
             <div>

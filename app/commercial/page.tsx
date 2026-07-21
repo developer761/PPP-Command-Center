@@ -23,7 +23,7 @@
 import Link from "next/link";
 import {
   derivedOppName,
-  formatDealNumber,
+  formatOpportunityNumber,
   listCommercialOpportunities,
   opportunityStatusLabel,
   weightedPipelineCents,
@@ -508,7 +508,7 @@ function TopOpenDealsCard({
             const acct = accountNameById.get(o.account_id) ?? null;
             const display = derivedOppName(o, acct);
             const weighted = weightedPipelineCents(o);
-            const dealCode = formatDealNumber(o.deal_number);
+            const oppCode = formatOpportunityNumber(o.project_number);
             return (
               <li key={o.id}>
                 <Link
@@ -523,8 +523,8 @@ function TopOpenDealsCard({
                       {display}
                     </div>
                     <div className="text-[10.5px] text-ppp-charcoal-500 truncate flex items-center gap-1.5 mt-0.5">
-                      {dealCode && <span className="font-mono">{dealCode}</span>}
-                      {dealCode && <span aria-hidden>·</span>}
+                      {oppCode && <span className="font-mono text-ppp-navy-600">{oppCode}</span>}
+                      {oppCode && <span aria-hidden>·</span>}
                       <span>{opportunityStatusLabel(o.status)}</span>
                       {o.proposal_due_at && (
                         <>
@@ -584,7 +584,7 @@ function RecentActivityCard({
           {opps.map((o) => {
             const acct = accountNameById.get(o.account_id) ?? null;
             const display = derivedOppName(o, acct);
-            const dealCode = formatDealNumber(o.deal_number);
+            const oppCode = formatOpportunityNumber(o.project_number);
             const relative = relativeLabel(o.updated_at);
             return (
               <li key={o.id}>
@@ -597,8 +597,8 @@ function RecentActivityCard({
                       {display}
                     </div>
                     <div className="text-[10.5px] text-ppp-charcoal-500 truncate flex items-center gap-1.5 mt-0.5">
-                      {dealCode && <span className="font-mono">{dealCode}</span>}
-                      {dealCode && <span aria-hidden>·</span>}
+                      {oppCode && <span className="font-mono text-ppp-navy-600">{oppCode}</span>}
+                      {oppCode && <span aria-hidden>·</span>}
                       <span>{opportunityStatusLabel(o.status)}</span>
                     </div>
                   </div>

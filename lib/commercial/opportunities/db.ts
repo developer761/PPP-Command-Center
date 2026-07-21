@@ -213,13 +213,34 @@ export function derivedOppName(
   return opp.title || parts[0] || "Untitled opportunity";
 }
 
-/** Format a deal number for display. Prefixes "No. " to match Tomco's
- *  letterhead convention ("No. ALT-0125"). Renders empty string if the
- *  opp has no deal_number yet (pre-migration-065 or migration failure). */
+/** Format the "Job No." — the per-account, GC-prefixed deal_number, e.g.
+ *  "No. ALT-0125". This is Katie's Tomco LETTERHEAD convention and lives on
+ *  the proposal PDF + as a secondary "Job No." reference on the deal. It is
+ *  NOT the platform's canonical opportunity identifier — use
+ *  formatOpportunityNumber for that. Empty string when unassigned. */
 export function formatDealNumber(dealNumber: string | null | undefined): string {
   const raw = dealNumber?.trim();
   if (!raw) return "";
   return /^no\./i.test(raw) ? raw : `No. ${raw}`;
+}
+
+/** Format the canonical OPPORTUNITY identifier — the global, unique,
+ *  auto-assigned `project_number` (YYYY-NNNN, migration 046) prefixed with
+ *  "OPP-" so it reads in the same family as ACC-####/PROP-####/INV-####,
+ *  e.g. "OPP-2026-0042". This is the prominent platform ID shown on every
+ *  in-app opportunity surface (kanban / list / hero / account row).
+ *
+ *  Karan 2026-07-21: replaces the confusing per-account `deal_number`
+ *  (TES-0001) as the primary chip. We deliberately reuse project_number
+ *  rather than mint a third ID — it's already global + unique + searchable.
+ *  The year is kept because project_number resets per year. Empty string
+ *  when unassigned (pre-migration-046 rows). */
+export function formatOpportunityNumber(
+  projectNumber: string | null | undefined
+): string {
+  const raw = projectNumber?.trim();
+  if (!raw) return "";
+  return /^opp-/i.test(raw) ? raw : `OPP-${raw}`;
 }
 
 export type OpportunitiesListFilters = {

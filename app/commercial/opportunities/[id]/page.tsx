@@ -12,6 +12,7 @@ import {
   formatBidRange,
   weightedPipelineCents,
   derivedOppName,
+  formatOpportunityNumber,
   OPPORTUNITY_STATUSES,
   OPPORTUNITY_LOSS_REASONS,
   type CommercialOpportunity,
@@ -1534,13 +1535,28 @@ export default async function OpportunityDetailPage({
               {derivedOppName(opp, account?.company_name ?? null)}
             </h1>
             <div className="text-sm text-ppp-charcoal-500 mt-1 flex items-center gap-2 flex-wrap">
+              {/* Karan 2026-07-21: primary opportunity id = the global
+                  OPP-2026-#### (project_number). The per-account deal_number
+                  is demoted to a secondary "Job No." — it's the Tomco
+                  proposal-letterhead reference, not the platform id. */}
+              {formatOpportunityNumber(opp.project_number) && (
+                <>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-md bg-ppp-navy-50 border border-ppp-navy-100 text-ppp-navy-700 text-[11px] font-bold tracking-wide font-mono"
+                    title="Opportunity ID"
+                  >
+                    {formatOpportunityNumber(opp.project_number)}
+                  </span>
+                  <span aria-hidden>·</span>
+                </>
+              )}
               {opp.deal_number && (
                 <>
                   <span
-                    className="inline-flex items-center px-2 py-0.5 rounded-md bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800 text-[11px] font-bold tracking-wide font-mono"
-                    title="Per-account deal number — matches the 'No.' line on the Tomco proposal PDF."
+                    className="inline-flex items-center px-2 py-0.5 rounded-md bg-ppp-charcoal-50 border border-ppp-charcoal-200 text-ppp-charcoal-600 text-[11px] font-medium tracking-wide font-mono"
+                    title="Job No. — matches the 'No.' line on the Tomco proposal PDF."
                   >
-                    No. {opp.deal_number}
+                    Job {opp.deal_number}
                   </span>
                   <span aria-hidden>·</span>
                 </>
