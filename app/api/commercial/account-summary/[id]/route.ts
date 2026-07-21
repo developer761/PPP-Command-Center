@@ -35,7 +35,7 @@ export async function GET(
 
   const { data: account } = await sb
     .from("commercial_accounts")
-    .select("id, company_name, city, state, industry")
+    .select("id, company_name, city, state, industry, account_seq")
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -91,6 +91,7 @@ export async function GET(
     city: (account as { city: string | null }).city,
     state: (account as { state: string | null }).state,
     industry: (account as { industry: string | null }).industry,
+    account_seq: (account as { account_seq: number | null }).account_seq ?? null,
     open_bids_count: openBidsRes.count ?? 0,
     invoiced_cents,
     last_activity_at,

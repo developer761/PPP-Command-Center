@@ -28,10 +28,18 @@ type AccountSummary = {
   city: string | null;
   state: string | null;
   industry: string | null;
+  account_seq: number | null;
   open_bids_count: number;
   invoiced_cents: number;
   last_activity_at: string | null;
 };
+
+/** ACC-#### from the account's sequential id (migration 070). Empty for
+ *  pre-migration rows. Mirrors formatAccountNumber (kept local so this
+ *  client component doesn't import the server-only accounts/db module). */
+function accNumber(seq: number | null): string {
+  return seq == null ? "" : `ACC-${String(seq).padStart(4, "0")}`;
+}
 
 const cache = new Map<string, AccountSummary>();
 
@@ -122,11 +130,19 @@ export function AccountHoverCard({
                 >
                   {data.company_name}
                 </span>
-                {(data.city || data.state) && (
-                  <span className="block text-[11px] text-ppp-charcoal-500 mt-0.5 truncate">
-                    {[data.city, data.state].filter(Boolean).join(", ")}
-                  </span>
-                )}
+                <span className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  {accNumber(data.account_seq) && (
+                    <span className="font-mono text-[10px] text-ppp-navy-600">
+                      {accNumber(data.account_seq)}
+                    </span>
+                  )}
+                  {(data.city || data.state) && (
+                    <span className="text-[11px] text-ppp-charcoal-500 truncate">
+                      {accNumber(data.account_seq) ? "· " : ""}
+                      {[data.city, data.state].filter(Boolean).join(", ")}
+                    </span>
+                  )}
+                </span>
                 <span className="block mt-2 text-[11.5px] text-ppp-charcoal-700 space-y-0.5">
                   <span className="block">
                     <strong>{data.open_bids_count}</strong> open bid

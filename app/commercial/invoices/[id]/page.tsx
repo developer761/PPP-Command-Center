@@ -40,8 +40,8 @@ import {
 } from "@/lib/commercial/invoices/constants";
 import { formatCentsFull, fmtEtDate, parseDollarsToCents, daysBetween } from "@/lib/commercial/invoices/format";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
-import { getCommercialAccount } from "@/lib/commercial/accounts/db";
-import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
+import { getCommercialAccount, formatAccountNumber } from "@/lib/commercial/accounts/db";
+import { getCommercialOpportunity, derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 import { isWon } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
@@ -624,16 +624,31 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
               {account && (
                 <>
-                  <Link href={`/commercial/accounts/${account.id}`} className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 font-medium">
+                  <Link href={`/commercial/accounts/${account.id}`} className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 font-medium">
                     {account.company_name}
+                    {formatAccountNumber(account.account_seq) && (
+                      <span className="no-underline font-mono text-[10px] text-ppp-navy-600">
+                        {formatAccountNumber(account.account_seq)}
+                      </span>
+                    )}
                   </Link>
                   <span aria-hidden>·</span>
                 </>
               )}
               {opp && (
                 <>
-                  <Link href={`/commercial/opportunities/${opp.id}`} className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2">
+                  {/* Route to the opportunity's real home (account drill-in
+                      sheet), archived-safe — /opportunities/[id] bounces. */}
+                  <Link
+                    href={`/commercial/accounts/${opp.account_id}?tab=opportunities&edit=${opp.id}${opp.archived_at ? "&archived=1" : ""}#deal-row-${opp.id}`}
+                    className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
+                  >
                     {derivedOppName(opp, account?.company_name ?? null)}
+                    {formatOpportunityNumber(opp.project_number) && (
+                      <span className="no-underline font-mono text-[10px] text-ppp-navy-600">
+                        {formatOpportunityNumber(opp.project_number)}
+                      </span>
+                    )}
                   </Link>
                   <span aria-hidden>·</span>
                 </>

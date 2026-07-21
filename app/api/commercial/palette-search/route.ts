@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
+import { formatAccountNumber } from "@/lib/commercial/accounts/db";
+import { formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 
 /**
  * GET /api/commercial/palette-search?q=bob
@@ -51,11 +53,17 @@ export async function GET(request: Request) {
   // syntax error at worst or matches nothing at best.
   const safe = rawQ.replace(/[\\%_]/g, "\\$&");
   const pattern = `%${safe}%`;
+  // 2026-07-21: let users paste a full id chip and still match. The
+  // underlying columns store the number WITHOUT the family prefix
+  // (project_number "2026-0042", invoice_number "INV-0113"), so strip a
+  // leading OPP-/ACC-/PROP-/INV- before matching those id columns.
+  const idSafe = safe.replace(/^(opp|acc|prop|inv)-/i, "");
+  const idPattern = `%${idSafe}%`;
 
   const [accountsRes, oppsRes, invoicesRes] = await Promise.all([
     sb
       .from("commercial_accounts")
-      .select("id, company_name, city, state")
+      .select("id, company_name, city, state, account_seq")
       .is("deleted_at", null)
       .ilike("company_name", pattern)
       .order("company_name")
@@ -65,7 +73,7 @@ export async function GET(request: Request) {
       .select("id, title, client_name, property_street, project_number, account_id, status")
       .is("deleted_at", null)
       .or(
-        `title.ilike.${pattern},client_name.ilike.${pattern},property_street.ilike.${pattern},project_number.ilike.${pattern}`
+        `title.ilike.${pattern},client_name.ilike.${pattern},property_street.ilike.${pattern},project_number.ilike.${idPattern}`
       )
       .order("updated_at", { ascending: false })
       .limit(MAX_PER_KIND),
@@ -73,7 +81,7 @@ export async function GET(request: Request) {
       .from("commercial_invoices")
       .select("id, invoice_number, po_number, account_id, opportunity_id, total_cents, status")
       .is("deleted_at", null)
-      .or(`invoice_number.ilike.${pattern},po_number.ilike.${pattern}`)
+      .or(`invoice_number.ilike.${idPattern},po_number.ilike.${pattern}`)
       .order("issued_at", { ascending: false })
       .limit(MAX_PER_KIND),
   ]);
@@ -85,8 +93,12 @@ export async function GET(request: Request) {
     company_name: string;
     city: string | null;
     state: string | null;
+    account_seq: number | null;
   }[]) {
-    const hint = [a.city, a.state].filter(Boolean).join(", ") || "Account";
+    const hint =
+      [formatAccountNumber(a.account_seq), [a.city, a.state].filter(Boolean).join(", ")]
+        .filter(Boolean)
+        .join(" · ") || "Account";
     results.push({
       kind: "account",
       id: a.id,
@@ -107,7 +119,8 @@ export async function GET(request: Request) {
   }[]) {
     const derived =
       [o.client_name, o.property_street].filter(Boolean).join(" — ") || o.title || "(untitled)";
-    const hint = o.project_number ? `#${o.project_number} · ${o.status}` : o.status;
+    const oppNo = formatOpportunityNumber(o.project_number);
+    const hint = oppNo ? `${oppNo} · ${o.status}` : o.status;
     results.push({
       kind: "opportunity",
       id: o.id,
