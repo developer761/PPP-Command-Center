@@ -92,6 +92,11 @@ export type CommercialProposalLineItem = {
   id: string;
   proposal_id: string;
   product_id: string | null;
+  // Migration 071 (2026-07-21): snapshotted product display name, e.g.
+  // "HM Frame & Wood Door (Seal & Poly)". Rendered as the bold lead on the
+  // PDF with description below. NULL for free-text/legacy rows (renderer
+  // falls back to parsing a bold-lead out of the description).
+  product_name: string | null;
   description: string;
   quantity: number;
   unit: string;
@@ -845,6 +850,9 @@ export async function listProposalsForOpp(
 export type CreateLineItemInput = {
   proposal_id: string;
   product_id?: string | null;
+  /** Migration 071: snapshotted product display name. Empty/undefined for
+   *  free-text rows. Trimmed on write; empty → NULL. */
+  product_name?: string | null;
   description: string;
   quantity: number;
   unit: string;
@@ -859,6 +867,25 @@ export type CreateLineItemInput = {
   is_labor?: boolean;
 };
 
+/** Migration 071 deploy-safety helpers. `product_name` is a brand-new
+ *  column; between shipping this code and applying the migration (plus
+ *  PostgREST schema-cache lag right after) a write that includes it would
+ *  fail. `withProductName` adds it to a payload; `isMissingProductNameColumn`
+ *  detects the specific "column doesn't exist yet" error so the caller can
+ *  retry once without it. Remove both once 071 is live everywhere. */
+function withProductName<T extends object>(
+  payload: T,
+  name: string | null | undefined
+): T & { product_name: string | null } {
+  return { ...payload, product_name: name?.trim() || null };
+}
+function isMissingProductNameColumn(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  // PGRST204 = column not in PostgREST schema cache; 42703 = undefined_column.
+  if (err.code === "PGRST204" || err.code === "42703") return true;
+  return /product_name/i.test(err.message ?? "");
+}
+
 export async function createLineItem(
   input: CreateLineItemInput,
   actorUserId: string | null
@@ -866,8 +893,11 @@ export async function createLineItem(
   | { ok: true; item: CommercialProposalLineItem }
   | { ok: false; error: string }
 > {
-  if (!input.description.trim())
-    return { ok: false, error: "Description is required." };
+  // Migration 071: a row needs EITHER a picked product (product_name) OR
+  // a typed description — a catalog product with a blank description is a
+  // valid line now that Product + Description are distinct fields.
+  if (!input.description.trim() && !input.product_name?.trim())
+    return { ok: false, error: "Pick a product or type a description." };
   if (input.quantity < 0)
     return { ok: false, error: "Quantity must be zero or greater." };
   // Round-3 audit fix: qty=0 on inclusions produces a $0 row on the
@@ -901,9 +931,9 @@ export async function createLineItem(
     if (!raw) return null;
     return raw.length > 60 ? raw.slice(0, 60) : raw;
   })();
-  const { data, error } = await sb
+  let { data, error } = await sb
     .from("commercial_proposal_line_items")
-    .insert({
+    .insert(withProductName({
       proposal_id: input.proposal_id,
       product_id: input.product_id ?? null,
       description: input.description.trim(),
@@ -915,9 +945,32 @@ export async function createLineItem(
       phase: phaseNormalized,
       // Migration 063: labor flag. Cannot coexist with is_alternate.
       is_labor: input.is_labor ?? false,
-    })
+    }, input.product_name))
     .select("*")
     .single();
+  // Migration 071 deploy-safety: if product_name isn't in the schema yet
+  // (migration not applied / PostgREST cache lag), retry once without it
+  // so line-item creation never breaks on the ordering window.
+  if (error && isMissingProductNameColumn(error)) {
+    const retry = await sb
+      .from("commercial_proposal_line_items")
+      .insert({
+        proposal_id: input.proposal_id,
+        product_id: input.product_id ?? null,
+        description: input.description.trim(),
+        quantity: input.quantity,
+        unit: input.unit,
+        unit_price_cents: input.unit_price_cents,
+        is_alternate: input.is_alternate ?? false,
+        position,
+        phase: phaseNormalized,
+        is_labor: input.is_labor ?? false,
+      })
+      .select("*")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
   if (error) return { ok: false, error: error.message };
   const item = data as CommercialProposalLineItem;
   await logInsert(
@@ -933,6 +986,8 @@ export async function createLineItem(
 export type UpdateLineItemInput = {
   id: string;
   description?: string;
+  /** Migration 071: product display name. Pass empty/null to clear. */
+  product_name?: string | null;
   quantity?: number;
   unit?: string;
   unit_price_cents?: number;
@@ -950,9 +1005,17 @@ export async function updateLineItem(
   | { ok: false; error: string }
 > {
   const patch: Record<string, unknown> = {};
+  if (input.product_name !== undefined) {
+    patch.product_name = input.product_name?.trim() || null;
+  }
   if (input.description !== undefined) {
+    // Migration 071: an empty description is allowed when the row carries a
+    // product_name (Product + Description are distinct now). Only reject a
+    // fully-blank row (no product being set + no existing product_name).
     const trimmed = input.description.trim();
-    if (!trimmed) return { ok: false, error: "Description is required." };
+    if (!trimmed && input.product_name !== undefined && !input.product_name?.trim()) {
+      return { ok: false, error: "Pick a product or type a description." };
+    }
     patch.description = trimmed;
   }
   if (input.quantity !== undefined) {
@@ -1003,12 +1066,25 @@ export async function updateLineItem(
     .eq("id", input.id)
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
-  const { data: after, error } = await sb
+  let { data: after, error } = await sb
     .from("commercial_proposal_line_items")
     .update(patch)
     .eq("id", input.id)
     .select("*")
     .single();
+  // Migration 071 deploy-safety: retry without product_name if the column
+  // isn't in the schema yet (see createLineItem).
+  if (error && isMissingProductNameColumn(error) && "product_name" in patch) {
+    const { product_name: _drop, ...rest } = patch;
+    const retry = await sb
+      .from("commercial_proposal_line_items")
+      .update(rest)
+      .eq("id", input.id)
+      .select("*")
+      .single();
+    after = retry.data;
+    error = retry.error;
+  }
   if (error) return { ok: false, error: error.message };
   const item = after as CommercialProposalLineItem;
   await logUpdate(

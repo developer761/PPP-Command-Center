@@ -68,6 +68,10 @@ type Props = {
   unitPriceInputId: string;
   /** DOM id of the hidden product_id input this picker owns. */
   productIdInputId: string;
+  /** Migration 071: DOM id of the hidden product_name input. The picker
+   *  writes the product's display name here (separate from description),
+   *  so the PDF can render Product name (bold) + Description below it. */
+  productNameInputId?: string;
 };
 
 export default function ProductPicker({
@@ -77,6 +81,7 @@ export default function ProductPicker({
   unitInputId,
   unitPriceInputId,
   productIdInputId,
+  productNameInputId,
 }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -205,21 +210,14 @@ export default function ProductPicker({
     setQuery(displayName);
     setOpen(false);
     setFormValue(productIdInputId, p.id);
-    // Instant defaults so the row is usable even before the price
-    // resolve API returns. Description prefill:
-    //   - Standalone: use description (fallback: name)
-    //   - Variation:  "**{parent name} ({variation label}):** {description}"
-    //     Markdown-bold wrapper so PDF splitBoldLead renders the item
-    //     name in Times-Bold regardless of length (bypasses 30-char
-    //     heuristic that rejects long parent+variation combos).
-    //   `normalizeWs` collapses tabs / runs of spaces so descriptions
-    //   with stray whitespace ("Install\tlabor priced by…") render as
-    //   single-space "Install labor priced by…" on the PDF.
+    // Migration 071: Product and Description are now DISTINCT.
+    //   • product_name  ← the display name ("HM Frame & Wood Door (Seal & Poly)")
+    //   • description    ← the product's own description text ONLY (no name
+    //     baked in). The PDF renders product_name as the bold lead with the
+    //     description below it. `normalizeWs` collapses stray whitespace.
+    if (productNameInputId) setFormValue(productNameInputId, displayName);
     const desc = normalizeWs(p.description ?? "");
-    const descriptionSeed = p.variation_label
-      ? `**${displayName}:**${desc ? " " + desc : ""}`
-      : desc || p.name;
-    setFormValue(descriptionInputId, descriptionSeed);
+    setFormValue(descriptionInputId, desc);
     // Audit fix (2026-07-19): write the FRIENDLY unit label ("linear ft"
     // not raw enum "linear_foot") so the tiny unit input doesn't
     // truncate to "linea…" and the customer sees a real unit on the PDF.
@@ -275,8 +273,10 @@ export default function ProductPicker({
     setPriceNote(null);
     setExpandedParentId(null);
     setFormValue(productIdInputId, "");
-    // Deliberately DON'T clear description/unit/unit_price — the user
-    // might want to keep them as-is with a manual tweak.
+    // Migration 071: un-picking clears the snapshotted product_name (the
+    // row becomes free-text). Deliberately DON'T clear description/unit/
+    // unit_price — the user might want to keep + tweak them.
+    if (productNameInputId) setFormValue(productNameInputId, "");
   }
 
   return (
@@ -300,6 +300,7 @@ export default function ProductPicker({
                 if (picked && e.target.value !== picked.name) {
                   setPicked(null);
                   setFormValue(productIdInputId, "");
+                  if (productNameInputId) setFormValue(productNameInputId, "");
                 }
               }}
               onFocus={() => setOpen(true)}

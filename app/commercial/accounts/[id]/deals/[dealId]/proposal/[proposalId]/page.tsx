@@ -303,6 +303,10 @@ async function addLineItemAction(formData: FormData) {
     }
   }
   const description = String(formData.get("description") ?? "").trim();
+  // Migration 071: snapshotted product display name (from the picker),
+  // distinct from the free-text description. Capped defensively.
+  const productNameRaw = String(formData.get("product_name") ?? "").trim();
+  const product_name = productNameRaw ? productNameRaw.slice(0, 200) : null;
   const quantity = Number(String(formData.get("quantity") ?? "1"));
   const unit = String(formData.get("unit") ?? "each").trim() || "each";
   const unit_price_cents = dollarsInputToCents(String(formData.get("unit_price") ?? "0"));
@@ -314,6 +318,7 @@ async function addLineItemAction(formData: FormData) {
     {
       proposal_id: proposalId,
       product_id,
+      product_name,
       description,
       quantity: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1,
       unit,
@@ -373,10 +378,16 @@ async function updateLineItemAction(formData: FormData) {
     phaseInput === null
       ? undefined
       : String(phaseInput).trim() || null;
+  // Migration 071: product_name is a hidden field carrying the row's
+  // current snapshot (preserved on save). Absent → undefined (don't touch).
+  const pnInput = formData.get("product_name");
+  const product_name: string | null | undefined =
+    pnInput === null ? undefined : String(pnInput).trim().slice(0, 200) || null;
   const result = await updateLineItem(
     {
       id,
       description: String(formData.get("description") ?? ""),
+      product_name,
       quantity: Number(String(formData.get("quantity") ?? "1")),
       unit: String(formData.get("unit") ?? "each"),
       unit_price_cents: dollarsInputToCents(String(formData.get("unit_price") ?? "0")),
@@ -1203,90 +1214,89 @@ function LineItemsTable({
   updateAction: (formData: FormData) => Promise<void>;
   deleteAction: (formData: FormData) => Promise<void>;
 }) {
+  // 2026-07-21 rebuild (Karan): rows are cards, not a cramped 12-col grid.
+  // Product name shown as a distinct navy chip (snapshotted, preserved on
+  // save via a hidden field); Description is its own labelled area; the
+  // numeric fields sit in a tidy 3-up row.
   return (
-    <ul className="divide-y divide-ppp-charcoal-100 border border-ppp-charcoal-100 rounded-lg overflow-hidden">
+    <ul className="space-y-3">
       {rows.map((r) => (
-        <li key={r.id} className="p-3 space-y-2">
-          <form action={updateAction} className="space-y-2">
+        <li key={r.id}>
+          <form
+            action={updateAction}
+            className="rounded-xl border border-ppp-charcoal-200 bg-white p-4 space-y-3 shadow-sm"
+          >
             <input type="hidden" name="account_id" value={accountId} />
             <input type="hidden" name="deal_id" value={dealId} />
             <input type="hidden" name="proposal_id" value={proposalId} />
             <input type="hidden" name="id" value={r.id} />
             <input type="hidden" name="is_alternate" value={r.is_alternate ? "on" : ""} />
-            {/* Round-3 audit fix: optimistic-lock stamp so a stale
-                two-tab save is rejected before it overwrites a
-                concurrent edit. Server compares against DB's
-                current updated_at. */}
+            {/* Migration 071: preserve the snapshotted product name on save. */}
+            <input type="hidden" name="product_name" value={r.product_name ?? ""} />
+            {/* Round-3 audit fix: optimistic-lock stamp so a stale two-tab
+                save is rejected before it overwrites a concurrent edit. */}
             <input type="hidden" name="original_updated_at" value={r.updated_at} />
-            <div className="grid grid-cols-12 gap-2 items-end">
-              <label className="col-span-12 sm:col-span-3 block">
-                <span className={LABEL_CLS}>Description</span>
-                {/* Katie 2026-07-20: line item description = "description
-                    area" — multi-line so Alex can add scope detail
-                    beyond a single line. PDF renderer (BulletLine in
-                    pdf.tsx) already parses \n as sub-item markers, so
-                    each newline becomes an indented bullet on the
-                    customer PDF. */}
-                <textarea
-                  name="description"
-                  defaultValue={r.description}
-                  className={`${INPUT_CLS} min-h-[80px] py-2`}
-                  required
-                  rows={3}
-                  placeholder="e.g. Prep, prime, and paint 2 coats. New lines carry to the PDF as sub-points."
-                />
-              </label>
-              {/* F.6: phase label. Free-text so Alex can use "Phase 1",
-                  "Base contract", etc. NULL = ungrouped. */}
-              <label
-                className="col-span-6 sm:col-span-2 block"
-                title="Groups this item under a section header on the PDF. Leave blank for ungrouped."
-              >
+
+            {/* Product chip (only when this row came from the catalog). */}
+            {r.product_name && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-400">Product</span>
+                <span className="inline-flex items-center rounded-md border border-ppp-navy-100 bg-ppp-navy-50 px-2 py-0.5 text-[12.5px] font-semibold text-ppp-navy-700">
+                  {r.product_name}
+                </span>
+              </div>
+            )}
+
+            <label className="block">
+              <span className={LABEL_CLS}>Description</span>
+              <textarea
+                name="description"
+                defaultValue={r.description}
+                className={`${TEXTAREA_CLS} min-h-[72px]`}
+                rows={3}
+                placeholder={r.product_name ? "Optional scope detail — prints under the product name." : "e.g. Prep, prime, and paint 2 coats. New lines carry to the PDF as sub-points."}
+              />
+            </label>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <label className="block" title="Groups this item under a section header on the PDF. Leave blank for ungrouped.">
                 <span className={LABEL_CLS}>Phase</span>
-                <input
-                  type="text"
-                  name="phase"
-                  defaultValue={r.phase ?? ""}
-                  maxLength={60}
-                  placeholder="—"
-                  className={INPUT_CLS}
-                />
+                <input type="text" name="phase" defaultValue={r.phase ?? ""} maxLength={60} placeholder="—" className={INPUT_CLS} />
               </label>
-              <label className="col-span-3 sm:col-span-2 block">
+              <label className="block">
                 <span className={LABEL_CLS}>Qty</span>
                 <input type="text" inputMode="decimal" name="quantity" defaultValue={String(r.quantity)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
-              <label className="col-span-3 sm:col-span-2 block">
+              <label className="block">
                 <span className={LABEL_CLS}>Unit</span>
                 <input type="text" name="unit" defaultValue={productUnitLabel(r.unit)} className={INPUT_CLS} />
               </label>
-              <label className="col-span-6 sm:col-span-3 block">
+              <label className="block">
                 <span className={LABEL_CLS}>Unit price</span>
                 <input type="text" inputMode="decimal" name="unit_price" defaultValue={centsToDollarInput(r.unit_price_cents)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
             </div>
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
-                Row total: {formatDollars(Math.round(Number(r.quantity) * r.unit_price_cents))}
+
+            <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-ppp-charcoal-100">
+              <span className="text-[12.5px] text-ppp-charcoal-600 tabular-nums pt-2">
+                Row total{" "}
+                <span className="font-bold text-ppp-charcoal">
+                  {formatDollars(Math.round(Number(r.quantity) * r.unit_price_cents))}
+                </span>
               </span>
-              <div className="flex items-center gap-2">
-                <button type="submit" className="inline-flex items-center px-3 py-2 rounded-md bg-ppp-charcoal-800 text-white text-[12px] font-semibold hover:bg-ppp-charcoal-900 min-h-[40px]">
+              <div className="flex items-center gap-3 pt-2">
+                <ConfirmSubmitButton
+                  formAction={deleteAction}
+                  message="Remove this line item? This can't be undone."
+                  className="text-[12px] text-rose-700 hover:text-rose-800 min-h-[44px] inline-flex items-center touch-manipulation disabled:opacity-50"
+                >
+                  Remove
+                </ConfirmSubmitButton>
+                <button type="submit" className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-white text-[13px] font-semibold hover:bg-ppp-charcoal-900 touch-manipulation">
                   Save row
                 </button>
               </div>
             </div>
-          </form>
-          <form action={deleteAction} className="text-right">
-            <input type="hidden" name="account_id" value={accountId} />
-            <input type="hidden" name="deal_id" value={dealId} />
-            <input type="hidden" name="proposal_id" value={proposalId} />
-            <input type="hidden" name="id" value={r.id} />
-            <ConfirmSubmitButton
-              message="Remove this line item? This can't be undone."
-              className="text-[11px] text-rose-700 hover:text-rose-800 underline disabled:opacity-50"
-            >
-              Remove row
-            </ConfirmSubmitButton>
           </form>
         </li>
       ))}
@@ -1324,80 +1334,89 @@ function AddLineItemForm({
   isLabor?: boolean;
 }) {
   const prefix = isLabor ? "labor" : isAlternate ? "alt" : "inc";
+  const addLabel = isLabor ? "labor row" : isAlternate ? "alternate" : "inclusion";
+  // 2026-07-21 rebuild (Karan): the add-row is a clean bordered card with
+  // the product picker up top (prominent, full width), then a distinct
+  // Description area, then a tidy numeric row.
   return (
-    <form action={submitAction} className="border-t border-ppp-charcoal-100 pt-3 space-y-2">
+    <form
+      action={submitAction}
+      className="rounded-xl border border-dashed border-cc-brand-300 bg-cc-brand-50/30 p-4 space-y-3"
+    >
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="deal_id" value={dealId} />
       <input type="hidden" name="proposal_id" value={proposalId} />
       {isAlternate && <input type="hidden" name="is_alternate" value="on" />}
       {isLabor && <input type="hidden" name="is_labor" value="on" />}
-      {!isLabor && products.length > 0 ? (
-        <div className="max-w-sm">
-          <ProductPicker
-            products={products.map((p) => ({
-              id: p.id,
-              sku: p.sku,
-              name: p.name,
-              category: p.category,
-              unit: p.unit,
-              default_unit_price_cents: p.default_unit_price_cents,
-              variation_label: p.variation_label ?? null,
-              description: p.description ?? null,
-              is_parent_only: p.is_parent_only ?? false,
-              parent_product_id: p.parent_product_id ?? null,
-            }))}
-            accountId={accountId}
-            descriptionInputId={`${prefix}-desc`}
-            unitInputId={`${prefix}-unit`}
-            unitPriceInputId={`${prefix}-price`}
-            productIdInputId={`${prefix}-pid`}
-          />
-        </div>
-      ) : null}
       <input type="hidden" id={`${prefix}-pid`} name="product_id" defaultValue="" />
-      <div className="grid grid-cols-12 gap-2 items-end">
-        <label className="col-span-12 sm:col-span-3 block">
-          <span className={LABEL_CLS}>Description</span>
-          {/* Katie 2026-07-20: multi-line description; newline → PDF
-              sub-item bullet via BulletLine's \n parser. */}
-          <textarea
-            id={`${prefix}-desc`}
-            name="description"
-            required
-            rows={3}
-            placeholder={isLabor ? "e.g. Skilled painters — prep + prime + 2 coats" : "e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte.\n(New lines carry to the PDF as sub-points)"}
-            className={`${INPUT_CLS} min-h-[80px] py-2`}
-          />
+      <input type="hidden" id={`${prefix}-pname`} name="product_name" defaultValue="" />
+
+      <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">
+        Add {addLabel}
+      </div>
+
+      {/* Product picker (catalog) — fills product name + description +
+          unit + price. Not shown for labor (hourly free-text). */}
+      {!isLabor && products.length > 0 && (
+        <ProductPicker
+          products={products.map((p) => ({
+            id: p.id,
+            sku: p.sku,
+            name: p.name,
+            category: p.category,
+            unit: p.unit,
+            default_unit_price_cents: p.default_unit_price_cents,
+            variation_label: p.variation_label ?? null,
+            description: p.description ?? null,
+            is_parent_only: p.is_parent_only ?? false,
+            parent_product_id: p.parent_product_id ?? null,
+          }))}
+          accountId={accountId}
+          descriptionInputId={`${prefix}-desc`}
+          unitInputId={`${prefix}-unit`}
+          unitPriceInputId={`${prefix}-price`}
+          productIdInputId={`${prefix}-pid`}
+          productNameInputId={`${prefix}-pname`}
+        />
+      )}
+
+      <label className="block">
+        <span className={LABEL_CLS}>Description</span>
+        <textarea
+          id={`${prefix}-desc`}
+          name="description"
+          rows={3}
+          placeholder={isLabor ? "e.g. Skilled painters — prep + prime + 2 coats" : "Optional if a product is picked. New lines carry to the PDF as sub-points."}
+          className={`${TEXTAREA_CLS} min-h-[72px]`}
+        />
+      </label>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* F.6: phase groups items under section headers on the PDF. */}
+        <label className="block" title="Groups this item under a section header on the PDF, e.g. 'Phase 1'. Leave blank for ungrouped.">
+          <span className={LABEL_CLS}>Phase</span>
+          <input type="text" name="phase" maxLength={60} placeholder="e.g. Phase 1" className={INPUT_CLS} />
         </label>
-        {/* F.6: phase label. Optional — leave blank for ungrouped.
-            When ANY line item on this proposal has a phase, the PDF
-            groups items under section headers ("Phase 1:", etc.). */}
-        <label className="col-span-6 sm:col-span-2 block" title="Groups this item under a section header on the PDF, e.g. 'Phase 1'. Leave blank for ungrouped. If any items have a phase, ungrouped items appear under 'General'.">
-          <span className={LABEL_CLS}>Phase (optional)</span>
-          <input
-            type="text"
-            name="phase"
-            maxLength={60}
-            placeholder="e.g. Phase 1"
-            className={INPUT_CLS}
-          />
-        </label>
-        <label className="col-span-3 sm:col-span-2 block">
+        <label className="block">
           <span className={LABEL_CLS}>{isLabor ? "Hours" : "Qty"}</span>
           <input type="text" inputMode="decimal" name="quantity" defaultValue={isLabor ? "8" : "1"} className={`${INPUT_CLS} tabular-nums`} />
         </label>
-        <label className="col-span-3 sm:col-span-2 block">
+        <label className="block">
           <span className={LABEL_CLS}>Unit</span>
           <input type="text" id={`${prefix}-unit`} name="unit" defaultValue={isLabor ? "hour" : "each"} className={INPUT_CLS} />
         </label>
-        <label className="col-span-6 sm:col-span-3 block">
+        <label className="block">
           <span className={LABEL_CLS}>{isLabor ? "$ / hour" : "Unit price"}</span>
           <input type="text" id={`${prefix}-price`} inputMode="decimal" name="unit_price" defaultValue="0.00" className={`${INPUT_CLS} tabular-nums`} />
         </label>
       </div>
+
       <div className="flex justify-end">
-        <button type="submit" className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[40px]">
-          Add {isLabor ? "labor row" : isAlternate ? "alternate" : "inclusion"}
+        <button type="submit" className="inline-flex items-center gap-1.5 px-4 min-h-[44px] rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 touch-manipulation">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 5v14 M5 12h14" />
+          </svg>
+          Add {addLabel}
         </button>
       </div>
     </form>

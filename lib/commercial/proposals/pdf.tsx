@@ -693,6 +693,41 @@ function ProjectBlock({ h }: { h: ProposalHeaderJson }) {
  *
  *  No top-level bullet glyph — Tomco's letterhead convention is plain
  *  lines with bold leads. */
+/** Render one inclusion/alternate line.
+ *  Migration 071: prefer the snapshotted `product_name` as the bold lead
+ *  with the description below/next to it (Product + Description are now
+ *  distinct). Legacy rows (product_name null) fall back to parsing a
+ *  bold-lead out of the description, preserving how they were authored. */
+function ItemLine({ item }: { item: CommercialProposalLineItem }) {
+  const productName = item.product_name?.trim();
+  if (productName) {
+    const raw = normalizeWs(item.description ?? "");
+    const bodyLines = raw.includes("\n")
+      ? raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+      : raw
+      ? [raw]
+      : [];
+    return (
+      <View style={styles.itemLine}>
+        <Text style={{ fontSize: 11 }}>
+          <Text style={styles.bulletLead}>{productName}</Text>
+          {/* Single-line description sits inline after an em-dash; a
+              multi-line description drops to indented sub-bullets below. */}
+          {bodyLines.length === 1 ? <Text>{" — " + bodyLines[0]}</Text> : null}
+        </Text>
+        {bodyLines.length > 1 &&
+          bodyLines.map((sub, i) => (
+            <View key={i} style={styles.bulletSubRow}>
+              <View style={styles.bulletSubDot} />
+              <Text style={styles.bulletSubBody}>{sub}</Text>
+            </View>
+          ))}
+      </View>
+    );
+  }
+  return <BulletLine text={item.description} />;
+}
+
 function BulletLine({ text }: { text: string }) {
   const { lead, body } = splitBoldLead(text);
   // Split body by explicit newlines OR by ", " when there are ≥3
@@ -764,7 +799,7 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
         <Text style={styles.sectionUnderlineHeader}>Scope of Work:</Text>
         <View style={{ marginTop: 4 }}>
           {items.map((it) => (
-            <BulletLine key={it.id} text={it.description} />
+            <ItemLine key={it.id} item={it} />
           ))}
         </View>
       </View>
@@ -817,10 +852,10 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
           <View key={g.key} style={{ marginTop: 6 }}>
             <View wrap={false}>
               <Text style={styles.sectionUnderlineHeader}>{g.label}:</Text>
-              {firstRow && <BulletLine text={firstRow.description} />}
+              {firstRow && <ItemLine item={firstRow} />}
             </View>
             {restRows.map((it) => (
-              <BulletLine key={it.id} text={it.description} />
+              <ItemLine key={it.id} item={it} />
             ))}
           </View>
         );
@@ -851,6 +886,12 @@ function LineItemTable({
           <View key={it.id} style={styles.liRow}>
             <Text style={[styles.liCell, styles.liCellDesc]}>
               {showAlternateBadge && it.is_alternate ? "[ALT] " : ""}
+              {it.product_name ? (
+                <Text style={{ fontFamily: "Times-Bold" }}>
+                  {it.product_name}
+                  {it.description ? " — " : ""}
+                </Text>
+              ) : null}
               {it.description}
             </Text>
             <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
@@ -907,7 +948,7 @@ function AlternateSectionCustomer({
         <Text style={{ marginBottom: 4, fontSize: 11 }}>{altNotes}</Text>
       )}
       {items.map((it) => (
-        <BulletLine key={it.id} text={it.description} />
+        <ItemLine key={it.id} item={it} />
       ))}
       {items.length > 0 && (
         <Text style={styles.altAmount}>ADD ALTERNATE: {formatDollars(total)}</Text>

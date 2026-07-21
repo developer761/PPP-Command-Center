@@ -17,6 +17,11 @@ type Props = {
    *  so callers that don't care get a sensible fallback (not "Removing…"
    *  which was the original delete-only hard-code). */
   pendingLabel?: string;
+  /** Optional server action to submit THIS button to, overriding the
+   *  parent form's action. Lets a single form host both a primary submit
+   *  and a confirm-guarded secondary action (e.g. Save row + Remove)
+   *  without nesting forms. */
+  formAction?: (formData: FormData) => void | Promise<void>;
   children: React.ReactNode;
 };
 
@@ -24,12 +29,14 @@ export default function ConfirmSubmitButton({
   message,
   className,
   pendingLabel = "Working…",
+  formAction,
   children,
 }: Props) {
   const [pending, setPending] = useState(false);
   return (
     <button
       type="submit"
+      formAction={formAction}
       className={className}
       disabled={pending}
       onClick={(e) => {
