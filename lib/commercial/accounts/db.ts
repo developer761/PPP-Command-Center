@@ -46,12 +46,24 @@ export type CommercialAccount = {
   // from company_name; admin can override in account settings for
   // prefix collisions. Optional at type-level for pre-065 read safety.
   deal_code_prefix?: string | null;
+  // Migration 070 (Karan 2026-07-21) — global sequential account ID,
+  // rendered as ACC-#### in the UI. Auto-assigned on insert via trigger.
+  // Optional at type-level for pre-070 read safety.
+  account_seq?: number | null;
   created_at: string;
   updated_at: string;
   created_by_user_id: string | null;
   updated_by_user_id: string | null;
   deleted_at: string | null;
 };
+
+/** Format an account's sequential id as ACC-#### (LPAD 4). Returns an
+ *  empty string for pre-migration-070 rows (seq null) so callers can
+ *  inline `{formatAccountNumber(a.account_seq)}` without a truthy check. */
+export function formatAccountNumber(seq: number | null | undefined): string {
+  if (seq == null) return "";
+  return `ACC-${String(seq).padStart(4, "0")}`;
+}
 
 export type AccountsListFilters = {
   search?: string;

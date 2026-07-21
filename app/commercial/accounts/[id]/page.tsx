@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
+import { getCommercialAccount, formatAccountNumber, type CommercialAccount } from "@/lib/commercial/accounts/db";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import {
   listAccountContacts,
@@ -433,6 +433,15 @@ export default async function CommercialAccountDetailPage({
               <p className="text-sm text-ppp-charcoal-500 mt-0.5">d/b/a {account.dba}</p>
             )}
             <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+              {/* Karan 2026-07-21: ACC-#### unique account identifier
+                  (migration 070). Navy mono chip — matches the ID-badge
+                  language (ALT-#### / PROP-#### / INV-####) with navy as
+                  the structural/ID accent. */}
+              {formatAccountNumber(account.account_seq) && (
+                <span className="inline-flex items-center rounded-md border border-ppp-navy-100 bg-ppp-navy-50 px-1.5 py-0.5 font-mono text-[11px] font-semibold tracking-tight text-ppp-navy-700">
+                  {formatAccountNumber(account.account_seq)}
+                </span>
+              )}
               {account.is_key_relationship && (
                 <Pill tone="amber">★ Key Relationship</Pill>
               )}

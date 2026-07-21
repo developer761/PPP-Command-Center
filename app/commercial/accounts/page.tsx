@@ -30,6 +30,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   listCommercialAccounts,
   listCommercialAccountIndustries,
+  formatAccountNumber,
   type CommercialAccount,
 } from "@/lib/commercial/accounts/db";
 import {
@@ -1068,6 +1069,13 @@ function AccountRow({
                 <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
                   {account.company_name}
                 </span>
+                {/* Karan 2026-07-21: ACC-#### unique account id (migration
+                    070) — subtle navy mono chip for cross-reference. */}
+                {formatAccountNumber(account.account_seq) && (
+                  <span className="inline-flex items-center rounded border border-ppp-navy-100 bg-ppp-navy-50 px-1 py-0.5 font-mono text-[10px] font-semibold tracking-tight text-ppp-navy-700">
+                    {formatAccountNumber(account.account_seq)}
+                  </span>
+                )}
                 {account.dba && (
                   <span className="text-[11px] text-ppp-charcoal-500">d/b/a {account.dba}</span>
                 )}

@@ -9,6 +9,8 @@ import {
   Image,
   renderToBuffer,
   Font,
+  Svg,
+  Circle,
 } from "@react-pdf/renderer";
 import * as React from "react";
 import { readFileSync } from "node:fs";
@@ -73,11 +75,58 @@ const MUTED = "#4B5563";
 const YELLOW_BG = "#FEF3C7";
 const YELLOW_BORDER = "#F59E0B";
 const LINK_BLUE = "#1D4ED8";
-// Karan 2026-07-19: back to pure white paper — the reference PDF is
-// on plain white letterhead, not parchment/ivory. Every prior attempt
-// (F7F0DC cream, F5EFDE ivory + texture) read as "too yellow" for
-// Karan. Deleted the ParchmentBackground SVG + specks entirely.
-const PAPER_BG = "#FFFFFF";
+// Karan 2026-07-21: subtle paper texture re-added per note "add texture
+// to the proposal". CRITICAL LESSON from 3 prior rejections: every warm
+// tone (F7F0DC cream, F5EFDE ivory) read as "too yellow". This version is
+// strictly NEUTRAL — a barely-perceptible cool off-white base (#FCFCFC,
+// no warm hue) + an ultra-faint neutral-GRAY fine-grain speckle at 2-4%
+// opacity (see <PaperTexture/>). Reads as "real paper tooth", never
+// yellow. Fully reversible: set PAPER_BG back to #FFFFFF and drop
+// <PaperTexture/> from <Page> to return to pure white.
+const PAPER_BG = "#FCFCFC";
+
+// Deterministic speckle field — generated once at module load with a
+// fixed-seed LCG so every render of every proposal gets the identical
+// texture (no Math.random → reproducible PDFs). Neutral gray dots only.
+const PAPER_SPECKS: { cx: number; cy: number; r: number; o: number }[] = (() => {
+  let seed = 987654321;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const out: { cx: number; cy: number; r: number; o: number }[] = [];
+  // LETTER = 612 × 792 pt. ~150 tiny dots reads as fine paper tooth
+  // without ever looking like noise or dirt on a client bid.
+  for (let i = 0; i < 150; i++) {
+    out.push({
+      cx: Math.round(rand() * 612 * 10) / 10,
+      cy: Math.round(rand() * 792 * 10) / 10,
+      r: Math.round((0.35 + rand() * 0.45) * 100) / 100,
+      o: Math.round((0.02 + rand() * 0.02) * 1000) / 1000,
+    });
+  }
+  return out;
+})();
+
+/**
+ * Full-page neutral paper texture. Absolutely positioned + `fixed` so it
+ * repeats on every page and sits BEHIND the flowing content (rendered as
+ * the first child of <Page>). Gray-only, very low opacity — provides
+ * "paper tooth" feel with zero warm/yellow cast.
+ */
+function PaperTexture() {
+  return (
+    <Svg
+      fixed
+      style={{ position: "absolute", top: 0, left: 0, width: 612, height: 792 }}
+      viewBox="0 0 612 792"
+    >
+      {PAPER_SPECKS.map((s, i) => (
+        <Circle key={i} cx={s.cx} cy={s.cy} r={s.r} fill="#4b5563" opacity={s.o} />
+      ))}
+    </Svg>
+  );
+}
 
 const styles = StyleSheet.create({
   page: {
@@ -589,13 +638,15 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
         ))}
       </View>
       {/* Blank-line separator + Attention block, also indented + bold.
-          Karan 2026-07-19 (Tomco 1:1 re-check against JD Sports ref PDF):
-          reverted "Attn:" back to "Attention:" — reference PDF ALT0125
-          spells it out fully. Email renders as blue underlined link. */}
+          Karan 2026-07-21: back to "Attn:" per Karan's written spec
+          ("Attn: (Name)"). NOTE: this has flip-flopped — 2026-07-19 set it
+          to "Attention:" to match the JD Sports reference PDF which spells
+          it out. Karan's latest explicit note wins; confirm against
+          Brendan's actual sample to lock it. Email = blue underlined link. */}
       {hasAttentionBlock && (
         <View style={[styles.addrBlock, { marginTop: 10 }]}>
           {h.attention && (
-            <Text style={styles.addrLine}>Attention: {h.attention}</Text>
+            <Text style={styles.addrLine}>Attn: {h.attention}</Text>
           )}
           {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
           {h.email && (
@@ -1013,8 +1064,11 @@ export function ProposalPdfDocument({
       subject={proposal.header_json.project_name ?? "Proposal"}
     >
       <Page size="LETTER" style={styles.page}>
-        {/* Karan 2026-07-19: single red keyline border wraps every
-            page. Background is pure white — no parchment/texture. */}
+        {/* Karan 2026-07-21: subtle NEUTRAL paper texture behind all
+            content (first child = furthest back). Gray speckle only —
+            never the warm cream that read as "too yellow" before. */}
+        <PaperTexture />
+        {/* Single red keyline border wraps every page. */}
         <View style={styles.borderFrame} fixed />
 
         <LogoBlock
