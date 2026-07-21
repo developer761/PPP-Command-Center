@@ -59,13 +59,22 @@ export async function GET(request: Request) {
   // leading OPP-/ACC-/PROP-/INV- before matching those id columns.
   const idSafe = safe.replace(/^(opp|acc|prop|inv)-/i, "");
   const idPattern = `%${idSafe}%`;
+  // account_seq is an INTEGER, so it can't be ilike-matched. When the
+  // stripped query is purely numeric (e.g. "ACC-0042" → "0042" or a bare
+  // "42"), also match the exact account number so a pasted ACC-#### chip
+  // resolves — otherwise the displayed ACC hint would invite a dead paste.
+  const acctSeqNum = /^\d+$/.test(idSafe) ? parseInt(idSafe, 10) : null;
+  const acctOr =
+    acctSeqNum !== null && Number.isFinite(acctSeqNum)
+      ? `company_name.ilike.${pattern},account_seq.eq.${acctSeqNum}`
+      : `company_name.ilike.${pattern}`;
 
   const [accountsRes, oppsRes, invoicesRes] = await Promise.all([
     sb
       .from("commercial_accounts")
       .select("id, company_name, city, state, account_seq")
       .is("deleted_at", null)
-      .ilike("company_name", pattern)
+      .or(acctOr)
       .order("company_name")
       .limit(MAX_PER_KIND),
     sb

@@ -130,19 +130,21 @@ export function AccountHoverCard({
                 >
                   {data.company_name}
                 </span>
-                <span className="mt-0.5 flex items-center gap-1.5 flex-wrap">
-                  {accNumber(data.account_seq) && (
-                    <span className="font-mono text-[10px] text-ppp-navy-600">
-                      {accNumber(data.account_seq)}
-                    </span>
-                  )}
-                  {(data.city || data.state) && (
-                    <span className="text-[11px] text-ppp-charcoal-500 truncate">
-                      {accNumber(data.account_seq) ? "· " : ""}
-                      {[data.city, data.state].filter(Boolean).join(", ")}
-                    </span>
-                  )}
-                </span>
+                {(accNumber(data.account_seq) || data.city || data.state) && (
+                  <span className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    {accNumber(data.account_seq) && (
+                      <span className="font-mono text-[10px] text-ppp-navy-600">
+                        {accNumber(data.account_seq)}
+                      </span>
+                    )}
+                    {(data.city || data.state) && (
+                      <span className="text-[11px] text-ppp-charcoal-500 truncate">
+                        {accNumber(data.account_seq) ? "· " : ""}
+                        {[data.city, data.state].filter(Boolean).join(", ")}
+                      </span>
+                    )}
+                  </span>
+                )}
                 <span className="block mt-2 text-[11.5px] text-ppp-charcoal-700 space-y-0.5">
                   <span className="block">
                     <strong>{data.open_bids_count}</strong> open bid

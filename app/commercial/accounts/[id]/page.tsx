@@ -512,7 +512,7 @@ export default async function CommercialAccountDetailPage({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M12 5v14 M5 12h14" />
               </svg>
-              New deal
+              New opportunity
             </Link>
             <Link
               href={`/commercial/accounts/${account.id}/edit`}
@@ -962,7 +962,7 @@ async function createDealInlineAction(formData: FormData) {
     });
     if (dups.length > 0) {
       const first = dups[0];
-      const label = first.project_number ? `#${first.project_number}` : first.title;
+      const label = formatOpportunityNumber(first.project_number) || first.title;
       redirect(
         `/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&dup_id=${first.id}&dup_label=${encodeURIComponent(label)}#new-deal`
       );

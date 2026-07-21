@@ -215,7 +215,7 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
     .maybeSingle();
   if (!oppRow) redirect("/commercial/invoices");
   // Karan 2026-07-09: relaxed the "deleted parent only" guard. Active
-  // Won deals need bulk-clear too (test data cleanup, duplicate imports,
+  // Won opportunities need bulk-clear too (test data cleanup, duplicate imports,
   // etc). Auto-void logic below preserves payment history for any paid
   // rows so the audit trail stays intact even on an active deal.
   // Guard 2: block if any invoice has recorded payments.
@@ -386,8 +386,8 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // the most recent wins on top (Karan's typical flow after a Win/Loss
   // Debrief lands).
   // Karan 2026-07-09: when filtered by account, the picker scopes to that
-  // account's Won deals — otherwise Bob's filtered view showed every
-  // Won deal from every customer, and clicking one would jump away from
+  // account's Won opportunities — otherwise Bob's filtered view showed every
+  // Won opportunity from every customer, and clicking one would jump away from
   // Bob's filter context entirely.
   const wonOppsAll = allOpps
     .filter((o) => isWon(o))
@@ -703,12 +703,12 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               Invoices
             </h1>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
-              Bill for Won deals. Track sent · viewed · paid · overdue.
+              Bill for Won opportunities. Track sent · viewed · paid · overdue.
             </p>
           </div>
           {/* New invoice CTA. Karan 2026-07-09: when the target opp is
               unambiguous (a deal-scoped view OR an account view with
-              exactly one Won deal), the button skips the picker and
+              exactly one Won opportunity), the button skips the picker and
               scrolls straight to the inline "+ New invoice for this
               deal" form — no more "pick Deal 1 from a picker of one". */}
           {(() => {
@@ -753,15 +753,15 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[300px] max-w-[calc(100vw-1rem)]">
               <div className="text-[12px] font-semibold text-ppp-charcoal-700 px-1 pb-2">
                 {accountIdFilter
-                  ? `Pick a Won deal for ${accountFilter?.company_name ?? "this customer"} to bill`
-                  : "Pick a Won deal to bill"}
+                  ? `Pick a Won opportunity for ${accountFilter?.company_name ?? "this customer"} to bill`
+                  : "Pick a Won opportunity to bill"}
               </div>
               {wonOpps.length === 0 ? (
                 <div className="px-2 py-3 text-[12.5px] text-ppp-charcoal-600 space-y-2">
                   {accountIdFilter ? (
                     <>
                       <div>
-                        {accountFilter?.company_name ?? "This customer"} has no Won deals yet. Invoices attach to a deal that's been marked <strong>Won</strong>.
+                        {accountFilter?.company_name ?? "This customer"} has no Won opportunities yet. Invoices attach to an opportunity that's been marked <strong>Won</strong>.
                       </div>
                       <Link
                         href={`/commercial/accounts/${accountIdFilter}?tab=deals`}
@@ -772,7 +772,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                     </>
                   ) : (
                     <>
-                      <div>No Won deals yet — an invoice needs a Won deal to attach to.</div>
+                      <div>No Won opportunities yet — an invoice needs a Won opportunity to attach to.</div>
                       <Link href="/commercial/opportunities" className="inline-flex items-center gap-1 text-cc-brand-700 font-semibold hover:underline">
                         Go to pipeline →
                       </Link>
@@ -1055,7 +1055,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             </>
           ) : wonOpps.length > 0 ? (
             <p className="mt-1 text-sm text-ppp-charcoal-500 max-w-md mx-auto">
-              You have {wonOpps.length} Won deal{wonOpps.length === 1 ? "" : "s"} ready to bill. Use <strong className="text-ppp-charcoal-700">New invoice ▾</strong> at the top of this page to pick one.
+              You have {wonOpps.length} Won opportunity{wonOpps.length === 1 ? "" : "s"} ready to bill. Use <strong className="text-ppp-charcoal-700">New invoice ▾</strong> at the top of this page to pick one.
             </p>
           ) : (
             <>
@@ -1589,8 +1589,8 @@ function FullDetailByOpp({
         {wonList.length > 0 ? (
           <p className="mt-1 text-sm text-ppp-charcoal-500 max-w-md mx-auto">
             {wonList.length === 1
-              ? "1 Won deal ready to bill."
-              : `${wonList.length} Won deals ready to bill.`}{" "}
+              ? "1 Won opportunity ready to bill."
+              : `${wonList.length} Won opportunities ready to bill.`}{" "}
             Use <strong className="text-ppp-charcoal-700">New invoice</strong> at the top of this page.
           </p>
         ) : (

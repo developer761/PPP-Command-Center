@@ -250,8 +250,8 @@ async function quickFlipStatusAction(formData: FormData) {
   redirect(buildFlipReturnHref(returnHref, "status_ok", "1"));
 }
 
-// Karan 2026-07-08: GHL-style "New deal" slide-out on the pipeline page.
-// The old "+ New deal" button bounced through /commercial/accounts which
+// Karan 2026-07-08: GHL-style "New opportunity" slide-out on the pipeline page.
+// The old "+ New opportunity" button bounced through /commercial/accounts which
 // felt like a dead-end because the user hadn't picked one yet. Now the
 // button opens a right-side sheet with an account autocomplete + the
 // core deal fields; on submit we insert the deal and drop the user into
@@ -281,7 +281,7 @@ async function createDealFromPipelineAction(formData: FormData) {
     redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Pick a GC (account) from the list.")}#new-deal-sheet`);
   }
   if (!title || title.length > 200) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Deal name is required (max 200 chars).")}#new-deal-sheet`);
+    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Opportunity name is required (max 200 chars).")}#new-deal-sheet`);
   }
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(status)) {
     redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Invalid status.")}#new-deal-sheet`);
@@ -416,7 +416,7 @@ export default async function CommercialOpportunitiesPage({
 
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently updated" },
-    { key: "oldest", label: "Oldest / stuck deals" },
+    { key: "oldest", label: "Oldest / stuck opportunities" },
     { key: "bid_high", label: "Highest bid first" },
     { key: "due_soon", label: "Proposal due soonest" },
     { key: "probability_high", label: "Most likely to win" },
@@ -687,10 +687,16 @@ export default async function CommercialOpportunitiesPage({
     (search ? 1 : 0) + (validStatus ? 1 : 0) +
     (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size +
     (overdueFilter ? 1 : 0) + (coldRfpFilter ? 1 : 0) + (followupFilter ? 1 : 0);
-  // Clear a single attention deep-link filter (they live in baseParams).
+  // Clear a single attention deep-link filter. baseParams carries the
+  // OTHER two attention filters (they live there), but NOT stale/hot/
+  // archived — those must be re-added manually like every sibling builder,
+  // or clearing an attention chip would silently drop them too.
   const clearAttentionHref = (which: "overdue" | "coldrfp" | "followup"): string => {
     const p = new URLSearchParams(baseParams);
     p.delete(which);
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -769,7 +775,7 @@ export default async function CommercialOpportunitiesPage({
               Pipeline
             </h1>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
-              Every commercial deal across every customer. Filter, sort, drag.
+              Every commercial opportunity across every customer. Filter, sort, drag.
             </p>
           </div>
           <Link
@@ -779,7 +785,7 @@ export default async function CommercialOpportunitiesPage({
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
             </svg>
-            New deal
+            New opportunity
           </Link>
         </div>
 
@@ -1149,7 +1155,7 @@ export default async function CommercialOpportunitiesPage({
             </svg>
           </div>
           <div className="text-sm font-semibold text-ppp-charcoal">
-            {anyFilterActive ? "No deals match these filters" : "No deals yet"}
+            {anyFilterActive ? "No opportunities match these filters" : "No opportunities yet"}
           </div>
           <p className="mt-1 text-sm text-ppp-charcoal-500">
             {anyFilterActive
@@ -1164,7 +1170,7 @@ export default async function CommercialOpportunitiesPage({
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M12 5v14 M5 12h14" />
               </svg>
-              New deal
+              New opportunity
             </Link>
           ) : (
             <Link
@@ -1370,7 +1376,7 @@ export default async function CommercialOpportunitiesPage({
         />
       )}
 
-      {/* Karan 2026-07-08: GHL-style right-side "New deal" slide-out.
+      {/* Karan 2026-07-08: GHL-style right-side "New opportunity" slide-out.
           Backdrop <Link> closes without a click handler (works with JS
           off too). Account picker is a text input backed by a <datalist>
           of live accounts so the user can type the customer name or
@@ -1419,7 +1425,7 @@ function NewDealSlideOut({
           <div>
             <h2 className="text-base font-bold text-ppp-charcoal">New opportunity</h2>
             <p className="text-xs text-ppp-charcoal-500 mt-0.5">
-              Pick the GC (account), name the deal, click Create.
+              Pick the GC (account), name the opportunity, click Create.
             </p>
           </div>
           <Link
@@ -1449,7 +1455,7 @@ function NewDealSlideOut({
 
           <div>
             <label htmlFor="new-deal-title" className={LABEL_CLS}>
-              Deal name <span className="text-red-600">*</span>
+              Opportunity name <span className="text-red-600">*</span>
             </label>
             <input
               id="new-deal-title"
@@ -1557,7 +1563,7 @@ function NewDealSubmitProxy() {
       className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30 disabled:hover:bg-cc-brand-600"
       pendingLabel="Creating…"
     >
-      Create deal
+      Create opportunity
     </PendingFormButton>
   );
 }
@@ -2488,7 +2494,7 @@ function KanbanCard({
       <li className="bg-white border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
         <Link href={sheetHref(opp.account_id, opp.id)} className="block">
           {oppCode && (
-            <div className="text-[9px] font-mono text-ppp-navy-500 mb-0.5">
+            <div className="text-[9px] font-mono text-ppp-navy-600 mb-0.5">
               {oppCode}
             </div>
           )}
@@ -3744,7 +3750,7 @@ function CustomerQuickSheet({
           {/* Empty state — no deals at all */}
           {allDeals.length === 0 && (
             <section className="text-[12px] text-ppp-charcoal-500 italic text-center py-4">
-              No deals on this customer yet. Start one from the account page.
+              No opportunities on this customer yet. Start one from the account page.
             </section>
           )}
         </div>

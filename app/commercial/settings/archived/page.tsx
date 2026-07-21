@@ -232,7 +232,7 @@ export default async function ArchivedDealsPage({
                           </Link>
                         </div>
                         {oppCode && (
-                          <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 font-mono">
+                          <div className="text-[11px] text-ppp-navy-600 mt-0.5 font-mono">
                             {oppCode}
                           </div>
                         )}
@@ -305,7 +305,7 @@ export default async function ArchivedDealsPage({
                       {accountName ?? "—"}
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-[11px] text-ppp-charcoal-500 flex-wrap">
-                      {oppCode && <span className="font-mono">{oppCode}</span>}
+                      {oppCode && <span className="font-mono text-ppp-navy-600">{oppCode}</span>}
                       <span className="inline-flex items-center rounded bg-ppp-charcoal-100 px-1.5 py-0.5 font-medium text-ppp-charcoal-700">
                         {opportunityStatusLabel(o.status)}
                       </span>

@@ -213,16 +213,11 @@ export function derivedOppName(
   return opp.title || parts[0] || "Untitled opportunity";
 }
 
-/** Format the "Job No." — the per-account, GC-prefixed deal_number, e.g.
- *  "No. ALT-0125". This is Katie's Tomco LETTERHEAD convention and lives on
- *  the proposal PDF + as a secondary "Job No." reference on the deal. It is
- *  NOT the platform's canonical opportunity identifier — use
- *  formatOpportunityNumber for that. Empty string when unassigned. */
-export function formatDealNumber(dealNumber: string | null | undefined): string {
-  const raw = dealNumber?.trim();
-  if (!raw) return "";
-  return /^no\./i.test(raw) ? raw : `No. ${raw}`;
-}
+// formatDealNumber (the "No. ALT-0125" formatter) was retired 2026-07-21:
+// deal_number is now surfaced as a raw "Job No." on the hero + edit sheet,
+// and the proposal PDF renders it via header_json. No caller formats it, so
+// the helper was dead. The per-account assignment path
+// (assignDealNumber / formatDealNumberForAccount) is unrelated and stays.
 
 /** Format the canonical OPPORTUNITY identifier — the global, unique,
  *  auto-assigned `project_number` (YYYY-NNNN, migration 046) prefixed with

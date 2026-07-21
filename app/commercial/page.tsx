@@ -10,7 +10,7 @@
  *      due, wins awaiting debrief — every card links straight into the
  *      filtered list so Alex triages in one click.
  *   3. KPI strip: open opps · outstanding AR · active GCs · all-time wins
- *   4. Two-column: Top 5 open deals (by weighted $) + Recent activity
+ *   4. Two-column: Top 5 open opportunities (by weighted $) + Recent activity
  *      (last 5 opps by updated_at)
  *   5. Quick actions grid
  *   6. Roadmap (collapsed <details>)
@@ -128,12 +128,21 @@ export default async function CommercialDashboardPage() {
   // faked one would mislead.
   const weekAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const newThisWeek = openOpps.filter((o) => (o.created_at ?? "") >= weekAgoIso).length;
-  // Wins vs last month (same-length window is close enough for a glance).
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-  const wonLastMonthCount = wonOpps.filter(
-    (o) => (o.decided_at ?? "") >= lastMonthStart && (o.decided_at ?? "") < monthStart
+  // Wins vs the SAME point last month — compare month-to-date against last
+  // month's first (equal) span of elapsed time, not the full prior month.
+  // Otherwise early in a month the delta is almost always negative even
+  // when pace is fine ("Jul 2: 1 vs 12"). Using elapsed-ms avoids day-of-
+  // month overflow bugs (Jan 31 → Feb has no 31).
+  const monthStartMs = new Date(monthStart).getTime();
+  const elapsedThisMonthMs = Date.now() - monthStartMs;
+  const lastMonthStartMs = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const lastMonthStartIso = new Date(lastMonthStartMs).toISOString();
+  const lastMonthCutoffIso = new Date(lastMonthStartMs + elapsedThisMonthMs).toISOString();
+  const wonLastMonthToDate = wonOpps.filter(
+    (o) =>
+      (o.decided_at ?? "") >= lastMonthStartIso && (o.decided_at ?? "") < lastMonthCutoffIso
   ).length;
-  const winsDelta = wonThisMonth.length - wonLastMonthCount;
+  const winsDelta = wonThisMonth.length - wonLastMonthToDate;
 
   // ─── NEEDS ATTENTION signals ───
   const nowIso = new Date().toISOString();
@@ -230,7 +239,7 @@ export default async function CommercialDashboardPage() {
                   className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${
                     winsDelta > 0 ? "text-emerald-700" : "text-ppp-charcoal-400"
                   }`}
-                  title={`${wonThisMonth.length} this month vs ${wonLastMonthCount} last month`}
+                  title={`${wonThisMonth.length} this month vs ${wonLastMonthToDate} by the same point last month`}
                 >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={winsDelta > 0 ? "" : "rotate-180"}>
                     <path d="M12 19V5 M5 12l7-7 7 7" />
@@ -302,7 +311,7 @@ export default async function CommercialDashboardPage() {
             <AttentionCard
               count={winsAwaitingDebrief.length}
               label="Awaiting debrief"
-              sub={winsAwaitingDebrief.length === 0 ? "All debriefed" : "Won deals need debrief"}
+              sub={winsAwaitingDebrief.length === 0 ? "All debriefed" : "Won opportunities need debrief"}
               href="/commercial/reports/win-loss"
               tone="emerald"
               icon={
@@ -391,7 +400,7 @@ export default async function CommercialDashboardPage() {
           <QuickAction
             href="/commercial/opportunities"
             title="Pipeline board"
-            sub="Drag deals through stages."
+            sub="Drag opportunities through stages."
             icon={<IconKanban />}
           />
           <QuickAction
@@ -510,7 +519,7 @@ function AttentionCard({
   );
 }
 
-// ─────────────── Top 5 open deals ───────────────
+// ─────────────── Top 5 open opportunities ───────────────
 
 function TopOpenDealsCard({
   opps,
@@ -524,7 +533,7 @@ function TopOpenDealsCard({
       <header className="flex items-center justify-between px-4 py-3 border-b border-ppp-charcoal-100">
         <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-          Top 5 open deals
+          Top 5 open opportunities
         </h3>
         <Link
           href="/commercial/opportunities"
@@ -607,12 +616,12 @@ function RecentActivityCard({
           href="/commercial/opportunities?sort=updated"
           className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[24px] inline-flex items-center"
         >
-          All deals →
+          All opportunities →
         </Link>
       </header>
       {opps.length === 0 ? (
         <div className="p-6 text-center text-[12.5px] text-ppp-charcoal-400">
-          No deals yet. Start your first bid to see activity here.
+          No opportunities yet. Start your first bid to see activity here.
         </div>
       ) : (
         <ol className="divide-y divide-ppp-charcoal-100">
