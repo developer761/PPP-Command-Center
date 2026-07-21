@@ -26,10 +26,23 @@
   --color-ppp-green-700: #527b22;
 
   /* ─── Secondary palette ─── */
+  /* Karan 2026-07-21: full navy ramp filled in. Navy #172b4d is the
+     official PPP secondary and the site's primary text color, but only
+     50/100/700/900 existed so `text-ppp-navy-600` etc. silently fell
+     through. This ramp lets navy serve as the STRUCTURAL accent it was
+     always specced for (section headings, eyebrows, lifecycle chrome,
+     KPI labels) alongside — never replacing — cc-brand red. Anchors
+     50/100/700/900 kept verbatim; 200–600 + 800 interpolated. */
   --color-ppp-navy: #172b4d;
   --color-ppp-navy-50: #eaedf2;
   --color-ppp-navy-100: #c5cddc;
+  --color-ppp-navy-200: #9fabc4;
+  --color-ppp-navy-300: #7889ac;
+  --color-ppp-navy-400: #526894;
+  --color-ppp-navy-500: #33497a;
+  --color-ppp-navy-600: #253a61;
   --color-ppp-navy-700: #172b4d;
+  --color-ppp-navy-800: #112138;
   --color-ppp-navy-900: #0d1a30;
 
   --color-ppp-brown: #48342d;

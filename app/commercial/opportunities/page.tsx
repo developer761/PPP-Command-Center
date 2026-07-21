@@ -532,8 +532,11 @@ export default async function CommercialOpportunitiesPage({
   if (viewMode === "list") baseParams.set("view", "list");
   else if (viewMode === "kanban") baseParams.set("view", "kanban");
 
-  // Phase G audit CRITICAL/HIGH: all three preserve `archived` alongside
-  // stale + hot so toggling one filter doesn't silently drop the others.
+  // 2026-07-21 audit #5: EVERY href builder below must preserve `stale`,
+  // `hot`, AND `archived` — an earlier pass only wired the four toggle
+  // builders, so sort/clear/drill/source/customer/export silently dropped
+  // `archived` (export even produced the wrong dataset). All builders now
+  // re-add all three sticky filters.
   const viewToggleHref = (target: "list" | "kanban" | "customer") => {
     const p = new URLSearchParams(baseParams);
     p.delete("view");
@@ -579,6 +582,7 @@ export default async function CommercialOpportunitiesPage({
     else p.delete("sources");
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -589,7 +593,11 @@ export default async function CommercialOpportunitiesPage({
     if (sourceSet.size > 0) p.set("sources", Array.from(sourceSet).join(","));
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
+    // 2026-07-21 audit #5: preserve kanban too — was list-only, so a
+    // kanban user changing sort got kicked back to list view.
     if (viewMode === "list") p.set("view", "list");
+    else if (viewMode === "kanban") p.set("view", "kanban");
     if (newSort !== "recent") p.set("sort", newSort);
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
@@ -602,7 +610,9 @@ export default async function CommercialOpportunitiesPage({
     if (staleFilter && drop !== "stale") p.set("stale", "1");
     if (sourceSet.size > 0 && drop !== "sources") p.set("sources", Array.from(sourceSet).join(","));
     if (sortKey !== "recent") p.set("sort", sortKey);
+    if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
     if (viewMode === "list") p.set("view", "list");
+    else if (viewMode === "kanban") p.set("view", "kanban");
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -610,6 +620,10 @@ export default async function CommercialOpportunitiesPage({
   const exportParams = new URLSearchParams(baseParams);
   if (staleFilter) exportParams.set("stale", "1");
   if (hotFilter) exportParams.set("hot", "1");
+  // 2026-07-21 audit #5 (data-correctness): the export must match the
+  // filtered/visible set. Without this, a user viewing archived deals
+  // exported the ACTIVE set instead — a silent wrong-data export.
+  if (includeArchived) exportParams.set("archived", "1");
   const exportHref = `/api/commercial/opportunities/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
 
   const anyFilterActive =
@@ -635,6 +649,7 @@ export default async function CommercialOpportunitiesPage({
     }
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
@@ -646,6 +661,7 @@ export default async function CommercialOpportunitiesPage({
     const p = new URLSearchParams(baseParams);
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
     p.set("customer", accountId);
     if (focus) p.set("focus", focus);
     return `/commercial/opportunities?${p.toString()}#customer-sheet`;
@@ -654,6 +670,7 @@ export default async function CommercialOpportunitiesPage({
     const p = new URLSearchParams(baseParams);
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
     p.delete("customer");
     p.delete("focus");
     const qs = p.toString();

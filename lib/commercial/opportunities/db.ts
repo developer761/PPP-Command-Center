@@ -139,11 +139,10 @@ export type CommercialOpportunity = {
   // level; changeOpportunityStatus enforces required-at-estimating for
   // client_name / location_short / estimator_user_id.
   client_name: string | null;
-  /** @deprecated Migration 066 backfilled this into property_street.
-   *  Column drop pending in migration 068 once all code readers are
-   *  removed. Kept in the type for TS-compat with any surviving reader;
-   *  new code should read property_street directly. */
-  location_short: string | null;
+  // location_short (migration 046) fully retired 2026-07-21: backfilled
+  // into property_street by migration 066, column dropped by migration
+  // 068, and the last code readers removed here. property_street is the
+  // sole site-address field now.
   estimator_user_id: string | null;
   // Migration 049 (Karan 2026-07-10) — free-text estimator name for
   // sub / GC-supplied / off-roster estimators. Takes precedence over
@@ -189,7 +188,6 @@ export type CommercialOpportunity = {
 export function derivedOppName(
   opp: Pick<CommercialOpportunity, "title" | "client_name"> & {
     property_street?: string | null;
-    location_short?: string | null;
     title_override?: string | null;
   },
   accountName: string | null | undefined,
@@ -203,10 +201,7 @@ export function derivedOppName(
   const parts: string[] = [];
   if (accountName && accountName.trim()) parts.push(accountName.trim());
   if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
-  const location =
-    (opp.property_street && opp.property_street.trim()) ||
-    (opp.location_short && opp.location_short.trim()) ||
-    "";
+  const location = (opp.property_street && opp.property_street.trim()) || "";
   if (location) parts.push(location);
 
   // Need at least 2 parts to render the join; solo account name alone

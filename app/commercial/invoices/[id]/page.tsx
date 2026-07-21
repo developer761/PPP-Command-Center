@@ -496,8 +496,11 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 Invoice {siblingIdx + 1} of {siblingsSorted.length}
               </span>
               <span aria-hidden>·</span>
+              {/* 2026-07-21 audit fix (#7): was ?tab=info, which the deal
+                  page bounces to the account — a dead trap. Route straight
+                  to the deal's real home: the account drill-in sheet. */}
               <Link
-                href={`/commercial/opportunities/${opp.id}?tab=info`}
+                href={`/commercial/accounts/${opp.account_id}?tab=opportunities&edit=${opp.id}#deal-row-${opp.id}`}
                 className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
               >
                 {derivedOppName(opp, account?.company_name ?? null)}

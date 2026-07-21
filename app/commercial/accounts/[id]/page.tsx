@@ -98,7 +98,11 @@ import {
   TERMINAL_STATUSES,
   QUICK_FLIP_BLOCKED_STATUSES,
   isTerminalOpportunityStatus,
+  isWon,
+  isLost,
 } from "@/lib/commercial/opportunities/constants";
+import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
+import { BidLifecycleTimeline } from "@/components/commercial/bid-lifecycle-timeline";
 import {
   getAccountRecentActivity,
   describeActivity,
@@ -2987,6 +2991,17 @@ async function OpportunitiesTab({
   const open = all.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
   const decided = all.filter((o) => TERMINAL_STATUSES.has(o.status));
 
+  // Bid Lifecycle (Katie 2026-07-20): fetch the 4 dates + 2 durations
+  // for the deal being edited so the slide-out sheet can show the
+  // lifecycle timeline at the top. Only fires when a sheet is open —
+  // one lightweight query, not per-row. This is where the timeline
+  // lives now that /opportunities/[id] redirects live deals here
+  // (2026-07-21 audit: the timeline was previously unreachable).
+  const editDealRow = editDealId ? all.find((d) => d.id === editDealId) ?? null : null;
+  const editLifecycle = editDealRow
+    ? await fetchOpportunityLifecycle(editDealRow)
+    : null;
+
   // Karan 2026-07-08: empty state now renders the SAME inline "+ New
   // deal" form open by default. Zero clicks between landing on the tab
   // and filling in the first field. No jumping to a separate page.
@@ -3123,6 +3138,7 @@ async function OpportunitiesTab({
             primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
             estimators={estimators}
             errorMessage={errorMessage}
+            lifecycle={editLifecycle}
           />
         );
       })()}
@@ -3309,7 +3325,11 @@ function AccountOpportunityRow({
   const isTerminal = TERMINAL_STATUSES.has(opp.status);
   const bidLabel = formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents);
   return (
-    <li>
+    // 2026-07-21 audit: anchor target for #deal-row-<id>. Two links
+    // (this row's own link + the pipeline deal-click redirect) point
+    // here, but no element carried the id, so the scroll-to-row was a
+    // silent no-op. `scroll-mt-24` clears the sticky header on landing.
+    <li id={`deal-row-${opp.id}`} className="scroll-mt-24">
       {/* Karan 2026-07-08 rewrite: cleaner 2-line hierarchy.
           Line 1: [title] [status pill]
           Line 2: [bid] · [probability]  (compact, muted)
@@ -5506,6 +5526,7 @@ function DealEditSheet({
   primaryLead,
   estimators,
   errorMessage,
+  lifecycle,
 }: {
   deal: CommercialOpportunity;
   accountId: string;
@@ -5518,6 +5539,11 @@ function DealEditSheet({
    *  the save silently disappeared. Now the same message renders
    *  INSIDE the sheet body at the top of the scroll container. */
   errorMessage?: string | null;
+  /** Katie 2026-07-20 flagship: the 4 dates + 2 durations, rendered as
+   *  a read-only timeline at the top of the sheet. This is the reachable
+   *  home for the lifecycle after /opportunities/[id] was retired as a
+   *  landing surface (2026-07-21 audit). Null when the fetch was skipped. */
+  lifecycle?: import("@/lib/commercial/opportunities/lifecycle").OpportunityLifecycleDates | null;
 }) {
   const bidLabel = formatBidRange(deal.bid_value_low_cents, deal.bid_value_high_cents);
   const weighted = weightedPipelineCents(deal);
@@ -5598,6 +5624,18 @@ function DealEditSheet({
             swallowed by the outer edit form (Delete button silently
             did nothing). Fixed. */}
         <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 bg-ppp-charcoal-50/50">
+        {/* Katie 2026-07-20 flagship (2026-07-21 audit fix): the Bid
+            Lifecycle timeline — 4 dates + 2 durations — rendered at the
+            very top of the drill-in where users actually land. Was
+            previously stranded on the retired /opportunities/[id] page.
+            Read-only; the underlying dates are edited in the Timeline
+            section of the form below. */}
+        {lifecycle && (
+          <BidLifecycleTimeline
+            lifecycle={lifecycle}
+            closeOutcome={isWon(deal) ? "won" : isLost(deal) ? "lost" : null}
+          />
+        )}
         {/* Karan 2026-07-13: on decided deals surface a link to the
             account-scoped debrief page. Without this the user has no
             way to reach the debrief form after the initial Won-drop

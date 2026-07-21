@@ -1305,12 +1305,25 @@ export default async function OpportunityDetailPage({
   // those are structured workflows that need the whole form shell.
   const _rawTab = pickFirst(sp.tab);
   const _rawAction = pickFirst(sp.action);
+  // 2026-07-21 audit fix (systemic): this allowlist is matched against
+  // the RAW tab key the tab-bar + server actions emit. It had a dead
+  // "documents" entry (never a real key — the primary key is "docs") and
+  // omitted "docs" and "files" entirely, so the Documents tab, the Files
+  // sub-tab, and every doc-surface back-link bounced users to the account
+  // page and file rename/delete/move ejected them mid-action. `docs` +
+  // `files` are legitimate deal-scoped surfaces (siblings of the
+  // already-allowed plans/finishes/submittals) and must render here.
+  // `overview`/`info` are deliberately NOT listed — those are the
+  // "landing" case that intentionally bounces to the account drill-in
+  // (Karan 2026-07-08 "everything in accounts"); the Bid Lifecycle now
+  // lives on the account deal sheet.
   const _hasStructuredIntent =
     _rawTab === "debrief" ||
-    _rawTab === "documents" ||
+    _rawTab === "docs" ||
     _rawTab === "plans" ||
     _rawTab === "finishes" ||
     _rawTab === "submittals" ||
+    _rawTab === "files" ||
     _rawTab === "activity" ||
     _rawTab === "notes" ||
     _rawTab === "tasks" ||
@@ -1323,14 +1336,21 @@ export default async function OpportunityDetailPage({
   // has no affordance for a deleted deal and the account itself may be
   // deleted. Deleted-deal drill-in must land here and stay.
   if (account && !isDeletedDeal && !_hasStructuredIntent) {
-    const q = new URLSearchParams({ tab: "deals", deal: opp.id });
+    // 2026-07-21 audit fix (#4): the account page consumes ?edit= (not
+    // ?deal=) and anchors rows as #deal-row-<id> (not #deal-<id>), so the
+    // old redirect dumped users at the top of an unfiltered list with no
+    // signal which deal they clicked. Route to the opportunities sub-tab
+    // and scroll to the correct row anchor. We deliberately do NOT
+    // auto-open the edit sheet (Karan 2026-07-08: "when i click an
+    // existing deal it focuses the deal i dont like that").
+    const q = new URLSearchParams({ tab: "opportunities" });
     const err = pickFirst(sp.error);
     const editedOk = pickFirst(sp.edited);
     const statusOk = pickFirst(sp.status_ok);
     if (err) q.set("error", err);
     if (editedOk) q.set("saved", editedOk);
     else if (statusOk) q.set("saved", statusOk);
-    redirect(`/commercial/accounts/${account.id}?${q.toString()}#deal-${opp.id}`);
+    redirect(`/commercial/accounts/${account.id}?${q.toString()}#deal-row-${opp.id}`);
   }
 
   // Karan 2026-07-08: Accounts+Deals merge — Invoices lives under the

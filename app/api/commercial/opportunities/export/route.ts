@@ -55,6 +55,10 @@ export async function GET(request: Request) {
   const sourcesRaw = url.searchParams.get("sources") ?? undefined;
   const stale = url.searchParams.get("stale") === "1";
   const hot = url.searchParams.get("hot") === "1";
+  // 2026-07-21 audit #5: honor the archived toggle so the CSV matches
+  // the visible/filtered set. Without this a user viewing archived deals
+  // exported the ACTIVE set instead — a silent wrong-data export.
+  const includeArchived = url.searchParams.get("archived") === "1";
 
   const validStatus =
     statusRaw && (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
@@ -77,6 +81,7 @@ export async function GET(request: Request) {
   const oppsRaw = await listCommercialOpportunities({
     search: q || undefined,
     status: validStatus,
+    includeArchived,
   });
   let opps = oppsRaw;
 
