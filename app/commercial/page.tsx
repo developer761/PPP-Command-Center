@@ -121,6 +121,20 @@ export default async function CommercialDashboardPage() {
       ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)
       : null;
 
+  // ─── Momentum deltas (accurate, no snapshot needed) ───
+  // "N new this week" from created_at — a real momentum signal for the
+  // morning glance. We deliberately DON'T show a week-over-week pipeline-$
+  // delta: that needs a historical state snapshot we don't keep, and a
+  // faked one would mislead.
+  const weekAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const newThisWeek = openOpps.filter((o) => (o.created_at ?? "") >= weekAgoIso).length;
+  // Wins vs last month (same-length window is close enough for a glance).
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+  const wonLastMonthCount = wonOpps.filter(
+    (o) => (o.decided_at ?? "") >= lastMonthStart && (o.decided_at ?? "") < monthStart
+  ).length;
+  const winsDelta = wonThisMonth.length - wonLastMonthCount;
+
   // ─── NEEDS ATTENTION signals ───
   const nowIso = new Date().toISOString();
   const todayEt = new Date(
@@ -181,6 +195,14 @@ export default async function CommercialDashboardPage() {
               <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight">
                 {formatCentsCompact(weightedPipeline)}
               </div>
+              {newThisWeek > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M12 19V5 M5 12l7-7 7 7" />
+                  </svg>
+                  {newThisWeek} new this week
+                </span>
+              )}
               <div className="text-[12px] text-ppp-charcoal-500">
                 weighted pipeline · {openOpps.length} open
               </div>
@@ -201,6 +223,19 @@ export default async function CommercialDashboardPage() {
               {monthWinPct !== null && (
                 <div className="text-[12px] text-emerald-700 font-semibold">
                   {monthWinPct}% win rate
+                </div>
+              )}
+              {winsDelta !== 0 && (
+                <div
+                  className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${
+                    winsDelta > 0 ? "text-emerald-700" : "text-ppp-charcoal-400"
+                  }`}
+                  title={`${wonThisMonth.length} this month vs ${wonLastMonthCount} last month`}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={winsDelta > 0 ? "" : "rotate-180"}>
+                    <path d="M12 19V5 M5 12l7-7 7 7" />
+                  </svg>
+                  {winsDelta > 0 ? "+" : ""}{winsDelta} vs last month
                 </div>
               )}
             </div>
@@ -230,7 +265,7 @@ export default async function CommercialDashboardPage() {
               count={overdueProposals.length}
               label="Overdue proposals"
               sub={overdueProposals.length === 1 ? "1 bid past its due date" : `${overdueProposals.length} bids past due date`}
-              href="/commercial/opportunities?stale=1"
+              href="/commercial/opportunities?overdue=1"
               tone="rose"
               icon={
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -243,7 +278,7 @@ export default async function CommercialDashboardPage() {
               count={coldRfps.length}
               label="Cold RFPs (>7d)"
               sub={coldRfps.length === 0 ? "None sitting cold" : "Sitting on the bid request"}
-              href="/commercial/opportunities"
+              href="/commercial/opportunities?coldrfp=1"
               tone="amber"
               icon={
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -255,7 +290,7 @@ export default async function CommercialDashboardPage() {
               count={followupsDue.length}
               label="Follow-ups due"
               sub={followupsDue.length === 0 ? "Nothing scheduled" : "Check in today"}
-              href="/commercial/opportunities"
+              href="/commercial/opportunities?followup=1"
               tone="cc-brand"
               icon={
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

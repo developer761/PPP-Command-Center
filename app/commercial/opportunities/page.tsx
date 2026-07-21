@@ -369,6 +369,13 @@ export default async function CommercialOpportunitiesPage({
 
   const staleFilter = pickFirst(sp.stale) === "1";
   const hotFilter = pickFirst(sp.hot) === "1";
+  // Dashboard "Needs attention" deep-links (2026-07-21). Each mirrors the
+  // exact subset that dashboard card counts, so a tap lands on precisely
+  // those opportunities. Added to baseParams below so they auto-preserve
+  // across every sort/filter interaction.
+  const overdueFilter = pickFirst(sp.overdue) === "1";
+  const coldRfpFilter = pickFirst(sp.coldrfp) === "1";
+  const followupFilter = pickFirst(sp.followup) === "1";
   const sourcesRaw = pickFirst(sp.sources);
   // Karan 2026-07-08 rewrite: the drawer is *customer-scoped*, not
   // deal-scoped. Clicking anywhere on the pipeline (customer row's
@@ -486,6 +493,38 @@ export default async function CommercialOpportunitiesPage({
       return Number.isFinite(daysUntilDue) && daysUntilDue >= 0 && daysUntilDue <= HOT_DEAL_DECISION_DAYS;
     });
   }
+  // Dashboard "Needs attention" deep-link filters — mirror the exact
+  // subset logic on app/commercial/page.tsx so the pipeline count matches
+  // the card the user clicked.
+  if (overdueFilter) {
+    const nowMs = Date.now();
+    opps = opps.filter(
+      (o) =>
+        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
+        o.proposal_due_at != null &&
+        new Date(o.proposal_due_at).getTime() < nowMs
+    );
+  }
+  if (coldRfpFilter) {
+    const nowMs = Date.now();
+    opps = opps.filter((o) => {
+      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
+      if (!o.rfp_received_at) return false;
+      const days = Math.floor((nowMs - new Date(o.rfp_received_at).getTime()) / MS_PER_DAY);
+      return Number.isFinite(days) && days > 7;
+    });
+  }
+  if (followupFilter) {
+    const todayEtIso = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
+    ).toISOString();
+    opps = opps.filter(
+      (o) =>
+        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
+        o.follow_up_at != null &&
+        o.follow_up_at <= todayEtIso
+    );
+  }
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => o.source && sourceSet.has(o.source));
   }
@@ -532,6 +571,13 @@ export default async function CommercialOpportunitiesPage({
   if (sortKey !== "recent") baseParams.set("sort", sortKey);
   if (viewMode === "list") baseParams.set("view", "list");
   else if (viewMode === "kanban") baseParams.set("view", "kanban");
+  // Attention deep-link filters live in baseParams so every builder that
+  // clones it preserves them automatically (unlike stale/hot/archived,
+  // which have toggle builders and are re-added manually). setSortHref +
+  // clearFilterHref build fresh params, so they re-add these explicitly.
+  if (overdueFilter) baseParams.set("overdue", "1");
+  if (coldRfpFilter) baseParams.set("coldrfp", "1");
+  if (followupFilter) baseParams.set("followup", "1");
 
   // 2026-07-21 audit #5: EVERY href builder below must preserve `stale`,
   // `hot`, AND `archived` — an earlier pass only wired the four toggle
@@ -595,6 +641,9 @@ export default async function CommercialOpportunitiesPage({
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
     if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
+    if (overdueFilter) p.set("overdue", "1");
+    if (coldRfpFilter) p.set("coldrfp", "1");
+    if (followupFilter) p.set("followup", "1");
     // 2026-07-21 audit #5: preserve kanban too — was list-only, so a
     // kanban user changing sort got kicked back to list view.
     if (viewMode === "list") p.set("view", "list");
@@ -612,6 +661,9 @@ export default async function CommercialOpportunitiesPage({
     if (sourceSet.size > 0 && drop !== "sources") p.set("sources", Array.from(sourceSet).join(","));
     if (sortKey !== "recent") p.set("sort", sortKey);
     if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
+    if (overdueFilter) p.set("overdue", "1");
+    if (coldRfpFilter) p.set("coldrfp", "1");
+    if (followupFilter) p.set("followup", "1");
     if (viewMode === "list") p.set("view", "list");
     else if (viewMode === "kanban") p.set("view", "kanban");
     const qs = p.toString();
@@ -628,11 +680,20 @@ export default async function CommercialOpportunitiesPage({
   const exportHref = `/api/commercial/opportunities/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
 
   const anyFilterActive =
-    !!search || !!validStatus || staleFilter || hotFilter || sourceSet.size > 0;
+    !!search || !!validStatus || staleFilter || hotFilter || sourceSet.size > 0 ||
+    overdueFilter || coldRfpFilter || followupFilter;
   const sortChanged = sortKey !== "recent";
   const activeFilterCount =
     (search ? 1 : 0) + (validStatus ? 1 : 0) +
-    (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size;
+    (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size +
+    (overdueFilter ? 1 : 0) + (coldRfpFilter ? 1 : 0) + (followupFilter ? 1 : 0);
+  // Clear a single attention deep-link filter (they live in baseParams).
+  const clearAttentionHref = (which: "overdue" | "coldrfp" | "followup"): string => {
+    const p = new URLSearchParams(baseParams);
+    p.delete(which);
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  };
   const currentSortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated";
 
   const statusSnapshot: Array<{ status: OpportunityStatus; count: number }> = (
@@ -1028,6 +1089,9 @@ export default async function CommercialOpportunitiesPage({
             {validStatus && <ActiveFilterChip href={clearFilterHref("status")} label={`Status: ${opportunityStatusLabel(validStatus)}`} />}
             {hotFilter && <ActiveFilterChip href={clearFilterHref("hot")} label="Hot" />}
             {staleFilter && <ActiveFilterChip href={clearFilterHref("stale")} label={`Stale > ${STALE_OPP_DAYS}d`} />}
+            {overdueFilter && <ActiveFilterChip href={clearAttentionHref("overdue")} label="Overdue proposals" />}
+            {coldRfpFilter && <ActiveFilterChip href={clearAttentionHref("coldrfp")} label="Cold RFPs > 7d" />}
+            {followupFilter && <ActiveFilterChip href={clearAttentionHref("followup")} label="Follow-ups due" />}
             {sourceSet.size > 0 && (
               <ActiveFilterChip
                 href={clearFilterHref("sources")}

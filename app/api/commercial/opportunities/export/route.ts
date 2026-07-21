@@ -59,6 +59,12 @@ export async function GET(request: Request) {
   // the visible/filtered set. Without this a user viewing archived deals
   // exported the ACTIVE set instead — a silent wrong-data export.
   const includeArchived = url.searchParams.get("archived") === "1";
+  // 2026-07-21: dashboard "Needs attention" deep-link filters — mirror the
+  // pipeline page 1:1 so an export from a filtered view matches what's on
+  // screen.
+  const overdue = url.searchParams.get("overdue") === "1";
+  const coldRfp = url.searchParams.get("coldrfp") === "1";
+  const followup = url.searchParams.get("followup") === "1";
 
   const validStatus =
     statusRaw && (OPPORTUNITY_STATUSES as readonly string[]).includes(statusRaw)
@@ -100,6 +106,35 @@ export async function GET(request: Request) {
       const days = Math.ceil((new Date(o.proposal_due_at).getTime() - Date.now()) / MS_PER_DAY);
       return Number.isFinite(days) && days >= 0 && days <= HOT_DEAL_DECISION_DAYS;
     });
+  }
+  if (overdue) {
+    const nowMs = Date.now();
+    opps = opps.filter(
+      (o) =>
+        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
+        o.proposal_due_at != null &&
+        new Date(o.proposal_due_at).getTime() < nowMs
+    );
+  }
+  if (coldRfp) {
+    const nowMs = Date.now();
+    opps = opps.filter((o) => {
+      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
+      if (!o.rfp_received_at) return false;
+      const days = Math.floor((nowMs - new Date(o.rfp_received_at).getTime()) / MS_PER_DAY);
+      return Number.isFinite(days) && days > 7;
+    });
+  }
+  if (followup) {
+    const todayEtIso = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
+    ).toISOString();
+    opps = opps.filter(
+      (o) =>
+        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
+        o.follow_up_at != null &&
+        o.follow_up_at <= todayEtIso
+    );
   }
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => !!o.source && sourceSet.has(o.source));
