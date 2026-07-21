@@ -84,6 +84,56 @@ function formatDollars(cents: number): string {
   })}`;
 }
 
+/** 2026-07-21 chrome rebuild (Karan): one consistent section shell —
+ *  tinted header strip with an optional navy icon + title + subtitle and a
+ *  right-aligned action slot, then a padded body. Replaces the ad-hoc
+ *  `<section><h2>` cards so every block on the editor reads as one system. */
+function EditorSection({
+  title,
+  subtitle,
+  icon,
+  right,
+  children,
+  className = "",
+  id,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  icon?: React.ReactNode;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  id?: string;
+}) {
+  return (
+    <section
+      id={id}
+      className={`bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm scroll-mt-24 ${className}`}
+    >
+      <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/40">
+        <div className="flex items-start gap-2.5 min-w-0">
+          {icon && (
+            <span
+              aria-hidden
+              className="mt-0.5 inline-flex items-center justify-center h-7 w-7 rounded-lg bg-ppp-navy-50 text-ppp-navy-600 shrink-0"
+            >
+              {icon}
+            </span>
+          )}
+          <div className="min-w-0">
+            <h2 className="text-[13px] font-bold text-ppp-charcoal leading-tight">{title}</h2>
+            {subtitle && (
+              <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5 leading-snug">{subtitle}</p>
+            )}
+          </div>
+        </div>
+        {right && <div className="shrink-0">{right}</div>}
+      </div>
+      <div className="p-4 sm:p-5">{children}</div>
+    </section>
+  );
+}
+
 // ─────────────── server actions ───────────────
 
 async function requireAuthed(): Promise<string> {
@@ -678,7 +728,9 @@ export default async function ProposalEditorPage({
         <span className="text-ppp-charcoal-900 font-medium">{oppName}</span>
       </nav>
 
-      <header className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap">
+      {/* 2026-07-21: sticky toolbar so the identity, TOTAL, and Send/PDF
+          actions stay reachable while scrolling the long editor form. */}
+      <header className="sticky top-2 z-20 bg-white/95 backdrop-blur-sm border border-ppp-charcoal-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap shadow-md shadow-ppp-charcoal-900/5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="text-[11px] font-bold text-ppp-charcoal-500 uppercase tracking-widest tabular-nums">
@@ -700,8 +752,9 @@ export default async function ProposalEditorPage({
             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200">
               {proposalStatusLabel(proposal.status)}
             </span>
-            <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
-              {totalLabel}: <strong className="text-ppp-charcoal-800">{formatDollars(proposal.total_cents)}</strong>
+            <span className="inline-flex items-baseline gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5">
+              <span className="text-[9.5px] font-bold uppercase tracking-widest text-emerald-700">{totalLabel}</span>
+              <span className="font-condensed text-[15px] font-black text-emerald-800 tabular-nums leading-none">{formatDollars(proposal.total_cents)}</span>
             </span>
           </div>
           {/* Karan 2026-07-16: autosaves as you type — no Save button.
@@ -917,96 +970,125 @@ export default async function ProposalEditorPage({
       <AutosaveProposalForm action={saveProposalAction} disabled={proposal.status !== "draft"}>
         {hiddenIds}
 
-        {/* Header block. Karan 2026-07-20: relabeled to reflect the
-            real model — the GC is the Account holder (the company we
-            send the proposal TO), the Project is the specific deal /
-            job at THEIR customer's site. Two separate blocks visually
-            so Alex knows exactly which fields go where. */}
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-5">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Header</h2>
-
+        {/* Header block. Karan 2026-07-20: the GC is the Account holder
+            (who we send TO), the Project is the specific job at their
+            customer's site. Two tinted sub-panels so Alex knows exactly
+            which fields go where. 2026-07-21: unified under EditorSection. */}
+        <EditorSection
+          title="Header"
+          subtitle="Prints at the top of the proposal PDF — who it's addressed to + the job."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+            </svg>
+          }
+        >
           <div className="space-y-3">
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-cc-brand-800">
-              Send To — GC (Account holder)
-            </div>
-            <p className="text-[11.5px] text-ppp-charcoal-500 -mt-1">
-              The company Tomco has a relationship with. This block prints under &ldquo;PROPOSAL SUBMITTED TO:&rdquo; on the PDF.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="block">
-                <span className={LABEL_CLS}>GC name</span>
-                <input type="text" name="gc_company" defaultValue={proposal.header_json.gc_company ?? ""} className={INPUT_CLS} placeholder="e.g. Alta Construction East Inc." />
-              </label>
-              <label className="block">
-                <span className={LABEL_CLS}>Proposal date</span>
-                <input type="date" name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} className={INPUT_CLS} />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className={LABEL_CLS}>GC address (one line per row)</span>
-                <textarea name="gc_address_lines" defaultValue={gcAddrText} rows={2} className={TEXTAREA_CLS} placeholder="143 West 29th Street, Fl 12&#10;New York, NY 10001" />
-              </label>
-              <label className="block">
-                <span className={LABEL_CLS}>Attention</span>
-                <input type="text" name="attention" defaultValue={proposal.header_json.attention ?? ""} className={INPUT_CLS} placeholder="e.g. Bryon" />
-              </label>
-              <label className="block">
-                <span className={LABEL_CLS}>Phone</span>
-                <input type="text" name="phone" defaultValue={proposal.header_json.phone ?? ""} className={INPUT_CLS} placeholder="e.g. 212-912-0011" />
-              </label>
-              <label className="block sm:col-span-2">
-                <span className={LABEL_CLS}>Email</span>
-                <input type="email" name="email" defaultValue={proposal.header_json.email ?? ""} className={INPUT_CLS} placeholder="e.g. bryon@altaconstruction-inc.net" />
-              </label>
-            </div>
-          </div>
-
-          <div className="space-y-3 pt-3 border-t border-ppp-charcoal-100">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
+            {/* GC sub-panel */}
+            <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/40 p-3.5 space-y-3">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-widest text-cc-brand-800">
-                  Project — the opportunity / job site
+                <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">
+                  Send to — GC (account holder)
                 </div>
-                <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">
-                  The specific customer + site this proposal covers. Prints as &ldquo;PROJECT: {"{"}Name{"}"}, {"{"}Address{"}"}&rdquo; on the PDF.
+                <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
+                  The company Tomco has a relationship with. Prints under &ldquo;PROPOSAL SUBMITTED TO:&rdquo;.
                 </p>
               </div>
-              {fillableDeals.length > 0 && (
-                <FillProjectFromDeal
-                  deals={fillableDeals}
-                  projectNameInputId="header-project-name"
-                  projectAddressInputId="header-project-address"
-                />
-              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className={LABEL_CLS}>GC name</span>
+                  <input type="text" name="gc_company" defaultValue={proposal.header_json.gc_company ?? ""} className={INPUT_CLS} placeholder="e.g. Alta Construction East Inc." />
+                </label>
+                <label className="block">
+                  <span className={LABEL_CLS}>Proposal date</span>
+                  <input type="date" name="date_iso" defaultValue={proposal.header_json.date_iso ?? ""} className={INPUT_CLS} />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className={LABEL_CLS}>GC address (one line per row)</span>
+                  <textarea name="gc_address_lines" defaultValue={gcAddrText} rows={2} className={TEXTAREA_CLS} placeholder="143 West 29th Street, Fl 12&#10;New York, NY 10001" />
+                </label>
+                <label className="block">
+                  <span className={LABEL_CLS}>Attention</span>
+                  <input type="text" name="attention" defaultValue={proposal.header_json.attention ?? ""} className={INPUT_CLS} placeholder="e.g. Bryon" />
+                </label>
+                <label className="block">
+                  <span className={LABEL_CLS}>Phone</span>
+                  <input type="text" name="phone" defaultValue={proposal.header_json.phone ?? ""} className={INPUT_CLS} placeholder="e.g. 212-912-0011" />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className={LABEL_CLS}>Email</span>
+                  <input type="email" name="email" defaultValue={proposal.header_json.email ?? ""} className={INPUT_CLS} placeholder="e.g. bryon@altaconstruction-inc.net" />
+                </label>
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="block">
-                <span className={LABEL_CLS}>Project name</span>
-                <input id="header-project-name" type="text" name="project_name" defaultValue={proposal.header_json.project_name ?? ""} className={INPUT_CLS} placeholder="e.g. JD Sports" />
-              </label>
-              <label className="block">
-                <span className={LABEL_CLS}>Project address</span>
-                <input id="header-project-address" type="text" name="project_address" defaultValue={proposal.header_json.project_address ?? ""} className={INPUT_CLS} placeholder="e.g. 37-38 Junction Blvd, Queens" />
-              </label>
-            </div>
-          </div>
 
-          <label className="inline-flex items-center gap-2 pt-2 border-t border-ppp-charcoal-100 w-full">
-            <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? false} className="w-4 h-4 accent-cc-brand-600" />
-            <span className="text-[13px] text-ppp-charcoal-700">Show yellow &ldquo;Capital Improvement / NY Sales Tax&rdquo; banner on PDF</span>
-          </label>
-        </section>
+            {/* Project sub-panel */}
+            <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/40 p-3.5 space-y-3">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">
+                    Project — the opportunity / job site
+                  </div>
+                  <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
+                    The specific customer + site this covers. Prints as &ldquo;PROJECT: {"{"}Name{"}"}, {"{"}Address{"}"}&rdquo;.
+                  </p>
+                </div>
+                {fillableDeals.length > 0 && (
+                  <FillProjectFromDeal
+                    deals={fillableDeals}
+                    projectNameInputId="header-project-name"
+                    projectAddressInputId="header-project-address"
+                  />
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className={LABEL_CLS}>Project name</span>
+                  <input id="header-project-name" type="text" name="project_name" defaultValue={proposal.header_json.project_name ?? ""} className={INPUT_CLS} placeholder="e.g. JD Sports" />
+                </label>
+                <label className="block">
+                  <span className={LABEL_CLS}>Project address</span>
+                  <input id="header-project-address" type="text" name="project_address" defaultValue={proposal.header_json.project_address ?? ""} className={INPUT_CLS} placeholder="e.g. 37-38 Junction Blvd, Queens" />
+                </label>
+              </div>
+            </div>
+
+            {/* Capital-improvement banner toggle */}
+            <label className="flex items-center gap-2.5 rounded-lg border border-amber-200 bg-amber-50/50 px-3.5 py-2.5 cursor-pointer">
+              <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? false} className="w-4 h-4 accent-amber-600" />
+              <span className="text-[12.5px] text-ppp-charcoal-700">Show yellow &ldquo;Capital Improvement / NY Sales Tax&rdquo; banner on the PDF</span>
+            </label>
+          </div>
+        </EditorSection>
 
         {/* Intro override */}
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-2">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Intro paragraph</h2>
-          <p className="text-[12px] text-ppp-charcoal-500">Blank = use the Tomco default: <em>"{TOMCO_DEFAULT_INTRO}"</em></p>
+        <EditorSection
+          title="Intro paragraph"
+          subtitle={<>Blank = the Tomco default: <em>&ldquo;{TOMCO_DEFAULT_INTRO}&rdquo;</em></>}
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2 M9 20h6 M12 4v16" />
+            </svg>
+          }
+        >
           <textarea name="intro_text_override" defaultValue={proposal.intro_text_override ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="Leave blank to use the Tomco default." />
-        </section>
+        </EditorSection>
 
         {/* Exclusions */}
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <EditorSection
+          title="Exclusions"
+          subtitle="What the proposal explicitly does NOT cover — bulleted on the PDF."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+            </svg>
+          }
+        >
           <ExclusionPicker
-            label="Exclusions"
+            label="Add"
             initialSelected={selectedExclusions.map((e) => ({
               id: e.id,
               text: e.text,
@@ -1015,29 +1097,44 @@ export default async function ProposalEditorPage({
             }))}
             initialCustom={proposal.custom_exclusions ?? []}
           />
-        </section>
+        </EditorSection>
 
         {/* Alternate notes */}
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-2">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Alternate description</h2>
-          <p className="text-[12px] text-ppp-charcoal-500">Optional summary paragraph above the alternate line items.</p>
+        <EditorSection
+          title="Alternate description"
+          subtitle="Optional summary paragraph above the alternate line items."
+        >
           <textarea name="alternate_notes" defaultValue={proposal.alternate_notes ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="e.g. Exterior: Power wash exterior of building." />
-        </section>
+        </EditorSection>
 
         {/* Bid notes — INTERNAL ONLY. Rendered on the ?mode=internal
             PDF for Alex/Katie's estimator review; never on the customer
             PDF. Karan 2026-07-15: prior label said "hidden on PDF
             unless populated" which was misleading — the customer PDF
             renderer never rendered this field at all. Now honest. */}
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-2">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Bid notes <span className="ml-1 text-[11px] font-semibold uppercase tracking-widest text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Internal only</span></h2>
-          <p className="text-[12px] text-ppp-charcoal-500">Estimator scratch-pad. Visible only on the internal-mode PDF review — never on the customer copy.</p>
+        <EditorSection
+          title={<>Bid notes <span className="ml-1 text-[10px] font-semibold uppercase tracking-widest text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Internal only</span></>}
+          subtitle="Estimator scratch-pad — only on the internal-mode PDF, never on the customer copy."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" />
+            </svg>
+          }
+        >
           <textarea name="bid_notes" defaultValue={proposal.bid_notes ?? ""} rows={3} className={TEXTAREA_CLS} placeholder="e.g. Called Michael on Tuesday to confirm scope. Assumes existing HM doors are still on-site." />
-        </section>
+        </EditorSection>
 
         {/* Estimator sign-off */}
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-3">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Estimator sign-off</h2>
+        <EditorSection
+          title="Estimator sign-off"
+          subtitle="Prints in the sign-off block at the bottom of the PDF."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          }
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
               <span className={LABEL_CLS}>Name</span>
@@ -1056,17 +1153,25 @@ export default async function ProposalEditorPage({
               <input type="email" name="est_email" defaultValue={proposal.estimator_snapshot_json.email ?? ""} className={INPUT_CLS} />
             </label>
           </div>
-        </section>
+        </EditorSection>
 
         {/* PDF options */}
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-          <label className="inline-flex items-center gap-2">
+        <EditorSection
+          title="PDF options"
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 3.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          }
+        >
+          <label className="flex items-center gap-2.5 cursor-pointer">
             <input type="checkbox" name="pdf_show_line_prices" defaultChecked={proposal.pdf_show_line_prices} className="w-4 h-4 accent-cc-brand-600" />
-            <span className="text-[13px] text-ppp-charcoal-700">
-              Show per-line prices on customer PDF (Tomco default hides them — customer sees only the TOTAL)
+            <span className="text-[12.5px] text-ppp-charcoal-700">
+              Show per-line prices on the customer PDF (Tomco default hides them — customer sees only the TOTAL)
             </span>
           </label>
-        </section>
+        </EditorSection>
 
         {/* Karan 2026-07-20: killed the manual "Save proposal" button.
             AutosaveProposalForm debounces every field change (800ms) →
@@ -1077,122 +1182,148 @@ export default async function ProposalEditorPage({
         </p>
       </AutosaveProposalForm>
 
-      {/* Line items — separate form outside the main save form so
-          each row is its own action. */}
-      <section id="line-items" className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-sm font-bold text-ppp-charcoal">Inclusions</h2>
-          <span className="text-[12px] text-ppp-charcoal-500">
-            {inclusions.length} line{inclusions.length === 1 ? "" : "s"} · {totalLabel} {formatDollars(proposal.total_cents)}
+      {/* Line items — separate forms outside the main save form so each
+          row is its own action. 2026-07-21: unified under EditorSection. */}
+      <EditorSection
+        id="line-items"
+        title="Inclusions"
+        subtitle="The scope of work. Prints as the proposal's main body."
+        icon={
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+        }
+        right={
+          <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
+            {inclusions.length} line{inclusions.length === 1 ? "" : "s"} · <strong className="text-ppp-charcoal-800">{formatDollars(proposal.total_cents)}</strong>
           </span>
-        </div>
-
-        {inclusions.length === 0 ? (
-          <p className="text-[13px] text-ppp-charcoal-500 italic py-2">No inclusions yet — add the first one below.</p>
-        ) : (
-          <LineItemsTable
-            rows={inclusions}
+        }
+      >
+        <div className="space-y-4">
+          {inclusions.length === 0 ? (
+            <p className="text-[13px] text-ppp-charcoal-500 italic">No inclusions yet — add the first one below.</p>
+          ) : (
+            <LineItemsTable
+              rows={inclusions}
+              accountId={accountId}
+              dealId={dealId}
+              proposalId={proposalId}
+              updateAction={updateLineItemAction}
+              deleteAction={deleteLineItemAction}
+            />
+          )}
+          <AddLineItemForm
             accountId={accountId}
             dealId={dealId}
             proposalId={proposalId}
-            updateAction={updateLineItemAction}
-            deleteAction={deleteLineItemAction}
+            products={products.map((p) => ({
+              ...p,
+              is_parent_only: parentIdsWithChildren.has(p.id),
+            }))}
+            submitAction={addLineItemAction}
+            isAlternate={false}
           />
-        )}
-
-        <AddLineItemForm
-          accountId={accountId}
-          dealId={dealId}
-          proposalId={proposalId}
-          products={products.map((p) => ({
-            ...p,
-            is_parent_only: parentIdsWithChildren.has(p.id),
-          }))}
-          submitAction={addLineItemAction}
-          isAlternate={false}
-        />
-      </section>
+        </div>
+      </EditorSection>
 
       {/* Labor — migration 063 (2026-07-19, Katie). Included in TOTAL
           (same as inclusions) but renders under its own "Labor:" PDF
           section. Row shape: qty=hours, unit="hour", price=hourly rate. */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-sm font-bold text-ppp-charcoal">
-            Labor <span className="font-normal text-ppp-charcoal-500 text-[12px]">(rolls into TOTAL · renders as its own PDF section)</span>
-          </h2>
-          {laborRows.length > 0 && (
+      <EditorSection
+        title="Labor"
+        subtitle="Rolls into the TOTAL · renders as its own “Labor:” PDF section."
+        icon={
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+          </svg>
+        }
+        right={
+          laborRows.length > 0 ? (
             <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
-              {laborRows.reduce((a, r) => a + Number(r.quantity), 0)} hrs · {formatDollars(laborRows.reduce((a, r) => a + Math.round(Number(r.quantity) * r.unit_price_cents), 0))}
+              {laborRows.reduce((a, r) => a + Number(r.quantity), 0)} hrs · <strong className="text-ppp-charcoal-800">{formatDollars(laborRows.reduce((a, r) => a + Math.round(Number(r.quantity) * r.unit_price_cents), 0))}</strong>
             </span>
+          ) : undefined
+        }
+      >
+        <div className="space-y-4">
+          {laborRows.length === 0 ? (
+            <p className="text-[13px] text-ppp-charcoal-500 italic">No labor rows — add hours + rate below if you're billing labor separately.</p>
+          ) : (
+            <LineItemsTable
+              rows={laborRows}
+              accountId={accountId}
+              dealId={dealId}
+              proposalId={proposalId}
+              updateAction={updateLineItemAction}
+              deleteAction={deleteLineItemAction}
+            />
           )}
-        </div>
-        {laborRows.length === 0 ? (
-          <p className="text-[13px] text-ppp-charcoal-500 italic py-2">No labor rows — add hours + rate below if you're billing labor separately.</p>
-        ) : (
-          <LineItemsTable
-            rows={laborRows}
+          <AddLineItemForm
             accountId={accountId}
             dealId={dealId}
             proposalId={proposalId}
-            updateAction={updateLineItemAction}
-            deleteAction={deleteLineItemAction}
+            products={products.map((p) => ({
+              ...p,
+              is_parent_only: parentIdsWithChildren.has(p.id),
+            }))}
+            submitAction={addLineItemAction}
+            isAlternate={false}
+            isLabor={true}
           />
-        )}
-        <AddLineItemForm
-          accountId={accountId}
-          dealId={dealId}
-          proposalId={proposalId}
-          products={products.map((p) => ({
-            ...p,
-            is_parent_only: parentIdsWithChildren.has(p.id),
-          }))}
-          submitAction={addLineItemAction}
-          isAlternate={false}
-          isLabor={true}
-        />
-      </section>
+        </div>
+      </EditorSection>
 
       {/* Alternates */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 space-y-4">
-        <h2 className="text-sm font-bold text-ppp-charcoal">Alternates <span className="font-normal text-ppp-charcoal-500 text-[12px]">(excluded from TOTAL)</span></h2>
-        {alternates.length === 0 ? (
-          <p className="text-[13px] text-ppp-charcoal-500 italic py-2">No alternates.</p>
-        ) : (
-          <LineItemsTable
-            rows={alternates}
+      <EditorSection
+        title="Alternates"
+        subtitle="Optional add-ons — shown separately and NOT counted in the TOTAL."
+        icon={
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        }
+      >
+        <div className="space-y-4">
+          {alternates.length === 0 ? (
+            <p className="text-[13px] text-ppp-charcoal-500 italic">No alternates.</p>
+          ) : (
+            <LineItemsTable
+              rows={alternates}
+              accountId={accountId}
+              dealId={dealId}
+              proposalId={proposalId}
+              updateAction={updateLineItemAction}
+              deleteAction={deleteLineItemAction}
+            />
+          )}
+          <AddLineItemForm
             accountId={accountId}
             dealId={dealId}
             proposalId={proposalId}
-            updateAction={updateLineItemAction}
-            deleteAction={deleteLineItemAction}
+            products={products.map((p) => ({
+              ...p,
+              is_parent_only: parentIdsWithChildren.has(p.id),
+            }))}
+            submitAction={addLineItemAction}
+            isAlternate={true}
           />
-        )}
-        <AddLineItemForm
-          accountId={accountId}
-          dealId={dealId}
-          proposalId={proposalId}
-          products={products.map((p) => ({
-            ...p,
-            is_parent_only: parentIdsWithChildren.has(p.id),
-          }))}
-          submitAction={addLineItemAction}
-          isAlternate={true}
-        />
-      </section>
+        </div>
+      </EditorSection>
 
       {/* Danger zone */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-        <form action={deleteProposalAction}>
-          {hiddenIds}
-          <ConfirmSubmitButton
-            message={`Delete this proposal draft (R${proposal.revision_number})? Line items and overrides will be lost.`}
-            className="text-[12px] text-rose-700 hover:text-rose-800 underline disabled:opacity-50"
-          >
-            Delete this proposal draft
-          </ConfirmSubmitButton>
-        </form>
-      </section>
+      <form action={deleteProposalAction} className="flex justify-center pt-2">
+        {hiddenIds}
+        <ConfirmSubmitButton
+          message={`Delete this proposal draft (R${proposal.revision_number})? Line items and overrides will be lost.`}
+          className="text-[12px] text-ppp-charcoal-400 hover:text-rose-700 inline-flex items-center gap-1.5 min-h-[44px] touch-manipulation disabled:opacity-50"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+          </svg>
+          Delete this proposal draft
+        </ConfirmSubmitButton>
+      </form>
     </div>
   );
 }
