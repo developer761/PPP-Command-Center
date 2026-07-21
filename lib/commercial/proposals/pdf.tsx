@@ -778,7 +778,13 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
   const ungroupedKey = "__ungrouped__";
   for (const it of items) {
     const raw = it.phase?.trim();
-    const key = raw || ungroupedKey;
+    // 2026-07-21 audit (footgun): group on a NORMALIZED key (lowercased +
+    // internal-whitespace-collapsed) so "Phase 1" / "phase 1" / "Phase  1"
+    // merge into ONE section instead of rendering as two — a
+    // customer-visible broken proposal that a mobile field user could
+    // easily trip. The DISPLAY label stays the FIRST-seen spelling (byKey
+    // dedup keeps g.label from group creation).
+    const key = raw ? raw.toLowerCase().replace(/\s+/g, " ") : ungroupedKey;
     // F.6 audit fix: bucket label "General Scope" would collide with a
     // literal user-typed phase named "General Scope". Use a sentinel
     // label ("General") that's short + unlikely to be typed as a phase
@@ -959,27 +965,33 @@ function LaborSection({ items }: { items: CommercialProposalLineItem[] }) {
     0
   );
   const totalHours = items.reduce((acc, it) => acc + Number(it.quantity), 0);
-  return (
-    <View style={{ marginTop: 14 }} wrap={false}>
-      <Text style={styles.sectionUnderlineHeader}>Labor:</Text>
-      <View style={{ marginTop: 4 }}>
-        {items.map((it) => {
-          const subtotal = Math.round(Number(it.quantity) * it.unit_price_cents);
-          const hrs = Number(it.quantity);
-          const rate = it.unit_price_cents / 100;
-          return (
-            <View key={it.id} style={styles.bulletSubRow}>
-              <View style={styles.bulletSubDot} />
-              <Text style={styles.bulletSubBody}>
-                {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"} @ ${rate.toFixed(2)}/hr = ${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-            </View>
-          );
-        })}
-        <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
-          Labor subtotal: {totalHours} {totalHours === 1 ? "hr" : "hrs"} — ${(totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+  const renderRow = (it: CommercialProposalLineItem) => {
+    const subtotal = Math.round(Number(it.quantity) * it.unit_price_cents);
+    const hrs = Number(it.quantity);
+    const rate = it.unit_price_cents / 100;
+    return (
+      <View key={it.id} style={styles.bulletSubRow}>
+        <View style={styles.bulletSubDot} />
+        <Text style={styles.bulletSubBody}>
+          {it.description} — {hrs} {hrs === 1 ? "hr" : "hrs"} @ ${rate.toFixed(2)}/hr = ${(subtotal / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </Text>
       </View>
+    );
+  };
+  // 2026-07-21 audit: only keep the header + first row atomic; remaining
+  // rows flow across pages. wrap={false} on the WHOLE section (the old
+  // code) would overflow/clip a labor-heavy proposal — the same bug that
+  // was already fixed for phase groups.
+  return (
+    <View style={{ marginTop: 14 }}>
+      <View wrap={false}>
+        <Text style={styles.sectionUnderlineHeader}>Labor:</Text>
+        <View style={{ marginTop: 4 }}>{renderRow(items[0]!)}</View>
+      </View>
+      {items.length > 1 && <View>{items.slice(1).map(renderRow)}</View>}
+      <Text style={{ fontSize: 10, color: MUTED, marginTop: 3, marginLeft: 12 }}>
+        Labor subtotal: {totalHours} {totalHours === 1 ? "hr" : "hrs"} — ${(totalCents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </Text>
     </View>
   );
 }

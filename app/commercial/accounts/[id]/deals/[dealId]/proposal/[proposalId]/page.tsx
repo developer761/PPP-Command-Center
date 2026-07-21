@@ -287,8 +287,14 @@ async function addLineItemAction(formData: FormData) {
   // F.6: server-side reject if the picked product is a parent-header
   // (has children). Client picker blocks this but we guard here too so
   // a forged POST can't insert a $0 parent-only row.
+  // 2026-07-21 audit (dead-end fix): use includeInactive:false to match
+  // the client picker (which builds is_parent_only from ACTIVE products
+  // only). A parent whose variations are ALL archived has nothing to pick,
+  // so it's a normal sellable product — treating it as a browse header
+  // here rejected a row the picker let the user select, an unrecoverable
+  // dead-end ("pick a variation" with no active variation to pick).
   if (product_id) {
-    const catalog = await listProducts({ includeInactive: true });
+    const catalog = await listProducts({ includeInactive: false });
     const isParent = catalog.some((c) => c.parent_product_id === product_id);
     if (isParent) {
       redirect(
@@ -1227,7 +1233,7 @@ function LineItemsTable({
                   className={`${INPUT_CLS} min-h-[80px] py-2`}
                   required
                   rows={3}
-                  placeholder="e.g. Prep, prime, and paint 2 coats. New line = sub-item bullet on the PDF."
+                  placeholder="e.g. Prep, prime, and paint 2 coats. New lines carry to the PDF as sub-points."
                 />
               </label>
               {/* F.6: phase label. Free-text so Alex can use "Phase 1",
@@ -1359,7 +1365,7 @@ function AddLineItemForm({
             name="description"
             required
             rows={3}
-            placeholder={isLabor ? "e.g. Skilled painters — prep + prime + 2 coats" : "e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte.\n(New line = sub-item bullet on the PDF)"}
+            placeholder={isLabor ? "e.g. Skilled painters — prep + prime + 2 coats" : "e.g. GWB Ceiling & Soffit: Standard prep, prime + 2 coats matte.\n(New lines carry to the PDF as sub-points)"}
             className={`${INPUT_CLS} min-h-[80px] py-2`}
           />
         </label>

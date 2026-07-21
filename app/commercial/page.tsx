@@ -225,7 +225,7 @@ export default async function CommercialDashboardPage() {
             <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1.5">
               Wins this month
             </div>
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-2 flex-wrap">
               <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight">
                 {wonThisMonth.length}
               </div>
@@ -273,7 +273,7 @@ export default async function CommercialDashboardPage() {
             <AttentionCard
               count={overdueProposals.length}
               label="Overdue proposals"
-              sub={overdueProposals.length === 1 ? "1 bid past its due date" : `${overdueProposals.length} bids past due date`}
+              sub={overdueProposals.length === 0 ? "Nothing overdue" : overdueProposals.length === 1 ? "1 bid past its due date" : `${overdueProposals.length} bids past due date`}
               href="/commercial/opportunities?overdue=1"
               tone="rose"
               icon={
@@ -300,7 +300,7 @@ export default async function CommercialDashboardPage() {
               label="Follow-ups due"
               sub={followupsDue.length === 0 ? "Nothing scheduled" : "Check in today"}
               href="/commercial/opportunities?followup=1"
-              tone="cc-brand"
+              tone="navy"
               icon={
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 8v4l3 3" />
@@ -462,7 +462,7 @@ function AttentionCard({
   label: string;
   sub: string;
   href: string;
-  tone: "rose" | "amber" | "cc-brand" | "emerald";
+  tone: "rose" | "amber" | "cc-brand" | "emerald" | "navy";
   icon: React.ReactNode;
 }) {
   const isZero = count === 0;
@@ -475,6 +475,8 @@ function AttentionCard({
     ? "border-amber-200 bg-amber-50/40 hover:border-amber-400 hover:bg-amber-50/70"
     : tone === "cc-brand"
     ? "border-cc-brand-200 bg-cc-brand-50/40 hover:border-cc-brand-400 hover:bg-cc-brand-50/70"
+    : tone === "navy"
+    ? "border-ppp-navy-100 bg-ppp-navy-50/40 hover:border-ppp-navy-300 hover:bg-ppp-navy-50/70"
     : "border-emerald-200 bg-emerald-50/40 hover:border-emerald-400 hover:bg-emerald-50/70";
   const numberCls = isZero
     ? "text-ppp-charcoal-300"
@@ -484,6 +486,8 @@ function AttentionCard({
     ? "text-amber-700"
     : tone === "cc-brand"
     ? "text-cc-brand-700"
+    : tone === "navy"
+    ? "text-ppp-navy-700"
     : "text-emerald-700";
   const iconCls = isZero
     ? "bg-ppp-charcoal-50 text-ppp-charcoal-400"
@@ -493,6 +497,8 @@ function AttentionCard({
     ? "bg-amber-100 text-amber-700"
     : tone === "cc-brand"
     ? "bg-cc-brand-100 text-cc-brand-700"
+    : tone === "navy"
+    ? "bg-ppp-navy-100 text-ppp-navy-700"
     : "bg-emerald-100 text-emerald-700";
   return (
     <Link

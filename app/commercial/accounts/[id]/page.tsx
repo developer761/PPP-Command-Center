@@ -3854,7 +3854,8 @@ async function AccountProposalsTab({
                   <div className="min-w-0">
                     <Link
                       href={`/commercial/accounts/${accountId}?tab=deals&sub=opportunities#deal-row-${dealId}`}
-                      className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 truncate"
+                      className="block truncate text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700"
+                      title={dealTitle}
                     >
                       {dealTitle}
                     </Link>
@@ -3944,8 +3945,11 @@ async function AccountProposalsTab({
                             href={editorHref}
                             className={`flex-1 min-w-0 flex flex-col justify-center ${isCurrent ? "px-4 py-3" : "px-4 py-2"} min-h-[52px]`}
                           >
-                            {/* Row 1: R# + Current pill + status pill + total */}
-                            <div className="flex items-center gap-2 min-w-0">
+                            {/* Row 1: R# + Current pill + status pill + total.
+                                2026-07-21 audit: flex-wrap so the total drops
+                                to a second line on a narrow phone instead of
+                                clipping (all chips are shrink-0). */}
+                            <div className="flex items-center gap-2 gap-y-1 min-w-0 flex-wrap">
                               <span className={`font-bold text-ppp-charcoal tabular-nums shrink-0 ${isCurrent ? "text-[15px]" : "text-[12.5px] text-ppp-charcoal-600"}`}>
                                 R{r.revision_number}
                               </span>
@@ -3964,8 +3968,11 @@ async function AccountProposalsTab({
                                   sent {new Date(r.sent_at!).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}
                                 </span>
                               )}
-                              <span className={`ml-auto font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ${isCurrent ? "text-[15px]" : "text-[12.5px]"}`}>
-                                {fmt(r.total_cents)}
+                              <span
+                                className={`ml-auto font-semibold tabular-nums shrink-0 ${r.total_cents ? "text-ppp-charcoal-800" : "text-ppp-charcoal-400"} ${isCurrent ? "text-[15px]" : "text-[12.5px]"}`}
+                                title={r.total_cents ? undefined : "Not priced yet — no line items"}
+                              >
+                                {r.total_cents ? fmt(r.total_cents) : "—"}
                               </span>
                             </div>
                             {/* Row 2: caption (project name or GC) — only render if there IS a caption */}
@@ -3983,7 +3990,7 @@ async function AccountProposalsTab({
                             {canMakeCurrent && (
                               <Link
                                 href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${r.id}`}
-                                className="inline-flex items-center gap-1 px-3 h-full text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 border-r border-ppp-charcoal-100"
+                                className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 border-r border-ppp-charcoal-100 touch-manipulation"
                                 title={
                                   bumpLabel === "Reopen as R+1"
                                     ? `Reopen R${r.revision_number} as a new R+1 draft — line items copy forward, parent deal returns to Estimating.`
@@ -4001,7 +4008,7 @@ async function AccountProposalsTab({
                               href={`/api/commercial/proposals/${r.id}/pdf`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-3 h-full text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-cc-brand-50"
+                              className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-cc-brand-50 touch-manipulation"
                               title="Open the customer PDF in a new tab"
                               aria-label={`Open PDF for revision ${r.revision_number}`}
                             >
