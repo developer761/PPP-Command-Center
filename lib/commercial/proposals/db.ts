@@ -895,9 +895,15 @@ export async function createLineItem(
 > {
   // Migration 071: a row needs EITHER a picked product (product_name) OR
   // a typed description — a catalog product with a blank description is a
-  // valid line now that Product + Description are distinct fields.
+  // valid line now that Product + Description are distinct fields. Labor
+  // rows have no product picker, so the message is description-only there.
   if (!input.description.trim() && !input.product_name?.trim())
-    return { ok: false, error: "Pick a product or type a description." };
+    return {
+      ok: false,
+      error: input.is_labor
+        ? "Type a description for the labor row."
+        : "Pick a product or type a description.",
+    };
   if (input.quantity < 0)
     return { ok: false, error: "Quantity must be zero or greater." };
   // Round-3 audit fix: qty=0 on inclusions produces a $0 row on the

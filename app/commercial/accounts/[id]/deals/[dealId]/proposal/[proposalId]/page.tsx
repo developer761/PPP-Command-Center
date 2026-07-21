@@ -53,6 +53,7 @@ import ExclusionPicker from "@/components/commercial/exclusion-picker";
 import ProductPicker from "@/components/commercial/product-picker";
 import { IconTrophy } from "@/components/commercial/inline-icons";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { EditableProductChip } from "@/components/commercial/editable-product-chip";
 import { AutosaveProposalName } from "@/components/commercial/autosave-proposal-name";
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
 import { FillProjectFromDeal } from "@/components/commercial/fill-project-from-deal";
@@ -688,6 +689,10 @@ export default async function ProposalEditorPage({
   const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
+  // 2026-07-21 audit: the PDF has a real body (and a non-zero TOTAL) when
+  // there are inclusions OR labor rows — a labor-only bid is valid. Gate
+  // Preview/Send on this, not on inclusions alone.
+  const hasPdfBody = inclusions.length > 0 || laborRows.length > 0;
   const oppName = derivedOppName(opp, account.company_name);
   // F.5: TOTAL label ("Labor Only TOTAL" flip) considers BOTH library
   // exclusions and one-off custom lines so a "Materials" exclusion
@@ -728,9 +733,11 @@ export default async function ProposalEditorPage({
         <span className="text-ppp-charcoal-900 font-medium">{oppName}</span>
       </nav>
 
-      {/* 2026-07-21: sticky toolbar so the identity, TOTAL, and Send/PDF
-          actions stay reachable while scrolling the long editor form. */}
-      <header className="sticky top-2 z-20 bg-white/95 backdrop-blur-sm border border-ppp-charcoal-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap shadow-md shadow-ppp-charcoal-900/5">
+      {/* 2026-07-21: sticky toolbar (desktop only) so the identity, TOTAL,
+          and Send/PDF actions stay reachable while scrolling the long form.
+          NOT sticky on mobile — the buttons wrap into a tall block that
+          would eat a 375px viewport if pinned. */}
+      <header className="sm:sticky sm:top-2 z-20 bg-white/95 backdrop-blur-sm border border-ppp-charcoal-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap shadow-md shadow-ppp-charcoal-900/5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="text-[11px] font-bold text-ppp-charcoal-500 uppercase tracking-widest tabular-nums">
@@ -776,10 +783,10 @@ export default async function ProposalEditorPage({
           </form>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {inclusions.length === 0 ? (
+          {!hasPdfBody ? (
             <span
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-400 text-[13px] font-semibold min-h-[36px]"
-              title="Add at least one line item below to generate the proposal PDF."
+              title="Add an inclusion or a labor row below to generate the proposal PDF."
               aria-disabled
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -788,7 +795,7 @@ export default async function ProposalEditorPage({
                 <line x1="16" y1="13" x2="8" y2="13" />
                 <line x1="16" y1="17" x2="8" y2="17" />
               </svg>
-              PDF — add a line item first
+              PDF — add an inclusion or labor row first
             </span>
           ) : (
             <>
@@ -830,7 +837,7 @@ export default async function ProposalEditorPage({
           >
             + New revision (R{proposal.revision_number + 1})
           </Link>
-          {proposal.status === "draft" && inclusions.length > 0 && (
+          {proposal.status === "draft" && hasPdfBody && (
             <form action={sendProposalAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
@@ -1348,7 +1355,7 @@ function LineItemsTable({
   // 2026-07-21 rebuild (Karan): rows are cards, not a cramped 12-col grid.
   // Product name shown as a distinct navy chip (snapshotted, preserved on
   // save via a hidden field); Description is its own labelled area; the
-  // numeric fields sit in a tidy 3-up row.
+  // Phase/Qty/Unit/Price sit in a tidy row (2-up on mobile, 4-up on sm+).
   return (
     <ul className="space-y-3">
       {rows.map((r) => (
@@ -1362,20 +1369,17 @@ function LineItemsTable({
             <input type="hidden" name="proposal_id" value={proposalId} />
             <input type="hidden" name="id" value={r.id} />
             <input type="hidden" name="is_alternate" value={r.is_alternate ? "on" : ""} />
-            {/* Migration 071: preserve the snapshotted product name on save. */}
-            <input type="hidden" name="product_name" value={r.product_name ?? ""} />
+            {/* Migration 071: preserve the snapshotted product name on save;
+                the EditableProductChip below can blank this to convert the
+                row to free-text (fixes the mis-picked-variation dead-end). */}
+            <input type="hidden" id={`pn-${r.id}`} name="product_name" defaultValue={r.product_name ?? ""} />
             {/* Round-3 audit fix: optimistic-lock stamp so a stale two-tab
                 save is rejected before it overwrites a concurrent edit. */}
             <input type="hidden" name="original_updated_at" value={r.updated_at} />
 
-            {/* Product chip (only when this row came from the catalog). */}
+            {/* Product chip + Clear (only when this row came from the catalog). */}
             {r.product_name && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-400">Product</span>
-                <span className="inline-flex items-center rounded-md border border-ppp-navy-100 bg-ppp-navy-50 px-2 py-0.5 text-[12.5px] font-semibold text-ppp-navy-700">
-                  {r.product_name}
-                </span>
-              </div>
+              <EditableProductChip name={r.product_name} inputId={`pn-${r.id}`} />
             )}
 
             <label className="block">

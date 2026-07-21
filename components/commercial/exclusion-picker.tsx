@@ -270,7 +270,7 @@ export function ExclusionPicker({
           <ul
             id={listboxId}
             role="listbox"
-            className="absolute z-20 top-full mt-1 w-full max-h-72 overflow-y-auto bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg divide-y divide-ppp-charcoal-100"
+            className="absolute z-30 top-full mt-1 w-full max-h-72 overflow-y-auto bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg divide-y divide-ppp-charcoal-100"
           >
             {loading && results.length === 0 && (
               <li className="px-3 py-2 text-[12px] text-ppp-charcoal-500 italic">Searching…</li>
