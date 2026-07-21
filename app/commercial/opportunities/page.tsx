@@ -83,6 +83,7 @@ import { KanbanDnDProvider, KanbanDnDCard, KanbanDnDColumn } from "@/components/
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
 import DatePicker from "@/components/commercial/date-picker";
+import { IconBulb } from "@/components/commercial/inline-icons";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -916,7 +917,7 @@ export default async function CommercialOpportunitiesPage({
                   <FilterOption
                     href={toggleHotHref}
                     active={hotFilter}
-                    label={`🔥 Hot ($50k+ · <${HOT_DEAL_DECISION_DAYS}d)`}
+                    label={`Hot ($50k+ · <${HOT_DEAL_DECISION_DAYS}d)`}
                     description={`Bid ≥ $50k, proposal due within ${HOT_DEAL_DECISION_DAYS} days, still in play.`}
                   />
                   <FilterOption
@@ -1025,7 +1026,7 @@ export default async function CommercialOpportunitiesPage({
             </span>
             {search && <ActiveFilterChip href={clearFilterHref("q")} label={`Search: "${search}"`} />}
             {validStatus && <ActiveFilterChip href={clearFilterHref("status")} label={`Status: ${opportunityStatusLabel(validStatus)}`} />}
-            {hotFilter && <ActiveFilterChip href={clearFilterHref("hot")} label="🔥 Hot" />}
+            {hotFilter && <ActiveFilterChip href={clearFilterHref("hot")} label="Hot" />}
             {staleFilter && <ActiveFilterChip href={clearFilterHref("stale")} label={`Stale > ${STALE_OPP_DAYS}d`} />}
             {sourceSet.size > 0 && (
               <ActiveFilterChip
@@ -2092,7 +2093,7 @@ function KanbanBoard({
     <KanbanDnDProvider>
       <div className="space-y-3">
         <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-white border border-ppp-charcoal-100 rounded-full px-3 py-1.5">
-          <span aria-hidden>💡</span>
+          <IconBulb size={13} className="text-ppp-navy-500 shrink-0" />
           <span>
             Drag between stages inside a customer to move a deal forward. Drop into <strong>Won / Lost</strong> to close.
           </span>

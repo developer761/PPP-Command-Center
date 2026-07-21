@@ -51,6 +51,7 @@ import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
 import ExclusionPicker from "@/components/commercial/exclusion-picker";
 import ProductPicker from "@/components/commercial/product-picker";
+import { IconTrophy } from "@/components/commercial/inline-icons";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { AutosaveProposalName } from "@/components/commercial/autosave-proposal-name";
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
@@ -842,8 +843,9 @@ export default async function ProposalEditorPage({
         </div>
       )}
       {sp.outcome === "won" && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
-          <strong>🎉 Marked won.</strong> Deal flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
+          <IconTrophy size={16} className="text-ppp-green-600 shrink-0 mt-0.5" />
+          <span><strong>Marked won.</strong> Deal flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</span>
         </div>
       )}
       {sp.outcome === "lost" && (

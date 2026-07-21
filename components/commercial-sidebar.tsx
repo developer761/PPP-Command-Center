@@ -105,7 +105,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
           />
           <div className="mt-3 inline-flex items-center gap-1.5">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-brand-600" />
-            <span className="font-condensed text-[10px] font-bold tracking-[0.16em] text-ppp-charcoal-500 uppercase leading-tight">
+            <span className="font-condensed text-[10px] font-bold tracking-[0.16em] text-ppp-navy-700 uppercase leading-tight">
               Commercial<br />Command Center
             </span>
           </div>
@@ -127,7 +127,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
       <nav className="flex-1 px-3 py-3 lg:py-4 overflow-y-auto">
         {navSections.map((section, sectionIdx) => (
           <div key={section.heading} className={sectionIdx > 0 ? "mt-4 lg:mt-6" : ""}>
-            <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
+            <div className="font-condensed px-3 mb-1.5 lg:mb-2 text-[10px] font-bold tracking-[0.18em] text-ppp-navy-600 uppercase">
               {section.heading}
             </div>
             <ul className="space-y-0.5">
@@ -182,7 +182,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             other items. Visible only to multi-platform users. */}
         {showSwitcher && (
           <div className="mt-6 pt-4 border-t border-ppp-charcoal-100">
-            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-charcoal-500 uppercase">
+            <div className="font-condensed px-3 mb-2 text-[10px] font-semibold tracking-[0.18em] text-ppp-navy-600 uppercase">
               Platforms
             </div>
             <PlatformSwitcher current="new_platform" />

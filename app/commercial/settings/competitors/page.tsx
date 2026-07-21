@@ -14,6 +14,7 @@ import {
   type Competitor,
 } from "@/lib/commercial/competitors";
 import { opportunityLossReasonLabel, type OpportunityLossReason, OPPORTUNITY_LOSS_REASONS } from "@/lib/commercial/opportunities/db";
+import { IconGlobe, IconMapPin, IconDollar } from "@/components/commercial/inline-icons";
 import Link from "next/link";
 
 function formatCentsCompact(cents: number): string {
@@ -533,12 +534,12 @@ function IntelEditor({ competitor }: { competitor: Competitor }) {
       {hasIntel && (
         <div className="mt-2 text-[11.5px] text-ppp-charcoal-600 space-y-0.5 pl-4">
           {competitor.website && (
-            <div>🌐 <a href={competitor.website.startsWith("http") ? competitor.website : `https://${competitor.website}`} target="_blank" rel="noopener noreferrer" className="text-cc-brand-700 hover:underline">{competitor.website}</a></div>
+            <div className="flex items-center gap-1.5"><IconGlobe size={13} className="text-ppp-charcoal-400 shrink-0" /> <a href={competitor.website.startsWith("http") ? competitor.website : `https://${competitor.website}`} target="_blank" rel="noopener noreferrer" className="text-cc-brand-700 hover:underline">{competitor.website}</a></div>
           )}
-          {competitor.home_base && <div>📍 {competitor.home_base}</div>}
+          {competitor.home_base && <div className="flex items-center gap-1.5"><IconMapPin size={13} className="text-ppp-charcoal-400 shrink-0" /> {competitor.home_base}</div>}
           {(competitor.typical_bid_low_cents !== null || competitor.typical_bid_high_cents !== null) && (
-            <div>
-              💰 Typical bids:{" "}
+            <div className="flex items-center gap-1.5">
+              <IconDollar size={13} className="text-ppp-charcoal-400 shrink-0" /> Typical bids:{" "}
               {competitor.typical_bid_low_cents !== null && formatCentsCompact(competitor.typical_bid_low_cents)}
               {competitor.typical_bid_low_cents !== null && competitor.typical_bid_high_cents !== null && " – "}
               {competitor.typical_bid_high_cents !== null && formatCentsCompact(competitor.typical_bid_high_cents)}

@@ -103,6 +103,7 @@ import {
 } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
 import { BidLifecycleTimeline } from "@/components/commercial/bid-lifecycle-timeline";
+import { IconClock, IconAlertTriangle, IconFileDoc, IconStar } from "@/components/commercial/inline-icons";
 import {
   getAccountRecentActivity,
   describeActivity,
@@ -443,10 +444,10 @@ export default async function CommercialAccountDetailPage({
                 </span>
               )}
               {account.is_key_relationship && (
-                <Pill tone="amber">★ Key Relationship</Pill>
+                <Pill tone="amber"><IconStar size={11} className="shrink-0" /> Key Relationship</Pill>
               )}
               {!account.is_key_relationship && (overview?.won_opps_count ?? 0) > 0 && (
-                <Pill tone="amber">★ Repeat customer</Pill>
+                <Pill tone="amber"><IconStar size={11} className="shrink-0" /> Repeat customer</Pill>
               )}
               {account.rating && <Pill tone={ratingTone(account.rating)}>{account.rating}</Pill>}
               {account.industry && <Pill tone="neutral">{account.industry}</Pill>}
@@ -3443,10 +3444,10 @@ function AccountOpportunityRow({
                     : `Follow up in ${days}d`;
                   return (
                     <span
-                      className={overdue ? "text-rose-700 font-medium" : "text-cyan-700 font-medium"}
+                      className={`inline-flex items-center gap-1 ${overdue ? "text-rose-700 font-medium" : "text-cyan-700 font-medium"}`}
                       title={opp.follow_up_notes ?? undefined}
                     >
-                      <span aria-hidden>⏰</span> {label}
+                      <IconClock size={12} className="shrink-0" /> {label}
                     </span>
                   );
                 })()}
@@ -3925,7 +3926,7 @@ async function AccountProposalsTab({
                               </span>
                               {isCurrent && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider bg-emerald-600 text-white shrink-0">
-                                  <span aria-hidden>★</span> Current
+                                  <IconStar size={9} className="shrink-0" /> Current
                                 </span>
                               )}
                               <span
@@ -4058,7 +4059,7 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
 
       {expired.length > 0 && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">
-          <strong>⏰ Expired:</strong>{" "}
+          <strong className="inline-flex items-center gap-1"><IconClock size={13} className="shrink-0" /> Expired:</strong>{" "}
           {expired.map((e) => documentCategoryLabel(e.category)).join(", ")}. Upload a new version to clear.
         </div>
       )}
@@ -4096,10 +4097,10 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
             Document is in good standing &mdash; expires more than 30 days out (or never).
           </li>
           <li className="text-amber-800">
-            <strong>⚠️ Expires in N days</strong> &middot; within 30 days. Plan a renewal now.
+            <strong className="inline-flex items-center gap-1"><IconAlertTriangle size={13} className="shrink-0" /> Expires in N days</strong> &middot; within 30 days. Plan a renewal now.
           </li>
           <li className="text-rose-700">
-            <strong>⏰ Expired N days ago</strong> &middot; document is past its expiry date. Upload a new version.
+            <strong className="inline-flex items-center gap-1"><IconClock size={13} className="shrink-0" /> Expired N days ago</strong> &middot; document is past its expiry date. Upload a new version.
           </li>
           <li className="text-ppp-charcoal-500">
             <strong>Archived</strong> &middot; superseded by a newer version. Still downloadable for history.
@@ -4184,8 +4185,8 @@ function DocumentRow({
     if (exp.status === "expired") {
       const n = Math.abs(exp.daysUntil ?? 0);
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-rose-50 text-rose-700 border-rose-200">
-          ⏰ Expired {n}d ago
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-rose-50 text-rose-700 border-rose-200">
+          <IconClock size={12} className="shrink-0" /> Expired {n}d ago
         </span>
       );
     }
@@ -4923,7 +4924,7 @@ function Pill({ children, tone }: { children: React.ReactNode; tone: "emerald" |
     neutral: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
   }[tone];
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${cls}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${cls}`}>
       {children}
     </span>
   );
@@ -5082,7 +5083,7 @@ async function AccountInvoicesTab({
       {/* Empty state */}
       {invoices.length === 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
-          <div className="text-[36px] mb-2" aria-hidden>📄</div>
+          <div className="flex justify-center mb-2 text-ppp-charcoal-300" aria-hidden><IconFileDoc size={36} /></div>
           <div className="text-sm font-semibold text-ppp-charcoal">No invoices yet</div>
           <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto">
             Convert a Won deal into an invoice from the Deals tab, or start a new one above.

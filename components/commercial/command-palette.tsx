@@ -24,6 +24,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { IconBuilding, IconTarget, IconReceipt } from "./inline-icons";
 
 type PaletteResult = {
   kind: "account" | "opportunity" | "invoice";
@@ -39,10 +40,10 @@ const KIND_LABEL: Record<PaletteResult["kind"], string> = {
   invoice: "Invoices",
 };
 
-const KIND_ICON: Record<PaletteResult["kind"], string> = {
-  account: "🏢",
-  opportunity: "🎯",
-  invoice: "🧾",
+const KIND_ICON: Record<PaletteResult["kind"], typeof IconBuilding> = {
+  account: IconBuilding,
+  opportunity: IconTarget,
+  invoice: IconReceipt,
 };
 
 export function CommandPalette() {
@@ -229,8 +230,11 @@ export function CommandPalette() {
                             isHighlighted ? "bg-cc-brand-50" : "hover:bg-ppp-charcoal-50"
                           }`}
                         >
-                          <span aria-hidden className="shrink-0 text-[15px] leading-none mt-0.5">
-                            {KIND_ICON[kind]}
+                          <span aria-hidden className="shrink-0 mt-0.5 text-ppp-charcoal-500">
+                            {(() => {
+                              const Icon = KIND_ICON[kind];
+                              return <Icon size={16} />;
+                            })()}
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block text-[14px] font-semibold text-ppp-charcoal truncate">

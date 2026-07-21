@@ -318,7 +318,7 @@ export default async function CommercialDashboardPage() {
           icon={<IconBuilding />}
         />
         <KpiTile
-          tone="blue"
+          tone="emerald"
           value={wonOpps.length.toLocaleString()}
           label="All-time wins"
           sub={winRatePct !== null ? `${winRatePct}% overall win rate` : "No history yet"}
@@ -378,7 +378,9 @@ export default async function CommercialDashboardPage() {
               — {PHASES.filter((p) => p.status === "Shipped").length}/{PHASES.length} phases live
             </span>
           </span>
-          <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/roadmap:rotate-180">▾</span>
+          <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-400 transition-transform group-open/roadmap:rotate-180">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </summary>
         <div className="p-4 border-t border-ppp-charcoal-100">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
@@ -623,7 +625,7 @@ function KpiTile({
   href,
   icon,
 }: {
-  tone: "cc-brand" | "blue" | "rose";
+  tone: "cc-brand" | "blue" | "rose" | "emerald";
   value: string;
   label: string;
   sub: string;
@@ -635,22 +637,29 @@ function KpiTile({
       ? "border-cc-brand-100/70 bg-white hover:border-cc-brand-300"
       : tone === "rose"
       ? "border-rose-100/70 bg-white hover:border-rose-300"
+      : tone === "emerald"
+      ? "border-emerald-100/70 bg-white hover:border-emerald-300"
       : "border-blue-100/70 bg-white hover:border-blue-300";
   const glow =
     tone === "cc-brand"
       ? "bg-cc-brand-100/60"
       : tone === "rose"
       ? "bg-rose-100/60"
+      : tone === "emerald"
+      ? "bg-emerald-100/60"
       : "bg-blue-100/50";
   const stripe =
     tone === "cc-brand" ? "bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400"
     : tone === "rose" ? "bg-gradient-to-b from-rose-600 via-rose-500 to-rose-400"
+    : tone === "emerald" ? "bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400"
     : "bg-gradient-to-b from-blue-600 via-blue-500 to-blue-400";
   const iconCls =
     tone === "cc-brand"
       ? "bg-gradient-to-br from-cc-brand-100 to-cc-brand-50 text-cc-brand-700 group-hover/kpi:from-cc-brand-600 group-hover/kpi:to-cc-brand-500 group-hover/kpi:text-white"
       : tone === "rose"
       ? "bg-gradient-to-br from-rose-100 to-rose-50 text-rose-700 group-hover/kpi:from-rose-600 group-hover/kpi:to-rose-500 group-hover/kpi:text-white"
+      : tone === "emerald"
+      ? "bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-700 group-hover/kpi:from-emerald-600 group-hover/kpi:to-emerald-500 group-hover/kpi:text-white"
       : "bg-gradient-to-br from-blue-100 to-blue-50 text-blue-700 group-hover/kpi:from-blue-600 group-hover/kpi:to-blue-500 group-hover/kpi:text-white";
   return (
     <Link
