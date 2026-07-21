@@ -163,7 +163,7 @@ export function KeyboardShortcuts() {
         <ul className="px-5 py-4 space-y-2.5 text-[13px]">
           <ShortcutRow keys={["⌘", "K"]} label="Open command palette (jump to anything)" />
           <ShortcutRow keys={["/"]} label="Focus the palette search" />
-          <ShortcutRow keys={["N"]} label="Log a new deal" />
+          <ShortcutRow keys={["N"]} label="Log a new opportunity" />
           <ShortcutRow keys={["G", "P"]} label="Go to Pipeline" />
           <ShortcutRow keys={["G", "A"]} label="Go to Accounts" />
           <ShortcutRow keys={["G", "I"]} label="Go to Invoices" />

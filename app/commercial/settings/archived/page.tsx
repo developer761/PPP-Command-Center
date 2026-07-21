@@ -164,7 +164,7 @@ export default async function ArchivedDealsPage({
 
       {archived.length === 0 ? (
         <div className="rounded-xl border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50 p-8 text-center">
-          <p className="text-sm font-medium text-ppp-charcoal">No archived deals.</p>
+          <p className="text-sm font-medium text-ppp-charcoal">No archived opportunities.</p>
           <p className="mt-1 text-xs text-ppp-charcoal-500">
             When someone archives a deal from its detail page it lands here for
             bulk restore.
@@ -191,7 +191,7 @@ export default async function ArchivedDealsPage({
               <thead className="bg-ppp-charcoal-50 text-left text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
                 <tr>
                   <th className="px-3 py-2 w-8"></th>
-                  <th className="px-3 py-2">Deal</th>
+                  <th className="px-3 py-2">Opportunity</th>
                   <th className="px-3 py-2">Account</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Archived</th>

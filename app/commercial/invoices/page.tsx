@@ -1787,7 +1787,7 @@ function FullDetailByOpp({
               {totalInvoiced > 0 && (
                 <div className="mt-3">
                   <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Deal progress</div>
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Opportunity progress</div>
                     <div className="text-[10.5px] text-ppp-charcoal-600 tabular-nums">
                       <strong className="text-ppp-charcoal">{formatCentsFull(totalPaid)}</strong>
                       <span className="text-ppp-charcoal-500"> of {formatCentsFull(totalInvoiced)}</span>

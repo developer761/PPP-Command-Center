@@ -1576,7 +1576,7 @@ export default async function OpportunityDetailPage({
                   <span aria-hidden>·</span>
                   <span
                     className="inline-flex items-center px-2 py-0.5 rounded-md bg-ppp-charcoal-100 border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[11px] font-semibold uppercase tracking-widest"
-                    title="This deal is archived — hidden from active pipeline. Dependents still visible in their own lists."
+                    title="This opportunity is archived — hidden from active pipeline. Dependents still visible in their own lists."
                   >
                     Archived
                   </span>
@@ -1641,7 +1641,7 @@ export default async function OpportunityDetailPage({
                 <button
                   type="submit"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-cc-brand-200 bg-white text-cc-brand-700 text-[12px] font-semibold hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[44px] touch-manipulation"
-                  title="Customer's back in play? Reopen puts this deal back into the active pipeline."
+                  title="Customer's back in play? Reopen puts this opportunity back into the active pipeline."
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.8 2.8L3 8" />
@@ -1708,7 +1708,7 @@ export default async function OpportunityDetailPage({
                     <span
                       className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-amber-500 ring-2 ring-amber-100"
                       aria-label="Debrief pending"
-                      title="This deal closed without a debrief — click to add one."
+                      title="This opportunity closed without a debrief — click to add one."
                     />
                   )}
                 </Link>

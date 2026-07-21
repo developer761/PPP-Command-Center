@@ -1343,17 +1343,17 @@ function NewDealSlideOut({
     <>
       <Link
         href={closeHref}
-        aria-label="Close new deal panel"
+        aria-label="Close new opportunity panel"
         className="fixed inset-0 z-40 bg-ppp-charcoal-900/40 backdrop-blur-sm"
       />
       <aside
         id="new-deal-sheet"
         className="fixed right-0 top-0 bottom-0 z-50 w-full sm:max-w-md bg-white shadow-2xl flex flex-col"
-        aria-label="Create a new deal"
+        aria-label="Create a new opportunity"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-ppp-charcoal-100">
           <div>
-            <h2 className="text-base font-bold text-ppp-charcoal">New deal</h2>
+            <h2 className="text-base font-bold text-ppp-charcoal">New opportunity</h2>
             <p className="text-xs text-ppp-charcoal-500 mt-0.5">
               Pick the GC (account), name the deal, click Create.
             </p>
@@ -2331,8 +2331,8 @@ function KanbanBoard({
         })}
         {accountBuckets.length === 0 && (
           <div className="bg-white border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
-            <p className="text-[13px] font-semibold text-ppp-charcoal">No open deals yet.</p>
-            <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">Add a deal above to start populating the pipeline.</p>
+            <p className="text-[13px] font-semibold text-ppp-charcoal">No open opportunities yet.</p>
+            <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">Add an opportunity above to start populating the pipeline.</p>
           </div>
         )}
         {globalOverflow.length > 0 && (

@@ -36,7 +36,7 @@ type PaletteResult = {
 
 const KIND_LABEL: Record<PaletteResult["kind"], string> = {
   account: "Accounts",
-  opportunity: "Deals",
+  opportunity: "Opportunities",
   invoice: "Invoices",
 };
 

@@ -875,7 +875,7 @@ async function createDealInlineAction(formData: FormData) {
 
   const title = String(formData.get("title") ?? "").trim();
   if (!title) {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&error=${encodeURIComponent("Deal title is required.")}`);
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&new_deal=1&error=${encodeURIComponent("Opportunity title is required.")}`);
   }
 
   const statusRaw = String(formData.get("status") ?? "qualifying").trim();
@@ -2771,7 +2771,7 @@ function NewDealForm({
       <div>
         <span className={labelCls}>RFP received</span>
         <DatePicker name="rfp_received_at" placeholder="When the RFP / bid request arrived" ariaLabel="RFP received date" />
-        <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the deal card.</span>
+        <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">Powers time-to-proposal on the opportunity card.</span>
       </div>
       {/* Phase B (Plan v1.1) — CEO structural fields. All optional at
           Solicitation; the changeOpportunityStatus validator blocks the
@@ -3214,7 +3214,7 @@ async function OpportunitiesTab({
               <span className="text-[14px] font-bold text-cc-brand-700 leading-tight">
                 {open.length === 0 && decided.length > 0
                   ? "Start the next bid"
-                  : "New deal for this customer"}
+                  : "New opportunity for this customer"}
               </span>
               <span className="text-[11px] text-ppp-charcoal-500 leading-tight mt-0.5">
                 {open.length === 0 && decided.length > 0
@@ -5621,7 +5621,7 @@ function DealEditSheet({
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700 mb-1.5">
-                Edit deal
+                Edit opportunity
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 id="deal-edit-title" className="text-lg font-bold text-ppp-charcoal break-words leading-tight tracking-tight">
@@ -5724,10 +5724,10 @@ function DealEditSheet({
           <input type="hidden" name="account_id" value={accountId} />
           <input type="hidden" name="opp_id" value={deal.id} />
 
-          {/* ─── Section: About this deal ─── */}
-          <SheetSection title="About this deal">
+          {/* ─── Section: About this opportunity ─── */}
+          <SheetSection title="About this opportunity">
             <div>
-              <label htmlFor="edit-title" className={labelCls}>Deal title *</label>
+              <label htmlFor="edit-title" className={labelCls}>Opportunity title *</label>
               <input
                 id="edit-title"
                 name="title"
@@ -6049,7 +6049,7 @@ function DealEditSheet({
               <input type="hidden" name="opp_id" value={deal.id} />
               <input type="hidden" name="confirm" value="yes" />
               <p className="text-[12px] text-rose-800 leading-relaxed">
-                Are you sure? This will remove <strong>{deal.title || "this deal"}</strong> from the pipeline.
+                Are you sure? This will remove <strong>{deal.title || "this opportunity"}</strong> from the pipeline.
               </p>
               <PendingSubmitButton
                 className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation disabled:hover:bg-rose-600"

@@ -764,7 +764,7 @@ export default async function ProposalEditorPage({
             <form action={sendProposalAction} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the GC"}? This saves the sent PDF into Files as an official copy (prior drafts remain), flips the deal to Proposal · Sent, and notifies the team. You can still start R${proposal.revision_number + 1} after.`}
+                message={`Send R${proposal.revision_number} to ${proposal.header_json.gc_company ?? "the GC"}? This saves the sent PDF into Files as an official copy (prior drafts remain), flips the opportunity to Proposal · Sent, and notifies the team. You can still start R${proposal.revision_number + 1} after.`}
                 pendingLabel="Sending…"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px] disabled:opacity-50"
               >
@@ -784,7 +784,7 @@ export default async function ProposalEditorPage({
             <form action={reopenProposalActionForm} className="inline-flex">
               {hiddenIds}
               <ConfirmSubmitButton
-                message={`Reopen R${proposal.revision_number}? Flips this proposal back to Sent AND (if the parent deal is still at Pre-Sale Closed) flips the deal back to Proposal · Sent. Use this if you marked ${proposal.status.toUpperCase()} by mistake.`}
+                message={`Reopen R${proposal.revision_number}? Flips this proposal back to Sent AND (if the parent opportunity is still at Pre-Sale Closed) flips the opportunity back to Proposal · Sent. Use this if you marked ${proposal.status.toUpperCase()} by mistake.`}
                 pendingLabel="Reopening…"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-white text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[36px]"
               >
@@ -803,7 +803,7 @@ export default async function ProposalEditorPage({
                 {hiddenIds}
                 <input type="hidden" name="outcome" value="won" />
                 <ConfirmSubmitButton
-                  message={`Mark R${proposal.revision_number} WON? This also flips the deal to Pre-Sale Closed · Won. You'll be able to start the project next.`}
+                  message={`Mark R${proposal.revision_number} WON? This also flips the opportunity to Pre-Sale Closed · Won. You'll be able to start the project next.`}
                   pendingLabel="Marking won…"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm min-h-[40px] disabled:opacity-50"
                 >
@@ -817,7 +817,7 @@ export default async function ProposalEditorPage({
                 {hiddenIds}
                 <input type="hidden" name="outcome" value="lost" />
                 <ConfirmSubmitButton
-                  message={`Mark R${proposal.revision_number} LOST? You'll be routed to the debrief page to capture the reason (competitor won / price / no response / etc.). This also flips the deal to Pre-Sale Closed · Lost.`}
+                  message={`Mark R${proposal.revision_number} LOST? You'll be routed to the debrief page to capture the reason (competitor won / price / no response / etc.). This also flips the opportunity to Pre-Sale Closed · Lost.`}
                   pendingLabel="Marking lost…"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-300 bg-white text-rose-700 text-[13px] font-semibold hover:bg-rose-50 min-h-[40px] disabled:opacity-50"
                 >
@@ -834,24 +834,24 @@ export default async function ProposalEditorPage({
       )}
       {sp.created === "1" && (
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-2.5 text-sm text-cc-brand-800">
-          Proposal created. Header prefilled from the deal — start with inclusions below.
+          Proposal created. Header prefilled from the opportunity — start with inclusions below.
         </div>
       )}
       {sp.sent === "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900">
-          <strong>Proposal sent.</strong> PDF snapshot saved to Files, deal flipped to <em>Proposal · Sent</em>, and the team was notified.
+          <strong>Proposal sent.</strong> PDF snapshot saved to Files, opportunity flipped to <em>Proposal · Sent</em>, and the team was notified.
         </div>
       )}
       {sp.outcome === "won" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
           <IconTrophy size={16} className="text-ppp-green-600 shrink-0 mt-0.5" />
-          <span><strong>Marked won.</strong> Deal flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</span>
+          <span><strong>Marked won.</strong> Opportunity flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</span>
         </div>
       )}
       {sp.outcome === "lost" && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-900 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <strong>Marked lost.</strong> Deal flipped to <em>Pre-Sale Closed · Lost</em>. Please add the loss reason so the Win/Loss report is accurate.
+            <strong>Marked lost.</strong> Opportunity flipped to <em>Pre-Sale Closed · Lost</em>. Please add the loss reason so the Win/Loss report is accurate.
           </div>
           <Link
             href={`/commercial/accounts/${accountId}/debrief/${dealId}?just_closed=1`}
@@ -863,12 +863,12 @@ export default async function ProposalEditorPage({
       )}
       {sp.outcome === "reopened" && (
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-lg px-4 py-3 text-sm text-cc-brand-900">
-          <strong>Reopened.</strong> Proposal is back to Sent and the parent deal is back to <em>Proposal · Sent</em>.
+          <strong>Reopened.</strong> Proposal is back to Sent and the parent opportunity is back to <em>Proposal · Sent</em>.
         </div>
       )}
       {sp.outcome === "reopened_solo" && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900">
-          <strong>Reopened proposal only.</strong> The parent deal already moved forward (past Pre-Sale Closed) so it was left as-is. Move it back manually on the pipeline kanban if you meant to reopen the whole deal.
+          <strong>Reopened proposal only.</strong> The parent opportunity already moved forward (past Pre-Sale Closed) so it was left as-is. Move it back manually on the pipeline kanban if you meant to reopen the whole opportunity.
         </div>
       )}
       {sp.error && (
@@ -947,7 +947,7 @@ export default async function ProposalEditorPage({
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-widest text-cc-brand-800">
-                  Project — the deal / job site
+                  Project — the opportunity / job site
                 </div>
                 <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">
                   The specific customer + site this proposal covers. Prints as &ldquo;PROJECT: {"{"}Name{"}"}, {"{"}Address{"}"}&rdquo; on the PDF.

@@ -231,7 +231,7 @@ export function StatusSubStatusPicker({
               defaultValue={initialFollowUpAt ?? ""}
               className={INPUT_CLS}
             />
-            <p className={HINT_CLS}>Shows up on the deal row until you touch it again.</p>
+            <p className={HINT_CLS}>Shows up on the opportunity row until you touch it again.</p>
           </label>
           <label className="block sm:col-span-1">
             <span className={LABEL_CLS}>Follow-up notes</span>
