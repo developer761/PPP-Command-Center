@@ -804,6 +804,7 @@ export default async function ProposalEditorPage({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
+                title="Customer proposal — what the GC sees. No internal bid notes or per-line prices."
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -811,17 +812,17 @@ export default async function ProposalEditorPage({
                   <line x1="16" y1="13" x2="8" y2="13" />
                   <line x1="16" y1="17" x2="8" y2="17" />
                 </svg>
-                Preview PDF
+                Customer PDF
               </a>
               {proposal.status === "draft" && (
                 <a
                   href={`/api/commercial/proposals/${proposalId}/pdf?mode=internal`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
-                  title="Internal view — shows line-item prices so you can sanity-check the estimator math"
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-navy-200 bg-ppp-navy-50 text-ppp-navy-700 text-[12px] font-semibold hover:bg-ppp-navy-100 min-h-[36px]"
+                  title="Internal Plan Report — the same proposal PLUS the internal bid notes + per-line prices, for estimator review (Kim's plan read). Never shown to the GC."
                 >
-                  Internal view
+                  Plan report
                 </a>
               )}
             </>
