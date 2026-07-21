@@ -2670,7 +2670,7 @@ function NewDealForm({
   };
 }) {
   const inputCls =
-    "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 bg-white";
+    "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 bg-white";
   // Karan 2026-07-10 (second flag on gray selects): the OS-default
   // <select> chevron on Mac/Chrome renders the whole control in a
   // grayscale gradient that reads as "disabled" even when it isn't.
@@ -3745,14 +3745,21 @@ async function AccountProposalsTab({
                 </div>
               </div>
               <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
-                <div>
-                  <div className="text-[9px] font-bold uppercase tracking-widest text-cc-brand-700">Sent</div>
-                  <div className="font-condensed text-xl font-bold text-ppp-charcoal leading-none mt-0.5">{sentCount}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] font-bold uppercase tracking-widest text-emerald-700">Won</div>
-                  <div className="font-condensed text-xl font-bold text-emerald-700 leading-none mt-0.5">{wonCount}</div>
-                </div>
+                {/* Karan 2026-07-21 (zero-state discipline): hide Sent/Won
+                    when 0 — matches the Outstanding pattern below. No dead
+                    "Sent 0 / Won 0" clutter on accounts with no send history. */}
+                {sentCount > 0 && (
+                  <div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-cc-brand-700">Sent</div>
+                    <div className="font-condensed text-xl font-bold text-ppp-charcoal leading-none mt-0.5">{sentCount}</div>
+                  </div>
+                )}
+                {wonCount > 0 && (
+                  <div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-emerald-700">Won</div>
+                    <div className="font-condensed text-xl font-bold text-emerald-700 leading-none mt-0.5">{wonCount}</div>
+                  </div>
+                )}
                 {outstandingCents > 0 && (
                   <div>
                     <div className="text-[9px] font-bold uppercase tracking-widest text-ppp-charcoal-500">Outstanding</div>
@@ -4328,7 +4335,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
         <div className="flex items-center justify-end">
           <button
             type="submit"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/25"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/25"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 5v14 M5 12h14" />
@@ -4512,7 +4519,7 @@ function EditableField({
         required={required}
         defaultValue={defaultValue ?? ""}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white hover:border-ppp-charcoal-300 focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 placeholder:italic min-h-[40px] text-ppp-charcoal transition-colors"
+        className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white hover:border-ppp-charcoal-300 focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 placeholder:italic min-h-[44px] text-ppp-charcoal transition-colors"
       />
     </label>
   );
@@ -4539,7 +4546,7 @@ function EditableSelect({
       <select
         name={name}
         defaultValue={defaultValue ?? ""}
-        className="w-full px-3 py-2 pr-9 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white hover:border-ppp-charcoal-300 focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 text-ppp-charcoal min-h-[40px] appearance-none bg-no-repeat transition-colors"
+        className="w-full px-3 py-2 pr-9 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white hover:border-ppp-charcoal-300 focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 text-ppp-charcoal min-h-[44px] appearance-none bg-no-repeat transition-colors"
         style={{
           backgroundImage:
             "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
@@ -5565,7 +5572,7 @@ function DealEditSheet({
   const endDateDefault = deal.proposed_end_at ? deal.proposed_end_at.slice(0, 10) : "";
   const rfpDateDefault = deal.rfp_received_at ? deal.rfp_received_at.slice(0, 10) : "";
   const closeHref = `/commercial/accounts/${accountId}?tab=opportunities`;
-  const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]";
+  const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]";
   // Karan 2026-07-10 (arrows-coming-down flag): all selects get an
   // identical chevron. `appearance-none` strips the OS default (which
   // rendered differently in Safari vs Firefox vs Chrome). SELECT_BG_STYLE
@@ -5982,7 +5989,7 @@ function DealEditSheet({
             </p>
           </div>
           <details className="relative">
-            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-300 bg-white text-[12.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[40px] touch-manipulation">
+            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-300 bg-white text-[12.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
               </svg>

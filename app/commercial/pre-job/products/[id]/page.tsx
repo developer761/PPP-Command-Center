@@ -23,6 +23,7 @@ import {
 } from "@/lib/commercial/products/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 /**
@@ -252,6 +253,14 @@ export default async function ProductDetailPage({
   // If THIS product has variations pointing at it, it's a parent — warn
   // the user that removing its parent status would orphan the variations.
   const isParent = childProductIds.has(product.id);
+  // Karan 2026-07-21 (audit gap): a parent product's detail page never
+  // listed its child variations, forcing the admin back to the catalog
+  // list to find/jump to them. Collect this product's variations here.
+  const childVariations = allProducts
+    .filter((p) => p.parent_product_id === product.id)
+    .sort((a, b) =>
+      (a.variation_label ?? a.name).localeCompare(b.variation_label ?? b.name)
+    );
 
   return (
     <div className="max-w-3xl space-y-5">
@@ -299,6 +308,51 @@ export default async function ProductDetailPage({
         <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 text-sm text-rose-800">
           {decodeURIComponent(sp.error)}
         </div>
+      )}
+
+      {/* Variations panel — only when this product is a parent. Lists
+          each child with its label + price and a jump link, so the admin
+          can manage the whole variation group from the parent page. */}
+      {childVariations.length > 0 && (
+        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-ppp-charcoal">
+              Variations · {childVariations.length}
+            </h2>
+            <Link
+              href="/commercial/pre-job/products/new"
+              className="text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] inline-flex items-center"
+            >
+              + Add variation
+            </Link>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100 -my-1">
+            {childVariations.map((v) => (
+              <li key={v.id}>
+                <Link
+                  href={`/commercial/pre-job/products/${v.id}`}
+                  className="flex items-center justify-between gap-3 py-2.5 min-h-[44px] hover:bg-ppp-charcoal-50 -mx-2 px-2 rounded-lg touch-manipulation"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[13.5px] font-medium text-ppp-charcoal truncate">
+                      {v.variation_label ?? v.name}
+                    </span>
+                    <span className="block text-[11.5px] text-ppp-charcoal-500 font-mono">
+                      {v.sku}
+                      {!v.is_active && " · archived"}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-[13px] font-semibold text-ppp-charcoal tabular-nums">
+                    {formatDollars(v.default_unit_price_cents)}
+                    <span className="text-[11px] text-ppp-charcoal-500 font-normal">
+                      {" "}/ {productUnitLabel(v.unit)}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {/* Core edit form */}
@@ -428,24 +482,20 @@ export default async function ProductDetailPage({
                 <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
                   Variation of…
                 </span>
-                <select
+                {/* Karan 2026-07-21 (searchable-dropdown rule): type-to-
+                    filter instead of a flat select of every product. */}
+                <SearchableSelect
                   name="parent_product_id"
+                  options={parentCandidates.map((p) => ({ value: p.id, label: p.name }))}
                   defaultValue={product.parent_product_id ?? ""}
                   disabled={isParent}
-                  className={SELECT_CLS}
-                  style={SELECT_BG_STYLE}
-                >
-                  <option value="">— Standalone product —</option>
-                  {parentCandidates.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Standalone — type to pick a parent…"
+                  ariaLabel="Variation of parent product"
+                />
                 <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                   {isParent
                     ? "Locked — this product has variations under it. Archive or reassign those first."
-                    : "Pick a parent to make this a variation."}
+                    : "Leave blank for standalone, or pick a parent to make this a variation."}
                 </span>
               </label>
             </div>

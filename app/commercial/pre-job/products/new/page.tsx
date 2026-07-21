@@ -14,6 +14,7 @@ import {
   productUnitLabel,
 } from "@/lib/commercial/products/constants";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
 /**
@@ -282,21 +283,18 @@ export default async function NewProductPage({
             <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
               Variation of…
             </span>
-            <select
+            {/* Karan 2026-07-21 (searchable-dropdown rule): was a plain
+                <select> listing every product (~40+ after the Tomco seed).
+                Now type-to-filter. Empty selection = standalone product. */}
+            <SearchableSelect
               name="parent_product_id"
-              defaultValue=""
-              className={SELECT_CLS}
-              style={SELECT_BG_STYLE}
-            >
-              <option value="">— Standalone product —</option>
-              {parentCandidates.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+              options={parentCandidates.map((p) => ({ value: p.id, label: p.name }))}
+              placeholder="Standalone — type to pick a parent…"
+              ariaLabel="Variation of parent product"
+            />
             <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
-              Pick a parent to make this a variation (e.g. Seal & Poly).
+              Leave blank for a standalone product, or pick a parent to make
+              this a variation (e.g. Seal &amp; Poly).
             </span>
           </label>
         </div>
