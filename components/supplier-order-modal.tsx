@@ -181,11 +181,6 @@ export default function SupplierOrderModal({
   // able to accidentally cancel an order mid-Resend-roundtrip).
   useEscClose(onClose, { allowDuring: !sending });
 
-  // Scroll the email body into view as soon as the first draft loads, so
-  // admin lands on the most-edited section instead of having to scroll past
-  // warnings + fulfillment + extras + special-instructions. Once the body
-  // is visible, the user scrolls UP to change settings if needed.
-  const emailBodyRef = useRef<HTMLDivElement | null>(null);
   // Synchronous double-send guard. The `sending` state check alone races:
   // React batches setSending, so two rapid clicks (or Enter+click) can both
   // pass `if (sending) return` before the first commits — firing TWO
@@ -1195,7 +1190,7 @@ export default function SupplierOrderModal({
                       extras / fulfillment toggles, so the worker knows the
                       email IS regenerating with their changes (without it
                       the ~300ms latency reads as "the email didn't update"). */}
-                  <div ref={emailBodyRef}>
+                  <div>
                   <Section
                     title="Email body"
                     subtitle={

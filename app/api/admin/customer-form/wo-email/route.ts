@@ -31,6 +31,10 @@ export async function GET(request: Request) {
   }
   const profile = await getProfileByUserId(data.user.id);
   // Admins + Account Managers can look up the customer email for a WO.
+  // Deactivated accounts lose API access immediately (bootstrap admins exempt).
+  if (profile && profile.is_active === false && !isAdminEmail(data.user.email)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email));
   if (!capabilitiesFor(role).canEnterColors) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
@@ -48,7 +52,7 @@ export async function GET(request: Request) {
 
     // Build a single SOQL pulling every discovered path. If any field is FLS-
     // hidden the whole query errors — narrow progressively by dropping the
-    // failing field until the query runs. We retry up to 8 times so a few
+    // failing field until the query runs. We retry up to 10 times so a few
     // bad fields don't kill the lookup entirely.
     const allPaths = Array.from(new Set([...emailPaths, ...accountIdPaths, ...namePaths]));
     let usable = [...allPaths];

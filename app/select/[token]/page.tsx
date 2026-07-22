@@ -28,7 +28,7 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
     return <ErrorState heading="Link not found" body="This form link doesn't exist or was removed. If you got it from PPP, please reach out so they can send you a new one." />;
   }
   if (status.kind === "expired") {
-    return <ErrorState heading="This link has expired" body="For your security, color forms expire after 30 days. Reply to the PPP email you got and we'll send a fresh link." />;
+    return <ErrorState heading="This link has expired" body="For your security, this color-form link has expired. Reply to the PPP email you got and we'll send a fresh link." />;
   }
   if (status.kind === "submitted") {
     // Submitted AND past the cutoff (24h before the job start) → locked.

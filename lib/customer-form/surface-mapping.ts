@@ -91,3 +91,35 @@ export function normalizeFinishToSf(finish: string | null | undefined): string |
       return null;
   }
 }
+
+/**
+ * Reverse of normalizeFinishToSf: map a Salesforce finish picklist value back
+ * to the form's FINISH_OPTIONS label so a SF-seeded finish (#14) matches a
+ * dropdown <option>. Critically, SF stores Semi-Gloss as the one-word
+ * "Semigloss" — seeding that verbatim left the <select> unmatched AND made
+ * submit reject it as an invalid finish. Returns null for any value that has
+ * no matching form option (so we seed a valid option or nothing at all).
+ */
+export function denormalizeFinishFromSf(sfFinish: string | null | undefined): string | null {
+  if (!sfFinish || typeof sfFinish !== "string") return null;
+  switch (sfFinish.trim().toLowerCase()) {
+    case "flat":
+      return "Flat";
+    case "matte":
+      return "Matte";
+    case "eggshell":
+      return "Eggshell";
+    case "satin":
+      return "Satin";
+    case "semigloss":
+    case "semi-gloss":
+      return "Semi-Gloss";
+    case "gloss":
+      return "Gloss";
+    case "high-gloss":
+    case "highgloss":
+      return "High-Gloss";
+    default:
+      return null;
+  }
+}

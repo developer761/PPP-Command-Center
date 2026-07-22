@@ -162,9 +162,13 @@ export async function getMaterialsPageAuxData(
     // re-sent form (newer token, no submitted_at) shadowed an earlier
     // SUBMITTED token and the progress bar got stuck at "Sent". Rank by
     // stage (submitted > opened > sent) and let the newest win only on a
-    // tie — so a real submission always beats a later blank re-send.
+    // tie — so a real submission always beats a later blank re-send. An
+    // EXPIRED unsubmitted token is demoted to 0 so it can't shadow a newer
+    // valid re-send (which would wrongly show "expired" + a dead link).
     const tokenRank = (r: TokenRow): number => {
       if (r.submitted_at) return 3;
+      const expMs = new Date(r.expires_at).getTime();
+      if (!Number.isNaN(expMs) && expMs < now) return 0;
       if (r.opened_at) return 2;
       return 1;
     };

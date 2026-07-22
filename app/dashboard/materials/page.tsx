@@ -25,5 +25,5 @@ export default async function MaterialsOrderingPage({
   }
 
   const props = await loadMaterialsViewProps(sp);
-  return <MaterialsView {...props} initialWoId={null} />;
+  return <MaterialsView {...props} />;
 }

@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { invalidateProfileCache } from "@/lib/auth/profile";
-import { normalizeEmail } from "@/lib/auth/admin";
+import { isAdminEmail, normalizeEmail } from "@/lib/auth/admin";
 import { normalizeRole, type UserRole } from "@/lib/auth/roles";
 
 /**
@@ -341,6 +341,16 @@ export async function setUserActive(input: {
     // Block deactivating self, and the last active admin.
     if (input.user_id === input.actor.user_id) {
       return { ok: false, error: "You can't deactivate your own account." };
+    }
+    // Bootstrap-list admins are exempt from the sign-in lockout (anti-brick),
+    // so "deactivating" one wouldn't actually revoke access — the DB row would
+    // flip but they'd still sign in. Block it so the UI never claims a
+    // revocation that doesn't take effect.
+    if (isAdminEmail(current.email)) {
+      return {
+        ok: false,
+        error: "This is a protected admin account and can't be deactivated here.",
+      };
     }
     if (current.role === "admin" && (await activeAdminCount()) <= 1) {
       return {

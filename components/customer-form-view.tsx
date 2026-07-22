@@ -50,7 +50,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
 import { resolveSwatchHex } from "@/lib/customer-form/color-swatch";
-import { classifySurface } from "@/lib/customer-form/surface-mapping";
+import { classifySurface, denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
 
 /** Surface label → the WOLI slot holding its existing SF color/finish.
  *  Used to pre-fill the form from colors already saved in Salesforce when
@@ -591,10 +591,13 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           notes: state[li.id]?.notes ?? "",
         })),
         globalNotes,
-        // Material Type (paint product line) — sent only when the customer
-        // actually picked one. Empty string skips the WO writeback so we
-        // don't blank out an admin-set MaterialType__c.
-        materialType: materialType.trim() || null,
+        // Material Type (paint product line) — the picker is STAFF-ONLY now
+        // (#6). Only staff entry sends it; on the customer form we send null so
+        // the existing MaterialType__c flows through untouched. This also kills
+        // the phantom "the paint line you selected isn't one we order" warning
+        // a customer could get for a legacy value they never saw/picked, and
+        // the redundant same-value WO write on every customer submit.
+        materialType: isStaffEntry ? (materialType.trim() || null) : null,
         renderFetchedAt: formData.fetchedAt,
         // Customer-confirmed delivery address. Persisted to
         // customer_form_tokens.submitted_payload.deliveryAddress; the
@@ -973,8 +976,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           exterior WOs). */}
       {/* Customer-responsibility disclaimer — Katie 2026-06-12. Renders
           right before the Submit/Save button so the customer reads it
-          before clicking. Hidden in preview mode (admin testing). */}
-      {!isPreview && (hasLineItems || globalNotes.trim().length > 0) && (
+          before clicking. Hidden for staff entry (preview + internal) — it's
+          customer-facing "your responsibility / your expense" copy. */}
+      {!isStaffEntry && (hasLineItems || globalNotes.trim().length > 0) && (
         <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 text-[11px] sm:text-xs text-ppp-charcoal-700 leading-relaxed">
           <strong className="text-ppp-charcoal">Please double-check before submitting.</strong>{" "}
           Your color selections on this form are your responsibility to verify
@@ -1596,7 +1600,9 @@ function sfSeedForSurface(
     colorName: null,
     colorCode: null,
     colorHex: null,
-    finish: finish ?? null,
+    // Map the SF picklist value (e.g. "Semigloss") back to a form option
+    // ("Semi-Gloss") so the dropdown matches and submit doesn't reject it (#14).
+    finish: denormalizeFinishFromSf(finish),
     skipped: false,
   };
 }

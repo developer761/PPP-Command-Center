@@ -20,12 +20,15 @@ export default function DraftOrderModal({
   snapshot,
   onClose,
   onOrderMaterials,
+  canOrderMaterials = true,
 }: {
   job: OpenWorkOrderForMaterials;
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   onClose: () => void;
   /** Proceed to order — opens the store picker (PPP orders from stores). */
   onOrderMaterials: () => void;
+  /** Admin-only: placing orders. AMs/reps get a read-only preview (Kate #5). */
+  canOrderMaterials?: boolean;
 }) {
   useEscClose(onClose);
 
@@ -192,7 +195,9 @@ export default function DraftOrderModal({
 
         <div className="px-5 sm:px-6 py-3.5 border-t border-ppp-charcoal-100 bg-white shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="text-[11px] text-ppp-charcoal-500 italic order-2 sm:order-1">
-            Review the colors, then <strong>Order materials</strong> to pick the store.
+            {canOrderMaterials
+              ? <>Review the colors, then <strong>Order materials</strong> to pick the store.</>
+              : "Read-only view of the customer's colors."}
           </div>
           <div className="flex items-center gap-2 order-1 sm:order-2 w-full sm:w-auto">
             <button
@@ -202,6 +207,7 @@ export default function DraftOrderModal({
             >
               Close
             </button>
+            {canOrderMaterials && (
             <button
               type="button"
               onClick={onOrderMaterials}
@@ -209,6 +215,7 @@ export default function DraftOrderModal({
             >
               Order materials <span aria-hidden>→</span>
             </button>
+            )}
           </div>
         </div>
       </div>

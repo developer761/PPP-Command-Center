@@ -79,7 +79,6 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
-import WoMailStream from "@/components/wo-mail-stream";
 const SupplierOrderModal = dynamic(() => import("@/components/supplier-order-modal"));
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
 // worker has actively clicked a WO. The initial materials-list paint never
@@ -88,6 +87,9 @@ const SupplierOrderModal = dynamic(() => import("@/components/supplier-order-mod
 // the initial JS bundle.)
 const WoPastOrders = dynamic(() => import("@/components/wo-past-orders"));
 const DraftOrderModal = dynamic(() => import("@/components/draft-order-modal"));
+// Right-rail mail stream — only renders on the focus-mode WO page, so defer it
+// off the list-page bundle (same rationale as WoPastOrders).
+const WoMailStream = dynamic(() => import("@/components/wo-mail-stream"));
 
 type Props = {
   bundle: LiveDashboardBundle;
@@ -98,9 +100,6 @@ type Props = {
   formStatuses?: FormStatus[];
   /** 8-stage progress timeline per WO. Same array-not-Map reason. */
   woProgress?: WoProgress[];
-  /** Deep-link target — when set, this WO is pre-selected on load (links from
-   *  Customer History, the mail timeline, the activity feed, search). */
-  initialWoId?: string | null;
   /** Focus mode (Kate #1) — rendered by /dashboard/materials/[woId]. Shows ONLY
    *  this WO's detail full-width (no list/filters/KPIs) with a Back link. The
    *  list page navigates here on row click instead of opening a right panel. */
@@ -152,7 +151,7 @@ const VIRTUOSO_COMPONENTS = {
   Item: VirtuosoLI,
 } as unknown as Components<OpenWorkOrderForMaterials>;
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides }: Props) {
   const router = useRouter();
   const { snapshot, viewer } = bundle;
 
@@ -246,6 +245,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // was rejected because that field is a formula). The map is hydrated from
   // that table on load (initialSqftOverrides), so a typed value survives
   // reloads. A local override always wins over the SF value.
+  // Active WO id — set by the focus sync effect (focus mode) or left null in
+  // list mode (rows navigate to /dashboard/materials/[woId]). Declared here,
+  // above handleUpdateSqft, which reads it to scope a sqft override to its WO.
+  const [activeWoId, setActiveWoId] = useState<string | null>(null);
   const [sqftOverrides, setSqftOverrides] = useState<Map<string, number>>(
     () => new Map(Object.entries(initialSqftOverrides ?? {}))
   );
@@ -258,40 +261,43 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   );
   const handleUpdateSqft = useCallback(
     async (woliId: string, sqft: number): Promise<{ ok: boolean; error?: string }> => {
-      // Optimistic local update — UI responds instantly.
+      // Remember the prior override so a failed save restores it instead of
+      // wiping a previously-saved value (audit M5).
+      const prior = sqftOverrides.get(woliId);
+      // Optimistic local update. sqft===0 CLEARS the override (delete) so the
+      // estimator + a later reload agree (server treats 0 as clear too — M6).
       setSqftOverrides((prev) => {
         const next = new Map(prev);
-        next.set(woliId, sqft);
+        if (sqft === 0) next.delete(woliId);
+        else next.set(woliId, sqft);
         return next;
       });
+      const rollback = () =>
+        setSqftOverrides((prev) => {
+          const next = new Map(prev);
+          if (prior === undefined) next.delete(woliId);
+          else next.set(woliId, prior);
+          return next;
+        });
       try {
         const res = await fetch("/api/admin/wo-li/sqft", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ woliId, sqft }),
+          // workOrderId lets the override row scope/join to its WO.
+          body: JSON.stringify({ woliId, sqft, workOrderId: activeWoId ?? undefined }),
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          // Roll back the optimistic update so the user sees the empty
-          // pill again rather than a false-positive saved state.
-          setSqftOverrides((prev) => {
-            const next = new Map(prev);
-            next.delete(woliId);
-            return next;
-          });
+          rollback();
           return { ok: false, error: body.error ?? "save_failed" };
         }
         return { ok: true };
       } catch (err) {
-        setSqftOverrides((prev) => {
-          const next = new Map(prev);
-          next.delete(woliId);
-          return next;
-        });
+        rollback();
         return { ok: false, error: err instanceof Error ? err.message : "network_error" };
       }
     },
-    []
+    [sqftOverrides, activeWoId]
   );
 
   // Pre-computed chip flags per WO. Without this, the render loop runs
@@ -422,23 +428,19 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   const resolvedFocusId = useMemo(() => {
     if (!focusWoId) return null;
     const target = focusWoId.trim();
-    const hit = openJobs.find(
-      (j) => j.wo.id === target || j.wo.id.startsWith(target) || target.startsWith(j.wo.id)
-    );
+    // Prefix matching is ONLY for the 15↔18-char SF Id case — otherwise a
+    // garbage/truncated target like "0" or "0WO" would prefix-match nearly
+    // every WO (they all start 0WO) and render an arbitrary unrelated WO.
+    // Require a real SF Id length for prefix matching; else exact match only.
+    const canPrefix = target.length === 15 || target.length === 18;
+    const hit = openJobs.find((j) => {
+      if (j.wo.id === target) return true;
+      if (!canPrefix) return false;
+      return j.wo.id.startsWith(target) || target.startsWith(j.wo.id);
+    });
     return hit?.wo.id ?? null;
   }, [focusWoId, openJobs]);
 
-  // Seed from the ?wo= deep-link when that WO is actually an open materials
-  // job; otherwise start unselected (the WO may be closed / out of scope, in
-  // which case showing the list is the right fallback rather than a dead select).
-  const [activeWoId, setActiveWoId] = useState<string | null>(
-    () =>
-      focusWoId
-        ? null // set by the focus sync effect below
-        : initialWoId && openJobs.some((j) => j.wo.id === initialWoId)
-        ? initialWoId
-        : null
-  );
 
   // In focus mode, keep the shown WO in lock-step with the route param (so
   // navigating from one WO page to another updates the detail even if the
@@ -472,6 +474,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // panel sits in a permanent right rail (no scroll needed).
   const detailAnchorRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    // Vestigial: this fixed the old list→panel mobile flow. In focus mode the
+    // detail IS the whole page, and scrolling it into view on load pushes the
+    // "Back to work orders" link + progress bar off-screen — so skip it.
+    if (focusMode) return;
     if (!activeWoId) return;
     if (typeof window === "undefined") return;
     if (window.matchMedia("(min-width: 1024px)").matches) return;
@@ -1145,7 +1151,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
               page (rows navigate to this WO's own page instead). */}
           <div className={focusMode ? "lg:col-span-5" : "hidden"} ref={detailAnchorRef}>
             {activeJob ? (
-              <div className="space-y-4">
+              <div className={`space-y-4 ${canOrderMaterials && activeJob.lineItems.length > 0 ? "pb-24 lg:pb-0" : ""}`}>
                 {/* Legacy in-panel "back" button — only for the (now unused)
                     non-focus panel path. In focus mode the top "Back to work
                     orders" link handles it, so we DON'T render this one at all
@@ -1196,6 +1202,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       onUpdateSqft={handleUpdateSqft}
                       canOrderMaterials={canOrderMaterials}
                       isAccountManager={isAccountManager}
+                      onActivityChange={() => setPastOrdersRefreshKey((k) => k + 1)}
                     />
                   </div>
                   {focusMode && (
@@ -1277,6 +1284,7 @@ function JobDetailImpl({
   onUpdateSqft,
   canOrderMaterials,
   isAccountManager,
+  onActivityChange,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   job: OpenWorkOrderForMaterials;
@@ -1302,6 +1310,9 @@ function JobDetailImpl({
   canOrderMaterials: boolean;
   /** Viewer is an Account Manager — drives the "AMs can't order" explanation. */
   isAccountManager: boolean;
+  /** Fired when something happens that the mail stream should reflect (e.g. a
+   *  color form was just sent) so the parent bumps the stream's refresh key. */
+  onActivityChange?: () => void;
 }) {
   const [showDraft, setShowDraft] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -1378,10 +1389,10 @@ function JobDetailImpl({
   }, [job, coverageConfig, effectiveSqft]);
 
   return (
-    // pb-24 lg:pb-0 reserves space at the bottom for the mobile-only
-    // sticky action bar (added at the end of this component) so the
-    // closing content isn't hidden behind it.
-    <div className="space-y-4 pb-24 lg:pb-0">
+    // Bottom clearance for the mobile sticky action bar is applied by the
+    // parent focus wrapper (so it also clears the right-side mail stream, which
+    // renders after this on mobile) — and only when the bar actually shows.
+    <div className="space-y-4">
       {/* Mobile-only quick-nav chips at the top — Karan 2026-06-13.
           Workers on iPhone need fast access to the rooms list without
           scrolling past the header + paint estimate + 3-col action
@@ -1595,6 +1606,8 @@ function JobDetailImpl({
                   key={t.id}
                   type="button"
                   role="tab"
+                  id={`wo-tab-${t.id}`}
+                  aria-controls={`wo-panel-${t.id}`}
                   aria-selected={on}
                   onClick={() => setActionTab(t.id)}
                   className={`relative px-3 py-2 min-h-[44px] text-sm font-medium transition-colors ${
@@ -1610,7 +1623,7 @@ function JobDetailImpl({
 
           {/* CUSTOMER tab: collect color picks from the homeowner. */}
           {actionTab === "customer" && (
-            <div className="flex flex-col gap-1.5">
+            <div role="tabpanel" id="wo-panel-customer" aria-labelledby="wo-tab-customer" className="flex flex-col gap-1.5">
               {/* key forces a fresh instance when the worker switches WOs so
                   per-WO local state (looked-up email, sent-result) can't leak. */}
               <SendColorFormButton
@@ -1618,6 +1631,7 @@ function JobDetailImpl({
                 workOrderId={job.wo.id}
                 accountName={job.wo.accountName ?? null}
                 defaultEmail={customerAccount?.email ?? null}
+                onSent={onActivityChange}
               />
               <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
                 Email the homeowner a link to pick colors for each room.
@@ -1635,7 +1649,7 @@ function JobDetailImpl({
 
           {/* MATERIALS tab: turn colors into a real supplier order. */}
           {actionTab === "materials" && (
-            <div className="flex flex-col gap-1.5">
+            <div role="tabpanel" id="wo-panel-materials" aria-labelledby="wo-tab-materials" className="flex flex-col gap-1.5">
               <button
                 type="button"
                 onClick={() => canOrderMaterials && setShowPicker(true)}
@@ -1690,7 +1704,7 @@ function JobDetailImpl({
           {/* REFERENCE tab: the WO's reference notes. Mail history is the
               right-side stream now; this links to the full Mail Hub. */}
           {actionTab === "reference" && (
-            <div className="flex flex-col gap-3">
+            <div role="tabpanel" id="wo-panel-reference" aria-labelledby="wo-tab-reference" className="flex flex-col gap-3">
               {job.wo.subject?.trim() ? (
                 <div>
                   <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">
@@ -1817,8 +1831,10 @@ function JobDetailImpl({
         <DraftOrderModal
           job={job}
           snapshot={snapshot}
+          canOrderMaterials={canOrderMaterials}
           onClose={() => setShowDraft(false)}
           onOrderMaterials={() => {
+            if (!canOrderMaterials) return;
             setShowDraft(false);
             setShowPicker(true);
           }}
@@ -2514,6 +2530,7 @@ function SendColorFormButton({
   workOrderId,
   accountName,
   defaultEmail,
+  onSent,
 }: {
   workOrderId: string;
   accountName: string | null;
@@ -2521,6 +2538,8 @@ function SendColorFormButton({
    *  Null when SF returned no email — admin must type, and we'll write
    *  the typed value back to SF in a future enhancement. */
   defaultEmail?: string | null;
+  /** Fired after a successful send so the parent can refresh the mail stream. */
+  onSent?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [customerEmail, setCustomerEmail] = useState(defaultEmail ?? "");
@@ -2621,6 +2640,7 @@ function SendColorFormButton({
         });
       } else {
         setResult({ ok: true, formUrl: data.formUrl, resendId: data.resendMessageId });
+        onSent?.();
       }
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);

@@ -67,6 +67,10 @@ export async function POST(request: Request) {
   }
   const profile = await getProfileByUserId(data.user.id);
   // Admins + Account Managers can send the customer color form.
+  // Deactivated accounts lose API access immediately (bootstrap admins exempt).
+  if (profile && profile.is_active === false && !isAdminEmail(data.user.email)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email));
   if (!capabilitiesFor(role).canEnterColors) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });

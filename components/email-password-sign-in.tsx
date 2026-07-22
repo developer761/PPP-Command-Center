@@ -119,7 +119,7 @@ export default function EmailPasswordSignIn({
       <button
         type="button"
         onClick={() => { setOpen(false); setError(null); }}
-        className="w-full text-center text-xs text-ppp-charcoal-400 hover:text-ppp-charcoal-600 min-h-[40px]"
+        className="w-full text-center text-xs text-ppp-charcoal-400 hover:text-ppp-charcoal-600 min-h-[44px]"
       >
         Back to Google sign-in
       </button>

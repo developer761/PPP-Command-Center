@@ -421,7 +421,7 @@ function UserRow({
                 ? "Can't demote the last admin."
                 : "Change role"
             }
-            className="rounded-lg border border-ppp-charcoal-200 bg-white px-2.5 py-2 text-xs font-medium text-ppp-charcoal-600 min-h-[40px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-ppp-charcoal-200 bg-white px-2.5 py-2 text-xs font-medium text-ppp-charcoal-600 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {USER_ROLES.map((r) => (
               <option key={r.value} value={r.value}>{r.label}</option>
@@ -432,7 +432,7 @@ function UserRow({
             type="button"
             onClick={() => setResetOpen((v) => !v)}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-200 px-2.5 py-2 text-xs font-medium text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[40px] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-200 px-2.5 py-2 text-xs font-medium text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] disabled:opacity-50"
           >
             <IconKey /> <span className="hidden sm:inline">Reset password</span><span className="sm:hidden">Password</span>
           </button>
@@ -448,7 +448,7 @@ function UserRow({
                 ? "Can't deactivate the last admin."
                 : undefined
             }
-            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium min-h-[40px] disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed ${
               user.is_active
                 ? "border border-rose-200 text-rose-600 hover:bg-rose-50"
                 : "border border-emerald-200 text-emerald-700 hover:bg-emerald-50"

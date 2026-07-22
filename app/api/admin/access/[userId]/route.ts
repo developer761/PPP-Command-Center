@@ -28,6 +28,11 @@ async function requireAdmin(): Promise<
   const { data } = await supabase.auth.getUser();
   if (!data?.user) return { ok: false, status: 401 };
   const profile = await getProfileByUserId(data.user.id);
+  // Deactivation must bite the API too (see access/route.ts). Bootstrap admins
+  // exempt (anti-brick), matching the dashboard layout gate.
+  if (profile && profile.is_active === false && !isAdminEmail(data.user.email)) {
+    return { ok: false, status: 403 };
+  }
   const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email));
   if (role !== "admin") return { ok: false, status: 403 };
   return {

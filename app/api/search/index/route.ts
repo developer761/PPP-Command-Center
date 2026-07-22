@@ -32,6 +32,25 @@ export async function GET(request: Request) {
     if (!bundle.snapshot) {
       return NextResponse.json({ reps: [], accounts: [], workOrders: [] });
     }
+
+    // Kate 2026-07-22 (#10): drop work orders that clutter search and are never
+    // material-order targets — estimates / appointments / inspections /
+    // consultations (non-material work types) and not-yet-started "pending"
+    // WOs. Closed/completed WOs are KEPT so staff can still search history.
+    // (#12): with the noise removed, raise the cap 500 → 2000.
+    const WO_SEARCH_CAP = 2000;
+    const filteredWos = bundle.snapshot.workOrders
+      .filter(
+        (w) => workTypeRequiresMaterials(w.workTypeName) && !/pending/i.test(w.status ?? "")
+      )
+      .slice()
+      .sort((a, b) => (b.createdDate ?? "").localeCompare(a.createdDate ?? ""));
+    if (filteredWos.length > WO_SEARCH_CAP) {
+      console.warn(
+        `[search-index] ${filteredWos.length} material WOs exceed the ${WO_SEARCH_CAP} cap — ${filteredWos.length - WO_SEARCH_CAP} oldest dropped from search. Raise WO_SEARCH_CAP or move to server-side search.`
+      );
+    }
+
     return NextResponse.json({
       reps: bundle.snapshot.reps.map((r) => ({
         id: r.id,
@@ -45,21 +64,8 @@ export async function GET(request: Request) {
         type: a.type,
         region: a.region,
       })),
-      workOrders: bundle.snapshot.workOrders
-        // Kate 2026-07-22 (#10): drop work orders that clutter search and are
-        // never material-order targets — estimates / appointments / inspections
-        // / consultations (non-material work types) and not-yet-started
-        // "pending" WOs. Closed/completed WOs are KEPT so staff can still search
-        // history. (#12): with the noise removed, raise the cap 500 → 2000 so a
-        // valid WO isn't missing just because it fell outside the newest 500.
-        .filter(
-          (w) =>
-            workTypeRequiresMaterials(w.workTypeName) &&
-            !/pending/i.test(w.status ?? "")
-        )
-        .slice()
-        .sort((a, b) => (b.createdDate ?? "").localeCompare(a.createdDate ?? ""))
-        .slice(0, 2000)
+      workOrders: filteredWos
+        .slice(0, WO_SEARCH_CAP)
         .map((w) => ({
           id: w.id,
           workOrderNumber: w.workOrderNumber,

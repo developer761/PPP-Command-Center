@@ -664,7 +664,11 @@ export async function POST(
   // count as "skipped" since there's nothing to write either way.
   const writebackSkipped = attempts.length > 0 && !decision.shouldWrite;
 
-  if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission) {
+  // Internal Entry (#4): the "sender" IS the admin doing the entry, so a
+  // "customer submitted, please review" email + bell back to themselves is just
+  // noise. Suppress sender notify/bell for internal-entry tokens.
+  const notifySender = status.token.kind !== "internal";
+  if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission && notifySender) {
     // EMAIL — Katie 2026-07-08: previously gated on writebackHappened
     // (skipped the email when SF was bypassed). Now also fires on
     // SF-rejection paths so admin sees the error immediately. The

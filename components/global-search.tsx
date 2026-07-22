@@ -84,7 +84,17 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
     if (snapshot || loading) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/search/index");
+      // Forward the admin's current view_as/scope so an impersonated search is
+      // scoped to that rep (the index route reads these). Reps are already
+      // session-scoped server-side regardless.
+      const cur = new URLSearchParams(window.location.search);
+      const fwd = new URLSearchParams();
+      const va = cur.get("view_as");
+      const sc = cur.get("scope");
+      if (va) fwd.set("view_as", va);
+      if (sc) fwd.set("scope", sc);
+      const qs = fwd.toString();
+      const res = await fetch(`/api/search/index${qs ? `?${qs}` : ""}`);
       if (res.ok) {
         const data = await res.json();
         setSnapshot(data);

@@ -42,6 +42,12 @@ export default function WoMailStream({
         fetch(`/api/admin/sent?${q}`, { cache: "no-store" }),
         fetch(`/api/admin/inbox?${q}`, { cache: "no-store" }),
       ]);
+      // If BOTH endpoints failed, surface an error rather than a misleading
+      // "No emails" empty state (a 500/401 was silently masked before).
+      if (!sentRes.ok && !inboxRes.ok) {
+        setState("error");
+        return;
+      }
       const merged: Item[] = [];
 
       if (sentRes.ok) {
@@ -101,7 +107,7 @@ export default function WoMailStream({
         </span>
         <Link
           href={`/dashboard/inbox?wo=${encodeURIComponent(workOrderId)}`}
-          className="text-[11px] font-medium text-ppp-blue-700 hover:text-ppp-blue-800 whitespace-nowrap"
+          className="inline-flex items-center min-h-[44px] text-[11px] font-medium text-ppp-blue-700 hover:text-ppp-blue-800 whitespace-nowrap"
         >
           Open in Mail Hub
         </Link>
@@ -141,9 +147,8 @@ export default function WoMailStream({
                     ? "bg-ppp-blue-50 text-ppp-blue-700"
                     : "bg-ppp-green-50 text-ppp-green-700"
                 }`}
-                title={m.dir === "out" ? "Sent" : "Received"}
-                aria-hidden
               >
+                <span className="sr-only">{m.dir === "out" ? "Sent:" : "Received:"}</span>
                 {m.dir === "out" ? (
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13 M22 2l-7 20-4-9-9-4 20-7z" /></svg>
                 ) : (
