@@ -79,7 +79,7 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
-import WoActivityStream from "@/components/wo-activity-stream";
+import WoMailStream from "@/components/wo-mail-stream";
 const SupplierOrderModal = dynamic(() => import("@/components/supplier-order-modal"));
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
 // worker has actively clicked a WO. The initial materials-list paint never
@@ -446,13 +446,6 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   useEffect(() => {
     if (focusMode) setActiveWoId(resolvedFocusId);
   }, [focusMode, resolvedFocusId]);
-
-  // Kate #2: WO detail page tabs — the main "Work Order" view vs an
-  // "Activity" timeline. Reset to Work Order when the focused WO changes.
-  const [detailTab, setDetailTab] = useState<"wo" | "activity">("wo");
-  useEffect(() => {
-    setDetailTab("wo");
-  }, [activeWoId]);
 
   // Kate #13: the progress timeline is server-rendered once and never
   // re-fetched, so it only advanced on a hard reload. On the WO detail page
@@ -1153,92 +1146,68 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           <div className={focusMode ? "lg:col-span-5" : "hidden"} ref={detailAnchorRef}>
             {activeJob ? (
               <div className="space-y-4">
-                {/* Mobile-only "back" button (browse/panel legacy path). In
-                    focus mode the top "Back to work orders" link handles this,
-                    so hide it here to avoid a dead toggle. */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveWoId(null);
-                    if (typeof window !== "undefined") {
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }
-                  }}
-                  className={`${focusMode ? "hidden" : "lg:hidden"} inline-flex items-center gap-1.5 px-3 py-2 -ml-1 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 touch-manipulation`}
-                  aria-label="Back to work orders list"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M19 12H5 M12 19l-7-7 7-7" />
-                  </svg>
-                  Back to work orders
-                </button>
-                {/* Progress bar — always visible above the tabs so the
-                    at-a-glance status stays put whichever tab is open. */}
+                {/* Legacy in-panel "back" button — only for the (now unused)
+                    non-focus panel path. In focus mode the top "Back to work
+                    orders" link handles it, so we DON'T render this one at all
+                    (a `hidden` class was losing to `inline-flex`, showing two
+                    back buttons — Karan 2026-07-22). */}
+                {!focusMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveWoId(null);
+                      if (typeof window !== "undefined") {
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }
+                    }}
+                    className="lg:hidden inline-flex items-center gap-1.5 px-3 py-2 -ml-1 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 touch-manipulation"
+                    aria-label="Back to work orders list"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M19 12H5 M12 19l-7-7 7-7" />
+                    </svg>
+                    Back to work orders
+                  </button>
+                )}
+                {/* Progress bar — full width above the two-column body. */}
                 {progressByWO.get(activeJob.wo.id) && (
                   <WorkOrderProgressBar progress={progressByWO.get(activeJob.wo.id)!} />
                 )}
 
-                {/* Kate #2: Work Order / Activity tabs on the WO page. The
-                    Customer / Materials / Reference action groups live as
-                    labeled sections inside "Work Order". */}
-                {focusMode && (
-                  <div role="tablist" aria-label="Work order views" className="flex items-center gap-1 border-b border-ppp-charcoal-100">
-                    {([
-                      { id: "wo", label: "Work Order" },
-                      { id: "activity", label: "Activity" },
-                    ] as const).map((t) => {
-                      const active = detailTab === t.id;
-                      return (
-                        <button
-                          key={t.id}
-                          role="tab"
-                          type="button"
-                          aria-selected={active}
-                          onClick={() => setDetailTab(t.id)}
-                          className={`relative px-3.5 py-2.5 min-h-[44px] text-sm font-medium transition-colors ${
-                            active
-                              ? "text-ppp-navy"
-                              : "text-ppp-charcoal-500 hover:text-ppp-charcoal-700"
-                          }`}
-                        >
-                          {t.label}
-                          {active && (
-                            <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-ppp-navy" aria-hidden />
-                          )}
-                        </button>
-                      );
-                    })}
+                {/* Kate #2: WO page body — the detail (with Customer/Materials/
+                    Reference tabs inside JobDetail) on the left, and the mail-
+                    history activity stream down the right side. Stacks on
+                    mobile (stream drops below). */}
+                <div className={focusMode ? "grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5 items-start" : "space-y-4"}>
+                  <div className={`${focusMode ? "lg:col-span-2" : ""} space-y-4 min-w-0`}>
+                    {/* Past supplier orders for this WO — renders nothing when
+                        none. Self-refreshes when pastOrdersRefreshKey bumps. */}
+                    <WoPastOrders workOrderId={activeJob.wo.id} refreshKey={pastOrdersRefreshKey} />
+                    <JobDetail
+                      key={activeJob.wo.id}
+                      snapshot={snapshot}
+                      job={activeJob}
+                      coverageConfig={coverageConfig}
+                      formStatus={formStatusByWO.get(activeJob.wo.id)}
+                      accountsById={accountsById}
+                      accountByName={accountByName}
+                      onOpenOrderModal={handleOpenOrderModal}
+                      effectiveSqft={effectiveSqft}
+                      onUpdateSqft={handleUpdateSqft}
+                      canOrderMaterials={canOrderMaterials}
+                      isAccountManager={isAccountManager}
+                    />
                   </div>
-                )}
-
-                {focusMode && detailTab === "activity" ? (
-                  <WoActivityStream
-                    progress={progressByWO.get(activeJob.wo.id)}
-                    workOrderNumber={activeJob.wo.workOrderNumber}
-                  />
-                ) : (
-                  <>
-                {/* Past supplier orders for this WO — renders nothing when
-                    none. Self-refreshes when pastOrdersRefreshKey bumps
-                    (after a fresh send via the modal). Includes inline
-                    Mark Acknowledged / Mark Delivered / Cancel buttons. */}
-                <WoPastOrders workOrderId={activeJob.wo.id} refreshKey={pastOrdersRefreshKey} />
-                <JobDetail
-                  key={activeJob.wo.id}
-                  snapshot={snapshot}
-                  job={activeJob}
-                  coverageConfig={coverageConfig}
-                  formStatus={formStatusByWO.get(activeJob.wo.id)}
-                  accountsById={accountsById}
-                  accountByName={accountByName}
-                  onOpenOrderModal={handleOpenOrderModal}
-                  effectiveSqft={effectiveSqft}
-                  onUpdateSqft={handleUpdateSqft}
-                  canOrderMaterials={canOrderMaterials}
-                  isAccountManager={isAccountManager}
-                />
-                  </>
-                )}
+                  {focusMode && (
+                    <div className="lg:col-span-1 lg:sticky lg:top-4">
+                      <WoMailStream
+                        workOrderId={activeJob.wo.id}
+                        workOrderNumber={activeJob.wo.workOrderNumber}
+                        refreshKey={pastOrdersRefreshKey}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             ) : focusMode ? (
               <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
@@ -1336,6 +1305,8 @@ function JobDetailImpl({
 }) {
   const [showDraft, setShowDraft] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  // Kate #2: Customer / Materials / Reference tabs for the action toolbar.
+  const [actionTab, setActionTab] = useState<"customer" | "materials" | "reference">("customer");
 
   // Pre-fill data for the Send Color Form modal — pull the customer Account
   // from parent-built indexes. Empty when not in snapshot (vendor WO or
@@ -1609,162 +1580,141 @@ function JobDetailImpl({
               tone so it reads as CUSTOMER (blue = pending ask) /
               MATERIALS (green = the action) / REFERENCE (charcoal
               = lookup). */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-0 divide-y md:divide-y-0 md:divide-x divide-ppp-charcoal-100">
-            {/* CUSTOMER section: collect color picks from the homeowner. */}
-            <div className="min-w-0 pt-3 first:pt-0 md:pt-0 md:pr-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-blue-50 text-ppp-blue-700">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
-                  </svg>
-                </span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
-                  Customer
-                </span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {/* key forces a fresh instance when the worker switches WOs — the
-                    button holds local state (looked-up email, typed name, open
-                    modal, sent-result, "already looked up" ref) that's per-WO; without
-                    this, WO-A's looked-up email and ref would leak into WO-B and the
-                    email lookup would be silently skipped. */}
-                <SendColorFormButton
-                  key={job.wo.id}
-                  workOrderId={job.wo.id}
-                  accountName={job.wo.accountName ?? null}
-                  defaultEmail={customerAccount?.email ?? null}
-                />
-                <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                  Email the homeowner a link to pick colors for each room.
-                </p>
-                {/* When the customer-form invite is already in flight (sent or
-                    opened, not yet submitted/expired), surface a one-click
-                    "Send Reminder" that re-fires the SAME existing link via the
-                    already-tested /api/admin/sent/resend endpoint (5-min server-side
-                    dedup, scope-checked, expiry-aware). Saves admin from creating
-                    a second token + email — the customer would otherwise get two
-                    competing links and not know which one to click. Renders nothing
-                    when the form was never sent or was already submitted. */}
-                {(formStatus?.status === "sent" || formStatus?.status === "opened") && (
-                  <div className="mt-1">
-                    <SendReminderButton key={`remind-${formStatus.token}`} token={formStatus.token} />
-                    <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5 mt-1">
-                      Re-send the same link if they haven&apos;t submitted yet.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* MATERIALS section: turn colors into a real supplier order. */}
-            <div className="min-w-0 pt-3 md:pt-0 md:px-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-green-50 text-ppp-green-700">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
-                  </svg>
-                </span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
-                  Materials
-                </span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {/* Order materials = pick a STORE (Katie's model: PPP buys paint of
-                    any brand from stores like Aboffs/Willis, not from the manufacturer).
-                    The picker lists PPP's configured vendors; the chosen store's order
-                    includes the whole WO's colors. The manufacturer breakdown above is
-                    informational only (it's what the email describes as "what to buy").
-                    Green primary — distinct from the CUSTOMER blue so two primary
-                    actions don't compete for the eye. */}
+          {/* Kate #2: the three action groups are TABS now (Customer /
+              Materials / Reference). Mail history moved to the right-side
+              activity stream, so Reference holds the WO's reference notes. */}
+          <div role="tablist" aria-label="Work order actions" className="flex items-center gap-1 mb-3 border-b border-ppp-charcoal-100">
+            {([
+              { id: "customer", label: "Customer" },
+              { id: "materials", label: "Materials" },
+              { id: "reference", label: "Reference" },
+            ] as const).map((t) => {
+              const on = actionTab === t.id;
+              return (
                 <button
+                  key={t.id}
                   type="button"
-                  onClick={() => canOrderMaterials && setShowPicker(true)}
-                  disabled={!canOrderMaterials}
-                  title={canOrderMaterials ? undefined : "Only admins can place material orders."}
-                  aria-disabled={!canOrderMaterials}
-                  className={`inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors touch-manipulation ${
-                    canOrderMaterials
-                      ? "bg-ppp-green-600 text-white hover:bg-ppp-green-700 active:bg-ppp-green-700 shadow-sm shadow-ppp-green/30"
-                      : "bg-ppp-charcoal-100 text-ppp-charcoal-400 cursor-not-allowed"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => setActionTab(t.id)}
+                  className={`relative px-3 py-2 min-h-[44px] text-sm font-medium transition-colors ${
+                    on ? "text-ppp-navy" : "text-ppp-charcoal-500 hover:text-ppp-charcoal-700"
                   }`}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
-                  </svg>
-                  Order materials
+                  {t.label}
+                  {on && <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-ppp-navy" aria-hidden />}
                 </button>
-                <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                  {canOrderMaterials
-                    ? "Pick a store (Aboffs, Willis, etc.) and email the order."
-                    : isAccountManager
-                    ? "Account Managers can't place orders — an admin handles materials. You can still enter colors."
-                    : "Only admins can place material orders."}
-                </p>
-                {/* Preview colors — review the per-room color breakdown before
-                    ordering. Gated on the customer ACTUALLY submitting the
-                    form. Before submission there's nothing to preview (SF
-                    color fields are empty), so the modal opens to a confusing
-                    blank state. Disabled + helper copy is clearer than a hover
-                    that lies. */}
-                {(() => {
-                  const hasSubmission = formStatus?.status === "submitted";
-                  return (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setShowDraft(true)}
-                        disabled={!hasSubmission}
-                        title={hasSubmission ? undefined : "Available after the customer submits the color form"}
-                        className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
-                        </svg>
-                        Preview colors
-                      </button>
-                      <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                        {hasSubmission
-                          ? "Read-only view of every room and color the customer picked."
-                          : "Available once the customer submits the color form."}
-                      </p>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* REFERENCE section: cross-check past correspondence. */}
-            <div className="min-w-0 pt-3 md:pt-0 md:pl-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span aria-hidden className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ppp-charcoal-100 text-ppp-charcoal-700">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 8v4l3 3 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                  </svg>
-                </span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
-                  Reference
-                </span>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {/* Mail history for this WO — deep-link into the Mail Hub
-                    pre-filtered to messages tied to this work order. Faster than
-                    hunting through the full inbox/sent feeds when admin wants
-                    "what's been sent to this customer + replies". */}
-                <Link
-                  href={`/dashboard/inbox?wo=${encodeURIComponent(job.wo.id)}`}
-                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
-                  </svg>
-                  Mail history
-                </Link>
-                <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                  Every email sent or received for this WO, in one feed.
-                </p>
-              </div>
-            </div>
+              );
+            })}
           </div>
+
+          {/* CUSTOMER tab: collect color picks from the homeowner. */}
+          {actionTab === "customer" && (
+            <div className="flex flex-col gap-1.5">
+              {/* key forces a fresh instance when the worker switches WOs so
+                  per-WO local state (looked-up email, sent-result) can't leak. */}
+              <SendColorFormButton
+                key={job.wo.id}
+                workOrderId={job.wo.id}
+                accountName={job.wo.accountName ?? null}
+                defaultEmail={customerAccount?.email ?? null}
+              />
+              <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                Email the homeowner a link to pick colors for each room.
+              </p>
+              {(formStatus?.status === "sent" || formStatus?.status === "opened") && (
+                <div className="mt-1">
+                  <SendReminderButton key={`remind-${formStatus.token}`} token={formStatus.token} />
+                  <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5 mt-1">
+                    Re-send the same link if they haven&apos;t submitted yet.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* MATERIALS tab: turn colors into a real supplier order. */}
+          {actionTab === "materials" && (
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => canOrderMaterials && setShowPicker(true)}
+                disabled={!canOrderMaterials}
+                title={canOrderMaterials ? undefined : "Only admins can place material orders."}
+                aria-disabled={!canOrderMaterials}
+                className={`inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors touch-manipulation ${
+                  canOrderMaterials
+                    ? "bg-ppp-green-600 text-white hover:bg-ppp-green-700 active:bg-ppp-green-700 shadow-sm shadow-ppp-green/30"
+                    : "bg-ppp-charcoal-100 text-ppp-charcoal-400 cursor-not-allowed"
+                }`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
+                </svg>
+                Order materials
+              </button>
+              <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                {canOrderMaterials
+                  ? "Pick a store (Aboffs, Willis, etc.) and email the order."
+                  : isAccountManager
+                  ? "Account Managers can't place orders — an admin handles materials. You can still enter colors."
+                  : "Only admins can place material orders."}
+              </p>
+              {(() => {
+                const hasSubmission = formStatus?.status === "submitted";
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowDraft(true)}
+                      disabled={!hasSubmission}
+                      title={hasSubmission ? undefined : "Available after the customer submits the color form"}
+                      className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors mt-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" />
+                      </svg>
+                      Preview colors
+                    </button>
+                    <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                      {hasSubmission
+                        ? "Read-only view of every room and color the customer picked."
+                        : "Available once the customer submits the color form."}
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* REFERENCE tab: the WO's reference notes. Mail history is the
+              right-side stream now; this links to the full Mail Hub. */}
+          {actionTab === "reference" && (
+            <div className="flex flex-col gap-3">
+              {job.wo.subject?.trim() ? (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">
+                    Subject
+                  </div>
+                  <p className="text-sm text-ppp-charcoal whitespace-pre-line">{job.wo.subject.trim()}</p>
+                </div>
+              ) : (
+                <p className="text-sm text-ppp-charcoal-400">No reference notes on this work order yet.</p>
+              )}
+              <Link
+                href={`/dashboard/inbox?wo=${encodeURIComponent(job.wo.id)}`}
+                className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal text-sm font-medium hover:bg-ppp-charcoal-50 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M4 4h16v16H4z M22 6l-10 7L2 6" />
+                </svg>
+                Open full Mail Hub
+              </Link>
+              <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                Recent emails for this WO are in the Mail history panel.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1781,38 +1731,9 @@ function JobDetailImpl({
         />
       )}
 
-      {/* Notes from Salesforce — Subject only for now.
-          Karan 2026-06-10: Scheduling_Notes__c turned out to be the AM's
-          workflow log (cancellation/payment/scheduling conversations) —
-          NOT the estimator's per-WO measurement notes about dimensions
-          and square footage that admin needs. The real estimator-notes
-          field is TBD; the enhanced discovery endpoint dumps every text
-          field's value so we can find it. Until then, only Subject (which
-          is short + worker-edited) is safe to display. */}
-      {(() => {
-        const subject = job.wo.subject?.trim() || null;
-        const blocks: Array<{ label: string; text: string }> = [];
-        if (subject) blocks.push({ label: "Subject", text: subject });
-        if (blocks.length === 0) return null;
-        return (
-          <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-            <div className="px-5 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
-              <h4 className="text-sm font-semibold text-ppp-charcoal">Notes from Salesforce</h4>
-              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-                Whatever the worker wrote on this WO — read before drafting a supplier order.
-              </p>
-            </div>
-            <div className="px-5 py-4 space-y-3">
-              {blocks.map((b) => (
-                <div key={b.label}>
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-ppp-charcoal-500 mb-1">{b.label}</div>
-                  <div className="text-sm text-ppp-charcoal whitespace-pre-wrap break-words">{b.text}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
+      {/* Notes from Salesforce (WO Subject) now live in the Reference tab of
+          the action toolbar above (Kate #2) — removed the standalone block to
+          avoid showing the same Subject twice. */}
 
       {/* WO-level no-sqft callout — invites the worker to type sqft per
           room (the input now lives on every empty row below). Reads
