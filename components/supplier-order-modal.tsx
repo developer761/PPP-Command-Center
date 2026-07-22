@@ -552,7 +552,12 @@ export default function SupplierOrderModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    // Kate #11: anchor to the TOP on desktop (items-start), not centered, so the
+    // order summary + vendor picker are in view immediately in one scroll. The
+    // modal box keeps its own single internal scroll (max-h-[94vh] +
+    // overflow-y-auto body) so there's no second page scrollbar. Mobile stays a
+    // bottom sheet (items-end).
+    <div className="fixed inset-0 z-50 flex items-end sm:items-start justify-center p-0 sm:p-4">
       <div
         className="absolute inset-0 bg-ppp-navy/40 backdrop-blur-sm animate-fade-in"
         onClick={() => !sending && onClose()}
