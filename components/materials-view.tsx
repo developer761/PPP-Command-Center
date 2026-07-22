@@ -79,6 +79,7 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import WorkOrderProgressBar, { type WoProgress } from "@/components/work-order-progress-bar";
+import WoActivityStream from "@/components/wo-activity-stream";
 const SupplierOrderModal = dynamic(() => import("@/components/supplier-order-modal"));
 // PERF: WoPastOrders only renders inside the JobDetail right-rail when a
 // worker has actively clicked a WO. The initial materials-list paint never
@@ -445,6 +446,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   useEffect(() => {
     if (focusMode) setActiveWoId(resolvedFocusId);
   }, [focusMode, resolvedFocusId]);
+
+  // Kate #2: WO detail page tabs — the main "Work Order" view vs an
+  // "Activity" timeline. Reset to Work Order when the focused WO changes.
+  const [detailTab, setDetailTab] = useState<"wo" | "activity">("wo");
+  useEffect(() => {
+    setDetailTab("wo");
+  }, [activeWoId]);
 
   // Kate #13: the progress timeline is server-rendered once and never
   // re-fetched, so it only advanced on a hard reload. On the WO detail page
@@ -1164,11 +1172,52 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   </svg>
                   Back to work orders
                 </button>
-                {/* Progress bar — sticky at the top so it's visible while
-                    scrolling the long line-item list below. */}
+                {/* Progress bar — always visible above the tabs so the
+                    at-a-glance status stays put whichever tab is open. */}
                 {progressByWO.get(activeJob.wo.id) && (
                   <WorkOrderProgressBar progress={progressByWO.get(activeJob.wo.id)!} />
                 )}
+
+                {/* Kate #2: Work Order / Activity tabs on the WO page. The
+                    Customer / Materials / Reference action groups live as
+                    labeled sections inside "Work Order". */}
+                {focusMode && (
+                  <div role="tablist" aria-label="Work order views" className="flex items-center gap-1 border-b border-ppp-charcoal-100">
+                    {([
+                      { id: "wo", label: "Work Order" },
+                      { id: "activity", label: "Activity" },
+                    ] as const).map((t) => {
+                      const active = detailTab === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          role="tab"
+                          type="button"
+                          aria-selected={active}
+                          onClick={() => setDetailTab(t.id)}
+                          className={`relative px-3.5 py-2.5 min-h-[44px] text-sm font-medium transition-colors ${
+                            active
+                              ? "text-ppp-navy"
+                              : "text-ppp-charcoal-500 hover:text-ppp-charcoal-700"
+                          }`}
+                        >
+                          {t.label}
+                          {active && (
+                            <span className="absolute left-2 right-2 -bottom-px h-0.5 rounded-full bg-ppp-navy" aria-hidden />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {focusMode && detailTab === "activity" ? (
+                  <WoActivityStream
+                    progress={progressByWO.get(activeJob.wo.id)}
+                    workOrderNumber={activeJob.wo.workOrderNumber}
+                  />
+                ) : (
+                  <>
                 {/* Past supplier orders for this WO — renders nothing when
                     none. Self-refreshes when pastOrdersRefreshKey bumps
                     (after a fresh send via the modal). Includes inline
@@ -1188,6 +1237,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   canOrderMaterials={canOrderMaterials}
                   isAccountManager={isAccountManager}
                 />
+                  </>
+                )}
               </div>
             ) : focusMode ? (
               <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
