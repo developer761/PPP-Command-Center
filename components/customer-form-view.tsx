@@ -50,6 +50,21 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
 import { resolveSwatchHex } from "@/lib/customer-form/color-swatch";
+import { classifySurface } from "@/lib/customer-form/surface-mapping";
+
+/** Surface label → the WOLI slot holding its existing SF color/finish.
+ *  Used to pre-fill the form from colors already saved in Salesforce when
+ *  there's no prior customer submission (Kate #14 — preview showed empty). */
+const SF_SURFACE_SLOT: Record<
+  string,
+  { color: "wallId" | "ceilingId" | "trimId" | "floorId"; finish: "wall" | "ceiling" | "trim" | "floor" }
+> = {
+  walls: { color: "wallId", finish: "wall" },
+  wall: { color: "wallId", finish: "wall" },
+  ceiling: { color: "ceilingId", finish: "ceiling" },
+  trim: { color: "trimId", finish: "trim" },
+  floor: { color: "floorId", finish: "floor" },
+};
 
 /** Color catalog context — fetched once at form mount, shared by every ColorPicker. */
 const CatalogContext = createContext<CatalogState>({ status: "loading" });
@@ -282,19 +297,34 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     const state: Record<string, LineItemState> = {};
     for (const li of formData.lineItems) {
       const priorSurfaces = priorByLine.get(li.id);
+      // Orphan surfaces (Cabinets, Accent Wall, …) all share the SF "Other"
+      // slot — so we can only unambiguously pre-fill it when there's exactly
+      // one orphan on this line. 2+ orphans → leave blank (avoid mis-assign).
+      const orphanSurfaces = li.surfaces.filter(
+        (s) => classifySurface(s).kind === "orphan"
+      );
+      const soleOrphan = orphanSurfaces.length === 1 ? orphanSurfaces[0] : null;
+
       state[li.id] = {
         picks: Object.fromEntries(
           li.surfaces.map((s) => {
             const p = priorSurfaces?.get(s);
-            if (!p) return [s, emptyPick()];
-            return [s, {
-              colorId: p.colorId,
-              colorName: p.colorName,
-              colorCode: p.colorCode,
-              colorHex: null, // re-resolved from the catalog by the swatch helper
-              finish: p.finish,
-              skipped: p.skipped ?? false,
-            }];
+            if (p) {
+              return [s, {
+                colorId: p.colorId,
+                colorName: p.colorName,
+                colorCode: p.colorCode,
+                colorHex: null, // re-resolved from the catalog by the swatch helper
+                finish: p.finish,
+                skipped: p.skipped ?? false,
+              }];
+            }
+            // No prior submission for this surface → fall back to the color
+            // already saved on the WorkOrderLineItem in Salesforce (Kate #14).
+            // colorName/code/hex are hydrated from the catalog once it loads.
+            const sf = sfSeedForSurface(s, li, soleOrphan);
+            if (sf) return [s, sf];
+            return [s, emptyPick()];
           })
         ),
         notes: priorNotesByLine.get(li.id) ?? li.existingNotes ?? "",
@@ -372,6 +402,38 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     })();
     return () => { cancelled = true; };
   }, [token]);
+
+  // Hydrate SF-seeded picks (Kate #14) once the catalog loads. A pick seeded
+  // from Salesforce has a colorId but no colorName/code/hex — resolve those
+  // from the catalog so the swatch + label render. Only touches picks that
+  // are missing a name (never clobbers a user's own selection, which always
+  // carries a name).
+  useEffect(() => {
+    if (catalog.status !== "ready") return;
+    const byId = new Map(catalog.colors.map((c) => [c.id, c]));
+    setState((prev) => {
+      let changed = false;
+      const next: Record<string, LineItemState> = {};
+      for (const [liId, ls] of Object.entries(prev)) {
+        let picksChanged = false;
+        const picks: Record<string, SurfacePick> = {};
+        for (const [surf, pk] of Object.entries(ls.picks)) {
+          if (pk.colorId && !pk.colorName) {
+            const c = byId.get(pk.colorId);
+            if (c) {
+              picks[surf] = { ...pk, colorName: c.name, colorCode: c.code, colorHex: c.hex };
+              picksChanged = true;
+              changed = true;
+              continue;
+            }
+          }
+          picks[surf] = pk;
+        }
+        next[liId] = picksChanged ? { ...ls, picks } : ls;
+      }
+      return changed ? next : prev;
+    });
+  }, [catalog]);
 
   if (submitted) {
     return (
@@ -642,10 +704,12 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
 
       {/* Material Type (paint product line) — one selection that applies to
           every color on this job. Pre-filled from WorkOrder.MaterialType__c
-          when admin set it (about half of PPP WOs as of 2026-06-03); the
-          customer can change it. Falls back to no default so the customer
-          actively confirms which line to use. */}
-      {formData.lineItems.length > 0 && (
+          when admin set it (about half of PPP WOs as of 2026-06-03).
+          Kate 2026-07-22 (#6): customers should NOT pick the product line —
+          it's an internal decision. Only shown in preview / Account-Manager
+          entry (isPreview); the customer form hides it entirely and the
+          existing MaterialType__c flows through submit unchanged. */}
+      {isPreview && formData.lineItems.length > 0 && (
         <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7">
           <label htmlFor="paint-product-line" className="block cursor-pointer">
             <div className="text-[10px] sm:text-xs font-condensed uppercase tracking-[0.18em] text-ppp-blue-700 font-bold">
@@ -1013,16 +1077,12 @@ function LineItemSection({
     const p = state.picks[s];
     return p?.skipped || (!!p?.colorId && !!p?.finish);
   });
-  // Per-room collapsed state. Default: matches filledOrSkipped at first
-  // render, then driven by user clicks via the toggle in the header.
+  // Per-room collapsed state. Default: an already-complete room (re-edit /
+  // preview with data) starts collapsed to keep long lists manageable; a
+  // fresh room starts expanded. Kate 2026-07-22 (#7): the auto-collapse that
+  // used to snap a room shut the moment it was filled was removed — it was
+  // jarring mid-entry. Collapsing is now ONLY driven by the header chevron.
   const [collapsed, setCollapsed] = useState(filledOrSkipped);
-  // Auto-collapse the FIRST time the room becomes filled. Doesn't re-collapse
-  // after the user manually expands it — that's tracked via userOverride.
-  const userOverride = useRef(false);
-  useEffect(() => {
-    if (userOverride.current) return;
-    if (filledOrSkipped && !collapsed) setCollapsed(true);
-  }, [filledOrSkipped, collapsed]);
 
   // Summary for the collapsed header: "3 of 3 colors picked · 1 note".
   const colorsPicked = surfaces.filter((s) => state.picks[s]?.colorId).length;
@@ -1040,10 +1100,7 @@ function LineItemSection({
     <div className="bg-white border border-ppp-charcoal-100 rounded-2xl overflow-hidden">
       <button
         type="button"
-        onClick={() => {
-          userOverride.current = true;
-          setCollapsed((v) => !v);
-        }}
+        onClick={() => setCollapsed((v) => !v)}
         aria-expanded={!collapsed}
         className="w-full text-left px-5 sm:px-7 py-4 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]/40 hover:bg-[var(--color-surface-muted)]/70 active:bg-[var(--color-surface-muted)]/90 transition-colors touch-manipulation"
       >
@@ -1488,6 +1545,43 @@ function emptyPick(): SurfacePick {
     colorCode: null,
     colorHex: null,
     finish: null,
+    skipped: false,
+  };
+}
+
+/**
+ * Seed a surface pick from the color already saved on the WorkOrderLineItem in
+ * Salesforce (Kate #14 — preview/AM form showed empty even though SF had
+ * colors). Returns null when SF has no color for this surface. colorName/code/
+ * hex are left null here and hydrated from the catalog once it loads.
+ */
+function sfSeedForSurface(
+  surface: string,
+  li: FormLineItem,
+  soleOrphan: string | null
+): SurfacePick | null {
+  const key = surface.toLowerCase().trim();
+  let colorId: string | null = null;
+  let finish: string | null = null;
+
+  const slot = SF_SURFACE_SLOT[key];
+  if (slot) {
+    colorId = li.currentColors[slot.color];
+    finish = li.currentFinishes[slot.finish];
+  } else if (soleOrphan && surface === soleOrphan) {
+    colorId = li.currentColors.otherId;
+    finish = li.currentFinishes.other;
+  }
+
+  // A finish with no color is meaningless in the picker — only seed when SF
+  // actually has a color id for this surface.
+  if (!colorId) return null;
+  return {
+    colorId,
+    colorName: null,
+    colorCode: null,
+    colorHex: null,
+    finish: finish ?? null,
     skipped: false,
   };
 }

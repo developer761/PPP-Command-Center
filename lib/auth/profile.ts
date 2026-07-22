@@ -16,6 +16,14 @@ export type Profile = {
   sf_user_id: string | null;
   sf_user_name: string | null;
   is_admin: boolean;
+  /** RBAC role (migration 072). Mirrors is_admin (role='admin' <=> is_admin).
+   *  Optional at the type level so code tolerates rows read before the
+   *  migration ran — callers fall back via normalizeRole(). */
+  role?: string | null;
+  /** How the account signs in: 'google' (SSO) or 'password' (admin-provisioned). */
+  auth_provider?: string | null;
+  /** Display name for provisioned users who have no SF mapping. */
+  full_name?: string | null;
   is_active: boolean;
   /** Phase 0 New Platform (migration 019) — per-platform access flags.
    *  Defaults: Command Center true (everyone keeps prior access), New
@@ -70,7 +78,7 @@ type ProfileCacheEntry = { promise: Promise<Profile | null>; expiresAt: number }
 const profileCache = new Map<string, ProfileCacheEntry>();
 const PROFILE_CACHE_TTL_MS = 30_000;
 
-function invalidateProfileCache(userId: string): void {
+export function invalidateProfileCache(userId: string): void {
   profileCache.delete(userId);
 }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { loadDashboardData } from "@/lib/data-source";
+import { workTypeRequiresMaterials } from "@/lib/salesforce/materials";
 
 /**
  * Lazy-load the global-search projection. Called from GlobalSearch on first
@@ -45,9 +46,20 @@ export async function GET(request: Request) {
         region: a.region,
       })),
       workOrders: bundle.snapshot.workOrders
+        // Kate 2026-07-22 (#10): drop work orders that clutter search and are
+        // never material-order targets — estimates / appointments / inspections
+        // / consultations (non-material work types) and not-yet-started
+        // "pending" WOs. Closed/completed WOs are KEPT so staff can still search
+        // history. (#12): with the noise removed, raise the cap 500 → 2000 so a
+        // valid WO isn't missing just because it fell outside the newest 500.
+        .filter(
+          (w) =>
+            workTypeRequiresMaterials(w.workTypeName) &&
+            !/pending/i.test(w.status ?? "")
+        )
         .slice()
         .sort((a, b) => (b.createdDate ?? "").localeCompare(a.createdDate ?? ""))
-        .slice(0, 500)
+        .slice(0, 2000)
         .map((w) => ({
           id: w.id,
           workOrderNumber: w.workOrderNumber,

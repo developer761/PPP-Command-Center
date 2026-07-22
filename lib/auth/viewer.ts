@@ -11,6 +11,8 @@
  * client components via props or React context.
  */
 
+import type { UserRole } from "@/lib/auth/roles";
+
 export type ViewerScope = "all" | "my";
 
 export type Viewer = {
@@ -25,7 +27,11 @@ export type Viewer = {
   /** SF User Name of the signed-in user (null if no rep mapping). */
   sfUserName: string | null;
 
+  /** RBAC role (migration 072). */
+  role: UserRole;
   isAdmin: boolean;
+  /** Account Manager: all-WO access + enters colors, but no ordering/Settings. */
+  isAccountManager: boolean;
 
   /** When admin is impersonating: the rep's SF User Id. Else null. */
   viewAsUserId: string | null;

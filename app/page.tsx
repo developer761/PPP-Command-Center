@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { PPP_BRAND } from "@/lib/brand";
 import SignInButton from "@/components/sign-in-button";
+import EmailPasswordSignIn from "@/components/email-password-sign-in";
 
 type SearchParams = Promise<{ error?: string; redirectTo?: string }>;
 
@@ -15,6 +16,8 @@ const ERROR_COPY: Record<string, string> = {
     "We couldn't find a matching Salesforce user for your email. Ask an admin to confirm your Salesforce account is active and your email matches.",
   sf_user_inactive:
     "Your Salesforce user is marked inactive. Contact an admin to reactivate it before signing in.",
+  access_revoked:
+    "Your account has been deactivated. Contact an admin if you think this is a mistake.",
 };
 
 export default async function LoginLanding({
@@ -67,8 +70,11 @@ export default async function LoginLanding({
 
         <SignInButton redirectTo={redirectTo} />
 
+        <EmailPasswordSignIn />
+
         <div className="mt-6 text-center text-[11px] sm:text-xs text-ppp-charcoal-500">
-          PPP staff only. Access controlled by your Google Workspace account.
+          PPP staff. Sign in with your Google Workspace account, or with an
+          email &amp; password provided by an admin.
         </div>
       </div>
 

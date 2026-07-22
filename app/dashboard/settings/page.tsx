@@ -26,6 +26,13 @@ type Card = {
 
 const cards: Card[] = [
   {
+    href: "/dashboard/settings/access",
+    label: "Access & Users",
+    blurb:
+      "Give someone a login — paste their email, set a password, pick a role (Admin, Account Manager, Sales Rep). Reset passwords or deactivate anyone. They sign in with email + password, no Google needed.",
+    icon: <IconUsers />,
+  },
+  {
     href: "/dashboard/settings/health",
     label: "Setup Health",
     blurb:
@@ -129,6 +136,13 @@ function IconPlug() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M9 2v6 M15 2v6 M7 8h10v4a5 5 0 0 1-10 0z M12 17v5" />
+    </svg>
+  );
+}
+function IconUsers() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
   );
 }

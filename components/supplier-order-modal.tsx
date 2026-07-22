@@ -186,7 +186,6 @@ export default function SupplierOrderModal({
   // warnings + fulfillment + extras + special-instructions. Once the body
   // is visible, the user scrolls UP to change settings if needed.
   const emailBodyRef = useRef<HTMLDivElement | null>(null);
-  const didInitialScrollRef = useRef(false);
   // Synchronous double-send guard. The `sending` state check alone races:
   // React batches setSending, so two rapid clicks (or Enter+click) can both
   // pass `if (sending) return` before the first commits — firing TWO
@@ -308,16 +307,18 @@ export default function SupplierOrderModal({
     }
   }, [draft, fulfillment]);
 
-  // Scroll the email body into view on first draft load. Re-builds from
-  // extras/fulfillment toggles don't re-scroll (ref guard).
+  // Kate 2026-07-22 (#11): the modal used to auto-scroll to the email body
+  // (the LAST section) on open, so it opened showing the bottom instead of the
+  // order summary. Removed — the modal now opens at the top. We also lock the
+  // background page scroll while the modal is open so there's no double
+  // scrollbar and the page doesn't drift behind the overlay.
   useEffect(() => {
-    if (draft && !didInitialScrollRef.current && emailBodyRef.current) {
-      didInitialScrollRef.current = true;
-      requestAnimationFrame(() => {
-        emailBodyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-  }, [draft]);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
 
   const filteredCatalog = useMemo(() => {
     const q = extrasSearch.trim().toLowerCase();

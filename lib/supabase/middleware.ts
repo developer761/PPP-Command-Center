@@ -56,9 +56,15 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Domain guard — .net + .com workspaces + admin allow-list
+    // Domain guard — .net + .com workspaces + admin allow-list. Admin-
+    // provisioned email+password accounts (Settings → Access) carry a stable
+    // `provisioned` marker in their JWT app_metadata, so they're allowed in on
+    // any email without a per-request DB read. Their is_active status is still
+    // enforced at the dashboard layout (deactivate = lockout).
     const email = user.email?.toLowerCase() ?? "";
-    if (!isAllowedToSignIn(email)) {
+    const appMeta = (user.app_metadata ?? {}) as Record<string, unknown>;
+    const provisioned = appMeta.provisioned === true;
+    if (!isAllowedToSignIn(email) && !provisioned) {
       await supabase.auth.signOut();
       const denyUrl = url.clone();
       denyUrl.pathname = "/";
@@ -73,7 +79,9 @@ export async function updateSession(request: NextRequest) {
   // /dashboard immediately. The picker is the canonical post-login landing.
   if (path === "/" && user) {
     const email = user.email?.toLowerCase() ?? "";
-    if (isAllowedToSignIn(email)) {
+    const appMeta = (user.app_metadata ?? {}) as Record<string, unknown>;
+    const provisioned = appMeta.provisioned === true;
+    if (isAllowedToSignIn(email) || provisioned) {
       const dashUrl = url.clone();
       dashUrl.pathname = "/choose-platform";
       return NextResponse.redirect(dashUrl);

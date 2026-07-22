@@ -149,6 +149,11 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
         // matching stays separate below because it's case-sensitive on the
         // suffix bits.
         hay: `${w.workOrderNumber ?? ""}${w.accountName ?? ""}`.toLowerCase(),
+        // Whitespace-stripped variant so "wo 00303551" / "00303551 acme"
+        // (internal spaces) still match (Kate #12).
+        hayNoSpace: `${w.workOrderNumber ?? ""}${w.accountName ?? ""}`
+          .replace(/\s+/g, "")
+          .toLowerCase(),
         idLower: w.id.toLowerCase(),
       })),
       pages: PAGES.map((p) => ({
@@ -218,9 +223,18 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
     // the 15/18-char Salesforce record Id. The Id match handles "I copied
     // the WO URL from Salesforce" — pasting the Id finds the same record
     // the WO number would have. 2026-06-04. Short-circuit at 6 hits.
+    // Whitespace/prefix-normalized query for WO matching (Kate #12): strip a
+    // leading "wo"/"work order"/"#" and collapse ALL spaces so a pasted
+    // "WO 00303551" or "00303551 Acme" still finds the record.
+    const qWo = q.replace(/^(?:wo|work\s*order|#)\s*/i, "").replace(/\s+/g, "");
     let woHitCount = 0;
-    for (const { row: w, hay, idLower } of index.workOrders) {
-      if (hay.includes(q) || (q.length >= 5 && idLower.includes(q))) {
+    for (const { row: w, hay, hayNoSpace, idLower } of index.workOrders) {
+      if (
+        hay.includes(q) ||
+        (qWo.length >= 3 && hayNoSpace.includes(qWo)) ||
+        (q.length >= 5 && idLower.includes(q)) ||
+        (qWo.length >= 5 && idLower.includes(qWo))
+      ) {
         matches.push({
           kind: "workOrder",
           id: w.id,

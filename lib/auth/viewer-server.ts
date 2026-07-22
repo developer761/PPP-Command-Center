@@ -3,6 +3,7 @@ import "server-only";
 import { getProfileByUserId, logViewAs } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getCurrentUser } from "@/lib/auth/session";
+import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
 import type { Viewer, ViewerScope } from "@/lib/auth/viewer";
 
 /**
@@ -37,7 +38,9 @@ export async function resolveViewer(
       displayName: email.split("@")[0] ?? "Signed in",
       sfUserId: null,
       sfUserName: null,
+      role: "rep",
       isAdmin: false,
+      isAccountManager: false,
       viewAsUserId: null,
       viewAsName: null,
       scope: "my",
@@ -48,7 +51,14 @@ export async function resolveViewer(
   // Belt-and-suspenders: even if the profile row somehow has is_admin=false
   // for a person on the env allow-list, trust the allow-list. Stops a stale
   // profile from locking an admin out of impersonation.
-  const isAdmin = profile.is_admin || isAdminEmail(profile.email);
+  const isAdminByFlag = profile.is_admin || isAdminEmail(profile.email);
+
+  // Role drives capabilities. The env allow-list is an admin bootstrap: a
+  // person on it is treated as admin even if their stored role lags behind.
+  const role = normalizeRole(profile.role, isAdminByFlag);
+  const caps = capabilitiesFor(role);
+  const isAdmin = caps.isAdmin;
+  const isAccountManager = caps.isAccountManager;
 
   // Parse URL params for view_as + scope. Single-value only.
   const viewAsRaw = pickFirst(searchParams.view_as);
@@ -61,16 +71,20 @@ export async function resolveViewer(
   }
 
   // Compute effective scope:
-  //   non-admin → always "my"
-  //   admin + view_as → "my" (scoped to impersonated rep)
-  //   admin + ?scope=my → "my"
-  //   admin (default) → "all"
+  //   rep                     → always "my"
+  //   admin/AM + view_as      → "my" (admin impersonating a rep; view_as is
+  //                              already admin-gated above so AMs can't reach it)
+  //   admin + ?scope=my       → "my" (only admins toggle their own view; AMs
+  //                              have no View Switcher and may lack an SF map,
+  //                              so a stray ?scope=my is ignored for them)
+  //   admin/AM (default)      → "all"
+  const canSeeAll = isAdmin || isAccountManager;
   let scope: ViewerScope;
-  if (!isAdmin) {
+  if (!canSeeAll) {
     scope = "my";
   } else if (viewAsUserId) {
     scope = "my";
-  } else if (scopeRaw === "my") {
+  } else if (isAdmin && scopeRaw === "my") {
     scope = "my";
   } else {
     scope = "all";
@@ -108,10 +122,16 @@ export async function resolveViewer(
   return {
     supabaseUserId: user.id,
     email: profile.email,
-    displayName: profile.sf_user_name ?? profile.email.split("@")[0] ?? "Signed in",
+    displayName:
+      profile.sf_user_name ??
+      profile.full_name ??
+      profile.email.split("@")[0] ??
+      "Signed in",
     sfUserId: profile.sf_user_id,
     sfUserName: profile.sf_user_name,
+    role,
     isAdmin,
+    isAccountManager,
     viewAsUserId,
     viewAsName: null, // resolved in client from snapshot.reps for live display
     scope,

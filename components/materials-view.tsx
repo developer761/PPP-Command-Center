@@ -205,6 +205,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     return summary;
   }, [formStatuses]);
   const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
+  // Placing supplier/material orders is admin-only. Account Managers see the
+  // button greyed with an explanation (Kate #5); reps likewise can't order.
+  const canOrderMaterials = viewer?.isAdmin ?? false;
+  const isAccountManager = viewer?.isAccountManager ?? false;
 
   // Speed pass 2026-06-29 — when the server passes `openJobsSerialized`
   // (the already-derived open-WO list with Map→Array conversion), skip the
@@ -1110,6 +1114,8 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   onOpenOrderModal={handleOpenOrderModal}
                   effectiveSqft={effectiveSqft}
                   onUpdateSqft={handleUpdateSqft}
+                  canOrderMaterials={canOrderMaterials}
+                  isAccountManager={isAccountManager}
                 />
               </div>
             ) : (
@@ -1155,6 +1161,8 @@ function JobDetailImpl({
   onOpenOrderModal,
   effectiveSqft,
   onUpdateSqft,
+  canOrderMaterials,
+  isAccountManager,
 }: {
   snapshot: NonNullable<LiveDashboardBundle["snapshot"]>;
   job: OpenWorkOrderForMaterials;
@@ -1176,6 +1184,10 @@ function JobDetailImpl({
   /** Sets the per-room sqft override + fires the SF write-back. Returns
    *  ok/error for the editor row to surface a toast. */
   onUpdateSqft: (woliId: string, sqft: number) => Promise<{ ok: boolean; error?: string }>;
+  /** Admin-only: place supplier/material orders. AMs + reps see it greyed. */
+  canOrderMaterials: boolean;
+  /** Viewer is an Account Manager — drives the "AMs can't order" explanation. */
+  isAccountManager: boolean;
 }) {
   const [showDraft, setShowDraft] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -1521,8 +1533,15 @@ function JobDetailImpl({
                     actions don't compete for the eye. */}
                 <button
                   type="button"
-                  onClick={() => setShowPicker(true)}
-                  className="inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-green-600 text-white text-sm font-semibold hover:bg-ppp-green-700 active:bg-ppp-green-700 transition-colors shadow-sm shadow-ppp-green/30 touch-manipulation"
+                  onClick={() => canOrderMaterials && setShowPicker(true)}
+                  disabled={!canOrderMaterials}
+                  title={canOrderMaterials ? undefined : "Only admins can place material orders."}
+                  aria-disabled={!canOrderMaterials}
+                  className={`inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors touch-manipulation ${
+                    canOrderMaterials
+                      ? "bg-ppp-green-600 text-white hover:bg-ppp-green-700 active:bg-ppp-green-700 shadow-sm shadow-ppp-green/30"
+                      : "bg-ppp-charcoal-100 text-ppp-charcoal-400 cursor-not-allowed"
+                  }`}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z M3 6h18 M16 10a4 4 0 0 1-8 0" />
@@ -1530,7 +1549,11 @@ function JobDetailImpl({
                   Order materials
                 </button>
                 <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                  Pick a store (Aboffs, Willis, etc.) and email the order.
+                  {canOrderMaterials
+                    ? "Pick a store (Aboffs, Willis, etc.) and email the order."
+                    : isAccountManager
+                    ? "Account Managers can't place orders — an admin handles materials. You can still enter colors."
+                    : "Only admins can place material orders."}
                 </p>
                 {/* Preview colors — review the per-room color breakdown before
                     ordering. Gated on the customer ACTUALLY submitting the
@@ -1743,7 +1766,7 @@ function JobDetailImpl({
           Only renders when the WO actually has line items — otherwise
           picking a supplier produces a blank paint order (audit
           2026-07-01). */}
-      {job.lineItems.length > 0 && (
+      {job.lineItems.length > 0 && canOrderMaterials && (
         <div
           className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-ppp-charcoal-100 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}

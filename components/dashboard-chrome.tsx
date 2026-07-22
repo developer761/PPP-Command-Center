@@ -7,6 +7,7 @@ import Topbar from "@/components/topbar";
 import ImpersonationBanner from "@/components/impersonation-banner";
 import { ViewerProvider } from "@/lib/auth/viewer-context";
 import type { Viewer } from "@/lib/auth/viewer";
+import { normalizeRole, type UserRole } from "@/lib/auth/roles";
 
 type SearchableSnapshot = {
   reps?: Array<{ id: string; name: string; email?: string | null; region?: string | null }>;
@@ -31,6 +32,9 @@ type Props = {
   };
   profile: {
     isAdmin: boolean;
+    /** RBAC role — drives the client viewer mirror (AM = all-WO + colors). */
+    role?: UserRole | null;
+    isAccountManager?: boolean;
     sfUserId: string | null;
     sfUserName: string | null;
   };
@@ -84,13 +88,21 @@ export default function DashboardChrome({
     const scopeRaw = params?.get("scope") ?? null;
 
     const isAdmin = profile.isAdmin;
+    const role: UserRole = normalizeRole(
+      profile.role,
+      isAdmin
+    );
+    const isAccountManager =
+      profile.isAccountManager ?? role === "account_manager";
+    // Admins + Account Managers see everyone by default.
+    const canSeeAll = isAdmin || isAccountManager;
     const viewAsUserId =
       isAdmin && viewAsRaw && SF_USER_ID_RE.test(viewAsRaw) ? viewAsRaw : null;
 
     let scope: Viewer["scope"];
-    if (!isAdmin) scope = "my";
+    if (!canSeeAll) scope = "my";
     else if (viewAsUserId) scope = "my";
-    else if (scopeRaw === "my") scope = "my";
+    else if (isAdmin && scopeRaw === "my") scope = "my";
     else scope = "all";
 
     const effectiveUserId =
@@ -102,7 +114,9 @@ export default function DashboardChrome({
       displayName: user.fullName ?? user.firstName ?? user.email,
       sfUserId: profile.sfUserId,
       sfUserName: profile.sfUserName,
+      role,
       isAdmin,
+      isAccountManager,
       viewAsUserId,
       viewAsName: null,
       scope,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
+import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { discoverEmailPaths, readPath } from "@/lib/customer-form/email-paths";
 
@@ -29,8 +30,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const profile = await getProfileByUserId(data.user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(data.user.email);
-  if (!isAdmin) {
+  // Admins + Account Managers can look up the customer email for a WO.
+  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email));
+  if (!capabilitiesFor(role).canEnterColors) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

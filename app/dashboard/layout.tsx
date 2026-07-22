@@ -3,6 +3,7 @@ import DashboardChrome from "@/components/dashboard-chrome";
 import { isAdminEmail, isAllowedToSignIn } from "@/lib/auth/admin";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getCurrentUser } from "@/lib/auth/session";
+import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
 
 export default async function DashboardLayout({
   children,
@@ -18,10 +19,32 @@ export default async function DashboardLayout({
   // hits the same React-cache entry, so JWT only verifies once per
   // request instead of once per layout + once per page.
   const user = await getCurrentUser();
+  if (!user) redirect("/");
 
-  // Middleware should have caught this already; this is defense-in-depth.
-  if (!user || !isAllowedToSignIn(user.email)) {
+  const email = user.email ?? "";
+
+  // Profile drives the admin flag in the chrome (controls visibility of the
+  // View Switcher). The full Viewer (with scope/view_as from URL params) is
+  // resolved per-page since the layout doesn't see searchParams.
+  const profile = await getProfileByUserId(user.id);
+
+  // Access gate (defense-in-depth; the callback + provisioning already gate at
+  // entry). Two ways in:
+  //   1. Google SSO staff on a PPP domain / admin allow-list (isAllowedToSignIn)
+  //   2. An admin-provisioned email+password account (has a profile row)
+  // Either way, a DEACTIVATED account (is_active=false) is locked out on the
+  // next request — admins are exempt so they can always recover. This is how
+  // "deactivate in the Access tab = instant lockout" takes effect mid-session.
+  const provisioned = !!profile; // provisioning always creates the row first
+  if (!isAllowedToSignIn(email) && !provisioned) {
     redirect("/");
+  }
+  // Deactivation is authoritative — a deactivated account is locked out on the
+  // next request. The ONLY exemption is the hardcoded env bootstrap admins
+  // (Karan / Alex / Katie / …), so the platform can never be fully bricked;
+  // the last-admin guard in provisioning already prevents removing them.
+  if (profile && profile.is_active === false && !isAdminEmail(email)) {
+    redirect("/?error=access_revoked");
   }
 
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
@@ -29,12 +52,6 @@ export default async function DashboardLayout({
     (typeof meta.full_name === "string" && meta.full_name) ||
     (typeof meta.name === "string" && meta.name) ||
     null;
-  const email = user.email!; // guaranteed by isAllowedToSignIn check above
-
-  // Profile drives the admin flag in the chrome (controls visibility of the
-  // View Switcher). The full Viewer (with scope/view_as from URL params) is
-  // resolved per-page since the layout doesn't see searchParams.
-  const profile = await getProfileByUserId(user.id);
 
   // Name-resolution fallback chain — fixes the "Good afternoon, Precision"
   // bug where shared workspace inboxes (developer@precisionpaintingplus.net)
@@ -87,6 +104,11 @@ export default async function DashboardLayout({
   } else if (fullNameFromGoogle && !looksLikeWorkspaceName(fullNameFromGoogle)) {
     fullName = fullNameFromGoogle;
     firstName = fullNameFromGoogle.split(" ")[0];
+  } else if (profile?.full_name) {
+    // Admin-provisioned password users have no SF/Google name — use the name
+    // the admin typed when creating the account.
+    fullName = profile.full_name;
+    firstName = profile.full_name.split(" ")[0];
   } else {
     firstName = nameFromEmail(email);
     fullName = firstName;
@@ -97,7 +119,10 @@ export default async function DashboardLayout({
   // Defense-in-depth: if the profile row is missing (DB blip, first-login
   // race before /auth/callback finishes), fall back to the env admin list so
   // a real admin doesn't lose the View Switcher and re-fetch in a hot loop.
-  const isAdmin = profile?.is_admin ?? isAdminEmail(email);
+  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(email));
+  const caps = capabilitiesFor(role);
+  const isAdmin = caps.isAdmin;
+  const isAccountManager = caps.isAccountManager;
 
   // Phase 0 New Platform — show the bottom-left sidebar switcher when the
   // viewer has access to both platforms. Single-access users never see it
@@ -123,6 +148,8 @@ export default async function DashboardLayout({
       }}
       profile={{
         isAdmin,
+        role,
+        isAccountManager,
         sfUserId: profile?.sf_user_id ?? null,
         sfUserName: profile?.sf_user_name ?? null,
       }}
