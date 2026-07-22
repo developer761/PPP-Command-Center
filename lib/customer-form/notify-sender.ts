@@ -142,7 +142,7 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
   // App URL for deep-linking back into materials → this specific WO.
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "https://hub.precisionpaintingplus.net";
-  const materialsUrl = `${baseUrl}/dashboard/materials?wo=${encodeURIComponent(input.workOrderId)}`;
+  const materialsUrl = `${baseUrl}/dashboard/materials/${encodeURIComponent(input.workOrderId)}`;
 
   const orderWarning = input.orderAlreadyPlaced && input.isReedit
     ? "\n\n⚠ HEADS-UP: The supplier order for this WO already went out — the customer changed colors AFTER materials were ordered. You may need to reach out to the supplier to amend the order, or reach out to the customer to confirm they understand the timing."

@@ -316,7 +316,7 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
                     <tr key={w.id} className="hover:bg-ppp-charcoal-50/30 transition-colors">
                       <td className="px-5 py-2.5">
                         <Link
-                          href={`/dashboard/materials?wo=${encodeURIComponent(w.id)}`}
+                          href={`/dashboard/materials/${encodeURIComponent(w.id)}`}
                           className="font-mono text-ppp-charcoal hover:text-ppp-blue hover:underline"
                         >
                           {w.workOrderNumber ?? w.id.slice(-6)}
@@ -349,7 +349,7 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
               {workOrders.map((w) => (
                 <li key={`m::${w.id}`}>
                   <Link
-                    href={`/dashboard/materials?wo=${encodeURIComponent(w.id)}`}
+                    href={`/dashboard/materials/${encodeURIComponent(w.id)}`}
                     className="block px-4 py-3 active:bg-ppp-charcoal-50/40 transition-colors min-h-[64px]"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -432,7 +432,7 @@ export default function CustomerHistoryView({ accountId }: { accountId: string }
                         <>
                           <span>·</span>
                           <Link
-                            href={`/dashboard/materials?wo=${encodeURIComponent(e.workOrderId)}`}
+                            href={`/dashboard/materials/${encodeURIComponent(e.workOrderId)}`}
                             className="font-mono hover:text-ppp-blue hover:underline"
                           >
                             WO #{e.workOrderNumber}

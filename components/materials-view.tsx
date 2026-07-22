@@ -44,6 +44,7 @@
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, type Components } from "react-virtuoso";
@@ -99,6 +100,10 @@ type Props = {
   /** Deep-link target — when set, this WO is pre-selected on load (links from
    *  Customer History, the mail timeline, the activity feed, search). */
   initialWoId?: string | null;
+  /** Focus mode (Kate #1) — rendered by /dashboard/materials/[woId]. Shows ONLY
+   *  this WO's detail full-width (no list/filters/KPIs) with a Back link. The
+   *  list page navigates here on row click instead of opening a right panel. */
+  focusWoId?: string | null;
   /** Tuned coverage config (Settings → Coverage) so the WO-card paint estimate
    *  matches the order modal/email. Defaults to the code constants. */
   coverageConfig?: CoverageConfig;
@@ -143,7 +148,8 @@ const VIRTUOSO_COMPONENTS = {
   Item: VirtuosoLI,
 } as unknown as Components<OpenWorkOrderForMaterials>;
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized }: Props) {
+  const router = useRouter();
   const { snapshot, viewer } = bundle;
 
   // Index form statuses by WO id for constant-time lookup in the render loop.
@@ -405,12 +411,37 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     return filtered.sort(sorter);
   }, [openJobs, searchQuery, sortMode]);
 
+  // Focus mode (Kate #1): resolve the /materials/[woId] route param to an open
+  // job, tolerating 15- vs 18-char Salesforce Ids (#8 — SF's classic 15-char
+  // Id is a prefix of the 18-char Id the snapshot carries).
+  const focusMode = !!focusWoId;
+  const resolvedFocusId = useMemo(() => {
+    if (!focusWoId) return null;
+    const target = focusWoId.trim();
+    const hit = openJobs.find(
+      (j) => j.wo.id === target || j.wo.id.startsWith(target) || target.startsWith(j.wo.id)
+    );
+    return hit?.wo.id ?? null;
+  }, [focusWoId, openJobs]);
+
   // Seed from the ?wo= deep-link when that WO is actually an open materials
   // job; otherwise start unselected (the WO may be closed / out of scope, in
   // which case showing the list is the right fallback rather than a dead select).
   const [activeWoId, setActiveWoId] = useState<string | null>(
-    () => (initialWoId && openJobs.some((j) => j.wo.id === initialWoId) ? initialWoId : null)
+    () =>
+      focusWoId
+        ? null // set by the focus sync effect below
+        : initialWoId && openJobs.some((j) => j.wo.id === initialWoId)
+        ? initialWoId
+        : null
   );
+
+  // In focus mode, keep the shown WO in lock-step with the route param (so
+  // navigating from one WO page to another updates the detail even if the
+  // component instance is reused across the [woId] segment).
+  useEffect(() => {
+    if (focusMode) setActiveWoId(resolvedFocusId);
+  }, [focusMode, resolvedFocusId]);
 
   // On mobile (single-column layout), the JobDetail panel renders BELOW the
   // full WO list — tapping a row appears to do nothing until the user scrolls
@@ -584,6 +615,20 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
 
   return (
     <div className="animate-fade-up space-y-6 sm:space-y-8">
+      {/* Focus mode (Kate #1) — this WO on its own page. Back link stands in
+          for the browse chrome (KPIs / filters / list), which is hidden. */}
+      {focusMode && (
+        <Link
+          href="/dashboard/materials"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 min-h-[44px] touch-manipulation"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M19 12H5 M12 19l-7-7 7-7" />
+          </svg>
+          Back to work orders
+        </Link>
+      )}
+      {!focusMode && (<>
       <PageHeader
         title={repScopedToSelf ? "Your Materials Ordering" : "Materials Ordering"}
         subtitle={
@@ -802,14 +847,16 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         </div>
       )}
 
-      {/* Job list + side panel. Mobile UX (Karan 2026-06-13): when a WO is
-          active, hide the list entirely so the JobDetail goes full-width
-          (no scrolling-past-the-list). The "Back to work orders" button
-          inside JobDetail (line ~930) returns to the list view. Desktop
-          (lg+) always shows both side-by-side. */}
-      {openJobs.length > 0 && (
+      </>)}
+
+      {/* Job list (browse) OR the single-WO detail (focus mode, Kate #1).
+          Browse: rows navigate to /dashboard/materials/[woId] and the list is
+          full-width (no right panel). Focus: the list is hidden and the detail
+          fills the width. The two share this grid so the detail JSX + all its
+          modal orchestration are reused, not duplicated. */}
+      {(focusMode || openJobs.length > 0) && (
         <section className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-5">
-          <div className={`${activeJob ? "hidden lg:block" : ""} lg:col-span-2 bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden`}>
+          <div className={`${focusMode ? "hidden" : "lg:col-span-5"} bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden`}>
             {/* Sticky header — keeps sort/search visible while the list
                 scrolls (workers with 100+ WOs were losing their place when
                 scanning down). z-20 + backdrop-blur keeps it readable even
@@ -937,7 +984,9 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   return (<>
                     <button
                       type="button"
-                      onClick={() => setActiveWoId(j.wo.id)}
+                      onClick={() => router.push(`/dashboard/materials/${j.wo.id}`)}
+                      // Kate #1: rows navigate to the WO's own page now instead
+                      // of opening a cramped right panel.
                       // Smooth transition on hover + active highlight so picking
                       // a WO doesn't feel jarring. `transition-all` covers the
                       // border-left + bg + shadow shift together. `duration-150`
@@ -1070,13 +1119,14 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
             )}
           </div>
 
-          {/* Side panel */}
-          <div className="lg:col-span-3" ref={detailAnchorRef}>
+          {/* Detail — full-width in focus mode (Kate #1), hidden on the list
+              page (rows navigate to this WO's own page instead). */}
+          <div className={focusMode ? "lg:col-span-5" : "hidden"} ref={detailAnchorRef}>
             {activeJob ? (
               <div className="space-y-4">
-                {/* Mobile-only "back" button — closes the JobDetail and
-                    smooth-scrolls the user back to the WO list. On desktop
-                    the side rail is permanent so there's nothing to close. */}
+                {/* Mobile-only "back" button (browse/panel legacy path). In
+                    focus mode the top "Back to work orders" link handles this,
+                    so hide it here to avoid a dead toggle. */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1085,7 +1135,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }
                   }}
-                  className="lg:hidden inline-flex items-center gap-1.5 px-3 py-2 -ml-1 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 touch-manipulation"
+                  className={`${focusMode ? "hidden" : "lg:hidden"} inline-flex items-center gap-1.5 px-3 py-2 -ml-1 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 active:text-ppp-blue-900 touch-manipulation`}
                   aria-label="Back to work orders list"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1117,6 +1167,29 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                   canOrderMaterials={canOrderMaterials}
                   isAccountManager={isAccountManager}
                 />
+              </div>
+            ) : focusMode ? (
+              <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+                <div className="mx-auto h-12 w-12 rounded-full bg-ppp-orange-50 text-ppp-orange-700 flex items-center justify-center mb-3">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <circle cx="12" cy="12" r="10" /><path d="M12 8v4 M12 16h.01" />
+                  </svg>
+                </div>
+                <h3 className="text-base font-semibold text-ppp-navy">This work order isn&apos;t available for materials</h3>
+                <p className="text-sm text-ppp-charcoal-500 mt-2 max-w-md mx-auto">
+                  It may be an estimate/appointment, already closed, out of your
+                  view, or have no rooms entered in Salesforce yet. If rooms were
+                  just added it can take up to ~30 minutes to appear.
+                </p>
+                <Link
+                  href="/dashboard/materials"
+                  className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px]"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M19 12H5 M12 19l-7-7 7-7" />
+                  </svg>
+                  Back to work orders
+                </Link>
               </div>
             ) : (
               <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center text-sm text-ppp-charcoal-500">

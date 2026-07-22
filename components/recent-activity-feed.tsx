@@ -103,7 +103,7 @@ export default function RecentActivityFeed({ windowHours = 24 }: { windowHours?:
             : e.tone === "warning" ? "bg-ppp-orange-50 text-ppp-orange-700 border-ppp-orange-100"
             : "bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-100";
           const href = e.workOrderId
-            ? `/dashboard/materials?wo=${encodeURIComponent(e.workOrderId)}`
+            ? `/dashboard/materials/${encodeURIComponent(e.workOrderId)}`
             : "/dashboard/inbox";
           return (
             <li key={e.id} className="flex items-start gap-2.5 text-xs">

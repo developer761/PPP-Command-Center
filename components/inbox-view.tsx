@@ -724,7 +724,7 @@ function SentRow({ message, onResent }: { message: SentMessage; onResent?: () =>
 
   // Deep link: WO# routes admin to the materials page filtered to that WO.
   const woHref = message.workOrderId
-    ? `/dashboard/materials?wo=${encodeURIComponent(message.workOrderId)}`
+    ? `/dashboard/materials/${encodeURIComponent(message.workOrderId)}`
     : null;
 
   return (

@@ -240,9 +240,9 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
           id: w.id,
           label: `WO ${w.workOrderNumber ?? w.id.slice(-6)}`,
           sublabel: [w.accountName, w.status, w.ownerName].filter(Boolean).join(" · "),
-          // Open the WO's customer record when we know the account; otherwise
-          // fall to Materials (where WOs are actioned), never a dead generic page.
-          href: w.accountId ? `/dashboard/customer/${w.accountId}` : "/dashboard/materials",
+          // Kate #9: a WO search result opens the WO's own materials page now
+          // (the canonical WO detail), not the customer record.
+          href: `/dashboard/materials/${w.id}`,
         });
         woHitCount++;
         if (woHitCount >= 6) break;

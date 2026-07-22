@@ -114,7 +114,7 @@ export async function insertCustomerFormSubmittedNotification(
       ? `${baseBody} (Saved in Command Center — Salesforce writeback gated for this WO.)`
       : baseBody;
     // The materials WO drawer is where admin acts on a submission.
-    const link = `/dashboard/materials?wo=${encodeURIComponent(input.workOrderId)}`;
+    const link = `/dashboard/materials/${encodeURIComponent(input.workOrderId)}`;
 
     const rows = Array.from(recipients).map((userId) => ({
       recipient_user_id: userId,
