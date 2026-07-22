@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  let body: { workOrderId?: string };
+  let body: { workOrderId?: string; internal?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -50,6 +50,10 @@ export async function POST(request: Request) {
   if (!workOrderId || !/^0WO/.test(workOrderId)) {
     return NextResponse.json({ error: "invalid_work_order_id" }, { status: 400 });
   }
+
+  // Internal Entry (Kate #4): staff enter colors on the customer's behalf and
+  // it SAVES (unlike a preview, which no-ops). Same form, different token kind.
+  const isInternal = body.internal === true;
 
   // Confirm the WO exists in SF (so admin doesn't get a 404 page on open).
   const wo = await loadFormRenderData(workOrderId);
@@ -65,12 +69,14 @@ export async function POST(request: Request) {
     work_order_id: workOrderId,
     work_order_number: wo.workOrderNumber,
     customer_email: (data.user.email ?? "preview@precisionpaintingplus.com").toLowerCase(),
-    customer_name: `[Preview] ${data.user.email ?? "admin"}`,
+    customer_name: `[${isInternal ? "Internal Entry" : "Preview"}] ${data.user.email ?? "admin"}`,
     created_by_user_id: data.user.id,
-    // Short expiry — admin just needs to look at the form, not keep the
-    // link around for weeks.
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    kind: "preview",
+    // Internal entries get a longer window (staff may come back to finish);
+    // previews are throwaway QA links.
+    expiresAt: new Date(
+      Date.now() + (isInternal ? 7 * 24 : 24) * 60 * 60 * 1000
+    ).toISOString(),
+    kind: isInternal ? "internal" : "preview",
   });
   if ("error" in tokenResult) {
     return NextResponse.json({ error: "token_create_failed", message: tokenResult.error }, { status: 500 });

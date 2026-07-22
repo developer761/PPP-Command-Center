@@ -92,9 +92,11 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
     thankyouBody: render(templates.form_thankyou_body, vars),
   };
 
-  // Preview tokens render the same form but with banner + a no-op submit.
-  // Admin generated this from the Materials page to test the flow.
+  // Preview tokens render the same form but with a banner + a no-op submit.
+  // Internal-entry tokens (Kate #4) render the same staff-facing form but
+  // DO save (staff entering colors on the customer's behalf).
   const isPreview = status.token.kind === "preview";
+  const isInternal = status.token.kind === "internal";
 
   return (
     <CustomerFormShell>
@@ -106,6 +108,7 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
         isEditing={isEditing}
         priorSubmission={priorSubmission}
         isPreview={isPreview}
+        isInternal={isInternal}
       />
     </CustomerFormShell>
   );

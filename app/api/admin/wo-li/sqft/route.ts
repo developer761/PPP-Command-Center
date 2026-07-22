@@ -1,40 +1,36 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getProfileByUserId } from "@/lib/auth/profile";
-import { getSalesforceClient } from "@/lib/salesforce/client";
-import { clearSalesforceCache } from "@/lib/salesforce/queries";
 
 /**
- * Update WorkOrderLineItem.Sq_Footage__c in Salesforce.
+ * Persist a per-room square-footage override for Materials Ordering.
  *
- * Karan 2026-06-13: PPP's SF team doesn't fill Sq_Footage__c on most WOLI
- * rows — the probe found ~77% of paint-WO rooms have zero measurement. So
- * Materials Ordering needs a per-room editable input on JobDetail. When a
- * worker / admin types a number, we save it to SF immediately so:
- *   (a) the gallon estimator picks it up,
- *   (b) the value persists across sessions and devices,
- *   (c) Salesforce + Command Center stay aligned (one source of truth).
+ * Kate #17 / Karan 2026-06-13: ~77% of PPP's open paint rooms have no
+ * Sq_Footage__c in Salesforce, so JobDetail lets staff type it in. This USED
+ * to write Sq_Footage__c back to Salesforce — but that field is a FORMULA
+ * field, so every write was rejected (502) and the value never persisted.
  *
- * After a successful write we invalidate the snapshot cache so the next
- * request fetches fresh data. Yes, that incurs a cold-load cost for the
- * next visitor — but sqft entry is rare (once per WO setup) and the
- * alternative (stale snapshot for 30 min) would have users second-guess
- * whether their change saved.
+ * Now we store the value in Command Center (`wo_li_sqft_overrides`, migration
+ * 073) and hydrate it on page load. Salesforce stays source of truth for
+ * rooms/colors; this is just the human-entered measurement overlay the gallon
+ * estimator needs, and a local value always wins over the SF value.
  *
  *   POST /api/admin/wo-li/sqft
- *   body: { woliId: string, sqft: number }
- *   returns: { ok: true, woliId, sqft }
+ *   body: { woliId: string, sqft: number, workOrderId?: string }
+ *   returns: { ok: true, woliId, sqft }   (sqft 0 clears the override)
  *
- * Any authenticated PPP staff user can call this. The Materials page is
- * already worker-scoped at the UI layer (workers see only their WOs), so
- * a worker can only naturally surface woliIds for WOs they own. Karan
- * 2026-06-13: workers MUST be able to enter sqft from the field — leaving
- * this admin-only would have blocked the whole feature for the team.
- *
- * The WOLI Id maps unambiguously to one WorkOrder in SF (every WOLI has a
- * fixed `WorkOrderId` parent), so an SF write here always lands on the
- * correct WO — no risk of cross-WO drift.
+ * Any authenticated PPP staff user can call this (workers must enter sqft from
+ * the field; the Materials UI is already scope-gated).
  */
+
+function overridesClient() {
+  return createSupabaseAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -50,7 +46,7 @@ export async function POST(request: Request) {
     const writerLabel = profile?.sf_user_name ?? profile?.email ?? data.user.email ?? data.user.id;
 
     const body = (await request.json().catch(() => null)) as
-      | { woliId?: unknown; sqft?: unknown }
+      | { woliId?: unknown; sqft?: unknown; workOrderId?: unknown }
       | null;
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "invalid_body" }, { status: 400 });
@@ -62,44 +58,51 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "invalid_woli_id" }, { status: 400 });
     }
 
-    // Sqft — allow integers >= 0. Cap at 100k to catch fat-finger typos
-    // (no real paint room is 100,000 sqft; if it ever happens we'll raise
-    // the cap). Reject NaN / negative / non-finite.
+    const workOrderId =
+      typeof body.workOrderId === "string" && /^[a-zA-Z0-9]{15,18}$/.test(body.workOrderId.trim())
+        ? body.workOrderId.trim()
+        : null;
+
+    // Sqft — allow integers >= 0. Cap at 100k to catch fat-finger typos.
+    // Reject NaN / negative / non-finite.
     const sqftRaw = typeof body.sqft === "number" ? body.sqft : Number(body.sqft);
     if (!Number.isFinite(sqftRaw) || sqftRaw < 0 || sqftRaw > 100000) {
       return NextResponse.json({ error: "invalid_sqft" }, { status: 400 });
     }
     const sqft = Math.round(sqftRaw);
 
-    const conn = await getSalesforceClient();
+    const sb = overridesClient();
 
-    // Fire the update. jsforce throws if the Id doesn't exist / field is
-    // FLS-blocked — let the catch below surface a generic error.
-    const updateResult = await conn.sobject("WorkOrderLineItem").update({
-      Id: woliId,
-      Sq_Footage__c: sqft,
-    });
-
-    // jsforce can return either a single result or array depending on input
-    // shape. We pass a single object so result is single, but coerce
-    // defensively.
-    const result = Array.isArray(updateResult) ? updateResult[0] : updateResult;
-    if (!result || !result.success) {
-      const errors = (result as { errors?: Array<{ message?: string }> })?.errors;
-      const msg = errors?.[0]?.message ?? "salesforce_update_failed";
-      console.error(`[wo-li/sqft] SF write failed for ${woliId}: ${msg}`);
-      return NextResponse.json({ error: "salesforce_update_failed", detail: msg }, { status: 502 });
+    // sqft === 0 clears the override (fall back to the SF value / empty).
+    if (sqft === 0) {
+      const { error } = await sb
+        .from("wo_li_sqft_overrides")
+        .delete()
+        .eq("woli_id", woliId);
+      if (error) {
+        console.error(`[wo-li/sqft] clear failed for ${woliId}: ${error.message}`);
+        return NextResponse.json({ error: "save_failed", detail: error.message }, { status: 500 });
+      }
+      console.log(`[wo-li/sqft] ${writerLabel} cleared override on WOLI ${woliId}`);
+      return NextResponse.json({ ok: true, woliId, sqft: 0 });
     }
 
-    // Snapshot cache must be invalidated so the next read picks up the new
-    // value. Without this, the user would type 150 → SF has 150 → but the
-    // page on next reload still shows 0 for ~30 min until TTL expires. This
-    // is the right tradeoff per the comment at the top of the file.
-    await clearSalesforceCache();
-
-    console.log(
-      `[wo-li/sqft] ${writerLabel} set Sq_Footage__c=${sqft} on WOLI ${woliId}`
+    const { error } = await sb.from("wo_li_sqft_overrides").upsert(
+      {
+        woli_id: woliId,
+        work_order_id: workOrderId,
+        sqft,
+        updated_by: writerLabel,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "woli_id" }
     );
+    if (error) {
+      console.error(`[wo-li/sqft] save failed for ${woliId}: ${error.message}`);
+      return NextResponse.json({ error: "save_failed", detail: error.message }, { status: 500 });
+    }
+
+    console.log(`[wo-li/sqft] ${writerLabel} set sqft=${sqft} on WOLI ${woliId}`);
     return NextResponse.json({ ok: true, woliId, sqft });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

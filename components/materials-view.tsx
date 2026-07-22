@@ -104,6 +104,9 @@ type Props = {
    *  this WO's detail full-width (no list/filters/KPIs) with a Back link. The
    *  list page navigates here on row click instead of opening a right panel. */
   focusWoId?: string | null;
+  /** Persisted per-WOLI sqft overrides (Kate #17) — hydrates the editable
+   *  square-footage inputs so a typed value survives reloads. */
+  sqftOverrides?: Record<string, number>;
   /** Tuned coverage config (Settings → Coverage) so the WO-card paint estimate
    *  matches the order modal/email. Defaults to the code constants. */
   coverageConfig?: CoverageConfig;
@@ -148,7 +151,7 @@ const VIRTUOSO_COMPONENTS = {
   Item: VirtuosoLI,
 } as unknown as Components<OpenWorkOrderForMaterials>;
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], initialWoId = null, focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides }: Props) {
   const router = useRouter();
   const { snapshot, viewer } = bundle;
 
@@ -237,13 +240,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // probe), the worker can type the number into a per-room input. We
   // hold the value in this map for INSTANT UI feedback (chip on WO list
   // flips off, gallon estimator recomputes live), and fire a background
-  // POST to /api/admin/wo-li/sqft that writes it to Salesforce + clears
-  // the snapshot cache. On the next snapshot reload the raw SF value
-  // matches the override; we could clear the map at that point but
-  // keeping it doesn't hurt because the helper picks whichever is the
-  // truthy non-zero value.
+  // POST to /api/admin/wo-li/sqft that PERSISTS it in Command Center
+  // (wo_li_sqft_overrides, migration 073 — the old SF Sq_Footage__c write
+  // was rejected because that field is a formula). The map is hydrated from
+  // that table on load (initialSqftOverrides), so a typed value survives
+  // reloads. A local override always wins over the SF value.
   const [sqftOverrides, setSqftOverrides] = useState<Map<string, number>>(
-    () => new Map()
+    () => new Map(Object.entries(initialSqftOverrides ?? {}))
   );
   const effectiveSqft = useCallback(
     (woliId: string, rawSqft: number): number => {
@@ -442,6 +445,24 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   useEffect(() => {
     if (focusMode) setActiveWoId(resolvedFocusId);
   }, [focusMode, resolvedFocusId]);
+
+  // Kate #13: the progress timeline is server-rendered once and never
+  // re-fetched, so it only advanced on a hard reload. On the WO detail page
+  // (where someone actually watches a customer submit / order go out), pull
+  // fresh server data when the tab regains focus — throttled so switching
+  // tabs doesn't hammer the snapshot rebuild.
+  useEffect(() => {
+    if (!focusMode) return;
+    let last = Date.now();
+    const onFocus = () => {
+      const now = Date.now();
+      if (now - last < 20000) return;
+      last = now;
+      router.refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [focusMode, router]);
 
   // On mobile (single-column layout), the JobDetail panel renders BELOW the
   // full WO list — tapping a row appears to do nothing until the user scrolls
@@ -2103,7 +2124,7 @@ function SqftEditor({
           // the field doesn't need to be a thumb-friendly tap target.
           className="w-24 px-3 py-2 text-base sm:text-sm min-h-[44px] sm:min-h-0 bg-transparent focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 rounded-md disabled:opacity-50"
           aria-describedby={errorMsg ? `${inputId}-err` : undefined}
-          title="Type the room's square footage. Saves to Salesforce on blur (tab away / click out)."
+          title="Type the room's square footage. Saved in Command Center on blur (tab away / click out) — persists across reloads and feeds the gallon estimate."
         />
         {saving && (
           <span className="px-2 text-[11px] text-ppp-charcoal-500" aria-live="polite">
@@ -2469,7 +2490,7 @@ function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
       const res = await fetch("/api/admin/customer-form/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workOrderId }),
+        body: JSON.stringify({ workOrderId, internal: true }),
       });
       const data = await res.json();
       if (!res.ok || data.ok === false) {
@@ -2498,18 +2519,17 @@ function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
         type="button"
         onClick={onClick}
         disabled={loading}
-        title="Open the customer color form in a new tab as a preview — no email is sent and nothing is saved to Salesforce. Useful for testing without touching real data."
+        title="Open the color form in a new tab to enter the customer's colors yourself. Your entry is saved (and written to Salesforce if this WO is enabled for writeback). No email is sent to the customer."
         className="inline-flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-charcoal-100 bg-white text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-          <circle cx="12" cy="12" r="3" />
+          <path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
         </svg>
-        {loading ? "Opening…" : "Preview"}
+        {loading ? "Opening…" : "Internal Entry"}
       </button>
       {error && (
         <div className="text-[11px] text-ppp-orange-700 max-w-[18rem]" role="alert">
-          Preview failed: {error}
+          Internal Entry failed: {error}
         </div>
       )}
     </>

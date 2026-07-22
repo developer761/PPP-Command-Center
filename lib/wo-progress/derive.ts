@@ -121,14 +121,24 @@ export async function getProgressByWO(
       .in("work_order_id", workOrderIds)
       .order("created_at", { ascending: false });
     if (tokenErr) throw tokenErr;
-    const seenTokenForWO = new Set<string>();
+    // Kate #13: pick the MOST-ADVANCED token per WO, not just the newest, so a
+    // re-sent (blank) form doesn't shadow an earlier SUBMITTED one and stall
+    // the progress bar. Kept in lock-step with lib/materials-page-data.ts.
+    const tokenRank = (r: TokenRow): number => {
+      if (r.submitted_at) return 3;
+      if (r.opened_at) return 2;
+      return 1;
+    };
+    const bestByWo = new Map<string, TokenRow>();
     for (const row of (tokenRows ?? []) as (TokenRow & { kind?: string | null })[]) {
-      // Preview tokens never count toward customer-facing progress. Real send
-      // tokens have kind=null (legacy) or kind='send' (future). Be permissive
-      // — anything that's not explicitly "preview" is treated as a real send.
+      // Preview tokens never count toward customer-facing progress.
       if (row.kind === "preview") continue;
-      if (seenTokenForWO.has(row.work_order_id)) continue;
-      seenTokenForWO.add(row.work_order_id);
+      const cur = bestByWo.get(row.work_order_id);
+      if (!cur || tokenRank(row) > tokenRank(cur)) {
+        bestByWo.set(row.work_order_id, row);
+      }
+    }
+    for (const row of bestByWo.values()) {
       const existing = out.get(row.work_order_id);
       if (!existing) continue;
       existing.workOrderNumber = row.work_order_number ?? existing.workOrderNumber;

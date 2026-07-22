@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { loadDashboardData, type LiveDashboardBundle } from "@/lib/data-source";
 import {
   deriveOpenMaterialsWorkOrders,
@@ -25,7 +26,32 @@ export type MaterialsViewProps = {
   woProgress: WoProgress[];
   coverageConfig: CoverageConfig | undefined;
   openJobsSerialized: SerializedOpenWorkOrderForMaterials[];
+  /** Per-WOLI sqft overrides (Kate #17) keyed by WorkOrderLineItem Id. */
+  sqftOverrides: Record<string, number>;
 };
+
+/** Load all manually-entered sqft overrides (migration 073). Deploy-safe:
+ *  returns {} if the table doesn't exist yet or the query fails. */
+async function loadSqftOverrides(): Promise<Record<string, number>> {
+  try {
+    const sb = createSupabaseAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+    const { data, error } = await sb
+      .from("wo_li_sqft_overrides")
+      .select("woli_id,sqft");
+    if (error || !data) return {};
+    const out: Record<string, number> = {};
+    for (const r of data as Array<{ woli_id: string; sqft: number }>) {
+      out[r.woli_id] = r.sqft;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 export async function loadMaterialsViewProps(
   sp: Record<string, string | string[] | undefined>
@@ -50,6 +76,7 @@ export async function loadMaterialsViewProps(
       woProgress: [],
       coverageConfig: undefined,
       openJobsSerialized: [],
+      sqftOverrides: {},
     };
   }
 
@@ -59,12 +86,13 @@ export async function loadMaterialsViewProps(
     woMeta.set(j.wo.id, { status: j.wo.status, closeDate: j.wo.closeDate });
   }
 
-  const [aux, coverageConfig] = await Promise.all([
+  const [aux, coverageConfig, sqftOverrides] = await Promise.all([
     getMaterialsPageAuxData(woIds, woMeta).catch((err) => {
       console.error("[materials] aux data load failed:", err);
       return { formStatusByWO: new Map(), progressByWO: new Map() };
     }),
     coverageConfigPromise,
+    loadSqftOverrides(),
   ]);
 
   const formStatuses = Array.from(aux.formStatusByWO.values());
@@ -101,5 +129,6 @@ export async function loadMaterialsViewProps(
     woProgress,
     coverageConfig,
     openJobsSerialized,
+    sqftOverrides,
   };
 }

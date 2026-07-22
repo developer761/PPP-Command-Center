@@ -153,18 +153,34 @@ export async function getMaterialsPageAuxData(
       .order("created_at", { ascending: true }),
   ]);
 
-  // ── Token rows → form status (latest per WO) AND progress stages 1-3 ──
+  // ── Token rows → form status + progress stages 1-3 ──
   if (tokensResult.status === "fulfilled" && !tokensResult.value.error) {
-    const seen = new Set<string>();
     const now = Date.now();
-    for (const row of (tokensResult.value.data ?? []) as (TokenRow & { kind?: string | null })[]) {
-      // Skip preview tokens — they're admin-generated test links, not real
-      // customer activity. Treat anything not explicitly "preview" as a
-      // real send (legacy rows with null kind still flow through).
-      if (row.kind === "preview") continue;
-      if (seen.has(row.work_order_id)) continue;
-      seen.add(row.work_order_id);
 
+    // Kate #13: pick the MOST-ADVANCED token per WO, not just the newest.
+    // Rows arrive newest-first; the old code kept the first-seen, so a
+    // re-sent form (newer token, no submitted_at) shadowed an earlier
+    // SUBMITTED token and the progress bar got stuck at "Sent". Rank by
+    // stage (submitted > opened > sent) and let the newest win only on a
+    // tie — so a real submission always beats a later blank re-send.
+    const tokenRank = (r: TokenRow): number => {
+      if (r.submitted_at) return 3;
+      if (r.opened_at) return 2;
+      return 1;
+    };
+    const bestByWo = new Map<string, TokenRow>();
+    for (const row of (tokensResult.value.data ?? []) as (TokenRow & { kind?: string | null })[]) {
+      // Skip preview tokens — admin test links, not real customer activity.
+      if (row.kind === "preview") continue;
+      const cur = bestByWo.get(row.work_order_id);
+      // Strict > keeps the first-seen (newest) on ties, since rows are
+      // ordered created_at DESC.
+      if (!cur || tokenRank(row) > tokenRank(cur)) {
+        bestByWo.set(row.work_order_id, row);
+      }
+    }
+
+    for (const row of bestByWo.values()) {
       // Progress stages from this same row
       const progress = progressByWO.get(row.work_order_id);
       if (progress) {
