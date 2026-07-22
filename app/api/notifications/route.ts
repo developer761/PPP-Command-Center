@@ -22,7 +22,7 @@ function adminClient() {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -32,6 +32,22 @@ export async function GET() {
   }
 
   const sb = adminClient();
+
+  // Platform scoping (Karan 2026-07-22): the two platforms share one
+  // notifications table, but the Commercial bell must NOT show residential
+  // Command Center notifications and vice-versa. Every commercial kind is
+  // prefixed `commercial_`; the residential kinds are not. So the Commercial
+  // bell asks for `commercial_%` and the Command Center bell asks for
+  // everything else. Unknown/absent platform → no extra filter (backwards
+  // compatible).
+  const platform = new URL(request.url).searchParams.get("platform");
+  const applyPlatform = <T extends { like: (c: string, p: string) => T; not: (c: string, o: string, p: string) => T }>(
+    q: T
+  ): T => {
+    if (platform === "commercial") return q.like("kind", "commercial_%");
+    if (platform === "command_center") return q.not("kind", "like", "commercial_%");
+    return q;
+  };
 
   // Two queries — head:true count for the unread badge (cheap), and the
   // 50 most recent rows for the dropdown. Both filter on the same indexed
@@ -44,17 +60,21 @@ export async function GET() {
   // off the dropdown by lunchtime. 50 covers ~3 weekdays of mixed
   // commercial + customer-form notification volume for an active team.
   const [{ count, error: cntErr }, { data: items, error: itemsErr }] = await Promise.all([
-    sb
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("recipient_user_id", user.id)
-      .is("read_at", null),
-    sb
-      .from("notifications")
-      .select("id, kind, work_order_id, work_order_number, customer_name, title, body, link, read_at, created_at")
-      .eq("recipient_user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50),
+    applyPlatform(
+      sb
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_user_id", user.id)
+        .is("read_at", null)
+    ),
+    applyPlatform(
+      sb
+        .from("notifications")
+        .select("id, kind, work_order_id, work_order_number, customer_name, title, body, link, read_at, created_at")
+        .eq("recipient_user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(50)
+    ),
   ]);
 
   if (cntErr || itemsErr) {

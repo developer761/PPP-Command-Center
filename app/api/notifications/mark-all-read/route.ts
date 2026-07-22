@@ -18,7 +18,7 @@ function adminClient() {
   );
 }
 
-export async function PATCH() {
+export async function PATCH(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -27,11 +27,18 @@ export async function PATCH() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const { error } = await adminClient()
+  // Platform scoping: only clear the bell the user is looking at (commercial
+  // kinds are `commercial_%`; residential kinds are not). Absent → all.
+  const platform = new URL(request.url).searchParams.get("platform");
+  let query = adminClient()
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("recipient_user_id", user.id)
     .is("read_at", null);
+  if (platform === "commercial") query = query.like("kind", "commercial_%");
+  else if (platform === "command_center") query = query.not("kind", "like", "commercial_%");
+
+  const { error } = await query;
 
   if (error) {
     console.warn("[notifications mark-all-read]", error.message);

@@ -62,10 +62,18 @@ export default function NotificationBell() {
   const [now, setNow] = useState<number>(() => Date.now());
   const rootRef = useRef<HTMLDivElement>(null);
 
+  // Platform scoping (Karan 2026-07-22): the Commercial bell must show ONLY
+  // commercial notifications and the Command Center bell only residential
+  // ones. Derived from the route (same signal the color tone uses) and sent
+  // to the API so the two platforms don't bleed into each other's bell.
+  const pathname = usePathname();
+  const isCommercial = (pathname ?? "").startsWith("/commercial");
+  const platform = isCommercial ? "commercial" : "command_center";
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/notifications", { cache: "no-store" });
+      const res = await fetch(`/api/notifications?platform=${platform}`, { cache: "no-store" });
       if (!res.ok) return;
       const data = (await res.json()) as { unreadCount?: number; items?: Item[] };
       setUnread(data.unreadCount ?? 0);
@@ -76,7 +84,7 @@ export default function NotificationBell() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [platform]);
 
   // Initial load + poll loop (cadence depends on open/closed).
   useEffect(() => {
@@ -143,20 +151,16 @@ export default function NotificationBell() {
     setItems((prev) => prev.map((it) => ({ ...it, read_at: it.read_at ?? new Date().toISOString() })));
     setUnread(0);
     try {
-      await fetch("/api/notifications/mark-all-read", { method: "PATCH" });
+      await fetch(`/api/notifications/mark-all-read?platform=${platform}`, { method: "PATCH" });
     } catch {
       // Same — next poll corrects.
     }
-  }, []);
+  }, [platform]);
 
   const badgeText = unread > 9 ? "9+" : String(unread);
 
-  // Audit fix: bell used to be hard-coded ppp-blue (residential palette).
-  // Now derives from route — commercial surface uses cc-brand (red),
-  // everywhere else keeps ppp-blue. Single source of truth for the
-  // accent tone across hover/badge/dropdown-row states.
-  const pathname = usePathname();
-  const isCommercial = (pathname ?? "").startsWith("/commercial");
+  // Bell tone derives from the platform (commercial = cc-brand red,
+  // residential = ppp-blue). Uses the isCommercial computed above.
   const tone = useMemo(() => {
     if (isCommercial) {
       return {
