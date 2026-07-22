@@ -21,6 +21,7 @@
  * prior version so styling stays consistent with earlier design tokens.
  */
 import Link from "next/link";
+import Image from "next/image";
 import {
   derivedOppName,
   formatOpportunityNumber,
@@ -185,6 +186,25 @@ export default async function CommercialDashboardPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Tomco "home" strip — their logo greets them on their own dashboard.
+          On a white card so the logo's white background blends cleanly. */}
+      <div className="flex items-center gap-3 sm:gap-4 bg-white border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-2.5 shadow-sm">
+        <Image
+          src="/brand/tomco-logo.jpg"
+          alt="Tomco Painting"
+          width={268}
+          height={131}
+          priority
+          className="h-8 sm:h-9 w-auto shrink-0"
+        />
+        <div className="min-w-0 border-l border-ppp-charcoal-100 pl-3 sm:pl-4">
+          <div className="text-sm font-semibold text-ppp-charcoal leading-tight">Welcome back</div>
+          <div className="text-[11px] text-ppp-charcoal-500 leading-tight">
+            Tomco Painting · Commercial Command Center
+          </div>
+        </div>
+      </div>
+
       {/* Hero — unchanged structure, high-density KPIs at the top. */}
       <header className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2 relative bg-white border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
