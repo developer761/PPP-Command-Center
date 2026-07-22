@@ -85,12 +85,12 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
   const isAdmin = viewer?.isAdmin ?? false;
 
   // Inbox unread badge — refreshes every 60s while sidebar is mounted, plus
-  // immediately on first paint. Admin-only (worker doesn't see the Inbox
-  // entry, so no need to fetch). Failures fall through silently — badge
-  // just stays at its last value (or 0 on first paint).
+  // immediately on first paint. Mail is visible to admins AND account managers
+  // / reps (scope-gated), and /api/admin/inbox returns a scope-aware unread
+  // count, so we fetch for any viewer (a rep with no SF mapping just gets 0).
+  // Failures fall through silently — badge keeps its last value.
   const [unreadInbox, setUnreadInbox] = useState(0);
   useEffect(() => {
-    if (!isAdmin) return;
     let cancelled = false;
     const fetchCount = async () => {
       try {
@@ -107,7 +107,7 @@ export default function Sidebar({ onNavigate, showSwitcher = false }: SidebarPro
     void fetchCount();
     const id = setInterval(fetchCount, 60_000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [isAdmin]);
+  }, []);
   // Preserve admin view state (?view_as= / ?scope=) across sidebar navigation.
   // Without this, clicking any nav link would drop the impersonation/scope.
   const viewQs = buildViewQs(params);

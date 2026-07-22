@@ -433,6 +433,13 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               changed = true;
               continue;
             }
+            // SF-seeded color id that isn't in the catalog (a color outside the
+            // current list). Don't leave a nameless blank swatch that would also
+            // submit colorName:null — clear it so the surface reads as unpicked.
+            picks[surf] = { ...emptyPick(), finish: pk.finish, skipped: pk.skipped };
+            picksChanged = true;
+            changed = true;
+            continue;
           }
           picks[surf] = pk;
         }

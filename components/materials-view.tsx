@@ -218,6 +218,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // button greyed with an explanation (Kate #5); reps likewise can't order.
   const canOrderMaterials = viewer?.isAdmin ?? false;
   const isAccountManager = viewer?.isAccountManager ?? false;
+  // Entering colors (Send Color Form + Internal Entry) is admin OR account
+  // manager — the server routes gate the same way (canEnterColors). Reps get
+  // a read-only note instead of buttons that would 403.
+  const canEnterColors = !!(viewer?.isAdmin || viewer?.isAccountManager);
 
   // Speed pass 2026-06-29 — when the server passes `openJobsSerialized`
   // (the already-derived open-WO list with Map→Array conversion), skip the
@@ -1201,6 +1205,7 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                       effectiveSqft={effectiveSqft}
                       onUpdateSqft={handleUpdateSqft}
                       canOrderMaterials={canOrderMaterials}
+                      canEnterColors={canEnterColors}
                       isAccountManager={isAccountManager}
                       onActivityChange={() => setPastOrdersRefreshKey((k) => k + 1)}
                     />
@@ -1283,6 +1288,7 @@ function JobDetailImpl({
   effectiveSqft,
   onUpdateSqft,
   canOrderMaterials,
+  canEnterColors,
   isAccountManager,
   onActivityChange,
 }: {
@@ -1308,6 +1314,9 @@ function JobDetailImpl({
   onUpdateSqft: (woliId: string, sqft: number) => Promise<{ ok: boolean; error?: string }>;
   /** Admin-only: place supplier/material orders. AMs + reps see it greyed. */
   canOrderMaterials: boolean;
+  /** Admin OR Account Manager: enter colors (Send Color Form + Internal Entry).
+   *  Reps get a read-only note instead of buttons that would 403. */
+  canEnterColors: boolean;
   /** Viewer is an Account Manager — drives the "AMs can't order" explanation. */
   isAccountManager: boolean;
   /** Fired when something happens that the mail stream should reflect (e.g. a
@@ -1621,28 +1630,39 @@ function JobDetailImpl({
             })}
           </div>
 
-          {/* CUSTOMER tab: collect color picks from the homeowner. */}
+          {/* CUSTOMER tab: collect color picks from the homeowner. Entering
+              colors is admin/AM only — reps get a read-only note instead of
+              buttons that would 403 (audit 2026-07-22). */}
           {actionTab === "customer" && (
             <div role="tabpanel" id="wo-panel-customer" aria-labelledby="wo-tab-customer" className="flex flex-col gap-1.5">
-              {/* key forces a fresh instance when the worker switches WOs so
-                  per-WO local state (looked-up email, sent-result) can't leak. */}
-              <SendColorFormButton
-                key={job.wo.id}
-                workOrderId={job.wo.id}
-                accountName={job.wo.accountName ?? null}
-                defaultEmail={customerAccount?.email ?? null}
-                onSent={onActivityChange}
-              />
-              <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                Email the homeowner a link to pick colors for each room.
-              </p>
-              {(formStatus?.status === "sent" || formStatus?.status === "opened") && (
-                <div className="mt-1">
-                  <SendReminderButton key={`remind-${formStatus.token}`} token={formStatus.token} />
-                  <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5 mt-1">
-                    Re-send the same link if they haven&apos;t submitted yet.
+              {canEnterColors ? (
+                <>
+                  {/* key forces a fresh instance when the worker switches WOs so
+                      per-WO local state (looked-up email, sent-result) can't leak. */}
+                  <SendColorFormButton
+                    key={job.wo.id}
+                    workOrderId={job.wo.id}
+                    accountName={job.wo.accountName ?? null}
+                    defaultEmail={customerAccount?.email ?? null}
+                    onSent={onActivityChange}
+                  />
+                  <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
+                    Email the homeowner a link to pick colors for each room.
                   </p>
-                </div>
+                  {(formStatus?.status === "sent" || formStatus?.status === "opened") && (
+                    <div className="mt-1">
+                      <SendReminderButton key={`remind-${formStatus.token}`} token={formStatus.token} />
+                      <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5 mt-1">
+                        Re-send the same link if they haven&apos;t submitted yet.
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-ppp-charcoal-500 leading-snug px-0.5 py-2">
+                  Sending the color form and entering colors is handled by admins
+                  and account managers. You&apos;re viewing this work order read-only.
+                </p>
               )}
             </div>
           )}
@@ -1650,14 +1670,26 @@ function JobDetailImpl({
           {/* MATERIALS tab: turn colors into a real supplier order. */}
           {actionTab === "materials" && (
             <div role="tabpanel" id="wo-panel-materials" aria-labelledby="wo-tab-materials" className="flex flex-col gap-1.5">
+              {/* Enable only when the viewer can order AND the WO has line items
+                  — ordering with 0 rooms produces a blank paint order (matches
+                  the mobile sticky bar + pb-24 gate). */}
+              {(() => {
+              const canPlaceOrder = canOrderMaterials && job.lineItems.length > 0;
+              return (<>
               <button
                 type="button"
-                onClick={() => canOrderMaterials && setShowPicker(true)}
-                disabled={!canOrderMaterials}
-                title={canOrderMaterials ? undefined : "Only admins can place material orders."}
-                aria-disabled={!canOrderMaterials}
+                onClick={() => canPlaceOrder && setShowPicker(true)}
+                disabled={!canPlaceOrder}
+                title={
+                  !canOrderMaterials
+                    ? "Only admins can place material orders."
+                    : job.lineItems.length === 0
+                    ? "Add rooms/colors in Salesforce before ordering."
+                    : undefined
+                }
+                aria-disabled={!canPlaceOrder}
                 className={`inline-flex items-center justify-center gap-1.5 w-full px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg text-sm font-semibold transition-colors touch-manipulation ${
-                  canOrderMaterials
+                  canPlaceOrder
                     ? "bg-ppp-green-600 text-white hover:bg-ppp-green-700 active:bg-ppp-green-700 shadow-sm shadow-ppp-green/30"
                     : "bg-ppp-charcoal-100 text-ppp-charcoal-400 cursor-not-allowed"
                 }`}
@@ -1668,12 +1700,16 @@ function JobDetailImpl({
                 Order materials
               </button>
               <p className="text-[11px] text-ppp-charcoal-500 leading-snug px-0.5">
-                {canOrderMaterials
-                  ? "Pick a store (Aboffs, Willis, etc.) and email the order."
-                  : isAccountManager
-                  ? "Account Managers can't place orders — an admin handles materials. You can still enter colors."
-                  : "Only admins can place material orders."}
+                {!canOrderMaterials
+                  ? (isAccountManager
+                      ? "Account Managers can't place orders — an admin handles materials. You can still enter colors."
+                      : "Only admins can place material orders.")
+                  : job.lineItems.length === 0
+                  ? "No rooms on this WO yet — add rooms/colors in Salesforce before ordering."
+                  : "Pick a store (Aboffs, Willis, etc.) and email the order."}
               </p>
+              </>);
+              })()}
               {(() => {
                 const hasSubmission = formStatus?.status === "submitted";
                 return (
