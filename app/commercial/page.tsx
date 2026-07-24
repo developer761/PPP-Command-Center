@@ -490,9 +490,10 @@ function AttentionCard({
   icon: React.ReactNode;
 }) {
   const isZero = count === 0;
-  // Zero-state = neutral / low-emphasis; non-zero = tone-colored + hoverable.
+  // Zero-state = calm "all clear" (subtle emerald check), NOT a dimmed/disabled
+  // look; non-zero = tone-colored + hoverable link into the filtered list.
   const ring = isZero
-    ? "border-ppp-charcoal-100 bg-white hover:border-ppp-charcoal-200"
+    ? "border-emerald-100 bg-emerald-50/20"
     : tone === "rose"
     ? "border-rose-200 bg-rose-50/40 hover:border-rose-400 hover:bg-rose-50/70"
     : tone === "amber"
@@ -514,7 +515,7 @@ function AttentionCard({
     ? "text-ppp-navy-700"
     : "text-emerald-700";
   const iconCls = isZero
-    ? "bg-ppp-charcoal-50 text-ppp-charcoal-400"
+    ? "bg-emerald-100 text-emerald-600"
     : tone === "rose"
     ? "bg-rose-100 text-rose-700"
     : tone === "amber"
@@ -524,27 +525,49 @@ function AttentionCard({
     : tone === "navy"
     ? "bg-ppp-navy-100 text-ppp-navy-700"
     : "bg-emerald-100 text-emerald-700";
-  return (
-    <Link
-      href={href}
-      aria-disabled={isZero}
-      tabIndex={isZero ? -1 : 0}
-      className={`group/att relative block border rounded-xl px-4 py-3 min-h-[92px] transition-all hover:shadow-md touch-manipulation ${ring} ${isZero ? "pointer-events-none opacity-70" : ""}`}
-    >
+  // Zero-state renders a static "all clear" panel (no link — there's nothing to
+  // triage); non-zero renders a hoverable Link into the filtered list.
+  const inner = (
+    <>
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
           {label}
         </span>
         <span aria-hidden className={`inline-flex items-center justify-center h-7 w-7 rounded-lg ${iconCls}`}>
-          {icon}
+          {isZero ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          ) : (
+            icon
+          )}
         </span>
       </div>
-      <div className={`font-condensed text-3xl font-black leading-none tracking-tight tabular-nums ${numberCls}`}>
-        {count}
-      </div>
+      {isZero ? (
+        <div className="font-condensed text-lg font-bold leading-tight tracking-tight text-emerald-700">
+          All clear
+        </div>
+      ) : (
+        <div className={`font-condensed text-3xl font-black leading-none tracking-tight tabular-nums ${numberCls}`}>
+          {count}
+        </div>
+      )}
       <div className="mt-1 text-[11px] text-ppp-charcoal-500 leading-snug">
         {sub}
       </div>
+    </>
+  );
+  if (isZero) {
+    return (
+      <div className={`relative block border rounded-xl px-4 py-3 min-h-[92px] ${ring}`}>
+        {inner}
+      </div>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      className={`group/att relative block border rounded-xl px-4 py-3 min-h-[92px] transition-all hover:shadow-md touch-manipulation ${ring}`}
+    >
+      {inner}
     </Link>
   );
 }
