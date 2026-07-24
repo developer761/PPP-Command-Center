@@ -814,7 +814,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                                 <Link
                                   key={o.id}
                                   href={`/commercial/invoices/new?opp=${o.id}`}
-                                  className="flex items-start justify-between gap-3 pl-5 pr-3 py-2 rounded-lg hover:bg-cc-brand-50 min-h-[40px] touch-manipulation"
+                                  className="flex items-start justify-between gap-3 pl-5 pr-3 py-2 rounded-lg hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
                                 >
                                   <div className="min-w-0 flex-1">
                                     <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
@@ -927,8 +927,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           {sortKey !== "recent" && <input type="hidden" name="sort" value={sortKey} />}
           {accountIdFilter && <input type="hidden" name="account_id" value={accountIdFilter} />}
 
-          {/* Status pills */}
-          <div className="hidden sm:inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden shrink-0">
+          {/* Status pills — visible on mobile too (Alex reviews AR on his
+              phone; "show me what's overdue/unpaid" must be reachable). The
+              4 short pills fit a 320px row; full-width on mobile so they're
+              easy to hit, inline segmented control on sm+. */}
+          <div className="flex sm:inline-flex w-full sm:w-auto rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden shrink-0">
             {[null, "sent" as InvoiceStatus, "overdue" as InvoiceStatus, "paid" as InvoiceStatus].map((s) => {
               const active = statusFilter === s || (!statusFilter && s === null);
               const label = s === null ? "All" : invoiceStatusLabel(s);
@@ -936,7 +939,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                 <Link
                   key={label}
                   href={setStatusHref(s)}
-                  className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center touch-manipulation border-l first:border-l-0 border-ppp-charcoal-200 ${
+                  className={`flex-1 sm:flex-none justify-center px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center touch-manipulation border-l first:border-l-0 border-ppp-charcoal-200 ${
                     active
                       ? "bg-cc-brand-50 text-cc-brand-700"
                       : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
@@ -1359,7 +1362,7 @@ function GroupedByOpp({
                           : invStatus === "overdue"
                           ? "bg-rose-100 text-rose-800 border-rose-200"
                           : invStatus === "partial"
-                          ? "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200"
+                          ? "bg-amber-100 text-amber-900 border-amber-200"
                           : invStatus === "draft"
                           ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
                           : invStatus === "void"
@@ -1871,7 +1874,7 @@ function FullDetailByOpp({
                         subtle muted status strip in the same slot so
                         the vertical rhythm reads consistently. */}
                     {isVoid ? (
-                      <div className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-500 bg-ppp-charcoal-50/40 min-h-[40px]">
+                      <div className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-500 bg-ppp-charcoal-50/40 min-h-[44px]">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                           <circle cx="12" cy="12" r="10" />
                           <path d="M4.93 4.93l14.14 14.14" />
@@ -1879,7 +1882,7 @@ function FullDetailByOpp({
                         Voided — no payments possible.
                       </div>
                     ) : isPaidInFull ? (
-                      <div className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-medium text-emerald-700 bg-emerald-50/40 min-h-[40px]">
+                      <div className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-medium text-emerald-700 bg-emerald-50/40 min-h-[44px]">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                           <path d="M20 6L9 17l-5-5" />
                         </svg>
@@ -1887,7 +1890,7 @@ function FullDetailByOpp({
                       </div>
                     ) : (
                       <details className="group/pay border-t border-ppp-charcoal-100">
-                        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
                           <span className="inline-flex items-center gap-1.5">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                               <path d="M12 5v14 M5 12h14" />
@@ -1914,7 +1917,7 @@ function FullDetailByOpp({
                               required
                               defaultValue={(inv.balance_cents / 100).toFixed(2)}
                               placeholder="0.00"
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                             />
                           </label>
                           <label className="block">
@@ -1923,7 +1926,7 @@ function FullDetailByOpp({
                               type="date"
                               name="paid_at"
                               defaultValue={todayEtIso}
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                             />
                           </label>
                           <label className="block">
@@ -1931,7 +1934,7 @@ function FullDetailByOpp({
                             <select
                               name="method"
                               defaultValue=""
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-white min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-white min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                             >
                               <option value="">— select —</option>
                               {PAYMENT_METHODS.map((m) => (
@@ -1944,7 +1947,7 @@ function FullDetailByOpp({
                           <div className="flex items-end">
                             <button
                               type="submit"
-                              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                             >
                               Record
                             </button>
@@ -1957,7 +1960,7 @@ function FullDetailByOpp({
                               type="text"
                               name="reference"
                               maxLength={128}
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                             />
                           </label>
                           {/* Karan 2026-07-07: Notes field parity with the
@@ -2031,7 +2034,7 @@ function FullDetailByOpp({
                       required
                       maxLength={500}
                       placeholder="e.g. Progress payment 1 of 3 — Lobby repaint"
-                      className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                     />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2044,7 +2047,7 @@ function FullDetailByOpp({
                         name="amount"
                         required
                         placeholder="0.00"
-                        className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                       />
                     </label>
                     <label className="block">
@@ -2057,7 +2060,7 @@ function FullDetailByOpp({
                           d.setDate(d.getDate() + 30);
                           return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
                         })()}
-                        className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                       />
                     </label>
                   </div>
@@ -2079,7 +2082,7 @@ function FullDetailByOpp({
                           name="payment_terms"
                           maxLength={60}
                           placeholder="Net 30"
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                         />
                       </label>
                       <label className="block">
@@ -2090,7 +2093,7 @@ function FullDetailByOpp({
                           pattern="[0-9.]*"
                           name="tax_pct"
                           placeholder="0"
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                         />
                       </label>
                       <label className="block sm:col-span-2">
@@ -2099,7 +2102,7 @@ function FullDetailByOpp({
                           type="text"
                           name="po_number"
                           maxLength={80}
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                         />
                       </label>
                       <label className="block sm:col-span-2">
@@ -2127,7 +2130,7 @@ function FullDetailByOpp({
                   <div className="flex justify-end pt-1">
                     <button
                       type="submit"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                     >
                       Create invoice
                     </button>
@@ -2286,12 +2289,14 @@ function KpiCard({
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
       : tone === "rose"
       ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
       : "border-ppp-charcoal-100 bg-white";
+  // blue tone must paint a BLUE stripe — was cc-brand-500 (red) on a blue wash
+  // (the win-loss KpiCard already fixed this; back-ported here).
   const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-cc-brand-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />

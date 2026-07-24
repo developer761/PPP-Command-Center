@@ -604,15 +604,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       {/* Hero */}
       <header className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
         <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
-        <Link
-          href="/commercial/invoices"
-          className="inline-flex items-center gap-1 text-[12px] font-medium text-ppp-charcoal-500 hover:text-cc-brand-700 mb-2 touch-manipulation"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-          Invoices
-        </Link>
+        {/* In-hero "Invoices" back-link removed — the top Back button + the
+            breadcrumb directly above already cover it (was a 3rd back path in
+            the first ~200px). */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-baseline gap-2 flex-wrap">
@@ -793,7 +787,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         {/* Big numbers */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
           <BigNumber label="Total invoiced" value={formatCentsFull(invoice.total_cents)} tone="cc-brand" />
-          <BigNumber label="Paid" value={formatCentsFull(invoice.paid_cents)} tone="blue" />
+          <BigNumber label="Paid" value={formatCentsFull(invoice.paid_cents)} tone="emerald" />
           <BigNumber label="Outstanding balance" value={formatCentsFull(invoice.balance_cents)} tone={invoice.balance_cents > 0 ? "cc-brand" : "neutral"} />
           <BigNumber
             label="Due"
@@ -1178,9 +1172,11 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   );
 }
 
-function BigNumber({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "cc-brand" | "blue" | "rose" | "neutral" }) {
-  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-cc-brand-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
-  const valueCls = tone === "rose" ? "text-rose-700" : tone === "cc-brand" ? "text-cc-brand-700" : "text-ppp-charcoal";
+function BigNumber({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "cc-brand" | "blue" | "emerald" | "rose" | "neutral" }) {
+  // "Paid" is a success metric → emerald; blue stripe now paints real blue
+  // (was cc-brand-500 red on a blue label).
+  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "emerald" ? "bg-emerald-500" : tone === "blue" ? "bg-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+  const valueCls = tone === "rose" ? "text-rose-700" : tone === "emerald" ? "text-emerald-700" : tone === "cc-brand" ? "text-cc-brand-700" : "text-ppp-charcoal";
   return (
     <div className="relative border border-ppp-charcoal-100 rounded-lg px-4 py-3 overflow-hidden bg-gradient-to-br from-white to-ppp-charcoal-50/40">
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />

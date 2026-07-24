@@ -13,6 +13,7 @@ import {
   etMidnightToUTC,
 } from "@/lib/commercial/win-loss/reports";
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import DatePicker from "@/components/commercial/date-picker";
 
 type Preset = "this_quarter" | "last_quarter" | "this_year" | "last_year";
@@ -42,13 +43,9 @@ export const dynamic = "force-dynamic";
 
 type SP = Promise<{ from?: string; to?: string; preset?: string }>;
 
-function formatCents(cents: number): string {
-  if (cents === 0) return "$0";
-  const dollars = cents / 100;
-  if (Math.abs(dollars) >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(dollars) >= 10_000) return `$${Math.round(dollars / 1000)}k`;
-  return `$${dollars.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
+// Use the shared compact formatter so money reads identically across every
+// surface ($10,400 → "$10.4k", not a local "$10k"). Karan 2026-07-24.
+const formatCents = formatCentsCompact;
 
 /** Split bare "YYYY-MM-DD" into calendar parts for etMidnightToUTC.
  *  Returns null on any non-YYYY-MM-DD input to short-circuit invalid

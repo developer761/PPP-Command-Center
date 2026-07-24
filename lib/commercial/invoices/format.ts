@@ -23,10 +23,13 @@ export function formatCentsCompact(cents: number): string {
   return `$${Math.round(dollars).toLocaleString()}`;
 }
 
-/** Format cents as full "$1,234.56" for line items + totals. */
+/** Format cents as full "$1,234.56" for line items + totals. Negatives read
+ *  "-$1,234.56" (sign before the $), not "$-1,234.56". */
 export function formatCentsFull(cents: number): string {
-  const dollars = cents / 100;
-  return `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const neg = cents < 0;
+  const dollars = Math.abs(cents) / 100;
+  const body = `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return neg ? `-${body}` : body;
 }
 
 /** Parse a dollar-string ("$1,234.56", "1234.56", "1234") into cents.
