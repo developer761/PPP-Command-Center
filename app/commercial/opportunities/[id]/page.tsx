@@ -1693,6 +1693,7 @@ export default async function OpportunityDetailPage({
               <li key={t.key}>
                 <Link
                   href={`/commercial/opportunities/${opp.id}?tab=${t.key}`}
+                  aria-current={active ? "page" : undefined}
                   className={`inline-flex items-center gap-1.5 px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
                       ? "border-cc-brand-600 text-ppp-charcoal"
@@ -1731,7 +1732,8 @@ export default async function OpportunityDetailPage({
               <Link
                 key={s.key}
                 href={`/commercial/opportunities/${opp.id}?tab=${primary}&sub=${s.key}`}
-                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[36px] ${
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[44px] ${
                   active
                     ? "bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200"
                     : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border border-transparent hover:bg-ppp-charcoal-100"

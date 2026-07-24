@@ -88,7 +88,10 @@ function LaneRow({
           {laneLabel}
         </div>
       )}
-      <div className="flex items-center gap-0 flex-wrap">
+      {/* Horizontal scroll instead of wrap — wrapping stranded the connector
+          bars (a bar with no pill on one side reads as broken) on narrow
+          phones. Scrolls as one row now; scrollbar hidden. */}
+      <div className="flex items-center gap-0 flex-nowrap overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden -mx-1 px-1">
         {stages.map((s, i) => {
           let state: StageState;
           if (i < currentIdx) state = "complete";

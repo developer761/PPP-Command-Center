@@ -166,7 +166,7 @@ export default function DatePicker({
               type="button"
               aria-label="Previous month"
               onClick={() => setViewMonth((v) => new Date(v.getFullYear(), v.getMonth() - 1, 1))}
-              className="p-1.5 rounded-md hover:bg-ppp-charcoal-50 text-ppp-charcoal-600"
+              className="h-11 w-11 flex items-center justify-center rounded-md hover:bg-ppp-charcoal-50 text-ppp-charcoal-600 touch-manipulation"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M15 18l-6-6 6-6" />
@@ -179,7 +179,7 @@ export default function DatePicker({
               type="button"
               aria-label="Next month"
               onClick={() => setViewMonth((v) => new Date(v.getFullYear(), v.getMonth() + 1, 1))}
-              className="p-1.5 rounded-md hover:bg-ppp-charcoal-50 text-ppp-charcoal-600"
+              className="h-11 w-11 flex items-center justify-center rounded-md hover:bg-ppp-charcoal-50 text-ppp-charcoal-600 touch-manipulation"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 18l6-6-6-6" />
@@ -206,7 +206,7 @@ export default function DatePicker({
                   disabled={dis}
                   onClick={() => pick(cell.date)}
                   className={[
-                    "h-9 rounded-md text-[13px] transition-colors",
+                    "h-11 sm:h-10 rounded-md text-[13px] transition-colors touch-manipulation",
                     !cell.inMonth ? "text-ppp-charcoal-300" : "text-ppp-charcoal-700",
                     isSelected ? "bg-cc-brand-600 text-white font-semibold hover:bg-cc-brand-700" : "hover:bg-cc-brand-50",
                     isToday && !isSelected ? "ring-1 ring-cc-brand-400 font-semibold" : "",

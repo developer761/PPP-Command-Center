@@ -77,7 +77,7 @@ export function FillProjectFromDeal({
         <button
           type="button"
           onClick={() => apply(only)}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-semibold text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-200 hover:bg-cc-brand-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-semibold text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-200 hover:bg-cc-brand-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] touch-manipulation"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M12 4v16 M4 12h16" />
@@ -98,7 +98,7 @@ export function FillProjectFromDeal({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-semibold text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-200 hover:bg-cc-brand-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11.5px] font-semibold text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-200 hover:bg-cc-brand-100 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] touch-manipulation"
         aria-haspopup="menu"
         aria-expanded={open}
       >

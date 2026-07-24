@@ -124,10 +124,10 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
           }}
           className={`cursor-pointer rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors min-h-[88px] flex flex-col items-center justify-center ${
             dragOver
-              ? "border-emerald-600 bg-emerald-50"
+              ? "border-cc-brand-600 bg-cc-brand-50"
               : pickedFile
-              ? "border-emerald-300 bg-emerald-50/40"
-              : "border-ppp-charcoal-200 bg-ppp-charcoal-50/30 hover:border-emerald-300 hover:bg-emerald-50/30"
+              ? "border-cc-brand-300 bg-cc-brand-50/40"
+              : "border-ppp-charcoal-200 bg-ppp-charcoal-50/30 hover:border-cc-brand-300 hover:bg-cc-brand-50/30"
           }`}
         >
           {pickedFile ? (
@@ -193,7 +193,7 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
           <button
             type="submit"
             disabled={busy || !pickedFile}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] touch-manipulation"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] touch-manipulation"
           >
             {busy ? "Uploading…" : "Upload"}
           </button>

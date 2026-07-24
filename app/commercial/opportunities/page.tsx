@@ -2165,7 +2165,8 @@ function KanbanBoard({
         <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-white border border-ppp-charcoal-100 rounded-full px-3 py-1.5">
           <IconBulb size={13} className="text-ppp-navy-500 shrink-0" />
           <span>
-            Drag between stages inside a customer to move a deal forward. Drop into <strong>Won / Lost</strong> to close.
+            <span className="hidden sm:inline">Drag between stages inside a customer to move a deal forward. Drop into <strong>Won / Lost</strong> to close.</span>
+            <span className="sm:hidden">On mobile, use the <strong>Move to…</strong> menu on each card to advance or close a deal.</span>
           </span>
         </div>
         {accountBuckets.map((acct) => {
@@ -3118,7 +3119,7 @@ function OpportunityRow({
             defaultValue=""
             required
             aria-label={`Move ${opportunity.title} to next stage`}
-            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[36px]`}
+            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
             style={SELECT_BG_STYLE}
           >
             <option value="" disabled>
@@ -3132,7 +3133,7 @@ function OpportunityRow({
           </select>
           <button
             type="submit"
-            className="px-3 py-1.5 rounded-md bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[36px] touch-manipulation"
+            className="px-3 py-1.5 rounded-md bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             Go
           </button>
@@ -3683,7 +3684,7 @@ function CustomerQuickSheet({
                             defaultValue=""
                             required
                             aria-label={`Move ${d.title} to next stage`}
-                            className={`${SELECT_CLS} flex-1 text-base sm:text-xs py-1.5 min-h-[36px]`}
+                            className={`${SELECT_CLS} flex-1 text-base sm:text-xs py-1.5 min-h-[44px] sm:min-h-[36px]`}
                             style={SELECT_BG_STYLE}
                           >
                             <option value="" disabled>Move to…</option>
@@ -3695,7 +3696,7 @@ function CustomerQuickSheet({
                           </select>
                           <button
                             type="submit"
-                            className="px-2.5 py-1.5 text-[11px] font-semibold rounded-md bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[36px] touch-manipulation"
+                            className="px-2.5 py-1.5 text-[11px] font-semibold rounded-md bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                           >
                             Go
                           </button>
