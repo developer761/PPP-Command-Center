@@ -51,6 +51,22 @@ export default function CommercialTopbar({
       <div className="flex-1" />
 
       <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
+        {/* Search / jump — the command palette is ⌘K-only, unreachable on a
+            phone (no keyboard). This button dispatches the same open event so
+            touch users can jump to any account / deal / invoice. */}
+        <button
+          type="button"
+          aria-label="Search — jump to an account, deal, or invoice"
+          title="Search (⌘K)"
+          onClick={() => window.dispatchEvent(new CustomEvent("commercial-palette-open"))}
+          className="flex items-center justify-center h-11 w-11 sm:h-9 sm:w-auto sm:px-3 sm:gap-2 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal-500 hover:bg-cc-brand-50 hover:border-cc-brand-200 hover:text-ppp-charcoal active:bg-cc-brand-100 transition-colors touch-manipulation"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+          </svg>
+          <span className="hidden sm:inline text-xs font-medium">Search</span>
+          <kbd className="hidden sm:inline text-[10px] font-mono text-ppp-charcoal-400 border border-ppp-charcoal-100 rounded px-1">⌘K</kbd>
+        </button>
         <NotificationBell />
         <UserMenu name={user.fullName} email={user.email} initial={user.initial} />
       </div>

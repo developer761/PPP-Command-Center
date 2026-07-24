@@ -419,11 +419,11 @@ export default function ProductPicker({
                 {/* Inline-expanded variations under the parent */}
                 {isExpanded && (
                   variations.length === 0 ? (
-                    <div className="px-3 py-3 pl-8 bg-ppp-charcoal-25 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-600 italic">
+                    <div className="px-3 py-3 pl-8 bg-ppp-charcoal-50 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-600 italic">
                       No active variations yet — add one on the Product Library.
                     </div>
                   ) : (
-                    <ul className="border-t border-ppp-charcoal-100 bg-ppp-charcoal-25">
+                    <ul className="border-t border-ppp-charcoal-100 bg-ppp-charcoal-50">
                       {variations.map((v) => (
                         <li
                           key={v.id}

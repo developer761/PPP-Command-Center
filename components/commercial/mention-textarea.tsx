@@ -171,7 +171,7 @@ export default function MentionTextarea({
         // text-base (16px) so iOS Safari doesn't auto-zoom on focus.
         // touch-manipulation lets long-press select work normally on
         // mobile without delayed click registration.
-        className={`w-full text-base px-3 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-ppp-blue focus:border-ppp-blue touch-manipulation min-h-[44px] ${className}`}
+        className={`w-full text-base px-3 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-cc-brand-600 focus:border-cc-brand-600 touch-manipulation min-h-[44px] ${className}`}
       />
       {helperText && (
         <p className="mt-1 text-[11px] text-ppp-charcoal-500 leading-relaxed">
@@ -204,8 +204,8 @@ export default function MentionTextarea({
                 aria-selected={i === activeIdx}
                 className={`block w-full text-left px-3 py-2.5 touch-manipulation min-h-[44px] ${
                   i === activeIdx
-                    ? "bg-ppp-blue-50 text-ppp-charcoal"
-                    : "bg-white text-ppp-charcoal-700 hover:bg-ppp-blue-50"
+                    ? "bg-cc-brand-50 text-ppp-charcoal"
+                    : "bg-white text-ppp-charcoal-700 hover:bg-cc-brand-50"
                 } transition-colors`}
               >
                 <div className="text-sm font-medium truncate">

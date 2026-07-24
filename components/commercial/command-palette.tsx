@@ -182,7 +182,7 @@ export function CommandPalette() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Jump to an account, deal, or invoice…"
-            className="flex-1 outline-none text-[15px] text-ppp-charcoal placeholder:text-ppp-charcoal-400 bg-transparent"
+            className="flex-1 outline-none text-base text-ppp-charcoal placeholder:text-ppp-charcoal-400 bg-transparent"
             autoComplete="off"
             spellCheck={false}
             role="combobox"

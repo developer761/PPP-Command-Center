@@ -45,7 +45,7 @@ export function EditableProductChip({
           if (el) el.value = "";
           setCleared(true);
         }}
-        className="inline-flex items-center min-h-[32px] text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-600 underline underline-offset-2 touch-manipulation"
+        className="inline-flex items-center min-h-[44px] text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-600 underline underline-offset-2 touch-manipulation"
         title="Remove the linked product — the row becomes free-text (description kept). Wrong product? Clear it or Remove the row and re-add."
       >
         Clear

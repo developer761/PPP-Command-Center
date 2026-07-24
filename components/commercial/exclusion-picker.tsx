@@ -263,7 +263,7 @@ export function ExclusionPicker({
           onBlur={() => setTimeout(() => setOpen(false), 120)}
           onKeyDown={handleKeyDown}
           placeholder="Search library exclusions…"
-          className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]"
+          className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
         />
 
         {open && (results.length > 0 || (allowInlineAdd && query.trim())) && (
@@ -396,7 +396,7 @@ export function ExclusionPicker({
               }
             }}
             placeholder="Type a one-off exclusion and hit Enter…"
-            className="flex-1 px-3 py-2 text-base sm:text-sm bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 min-h-[40px]"
+            className="flex-1 px-3 py-2 text-base sm:text-sm bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 min-h-[44px]"
           />
           <button
             type="button"
@@ -407,7 +407,7 @@ export function ExclusionPicker({
               }
             }}
             disabled={!customDraft.trim()}
-            className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             + Add
           </button>

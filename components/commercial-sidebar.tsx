@@ -136,7 +136,9 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                   item.href === "/commercial"
                     ? pathname === "/commercial"
                     : pathname.startsWith(item.href);
-                const baseClasses = "flex items-center gap-3 px-3 py-2 lg:py-2.5 rounded-lg text-sm font-medium transition-colors";
+                // min-h-[44px] so the mobile drawer rows clear the tap-target
+                // floor (py-2 alone was ~36px); desktop keeps its tighter rhythm.
+                const baseClasses = "flex items-center gap-3 px-3 py-2 lg:py-2.5 min-h-[44px] lg:min-h-0 rounded-lg text-sm font-medium transition-colors touch-manipulation";
 
                 if (item.disabled) {
                   return (
@@ -158,6 +160,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                     <Link
                       href={item.href}
                       onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
                       className={[
                         baseClasses,
                         active
