@@ -164,6 +164,19 @@ function formatDollars(cents: number): string {
   })}`;
 }
 
+/** Compact money for KPI tiles so a 7-figure total never overflows on mobile
+ *  ($1,234,567 → $1.2M / $10,400 → $10.4k). Sign kept before the $. */
+function formatDollarsCompact(cents: number): string {
+  const neg = cents < 0;
+  const d = Math.abs(cents) / 100;
+  let body: string;
+  if (d >= 1_000_000) body = `$${(d / 1_000_000).toFixed(1)}M`;
+  else if (d >= 100_000) body = `$${Math.round(d / 1_000)}k`;
+  else if (d >= 1_000) body = `$${(d / 1_000).toFixed(1)}k`;
+  else body = `$${Math.round(d).toLocaleString("en-US")}`;
+  return neg ? `-${body}` : body;
+}
+
 function formatShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
@@ -335,7 +348,7 @@ export default async function ProposalsIndexPage({
         <StatTile label="Open" value={openCount.toString()} tone="charcoal" />
         <StatTile label="Sent · awaiting reply" value={sentCount.toString()} tone="brand" />
         <StatTile label="Won" value={wonCount.toString()} tone="emerald" />
-        <StatTile label="Outstanding total" value={formatDollars(outstandingCents)} tone="brand" />
+        <StatTile label="Outstanding total" value={formatDollarsCompact(outstandingCents)} tone="brand" />
       </div>
 
       {/* View mode + status filter chips — same-URL swap */}
@@ -1043,24 +1056,35 @@ function DealMiniKanban({
             the card / force the page to scroll sideways (mobile-broken fix).
             Columns get a fixed min width and the row scrolls with snap. */}
         <div className="flex gap-2 items-stretch overflow-x-auto snap-x snap-mandatory -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-visible">
+          {/* The flex-sizing must live on ProposalDnDColumn (the actual flex
+              child), NOT on the inner ProposalColumn — otherwise the columns
+              don't size on mobile/desktop. The column just fills its wrapper. */}
           {ACTIVE_COLUMNS.map((status) => (
-            <ProposalDnDColumn key={status} status={status}>
+            <ProposalDnDColumn
+              key={status}
+              status={status}
+              className="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px] flex"
+            >
               <ProposalColumn
                 status={status}
                 rows={deal.byStatus.get(status) ?? []}
                 tone={toneForStatus(status)}
-                width="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px]"
+                width="w-full"
                 compact
                 labelOverride={MINI_KANBAN_COLUMN_LABEL[status]}
               />
             </ProposalDnDColumn>
           ))}
-          <ProposalDnDColumn key="won" status="won">
+          <ProposalDnDColumn
+            key="won"
+            status="won"
+            className="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px] flex"
+          >
             <ProposalColumn
               status="won"
               rows={deal.byStatus.get("won") ?? []}
               tone={toneForStatus("won")}
-              width="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px]"
+              width="w-full"
               compact
             />
           </ProposalDnDColumn>

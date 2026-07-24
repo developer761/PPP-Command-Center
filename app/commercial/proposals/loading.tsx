@@ -15,7 +15,7 @@ export default function ProposalsLoading() {
         <div className="h-10 w-36 bg-white border border-ppp-charcoal-100 rounded-lg" />
       </div>
       {/* KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-20 bg-white border border-ppp-charcoal-100 rounded-xl" />
         ))}

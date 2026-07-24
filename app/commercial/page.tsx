@@ -56,11 +56,16 @@ const PHASES = [
 ];
 
 function formatCentsCompact(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars === 0) return "$0";
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}k`;
-  return `$${Math.round(dollars).toLocaleString()}`;
+  if (cents === 0) return "$0";
+  // Keep the sign BEFORE the $ (a negative AR balance from an overpayment
+  // should read "-$50", not "$-50").
+  const neg = cents < 0;
+  const dollars = Math.abs(cents) / 100;
+  let body: string;
+  if (dollars >= 1_000_000) body = `$${(dollars / 1_000_000).toFixed(1)}M`;
+  else if (dollars >= 1_000) body = `$${Math.round(dollars / 1_000)}k`;
+  else body = `$${Math.round(dollars).toLocaleString()}`;
+  return neg ? `-${body}` : body;
 }
 
 /** Days between two ISO dates (positive = a before b). Null-safe. */
