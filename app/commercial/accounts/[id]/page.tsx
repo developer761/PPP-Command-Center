@@ -472,7 +472,7 @@ export default async function CommercialAccountDetailPage({
                   <span className="inline-flex items-center gap-0.5">
                     <a
                       href={`mailto:${primary.contact.email}`}
-                      className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[24px]"
+                      className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[44px]"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" />
@@ -486,7 +486,7 @@ export default async function CommercialAccountDetailPage({
                   <span className="inline-flex items-center gap-0.5">
                     <a
                       href={`tel:${primary.contact.phone.replace(/[^0-9+]/g, "")}`}
-                      className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[24px]"
+                      className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 hover:underline underline-offset-2 min-h-[44px]"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
@@ -1754,10 +1754,12 @@ function InfoCards({ account }: { account: CommercialAccount }) {
 
       <Card title="Primary site address" section="site" accountId={account.id}>
         <EditableField name="site_street" label="Street" defaultValue={account.site_street} />
-        <div className="grid grid-cols-3 gap-3">
-          <EditableField name="site_city" label="City" defaultValue={account.site_city} />
-          <EditableField name="site_state" label="State" defaultValue={account.site_state} />
-          <EditableField name="site_zip" label="ZIP" defaultValue={account.site_zip} />
+        {/* Responsive like the billing block above — grid-cols-3 crushed
+            City to ~90px at 320px. City spans 6, State/ZIP 3 each on sm+. */}
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+          <div className="sm:col-span-6"><EditableField name="site_city" label="City" defaultValue={account.site_city} /></div>
+          <div className="sm:col-span-3"><EditableField name="site_state" label="State" defaultValue={account.site_state} /></div>
+          <div className="sm:col-span-3"><EditableField name="site_zip" label="ZIP" defaultValue={account.site_zip} /></div>
         </div>
       </Card>
 
@@ -2311,31 +2313,23 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           <input type="hidden" name="account_id" value={accountId} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label htmlFor="user_id" className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
+              <span className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">
                 PPP staff *
-              </label>
-              <select
-                id="user_id"
+              </span>
+              {/* Searchable combobox (>10 staff) — type-to-filter the roster
+                  instead of a long native select (searchable-dropdown rule). */}
+              <SearchableSelect
                 name="user_id"
                 required
                 defaultValue=""
-                className={SELECT_CLS}
-                style={SELECT_BG_STYLE}
-              >
-                <option value="" disabled>
-                  Pick someone…
-                </option>
-                {assignableStaff.map((s) => {
-                  const label = s.full_name ? `${s.full_name} (${s.email})` : s.email;
+                placeholder="Type a name to pick someone…"
+                ariaLabel="PPP staff member to assign"
+                options={assignableStaff.map((s) => {
+                  const base = s.full_name ? `${s.full_name} (${s.email})` : s.email;
                   const already = teamUserIds.has(s.user_id);
-                  return (
-                    <option key={s.user_id} value={s.user_id}>
-                      {label}
-                      {already ? "  · already on team" : ""}
-                    </option>
-                  );
+                  return { value: s.user_id, label: already ? `${base} · already on team` : base };
                 })}
-              </select>
+              />
               {assignableStaff.length > 0 && assignableStaff.every((s) => teamUserIds.has(s.user_id)) && (
                 <p className="text-[11px] text-ppp-charcoal-500 mt-1">
                   Everyone with Commercial CC access is already on this team — pick a
@@ -3070,7 +3064,7 @@ async function OpportunitiesTab({
           </span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities`}
-            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -3089,7 +3083,7 @@ async function OpportunitiesTab({
           </span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities`}
-            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -3103,7 +3097,7 @@ async function OpportunitiesTab({
           </span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities`}
-            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -3116,7 +3110,7 @@ async function OpportunitiesTab({
           </span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities`}
-            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -3127,7 +3121,7 @@ async function OpportunitiesTab({
           <span>{errorMessage}</span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=opportunities`}
-            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -4452,7 +4446,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
                   </span>
                 )}
                 <time className="text-[11px] text-ppp-charcoal-500">
-                  {new Date(n.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                  {new Date(n.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: "America/New_York" })}
                 </time>
               </div>
               {isAuto && n.source_opportunity_id && (
@@ -5075,7 +5069,7 @@ async function AccountInvoicesTab({
           </span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=invoices`}
-            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -5099,7 +5093,7 @@ async function AccountInvoicesTab({
           <span>{errorMessage}</span>
           <Link
             href={`/commercial/accounts/${accountId}?tab=invoices`}
-            className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center"
+            className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center"
           >
             Dismiss
           </Link>
@@ -5174,6 +5168,7 @@ async function AccountInvoicesTab({
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <Link
                           href={`/commercial/opportunities/${opp.id}?tab=invoices`}
+                          title={derivedOppName(opp, null)}
                           className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
                         >
                           {/* Phase B derived-name (Karan 2026-07-10 audit
@@ -5332,7 +5327,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
               </summary>
               <form
                 action={recordPaymentInlineAction}
-                className="mt-2 bg-white border border-ppp-charcoal-100 rounded-lg shadow-sm p-3 space-y-2 w-[260px] text-left"
+                className="mt-2 bg-white border border-ppp-charcoal-100 rounded-lg shadow-sm p-3 space-y-2 w-full sm:w-[260px] text-left"
               >
                 <input type="hidden" name="account_id" value={accountId} />
                 <input type="hidden" name="invoice_id" value={invoice.id} />

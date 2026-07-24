@@ -41,7 +41,7 @@ export default function CommercialSiteAddressToggle({
           value="1"
           checked={same}
           onChange={(e) => setSame(e.target.checked)}
-          className="h-4 w-4 rounded border-ppp-charcoal-300 text-emerald-600 focus:ring-emerald-600/30"
+          className="h-4 w-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/30"
         />
         <span className="text-ppp-charcoal-700">Same as billing address</span>
       </label>

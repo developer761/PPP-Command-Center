@@ -209,7 +209,7 @@ export default function CommercialNewAccountTeamPicker({
                   onChange={(e) => updateRow(row.id, { email: e.target.value })}
                   placeholder="alex@precisionpaintingplus.com"
                   autoComplete="off"
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                   aria-label={`Team member ${idx + 1} email`}
                 />
               )}
@@ -246,7 +246,7 @@ export default function CommercialNewAccountTeamPicker({
                 type="checkbox"
                 checked={row.is_primary}
                 onChange={(e) => updateRow(row.id, { is_primary: e.target.checked })}
-                className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-emerald-600/30"
+                className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
               />
               Mark as primary <span className="text-ppp-charcoal-500">({assignmentRoleLabel(row.role)})</span>
             </label>
