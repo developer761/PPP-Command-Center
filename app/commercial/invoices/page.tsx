@@ -34,6 +34,7 @@ export const dynamic = "force-dynamic";
 type SP = Promise<{
   q?: string;
   status?: string;
+  aging?: string;
   sort?: string;
   account_id?: string;
   deleted?: string;
@@ -371,7 +372,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   }));
   const accountById = new Map(accounts.map((a) => [a.id, a]));
   const oppById = new Map(allOpps.map((o) => [o.id, o]));
-  const invoices = search
+  const invoicesSearched = search
     ? (() => {
         const q = search.toLowerCase();
         return invoicesRaw.filter((inv) => {
@@ -382,6 +383,21 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         });
       })()
     : invoicesRaw;
+  // AR aging bucket filter (from the aging tiles). Narrows to overdue invoices
+  // in the chosen bucket so "60+ days · $50k" actually shows THOSE invoices,
+  // not every overdue one. account_id is already applied server-side above.
+  const agingRaw = pickFirst(sp.aging);
+  const agingFilter =
+    agingRaw === "0-30" || agingRaw === "30-60" || agingRaw === "60-plus" ? agingRaw : null;
+  const invoices = agingFilter
+    ? invoicesSearched.filter((i) => {
+        if (deriveInvoiceStatus(i) !== "overdue" || !i.due_at) return false;
+        const days = Math.floor((Date.now() - new Date(i.due_at).getTime()) / 86_400_000);
+        if (agingFilter === "0-30") return days <= 30;
+        if (agingFilter === "30-60") return days > 30 && days <= 60;
+        return days > 60;
+      })
+    : invoicesSearched;
   // Only Won opps can be invoiced; sort newest first so the picker shows
   // the most recent wins on top (Karan's typical flow after a Win/Loss
   // Debrief lands).
@@ -473,7 +489,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     .reduce((acc, i) => acc + i.paid_cents, 0);
   const draftCount = kpiSource.filter((i) => i.status === "draft").length;
 
-  const anyFilterActive = !!search || !!statusFilter || sortKey !== "recent" || !!accountIdFilter;
+  const anyFilterActive = !!search || !!statusFilter || sortKey !== "recent" || !!accountIdFilter || !!agingFilter;
 
   const SORT_OPTIONS = [
     { key: "recent", label: "Most recently created" },
@@ -498,7 +514,17 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     if (newStatus) p.set("status", newStatus);
     if (sortKey !== "recent") p.set("sort", sortKey);
     if (accountIdFilter) p.set("account_id", accountIdFilter);
+    // Switching the status pill clears any aging-bucket filter.
     return p.toString() ? `/commercial/invoices?${p.toString()}` : "/commercial/invoices";
+  };
+  // Aging-tile href: filter to overdue + the bucket, preserving account scope.
+  // Toggles off if the same bucket is already active.
+  const agingHref = (bucket: "0-30" | "30-60" | "60-plus"): string => {
+    const p = new URLSearchParams();
+    p.set("status", "overdue");
+    if (agingFilter !== bucket) p.set("aging", bucket);
+    if (accountIdFilter) p.set("account_id", accountIdFilter);
+    return `/commercial/invoices?${p.toString()}`;
   };
 
   // Karan 2026-07-08: focus banner. When ?opportunity_id OR ?account_id
@@ -873,11 +899,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           />
         </div>
 
-        {/* AR aging breakdown — only renders when there IS overdue balance
-            so the invoice list stays quiet in the happy case. Each bucket
-            is a link into the filtered overdue list (status=overdue drills
-            all three; Alex still gets aging visibility on that page via
-            due date column). Colors escalate: amber → rose → deep-rose. */}
+        {/* AR aging breakdown — only renders when there IS overdue balance.
+            Each bucket links into the list filtered to THAT bucket (was all
+            three → overdue). account_id is preserved. Colors escalate. */}
         {hasAging && (
           <div className="grid grid-cols-3 gap-2 mt-3">
             <AgingTile
@@ -885,18 +909,21 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               count={agingBuckets.b0_30_count}
               cents={agingBuckets.b0_30_cents}
               tone="amber"
+              href={agingHref("0-30")}
             />
             <AgingTile
               label="30–60 days overdue"
               count={agingBuckets.b30_60_count}
               cents={agingBuckets.b30_60_cents}
               tone="rose"
+              href={agingHref("30-60")}
             />
             <AgingTile
               label="60+ days overdue"
               count={agingBuckets.b60_plus_count}
               cents={agingBuckets.b60_plus_cents}
               tone="rose-deep"
+              href={agingHref("60-plus")}
             />
           </div>
         )}
@@ -2319,11 +2346,13 @@ function AgingTile({
   count,
   cents,
   tone,
+  href,
 }: {
   label: string;
   count: number;
   cents: number;
   tone: "amber" | "rose" | "rose-deep";
+  href: string;
 }) {
   const cls =
     tone === "amber"
@@ -2335,7 +2364,7 @@ function AgingTile({
     tone === "amber" ? "bg-amber-500" : tone === "rose" ? "bg-rose-500" : "bg-rose-700";
   return (
     <Link
-      href="/commercial/invoices?status=overdue"
+      href={href}
       className={`group/aging relative border rounded-lg px-3 py-2 overflow-hidden hover:shadow-sm transition-shadow ${cls}`}
     >
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
