@@ -387,7 +387,7 @@ export default async function ProductDetailPage({
                   required
                   maxLength={100}
                   defaultValue={product.sku}
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] font-mono"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors font-mono"
                 />
               </label>
               <label className="block">
@@ -400,7 +400,7 @@ export default async function ProductDetailPage({
                   required
                   maxLength={300}
                   defaultValue={product.name}
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                 />
               </label>
               <label className="block">
@@ -455,7 +455,7 @@ export default async function ProductDetailPage({
                   required
                   inputMode="decimal"
                   defaultValue={centsToDollarStr(product.default_unit_price_cents)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] tabular-nums"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
                 />
               </label>
               <label className="block">
@@ -468,7 +468,7 @@ export default async function ProductDetailPage({
                   inputMode="decimal"
                   defaultValue={centsToDollarStr(product.default_unit_cost_cents)}
                   placeholder="—"
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] tabular-nums"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
                 />
               </label>
             </div>
@@ -523,7 +523,7 @@ export default async function ProductDetailPage({
                 defaultValue={product.variation_label ?? ""}
                 placeholder="Seal & Poly"
                 disabled={isParent}
-                className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] disabled:bg-ppp-charcoal-50 disabled:cursor-not-allowed"
+                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors disabled:bg-ppp-charcoal-50 disabled:cursor-not-allowed"
               />
               <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                 Required when a parent is picked.
@@ -681,22 +681,16 @@ export default async function ProductDetailPage({
                 <span className="block text-[11.5px] font-semibold text-ppp-charcoal-700 mb-1">
                   Account <span className="text-rose-600">*</span>
                 </span>
-                <select
+                {/* Searchable combobox (>10 accounts) — consistent with the
+                    "Variation of…" picker above (searchable-dropdown rule). */}
+                <SearchableSelect
                   name="account_id"
                   required
+                  options={accounts.map((a) => ({ value: a.id, label: a.company_name }))}
                   defaultValue=""
-                  className={SELECT_CLS}
-                  style={SELECT_BG_STYLE}
-                >
-                  <option value="" disabled>
-                    Pick an account…
-                  </option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.company_name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Type to pick an account…"
+                  ariaLabel="Account for this price override"
+                />
                 <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                   Saving on an account that already has an override at
                   the same date will update the existing row.
@@ -712,7 +706,7 @@ export default async function ProductDetailPage({
                   required
                   inputMode="decimal"
                   placeholder="65.00"
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] tabular-nums"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
                 />
               </label>
               <label className="block">
@@ -722,7 +716,7 @@ export default async function ProductDetailPage({
                 <input
                   type="date"
                   name="effective_from"
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                 />
                 <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                   Leave blank for &ldquo;always.&rdquo;
@@ -737,7 +731,7 @@ export default async function ProductDetailPage({
                   name="notes"
                   maxLength={500}
                   placeholder="Contract ref, memo…"
-                  className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                 />
               </label>
             </div>

@@ -175,7 +175,7 @@ export default async function NewProductPage({
               required
               maxLength={100}
               placeholder="BM-AURA-INT-SG"
-              className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] font-mono"
+              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors font-mono"
             />
           </label>
           <label className="block">
@@ -188,7 +188,7 @@ export default async function NewProductPage({
               required
               maxLength={300}
               placeholder="Benjamin Moore Aura Interior Semi-Gloss"
-              className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
             />
           </label>
           <label className="block">
@@ -235,7 +235,7 @@ export default async function NewProductPage({
               required
               inputMode="decimal"
               placeholder="79.99"
-              className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] tabular-nums"
+              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
             />
             <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
               Retail per unit — what shows on invoices by default.
@@ -250,7 +250,7 @@ export default async function NewProductPage({
               name="default_unit_cost"
               inputMode="decimal"
               placeholder="52.40"
-              className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px] tabular-nums"
+              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
             />
             <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
               What PPP pays. Used for margin math on line items.
@@ -307,7 +307,7 @@ export default async function NewProductPage({
             name="variation_label"
             maxLength={80}
             placeholder="Seal & Poly"
-            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
           />
           <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
             Required when a parent is picked. Shows as "{'{parent name}'} ({'{label}'})" in the picker.

@@ -248,7 +248,7 @@ export default async function CompetitorsAdminPage({
             placeholder="e.g. ABC Painting"
             required
             maxLength={200}
-            className="flex-1 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 min-h-[44px]"
+            className="flex-1 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-600 min-h-[44px]"
           />
           <button
             type="submit"
@@ -452,7 +452,7 @@ function RenameForm({ competitorId, currentName }: { competitorId: string; curre
           defaultValue={currentName}
           required
           maxLength={200}
-          className="flex-1 min-w-0 px-2 py-1.5 rounded border border-ppp-charcoal-200 text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="flex-1 min-w-0 px-2 py-1.5 rounded border border-ppp-charcoal-200 text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-cc-brand-600"
         />
         <button
           type="submit"
@@ -489,7 +489,7 @@ function MergeForm({
           name="target_id"
           required
           defaultValue=""
-          className="block w-full px-2 py-1.5 rounded border border-ppp-charcoal-200 text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="block w-full px-2 py-1.5 rounded border border-ppp-charcoal-200 text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-cc-brand-600"
         >
           <option value="" disabled>Pick target…</option>
           {candidates.map((t) => (

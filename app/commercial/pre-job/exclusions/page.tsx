@@ -308,9 +308,9 @@ export default async function ExclusionsLibraryPage({
       ) : (
         <ul className="bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100">
           {rows.map((r) => (
-            <li key={r.id} className="px-4 py-3 flex items-center gap-3 hover:bg-ppp-charcoal-50 group">
+            <li key={r.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 hover:bg-ppp-charcoal-50 group">
               <span
-                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest shrink-0 border ${
+                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest shrink-0 border self-start ${
                   r.category === "standard"
                     ? "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
                     : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200"
@@ -318,35 +318,39 @@ export default async function ExclusionsLibraryPage({
               >
                 {exclusionCategoryLabel(r.category)}
               </span>
-              <span className="flex-1 text-sm text-ppp-charcoal-800">{r.text}</span>
-              {r.use_count > 0 && (
-                <span className="text-[11px] text-ppp-charcoal-500 tabular-nums shrink-0">
-                  used {r.use_count}×
-                </span>
-              )}
-              {!r.is_active && (
-                <span className="text-[11px] text-amber-700 shrink-0">archived</span>
-              )}
-              {isAdmin && (
-                <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Link
-                    href={`/commercial/pre-job/exclusions?edit=${r.id}`}
-                    className="text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline"
-                  >
-                    Edit
-                  </Link>
-                  <form action={deleteExclusionAction}>
-                    <input type="hidden" name="id" value={r.id} />
-                    <ConfirmSubmitButton
-                      message={`Archive "${r.text.slice(0, 80)}${r.text.length > 80 ? "…" : ""}"? Existing proposals that reference it keep the text on their PDF; new proposals won't be able to pick it.`}
-                      pendingLabel="Archiving…"
-                      className="text-[12px] text-rose-700 hover:text-rose-800 underline disabled:opacity-50"
+              <span className="flex-1 text-sm text-ppp-charcoal-800 min-w-0">{r.text}</span>
+              <div className="flex items-center gap-3 shrink-0">
+                {r.use_count > 0 && (
+                  <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
+                    used {r.use_count}×
+                  </span>
+                )}
+                {!r.is_active && (
+                  <span className="text-[11px] text-amber-700">archived</span>
+                )}
+                {isAdmin && (
+                  // Visible on touch (hover-hide only from sm+, where a mouse
+                  // exists) + focus-within so keyboard users see it too.
+                  <div className="flex items-center gap-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <Link
+                      href={`/commercial/pre-job/exclusions?edit=${r.id}`}
+                      className="text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline inline-flex items-center min-h-[44px]"
                     >
-                      Archive
-                    </ConfirmSubmitButton>
-                  </form>
-                </div>
-              )}
+                      Edit
+                    </Link>
+                    <form action={deleteExclusionAction}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <ConfirmSubmitButton
+                        message={`Archive "${r.text.slice(0, 80)}${r.text.length > 80 ? "…" : ""}"? Existing proposals that reference it keep the text on their PDF; new proposals won't be able to pick it.`}
+                        pendingLabel="Archiving…"
+                        className="text-[12px] text-rose-700 hover:text-rose-800 underline disabled:opacity-50 inline-flex items-center min-h-[44px]"
+                      >
+                        Archive
+                      </ConfirmSubmitButton>
+                    </form>
+                  </div>
+                )}
+              </div>
             </li>
           ))}
         </ul>
