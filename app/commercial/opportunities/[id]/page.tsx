@@ -3374,7 +3374,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                       }`}
                       title={a.notes ?? undefined}
                     >
-                      {a.is_primary && <span aria-hidden>★</span>}
+                      {a.is_primary && <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg>}
                       {opportunityAssignmentRoleLabel(a.role)}
                       <form action={removeTeamAction} className="inline">
                         <input type="hidden" name="opportunity_id" value={oppId} />
@@ -3384,7 +3384,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                           aria-label={`Remove ${opportunityAssignmentRoleLabel(a.role)} role`}
                           className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-cc-brand-700/80 hover:text-cc-brand-800"}`}
                         >
-                          ✕
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18"/></svg>
                         </button>
                       </form>
                     </span>
@@ -4646,7 +4646,7 @@ async function FilesTab({
       {favorites.length > 0 && (
         <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 flex items-center gap-2">
-            <span aria-hidden className="text-amber-500">★</span>
+            <span className="text-amber-500 inline-flex"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg></span>
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               Favorites · {favorites.length}
             </h2>

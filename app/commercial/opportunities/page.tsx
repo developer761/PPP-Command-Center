@@ -1299,7 +1299,7 @@ export default async function CommercialOpportunitiesPage({
                               className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200 shrink-0"
                               title="Key relationship — flagged by admin"
                             >
-                              <span aria-hidden>★</span> Key
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg> Key
                             </span>
                           )}
                           {g.account.industry && (
@@ -1768,7 +1768,7 @@ function CustomerBoardRow({
                   className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200"
                   title="Key relationship — flagged by admin"
                 >
-                  <span aria-hidden>★</span> Key
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg> Key
                 </span>
               )}
               {account.industry && (
@@ -3003,7 +3003,7 @@ function OpportunityRow({
                     className="inline-flex items-center gap-1 text-cc-brand-700"
                     title={`${opportunityAssignmentRoleLabel(primaryLead.role)}: ${primaryLead.user_full_name ?? primaryLead.user_email}`}
                   >
-                    <span aria-hidden>★</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg>
                     {(primaryLead.user_full_name ?? primaryLead.user_email).split(" ")[0]}
                   </span>
                 )}
@@ -3472,7 +3472,7 @@ function CustomerQuickSheet({
                 )}
                 {account.is_key_relationship && (
                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200">
-                    <span aria-hidden>★</span> Key
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg> Key
                   </span>
                 )}
               </div>

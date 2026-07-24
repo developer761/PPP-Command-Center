@@ -388,8 +388,11 @@ export default function ProductPicker({
                       <div className="text-[13px] font-semibold text-ppp-charcoal truncate flex items-center gap-1.5">
                         <span className="truncate">{p.name}</span>
                         {p.is_parent_only && (
-                          <span className="inline-flex items-center text-[9px] font-bold tracking-widest uppercase text-cc-brand-800 bg-cc-brand-100 px-1.5 py-0.5 rounded shrink-0">
-                            {isExpanded ? "▾ pick below" : "▸ pick a variation"}
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase text-cc-brand-800 bg-cc-brand-100 px-1.5 py-0.5 rounded shrink-0">
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={isExpanded ? "" : "-rotate-90"}>
+                              <path d="M6 9l6 6 6-6" />
+                            </svg>
+                            {isExpanded ? "pick below" : "pick a variation"}
                           </span>
                         )}
                       </div>

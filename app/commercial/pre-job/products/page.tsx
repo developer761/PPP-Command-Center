@@ -344,9 +344,9 @@ export default async function ProductsCatalogPage({
                                     className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 group px-4 sm:px-6 py-2.5 hover:bg-cc-brand-50/40"
                                   >
                                     <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
-                                      <span aria-hidden className="text-cc-brand-400">
-                                        ↳
-                                      </span>
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-400 shrink-0 self-center">
+                                        <path d="M9 10v4a4 4 0 0 0 4 4h6 M15 14l4 4-4 4" />
+                                      </svg>
                                       <span className="text-[13px] font-medium text-ppp-charcoal group-hover:text-cc-brand-700 truncate">
                                         {v.variation_label ?? v.name}
                                       </span>

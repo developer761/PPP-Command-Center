@@ -268,7 +268,7 @@ function VersionBumpSheet({
             className="text-ppp-charcoal-500 hover:text-ppp-charcoal p-2 -mr-2 min-h-[40px] min-w-[40px] touch-manipulation"
             aria-label="Close"
           >
-            ✕
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
         </header>
 

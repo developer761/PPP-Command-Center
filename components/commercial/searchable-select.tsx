@@ -257,9 +257,9 @@ export function SearchableSelect({
                   )}
                 </div>
                 {selectedValue === opt.value && (
-                  <span className="text-cc-brand-600 text-[13px] shrink-0" aria-hidden>
-                    ✓
-                  </span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-cc-brand-600 shrink-0" aria-hidden>
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
                 )}
               </li>
             ))

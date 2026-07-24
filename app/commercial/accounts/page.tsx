@@ -1059,11 +1059,13 @@ function AccountRow({
                 <AccountAvatar accountId={account.id} name={account.company_name} size="sm" />
                 {account.is_key_relationship && (
                   <span
-                    className="inline-flex items-center text-amber-500 text-base leading-none"
-                    title="★ Key Relationship — strategic partnership"
+                    className="inline-flex items-center text-amber-500"
+                    title="Key Relationship — strategic partnership"
                     aria-label="Key Relationship"
                   >
-                    ★
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z" />
+                    </svg>
                   </span>
                 )}
                 <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
