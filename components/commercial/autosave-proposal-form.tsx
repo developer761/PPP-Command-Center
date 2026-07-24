@@ -169,7 +169,10 @@ function StatusPill({
   return (
     <div
       aria-live="polite"
-      className={`sticky top-16 z-30 ml-auto mb-2 w-fit max-w-[calc(100%-1rem)] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border shadow-sm ${color}`}
+      /* Sticky only on mobile (where the toolbar is NOT sticky). On sm+ the
+         toolbar is sticky and the pill was landing inside it, floating over the
+         Send/Won/Lost buttons — so make it static there and flow normally. */
+      className={`sticky top-16 sm:static z-10 ml-auto mb-2 w-fit max-w-[calc(100%-1rem)] inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border shadow-sm ${color}`}
     >
       {status === "saving" && (
         <svg width="10" height="10" viewBox="0 0 24 24" className="animate-spin" aria-hidden>

@@ -420,7 +420,9 @@ async function updateLineItemAction(formData: FormData) {
   const originalUpdatedAt = String(formData.get("original_updated_at") ?? "").trim();
   if (originalUpdatedAt && originalUpdatedAt !== owning.updated_at) {
     redirect(
-      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("This line item was updated in another tab. Refresh to see the latest, then re-apply your change.")}#line-items`
+      // No #line-items hash on error — it would scroll past the top error
+      // banner (audit fix). Stay at the top so the message is seen.
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${proposalId}?error=${encodeURIComponent("This line item was updated in another tab. Refresh to see the latest, then re-apply your change.")}`
     );
   }
   // F.6: phase is optional. Empty string → null → clears the phase.
@@ -864,9 +866,12 @@ export default async function ProposalEditorPage({
               <ConfirmSubmitButton
                 message={`Reopen R${proposal.revision_number}? Flips this proposal back to Sent AND (if the parent opportunity is still at Pre-Sale Closed) flips the opportunity back to Proposal · Sent. Use this if you marked ${proposal.status.toUpperCase()} by mistake.`}
                 pendingLabel="Reopening…"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-white text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[36px]"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-white text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
-                ↺ Reopen
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M3 2v6h6 M3.5 8a9 9 0 1 0 2.3-3.3L3 8" />
+                </svg>
+                Reopen
               </ConfirmSubmitButton>
             </form>
           )}
@@ -1111,6 +1116,11 @@ export default async function ProposalEditorPage({
         <EditorSection
           title="Alternate description"
           subtitle="Optional summary paragraph above the alternate line items."
+          icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M7 7h10 M7 12h10 M7 17h6" /><path d="M3 7h.01 M3 12h.01 M3 17h.01" />
+            </svg>
+          }
         >
           <textarea name="alternate_notes" defaultValue={proposal.alternate_notes ?? ""} rows={2} className={TEXTAREA_CLS} placeholder="e.g. Exterior: Power wash exterior of building." />
         </EditorSection>
