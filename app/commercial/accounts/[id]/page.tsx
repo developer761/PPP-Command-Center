@@ -554,6 +554,7 @@ export default async function CommercialAccountDetailPage({
               <li key={t.key}>
                 <Link
                   href={`/commercial/accounts/${id}?tab=${t.key}`}
+                  aria-current={active ? "page" : undefined}
                   className={`inline-flex items-center gap-1.5 px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
                     active
                       ? "border-cc-brand-600 text-ppp-charcoal"
@@ -585,6 +586,7 @@ export default async function CommercialAccountDetailPage({
               <Link
                 key={s.key}
                 href={`/commercial/accounts/${id}?tab=${primaryTab}&sub=${s.key}`}
+                aria-current={active ? "page" : undefined}
                 className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[36px] ${
                   active
                     ? "bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200"
@@ -3848,7 +3850,8 @@ async function AccountProposalsTab({
             return (
               <section
                 key={dealId}
-                className="bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm"
+                id={`deal-${dealId}`}
+                className="bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm scroll-mt-24"
               >
                 <header className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap bg-white">
                   <div className="min-w-0">
@@ -3865,7 +3868,7 @@ async function AccountProposalsTab({
                   </div>
                   <Link
                     href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new`}
-                    className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-1"
+                    className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-1 min-h-[44px] px-1 -mr-1 touch-manipulation"
                   >
                     + New revision
                   </Link>
@@ -4002,6 +4005,23 @@ async function AccountProposalsTab({
                                   <polyline points="9 18 15 12 9 6" />
                                 </svg>
                                 <span className="hidden sm:inline">{bumpLabel}</span>
+                              </Link>
+                            )}
+                            {/* Won proposal → hand off to invoicing so there's
+                                a "bill this deal" path right where the win is
+                                (audit fix — no more leaving for the Invoices
+                                tab with no link). */}
+                            {r.status === "won" && (
+                              <Link
+                                href={`/commercial/invoices?account_id=${accountId}&add=${dealId}#opp-${dealId}`}
+                                className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 border-r border-ppp-charcoal-100 touch-manipulation"
+                                title="Create an invoice for this deal"
+                                aria-label={`Bill this deal from revision ${r.revision_number}`}
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                  <path d="M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                                </svg>
+                                <span className="hidden sm:inline">Bill this deal</span>
                               </Link>
                             )}
                             <a

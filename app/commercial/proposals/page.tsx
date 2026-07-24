@@ -140,10 +140,12 @@ function toneForStatus(status: ProposalStatus): ColumnTone {
         accentBar: "bg-rose-400",
       };
     case "expired":
+      // Rose (terminal), matching the list view + account tab — was amber
+      // here, so the same status read as two severities across surfaces.
       return {
         ...shared,
-        count: "bg-amber-50 text-amber-700 border border-amber-100",
-        accentBar: "bg-amber-500",
+        count: "bg-rose-50 text-rose-700 border border-rose-100",
+        accentBar: "bg-rose-400",
       };
     case "superseded":
     default:
@@ -310,9 +312,15 @@ export default async function ProposalsIndexPage({
             Proposals
           </h1>
           <p className="text-[13px] text-ppp-charcoal-500 mt-1">
-            Every revision on every deal, grouped by status. Click a card to open the editor.
-            {" "}<span className="text-emerald-700 font-medium">Drag Sent cards into Won or Lost</span> to close out a bid.
-            {" "}Dropped a card by mistake? Drag it back to Sent to reopen — the parent deal reopens too.
+            Every revision on every deal, grouped by status. Tap a card to open the editor.
+            {/* Drag is HTML5 desktop-only — don't tell phone users to drag. */}
+            <span className="hidden sm:inline">
+              {" "}<span className="text-emerald-700 font-medium">Drag Sent cards into Won or Lost</span> to close out a bid.
+              {" "}Dropped a card by mistake? Drag it back to Sent to reopen — the parent deal reopens too.
+            </span>
+            <span className="sm:hidden">
+              {" "}Open a Sent proposal to mark it Won or Lost.
+            </span>
           </p>
         </div>
         <NewProposalPicker
@@ -472,7 +480,7 @@ function ProposalColumn({
           made the whole page feel like a scroll-hell — cards should
           feel tight against the account overline. */}
       <ul
-        className={`p-1.5 space-y-1.5 overflow-y-auto min-h-[80px] ${
+        className={`p-1.5 space-y-1.5 overflow-y-auto overscroll-contain min-h-[80px] ${
           compact ? "max-h-[260px]" : "max-h-[70vh]"
         }`}
       >
@@ -578,8 +586,11 @@ function ProposalCard({
               bumped to font-bold text-[13px] to match the kanban Bid line
               on /commercial/opportunities so both surfaces read the same
               way. Money is the primary signal on both. */}
-          <span className="text-[13px] font-bold text-ppp-charcoal-900 tabular-nums">
-            {formatDollars(row.total_cents)}
+          <span
+            className="text-[13px] font-bold text-ppp-charcoal-900 tabular-nums"
+            title={row.total_cents ? undefined : "Not priced yet — no line items"}
+          >
+            {row.total_cents ? formatDollars(row.total_cents) : "—"}
           </span>
           <a
             href={`/api/commercial/proposals/${row.id}/pdf`}
@@ -1021,21 +1032,24 @@ function DealMiniKanban({
         </div>
         <Link
           href={`/commercial/accounts/${accountId}/deals/${deal.dealId}/proposal/new?bump=${deal.rows[0]?.id ?? ""}`}
-          className="text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 shrink-0"
+          className="text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 shrink-0 inline-flex items-center min-h-[44px] px-1 -mr-1 touch-manipulation"
           title="Bump R+1: copies the current revision forward for edits"
         >
           + New revision
         </Link>
       </div>
       <div className="p-2 sm:p-3 pt-2">
-        <div className="flex gap-2 items-stretch">
+        {/* Horizontal scroll on narrow screens so the 5 columns never blow out
+            the card / force the page to scroll sideways (mobile-broken fix).
+            Columns get a fixed min width and the row scrolls with snap. */}
+        <div className="flex gap-2 items-stretch overflow-x-auto snap-x snap-mandatory -mx-2 px-2 sm:mx-0 sm:px-0 sm:overflow-visible">
           {ACTIVE_COLUMNS.map((status) => (
             <ProposalDnDColumn key={status} status={status}>
               <ProposalColumn
                 status={status}
                 rows={deal.byStatus.get(status) ?? []}
                 tone={toneForStatus(status)}
-                width="flex-1 min-w-[120px]"
+                width="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px]"
                 compact
                 labelOverride={MINI_KANBAN_COLUMN_LABEL[status]}
               />
@@ -1046,11 +1060,11 @@ function DealMiniKanban({
               status="won"
               rows={deal.byStatus.get("won") ?? []}
               tone={toneForStatus("won")}
-              width="flex-1 min-w-[120px]"
+              width="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px]"
               compact
             />
           </ProposalDnDColumn>
-          <div className="flex-1 min-w-[120px] border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
+          <div className="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px] border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
             <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-bold text-ppp-charcoal uppercase tracking-wide">
@@ -1313,8 +1327,11 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                                   sent {formatShortDate(r.sent_at)}
                                 </span>
                               )}
-                              <span className="text-[13px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ml-2 w-20 text-right">
-                                {formatDollars(r.total_cents)}
+                              <span
+                                className="text-[13px] font-semibold text-ppp-charcoal-800 tabular-nums shrink-0 ml-2 w-20 text-right"
+                                title={r.total_cents ? undefined : "Not priced yet — no line items"}
+                              >
+                                {r.total_cents ? formatDollars(r.total_cents) : "—"}
                               </span>
                             </Link>
                             <a

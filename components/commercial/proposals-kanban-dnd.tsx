@@ -181,7 +181,7 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       // update or just the proposal?").
       if (targetStatus === "won") {
         flashSuccess(
-          "🎉 Marked won. Parent deal flipped to Pre-Sale Closed · Won."
+          "Marked won. Parent deal flipped to Pre-Sale Closed · Won."
         );
       } else if (targetStatus === "lost") {
         // Stash debrief link in state so the toast can render as a

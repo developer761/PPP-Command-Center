@@ -199,15 +199,16 @@ export default async function CommercialDashboardPage() {
         />
         <div className="min-w-0 border-l border-ppp-charcoal-100 pl-3 sm:pl-4">
           <div className="text-sm font-semibold text-ppp-charcoal leading-tight">Welcome back</div>
-          <div className="text-[11px] text-ppp-charcoal-500 leading-tight">
-            Tomco Painting · Commercial Command Center
-          </div>
+          <div className="text-[11px] text-ppp-charcoal-500 leading-tight">Tomco Painting</div>
         </div>
       </div>
 
       {/* Hero — unchanged structure, high-density KPIs at the top. */}
       <header className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="lg:col-span-2 relative bg-white border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
+        <Link
+          href="/commercial/opportunities"
+          className="group/hero lg:col-span-2 relative bg-white border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden block transition-all hover:shadow-md hover:border-cc-brand-300 touch-manipulation"
+        >
           <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
           <span aria-hidden className="pointer-events-none absolute -top-12 -right-12 h-40 w-40 rounded-full bg-cc-brand-100/60 blur-2xl" />
           <div className="relative pl-2">
@@ -237,8 +238,11 @@ export default async function CommercialDashboardPage() {
               </div>
             </div>
           </div>
-        </div>
-        <div className="relative bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
+        </Link>
+        <Link
+          href="/commercial/reports/win-loss"
+          className="group/hero relative bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden block transition-all hover:shadow-md hover:border-emerald-300 touch-manipulation"
+        >
           <span aria-hidden className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-emerald-100/40 blur-2xl" />
           <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400" />
           <div className="relative">
@@ -276,7 +280,7 @@ export default async function CommercialDashboardPage() {
                 : "Awarded value not set on wins"}
             </div>
           </div>
-        </div>
+        </Link>
       </header>
 
       {/* ─── NEEDS ATTENTION strip ─── */}
@@ -563,7 +567,7 @@ function TopOpenDealsCard({
         </h3>
         <Link
           href="/commercial/opportunities"
-          className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[24px] inline-flex items-center"
+          className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1 -mr-1"
         >
           Full pipeline →
         </Link>
@@ -640,7 +644,7 @@ function RecentActivityCard({
         </h3>
         <Link
           href="/commercial/opportunities?sort=updated"
-          className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[24px] inline-flex items-center"
+          className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1 -mr-1"
         >
           All opportunities →
         </Link>
@@ -709,7 +713,7 @@ function KpiTile({
       ? "border-rose-100/70 bg-white hover:border-rose-300"
       : tone === "emerald"
       ? "border-emerald-100/70 bg-white hover:border-emerald-300"
-      : "border-blue-100/70 bg-white hover:border-blue-300";
+      : "border-ppp-blue-100/70 bg-white hover:border-ppp-blue-300";
   const glow =
     tone === "cc-brand"
       ? "bg-cc-brand-100/60"
@@ -717,12 +721,12 @@ function KpiTile({
       ? "bg-rose-100/60"
       : tone === "emerald"
       ? "bg-emerald-100/60"
-      : "bg-blue-100/50";
+      : "bg-ppp-blue-100/50";
   const stripe =
     tone === "cc-brand" ? "bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400"
     : tone === "rose" ? "bg-gradient-to-b from-rose-600 via-rose-500 to-rose-400"
     : tone === "emerald" ? "bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400"
-    : "bg-gradient-to-b from-blue-600 via-blue-500 to-blue-400";
+    : "bg-gradient-to-b from-ppp-blue-600 via-ppp-blue-500 to-ppp-blue-400";
   const iconCls =
     tone === "cc-brand"
       ? "bg-gradient-to-br from-cc-brand-100 to-cc-brand-50 text-cc-brand-700 group-hover/kpi:from-cc-brand-600 group-hover/kpi:to-cc-brand-500 group-hover/kpi:text-white"
@@ -730,7 +734,7 @@ function KpiTile({
       ? "bg-gradient-to-br from-rose-100 to-rose-50 text-rose-700 group-hover/kpi:from-rose-600 group-hover/kpi:to-rose-500 group-hover/kpi:text-white"
       : tone === "emerald"
       ? "bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-700 group-hover/kpi:from-emerald-600 group-hover/kpi:to-emerald-500 group-hover/kpi:text-white"
-      : "bg-gradient-to-br from-blue-100 to-blue-50 text-blue-700 group-hover/kpi:from-blue-600 group-hover/kpi:to-blue-500 group-hover/kpi:text-white";
+      : "bg-gradient-to-br from-ppp-blue-100 to-ppp-blue-50 text-ppp-blue-700 group-hover/kpi:from-ppp-blue-600 group-hover/kpi:to-ppp-blue-500 group-hover/kpi:text-white";
   return (
     <Link
       href={href}
