@@ -27,6 +27,8 @@ const KIND_META: Record<string, KindMeta> = {
   commercial_invoice_paid_full: { label: "Paid in full", category: "success" },
   // Commercial — proposals
   commercial_proposal_sent: { label: "Proposal sent", category: "info" },
+  // Commercial — custom alert rules (Block 3B)
+  commercial_custom_rule: { label: "Custom alert", category: "warning" },
 };
 
 /** Friendly label for a notification kind (falls back to a de-prefixed,

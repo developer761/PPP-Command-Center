@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { runOverdueTasksReminder } from "@/lib/commercial/cron/overdue-tasks";
 import { runExpiringDocumentsReminder } from "@/lib/commercial/cron/expiring-documents";
 import { runHotDealsCoolingReminder } from "@/lib/commercial/cron/hot-deals-cooling";
+import { runCustomNotificationRules } from "@/lib/commercial/cron/custom-notification-rules";
 import { reportError, reportWarn } from "@/lib/observability";
 
 /**
@@ -53,10 +54,11 @@ export async function GET(request: Request) {
   }
 
   const startedAt = Date.now();
-  const [tasksRes, docsRes, hotRes] = await Promise.allSettled([
+  const [tasksRes, docsRes, hotRes, rulesRes] = await Promise.allSettled([
     runOverdueTasksReminder(),
     runExpiringDocumentsReminder(),
     runHotDealsCoolingReminder(),
+    runCustomNotificationRules(),
   ]);
 
   // Settled-shape unwrap. allSettled → fulfilled.value | rejected.reason.
@@ -76,19 +78,23 @@ export async function GET(request: Request) {
     hotRes.status === "fulfilled"
       ? hotRes.value
       : { ok: false, found: 0, sent: 0, skipped: 0, errors: [String(hotRes.reason)] };
+  const rules =
+    rulesRes.status === "fulfilled"
+      ? rulesRes.value
+      : { ok: false, found: 0, sent: 0, skipped: 0, errors: [String(rulesRes.reason)] };
 
   const durationMs = Date.now() - startedAt;
-  const totalSent = tasks.sent + docs.sent + hot.sent;
-  const totalFound = tasks.found + docs.found + hot.found;
-  const totalSkipped = tasks.skipped + docs.skipped + hot.skipped;
-  const totalErrors = tasks.errors.length + docs.errors.length + hot.errors.length;
+  const totalSent = tasks.sent + docs.sent + hot.sent + rules.sent;
+  const totalFound = tasks.found + docs.found + hot.found + rules.found;
+  const totalSkipped = tasks.skipped + docs.skipped + hot.skipped + rules.skipped;
+  const totalErrors = tasks.errors.length + docs.errors.length + hot.errors.length + rules.errors.length;
 
   console.log(
-    `[cron/commercial-daily] ${durationMs}ms — found ${totalFound} (tasks=${tasks.found} docs=${docs.found} hot=${hot.found}) · sent ${totalSent} · skipped ${totalSkipped} · errors ${totalErrors} · ok=t/${tasks.ok}/d/${docs.ok}/h/${hot.ok}`
+    `[cron/commercial-daily] ${durationMs}ms — found ${totalFound} (tasks=${tasks.found} docs=${docs.found} hot=${hot.found} rules=${rules.found}) · sent ${totalSent} · skipped ${totalSkipped} · errors ${totalErrors} · ok=t/${tasks.ok}/d/${docs.ok}/h/${hot.ok}/r/${rules.ok}`
   );
   if (totalErrors > 0) {
     console.warn(
-      `[cron/commercial-daily] errors: tasks=${JSON.stringify(tasks.errors)} docs=${JSON.stringify(docs.errors)} hot=${JSON.stringify(hot.errors)}`
+      `[cron/commercial-daily] errors: tasks=${JSON.stringify(tasks.errors)} docs=${JSON.stringify(docs.errors)} hot=${JSON.stringify(hot.errors)} rules=${JSON.stringify(rules.errors)}`
     );
   }
 
@@ -99,8 +105,8 @@ export async function GET(request: Request) {
   // ok=false, others ok=true) stays 200 so a single Supabase blip on
   // one query doesn't trigger noisy retries that would re-attempt the
   // already-successful jobs.
-  const totalWipeout = !tasks.ok && !docs.ok && !hot.ok && totalSent === 0;
-  const partialFailure = !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok);
+  const totalWipeout = !tasks.ok && !docs.ok && !hot.ok && !rules.ok && totalSent === 0;
+  const partialFailure = !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok || !rules.ok);
   const status = totalWipeout ? 500 : 200;
 
   // Stage 3.5: page Slack on real failures. Total wipe-out is critical
@@ -117,6 +123,7 @@ export async function GET(request: Request) {
         tasks_errs: tasks.errors.length,
         docs_errs: docs.errors.length,
         hot_errs: hot.errors.length,
+        rules_errs: rules.errors.length,
         duration_ms: durationMs,
       },
     });
@@ -131,6 +138,7 @@ export async function GET(request: Request) {
         tasks_ok: tasks.ok,
         docs_ok: docs.ok,
         hot_ok: hot.ok,
+        rules_ok: rules.ok,
       },
     });
   }
@@ -138,7 +146,7 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       ok: !totalWipeout,
-      degraded: !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok),
+      degraded: !totalWipeout && (!tasks.ok || !docs.ok || !hot.ok || !rules.ok),
       durationMs,
       summary: {
         found: totalFound,
@@ -149,6 +157,7 @@ export async function GET(request: Request) {
       tasks,
       documents: docs,
       hotDeals: hot,
+      customRules: rules,
     },
     { status }
   );

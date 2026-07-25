@@ -67,7 +67,10 @@ export type CommercialNotificationKind =
   // Phase F.4 (Karan 2026-07-14): sending a proposal is the moment Alex
   // cares about — the team + estimator want to know it went out so they
   // can watch for the customer response.
-  | "commercial_proposal_sent";
+  | "commercial_proposal_sent"
+  // Block 3B (Karan 2026-07-25): user-defined custom alert rules fire this
+  // kind; the title/body carry the specifics.
+  | "commercial_custom_rule";
 
 function adminClient() {
   return createSupabaseAdminClient(
@@ -132,6 +135,9 @@ async function dispatchCommercialNotification(input: {
     text: string;
     html?: string;
   };
+  /** When true, only the bell row is written (no email). Used by custom
+   *  rules with an in-app-only channel. Default false = send email. */
+  skipEmail?: boolean;
 }): Promise<{ ok: true; written: boolean } | { ok: false; error: string }> {
   // Self-skip — actor already knows.
   if (input.actingUserId && input.actingUserId === input.recipientUserId) {
@@ -188,7 +194,7 @@ async function dispatchCommercialNotification(input: {
       return { ok: false, error: insErr.message };
     }
     // Email is fire-and-forget — log on failure but don't propagate.
-    if (p.email) {
+    if (p.email && !input.skipEmail) {
       const result = await sendEmail({
         to: p.email,
         subject: input.email.subject,
@@ -1128,4 +1134,50 @@ export async function insertCommercialProposalSentNotifications(input: {
     })
   );
   return { fanout };
+}
+
+/**
+ * Custom-rule notification (Block 3B). Fires the `commercial_custom_rule` kind
+ * to the rule OWNER. Respects the rule's channel: "bell" writes only the bell
+ * row, "email" + "both" also send an email. Returns whether it was written
+ * (inactive/no-access owner is skipped, like every other event).
+ */
+export async function insertCustomRuleNotification(input: {
+  recipientUserId: string;
+  /** The matched entity id — stored so callers/fires can reference it. */
+  sourceId: string;
+  title: string;
+  body: string;
+  /** Relative path into the app (e.g. "/commercial/invoices/<id>"). */
+  link: string;
+  channel: "bell" | "email" | "both";
+}): Promise<{ ok: boolean; written: boolean }> {
+  const emailLink = appendBase(input.link);
+  const subject = input.title;
+  const text = [
+    input.body,
+    ``,
+    `Open it: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+    `(You created this alert. Manage your alerts in Settings → Notifications.)`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>${escape(input.body)}</p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open it →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center<br/>You created this alert. Manage your alerts in Settings → Notifications.</p>
+</div>`;
+
+  const r = await dispatchCommercialNotification({
+    kind: "commercial_custom_rule",
+    recipientUserId: input.recipientUserId,
+    actingUserId: null,
+    sourceId: input.sourceId,
+    title: input.title,
+    body: input.body,
+    link: input.link,
+    email: { subject, text, html },
+    skipEmail: input.channel === "bell",
+  });
+  return { ok: r.ok, written: r.ok ? (r as { written: boolean }).written : false };
 }
