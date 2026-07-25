@@ -139,6 +139,10 @@ async function dispatchCommercialNotification(input: {
   /** When true, only the bell row is written (no email). Used by custom
    *  rules with an in-app-only channel. Default false = send email. */
   skipEmail?: boolean;
+  /** When true, skip the automatic Slack mirror. Custom rules manage their own
+   *  Slack delivery (per-rule `to_slack`), so they opt out of the global mirror
+   *  to avoid a double post. Default false = mirror to Slack if connected. */
+  skipSlackMirror?: boolean;
 }): Promise<{ ok: true; written: boolean } | { ok: false; error: string }> {
   // Self-skip — actor already knows.
   if (input.actingUserId && input.actingUserId === input.recipientUserId) {
@@ -197,12 +201,15 @@ async function dispatchCommercialNotification(input: {
     // Slack mirror — fire-and-forget. If the recipient opted into personal
     // Slack delivery, post the same notification there. A Slack failure never
     // affects the bell (already written) or email path. Not awaited so it can't
-    // add latency to the dispatch.
-    void postNotificationToUserSlack(input.recipientUserId, {
-      title: input.title,
-      body: input.body,
-      link: input.link,
-    });
+    // add latency to the dispatch. Custom rules skip this (skipSlackMirror) and
+    // post per-rule instead, so a rule with Slack off never leaks to Slack.
+    if (!input.skipSlackMirror) {
+      void postNotificationToUserSlack(input.recipientUserId, {
+        title: input.title,
+        body: input.body,
+        link: input.link,
+      });
+    }
     // Email is fire-and-forget — log on failure but don't propagate.
     if (p.email && !input.skipEmail) {
       const result = await sendEmail({
@@ -1161,6 +1168,8 @@ export async function insertCustomRuleNotification(input: {
   /** Relative path into the app (e.g. "/commercial/invoices/<id>"). */
   link: string;
   channel: "bell" | "email" | "both";
+  /** Additive Slack delivery for this rule (independent of `channel`). */
+  toSlack?: boolean;
 }): Promise<{ ok: boolean; written: boolean }> {
   const emailLink = appendBase(input.link);
   const subject = input.title;
@@ -1188,6 +1197,17 @@ export async function insertCustomRuleNotification(input: {
     link: input.link,
     email: { subject, text, html },
     skipEmail: input.channel === "bell",
+    // Manage Slack per-rule (below) instead of the global mirror.
+    skipSlackMirror: true,
   });
+  // Per-rule Slack delivery — fire-and-forget, only when this rule opted in AND
+  // the bell row was actually written (skip inactive/no-access owners).
+  if (input.toSlack && r.ok && (r as { written: boolean }).written) {
+    void postNotificationToUserSlack(input.recipientUserId, {
+      title: input.title,
+      body: input.body,
+      link: input.link,
+    });
+  }
   return { ok: r.ok, written: r.ok ? (r as { written: boolean }).written : false };
 }

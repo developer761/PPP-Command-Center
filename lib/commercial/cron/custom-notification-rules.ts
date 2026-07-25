@@ -113,6 +113,7 @@ export async function runCustomNotificationRules(): Promise<Result> {
             body: m.body,
             link: m.link,
             channel: rule.channel,
+            toSlack: rule.to_slack ?? false,
           });
           if (res.written) out.sent += 1;
           else out.skipped += 1;

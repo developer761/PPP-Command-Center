@@ -57,6 +57,7 @@ async function createAction(formData: FormData) {
     trigger: String(formData.get("trigger") ?? ""),
     threshold_days: Number(formData.get("threshold_days") ?? 0),
     channel: String(formData.get("channel") ?? "both"),
+    to_slack: String(formData.get("to_slack") ?? "") === "true",
   });
   revalidatePath(BASE);
   if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error)}`);
@@ -284,7 +285,7 @@ export default async function CommercialNotificationSettingsPage({
       {/* Custom */}
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-wider text-ppp-charcoal-400">Your custom alerts</h2>
-        <AddNotificationRuleForm action={createAction} />
+        <AddNotificationRuleForm action={createAction} slackConnected={!!slack && slack.enabled !== false} />
 
         {rules.length === 0 ? (
           <p className="rounded-lg border border-dashed border-ppp-charcoal-200 px-4 py-8 text-center text-sm text-ppp-charcoal-400">
@@ -305,6 +306,12 @@ export default async function CommercialNotificationSettingsPage({
                     {ruleSummary(r.trigger, r.threshold_days)}
                     <span className="mx-1.5 text-ppp-charcoal-300">·</span>
                     {ruleChannelLabel(r.channel)}
+                    {r.to_slack && (
+                      <>
+                        <span className="mx-1.5 text-ppp-charcoal-300">·</span>
+                        <span className="text-cc-brand-700 font-medium">Slack</span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

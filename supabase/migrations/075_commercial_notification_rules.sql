@@ -26,7 +26,12 @@ CREATE TABLE IF NOT EXISTS public.commercial_notification_rules (
   )),
   -- The "N days" for the trigger. followup_due ignores this.
   threshold_days INTEGER NOT NULL DEFAULT 7 CHECK (threshold_days >= 0 AND threshold_days <= 365),
+  -- In-app (bell) delivery is always written. `channel` toggles email on top:
+  -- 'bell' = in-app only, 'email' = + email, 'both' = + email (same as email).
   channel        TEXT NOT NULL DEFAULT 'both' CHECK (channel IN ('bell', 'email', 'both')),
+  -- Additive Slack delivery (independent of `channel`). When true, this rule's
+  -- alerts are also posted to the owner's connected Slack (commercial_user_slack).
+  to_slack       BOOLEAN NOT NULL DEFAULT FALSE,
   enabled        BOOLEAN NOT NULL DEFAULT TRUE,
   last_evaluated_at TIMESTAMPTZ,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
