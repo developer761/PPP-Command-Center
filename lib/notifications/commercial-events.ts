@@ -3,6 +3,7 @@ import "server-only";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/resend";
 import { reportWarn } from "@/lib/observability";
+import { postNotificationToUserSlack } from "@/lib/notifications/slack";
 
 /**
  * Stage 1 — Commercial CC event notifications (Karan 2026-06-18).
@@ -193,6 +194,15 @@ async function dispatchCommercialNotification(input: {
       });
       return { ok: false, error: insErr.message };
     }
+    // Slack mirror — fire-and-forget. If the recipient opted into personal
+    // Slack delivery, post the same notification there. A Slack failure never
+    // affects the bell (already written) or email path. Not awaited so it can't
+    // add latency to the dispatch.
+    void postNotificationToUserSlack(input.recipientUserId, {
+      title: input.title,
+      body: input.body,
+      link: input.link,
+    });
     // Email is fire-and-forget — log on failure but don't propagate.
     if (p.email && !input.skipEmail) {
       const result = await sendEmail({

@@ -206,7 +206,7 @@ export default function NotificationBell() {
                 overlay that draws the eye without shouting. */}
             <span
               aria-hidden
-              className="absolute -top-1 -right-1 h-5 min-w-[20px] rounded-full bg-emerald-500 opacity-40 animate-ping"
+              className="absolute -top-1 -right-1 h-5 min-w-[20px] rounded-full bg-emerald-500 opacity-40 animate-ping motion-reduce:animate-none motion-reduce:hidden"
             />
             <span
               className={`absolute -top-1 -right-1 h-5 min-w-[20px] px-1 rounded-full ${tone.badgeBg} text-white text-[10px] font-semibold flex items-center justify-center`}

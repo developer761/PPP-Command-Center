@@ -26,6 +26,8 @@ export type NotificationHistory = {
   rows: NotificationRow[];
   total: number;
   unread: number;
+  /** Count created in the last 7 days (platform-scoped, ignores filters). */
+  week: number;
   page: number;
   pageSize: number;
   totalPages: number;
@@ -76,6 +78,16 @@ export async function loadNotificationHistory(input: {
     .is("read_at", null);
   unreadQ = isCommercial ? unreadQ.like("kind", "commercial_%") : unreadQ.not("kind", "like", "commercial_%");
 
+  // This-week count (last 7 days, platform-scoped, ignoring filters) — for the
+  // at-a-glance KPI strip.
+  const weekAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  let weekQ = sb
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("recipient_user_id", input.userId)
+    .gte("created_at", weekAgoIso);
+  weekQ = isCommercial ? weekQ.like("kind", "commercial_%") : weekQ.not("kind", "like", "commercial_%");
+
   // Page rows.
   let rowsQ = sb
     .from("notifications")
@@ -85,9 +97,10 @@ export async function loadNotificationHistory(input: {
   if (input.filter === "unread") rowsQ = rowsQ.is("read_at", null);
   if (input.kind) rowsQ = rowsQ.eq("kind", input.kind);
 
-  const [{ count: total }, { count: unread }, { data: rows }] = await Promise.all([
+  const [{ count: total }, { count: unread }, { count: week }, { data: rows }] = await Promise.all([
     totalQ,
     unreadQ,
+    weekQ,
     rowsQ.order("created_at", { ascending: false }).range(from, to),
   ]);
 
@@ -96,6 +109,7 @@ export async function loadNotificationHistory(input: {
     rows: (rows ?? []) as NotificationRow[],
     total: totalCount,
     unread: unread ?? 0,
+    week: week ?? 0,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),

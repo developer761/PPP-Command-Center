@@ -5,11 +5,21 @@
 
 export const RULE_TRIGGERS = [
   "invoice_overdue",
+  "invoice_due_soon",
+  "invoice_paid",
   "proposal_idle",
   "followup_due",
   "opp_no_activity",
+  "deal_won",
+  "deal_lost",
 ] as const;
 export type RuleTrigger = (typeof RULE_TRIGGERS)[number];
+
+/** Group triggers for the picker UI. */
+export const TRIGGER_GROUPS: { heading: string; triggers: RuleTrigger[] }[] = [
+  { heading: "Invoices", triggers: ["invoice_overdue", "invoice_due_soon", "invoice_paid"] },
+  { heading: "Proposals & deals", triggers: ["proposal_idle", "followup_due", "opp_no_activity", "deal_won", "deal_lost"] },
+];
 
 export const RULE_CHANNELS = ["bell", "email", "both"] as const;
 export type RuleChannel = (typeof RULE_CHANNELS)[number];
@@ -29,28 +39,56 @@ type TriggerMeta = {
 export const TRIGGER_META: Record<RuleTrigger, TriggerMeta> = {
   invoice_overdue: {
     label: "Invoice past due",
-    blurb: "Alert me when an invoice is a set number of days past its due date.",
+    blurb: "When an invoice is a set number of days past its due date.",
     usesThreshold: true,
     defaultDays: 15,
     thresholdNoun: "days past due",
   },
+  invoice_due_soon: {
+    label: "Invoice due soon",
+    blurb: "When an invoice is coming due within a set number of days.",
+    usesThreshold: true,
+    defaultDays: 7,
+    thresholdNoun: "days before due",
+  },
+  invoice_paid: {
+    label: "Invoice paid",
+    blurb: "When an invoice is paid in full.",
+    usesThreshold: false,
+    defaultDays: 0,
+    thresholdNoun: "",
+  },
+  deal_won: {
+    label: "Deal won",
+    blurb: "When a deal is marked won.",
+    usesThreshold: false,
+    defaultDays: 0,
+    thresholdNoun: "",
+  },
+  deal_lost: {
+    label: "Deal lost",
+    blurb: "When a deal is marked lost.",
+    usesThreshold: false,
+    defaultDays: 0,
+    thresholdNoun: "",
+  },
   proposal_idle: {
     label: "Proposal with no response",
-    blurb: "Alert me when a sent proposal has gone this many days without a response.",
+    blurb: "When a sent proposal has gone this many days without a response.",
     usesThreshold: true,
     defaultDays: 7,
     thresholdNoun: "days since sent",
   },
   followup_due: {
     label: "Follow-up date reached",
-    blurb: "Alert me when a deal's scheduled follow-up date arrives.",
+    blurb: "When a deal's scheduled follow-up date arrives.",
     usesThreshold: false,
     defaultDays: 0,
     thresholdNoun: "",
   },
   opp_no_activity: {
     label: "Deal with no activity",
-    blurb: "Alert me when an open deal hasn't been touched in this many days.",
+    blurb: "When an open deal hasn't been touched in this many days.",
     usesThreshold: true,
     defaultDays: 14,
     thresholdNoun: "days idle",

@@ -16,9 +16,13 @@ CREATE TABLE IF NOT EXISTS public.commercial_notification_rules (
   -- Which condition the rule watches for.
   trigger        TEXT NOT NULL CHECK (trigger IN (
     'invoice_overdue',   -- an invoice N+ days past its due date
+    'invoice_due_soon',  -- an invoice coming due within N days
+    'invoice_paid',      -- an invoice paid in full (recent)
     'proposal_idle',     -- a Sent proposal with no response for N+ days
     'followup_due',      -- an opportunity whose follow-up date has arrived
-    'opp_no_activity'    -- an open opportunity untouched for N+ days
+    'opp_no_activity',   -- an open opportunity untouched for N+ days
+    'deal_won',          -- a deal recently marked won
+    'deal_lost'          -- a deal recently marked lost
   )),
   -- The "N days" for the trigger. followup_due ignores this.
   threshold_days INTEGER NOT NULL DEFAULT 7 CHECK (threshold_days >= 0 AND threshold_days <= 365),

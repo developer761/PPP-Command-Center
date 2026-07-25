@@ -23,6 +23,8 @@ import type { NotificationRule } from "@/lib/commercial/notification-rules/db";
 type Result = { ok: boolean; found: number; sent: number; skipped: number; errors: string[] };
 
 const MAX_FIRES_PER_RULE = 25;
+// Lookback window for threshold-less event triggers (deal_won/lost, invoice_paid).
+const RECENT_EVENT_WINDOW_DAYS = 2;
 
 type Match = { entityId: string; title: string; body: string; link: string };
 
@@ -145,6 +147,10 @@ async function evaluateRule(
   const todayEt = new Date(new Date(nowMs).toLocaleString("en-US", { timeZone: "America/New_York" }))
     .toISOString()
     .slice(0, 10);
+  // Event triggers (deal_won / deal_lost / invoice_paid) have no threshold — we
+  // look back a fixed 2-day window so a skipped cron run can't miss the event.
+  // The (rule, entity) fire-log still guarantees each event fires exactly once.
+  const recentCutoffIso = new Date(nowMs - RECENT_EVENT_WINDOW_DAYS * 86_400_000).toISOString();
 
   switch (rule.trigger) {
     case "invoice_overdue": {
@@ -233,6 +239,89 @@ async function evaluateRule(
         entityId: o.id,
         title: `No activity in ${rule.threshold_days}+ days: ${derivedOppName({ ...o, title: o.title ?? "" }, null)}`,
         body: `Last touched ${fmtDate(o.updated_at)}.`,
+        link: `/commercial/opportunities/${o.id}`,
+      }));
+    }
+    case "invoice_due_soon": {
+      // Coming due within N days: due date between today (ET) and now+N days,
+      // still open (unpaid, not void/draft/deleted). Excludes already-overdue
+      // (that's the invoice_overdue trigger).
+      const dueByIso = new Date(nowMs + rule.threshold_days * 86_400_000).toISOString();
+      const { data } = await sb
+        .from("commercial_invoices")
+        .select("id, invoice_number, due_at, balance_cents, status")
+        .not("status", "in", "(void,paid,draft)")
+        .gt("balance_cents", 0)
+        .not("due_at", "is", null)
+        .gte("due_at", todayEt)
+        .lte("due_at", dueByIso)
+        .is("deleted_at", null)
+        .order("due_at", { ascending: true })
+        .limit(500);
+      warnIfCapped(data, "invoice_due_soon");
+      return ((data ?? []) as Array<{ id: string; invoice_number: string; due_at: string; balance_cents: number }>).map((i) => ({
+        entityId: i.id,
+        title: `Invoice ${i.invoice_number} due within ${rule.threshold_days} days`,
+        body: `Balance ${formatCents(i.balance_cents)} — due ${fmtDate(i.due_at)}.`,
+        link: `/commercial/invoices/${i.id}`,
+      }));
+    }
+    case "invoice_paid": {
+      // Recently marked paid in full. paid_at is stamped on full payment.
+      const { data } = await sb
+        .from("commercial_invoices")
+        .select("id, invoice_number, total_cents, paid_at, status")
+        .eq("status", "paid")
+        .not("paid_at", "is", null)
+        .gte("paid_at", recentCutoffIso)
+        .is("deleted_at", null)
+        .order("paid_at", { ascending: true })
+        .limit(500);
+      warnIfCapped(data, "invoice_paid");
+      return ((data ?? []) as Array<{ id: string; invoice_number: string; total_cents: number | null; paid_at: string }>).map((i) => ({
+        entityId: i.id,
+        title: `Invoice ${i.invoice_number} paid in full`,
+        body: `${i.total_cents != null ? formatCents(i.total_cents) + " — " : ""}paid ${fmtDate(i.paid_at)}.`,
+        link: `/commercial/invoices/${i.id}`,
+      }));
+    }
+    case "deal_won": {
+      const { data } = await sb
+        .from("commercial_opportunities")
+        .select("id, account_id, title, title_override, client_name, property_street, decided_at")
+        .eq("status", "pre_sale_closed")
+        .eq("sub_status", "won")
+        .not("decided_at", "is", null)
+        .gte("decided_at", recentCutoffIso)
+        .is("deleted_at", null)
+        .is("archived_at", null)
+        .order("decided_at", { ascending: true })
+        .limit(500);
+      warnIfCapped(data, "deal_won");
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>).map((o) => ({
+        entityId: o.id,
+        title: `Deal won: ${derivedOppName({ ...o, title: o.title ?? "" }, null)}`,
+        body: `Marked won ${fmtDate(o.decided_at)}.`,
+        link: `/commercial/opportunities/${o.id}`,
+      }));
+    }
+    case "deal_lost": {
+      const { data } = await sb
+        .from("commercial_opportunities")
+        .select("id, account_id, title, title_override, client_name, property_street, decided_at")
+        .eq("status", "pre_sale_closed")
+        .eq("sub_status", "lost")
+        .not("decided_at", "is", null)
+        .gte("decided_at", recentCutoffIso)
+        .is("deleted_at", null)
+        .is("archived_at", null)
+        .order("decided_at", { ascending: true })
+        .limit(500);
+      warnIfCapped(data, "deal_lost");
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>).map((o) => ({
+        entityId: o.id,
+        title: `Deal lost: ${derivedOppName({ ...o, title: o.title ?? "" }, null)}`,
+        body: `Marked lost ${fmtDate(o.decided_at)}.`,
         link: `/commercial/opportunities/${o.id}`,
       }));
     }

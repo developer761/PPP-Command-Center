@@ -33,6 +33,16 @@ export default async function DashboardNotificationsPage({ searchParams }: { sea
     kind,
   });
 
+  // Clamp an out-of-range page so a stale ?page= never shows a false-empty inbox.
+  if (page > history.totalPages) {
+    const p = new URLSearchParams();
+    if (filter !== "all") p.set("filter", filter);
+    if (kind) p.set("kind", kind);
+    if (history.totalPages > 1) p.set("page", String(history.totalPages));
+    const qs = p.toString();
+    redirect(qs ? `/dashboard/notifications?${qs}` : "/dashboard/notifications");
+  }
+
   return (
     <div className="animate-fade-up">
       <PageHeader
@@ -40,9 +50,11 @@ export default async function DashboardNotificationsPage({ searchParams }: { sea
         subtitle="Your full notification history — color-form submissions and team updates."
       />
       <NotificationsView
+        key={`${history.page}-${filter}-${kind ?? ""}`}
         rows={history.rows}
         total={history.total}
         unread={history.unread}
+        week={history.week}
         page={history.page}
         totalPages={history.totalPages}
         filter={filter}

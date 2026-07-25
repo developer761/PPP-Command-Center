@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -22,6 +22,7 @@ type Props = {
   rows: Row[];
   total: number;
   unread: number;
+  week: number;
   page: number;
   totalPages: number;
   filter: "all" | "unread";
@@ -35,6 +36,7 @@ export default function NotificationsView({
   rows,
   total,
   unread,
+  week,
   page,
   totalPages,
   filter,
@@ -51,8 +53,8 @@ export default function NotificationsView({
   // Accent tone matches the platform (commercial = cc-brand red, CC = blue).
   const accent =
     platform === "commercial"
-      ? { text: "text-cc-brand-700", activeBg: "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200", dot: "bg-cc-brand-600" }
-      : { text: "text-ppp-blue-700", activeBg: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200", dot: "bg-ppp-blue-500" };
+      ? { text: "text-cc-brand-700", activeBg: "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200", dot: "bg-cc-brand-600", kpi: "text-cc-brand-700", ring: "focus-visible:ring-cc-brand-600/40" }
+      : { text: "text-ppp-blue-700", activeBg: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200", dot: "bg-ppp-blue-500", kpi: "text-ppp-blue-700", ring: "focus-visible:ring-ppp-blue-500/40" };
 
   const buildHref = (patch: Record<string, string | null>): string => {
     const p = new URLSearchParams();
@@ -89,32 +91,19 @@ export default function NotificationsView({
     }
   };
 
+  const activeKindLabel = kind ? kindOptions.find((o) => o.value === kind)?.label ?? "Filtered" : "All types";
+  const emptyEver = total === 0;
+
   return (
     <div className="space-y-4">
-      {/* Header row: unread + mark all */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm text-ppp-charcoal-500">
-          {localUnread > 0 ? (
-            <span>
-              <span className="font-semibold text-ppp-charcoal">{localUnread}</span> unread
-              <span className="mx-1.5 text-ppp-charcoal-300">·</span>
-            </span>
-          ) : null}
-          {total.toLocaleString()} total
-        </div>
-        {localUnread > 0 && (
-          <button
-            type="button"
-            onClick={markAll}
-            disabled={markingAll}
-            className={`text-xs font-semibold ${accent.text} hover:underline min-h-[44px] inline-flex items-center px-1 disabled:opacity-50`}
-          >
-            {markingAll ? "Marking…" : "Mark all read"}
-          </button>
-        )}
+      {/* KPI strip — at-a-glance summary */}
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+        <Kpi label="Unread" value={localUnread} accent={localUnread > 0 ? accent.kpi : "text-ppp-charcoal-400"} />
+        <Kpi label="This week" value={week} accent="text-ppp-charcoal-800" />
+        <Kpi label="All time" value={total} accent="text-ppp-charcoal-800" />
       </div>
 
-      {/* Filters: read/unread + kind */}
+      {/* Filters: read/unread + kind + mark all */}
       <div className="flex items-center gap-2 flex-wrap">
         {(["all", "unread"] as const).map((f) => {
           const active = filter === f;
@@ -122,40 +111,70 @@ export default function NotificationsView({
             <Link
               key={f}
               href={buildHref({ filter: f, page: "1" })}
-              className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold border min-h-[40px] transition-colors ${
+              aria-current={active ? "page" : undefined}
+              className={`inline-flex items-center px-3.5 rounded-full text-[13px] font-semibold border min-h-[44px] transition-colors ${
                 active ? accent.activeBg : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
               }`}
             >
-              {f === "all" ? "All" : "Unread"}
+              {f === "all" ? "All" : `Unread${localUnread > 0 ? ` · ${localUnread}` : ""}`}
             </Link>
           );
         })}
-        {kindOptions.length > 0 && (
-          <select
-            value={kind ?? ""}
-            onChange={(e) => router.push(buildHref({ kind: e.target.value || null, page: "1" }))}
-            aria-label="Filter by type"
-            className="ml-auto rounded-lg border border-ppp-charcoal-200 bg-white px-2.5 py-2 text-[13px] text-ppp-charcoal-700 min-h-[40px]"
-          >
-            <option value="">All types</option>
-            {kindOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        )}
+
+        <div className="ml-auto flex items-center gap-2">
+          {kindOptions.length > 0 && (
+            <KindMenu
+              options={kindOptions}
+              value={kind}
+              label={activeKindLabel}
+              accentRing={accent.ring}
+              onPick={(v) => router.push(buildHref({ kind: v, page: "1" }))}
+            />
+          )}
+          {localUnread > 0 && (
+            <button
+              type="button"
+              onClick={markAll}
+              disabled={markingAll}
+              className={`inline-flex items-center rounded-lg border border-ppp-charcoal-200 bg-white px-3 min-h-[44px] text-xs font-semibold ${accent.text} hover:bg-ppp-charcoal-50 disabled:opacity-50 touch-manipulation`}
+            >
+              {markingAll ? "Marking…" : "Mark all read"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* List */}
       {localRows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-ppp-charcoal-200 bg-white px-4 py-16 text-center">
-          <div className="mx-auto h-12 w-12 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 flex items-center justify-center mb-3">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-            </svg>
+        <div className="rounded-xl border border-dashed border-ppp-charcoal-200 bg-white px-4 py-14 text-center">
+          <div className={`mx-auto h-12 w-12 rounded-full flex items-center justify-center mb-3 ${emptyEver && filter === "all" && !kind ? "bg-emerald-50 text-emerald-500" : "bg-ppp-charcoal-50 text-ppp-charcoal-400"}`}>
+            {emptyEver && filter === "all" && !kind ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
+            )}
           </div>
-          <p className="text-sm text-ppp-charcoal-500">
-            {filter === "unread" ? "No unread notifications." : "No notifications yet."}
+          <p className="text-sm font-semibold text-ppp-charcoal">
+            {kind
+              ? "Nothing of this type"
+              : filter === "unread"
+              ? "You're all caught up"
+              : "No notifications yet"}
           </p>
+          <p className="mt-1 text-xs text-ppp-charcoal-500 max-w-xs mx-auto leading-relaxed">
+            {kind
+              ? "Try clearing the type filter to see everything."
+              : filter === "unread"
+              ? "Every notification has been read."
+              : platform === "commercial"
+              ? "Deal moves, proposals, invoices, and your custom alerts will show up here."
+              : "Color-form submissions and team updates will show up here."}
+          </p>
+          {(kind || filter === "unread") && (
+            <Link href={basePath} className={`mt-4 inline-flex items-center min-h-[44px] px-3 text-xs font-semibold ${accent.text} hover:underline`}>
+              View all notifications
+            </Link>
+          )}
         </div>
       ) : (
         <ul className="bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden">
@@ -165,7 +184,7 @@ export default function NotificationsView({
               <div className={`px-4 py-3.5 ${unreadRow ? (platform === "commercial" ? "bg-cc-brand-50/30" : "bg-ppp-blue-50/30") : ""} hover:bg-ppp-charcoal-50/60 transition-colors`}>
                 <div className="flex items-start gap-3">
                   {unreadRow ? (
-                    <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${accent.dot}`} aria-hidden />
+                    <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${accent.dot}`} aria-label="Unread" />
                   ) : (
                     <span className="mt-1.5 h-2 w-2 shrink-0" aria-hidden />
                   )}
@@ -227,6 +246,131 @@ export default function NotificationsView({
         </div>
       )}
     </div>
+  );
+}
+
+function Kpi({ label, value, accent }: { label: string; value: number; accent: string }) {
+  return (
+    <div className="rounded-xl border border-ppp-charcoal-100 bg-white px-3.5 py-3">
+      <div className={`text-2xl font-bold tabular-nums leading-none ${accent}`}>{value.toLocaleString()}</div>
+      <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-400">{label}</div>
+    </div>
+  );
+}
+
+/** Styled type filter — replaces the native gray <select>. Button + popover
+ *  with type-to-filter for longer option lists. */
+function KindMenu({
+  options,
+  value,
+  label,
+  accentRing,
+  onPick,
+}: {
+  options: { value: string; label: string }[];
+  value: string | null;
+  label: string;
+  accentRing: string;
+  onPick: (v: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const needle = q.trim().toLowerCase();
+  const filtered = needle ? options.filter((o) => o.label.toLowerCase().includes(needle)) : options;
+  const showSearch = options.length > 8;
+
+  const pick = (v: string | null) => {
+    onPick(v);
+    setOpen(false);
+    setQ("");
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-3 min-h-[44px] text-[13px] font-medium touch-manipulation transition-colors focus:outline-none focus-visible:ring-2 ${accentRing} ${
+          value ? "border-ppp-charcoal-300 text-ppp-charcoal-800" : "border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+        }`}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+        <span className="max-w-[130px] truncate">{label}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={`transition-transform ${open ? "rotate-180" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute right-0 z-20 mt-1.5 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-ppp-charcoal-200 bg-white shadow-lg overflow-hidden"
+        >
+          {showSearch && (
+            <div className="p-2 border-b border-ppp-charcoal-100">
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search types…"
+                className="w-full px-2.5 py-2 text-[13px] rounded-lg border border-ppp-charcoal-200 focus:outline-none focus:ring-2 focus:ring-ppp-charcoal-300/40"
+              />
+            </div>
+          )}
+          <ul className="max-h-64 overflow-y-auto py-1">
+            <li>
+              <button
+                type="button"
+                onClick={() => pick(null)}
+                className={`w-full text-left px-3 py-2.5 text-[13px] min-h-[44px] flex items-center justify-between gap-2 hover:bg-ppp-charcoal-50 ${!value ? "font-semibold text-ppp-charcoal" : "text-ppp-charcoal-700"}`}
+              >
+                All types
+                {!value && <Check />}
+              </button>
+            </li>
+            {filtered.map((o) => (
+              <li key={o.value}>
+                <button
+                  type="button"
+                  onClick={() => pick(o.value)}
+                  className={`w-full text-left px-3 py-2.5 text-[13px] min-h-[44px] flex items-center justify-between gap-2 hover:bg-ppp-charcoal-50 ${value === o.value ? "font-semibold text-ppp-charcoal" : "text-ppp-charcoal-700"}`}
+                >
+                  <span className="truncate">{o.label}</span>
+                  {value === o.value && <Check />}
+                </button>
+              </li>
+            ))}
+            {filtered.length === 0 && (
+              <li className="px-3 py-3 text-[12px] text-ppp-charcoal-400 text-center">No matching types</li>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Check() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-ppp-charcoal-500"><path d="M20 6 9 17l-5-5" /></svg>
   );
 }
 
