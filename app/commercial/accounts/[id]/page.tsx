@@ -111,7 +111,7 @@ import {
 } from "@/lib/commercial/accounts/recent-activity";
 import {
   proposalStatusLabel,
-  PROPOSAL_ELIGIBLE_OPP_STATUSES,
+  isProposalEligibleOpp,
 } from "@/lib/commercial/proposals/constants";
 import NewProposalPicker from "@/components/commercial/new-proposal-picker";
 import { commercialDb } from "@/lib/commercial/db";
@@ -3502,13 +3502,12 @@ async function AccountProposalsTab({
     bucket.rows.sort((a, b) => b.revision_number - a.revision_number);
   }
 
-  // Pull this account's open deals so the picker can offer them.
-  // Uses the shared PROPOSAL_ELIGIBLE_OPP_STATUSES so /commercial/
-  // proposals and this tab pick from the same eligible-deal set.
+  // Pull this account's proposal-eligible deals so the picker can offer them.
+  // Uses the shared isProposalEligibleOpp() so /commercial/proposals and this
+  // tab pick from the same set (pre-sale open lanes + WON).
   const openOpps = await listCommercialOpportunities({ accountId });
-  const eligibleOppStatusSet = new Set(PROPOSAL_ELIGIBLE_OPP_STATUSES);
   const pickerDeals = openOpps
-    .filter((o) => eligibleOppStatusSet.has(o.status))
+    .filter((o) => isProposalEligibleOpp(o))
     .map((o) => ({
       id: o.id,
       account_id: o.account_id,

@@ -20,8 +20,7 @@ export const PROPOSAL_STATUSES = [
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 
 /** Which opportunity statuses are eligible to have a new proposal
- *  started on them. Pre-Sale open lanes only — no starting proposals
- *  on Won/Lost/Post-Sale deals. Shared by /commercial/proposals's
+ *  started on them. Pre-Sale open lanes. Shared by /commercial/proposals's
  *  <NewProposalPicker> AND the account detail Proposals sub-tab so
  *  both surfaces stay in sync. */
 export const PROPOSAL_ELIGIBLE_OPP_STATUSES: readonly string[] = [
@@ -29,6 +28,24 @@ export const PROPOSAL_ELIGIBLE_OPP_STATUSES: readonly string[] = [
   "estimating",
   "proposal",
 ] as const;
+
+/** Can a NEW proposal be started on this opportunity?
+ *  - Pre-Sale open lanes (qualifying / estimating / proposal): yes.
+ *  - WON deals: yes — a deal can be won without ever going through the
+ *    proposal builder (e.g. dragged straight to Won), and you should still be
+ *    able to attach/document its proposal. The send flow guards a won deal
+ *    from moving backward, so this is safe.
+ *  - LOST / no-bid / post-sale: no.
+ *  Karan 2026-07-25: won-deal dead-end fix (a won deal with no proposal was
+ *  unreachable from both the picker and the account Proposals tab). */
+export function isProposalEligibleOpp(opp: {
+  status: string;
+  sub_status?: string | null;
+}): boolean {
+  if (PROPOSAL_ELIGIBLE_OPP_STATUSES.includes(opp.status)) return true;
+  if (opp.status === "pre_sale_closed" && opp.sub_status === "won") return true;
+  return false;
+}
 
 const STATUS_LABELS: Record<ProposalStatus, string> = {
   draft: "Draft",

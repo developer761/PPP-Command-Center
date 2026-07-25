@@ -195,7 +195,7 @@ export default function NewProposalPicker({
                               setDealQuery("");
                             }}
                             disabled={dealCount === 0}
-                            className={`w-full text-left px-3 py-2 min-h-[40px] flex items-center justify-between gap-2 ${
+                            className={`w-full text-left px-3 py-2 min-h-[44px] touch-manipulation flex items-center justify-between gap-2 ${
                               dealCount === 0
                                 ? "text-ppp-charcoal-300 cursor-not-allowed"
                                 : "hover:bg-ppp-charcoal-50 text-ppp-charcoal-800"
@@ -214,7 +214,7 @@ export default function NewProposalPicker({
                   )}
                 </ul>
                 <p className="text-[11px] text-ppp-charcoal-400">
-                  Customers with no open deals are grayed out.
+                  Customers with no deals ready for a proposal are grayed out.
                   {accountsHiddenByCap > 0 && (
                     <>
                       {" "}Showing {ACCOUNT_CAP} of {ACCOUNT_CAP + accountsHiddenByCap} matches — refine the search to see more.

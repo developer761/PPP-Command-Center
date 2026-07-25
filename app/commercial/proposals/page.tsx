@@ -32,7 +32,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import {
   PROPOSAL_STATUSES,
-  PROPOSAL_ELIGIBLE_OPP_STATUSES,
+  isProposalEligibleOpp,
   proposalStatusLabel,
   type ProposalStatus,
 } from "@/lib/commercial/proposals/constants";
@@ -287,14 +287,13 @@ export default async function ProposalsIndexPage({
   // can't start a proposal on a lost/no-bid deal. Source list is
   // PROPOSAL_ELIGIBLE_OPP_STATUSES so /commercial/proposals and the
   // account detail Proposals sub-tab stay in sync.
-  const eligibleOppStatusSet = new Set(PROPOSAL_ELIGIBLE_OPP_STATUSES);
   const accountsById = new Map(accountsForPicker.map((a) => [a.id, a] as const));
   const pickerAccounts = accountsForPicker.map((a) => ({
     id: a.id,
     company_name: a.company_name,
   }));
   const pickerDeals = oppsForPicker
-    .filter((o: CommercialOpportunity) => eligibleOppStatusSet.has(o.status))
+    .filter((o: CommercialOpportunity) => isProposalEligibleOpp(o))
     .map((o: CommercialOpportunity) => ({
       id: o.id,
       account_id: o.account_id,
