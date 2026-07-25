@@ -296,6 +296,16 @@ export default function NotificationBell() {
               </ul>
             )}
           </div>
+
+          {/* See all → the full paginated notifications inbox for THIS platform
+              (the dropdown only shows the most recent handful). */}
+          <Link
+            href={isCommercial ? "/commercial/notifications" : "/dashboard/notifications"}
+            onClick={() => setOpen(false)}
+            className={`block px-4 py-3 border-t border-ppp-charcoal-100 text-center text-xs font-semibold ${tone.linkText} hover:bg-ppp-charcoal-50/60 transition-colors`}
+          >
+            See all notifications
+          </Link>
         </div>
       )}
     </div>
