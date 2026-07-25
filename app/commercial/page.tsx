@@ -289,70 +289,98 @@ export default async function CommercialDashboardPage() {
       </header>
 
       {/* ─── NEEDS ATTENTION strip ─── */}
-      {(overdueProposals.length > 0 ||
-        coldRfps.length > 0 ||
-        followupsDue.length > 0 ||
-        winsAwaitingDebrief.length > 0) && (
-        <section>
-          <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
-            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-            Needs your attention
-          </h2>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <AttentionCard
-              count={overdueProposals.length}
-              label="Overdue proposals"
-              sub={overdueProposals.length === 0 ? "Nothing overdue" : overdueProposals.length === 1 ? "1 bid past its due date" : `${overdueProposals.length} bids past due date`}
-              href="/commercial/opportunities?overdue=1"
-              tone="rose"
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 6v6 M12 16.5v.5" />
-                </svg>
-              }
-            />
-            <AttentionCard
-              count={coldRfps.length}
-              label="Cold RFPs (>7d)"
-              sub={coldRfps.length === 0 ? "None sitting cold" : "Sitting on the bid request"}
-              href="/commercial/opportunities?coldrfp=1"
-              tone="amber"
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M6 2v6a6 6 0 0 0 12 0V2 M6 22v-6a6 6 0 0 1 12 0v6 M4 2h16 M4 22h16" />
-                </svg>
-              }
-            />
-            <AttentionCard
-              count={followupsDue.length}
-              label="Follow-ups due"
-              sub={followupsDue.length === 0 ? "Nothing scheduled" : "Check in today"}
-              href="/commercial/opportunities?followup=1"
-              tone="navy"
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M12 8v4l3 3" />
-                  <circle cx="12" cy="12" r="10" />
-                </svg>
-              }
-            />
-            <AttentionCard
-              count={winsAwaitingDebrief.length}
-              label="Awaiting debrief"
-              sub={winsAwaitingDebrief.length === 0 ? "All debriefed" : "Won opportunities need debrief"}
-              href="/commercial/reports/win-loss"
-              tone="emerald"
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M9 11l3 3L22 4" />
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                </svg>
-              }
-            />
-          </div>
-        </section>
-      )}
+      {/* Only surface the categories that ACTUALLY need attention — an
+          "attention" section full of "All clear" boxes is noise and buries the
+          one real item (Karan 2026-07-25). When nothing needs attention the
+          whole section is hidden (the KPI strip below already shows the calm
+          state). */}
+      {(() => {
+        const attentionItems = [
+          overdueProposals.length > 0 && {
+            key: "overdue",
+            count: overdueProposals.length,
+            label: "Overdue proposals",
+            sub: overdueProposals.length === 1 ? "1 bid past its due date" : `${overdueProposals.length} bids past due date`,
+            href: "/commercial/opportunities?overdue=1",
+            tone: "rose" as const,
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6 M12 16.5v.5" />
+              </svg>
+            ),
+          },
+          coldRfps.length > 0 && {
+            key: "cold",
+            count: coldRfps.length,
+            label: "Cold RFPs (>7d)",
+            sub: coldRfps.length === 1 ? "1 sitting on the bid request" : `${coldRfps.length} sitting on the bid request`,
+            href: "/commercial/opportunities?coldrfp=1",
+            tone: "amber" as const,
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M6 2v6a6 6 0 0 0 12 0V2 M6 22v-6a6 6 0 0 1 12 0v6 M4 2h16 M4 22h16" />
+              </svg>
+            ),
+          },
+          followupsDue.length > 0 && {
+            key: "followup",
+            count: followupsDue.length,
+            label: "Follow-ups due",
+            sub: followupsDue.length === 1 ? "1 to check in on today" : `${followupsDue.length} to check in on today`,
+            href: "/commercial/opportunities?followup=1",
+            tone: "navy" as const,
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 8v4l3 3" />
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+            ),
+          },
+          winsAwaitingDebrief.length > 0 && {
+            key: "debrief",
+            count: winsAwaitingDebrief.length,
+            label: "Awaiting debrief",
+            sub: winsAwaitingDebrief.length === 1 ? "1 won opportunity needs a debrief" : `${winsAwaitingDebrief.length} won opportunities need a debrief`,
+            href: "/commercial/reports/win-loss",
+            tone: "emerald" as const,
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </svg>
+            ),
+          },
+        ].filter(Boolean) as Array<{
+          key: string; count: number; label: string; sub: string; href: string;
+          tone: "rose" | "amber" | "navy" | "emerald"; icon: React.ReactNode;
+        }>;
+        if (attentionItems.length === 0) return null;
+        return (
+          <section>
+            <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+              Needs your attention
+              <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-cc-brand-600 text-white text-[10px] font-bold tabular-nums">
+                {attentionItems.length}
+              </span>
+            </h2>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {attentionItems.map((it) => (
+                <AttentionCard
+                  key={it.key}
+                  count={it.count}
+                  label={it.label}
+                  sub={it.sub}
+                  href={it.href}
+                  tone={it.tone}
+                  icon={it.icon}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* ─── KPI strip ─── */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -494,85 +522,57 @@ function AttentionCard({
   tone: "rose" | "amber" | "cc-brand" | "emerald" | "navy";
   icon: React.ReactNode;
 }) {
-  const isZero = count === 0;
-  // Zero-state = calm "all clear" (subtle emerald check), NOT a dimmed/disabled
-  // look; non-zero = tone-colored + hoverable link into the filtered list.
-  const ring = isZero
-    ? "border-emerald-100 bg-emerald-50/20"
-    : tone === "rose"
-    ? "border-rose-200 bg-rose-50/40 hover:border-rose-400 hover:bg-rose-50/70"
-    : tone === "amber"
-    ? "border-amber-200 bg-amber-50/40 hover:border-amber-400 hover:bg-amber-50/70"
-    : tone === "cc-brand"
-    ? "border-cc-brand-200 bg-cc-brand-50/40 hover:border-cc-brand-400 hover:bg-cc-brand-50/70"
-    : tone === "navy"
-    ? "border-ppp-navy-100 bg-ppp-navy-50/40 hover:border-ppp-navy-300 hover:bg-ppp-navy-50/70"
-    : "border-emerald-200 bg-emerald-50/40 hover:border-emerald-400 hover:bg-emerald-50/70";
-  const numberCls = isZero
-    ? "text-ppp-charcoal-300"
-    : tone === "rose"
-    ? "text-rose-700"
-    : tone === "amber"
-    ? "text-amber-700"
-    : tone === "cc-brand"
-    ? "text-cc-brand-700"
-    : tone === "navy"
-    ? "text-ppp-navy-700"
-    : "text-emerald-700";
-  const iconCls = isZero
-    ? "bg-emerald-100 text-emerald-600"
-    : tone === "rose"
-    ? "bg-rose-100 text-rose-700"
-    : tone === "amber"
-    ? "bg-amber-100 text-amber-700"
-    : tone === "cc-brand"
-    ? "bg-cc-brand-100 text-cc-brand-700"
-    : tone === "navy"
-    ? "bg-ppp-navy-100 text-ppp-navy-700"
-    : "bg-emerald-100 text-emerald-700";
-  // Zero-state renders a static "all clear" panel (no link — there's nothing to
-  // triage); non-zero renders a hoverable Link into the filtered list.
-  const inner = (
-    <>
-      <div className="flex items-start justify-between gap-2 mb-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
-          {label}
-        </span>
-        <span aria-hidden className={`inline-flex items-center justify-center h-7 w-7 rounded-lg ${iconCls}`}>
-          {isZero ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-          ) : (
-            icon
-          )}
-        </span>
-      </div>
-      {isZero ? (
-        <div className="font-condensed text-lg font-bold leading-tight tracking-tight text-emerald-700">
-          All clear
-        </div>
-      ) : (
-        <div className={`font-condensed text-3xl font-black leading-none tracking-tight tabular-nums ${numberCls}`}>
-          {count}
-        </div>
-      )}
-      <div className="mt-1 text-[11px] text-ppp-charcoal-500 leading-snug">
-        {sub}
-      </div>
-    </>
-  );
-  if (isZero) {
-    return (
-      <div className={`relative block border rounded-xl px-4 py-3 min-h-[92px] ${ring}`}>
-        {inner}
-      </div>
-    );
-  }
+  // Only rendered when count > 0 — the "Needs attention" section filters out
+  // clear categories entirely, so there's no zero/all-clear state here.
+  const ring =
+    tone === "rose"
+      ? "border-rose-200 bg-rose-50/40 hover:border-rose-400 hover:bg-rose-50/70"
+      : tone === "amber"
+      ? "border-amber-200 bg-amber-50/40 hover:border-amber-400 hover:bg-amber-50/70"
+      : tone === "cc-brand"
+      ? "border-cc-brand-200 bg-cc-brand-50/40 hover:border-cc-brand-400 hover:bg-cc-brand-50/70"
+      : tone === "navy"
+      ? "border-ppp-navy-100 bg-ppp-navy-50/40 hover:border-ppp-navy-300 hover:bg-ppp-navy-50/70"
+      : "border-emerald-200 bg-emerald-50/40 hover:border-emerald-400 hover:bg-emerald-50/70";
+  const numberCls =
+    tone === "rose"
+      ? "text-rose-700"
+      : tone === "amber"
+      ? "text-amber-700"
+      : tone === "cc-brand"
+      ? "text-cc-brand-700"
+      : tone === "navy"
+      ? "text-ppp-navy-700"
+      : "text-emerald-700";
+  const iconCls =
+    tone === "rose"
+      ? "bg-rose-100 text-rose-700"
+      : tone === "amber"
+      ? "bg-amber-100 text-amber-700"
+      : tone === "cc-brand"
+      ? "bg-cc-brand-100 text-cc-brand-700"
+      : tone === "navy"
+      ? "bg-ppp-navy-100 text-ppp-navy-700"
+      : "bg-emerald-100 text-emerald-700";
   return (
     <Link
       href={href}
       className={`group/att relative block border rounded-xl px-4 py-3 min-h-[92px] transition-all hover:shadow-md touch-manipulation ${ring}`}
     >
-      {inner}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+          {label}
+        </span>
+        <span aria-hidden className={`inline-flex items-center justify-center h-7 w-7 rounded-lg ${iconCls}`}>
+          {icon}
+        </span>
+      </div>
+      <div className={`font-condensed text-3xl font-black leading-none tracking-tight tabular-nums ${numberCls}`}>
+        {count}
+      </div>
+      <div className="mt-1 text-[11px] text-ppp-charcoal-500 leading-snug">
+        {sub}
+      </div>
     </Link>
   );
 }

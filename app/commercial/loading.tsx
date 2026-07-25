@@ -13,12 +13,8 @@ export default function CommercialDashboardLoading() {
         <div className="lg:col-span-2 h-28 bg-white border border-ppp-charcoal-100 rounded-xl" />
         <div className="h-28 bg-white border border-ppp-charcoal-100 rounded-xl" />
       </div>
-      {/* Attention / KPI strips */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-24 bg-white border border-ppp-charcoal-100 rounded-xl" />
-        ))}
-      </div>
+      {/* KPI strip (the "Needs attention" strip is conditional, so the
+          skeleton doesn't reserve a row for it — avoids a layout shift). */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-24 bg-white border border-ppp-charcoal-100 rounded-xl" />
