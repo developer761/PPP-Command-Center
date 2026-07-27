@@ -42,9 +42,9 @@ export async function runOverdueTasksReminder(): Promise<Result> {
     // Compare as date-only so "overdue" means strictly the deadline
     // date has already passed. A task due 2026-06-18 becomes overdue
     // starting on 2026-06-19, regardless of when the cron actually
-    // fires today. Same fix applied to hot-deals-cooling.ts for
-    // proposal_due_at.
-    const todayDateStr = new Date().toISOString().slice(0, 10);
+    // fires today. Karan 2026-07-27 audit: this MUST be the ET date, not
+    // the UTC date — otherwise the evening cron marks same-day tasks overdue.
+    const todayDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
 
     // Pull all overdue, open, assigned tasks + nested opp + nested acct
     // in one query so the cron stays a single DB round-trip on the read

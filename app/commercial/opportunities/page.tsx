@@ -2168,8 +2168,8 @@ function KanbanBoard({
         <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-white border border-ppp-charcoal-100 rounded-full px-3 py-1.5">
           <IconBulb size={13} className="text-ppp-navy-500 shrink-0" />
           <span>
-            <span className="hidden sm:inline">Drag between stages inside a customer to move a deal forward. Drop into <strong>Won / Lost</strong> to close.</span>
-            <span className="sm:hidden">On mobile, use the <strong>Move to…</strong> menu on each card to advance or close a deal.</span>
+            <span className="hidden sm:inline">Drag between stages inside a customer to move an opportunity. Drop into <strong>Won / Lost</strong> to close.</span>
+            <span className="sm:hidden">On mobile, use the <strong>Move to…</strong> menu on each card to move or close an opportunity.</span>
           </span>
         </div>
         {accountBuckets.map((acct) => {
@@ -2624,7 +2624,10 @@ function KanbanCard({
             aria-label={`Move ${opp.title}`}
           >
             <option value="" disabled>Move to…</option>
-            {MOVE_TO_COLUMNS.map((col) => (
+            {/* Only offer legal next statuses for THIS card (Karan 2026-07-27
+                audit) — the menu used to list every column incl. the card's own
+                current stage, so a Qualifying card offered "→ Qualifying". */}
+            {MOVE_TO_COLUMNS.filter((col) => (nextStatuses as readonly string[]).includes(col.key)).map((col) => (
               <option key={col.key} value={col.key}>
                 → {col.label}
               </option>

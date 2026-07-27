@@ -407,14 +407,72 @@ export async function editOpportunityNote(
   ) {
     return { ok: false, error: "Only the note's author can edit it." };
   }
+  // Re-parse @mentions on edit (Karan 2026-07-27 audit) — previously edit only
+  // patched body, so adding an @mention by editing never notified that person
+  // and left mentioned_user_ids stale. Resolve server-side (client can't forge).
+  const tokens = extractMentionTokens(trimmed);
+  const { user_ids: newMentionedIds } =
+    tokens.length > 0 ? await resolveMentionsToUserIds(tokens) : { user_ids: [] as string[] };
+  const priorMentioned = Array.isArray((before as { mentioned_user_ids?: string[] }).mentioned_user_ids)
+    ? (before as { mentioned_user_ids: string[] }).mentioned_user_ids
+    : [];
+  const priorSet = new Set(priorMentioned);
+  const freshlyMentioned = newMentionedIds.filter((id) => !priorSet.has(id));
+
   const { data: after, error } = await sb
     .from("commercial_opportunity_notes")
-    .update({ body: trimmed })
+    .update({ body: trimmed, mentioned_user_ids: newMentionedIds })
     .eq("id", note_id)
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
   await logUpdate("commercial_opportunity_notes", note_id, before, after, acting_user_id);
+
+  // Notify only the NEWLY-mentioned users (fire-and-forget) — people already
+  // mentioned in the original note aren't re-notified on every edit.
+  if (freshlyMentioned.length > 0) {
+    void (async () => {
+      try {
+        const { data: opp } = await sb
+          .from("commercial_opportunities")
+          .select("id, account_id, title, client_name, property_street")
+          .eq("id", opportunity_id)
+          .maybeSingle();
+        if (!opp) return;
+        const { data: acct } = await sb
+          .from("commercial_accounts")
+          .select("company_name")
+          .eq("id", (opp as { account_id: string }).account_id)
+          .maybeSingle();
+        let actorName = "PPP admin";
+        if (acting_user_id) {
+          const { data: actor } = await sb
+            .from("profiles")
+            .select("sf_user_name, email")
+            .eq("user_id", acting_user_id)
+            .maybeSingle();
+          const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
+          actorName = a?.sf_user_name || a?.email || "PPP admin";
+        }
+        const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240).trimEnd()}…` : trimmed;
+        const displayName = derivedOppName(
+          opp as { title: string; client_name: string | null; property_street: string | null },
+          (acct as { company_name?: string } | null)?.company_name ?? null
+        );
+        await insertCommercialNoteMentionNotifications({
+          opportunityId: opportunity_id,
+          noteId: note_id,
+          oppTitle: displayName,
+          noteBodyPreview: preview,
+          actingUserId: acting_user_id ?? null,
+          actorName,
+          mentionedUserIds: freshlyMentioned,
+        });
+      } catch (err) {
+        console.warn("[notes] edit re-mention notify failed:", err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }
   return { ok: true, note: after as OpportunityNote };
 }
 

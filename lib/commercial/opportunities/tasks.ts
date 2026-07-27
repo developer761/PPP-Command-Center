@@ -75,12 +75,15 @@ export async function listOpenTaskStatsByOpp(
     console.warn("[commercial/opportunities/tasks] listOpenTaskStatsByOpp:", error.message);
     return new Map();
   }
-  const today = new Date().toISOString().slice(0, 10);
+  // Date-only "today" in America/New_York (Karan 2026-07-27 audit) — using the
+  // UTC date flagged a task due TODAY as overdue after ~8pm ET, when UTC has
+  // already rolled to tomorrow. All PPP ops live in ET.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
   // "Due soon" = within 7 days of today (inclusive of today, exclusive
   // of overdue — overdue takes precedence).
-  const soonCutoff = new Date();
-  soonCutoff.setDate(soonCutoff.getDate() + 7);
-  const soonStr = soonCutoff.toISOString().slice(0, 10);
+  const soonDate = new Date(`${today}T00:00:00Z`);
+  soonDate.setUTCDate(soonDate.getUTCDate() + 7);
+  const soonStr = soonDate.toISOString().slice(0, 10);
   const out = new Map<string, { open: number; overdue: number; due_soon: number }>();
   for (const row of (data ?? []) as Array<{ opportunity_id: string; due_at: string | null }>) {
     const cur = out.get(row.opportunity_id) ?? { open: 0, overdue: 0, due_soon: 0 };

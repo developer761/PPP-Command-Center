@@ -31,7 +31,6 @@ import {
   isLost,
   oppStatusDisplayLabel,
 } from "@/lib/commercial/opportunities/constants";
-import { isTerminalOpportunityStatus } from "@/lib/commercial/opportunities/constants";
 import { writeDebrief, listDebriefsForOpp } from "@/lib/commercial/win-loss/debrief";
 import DebriefFields from "@/components/commercial/debrief-fields";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -113,16 +112,17 @@ async function submitDebriefAction(formData: FormData) {
   if (!opp || opp.account_id !== account_id) {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
   }
-  if (!isTerminalOpportunityStatus(opp.status)) {
+  // Only pre-sale bid outcomes are debriefable (see the page-level gate).
+  if (opp.status !== "pre_sale_closed") {
     redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
   }
-  // Legacy outcome derivation from v2 tuple.
+  // Outcome from the v2 (status, sub_status, loss_reason) tuple. Gated above to
+  // pre_sale_closed, so the sub_status branches are exhaustive; the final
+  // redirect covers a malformed tuple (e.g. sub_status neither won nor lost).
   let outcome: "won" | "lost" | "no_bid";
-  if (opp.status === "pre_sale_closed" && opp.sub_status === "won") outcome = "won";
-  else if (opp.status === "pre_sale_closed" && opp.sub_status === "lost" && opp.loss_reason === "no_bid") outcome = "no_bid";
-  else if (opp.status === "pre_sale_closed" && opp.sub_status === "lost") outcome = "lost";
-  else if (opp.status === "won") outcome = "won";
-  else if (opp.status === "lost") outcome = "lost";
+  if (opp.sub_status === "won") outcome = "won";
+  else if (opp.sub_status === "lost" && opp.loss_reason === "no_bid") outcome = "no_bid";
+  else if (opp.sub_status === "lost") outcome = "lost";
   else redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
 
   const competitor = String(formData.get("debrief_competitor") ?? "").trim();
@@ -185,9 +185,12 @@ export default async function AccountDebriefPage({
   if (!account) notFound();
   if (!opp || opp.account_id !== id) notFound();
 
-  const isTerminal = isTerminalOpportunityStatus(opp.status);
-  // Not terminal → user landed here by mistake; kick them back.
-  if (!isTerminal) {
+  // Win/Loss debrief is for the BID decision (pre-sale won / lost / no-bid)
+  // only. Karan 2026-07-27 audit: isTerminalOpportunityStatus also matched
+  // post_sale_closed (delivered work), which has no bid outcome — the form
+  // then mislabeled it "No-bid" and submitDebriefAction had no branch, so the
+  // save silently no-op'd. Gate strictly to pre_sale_closed.
+  if (opp.status !== "pre_sale_closed") {
     redirect(`/commercial/accounts/${id}?tab=opportunities`);
   }
 
