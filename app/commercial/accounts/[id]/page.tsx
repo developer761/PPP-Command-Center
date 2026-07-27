@@ -2416,7 +2416,7 @@ function TeamRow({
               }`}
               title={tipBits.join("\n")}
             >
-              {a.is_primary && <span aria-hidden>★</span>}
+              {a.is_primary && <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" /></svg>}
               {assignmentRoleLabel(a.role)}
               <form action={removeAssignmentAction} className="inline">
                 <input type="hidden" name="account_id" value={accountId} />
@@ -3285,7 +3285,7 @@ function AccountOpportunityRow({
                 )}
                 {leadLabel && (
                   <span>
-                    <span aria-hidden>★</span> {leadLabel} lead
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" /></svg> {leadLabel} lead
                   </span>
                 )}
                 {!isTerminal && daysInStatus !== null && daysInStatus > 7 && (
@@ -3962,7 +3962,7 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
       )}
       {expiringSoon.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-          <strong>⚠️ Expiring soon:</strong>{" "}
+          <strong className="inline-flex items-center gap-1"><IconAlertTriangle size={13} className="shrink-0" /> Expiring soon:</strong>{" "}
           {expiringSoon.map((e) => documentCategoryLabel(e.category)).join(", ")}. PPP will be blocked from working
           if these lapse on a covered contract.
         </div>
@@ -3988,8 +3988,8 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
             Active version. Highest version number wins. Older versions stack into &ldquo;History&rdquo;.
           </li>
           <li>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200 mr-1">
-              ✓ Valid 6mo
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200 mr-1">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden><path d="M20 6 9 17l-5-5" /></svg> Valid 6mo
             </span>
             Document is in good standing &mdash; expires more than 30 days out (or never).
           </li>
@@ -4089,15 +4089,15 @@ function DocumentRow({
     }
     if (exp.status === "soon") {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 text-amber-800 border-amber-200">
-          ⚠️ Expires in {exp.daysUntil}d
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 text-amber-800 border-amber-200">
+          <IconAlertTriangle size={12} className="shrink-0" /> Expires in {exp.daysUntil}d
         </span>
       );
     }
     if (doc.expires_at) {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200">
-          ✓ Valid
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden><path d="M20 6 9 17l-5-5" /></svg> Valid
         </span>
       );
     }
@@ -5506,7 +5506,7 @@ function DealEditSheet({
               </div>
               {primaryLead && (
                 <div className="mt-1 text-[11.5px] text-ppp-charcoal-500">
-                  <span aria-hidden>★</span> {primaryLead.user_full_name ?? primaryLead.user_email} lead
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" /></svg> {primaryLead.user_full_name ?? primaryLead.user_email} lead
                 </div>
               )}
             </div>
