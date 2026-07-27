@@ -113,9 +113,10 @@ export const TOMCO_COMPANY_FOOTER = {
  *  keeps the plain label. Called from the PDF renderer + the editor's
  *  live-preview total. */
 export function proposalTotalLabel(exclusionTexts: readonly string[]): string {
-  const materialsExcluded = exclusionTexts.some(
-    (t) => t.trim().toLowerCase() === "materials"
-  );
+  // Match any exclusion that STARTS with "materials" (2026-07-27 audit) — an
+  // exact-string match missed real variants like "Materials excluded" or
+  // "Materials (labor only)", leaving a labor-only bid labeled plain "TOTAL".
+  const materialsExcluded = exclusionTexts.some((t) => /^materials\b/i.test(t.trim()));
   return materialsExcluded ? "Labor Only TOTAL" : "TOTAL";
 }
 

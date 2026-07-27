@@ -9,7 +9,11 @@ import {
   updateProposalStatus,
   getProposal,
 } from "@/lib/commercial/proposals/db";
-import { PROPOSAL_STATUSES, type ProposalStatus } from "@/lib/commercial/proposals/constants";
+import {
+  PROPOSAL_STATUSES,
+  PROPOSAL_ALLOWED_TRANSITIONS,
+  type ProposalStatus,
+} from "@/lib/commercial/proposals/constants";
 
 /**
  * POST /api/commercial/proposals/[proposalId]/outcome
@@ -130,6 +134,32 @@ export async function POST(
       redirect_url: null,
       debrief_url,
     });
+  }
+
+  // Sending a proposal must go through the editor's Send button — it renders +
+  // snapshots the PDF to Files, sets snapshot_document_id, notifies the team,
+  // bumps exclusion use_count, and enforces the ≥1-inclusion guard. A kanban
+  // drag to Sent would flip the status and skip ALL of that, leaving a "Sent"
+  // proposal with no official PDF and nobody notified (Karan 2026-07-27 audit).
+  if (to === "sent") {
+    return NextResponse.json(
+      {
+        error: "use_send_button",
+        detail: "Open the proposal and use Send so the PDF is generated and the team is notified.",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Enforce the status DAG server-side (Karan 2026-07-27 audit) — the editor
+  // only uses it to filter buttons, so a hand-crafted POST or a free kanban
+  // drag could otherwise persist an illegal transition (e.g. superseded → *).
+  const allowed = PROPOSAL_ALLOWED_TRANSITIONS[currentStatus] ?? [];
+  if (!allowed.includes(to)) {
+    return NextResponse.json(
+      { error: "illegal_transition", detail: `Cannot move a proposal from ${currentStatus} to ${to}.` },
+      { status: 400 }
+    );
   }
 
   // Plain status flip — no parent-deal cascade. Draft ↔ Pending,

@@ -438,12 +438,16 @@ async function updateLineItemAction(formData: FormData) {
   const pnInput = formData.get("product_name");
   const product_name: string | null | undefined =
     pnInput === null ? undefined : String(pnInput).trim().slice(0, 200) || null;
+  // Sanitize quantity the same way the add path does — a NaN (blank/"abc")
+  // otherwise slips past updateLineItem's `< 0`/`=== 0` checks and writes null,
+  // dropping the row from the TOTAL (Karan 2026-07-27 audit).
+  const rawQty = Number(String(formData.get("quantity") ?? "1"));
   const result = await updateLineItem(
     {
       id,
       description: String(formData.get("description") ?? ""),
       product_name,
-      quantity: Number(String(formData.get("quantity") ?? "1")),
+      quantity: Number.isFinite(rawQty) && rawQty >= 0 ? rawQty : 1,
       unit: String(formData.get("unit") ?? "each"),
       unit_price_cents: dollarsInputToCents(String(formData.get("unit_price") ?? "0")),
       is_alternate: formData.get("is_alternate") === "on",

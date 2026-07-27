@@ -104,11 +104,18 @@ export default async function CreateProposalRoute({
         {
           proposal_id: result.proposal.id,
           product_id: item.product_id,
+          // Carry forward ALL customer-visible fields (Karan 2026-07-27 audit):
+          // product_name (071), phase (F.6), and is_labor (063) were being
+          // dropped on bump — labor rows became inclusions, phase grouping was
+          // lost, and product-only rows (blank description) failed to copy.
+          product_name: item.product_name,
           description: item.description,
           quantity: item.quantity,
           unit: item.unit,
           unit_price_cents: item.unit_price_cents,
           is_alternate: item.is_alternate,
+          is_labor: item.is_labor,
+          phase: item.phase,
           position: item.position,
         },
         user.id
