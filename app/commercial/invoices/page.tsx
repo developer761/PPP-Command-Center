@@ -12,7 +12,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, sumCommercialPaymentsSince, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isWon } from "@/lib/commercial/opportunities/constants";
@@ -464,7 +464,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // excluded (a voided invoice will never be paid).
   const outstandingCents = kpiSource
     .filter((i) => i.status !== "void")
-    .reduce((acc, i) => acc + i.balance_cents, 0);
+    // Clamp per-invoice balance at 0 so an overpaid invoice (balance < 0 after
+    // a line item was removed post-payment) can't silently reduce Outstanding.
+    .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
   const overdueCount = kpiSource.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
   // AR aging buckets (Karan 2026-07-07 Alex-love feature). GCs prioritize
   // collection effort by which invoices are furthest past due. Only compute
@@ -489,9 +491,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     { b0_30_cents: 0, b0_30_count: 0, b30_60_cents: 0, b30_60_count: 0, b60_plus_cents: 0, b60_plus_count: 0 }
   );
   const hasAging = agingBuckets.b0_30_cents + agingBuckets.b30_60_cents + agingBuckets.b60_plus_cents > 0;
-  const paidThisMonthCents = kpiSource
-    .filter((i) => i.paid_at && i.paid_at >= monthStartEtIso)
-    .reduce((acc, i) => acc + i.paid_cents, 0);
+  // Sum actual payment ROWS recorded this ET month (not lifetime paid_cents on
+  // invoices finished this month) so partials + multi-month invoices count right.
+  const paidThisMonthCents = await sumCommercialPaymentsSince(monthStartEtIso);
   const draftCount = kpiSource.filter((i) => i.status === "draft").length;
 
   const anyFilterActive = !!search || !!statusFilter || sortKey !== "recent" || !!accountIdFilter || !!agingFilter;

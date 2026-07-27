@@ -797,7 +797,13 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
           <BigNumber label="Total invoiced" value={formatCentsFull(invoice.total_cents)} tone="cc-brand" />
           <BigNumber label="Paid" value={formatCentsFull(invoice.paid_cents)} tone="emerald" />
-          <BigNumber label="Outstanding balance" value={formatCentsFull(invoice.balance_cents)} tone={invoice.balance_cents > 0 ? "cc-brand" : "neutral"} />
+          {invoice.balance_cents < 0 ? (
+            // Overpaid (a line item was removed after payment, or an overpayment
+            // landed) — show it as a credit, not a negative "outstanding".
+            <BigNumber label="Overpaid (credit)" value={formatCentsFull(-invoice.balance_cents)} tone="emerald" />
+          ) : (
+            <BigNumber label="Outstanding balance" value={formatCentsFull(invoice.balance_cents)} tone={invoice.balance_cents > 0 ? "cc-brand" : "neutral"} />
+          )}
           <BigNumber
             label="Due"
             value={fmtEtDate(invoice.due_at)}
@@ -927,10 +933,12 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 )}
                 {invoice.paid_cents > 0 && (
                   <tr className="border-t border-ppp-charcoal-100">
-                    <td colSpan={4} className="py-2 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-700">Outstanding balance</td>
+                    <td colSpan={4} className="py-2 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-700">
+                      {invoice.balance_cents < 0 ? "Overpaid (credit)" : "Outstanding balance"}
+                    </td>
                     <td className={`py-2 pr-3 text-right font-bold tabular-nums ${
-                      invoice.balance_cents === 0 ? "text-emerald-700" : "text-ppp-charcoal"
-                    }`}>{formatCentsFull(invoice.balance_cents)}</td>
+                      invoice.balance_cents === 0 ? "text-emerald-700" : invoice.balance_cents < 0 ? "text-emerald-700" : "text-ppp-charcoal"
+                    }`}>{formatCentsFull(invoice.balance_cents < 0 ? -invoice.balance_cents : invoice.balance_cents)}</td>
                     <td />
                   </tr>
                 )}

@@ -245,6 +245,32 @@ export async function listInvoiceLineItems(invoiceId: string): Promise<Commercia
   return (data ?? []) as CommercialInvoiceLineItem[];
 }
 
+/**
+ * Sum of payment amounts recorded with a paid_at at/after `fromIso` (Karan
+ * 2026-07-27 audit). The "Paid this month" KPI used to sum each invoice's
+ * lifetime paid_cents for invoices whose invoice.paid_at fell in the month —
+ * which double-counted invoices finished this month (that were partly paid
+ * earlier) and ignored partial payments on not-yet-fully-paid invoices. This
+ * sums the actual payment rows by their recorded date instead. Payments on
+ * soft-deleted invoices are excluded via the inner join.
+ */
+export async function sumCommercialPaymentsSince(fromIso: string): Promise<number> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_invoice_payments")
+    .select("amount_cents, commercial_invoices!inner(deleted_at)")
+    .gte("paid_at", fromIso)
+    .is("commercial_invoices.deleted_at", null);
+  if (error) {
+    console.warn("[commercial/invoices] payments-since sum failed:", error.message);
+    return 0;
+  }
+  return ((data ?? []) as Array<{ amount_cents: number | null }>).reduce(
+    (acc, r) => acc + (r.amount_cents ?? 0),
+    0
+  );
+}
+
 export async function listInvoicePayments(invoiceId: string): Promise<CommercialInvoicePayment[]> {
   const sb = commercialDb();
   const { data, error } = await sb
