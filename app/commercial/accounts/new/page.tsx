@@ -327,8 +327,9 @@ export default async function NewCommercialAccountPage({
 
       {duplicateCandidates.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-5 space-y-3">
-          <div className="text-sm font-semibold text-amber-800">
-            ⚠️ Possible duplicate{duplicateCandidates.length > 1 ? "s" : ""} found
+          <div className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg>
+            Possible duplicate{duplicateCandidates.length > 1 ? "s" : ""} found
           </div>
           <p className="text-[12px] text-amber-800/90 leading-relaxed">
             We already have account{duplicateCandidates.length > 1 ? "s" : ""} on file with a similar name. Open the existing one if it&apos;s the same company — otherwise click <strong>Create anyway</strong> at the bottom of the form to proceed.

@@ -11,6 +11,8 @@ import {
   updateCommercialAccount,
   softDeleteCommercialAccount,
 } from "@/lib/commercial/accounts/mutations";
+import { findNearDuplicates } from "@/lib/commercial/accounts/duplicates";
+import { commercialDb } from "@/lib/commercial/db";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import CommercialSiteAddressToggle from "@/components/commercial-site-address-toggle";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -18,7 +20,7 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commerc
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string }>;
-type SP = Promise<{ error?: string; confirm_delete?: string }>;
+type SP = Promise<{ error?: string; confirm_delete?: string; duplicate?: string }>;
 
 async function updateAction(formData: FormData) {
   "use server";
@@ -37,6 +39,19 @@ async function updateAction(formData: FormData) {
   const company = get("company_name");
   if (!company) {
     redirect(`/commercial/accounts/${id}/edit?error=name_required`);
+  }
+
+  // Near-duplicate check on rename (Karan 2026-07-27 audit) — the edit path
+  // never ran it, so renaming an account onto an existing name was silently
+  // allowed. excludeId=self so we don't flag the row being edited; skipped
+  // once the user confirms via "Save anyway".
+  const confirmedDuplicate = formData.get("confirm_duplicate") === "1";
+  if (!confirmedDuplicate) {
+    const duplicates = await findNearDuplicates(company, id);
+    if (duplicates.length > 0) {
+      const ids = duplicates.map((d) => d.id).join(",");
+      redirect(`/commercial/accounts/${id}/edit?duplicate=${encodeURIComponent(ids)}`);
+    }
   }
 
   const result = await updateCommercialAccount(
@@ -126,6 +141,19 @@ export default async function EditCommercialAccountPage({
   const errorMsg = sp.error;
   const confirmDelete = sp.confirm_delete === "1";
 
+  // Near-duplicate warning (Karan 2026-07-27 audit): the rename hit an existing
+  // account name. Show the candidates + a "Save anyway" confirmation.
+  const duplicateIds = sp.duplicate?.split(",").filter(Boolean) ?? [];
+  let duplicateCandidates: Array<{ id: string; company_name: string }> = [];
+  if (duplicateIds.length > 0) {
+    const { data } = await commercialDb()
+      .from("commercial_accounts")
+      .select("id, company_name")
+      .in("id", duplicateIds)
+      .is("deleted_at", null);
+    duplicateCandidates = (data ?? []) as typeof duplicateCandidates;
+  }
+
   return (
     <div className="space-y-6">
       <header>
@@ -153,9 +181,25 @@ export default async function EditCommercialAccountPage({
         </div>
       )}
 
+      {duplicateCandidates.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 max-w-2xl">
+          <div className="flex items-start gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg>
+            <div className="min-w-0">
+              <div className="font-semibold">Another account has a similar name</div>
+              <p className="mt-0.5 text-[13px] leading-snug">
+                {duplicateCandidates.map((d) => d.company_name).join(", ")}. If this rename is intentional, click <strong>Save anyway</strong> below; otherwise adjust the name.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit form — same shape as new account form */}
       <form action={updateAction} className="space-y-5 max-w-2xl">
         <input type="hidden" name="id" value={account.id} />
+        {/* When the dup warning is showing, the next submit confirms past it. */}
+        {duplicateCandidates.length > 0 && <input type="hidden" name="confirm_duplicate" value="1" />}
 
         <Section title="Identity" anchorId="edit-identity">
           <EditField id="company_name" label="Company name *" required defaultValue={account.company_name} />
@@ -234,7 +278,7 @@ export default async function EditCommercialAccountPage({
               className="h-5 w-5 mt-0.5 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
             />
             <span>
-              <strong>★ Key Relationship</strong>
+              <strong className="inline-flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" /></svg>Key Relationship</strong>
               <span className="block text-[12px] text-ppp-charcoal-500 mt-0.5">
                 Strategic partnership: biggest GCs, recurring multi-year customers, decision-makers with personal trust. Surfaces a ★ badge across every list + card so high-value accounts pop on scan.
               </span>
@@ -264,7 +308,7 @@ export default async function EditCommercialAccountPage({
             type="submit"
             className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
           >
-            Save changes
+            {duplicateCandidates.length > 0 ? "Save anyway" : "Save changes"}
           </button>
         </div>
       </form>
