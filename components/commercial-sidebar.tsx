@@ -72,7 +72,6 @@ const navSections: NavSection[] = [
   {
     heading: "Settings",
     items: [
-      { label: "Alerts", href: "/commercial/settings/notifications", icon: <IconBell /> },
       { label: "Setup Health", href: "/commercial/settings/health", icon: <IconHeart /> },
       { label: "Competitors", href: "/commercial/settings/competitors", icon: <IconUsers /> },
       { label: "Archived deals", href: "/commercial/settings/archived", icon: <IconArchive /> },

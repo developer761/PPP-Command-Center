@@ -21,8 +21,6 @@ export type NotificationRule = {
   trigger: RuleTrigger;
   threshold_days: number;
   channel: RuleChannel;
-  /** Additive Slack delivery (independent of `channel`). */
-  to_slack: boolean;
   enabled: boolean;
   last_evaluated_at: string | null;
   created_at: string;
@@ -72,7 +70,6 @@ export async function createNotificationRule(input: {
   trigger: string;
   threshold_days: number;
   channel: string;
-  to_slack?: boolean;
 }): Promise<CreateResult> {
   const err = validate(input);
   if (err) return { ok: false, error: err };
@@ -85,7 +82,6 @@ export async function createNotificationRule(input: {
       trigger: input.trigger,
       threshold_days: input.threshold_days,
       channel: input.channel,
-      to_slack: input.to_slack ?? false,
       enabled: true,
     })
     .select("id")

@@ -51,15 +51,11 @@ function TriggerIcon({ trigger }: { trigger: RuleTrigger }) {
 
 export default function AddNotificationRuleForm({
   action,
-  slackConnected = false,
 }: {
   action: (formData: FormData) => void;
-  /** Whether the user has connected Slack — drives the Slack toggle state. */
-  slackConnected?: boolean;
 }) {
   const [trigger, setTrigger] = useState<RuleTrigger>("invoice_overdue");
   const [channel, setChannel] = useState<RuleChannel>("both");
-  const [toSlack, setToSlack] = useState(false);
   // Preserve the day value PER trigger so switching away and back keeps it.
   const [daysByTrigger, setDaysByTrigger] = useState<Partial<Record<RuleTrigger, number>>>({});
 
@@ -75,7 +71,6 @@ export default function AddNotificationRuleForm({
     >
       <input type="hidden" name="trigger" value={trigger} />
       <input type="hidden" name="channel" value={channel} />
-      <input type="hidden" name="to_slack" value={toSlack ? "true" : "false"} />
 
       <div className="flex items-center gap-2.5">
         <span className="flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-50 text-cc-brand-700 shrink-0">
@@ -187,29 +182,9 @@ export default function AddNotificationRuleForm({
             );
           })}
         </div>
-
-        {/* Additive Slack delivery */}
-        <div className="mt-2.5">
-          {slackConnected ? (
-            <button
-              type="button"
-              onClick={() => setToSlack((s) => !s)}
-              aria-pressed={toSlack}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 min-h-[44px] text-[13px] font-semibold transition-colors touch-manipulation ${
-                toSlack ? "border-cc-brand-500 bg-cc-brand-50 text-cc-brand-800" : "border-ppp-charcoal-200 bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-              }`}
-            >
-              <span className={`flex items-center justify-center h-4 w-4 rounded border ${toSlack ? "bg-cc-brand-600 border-cc-brand-600 text-white" : "border-ppp-charcoal-300 text-transparent"}`}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
-              </span>
-              Also send to Slack
-            </button>
-          ) : (
-            <p className="text-[11px] text-ppp-charcoal-400">
-              Want these in Slack too? <a href="#slack" className="text-cc-brand-700 hover:underline font-medium">Connect Slack</a> above, then this alert can post there.
-            </p>
-          )}
-        </div>
+        <span className="block mt-2 text-[11px] text-ppp-charcoal-400">
+          Email requires turning on email notifications above.
+        </span>
       </div>
 
       <div className="flex justify-end pt-1">

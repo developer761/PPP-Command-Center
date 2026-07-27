@@ -9,12 +9,12 @@ import {
   deleteNotificationRule,
 } from "@/lib/commercial/notification-rules/db";
 import {
-  getUserSlackConfig,
-  saveUserSlackWebhook,
-  setUserSlackEnabled,
-  deleteUserSlackWebhook,
-  sendUserSlackTest,
-} from "@/lib/commercial/slack/db";
+  getUserEmailPref,
+  saveUserNotifyEmail,
+  setUserEmailEnabled,
+  deleteUserEmailPref,
+  sendUserEmailTest,
+} from "@/lib/commercial/email-prefs/db";
 import { ruleSummary, ruleChannelLabel } from "@/lib/commercial/notification-rules/constants";
 import AddNotificationRuleForm from "@/components/commercial/add-notification-rule-form";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -48,6 +48,15 @@ async function requireUser(): Promise<string> {
   return user.id;
 }
 
+async function requireUserFull(): Promise<{ id: string; email: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  return { id: user.id, email: user.email ?? null };
+}
+
 async function createAction(formData: FormData) {
   "use server";
   const userId = await requireUser();
@@ -57,7 +66,6 @@ async function createAction(formData: FormData) {
     trigger: String(formData.get("trigger") ?? ""),
     threshold_days: Number(formData.get("threshold_days") ?? 0),
     channel: String(formData.get("channel") ?? "both"),
-    to_slack: String(formData.get("to_slack") ?? "") === "true",
   });
   revalidatePath(BASE);
   if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error)}`);
@@ -84,38 +92,38 @@ async function deleteAction(formData: FormData) {
   redirect(`${BASE}?ok=deleted`);
 }
 
-async function saveSlackAction(formData: FormData) {
+async function saveEmailAction(formData: FormData) {
   "use server";
   const userId = await requireUser();
-  const res = await saveUserSlackWebhook({ userId, webhookUrl: String(formData.get("webhook_url") ?? "") });
+  const res = await saveUserNotifyEmail({ userId, email: String(formData.get("email") ?? "") });
   revalidatePath(BASE);
-  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error)}#slack`);
-  redirect(`${BASE}?ok=slack_saved#slack`);
+  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error)}#email`);
+  redirect(`${BASE}?ok=email_saved#email`);
 }
 
-async function testSlackAction() {
+async function testEmailAction() {
   "use server";
   const userId = await requireUser();
-  const res = await sendUserSlackTest(userId);
+  const res = await sendUserEmailTest(userId);
   revalidatePath(BASE);
-  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error ?? "Test failed.")}#slack`);
-  redirect(`${BASE}?ok=slack_test#slack`);
+  if (!res.ok) redirect(`${BASE}?error=${encodeURIComponent(res.error ?? "Test failed.")}#email`);
+  redirect(`${BASE}?ok=email_test#email`);
 }
 
-async function toggleSlackAction(formData: FormData) {
+async function toggleEmailAction(formData: FormData) {
   "use server";
   const userId = await requireUser();
-  await setUserSlackEnabled({ userId, enabled: String(formData.get("enabled") ?? "") === "true" });
+  await setUserEmailEnabled({ userId, enabled: String(formData.get("enabled") ?? "") === "true" });
   revalidatePath(BASE);
-  redirect(`${BASE}#slack`);
+  redirect(`${BASE}#email`);
 }
 
-async function removeSlackAction() {
+async function removeEmailAction() {
   "use server";
   const userId = await requireUser();
-  await deleteUserSlackWebhook(userId);
+  await deleteUserEmailPref(userId);
   revalidatePath(BASE);
-  redirect(`${BASE}?ok=slack_removed#slack`);
+  redirect(`${BASE}?ok=email_removed#email`);
 }
 
 export default async function CommercialNotificationSettingsPage({
@@ -123,18 +131,18 @@ export default async function CommercialNotificationSettingsPage({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
-  const userId = await requireUser();
-  const [rules, slack, sp] = await Promise.all([
+  const { id: userId, email: accountEmail } = await requireUserFull();
+  const [rules, emailPref, sp] = await Promise.all([
     listNotificationRules(userId),
-    getUserSlackConfig(userId),
+    getUserEmailPref(userId),
     searchParams,
   ]);
   const okMessages: Record<string, string> = {
     created: "Alert created — the daily check will start including it.",
     deleted: "Alert deleted.",
-    slack_saved: "Slack connected. Send a test to confirm it works.",
-    slack_test: "Test message sent — check your Slack.",
-    slack_removed: "Slack disconnected.",
+    email_saved: "Email saved. Send a test to confirm it arrives.",
+    email_test: "Test email sent — check your inbox.",
+    email_removed: "Email notifications turned off.",
   };
 
   return (
@@ -142,9 +150,9 @@ export default async function CommercialNotificationSettingsPage({
       <div>
         <h1 className="text-xl font-bold tracking-tight text-ppp-charcoal">Notification alerts</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">
-          Built-in alerts fire automatically. Create your own custom alerts below.
-          Your notifications appear in the bell and on the{" "}
+          Notifications always appear in the bell and on the{" "}
           <Link href="/commercial/notifications" className="text-cc-brand-700 hover:underline font-medium">Notifications</Link> page.
+          Turn on email below to also get them by email, and create your own custom alerts.
         </p>
       </div>
 
@@ -174,39 +182,39 @@ export default async function CommercialNotificationSettingsPage({
         <p className="text-[11px] text-ppp-charcoal-400 mt-2">These are always on and can&apos;t be turned off individually.</p>
       </section>
 
-      {/* Slack */}
-      <section id="slack" className="space-y-3 scroll-mt-20">
+      {/* Email */}
+      <section id="email" className="space-y-3 scroll-mt-20">
         <div>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-ppp-charcoal-400">Slack</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-ppp-charcoal-400">Email notifications</h2>
           <p className="text-[13px] text-ppp-charcoal-500 mt-1">
-            Mirror your notifications to Slack. Paste a personal{" "}
-            <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noopener noreferrer" className="text-cc-brand-700 hover:underline font-medium">Incoming Webhook</a>{" "}
-            URL and every notification you get here is also posted to that Slack channel.
+            The bell always has your notifications. Turn this on to also get them by email.
           </p>
         </div>
 
-        {slack ? (
+        {emailPref ? (
           <div className="rounded-xl border border-ppp-charcoal-100 bg-white p-4 sm:p-5 space-y-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className={`flex items-center justify-center h-9 w-9 rounded-lg shrink-0 ${slack.enabled ? "bg-emerald-50 text-emerald-600" : "bg-ppp-charcoal-100 text-ppp-charcoal-400"}`}>
+              <span className={`flex items-center justify-center h-9 w-9 rounded-lg shrink-0 ${emailPref.enabled ? "bg-emerald-50 text-emerald-600" : "bg-ppp-charcoal-100 text-ppp-charcoal-400"}`}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M14 3v11a2 2 0 1 1-2-2h9a2 2 0 1 1 0 4M10 21V10a2 2 0 1 1 2 2H3a2 2 0 1 1 0-4" />
+                  <rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" />
                 </svg>
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-ppp-charcoal">Slack connected</span>
-                  {slack.enabled ? (
+                  <span className="text-sm font-semibold text-ppp-charcoal">
+                    {emailPref.enabled ? "Emailing you at" : "Email paused"}
+                  </span>
+                  {emailPref.enabled ? (
                     <span className="rounded bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">On</span>
                   ) : (
                     <span className="rounded bg-ppp-charcoal-100 px-1.5 py-0.5 text-[10px] font-semibold text-ppp-charcoal-500">Paused</span>
                   )}
                 </div>
-                <div className="text-[11.5px] text-ppp-charcoal-500 truncate mt-0.5 font-mono">hooks.slack.com/services/•••••••</div>
+                <div className="text-[12px] text-ppp-charcoal-600 truncate mt-0.5">{emailPref.email}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <form action={testSlackAction}>
+              <form action={testEmailAction}>
                 <PendingSubmitButton
                   className="inline-flex items-center rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-xs font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
                   pendingLabel="Sending…"
@@ -214,36 +222,37 @@ export default async function CommercialNotificationSettingsPage({
                   Send test
                 </PendingSubmitButton>
               </form>
-              <form action={toggleSlackAction}>
-                <input type="hidden" name="enabled" value={slack.enabled ? "false" : "true"} />
+              <form action={toggleEmailAction}>
+                <input type="hidden" name="enabled" value={emailPref.enabled ? "false" : "true"} />
                 <PendingSubmitButton
                   className="inline-flex items-center rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-xs font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
                   pendingLabel="…"
                 >
-                  {slack.enabled ? "Pause" : "Resume"}
+                  {emailPref.enabled ? "Pause" : "Resume"}
                 </PendingSubmitButton>
               </form>
-              <form action={removeSlackAction}>
+              <form action={removeEmailAction}>
                 <ConfirmSubmitButton
-                  message="Disconnect Slack? Notifications will stop posting to your channel."
+                  message="Turn off email notifications? You'll still see everything in the bell."
                   pendingLabel="Removing…"
                   className="inline-flex items-center rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 min-h-[44px] touch-manipulation"
                 >
-                  Disconnect
+                  Turn off
                 </ConfirmSubmitButton>
               </form>
             </div>
-            {/* Replace the webhook */}
-            <form action={saveSlackAction} className="border-t border-ppp-charcoal-100 pt-4">
+            {/* Change the address */}
+            <form action={saveEmailAction} className="border-t border-ppp-charcoal-100 pt-4">
               <label className="block">
-                <span className="block text-[12px] font-semibold text-ppp-charcoal-600 mb-1.5">Replace webhook URL</span>
+                <span className="block text-[12px] font-semibold text-ppp-charcoal-600 mb-1.5">Change email address</span>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
-                    type="url"
-                    name="webhook_url"
+                    type="email"
+                    name="email"
                     required
-                    placeholder="https://hooks.slack.com/services/…"
-                    className="flex-1 px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px] font-mono"
+                    defaultValue={emailPref.email}
+                    placeholder="you@example.com"
+                    className="flex-1 px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
                   />
                   <PendingSubmitButton
                     className="inline-flex items-center justify-center rounded-lg bg-cc-brand-600 px-4 text-sm font-semibold text-white hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
@@ -256,26 +265,27 @@ export default async function CommercialNotificationSettingsPage({
             </form>
           </div>
         ) : (
-          <form action={saveSlackAction} className="rounded-xl border border-ppp-charcoal-100 bg-white p-4 sm:p-5">
+          <form action={saveEmailAction} className="rounded-xl border border-ppp-charcoal-100 bg-white p-4 sm:p-5">
             <label className="block">
-              <span className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">Slack Incoming Webhook URL</span>
+              <span className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">Email address</span>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
-                  type="url"
-                  name="webhook_url"
+                  type="email"
+                  name="email"
                   required
-                  placeholder="https://hooks.slack.com/services/…"
-                  className="flex-1 px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] font-mono"
+                  defaultValue={accountEmail ?? ""}
+                  placeholder="you@example.com"
+                  className="flex-1 px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px]"
                 />
                 <PendingSubmitButton
                   className="inline-flex items-center justify-center gap-2 rounded-lg bg-cc-brand-600 px-5 text-sm font-semibold text-white hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
-                  pendingLabel="Connecting…"
+                  pendingLabel="Turning on…"
                 >
-                  Connect Slack
+                  Turn on email
                 </PendingSubmitButton>
               </div>
               <span className="block mt-2 text-[11px] text-ppp-charcoal-400">
-                Create one at Slack → Apps → Incoming Webhooks, pick a channel, and paste the URL it gives you.
+                We&apos;ll email your notifications here. You can pause or change it anytime.
               </span>
             </label>
           </form>
@@ -285,7 +295,7 @@ export default async function CommercialNotificationSettingsPage({
       {/* Custom */}
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-wider text-ppp-charcoal-400">Your custom alerts</h2>
-        <AddNotificationRuleForm action={createAction} slackConnected={!!slack && slack.enabled !== false} />
+        <AddNotificationRuleForm action={createAction} />
 
         {rules.length === 0 ? (
           <p className="rounded-lg border border-dashed border-ppp-charcoal-200 px-4 py-8 text-center text-sm text-ppp-charcoal-400">
@@ -306,12 +316,6 @@ export default async function CommercialNotificationSettingsPage({
                     {ruleSummary(r.trigger, r.threshold_days)}
                     <span className="mx-1.5 text-ppp-charcoal-300">·</span>
                     {ruleChannelLabel(r.channel)}
-                    {r.to_slack && (
-                      <>
-                        <span className="mx-1.5 text-ppp-charcoal-300">·</span>
-                        <span className="text-cc-brand-700 font-medium">Slack</span>
-                      </>
-                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
