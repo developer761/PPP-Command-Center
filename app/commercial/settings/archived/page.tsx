@@ -286,8 +286,12 @@ export default async function ArchivedDealsPage({
                     day: "numeric",
                   })
                 : "—";
+              // A <div>, not a <label> (Karan 2026-07-27 audit): a label
+              // wrapping the checkbox AND the Link + Unarchive button meant
+              // tapping either also toggled the checkbox on touch. The checkbox
+              // has its own aria-label, so no wrapping label is needed.
               return (
-                <label
+                <div
                   key={o.id}
                   className="flex items-start gap-3 rounded-lg border border-ppp-charcoal-100 bg-white p-3"
                 >
@@ -323,7 +327,7 @@ export default async function ArchivedDealsPage({
                       Unarchive
                     </button>
                   </div>
-                </label>
+                </div>
               );
             })}
           </div>

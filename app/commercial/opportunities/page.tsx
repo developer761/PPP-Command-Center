@@ -2238,7 +2238,7 @@ function KanbanBoard({
               <path d="M6 9l6 6 6-6" />
             </svg>
           </summary>
-          <div className="border-t border-ppp-charcoal-100 overflow-x-auto p-2 sm:p-3 bg-ppp-charcoal-50/30">
+          <div className="border-t border-ppp-charcoal-100 overflow-x-auto snap-x snap-mandatory p-2 sm:p-3 bg-ppp-charcoal-50/30">
             <div className="flex gap-2 min-w-max items-stretch">
             {OPEN_COLUMNS.map((status) => {
               const colOpps = acct.byStatus.get(status) ?? [];
@@ -2271,7 +2271,7 @@ function KanbanBoard({
               ) : null;
               const column = (
                 <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
-                  <div className="w-60 sm:w-64 shrink-0 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-white shadow-sm">
+                  <div className="w-60 sm:w-64 shrink-0 snap-start border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-white shadow-sm">
                     {/* Colored accent stripe on top — the whole card is
                         white; only the 3px stripe carries the stage
                         tone, so a row of 7 columns reads as a unified

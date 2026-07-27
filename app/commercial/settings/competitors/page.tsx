@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
+import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import {
@@ -497,17 +498,15 @@ function MergeForm({
         <p className="text-[11px] text-ppp-charcoal-500 mb-2">
           Merge <strong>{sourceName}</strong> into another competitor. All historic debriefs will roll up to the target.
         </p>
-        <select
+        {/* Searchable (Karan 2026-07-27 audit) — the competitor dictionary
+            grows past the ~10-15 native-select threshold. */}
+        <SearchableSelect
           name="target_id"
           required
-          defaultValue=""
-          className="block w-full px-2 py-1.5 rounded border border-ppp-charcoal-200 text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-cc-brand-600"
-        >
-          <option value="" disabled>Pick target…</option>
-          {candidates.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
+          options={candidates.map((t) => ({ value: t.id, label: t.name }))}
+          placeholder="Pick target…"
+          ariaLabel={`Merge ${sourceName} into`}
+        />
         <button
           type="submit"
           className="mt-2 w-full text-xs font-semibold px-3 py-2 rounded bg-rose-600 text-white hover:bg-rose-700 min-h-[44px]"

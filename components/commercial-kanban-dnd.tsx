@@ -376,7 +376,9 @@ export function KanbanDnDColumn({
       // whole column brand-blue on hover with a hairline outline; the
       // drop feels like the target snaps to a soft state rather than
       // wrapping in a badge.
-      className={`h-full transition-colors rounded-xl ${
+      // snap-start so each column aligns cleanly when the board is scrolled
+      // horizontally on mobile (Karan 2026-07-27 audit).
+      className={`h-full snap-start transition-colors rounded-xl ${
         isOver && ctx.dragOppId
           ? "bg-cc-brand-50/60 outline outline-1 outline-cc-brand-300"
           : ""
