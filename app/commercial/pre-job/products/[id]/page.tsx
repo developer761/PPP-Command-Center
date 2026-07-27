@@ -101,37 +101,58 @@ async function saveCoreAction(formData: FormData) {
   // pass the parsed cents.
   const costPayload =
     costRaw !== null && String(costRaw).trim() === "" ? null : cost;
-  if (price === null)
-    redirect(
-      detailPath(
-        id,
-        "error=" +
-          encodeURIComponent("Default price must be a positive dollar amount.")
-      )
-    );
+
+  const sku = String(formData.get("sku") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const category = String(formData.get("category") ?? "other");
+  const unit = String(formData.get("unit") ?? "each");
+  const surface_area = String(formData.get("surface_area") ?? "other");
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  const parentRaw = String(formData.get("parent_product_id") ?? "").trim();
+  const variation_label = String(formData.get("variation_label") ?? "").trim() || null;
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const is_active = formData.get("is_active") === "on";
+
+  // Round-trip the edited values back on error so the admin doesn't lose their
+  // changes (Karan 2026-07-27 audit — the edit page re-read from the DB).
+  const backToEdit = (msg: string): never => {
+    const p = new URLSearchParams({ error: msg });
+    if (sku) p.set("sku", sku);
+    if (name) p.set("name", name);
+    p.set("category", category);
+    p.set("unit", unit);
+    p.set("surface_area", surface_area);
+    p.set("active", is_active ? "1" : "0");
+    if (String(formData.get("default_unit_price") ?? "").trim()) p.set("price", String(formData.get("default_unit_price")).trim());
+    if (costRaw !== null && String(costRaw).trim()) p.set("cost", String(costRaw).trim());
+    if (parentRaw) p.set("parent", parentRaw);
+    if (variation_label) p.set("variation_label", variation_label);
+    if (description) p.set("description", description);
+    if (notes) p.set("notes", notes);
+    redirect(detailPath(id, p.toString()));
+  };
+
+  if (price === null) return backToEdit("Default price must be a positive dollar amount.");
 
   // F.6: variation + surface + description patches.
-  const parentRaw = String(formData.get("parent_product_id") ?? "").trim();
   const result = await updateProduct({
     id,
-    sku: String(formData.get("sku") ?? "").trim(),
-    name: String(formData.get("name") ?? "").trim(),
-    category: String(formData.get("category") ?? "other"),
-    unit: String(formData.get("unit") ?? "each"),
+    sku,
+    name,
+    category,
+    unit,
     default_unit_price_cents: price,
     default_unit_cost_cents: costPayload,
-    notes: String(formData.get("notes") ?? "").trim() || null,
+    notes,
     parent_product_id: parentRaw || null,
-    variation_label:
-      String(formData.get("variation_label") ?? "").trim() || null,
-    surface_area: String(formData.get("surface_area") ?? "other"),
-    description:
-      String(formData.get("description") ?? "").trim() || null,
-    is_active: formData.get("is_active") === "on",
+    variation_label,
+    surface_area,
+    description,
+    is_active,
     updated_by_user_id: userId,
   });
   if (!result.ok) {
-    redirect(detailPath(id, "error=" + encodeURIComponent(result.error)));
+    return backToEdit(result.error);
   }
   revalidateProductSurfaces();
   redirect(detailPath(id, "ok=updated"));
@@ -212,7 +233,22 @@ export default async function ProductDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ ok?: string; error?: string }>;
+  searchParams: Promise<{
+    ok?: string;
+    error?: string;
+    sku?: string;
+    name?: string;
+    category?: string;
+    unit?: string;
+    surface_area?: string;
+    active?: string;
+    price?: string;
+    cost?: string;
+    parent?: string;
+    variation_label?: string;
+    description?: string;
+    notes?: string;
+  }>;
 }) {
   const supabase = await createClient();
   const {
@@ -389,7 +425,7 @@ export default async function ProductDetailPage({
                   name="sku"
                   required
                   maxLength={100}
-                  defaultValue={product.sku}
+                  defaultValue={sp.sku ?? product.sku}
                   className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors font-mono"
                 />
               </label>
@@ -402,7 +438,7 @@ export default async function ProductDetailPage({
                   name="name"
                   required
                   maxLength={300}
-                  defaultValue={product.name}
+                  defaultValue={sp.name ?? product.name}
                   className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                 />
               </label>
@@ -412,7 +448,7 @@ export default async function ProductDetailPage({
                 </span>
                 <select
                   name="category"
-                  defaultValue={product.category}
+                  defaultValue={sp.category ?? product.category}
                   className={SELECT_CLS}
                   style={SELECT_BG_STYLE}
                 >
@@ -434,7 +470,7 @@ export default async function ProductDetailPage({
                 </span>
                 <select
                   name="unit"
-                  defaultValue={product.unit}
+                  defaultValue={sp.unit ?? product.unit}
                   className={SELECT_CLS}
                   style={SELECT_BG_STYLE}
                 >
@@ -457,7 +493,7 @@ export default async function ProductDetailPage({
                   name="default_unit_price"
                   required
                   inputMode="decimal"
-                  defaultValue={centsToDollarStr(product.default_unit_price_cents)}
+                  defaultValue={sp.price ?? centsToDollarStr(product.default_unit_price_cents)}
                   className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
                 />
               </label>
@@ -469,7 +505,7 @@ export default async function ProductDetailPage({
                   type="text"
                   name="default_unit_cost"
                   inputMode="decimal"
-                  defaultValue={centsToDollarStr(product.default_unit_cost_cents)}
+                  defaultValue={sp.cost ?? centsToDollarStr(product.default_unit_cost_cents)}
                   placeholder="—"
                   className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
                 />
@@ -483,7 +519,7 @@ export default async function ProductDetailPage({
                 </span>
                 <select
                   name="surface_area"
-                  defaultValue={product.surface_area || "other"}
+                  defaultValue={sp.surface_area ?? (product.surface_area || "other")}
                   className={SELECT_CLS}
                   style={SELECT_BG_STYLE}
                 >
@@ -503,7 +539,7 @@ export default async function ProductDetailPage({
                 <SearchableSelect
                   name="parent_product_id"
                   options={parentOptions}
-                  defaultValue={product.parent_product_id ?? ""}
+                  defaultValue={sp.parent ?? (product.parent_product_id ?? "")}
                   disabled={isParent}
                   placeholder="Standalone — type to pick a parent…"
                   ariaLabel="Variation of parent product"
@@ -523,7 +559,7 @@ export default async function ProductDetailPage({
                 type="text"
                 name="variation_label"
                 maxLength={80}
-                defaultValue={product.variation_label ?? ""}
+                defaultValue={sp.variation_label ?? (product.variation_label ?? "")}
                 placeholder="Seal & Poly"
                 disabled={isParent}
                 className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors disabled:bg-ppp-charcoal-50 disabled:cursor-not-allowed"
@@ -540,7 +576,7 @@ export default async function ProductDetailPage({
                 name="description"
                 maxLength={2000}
                 rows={2}
-                defaultValue={product.description ?? ""}
+                defaultValue={sp.description ?? (product.description ?? "")}
                 placeholder="Frame paint + wood door clear finish."
                 className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
               />
@@ -556,7 +592,7 @@ export default async function ProductDetailPage({
                 name="notes"
                 maxLength={2000}
                 rows={2}
-                defaultValue={product.notes ?? ""}
+                defaultValue={sp.notes ?? (product.notes ?? "")}
                 className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
               />
               <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
@@ -567,7 +603,7 @@ export default async function ProductDetailPage({
               <input
                 type="checkbox"
                 name="is_active"
-                defaultChecked={product.is_active}
+                defaultChecked={sp.active !== undefined ? sp.active === "1" : product.is_active}
                 className="h-4 w-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-500"
               />
               Active (shown in the picker)
