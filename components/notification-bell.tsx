@@ -192,7 +192,7 @@ export default function NotificationBell() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         className={`relative flex items-center justify-center h-11 w-11 sm:h-9 sm:w-9 rounded-lg border border-ppp-charcoal-100 text-ppp-charcoal ${tone.hoverBg} ${tone.hoverBorder} ${tone.activeBg} transition-colors touch-manipulation`}
       >
@@ -220,7 +220,8 @@ export default function NotificationBell() {
 
       {open && (
         <div
-          role="menu"
+          role="dialog"
+          aria-label="Notifications"
           className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-32px)] bg-white border border-ppp-charcoal-100 rounded-xl shadow-lg overflow-hidden z-50"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-ppp-charcoal-100">

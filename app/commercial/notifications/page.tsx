@@ -73,6 +73,7 @@ export default async function CommercialNotificationsPage({ searchParams }: { se
         total={history.total}
         unread={history.unread}
         week={history.week}
+        allTime={history.allTime}
         page={history.page}
         totalPages={history.totalPages}
         filter={filter}

@@ -100,11 +100,11 @@ export function ruleTriggerLabel(trigger: string): string {
 }
 
 export function ruleChannelLabel(channel: string): string {
+  // The bell is always written, so "email" is really "in-app + email" — there
+  // is no email-only mode (Karan 2026-07-27 audit).
   switch (channel) {
     case "bell":
       return "In-app only";
-    case "email":
-      return "Email only";
     default:
       return "In-app + email";
   }

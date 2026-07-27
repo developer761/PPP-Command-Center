@@ -55,6 +55,7 @@ export default async function DashboardNotificationsPage({ searchParams }: { sea
         total={history.total}
         unread={history.unread}
         week={history.week}
+        allTime={history.allTime}
         page={history.page}
         totalPages={history.totalPages}
         filter={filter}

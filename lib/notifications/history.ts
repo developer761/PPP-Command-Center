@@ -24,10 +24,13 @@ export type NotificationRow = {
 
 export type NotificationHistory = {
   rows: NotificationRow[];
+  /** Count matching the ACTIVE filter+kind — drives pagination. */
   total: number;
   unread: number;
   /** Count created in the last 7 days (platform-scoped, ignores filters). */
   week: number;
+  /** Platform-scoped count ignoring filter+kind — the "All time" KPI. */
+  allTime: number;
   page: number;
   pageSize: number;
   totalPages: number;
@@ -88,6 +91,16 @@ export async function loadNotificationHistory(input: {
     .gte("created_at", weekAgoIso);
   weekQ = isCommercial ? weekQ.like("kind", "commercial_%") : weekQ.not("kind", "like", "commercial_%");
 
+  // All-time count (platform-scoped, ignoring filter + kind) — the "All time"
+  // KPI must NOT track the active filter (Karan 2026-07-27 audit: it was
+  // reusing the filtered `total`, so "Unread" made "All time" show the unread
+  // count).
+  let allTimeQ = sb
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("recipient_user_id", input.userId);
+  allTimeQ = isCommercial ? allTimeQ.like("kind", "commercial_%") : allTimeQ.not("kind", "like", "commercial_%");
+
   // Page rows.
   let rowsQ = sb
     .from("notifications")
@@ -97,12 +110,14 @@ export async function loadNotificationHistory(input: {
   if (input.filter === "unread") rowsQ = rowsQ.is("read_at", null);
   if (input.kind) rowsQ = rowsQ.eq("kind", input.kind);
 
-  const [{ count: total }, { count: unread }, { count: week }, { data: rows }] = await Promise.all([
-    totalQ,
-    unreadQ,
-    weekQ,
-    rowsQ.order("created_at", { ascending: false }).range(from, to),
-  ]);
+  const [{ count: total }, { count: unread }, { count: week }, { count: allTime }, { data: rows }] =
+    await Promise.all([
+      totalQ,
+      unreadQ,
+      weekQ,
+      allTimeQ,
+      rowsQ.order("created_at", { ascending: false }).range(from, to),
+    ]);
 
   const totalCount = total ?? 0;
   return {
@@ -110,6 +125,7 @@ export async function loadNotificationHistory(input: {
     total: totalCount,
     unread: unread ?? 0,
     week: week ?? 0,
+    allTime: allTime ?? 0,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),

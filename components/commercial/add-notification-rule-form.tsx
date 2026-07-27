@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   TRIGGER_META,
   TRIGGER_GROUPS,
-  RULE_CHANNELS,
   type RuleTrigger,
   type RuleChannel,
 } from "@/lib/commercial/notification-rules/constants";
@@ -14,8 +13,14 @@ import { PendingSubmitButton } from "@/components/commercial/pending-submit-butt
 const CHANNEL_SHORT: Record<RuleChannel, string> = {
   both: "In-app + email",
   bell: "In-app",
-  email: "Email",
+  email: "In-app + email",
 };
+
+// The bell/inbox is always written (it's the source of truth), so an
+// "email only" option would be a lie — offer just In-app vs In-app + email
+// (Karan 2026-07-27 audit). The `email` enum value still maps to In-app+email
+// for any legacy rule that stored it.
+const CHANNEL_OPTIONS: RuleChannel[] = ["bell", "both"];
 
 /**
  * Add-rule form (Block 3B). Custom card/segmented pickers — no native <select>
@@ -165,7 +170,7 @@ export default function AddNotificationRuleForm({
       <div>
         <span className="block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5">How to notify me</span>
         <div className="inline-flex rounded-xl border border-ppp-charcoal-200 bg-ppp-charcoal-50 p-1 gap-1 w-full sm:w-auto">
-          {RULE_CHANNELS.map((c) => {
+          {CHANNEL_OPTIONS.map((c) => {
             const active = channel === c;
             return (
               <button

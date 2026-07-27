@@ -40,10 +40,14 @@ export default function PlatformSwitcher({ current }: { current: Platform }) {
     }
   };
 
+  // Tint by the current platform's canonical accent so it matches the rest of
+  // that platform's chrome. Karan 2026-07-27 audit: the commercial side used
+  // ppp-blue, but blue is the RESIDENTIAL signal (bell) and cc-brand (red) is
+  // the commercial accent — so inside commercial the switcher read off-brand.
   const accent =
     current === "command_center"
       ? { bg: "bg-emerald-600", hover: "hover:bg-emerald-700", text: "text-emerald-50", small: "text-emerald-100" }
-      : { bg: "bg-ppp-blue", hover: "hover:bg-ppp-blue-700", text: "text-ppp-blue-50", small: "text-ppp-blue-100" };
+      : { bg: "bg-cc-brand-600", hover: "hover:bg-cc-brand-700", text: "text-cc-brand-50", small: "text-cc-brand-100" };
 
   return (
     <button

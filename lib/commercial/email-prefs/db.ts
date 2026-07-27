@@ -90,7 +90,7 @@ export async function sendUserEmailTest(userId: string): Promise<{ ok: boolean; 
   if (!pref?.email) return { ok: false, error: "No email saved yet." };
   const result = await sendEmail({
     to: pref.email,
-    subject: "✅ Email notifications are on",
+    subject: "Email notifications are on",
     text: "You'll now get your PPP Commercial Command Center notifications at this address.\n\n— PPP Commercial Command Center",
     html: `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
   <p><strong>Email notifications are on.</strong></p>

@@ -23,6 +23,7 @@ type Props = {
   total: number;
   unread: number;
   week: number;
+  allTime: number;
   page: number;
   totalPages: number;
   filter: "all" | "unread";
@@ -37,6 +38,7 @@ export default function NotificationsView({
   total,
   unread,
   week,
+  allTime,
   page,
   totalPages,
   filter,
@@ -92,7 +94,7 @@ export default function NotificationsView({
   };
 
   const activeKindLabel = kind ? kindOptions.find((o) => o.value === kind)?.label ?? "Filtered" : "All types";
-  const emptyEver = total === 0;
+  const emptyEver = allTime === 0;
 
   return (
     <div className="space-y-4">
@@ -100,7 +102,7 @@ export default function NotificationsView({
       <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
         <Kpi label="Unread" value={localUnread} accent={localUnread > 0 ? accent.kpi : "text-ppp-charcoal-400"} />
         <Kpi label="This week" value={week} accent="text-ppp-charcoal-800" />
-        <Kpi label="All time" value={total} accent="text-ppp-charcoal-800" />
+        <Kpi label="All time" value={allTime} accent="text-ppp-charcoal-800" />
       </div>
 
       {/* Filters: read/unread + kind + mark all */}
@@ -336,7 +338,7 @@ function KindMenu({
             </div>
           )}
           <ul className="max-h-64 overflow-y-auto py-1">
-            <li>
+            <li role="option" aria-selected={!value}>
               <button
                 type="button"
                 onClick={() => pick(null)}
@@ -347,7 +349,7 @@ function KindMenu({
               </button>
             </li>
             {filtered.map((o) => (
-              <li key={o.value}>
+              <li key={o.value} role="option" aria-selected={value === o.value}>
                 <button
                   type="button"
                   onClick={() => pick(o.value)}

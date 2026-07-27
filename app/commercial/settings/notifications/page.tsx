@@ -298,7 +298,9 @@ export default async function CommercialNotificationSettingsPage({
       {/* Custom */}
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-wider text-ppp-charcoal-400">Your custom alerts</h2>
-        <AddNotificationRuleForm action={createAction} />
+        {/* key on the rule count so the form remounts + clears after a create
+            (prevents a stale name from being submitted twice). */}
+        <AddNotificationRuleForm key={rules.length} action={createAction} />
 
         {rules.length === 0 ? (
           <p className="rounded-lg border border-dashed border-ppp-charcoal-200 px-4 py-8 text-center text-sm text-ppp-charcoal-400">
