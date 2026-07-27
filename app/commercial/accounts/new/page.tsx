@@ -61,13 +61,24 @@ async function createAction(formData: FormData) {
     const duplicates = await findNearDuplicates(company);
     if (duplicates.length > 0) {
       const ids = duplicates.map((d) => d.id).join(",");
-      // Re-render the form with a warning. The user's typed name comes
-      // back via the URL so they don't lose it. Other fields are lost —
-      // acceptable since the duplicate check happens on submit and PPP
-      // staff will rarely hit this path twice.
-      redirect(
-        `/commercial/accounts/new?duplicate=${encodeURIComponent(ids)}&typed_name=${encodeURIComponent(company)}`
-      );
+      // Re-render the form with a warning, round-tripping every TEXT field the
+      // user typed so they don't lose it (Karan 2026-07-27 audit — previously
+      // only the name survived). File uploads + team rows + tags can't be
+      // restored (browsers can't repopulate file inputs), so those must be
+      // re-added; the warning copy notes that.
+      const p = new URLSearchParams({ duplicate: ids, typed_name: company });
+      for (const k of [
+        "dba", "industry", "rating", "billing_street", "billing_city", "billing_state",
+        "billing_zip", "site_street", "site_city", "site_state", "site_zip", "phone",
+        "ap_phone", "website", "tax_exempt_cert_number", "notes",
+      ]) {
+        const v = get(k);
+        if (v) p.set(k, v);
+      }
+      if (formData.get("tax_exempt") === "on") p.set("tax_exempt", "1");
+      if (formData.get("is_key_relationship") === "on") p.set("is_key", "1");
+      if (formData.get("site_same_as_billing") === "1") p.set("site_same", "1");
+      redirect(`/commercial/accounts/new?${p.toString()}`);
     }
   }
 
@@ -274,7 +285,30 @@ async function createAction(formData: FormData) {
 export default async function NewCommercialAccountPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; duplicate?: string; typed_name?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    duplicate?: string;
+    typed_name?: string;
+    dba?: string;
+    industry?: string;
+    rating?: string;
+    billing_street?: string;
+    billing_city?: string;
+    billing_state?: string;
+    billing_zip?: string;
+    site_street?: string;
+    site_city?: string;
+    site_state?: string;
+    site_zip?: string;
+    phone?: string;
+    ap_phone?: string;
+    website?: string;
+    tax_exempt?: string;
+    tax_exempt_cert_number?: string;
+    is_key?: string;
+    site_same?: string;
+    notes?: string;
+  }>;
 }) {
   const sp = await searchParams;
   const errorMsg = sp.error;
@@ -332,7 +366,7 @@ export default async function NewCommercialAccountPage({
             Possible duplicate{duplicateCandidates.length > 1 ? "s" : ""} found
           </div>
           <p className="text-[12px] text-amber-800/90 leading-relaxed">
-            We already have account{duplicateCandidates.length > 1 ? "s" : ""} on file with a similar name. Open the existing one if it&apos;s the same company — otherwise click <strong>Create anyway</strong> at the bottom of the form to proceed.
+            We already have account{duplicateCandidates.length > 1 ? "s" : ""} on file with a similar name. Open the existing one if it&apos;s the same company — otherwise click <strong>Create anyway</strong> at the bottom of the form to proceed. Your typed details were kept; any team members, tags, or file uploads need to be re-added.
           </p>
           <ul className="space-y-1.5">
             {duplicateCandidates.map((d) => (
@@ -356,9 +390,9 @@ export default async function NewCommercialAccountPage({
         {duplicateCandidates.length > 0 && <input type="hidden" name="confirm_duplicate" value="1" />}
         <Section title="Identity">
           <Field id="company_name" label="Company name *" required defaultValue={typedName} />
-          <Field id="dba" label="DBA (doing business as)" />
-          <Field id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" />
-          <SelectField id="rating" label="Rating" options={[["", "—"], ["A", "A"], ["B", "B"], ["C", "C"]]} />
+          <Field id="dba" label="DBA (doing business as)" defaultValue={sp.dba ?? ""} />
+          <Field id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" defaultValue={sp.industry ?? ""} />
+          <SelectField id="rating" label="Rating" options={[["", "—"], ["A", "A"], ["B", "B"], ["C", "C"]]} defaultValue={sp.rating ?? ""} />
           {/* Karan 2026-07-08: is_key_relationship parity with the Edit
               form. Was create→edit round-trip; now flagging a key
               account at create time works from one place. */}
@@ -366,6 +400,7 @@ export default async function NewCommercialAccountPage({
             <input
               type="checkbox"
               name="is_key_relationship"
+              defaultChecked={sp.is_key === "1"}
               className="h-4 w-4 mt-0.5 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
             />
             <span className="flex flex-col">
@@ -378,17 +413,33 @@ export default async function NewCommercialAccountPage({
         </Section>
 
         <Section title="Billing address">
-          <CommercialAddressFields prefix="billing" />
+          <CommercialAddressFields
+            prefix="billing"
+            defaults={{
+              street: sp.billing_street ?? "",
+              city: sp.billing_city ?? "",
+              state: sp.billing_state ?? "",
+              zip: sp.billing_zip ?? "",
+            }}
+          />
         </Section>
 
         <Section title="Primary site address">
-          <CommercialSiteAddressToggle />
+          <CommercialSiteAddressToggle
+            defaultChecked={sp.site_same === "1"}
+            defaults={{
+              street: sp.site_street ?? "",
+              city: sp.site_city ?? "",
+              state: sp.site_state ?? "",
+              zip: sp.site_zip ?? "",
+            }}
+          />
         </Section>
 
         <Section title="Contact">
-          <Field id="phone" label="Main phone" type="tel" />
-          <Field id="ap_phone" label="Accounts Payable phone" type="tel" />
-          <Field id="website" label="Website" type="url" />
+          <Field id="phone" label="Main phone" type="tel" defaultValue={sp.phone ?? ""} />
+          <Field id="ap_phone" label="Accounts Payable phone" type="tel" defaultValue={sp.ap_phone ?? ""} />
+          <Field id="website" label="Website" type="url" defaultValue={sp.website ?? ""} />
         </Section>
 
         {/* Karan 2026-07-10 (Katie/Brendan notes): Compliance section
@@ -400,10 +451,10 @@ export default async function NewCommercialAccountPage({
 
         <Section title="Tax">
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="tax_exempt" className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30" />
+            <input type="checkbox" name="tax_exempt" defaultChecked={sp.tax_exempt === "1"} className="h-4 w-4 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30" />
             Tax exempt
           </label>
-          <Field id="tax_exempt_cert_number" label="Tax exempt certificate #" />
+          <Field id="tax_exempt_cert_number" label="Tax exempt certificate #" defaultValue={sp.tax_exempt_cert_number ?? ""} />
         </Section>
 
         <Section title="Team">
@@ -462,6 +513,7 @@ export default async function NewCommercialAccountPage({
             id="notes"
             name="notes"
             rows={4}
+            defaultValue={sp.notes ?? ""}
             placeholder="Anything PPP staff should know about this account."
             className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
           />
@@ -532,10 +584,12 @@ function SelectField({
   id,
   label,
   options,
+  defaultValue,
 }: {
   id: string;
   label: string;
   options: Array<[string, string]>;
+  defaultValue?: string;
 }) {
   return (
     <div>
@@ -545,6 +599,7 @@ function SelectField({
       <select
         id={id}
         name={id}
+        defaultValue={defaultValue}
         className={SELECT_CLS}
         style={SELECT_BG_STYLE}
       >
