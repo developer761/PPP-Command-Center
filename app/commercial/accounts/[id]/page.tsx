@@ -347,13 +347,13 @@ export default async function CommercialAccountDetailPage({
           away clears the query string naturally). */}
       {savedOk && (
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2">
-          <span aria-hidden>✓</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
           <span>Changes saved.</span>
         </div>
       )}
       {teamAddedCount > 0 && (
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2 flex-wrap">
-          <span aria-hidden>✓</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
           <span className="flex-1 min-w-0">
             Added {teamAddedCount} team member{teamAddedCount === 1 ? "" : "s"}.
             They&apos;ve been emailed a link to this account.
@@ -369,7 +369,7 @@ export default async function CommercialAccountDetailPage({
       )}
       {teamSkippedMsg && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
-          <span aria-hidden>⚠</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg>
           <span>
             Some team members couldn&apos;t be added — {teamSkippedMsg}. Try again from
             the Team tab below.
@@ -378,7 +378,7 @@ export default async function CommercialAccountDetailPage({
       )}
       {(docsAddedCount > 0 || tagsAddedCount > 0) && (
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2 flex-wrap">
-          <span aria-hidden>✓</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
           <span className="flex-1 min-w-0">
             {docsAddedCount > 0 && (
               <>Uploaded {docsAddedCount} document{docsAddedCount === 1 ? "" : "s"}.</>
@@ -392,7 +392,7 @@ export default async function CommercialAccountDetailPage({
       )}
       {(docSkippedMsg || tagSkippedMsg) && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
-          <span aria-hidden>⚠</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg>
           <span>
             {docSkippedMsg && <>Some documents couldn&apos;t be uploaded: {docSkippedMsg}. Try again from the Documents tab.</>}
             {docSkippedMsg && tagSkippedMsg && <br />}
@@ -2944,7 +2944,7 @@ async function OpportunitiesTab({
       {savedFlash && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden>✓</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
             <span>Changes saved.</span>
           </span>
           <Link
@@ -3071,7 +3071,7 @@ async function OpportunitiesTab({
               </span>
             </span>
           </span>
-          <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0">▾</span>
+          <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
         </summary>
         <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
           <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} account={account} />
@@ -3118,7 +3118,7 @@ async function OpportunitiesTab({
             <h2 className="text-sm font-semibold text-ppp-charcoal-700">
               Decided · {decided.length}
             </h2>
-            <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/decided:rotate-180">▾</span>
+            <span aria-hidden className="text-ppp-charcoal-400 transition-transform group-open/decided:rotate-180"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
           </summary>
           <ul className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
             {decided.map((opp) => (
@@ -3271,7 +3271,7 @@ function AccountOpportunityRow({
               <div className="mt-1.5 text-[11.5px] flex items-center gap-x-3 gap-y-0.5 flex-wrap text-ppp-charcoal-500">
                 {taskStats && taskStats.overdue > 0 && (
                   <span className="text-rose-700 font-medium">
-                    <span aria-hidden>⚠</span> {taskStats.overdue} overdue task{taskStats.overdue === 1 ? "" : "s"}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg> {taskStats.overdue} overdue task{taskStats.overdue === 1 ? "" : "s"}
                   </span>
                 )}
                 {submittalStats && submittalStats.awaiting_response > 0 && (
@@ -3978,7 +3978,7 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
       <details className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden group">
         <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
           <span>What do the badges mean?</span>
-          <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+          <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
         </summary>
         <ul className="px-4 py-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-700 space-y-1.5">
           <li>
@@ -4915,7 +4915,7 @@ async function AccountInvoicesTab({
       {paymentOk && !paymentCapped && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden>✓</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
             <span>Payment recorded.</span>
           </span>
           <Link
@@ -4929,7 +4929,7 @@ async function AccountInvoicesTab({
       {paymentOk && paymentCapped && paymentRequested !== null && paymentApplied !== null && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900">
           <div className="flex items-center gap-2 font-semibold">
-            <span aria-hidden>✓</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
             <span>Payment recorded — capped to invoice balance</span>
           </div>
           <div className="mt-1 text-[12.5px] text-amber-800">
@@ -5585,7 +5585,7 @@ function DealEditSheet({
             aria-live="polite"
             className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
           >
-            <span aria-hidden className="mt-0.5">⚠</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><path d="M12 9v4M12 17h.01" /></svg>
             <span>{errorMessage}</span>
           </div>
         )}
@@ -5790,7 +5790,7 @@ function DealEditSheet({
                       ? [
                           {
                             value: deal.estimator_user_id,
-                            label: "⚠️ Removed from team (still assigned)",
+                            label: "Removed from team (still assigned)",
                             hint: "Reassign or type a name below",
                           },
                         ]
@@ -5822,7 +5822,7 @@ function DealEditSheet({
                   {estimators.length === 0
                     ? "No teammates yet — type a name above."
                     : deal.estimator_user_id && !estimators.find((e) => e.user_id === deal.estimator_user_id)
-                    ? "⚠️ Previous estimator was removed from the team — reassign or type a name."
+                    ? "Previous estimator was removed from the team — reassign or type a name."
                     : "Required to move this to Estimating."}
                 </span>
               </label>

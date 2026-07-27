@@ -52,6 +52,8 @@ async function createAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const category = String(formData.get("category") ?? "other");
   const unit = String(formData.get("unit") ?? "each");
+  const rawPrice = String(formData.get("default_unit_price") ?? "").trim();
+  const rawCost = String(formData.get("default_unit_cost") ?? "").trim();
   const price = parseDollarsToCents(formData.get("default_unit_price"));
   const cost = parseDollarsToCents(formData.get("default_unit_cost"));
   const notes = String(formData.get("notes") ?? "").trim() || null;
@@ -63,21 +65,28 @@ async function createAction(formData: FormData) {
   const surface_area = String(formData.get("surface_area") ?? "other");
   const description = String(formData.get("description") ?? "").trim() || null;
 
-  if (!sku)
-    redirect(
-      "/commercial/pre-job/products/new?error=" +
-        encodeURIComponent("SKU is required.")
-    );
-  if (!name)
-    redirect(
-      "/commercial/pre-job/products/new?error=" +
-        encodeURIComponent("Name is required.")
-    );
-  if (price === null)
-    redirect(
-      "/commercial/pre-job/products/new?error=" +
-        encodeURIComponent("Default price must be a positive dollar amount.")
-    );
+  // On validation error, round-trip everything the user typed back into the
+  // form so nothing is lost (Karan 2026-07-27 audit — the page comment claimed
+  // this but the old redirects only carried the error).
+  const backToForm = (msg: string): never => {
+    const p = new URLSearchParams({ error: msg });
+    if (sku) p.set("sku", sku);
+    if (name) p.set("name", name);
+    p.set("category", category);
+    p.set("unit", unit);
+    p.set("surface_area", surface_area);
+    if (rawPrice) p.set("price", rawPrice);
+    if (rawCost) p.set("cost", rawCost);
+    if (parentRaw) p.set("parent", parentRaw);
+    if (variation_label) p.set("variation_label", variation_label);
+    if (description) p.set("description", description);
+    if (notes) p.set("notes", notes);
+    redirect(`/commercial/pre-job/products/new?${p.toString()}`);
+  };
+
+  if (!sku) return backToForm("SKU is required.");
+  if (!name) return backToForm("Name is required.");
+  if (price === null) return backToForm("Default price must be a positive dollar amount.");
 
   const result = await createProduct({
     sku,
@@ -94,10 +103,7 @@ async function createAction(formData: FormData) {
     created_by_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(
-      "/commercial/pre-job/products/new?error=" +
-        encodeURIComponent(result.error)
-    );
+    return backToForm(result.error);
   }
   // Bust the catalog cache on every surface that reads listProducts()
   // so the ProductPicker on the invoice list sees the new SKU without
@@ -113,7 +119,20 @@ async function createAction(formData: FormData) {
 export default async function NewProductPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    sku?: string;
+    name?: string;
+    category?: string;
+    unit?: string;
+    surface_area?: string;
+    price?: string;
+    cost?: string;
+    parent?: string;
+    variation_label?: string;
+    description?: string;
+    notes?: string;
+  }>;
 }) {
   const supabase = await createClient();
   const {
@@ -177,6 +196,7 @@ export default async function NewProductPage({
               name="sku"
               required
               maxLength={100}
+              defaultValue={sp.sku ?? ""}
               placeholder="BM-AURA-INT-SG"
               className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors font-mono"
             />
@@ -190,6 +210,7 @@ export default async function NewProductPage({
               name="name"
               required
               maxLength={300}
+              defaultValue={sp.name ?? ""}
               placeholder="Benjamin Moore Aura Interior Semi-Gloss"
               className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
             />
@@ -200,7 +221,7 @@ export default async function NewProductPage({
             </span>
             <select
               name="category"
-              defaultValue="paint"
+              defaultValue={sp.category ?? "paint"}
               className={SELECT_CLS}
               style={SELECT_BG_STYLE}
             >
@@ -217,7 +238,7 @@ export default async function NewProductPage({
             </span>
             <select
               name="unit"
-              defaultValue="gallon"
+              defaultValue={sp.unit ?? "gallon"}
               className={SELECT_CLS}
               style={SELECT_BG_STYLE}
             >
@@ -237,6 +258,7 @@ export default async function NewProductPage({
               name="default_unit_price"
               required
               inputMode="decimal"
+              defaultValue={sp.price ?? ""}
               placeholder="79.99"
               className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
             />
@@ -252,6 +274,7 @@ export default async function NewProductPage({
               type="text"
               name="default_unit_cost"
               inputMode="decimal"
+              defaultValue={sp.cost ?? ""}
               placeholder="52.40"
               className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
             />
@@ -268,7 +291,7 @@ export default async function NewProductPage({
             </span>
             <select
               name="surface_area"
-              defaultValue="other"
+              defaultValue={sp.surface_area ?? "other"}
               className={SELECT_CLS}
               style={SELECT_BG_STYLE}
             >
@@ -292,6 +315,7 @@ export default async function NewProductPage({
             <SearchableSelect
               name="parent_product_id"
               options={parentCandidates.map((p) => ({ value: p.id, label: p.name }))}
+              defaultValue={sp.parent ?? ""}
               placeholder="Standalone — type to pick a parent…"
               ariaLabel="Variation of parent product"
             />
@@ -309,6 +333,7 @@ export default async function NewProductPage({
             type="text"
             name="variation_label"
             maxLength={80}
+            defaultValue={sp.variation_label ?? ""}
             placeholder="Seal & Poly"
             className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
           />
@@ -324,6 +349,7 @@ export default async function NewProductPage({
             name="description"
             maxLength={2000}
             rows={2}
+            defaultValue={sp.description ?? ""}
             placeholder="Frame paint + wood door clear finish."
             className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
           />
@@ -339,6 +365,7 @@ export default async function NewProductPage({
             name="notes"
             maxLength={2000}
             rows={2}
+            defaultValue={sp.notes ?? ""}
             placeholder="Internal reference — spec, min-order, retailer contact."
             className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
           />

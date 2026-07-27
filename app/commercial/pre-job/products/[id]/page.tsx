@@ -336,7 +336,7 @@ export default async function ProductDetailPage({
               Variations · {childVariations.length}
             </h2>
             <Link
-              href="/commercial/pre-job/products/new"
+              href={`/commercial/pre-job/products/new?parent=${product.id}`}
               className="text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] inline-flex items-center"
             >
               + Add variation
