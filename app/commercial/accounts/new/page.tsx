@@ -50,12 +50,6 @@ async function createAction(formData: FormData) {
     const v = formData.get(k);
     return typeof v === "string" && v.trim() ? v.trim() : null;
   };
-  const getNum = (k: string) => {
-    const v = get(k);
-    if (!v) return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
   const company = get("company_name");
   if (!company) redirect("/commercial/accounts/new?error=name_required");
 

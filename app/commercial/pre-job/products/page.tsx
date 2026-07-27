@@ -97,6 +97,10 @@ export default async function ProductsCatalogPage({
     allProducts = [...rawProducts, ...extras];
   }
 
+  // rawProducts is filtered by q/category/surface, so this is the count in the
+  // current view, not the catalog total — label it honestly when filtered
+  // (Karan 2026-07-27 audit).
+  const productFilterActive = !!(q || category || surface || includeInactive);
   const activeCount = rawProducts.filter((p) => p.is_active).length;
   const archivedCount = rawProducts.length - activeCount;
 
@@ -132,7 +136,7 @@ export default async function ProductsCatalogPage({
               Product Library
             </h1>
             <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 px-2 py-0.5 rounded">
-              {activeCount} active
+              {activeCount} {productFilterActive ? "shown" : "active"}
             </span>
             {includeInactive && archivedCount > 0 && (
               <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-ppp-charcoal-500 bg-ppp-charcoal-50 border border-ppp-charcoal-100 px-2 py-0.5 rounded">

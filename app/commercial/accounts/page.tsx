@@ -252,10 +252,11 @@ export default async function CommercialAccountsPage({
     })
     .slice(0, 3);
 
-  // KPI strip — computed once from the pre-filter overview data so the
-  // top-of-page numbers reflect the full account universe, not the
-  // filtered slice. Alex sees "we have N accounts overall" no matter
-  // what filter he's applied below.
+  // KPI strip. accountsRaw is FILTERED (search/rating/compliance/industry), so
+  // when a filter is active these numbers describe the matching set, not the
+  // whole book — the labels below flip to say so (Karan 2026-07-27 audit; the
+  // old copy claimed "book" while showing the filtered slice).
+  const filterActive = !!(search || rating || compliance || industry || filterStale || filterExpiring || filterIssue);
   const universeCount = accountsRaw.length;
   const recentlyActiveCount = recentlyActive.length;
   const overviewList = Array.from(overviewsById.values());
@@ -375,9 +376,9 @@ export default async function CommercialAccountsPage({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             tone="cc-brand"
-            label="Total accounts"
+            label={filterActive ? "Matching accounts" : "Total accounts"}
             value={universeCount.toLocaleString()}
-            sub={universeCount === 1 ? "customer in your book" : "customers in your book"}
+            sub={filterActive ? "matching your filters" : universeCount === 1 ? "customer in your book" : "customers in your book"}
           />
           <KpiCard
             tone="blue"
@@ -389,7 +390,7 @@ export default async function CommercialAccountsPage({
             tone="blue"
             label="Open bids"
             value={openBidsAcrossBook.toLocaleString()}
-            sub={openBidsAcrossBook === 0 ? "no live bids" : "across the book"}
+            sub={openBidsAcrossBook === 0 ? "no live bids" : filterActive ? "across matches" : "across the book"}
           />
           <KpiCard
             tone="neutral"
