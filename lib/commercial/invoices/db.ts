@@ -8,6 +8,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import {
   DEFAULT_INVOICE_PREFIX,
@@ -350,6 +351,9 @@ export async function createCommercialInvoice(
   }
 
   await logStatusChange(inserted.id, null, "draft", input.created_by_user_id, "Created");
+  // Central audit trail (Karan 2026-07-27 audit): invoice mutations were the
+  // only domain with no logInsert/logUpdate/logDelete — the money had no trail.
+  await logInsert("commercial_invoices", inserted.id, inserted, input.created_by_user_id);
 
   // Bell + email fanout — fire-and-forget. Team members on the parent
   // opp see the new invoice in their bell without polling. Errors caught
@@ -414,7 +418,8 @@ export async function updateInvoiceCoreFields(
     po_number?: string | null;
     notes?: string | null;
     due_at?: string | null;
-  }
+  },
+  actorUserId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   const sb = commercialDb();
   // Karan 2026-07-07: due_at + payment_terms + po_number + customer_message
@@ -446,8 +451,16 @@ export async function updateInvoiceCoreFields(
   if (patch.notes !== undefined) clean.notes = patch.notes?.slice(0, 2000) ?? null;
   if (patch.due_at !== undefined) clean.due_at = patch.due_at;
   clean.updated_at = new Date().toISOString();
+  // Snapshot the affected fields before + after for the audit trail.
+  const beforeCols = Object.keys(clean).join(", ");
+  const { data: before } = await sb
+    .from("commercial_invoices")
+    .select(beforeCols)
+    .eq("id", invoice_id)
+    .maybeSingle();
   const { error } = await sb.from("commercial_invoices").update(clean).eq("id", invoice_id);
   if (error) return { ok: false, error: error.message };
+  await logUpdate("commercial_invoices", invoice_id, before, clean, actorUserId);
   return { ok: true };
 }
 
@@ -462,7 +475,8 @@ export async function addLineItem(
      *  The snapshotted unit_price_cents remains the source of truth for the
      *  invoice — this only lets margin/reporting group by SKU later. */
     product_id?: string | null;
-  }
+  },
+  actorUserId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   const gate = await verifyEditable(invoice_id);
   if (!gate.ok) return gate;
@@ -479,33 +493,47 @@ export async function addLineItem(
     .limit(1)
     .maybeSingle();
   const nextPos = ((last?.position as number | undefined) ?? 0) + 1000;
-  const { error } = await sb.from("commercial_invoice_line_items").insert({
-    invoice_id,
-    position: nextPos,
-    description: input.description.slice(0, 500),
-    quantity: input.quantity,
-    unit: input.unit ?? null,
-    unit_price_cents: input.unit_price_cents,
-    product_id: input.product_id ?? null,
-  });
+  const { data: insertedLi, error } = await sb
+    .from("commercial_invoice_line_items")
+    .insert({
+      invoice_id,
+      position: nextPos,
+      description: input.description.slice(0, 500),
+      quantity: input.quantity,
+      unit: input.unit ?? null,
+      unit_price_cents: input.unit_price_cents,
+      product_id: input.product_id ?? null,
+    })
+    .select("*")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (insertedLi) await logInsert("commercial_invoice_line_items", (insertedLi as { id: string }).id, insertedLi, actorUserId);
   await recomputeSubtotal(invoice_id);
   return { ok: true };
 }
 
 export async function removeLineItem(
   invoice_id: string,
-  item_id: string
+  item_id: string,
+  actorUserId?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   const gate = await verifyEditable(invoice_id);
   if (!gate.ok) return gate;
   const sb = commercialDb();
+  // Capture the row before delete so the audit trail records what was removed.
+  const { data: beforeLi } = await sb
+    .from("commercial_invoice_line_items")
+    .select("*")
+    .eq("id", item_id)
+    .eq("invoice_id", invoice_id)
+    .maybeSingle();
   const { error } = await sb
     .from("commercial_invoice_line_items")
     .delete()
     .eq("id", item_id)
     .eq("invoice_id", invoice_id);
   if (error) return { ok: false, error: error.message };
+  if (beforeLi) await logDelete("commercial_invoice_line_items", item_id, beforeLi, actorUserId);
   await recomputeSubtotal(invoice_id);
   return { ok: true };
 }
@@ -606,16 +634,24 @@ export async function addPayment(
   if (cappedAmount <= 0) return { ok: false, error: "no_balance_due" };
   const capped = input.amount_cents > balance;
 
-  const { error } = await sb.from("commercial_invoice_payments").insert({
-    invoice_id,
-    amount_cents: cappedAmount,
-    paid_at: input.paid_at ?? new Date().toISOString(),
-    method: input.method ?? null,
-    reference: input.reference ?? null,
-    notes: input.notes?.slice(0, 500) ?? null,
-    recorded_by_user_id: input.recorded_by_user_id,
-  });
+  const { data: insertedPayment, error } = await sb
+    .from("commercial_invoice_payments")
+    .insert({
+      invoice_id,
+      amount_cents: cappedAmount,
+      paid_at: input.paid_at ?? new Date().toISOString(),
+      method: input.method ?? null,
+      reference: input.reference ?? null,
+      notes: input.notes?.slice(0, 500) ?? null,
+      recorded_by_user_id: input.recorded_by_user_id,
+    })
+    .select("*")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  // Audit trail — a recorded payment must leave a record with the amount + actor.
+  if (insertedPayment) {
+    await logInsert("commercial_invoice_payments", (insertedPayment as { id: string }).id, insertedPayment, input.recorded_by_user_id);
+  }
   // The DB trigger `trg_recompute_paid_cents` should auto-update
   // paid_cents (which feeds the generated balance_cents column) + flip
   // status. Karan 2026-07-07 defense: an older version of the trigger
@@ -728,12 +764,21 @@ export async function removePayment(
     .select("status")
     .eq("id", invoice_id)
     .maybeSingle();
+  // Capture the payment row before delete — deleting a payment (esp. a large
+  // one) must leave an auditable record of what was removed + by whom.
+  const { data: beforePayment } = await sb
+    .from("commercial_invoice_payments")
+    .select("*")
+    .eq("id", payment_id)
+    .eq("invoice_id", invoice_id)
+    .maybeSingle();
   const { error } = await sb
     .from("commercial_invoice_payments")
     .delete()
     .eq("id", payment_id)
     .eq("invoice_id", invoice_id);
   if (error) return { ok: false, error: error.message };
+  if (beforePayment) await logDelete("commercial_invoice_payments", payment_id, beforePayment, actor_user_id);
   const { data: after } = await sb
     .from("commercial_invoices")
     .select("status")

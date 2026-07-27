@@ -99,7 +99,7 @@ async function addLineItemAction(formData: FormData) {
   if (!description || !Number.isFinite(quantity) || quantity <= 0 || unit_price_cents === null) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Fill description, quantity, and price."));
   }
-  const result = await addLineItem(invoice_id, { description, quantity, unit, unit_price_cents: unit_price_cents! });
+  const result = await addLineItem(invoice_id, { description, quantity, unit, unit_price_cents: unit_price_cents! }, user.id);
   if (!result.ok) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to add line item."));
   }
@@ -116,7 +116,7 @@ async function removeLineItemAction(formData: FormData) {
   const invoice_id = String(formData.get("invoice_id") ?? "");
   const item_id = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(item_id)) redirect("/commercial/invoices");
-  await removeLineItem(invoice_id, item_id);
+  await removeLineItem(invoice_id, item_id, user.id);
   await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}`);
 }
@@ -236,7 +236,7 @@ async function updateCoreFieldsAction(formData: FormData) {
   };
   if (due_at !== undefined) patch.due_at = due_at;
   if (tax_pct !== undefined && Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
-  const result = await updateInvoiceCoreFields(invoice_id, patch);
+  const result = await updateInvoiceCoreFields(invoice_id, patch, user.id);
   if (!result.ok) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Could not save details."));
   }
