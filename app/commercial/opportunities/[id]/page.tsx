@@ -2058,7 +2058,7 @@ async function OpportunityInvoicesPanel({
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
                 <div className="text-[12px] font-semibold text-ppp-charcoal-700">
-                  Deal progress
+                  Opportunity progress
                 </div>
                 <div className="text-[11px] text-ppp-charcoal-600 tabular-nums">
                   <strong className="text-ppp-charcoal">{formatCentsFull(totalPaidCents)}</strong>

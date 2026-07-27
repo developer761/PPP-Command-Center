@@ -32,12 +32,12 @@ export const dynamic = "force-dynamic";
 const BASE = "/commercial/settings/notifications";
 
 const BUILT_IN = [
-  { label: "Deal status changed", blurb: "When a teammate moves one of your deals." },
+  { label: "Opportunity status changed", blurb: "When a teammate moves one of your opportunities." },
   { label: "New note / mention", blurb: "When someone adds a note or @-mentions you." },
   { label: "Task assigned / overdue", blurb: "When a task is assigned to you or slips past due." },
-  { label: "Proposal sent", blurb: "When a proposal goes out to a GC on your team's deal." },
-  { label: "Invoice created / paid", blurb: "Cash-flow moments across your deals." },
-  { label: "Hot deal cooling · document expiring", blurb: "Daily nudges when a high-value deal or a doc needs attention." },
+  { label: "Proposal sent", blurb: "When a proposal goes out to a GC on your team's opportunity." },
+  { label: "Invoice created / paid", blurb: "Cash-flow moments across your opportunities." },
+  { label: "Hot opportunity cooling · document expiring", blurb: "Daily nudges when a high-value opportunity or a doc needs attention." },
 ];
 
 async function requireUser(): Promise<string> {

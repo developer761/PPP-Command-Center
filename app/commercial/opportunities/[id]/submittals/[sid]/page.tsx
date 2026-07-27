@@ -657,7 +657,7 @@ export default async function SubmittalDetailPage({
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M15 18l-6-6 6-6" />
           </svg>
-          Deal — Submittals
+          Opportunity — Submittals
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

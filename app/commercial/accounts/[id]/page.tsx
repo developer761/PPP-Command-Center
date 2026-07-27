@@ -3606,7 +3606,7 @@ async function AccountProposalsTab({
                 <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-1">Proposals</div>
                 <div className="flex items-baseline gap-2 flex-wrap">
                   <span className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none">{proposals.length}</span>
-                  <span className="text-[12px] text-ppp-charcoal-500">total revision{proposals.length === 1 ? "" : "s"} · {byDeal.size} deal{byDeal.size === 1 ? "" : "s"}</span>
+                  <span className="text-[12px] text-ppp-charcoal-500">total revision{proposals.length === 1 ? "" : "s"} · {byDeal.size} {byDeal.size === 1 ? "opportunity" : "opportunities"}</span>
                 </div>
               </div>
               <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
@@ -3866,7 +3866,7 @@ async function AccountProposalsTab({
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                                   <path d="M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                                 </svg>
-                                <span className="hidden sm:inline">Bill this deal</span>
+                                <span className="hidden sm:inline">Bill this opportunity</span>
                               </Link>
                             )}
                             <a
