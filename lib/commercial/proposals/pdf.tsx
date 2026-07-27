@@ -646,7 +646,7 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
       {hasAttentionBlock && (
         <View style={[styles.addrBlock, { marginTop: 10 }]}>
           {h.attention && (
-            <Text style={styles.addrLine}>Attn: {h.attention}</Text>
+            <Text style={styles.addrLine}>Attention: {h.attention}</Text>
           )}
           {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
           {h.email && (
@@ -1126,7 +1126,9 @@ export function ProposalPdfDocument({
 
         <LogoBlock
           dateLabel={dateLabel}
-          dealNumber={proposal.header_json.proposal_number?.trim() || null}
+          dealNumber={
+            proposal.header_json.proposal_number?.trim() || `R${proposal.revision_number}`
+          }
         />
         <SubmittedToBlock h={proposal.header_json} />
         <ProjectBlock h={proposal.header_json} />

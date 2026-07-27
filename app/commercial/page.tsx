@@ -33,7 +33,7 @@ import {
 import { OPEN_OPP_STATUSES, TERMINAL_STATUSES, isWon } from "@/lib/commercial/opportunities/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { deriveInvoiceStatus, BILLABLE_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -97,8 +97,12 @@ export default async function CommercialDashboardPage() {
   ]);
 
   // ─── AR ───
+  // Real accounts-receivable = billed-and-unpaid only. Karan 2026-07-27:
+  // exclude unsent DRAFTS (not owed until sent) + paid/void, so the headline
+  // matches its sent/overdue drill-down. deriveInvoiceStatus resolves the
+  // computed "overdue" state; BILLABLE = sent/viewed/partial/overdue.
   const arOutstandingCents = invoices
-    .filter((i) => i.status !== "void")
+    .filter((i) => BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)))
     .reduce((acc, i) => acc + i.balance_cents, 0);
   const arOverdueCount = invoices.filter((i) => deriveInvoiceStatus(i) === "overdue").length;
 
