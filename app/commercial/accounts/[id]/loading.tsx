@@ -7,7 +7,9 @@ export default function AccountDetailLoading() {
       <div className="h-3 w-48 bg-white border border-ppp-charcoal-100 rounded" />
       <div className="h-28 bg-white border border-ppp-charcoal-100 rounded-xl" />
       <div className="flex gap-2 border-b border-ppp-charcoal-100 pb-1 overflow-hidden">
-        {Array.from({ length: 4 }).map((_, i) => (
+        {/* 6 primary tabs (Overview/Opportunities/Proposals/Invoices/People/
+            Activity) so the skeleton→content transition doesn't shift. */}
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-9 w-24 bg-white border border-ppp-charcoal-100 rounded" />
         ))}
       </div>

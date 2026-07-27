@@ -339,6 +339,9 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
                 name="expires_at"
                 type="date"
                 required
+                // Can't set an expiry in the past — it would land the doc
+                // straight in the red "Expired" state (Karan 2026-07-27 audit).
+                min={new Date().toISOString().slice(0, 10)}
                 // text-base = 16px so iOS Safari doesn't auto-zoom on focus.
                 className={`${INPUT_CLS} text-base`}
               />

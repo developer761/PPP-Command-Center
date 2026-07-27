@@ -442,7 +442,7 @@ export default async function NewCommercialAccountPage({
         <Section title="Documents">
           <p className="text-[12px] text-ppp-charcoal-500 -mt-1 leading-relaxed">
             Upload any compliance docs you have in hand. All optional —
-            you can add more from the Documents tab later. Max 50 MB per file (PDF, image, or Word).
+            you can add more from the Documents tab later. Max 50 MB per file (PDF, image, Word, or Excel).
           </p>
           <div className="space-y-3">
             {ON_CREATE_DOC_CATEGORIES.map((c) => (
@@ -454,7 +454,7 @@ export default async function NewCommercialAccountPage({
                   id={`doc_${c}`}
                   name={`doc_${c}`}
                   type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.doc,.docx,.xls,.xlsx"
                   className="block w-full text-[12px] text-ppp-charcoal-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:cursor-pointer min-h-[44px] touch-manipulation"
                 />
               </div>

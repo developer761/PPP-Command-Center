@@ -764,8 +764,10 @@ export default async function CommercialAccountsPage({
                 Sorted by {currentSortLabel.toLowerCase()}
               </p>
             </div>
-            <details className="group">
-              <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[36px] touch-manipulation">
+            {/* relative inline-block so the absolute popover below anchors to
+                this trigger, not the viewport (Karan 2026-07-27 audit). */}
+            <details className="group relative inline-block">
+              <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
                   <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
@@ -773,7 +775,7 @@ export default async function CommercialAccountsPage({
                 Bulk actions
                 <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
               </summary>
-              <div className="absolute right-4 sm:right-6 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-4 min-w-[280px] max-w-[420px] space-y-4">
+              <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-4 min-w-[280px] max-w-[calc(100vw-2rem)] sm:max-w-[420px] space-y-4">
                 <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
                   Check the box next to each row, then use one of the actions below to tag or assign in one submit. Limit: {BULK_MAX_ACCOUNTS} accounts per action.
                 </p>

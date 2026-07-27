@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
+import { ilikeQuoted } from "@/lib/commercial/search";
 
 /**
  * GET /api/commercial/accounts/suggest?q=mi
@@ -37,9 +38,9 @@ export async function GET(request: Request) {
   }
 
   // Escape Postgres ILIKE wildcards in the user's input so a literal
-  // "%" or "_" doesn't make the search match everything.
-  const safe = q.replace(/[%_\\]/g, (m) => "\\" + m);
-  const pattern = `%${safe}%`;
+  // Escape wildcards + quote the value so commas/parens in the term don't
+  // break PostgREST's .or() grammar (Karan 2026-07-27 audit).
+  const pattern = ilikeQuoted(q);
 
   const sb = commercialDb();
   const { data, error } = await sb

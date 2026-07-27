@@ -51,14 +51,16 @@ export async function GET(request: Request) {
   // backslash because Postgres uses `\` as the default LIKE escape
   // character. Without this, a query of `\` becomes `%\%` which is a
   // syntax error at worst or matches nothing at best.
-  const safe = rawQ.replace(/[\\%_]/g, "\\$&");
-  const pattern = `%${safe}%`;
+  // Also escape the double-quote so we can wrap the value in quotes below —
+  // Karan 2026-07-27 audit: a comma/paren in the query broke the .or() grammar.
+  const safe = rawQ.replace(/[\\%_"]/g, "\\$&");
+  const pattern = `"%${safe}%"`;
   // 2026-07-21: let users paste a full id chip and still match. The
   // underlying columns store the number WITHOUT the family prefix
   // (project_number "2026-0042", invoice_number "INV-0113"), so strip a
   // leading OPP-/ACC-/PROP-/INV- before matching those id columns.
   const idSafe = safe.replace(/^(opp|acc|prop|inv)-/i, "");
-  const idPattern = `%${idSafe}%`;
+  const idPattern = `"%${idSafe}%"`;
   // account_seq is an INTEGER, so it can't be ilike-matched. When the
   // stripped query is purely numeric (e.g. "ACC-0042" → "0042" or a bare
   // "42"), also match the exact account number so a pasted ACC-#### chip

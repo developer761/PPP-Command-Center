@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { ilikeQuoted } from "@/lib/commercial/search";
 
 /**
  * Read helpers for the New Platform Accounts feature (Phase 1).
@@ -89,7 +90,9 @@ export async function listCommercialAccounts(
 
   if (filters.search) {
     // ilike covers case-insensitive substring; matches company_name OR dba.
-    const term = `%${filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+    // ilikeQuoted escapes wildcards + quotes the value so a comma/paren in the
+    // term ("Smith, Jones (NY)") can't break PostgREST's .or() grammar.
+    const term = ilikeQuoted(filters.search);
     q = q.or(`company_name.ilike.${term},dba.ilike.${term}`);
   }
   if (filters.rating) q = q.eq("rating", filters.rating);

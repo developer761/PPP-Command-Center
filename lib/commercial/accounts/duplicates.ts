@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { ilikeQuoted } from "@/lib/commercial/search";
 
 /**
  * Near-duplicate detection for the create-account flow.
@@ -57,8 +58,8 @@ export async function findNearDuplicates(
   if (stem.length < 4) return [];
 
   const sb = commercialDb();
-  // Escape ILIKE wildcards in the user input.
-  const term = `%${stem.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+  // Escape ILIKE wildcards + quote the value so commas/parens don't break .or().
+  const term = ilikeQuoted(stem);
   let q = sb
     .from("commercial_accounts")
     .select("id, company_name, dba, industry")

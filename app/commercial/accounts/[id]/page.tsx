@@ -1860,7 +1860,8 @@ function ContactRow({
           <span className="font-semibold text-ppp-charcoal text-sm">{contact.full_name}</span>
           {primaryAttachment && (
             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-              <span aria-hidden>★</span> Primary
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" /></svg>
+              Primary
             </span>
           )}
         </div>
@@ -1869,12 +1870,14 @@ function ContactRow({
         )}
         <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
           {contact.email && (
-            <a href={`mailto:${contact.email}`} className="text-cc-brand-700 hover:text-cc-brand-800 break-all">
+            <a href={`mailto:${contact.email}`} className="inline-flex items-center min-h-[44px] text-cc-brand-700 hover:text-cc-brand-800 break-all">
               {contact.email}
             </a>
           )}
           {contact.phone && (
-            <a href={`tel:${contact.phone}`} className="text-ppp-charcoal-700 hover:text-ppp-charcoal">
+            // Strip formatting from the tel: target so "(555) 123-4567" dials
+            // correctly (matches the hero); keep the pretty text for display.
+            <a href={`tel:${contact.phone.replace(/[^0-9+]/g, "")}`} className="inline-flex items-center min-h-[44px] text-ppp-charcoal-700 hover:text-ppp-charcoal">
               {contact.phone}
             </a>
           )}
