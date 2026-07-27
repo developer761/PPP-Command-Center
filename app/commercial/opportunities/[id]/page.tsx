@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -157,6 +158,7 @@ async function submitDebriefOnlyAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
   // Load opp so we know its terminal outcome (debrief panel only renders
@@ -213,6 +215,7 @@ async function changeStatusAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   const to_status = String(formData.get("to_status") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
@@ -373,6 +376,7 @@ async function reopenOpportunityAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
   // v2 (2026-07-13): re-engage a decided bid by dropping it back at the
@@ -396,6 +400,7 @@ async function softDeleteOpportunityAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
   // Resolve the title BEFORE deleting so we can pass it to the banner.
@@ -436,6 +441,7 @@ async function archiveOpportunityAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
   const sb = commercialDb();
@@ -465,6 +471,7 @@ async function unarchiveOpportunityAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
   const result = await unarchiveOpportunity(opp_id, user.id);
@@ -498,6 +505,7 @@ async function cloneOpportunityAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
 
@@ -544,6 +552,7 @@ async function addTeamAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const user_id = String(formData.get("user_id") ?? "");
   const role = String(formData.get("role") ?? "") as OpportunityAssignmentRole;
@@ -588,6 +597,7 @@ async function quickAssignMeAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const role = String(formData.get("role") ?? "") as OpportunityAssignmentRole;
   if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
@@ -632,6 +642,7 @@ async function removeTeamAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const assignment_id = String(formData.get("assignment_id") ?? "");
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(assignment_id)) {
@@ -648,6 +659,7 @@ async function addTaskAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
   const title = String(formData.get("title") ?? "");
@@ -673,6 +685,7 @@ async function toggleTaskAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const task_id = String(formData.get("task_id") ?? "");
   const make_complete = String(formData.get("make_complete") ?? "true") === "true";
@@ -692,6 +705,7 @@ async function deleteTaskAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const task_id = String(formData.get("task_id") ?? "");
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(task_id)) {
@@ -708,6 +722,7 @@ async function addNoteAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
   const body = String(formData.get("body") ?? "");
@@ -727,6 +742,7 @@ async function togglePinNoteAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const note_id = String(formData.get("note_id") ?? "");
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(note_id)) {
@@ -744,6 +760,7 @@ async function editNoteAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const note_id = String(formData.get("note_id") ?? "");
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(note_id)) {
@@ -764,6 +781,7 @@ async function archiveAttachmentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const attachment_id = String(formData.get("attachment_id") ?? "");
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(attachment_id)) {
@@ -800,6 +818,7 @@ async function requireCommercialUser(): Promise<string> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const { data: profile } = await supabase
     .from("profiles")
     .select("has_new_platform_access")
@@ -892,6 +911,7 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(invoice_id)) {
@@ -964,6 +984,7 @@ async function saveInvoiceDetailsFromOppAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(invoice_id)) {
@@ -1007,6 +1028,7 @@ async function deleteNoteAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const note_id = String(formData.get("note_id") ?? "");
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(note_id)) {
@@ -1029,6 +1051,7 @@ async function addFinishAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
@@ -1069,6 +1092,7 @@ async function editFinishAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const finish_id = String(formData.get("finish_id") ?? "");
@@ -1112,6 +1136,7 @@ async function deleteFinishAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const finish_id = String(formData.get("finish_id") ?? "");
@@ -1140,6 +1165,7 @@ async function createSubmittalAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");

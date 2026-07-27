@@ -10,6 +10,7 @@
  */
 
 import { redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -42,6 +43,7 @@ async function requireAdmin(): Promise<{ userId: string; isAdmin: boolean }> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const access = platformAccess(profile);
   if (!access.hasNewPlatform) redirect("/commercial");

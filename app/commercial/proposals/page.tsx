@@ -19,6 +19,7 @@
  */
 
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -197,6 +198,7 @@ export default async function ProposalsIndexPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const access = platformAccess(profile);
   if (!access.hasNewPlatform) redirect("/commercial");

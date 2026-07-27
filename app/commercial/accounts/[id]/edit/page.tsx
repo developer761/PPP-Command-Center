@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -24,6 +25,7 @@ async function updateAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const id = String(formData.get("id") ?? "");
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) redirect("/commercial/accounts");
@@ -95,6 +97,7 @@ async function deleteAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const id = String(formData.get("id") ?? "");
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) redirect("/commercial/accounts");

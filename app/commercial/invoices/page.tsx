@@ -8,6 +8,7 @@
  *   - Clean row hierarchy
  */
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -70,6 +71,7 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(account_id)) {
@@ -125,6 +127,7 @@ async function createInvoiceInlineAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(account_id) || !UUID_RE.test(opp_id)) {
@@ -200,6 +203,7 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/invoices");
   const confirmed = formData.get("confirm") === "yes";
@@ -269,6 +273,7 @@ async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/invoices");
   const confirmed = formData.get("confirm") === "yes";

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { loadNotificationHistory } from "@/lib/notifications/history";
@@ -21,6 +22,7 @@ export default async function CommercialNotificationsPage({ searchParams }: { se
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);

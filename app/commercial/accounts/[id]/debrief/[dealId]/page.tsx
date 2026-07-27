@@ -14,6 +14,7 @@
  * loops back to the account (?debrief_saved=1 toast).
  */
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
@@ -52,6 +53,7 @@ async function requireCommercialUser(): Promise<string> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   return user.id;
 }
 

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -142,6 +143,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const sp = await searchParams;
   const range = parseRange(sp);

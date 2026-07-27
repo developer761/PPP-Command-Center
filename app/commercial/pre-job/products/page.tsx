@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -57,6 +58,7 @@ export default async function ProductsCatalogPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const access = platformAccess(profile);
   if (!access.hasNewPlatform) redirect("/commercial");

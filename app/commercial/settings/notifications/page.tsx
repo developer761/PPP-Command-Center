@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -45,6 +46,7 @@ async function requireUser(): Promise<string> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   return user.id;
 }
 
@@ -54,6 +56,7 @@ async function requireUserFull(): Promise<{ id: string; email: string | null }> 
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   return { id: user.id, email: user.email ?? null };
 }
 

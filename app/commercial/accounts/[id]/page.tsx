@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
@@ -694,6 +695,7 @@ async function addAccountNoteAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   const body = String(formData.get("body") ?? "").trim();
@@ -719,6 +721,7 @@ async function updateAccountSectionAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const section = String(formData.get("section") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
@@ -797,6 +800,7 @@ async function quickFlipFromAccountAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const opp_id = String(formData.get("opp_id") ?? "");
   const rawToStatus = String(formData.get("to_status") ?? "");
@@ -870,6 +874,7 @@ async function createDealInlineAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
 
@@ -1018,6 +1023,7 @@ async function editDealFromAccountAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
@@ -1143,6 +1149,7 @@ async function deleteDealFromAccountAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const opp_id = String(formData.get("opp_id") ?? "");
   const confirm = formData.get("confirm") === "yes";
@@ -1228,6 +1235,7 @@ async function bulkDeleteAllProposalsAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const confirm = formData.get("confirm") === "yes";
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
@@ -1256,6 +1264,7 @@ async function recordPaymentInlineAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
@@ -1298,6 +1307,7 @@ async function addTagAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   const tag = String(formData.get("tag") ?? "");
@@ -1313,6 +1323,7 @@ async function removeTagAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const tag_id = String(formData.get("tag_id") ?? "");
   if (!UUID_RE.test(account_id) || !UUID_RE.test(tag_id)) {
@@ -1638,6 +1649,7 @@ async function addContactAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
@@ -1670,6 +1682,7 @@ async function setPrimaryContactAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const account_contact_id = String(formData.get("account_contact_id") ?? "");
   const make_primary = String(formData.get("make_primary") ?? "true") === "true";
@@ -1688,6 +1701,7 @@ async function touchContactAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const account_contact_id = String(formData.get("account_contact_id") ?? "");
   if (!UUID_RE.test(account_id) || !UUID_RE.test(account_contact_id)) {
@@ -1705,6 +1719,7 @@ async function detachContactAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const account_id = String(formData.get("account_id") ?? "");
   const account_contact_id = String(formData.get("account_contact_id") ?? "");
@@ -1975,6 +1990,7 @@ async function addAssignmentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const account_id = String(formData.get("account_id") ?? "");
   const user_id = String(formData.get("user_id") ?? "");
@@ -2016,6 +2032,7 @@ async function addAssignmentByEmailAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   const rawEmail = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -2068,6 +2085,7 @@ async function removeAssignmentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const account_id = String(formData.get("account_id") ?? "");
   const assignment_id = String(formData.get("assignment_id") ?? "");
@@ -2424,6 +2442,7 @@ async function archiveDocumentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const account_id = String(formData.get("account_id") ?? "");
   const document_id = String(formData.get("document_id") ?? "");
@@ -2444,6 +2463,7 @@ async function restoreDocumentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const account_id = String(formData.get("account_id") ?? "");
   const document_id = String(formData.get("document_id") ?? "");

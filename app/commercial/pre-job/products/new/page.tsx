@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -42,6 +43,7 @@ async function createAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial/pre-job/products");
@@ -118,6 +120,7 @@ export default async function NewProductPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const access = platformAccess(profile);
   if (!access.hasNewPlatform) redirect("/commercial");

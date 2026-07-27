@@ -25,6 +25,7 @@
  *   5. **Mobile = 44px tap targets throughout + card layout.**
  */
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -84,6 +85,7 @@ async function bulkTagAccountsAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const tag = String(formData.get("bulk_tag") ?? "");
   const selected = pickSelectedAccountIds(formData);
   if (selected.length === 0) {
@@ -102,6 +104,7 @@ async function bulkAssignAccountsAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const user_id = String(formData.get("bulk_user_id") ?? "");
   const role = String(formData.get("bulk_role") ?? "") as AssignmentRole;
   const selected = pickSelectedAccountIds(formData);

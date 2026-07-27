@@ -24,6 +24,7 @@
  * visual layout + component composition changed.
  */
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { PendingFormButton } from "@/components/commercial/pending-form-button";
 import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
@@ -185,6 +186,7 @@ async function quickFlipStatusAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   const rawToStatus = String(formData.get("to_status") ?? "");
   const rawToSubStatus = String(formData.get("to_sub_status") ?? "").trim();
@@ -261,6 +263,7 @@ async function createDealFromPipelineAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const account_id = String(formData.get("account_id") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();

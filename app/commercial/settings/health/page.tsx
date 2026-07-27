@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -30,6 +31,7 @@ export default async function CommercialHealthPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");

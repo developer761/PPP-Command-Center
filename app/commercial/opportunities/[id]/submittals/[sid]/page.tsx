@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import SubmittalDirectUpload from "@/components/commercial/submittal-direct-upload";
@@ -79,6 +80,7 @@ async function editCoverAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -133,6 +135,7 @@ async function addItemAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -180,6 +183,7 @@ async function editItemAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -222,6 +226,7 @@ async function deleteItemAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -248,6 +253,7 @@ async function deleteSubmittalAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -275,6 +281,7 @@ async function linkAttachmentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -302,6 +309,7 @@ async function bulkLinkAttachmentsAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -352,6 +360,7 @@ async function unlinkAttachmentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -395,6 +404,7 @@ async function changeStatusAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const submittal_id = String(formData.get("submittal_id") ?? "");
@@ -490,6 +500,7 @@ async function createRevisionAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const parent_submittal_id = String(formData.get("submittal_id") ?? "");

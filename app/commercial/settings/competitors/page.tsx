@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -53,6 +54,7 @@ async function addAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");
@@ -70,6 +72,7 @@ async function renameAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");
@@ -88,6 +91,7 @@ async function toggleActiveAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");
@@ -106,6 +110,7 @@ async function mergeAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");
@@ -133,6 +138,7 @@ async function updateIntelAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");
@@ -167,6 +173,7 @@ export default async function CompetitorsAdminPage({
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");

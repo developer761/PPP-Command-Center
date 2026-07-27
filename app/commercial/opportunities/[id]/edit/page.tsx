@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -38,6 +39,7 @@ async function updateAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
 
   const id = String(formData.get("id") ?? "");
   if (!UUID_RE.test(id)) redirect("/commercial/opportunities");

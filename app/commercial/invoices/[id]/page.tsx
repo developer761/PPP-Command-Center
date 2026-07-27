@@ -11,6 +11,7 @@
  *   6. Status history timeline
  */
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -87,6 +88,7 @@ async function addLineItemAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   const description = String(formData.get("description") ?? "").trim();
@@ -110,6 +112,7 @@ async function removeLineItemAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   const item_id = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(item_id)) redirect("/commercial/invoices");
@@ -123,6 +126,7 @@ async function addPaymentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
@@ -175,6 +179,7 @@ async function removePaymentAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   const payment_id = String(formData.get("payment_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(payment_id)) redirect("/commercial/invoices");
@@ -188,6 +193,7 @@ async function changeStatusAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   const to_status = String(formData.get("to_status") ?? "") as InvoiceStatus;
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
@@ -205,6 +211,7 @@ async function updateCoreFieldsAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   const tax_pct_raw = String(formData.get("tax_pct") ?? "");
@@ -242,6 +249,7 @@ async function deleteDraftAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   // Karan 2026-07-15: honor the `from` context so deleting an invoice
@@ -291,6 +299,7 @@ async function bulkDeleteInvoicesFromDetailAction(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const scope = String(formData.get("scope") ?? "");
   const parent_id = String(formData.get("parent_id") ?? "");
   const confirmed = formData.get("confirm") === "yes";

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
@@ -36,6 +37,7 @@ async function unarchiveManyAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");
@@ -67,6 +69,7 @@ async function unarchiveOneAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");
@@ -93,6 +96,7 @@ export default async function ArchivedDealsPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
   const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
   if (!isAdmin) redirect("/commercial");
