@@ -71,7 +71,13 @@ export type CommercialNotificationKind =
   | "commercial_proposal_sent"
   // Block 3B (Karan 2026-07-25): user-defined custom alert rules fire this
   // kind; the title/body carry the specifics.
-  | "commercial_custom_rule";
+  | "commercial_custom_rule"
+  // Karan 2026-07-27 audit: a won/lost opportunity still un-debriefed 7+ days
+  // after the decision — nudge the owner to capture the win/loss reason.
+  | "commercial_debrief_overdue"
+  // Karan 2026-07-27: internal marker + bell when the 15-day past-due client
+  // reminder email is sent (or couldn't be, for lack of a contact email).
+  | "commercial_invoice_dunning";
 
 function adminClient() {
   return createSupabaseAdminClient(
@@ -790,6 +796,144 @@ export async function insertCommercialHotDealCoolingNotification(input: {
     recipientUserId: input.recipientUserId,
     actingUserId: null,
     sourceId: input.opportunityId,
+    title,
+    body,
+    link: relativeLink,
+    email: { subject, text, html },
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// commercial_debrief_overdue — win/lost opp still un-debriefed 7+ days.
+// ════════════════════════════════════════════════════════════════════
+
+/** Fired by daily cron when a won/lost opportunity is still un-debriefed 7+
+ *  days after the decision. Caller checks the dedup window (7 days). Sent to
+ *  the opp owner (primary lead) — the person who should capture the reason. */
+export async function insertCommercialDebriefOverdueNotification(input: {
+  opportunityId: string;
+  accountId: string;
+  oppTitle: string;
+  /** "won" | "lost" — drives copy. */
+  outcome: string;
+  daysSinceDecision: number;
+  recipientUserId: string;
+}): Promise<void> {
+  const relativeLink = `/commercial/accounts/${input.accountId}/debrief/${input.opportunityId}`;
+  const emailLink = appendBase(relativeLink);
+  const shortOppTitle = truncatePreview(input.oppTitle, BELL_TITLE_OPP_CAP);
+  const title = `Debrief needed: ${shortOppTitle}`;
+  const body = `Marked ${input.outcome} ${input.daysSinceDecision} days ago — capture the win/loss reason.`;
+
+  const subject = `Win/Loss debrief still open: ${input.oppTitle}`;
+  const text = [
+    `Hi,`,
+    ``,
+    `${input.oppTitle} was marked ${input.outcome} ${input.daysSinceDecision} days ago but hasn't been debriefed yet.`,
+    `A quick debrief (competitor, deciding factor, lessons) is what makes the Win/Loss report useful.`,
+    ``,
+    `Complete the debrief: ${emailLink}`,
+    ``,
+    `— PPP Commercial Command Center`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hi,</p>
+  <p><strong>${escape(input.oppTitle)}</strong> was marked <strong>${escape(input.outcome)}</strong> ${input.daysSinceDecision} days ago but hasn't been debriefed yet.</p>
+  <p>A quick debrief (competitor, deciding factor, lessons) is what makes the Win/Loss report useful.</p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Complete the debrief →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  await dispatchCommercialNotification({
+    kind: "commercial_debrief_overdue",
+    recipientUserId: input.recipientUserId,
+    actingUserId: null,
+    sourceId: input.opportunityId,
+    title,
+    body,
+    link: relativeLink,
+    email: { subject, text, html },
+  });
+}
+
+/** Client-facing 15-day past-due reminder email (Karan 2026-07-27). Sent to the
+ *  GC billing contact directly (NOT the internal bell/opt-in path). Returns ok
+ *  so the cron can record last_dunning_at + fire the internal marker. */
+export async function sendClientInvoiceDunningEmail(input: {
+  to: string;
+  invoiceNumber: string;
+  balanceCents: number;
+  dueDateIso: string | null;
+  accountName: string;
+  daysPastDue: number;
+}): Promise<{ ok: boolean }> {
+  const money = formatMoneyCents(input.balanceCents);
+  const dueStr = input.dueDateIso
+    ? new Date(input.dueDateIso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" })
+    : null;
+  const subject = `Payment reminder — Invoice ${input.invoiceNumber} (${money} past due)`;
+  const text = [
+    `Hello,`,
+    ``,
+    `This is a friendly reminder that Invoice ${input.invoiceNumber} has an outstanding balance of ${money}${dueStr ? `, due ${dueStr}` : ""} — now ${input.daysPastDue} days past due.`,
+    ``,
+    `If payment is already on its way, thank you and please disregard this notice. Otherwise, we'd appreciate settling the balance at your earliest convenience. Reply to this email with any questions.`,
+    ``,
+    `Thank you,`,
+    `Precision Painting Plus / Tomco`,
+  ].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>Hello,</p>
+  <p>This is a friendly reminder that <strong>Invoice ${escape(input.invoiceNumber)}</strong> has an outstanding balance of <strong>${escape(money)}</strong>${dueStr ? `, due ${escape(dueStr)}` : ""} — now <strong>${input.daysPastDue} days past due</strong>.</p>
+  <p>If payment is already on its way, thank you and please disregard this notice. Otherwise, we'd appreciate settling the balance at your earliest convenience. Reply to this email with any questions.</p>
+  <p style="margin-top:24px;">Thank you,<br/>Precision Painting Plus / Tomco</p>
+</div>`;
+  const res = await sendEmail({
+    to: input.to,
+    subject,
+    text,
+    html,
+    channel: "commercial",
+    tags: [{ name: "kind", value: "commercial_invoice_dunning" }],
+  });
+  return { ok: res.ok };
+}
+
+/** Internal bell (+ opt-in email) telling the team a client dunning notice was
+ *  sent — or couldn't be, for lack of a contact email. Also the visible record
+ *  of client outreach. Deduping is handled by the invoice's last_dunning_at. */
+export async function insertCommercialInvoiceDunningMarker(input: {
+  invoiceId: string;
+  invoiceNumber: string;
+  recipientUserId: string;
+  daysPastDue: number;
+  balanceCents: number;
+  sentToClient: boolean;
+  clientEmailMasked: string | null;
+}): Promise<void> {
+  const relativeLink = `/commercial/invoices/${input.invoiceId}`;
+  const emailLink = appendBase(relativeLink);
+  const money = formatMoneyCents(input.balanceCents);
+  const title = input.sentToClient
+    ? `Past-due reminder sent · ${input.invoiceNumber}`
+    : `Past-due invoice needs a contact · ${input.invoiceNumber}`;
+  const body = input.sentToClient
+    ? `Emailed the client${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} — ${money}, ${input.daysPastDue}d past due.`
+    : `${input.invoiceNumber} is ${input.daysPastDue}d past due but the account has no contact email — follow up manually.`;
+
+  const subject = title;
+  const text = [body, ``, `Open the invoice: ${emailLink}`, ``, `— PPP Commercial Command Center`].join("\n");
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:560px;">
+  <p>${escape(body)}</p>
+  <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the invoice →</a></p>
+  <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
+</div>`;
+
+  await dispatchCommercialNotification({
+    kind: "commercial_invoice_dunning",
+    recipientUserId: input.recipientUserId,
+    actingUserId: null,
+    sourceId: input.invoiceId,
     title,
     body,
     link: relativeLink,

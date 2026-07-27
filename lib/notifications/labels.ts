@@ -21,10 +21,12 @@ const KIND_META: Record<string, KindMeta> = {
   commercial_opp_status_changed: { label: "Deal status changed", category: "info" },
   commercial_document_expiring: { label: "Document expiring", category: "warning" },
   commercial_hot_deal_cooling: { label: "Hot deal cooling", category: "warning" },
+  commercial_debrief_overdue: { label: "Debrief needed", category: "warning" },
   // Commercial — invoicing
   commercial_invoice_created: { label: "Invoice created", category: "info" },
   commercial_invoice_payment_recorded: { label: "Payment recorded", category: "success" },
   commercial_invoice_paid_full: { label: "Paid in full", category: "success" },
+  commercial_invoice_dunning: { label: "Past-due reminder", category: "warning" },
   // Commercial — proposals
   commercial_proposal_sent: { label: "Proposal sent", category: "info" },
   // Commercial — custom alert rules (Block 3B)
