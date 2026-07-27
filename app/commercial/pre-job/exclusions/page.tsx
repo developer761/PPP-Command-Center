@@ -19,6 +19,7 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import {
   listExclusions,
+  getExclusion,
   createExclusion,
   updateExclusion,
   softDeleteExclusion,
@@ -140,7 +141,22 @@ export default async function ExclusionsLibraryPage({
     category,
     activeOnly: !includeInactive,
   });
-  const editing = editId ? rows.find((r) => r.id === editId) ?? null : null;
+  // Resolve the edit target directly, NOT from the filtered list (Karan
+  // 2026-07-27 audit): an inactive exclusion is absent from `rows` when the
+  // "Include archived" filter isn't carried in the edit link, so the form fell
+  // back to "Add new" and a save created a duplicate. A direct fetch is robust
+  // regardless of the current search/category/archived filter.
+  const editing = editId ? await getExclusion(editId) : null;
+
+  // Preserve the active search/category/archived context across Edit + Cancel
+  // links so the user doesn't lose their place (Karan 2026-07-27 audit).
+  const filterParams = new URLSearchParams();
+  if (q) filterParams.set("q", q);
+  if (category) filterParams.set("category", category);
+  if (includeInactive) filterParams.set("archived", "1");
+  const filterQs = filterParams.toString();
+  const editHref = (id: string) => `/commercial/pre-job/exclusions?${filterQs ? `${filterQs}&` : ""}edit=${id}`;
+  const listHref = filterQs ? `/commercial/pre-job/exclusions?${filterQs}` : "/commercial/pre-job/exclusions";
 
   const standardCount = rows.filter((r) => r.category === "standard").length;
   const optionalCount = rows.filter((r) => r.category === "optional").length;
@@ -239,7 +255,7 @@ export default async function ExclusionsLibraryPage({
             </h2>
             {editing && (
               <Link
-                href="/commercial/pre-job/exclusions"
+                href={listHref}
                 className="text-[12px] text-ppp-charcoal-500 hover:text-ppp-charcoal underline"
               >
                 Cancel
@@ -335,7 +351,7 @@ export default async function ExclusionsLibraryPage({
                   // exists) + focus-within so keyboard users see it too.
                   <div className="flex items-center gap-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                     <Link
-                      href={`/commercial/pre-job/exclusions?edit=${r.id}`}
+                      href={editHref(r.id)}
                       className="text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline inline-flex items-center min-h-[44px]"
                     >
                       Edit

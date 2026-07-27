@@ -125,6 +125,14 @@ export function SearchableSelect({
     if (highlight >= visible.length) setHighlight(0);
   }, [visible.length, highlight]);
 
+  // Scroll the highlighted option into view as the user arrows through a long
+  // list (Karan 2026-07-27 audit — the list is max-h-64 overflow-y-auto).
+  useEffect(() => {
+    if (!open) return;
+    const el = document.getElementById(`${id}-opt-${highlight}`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [highlight, open, id]);
+
   const commitOption = (opt: SearchableOption) => {
     setQuery(opt.label);
     setSelectedValue(opt.value);
@@ -134,7 +142,13 @@ export function SearchableSelect({
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setOpen(true);
+      // From the closed state, the first ArrowDown should highlight option 0,
+      // not skip to 1 (Karan 2026-07-27 audit).
+      if (!open) {
+        setOpen(true);
+        setHighlight(0);
+        return;
+      }
       setHighlight((h) => Math.min(h + 1, Math.max(0, visible.length - 1)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -166,7 +180,9 @@ export function SearchableSelect({
           aria-controls={`${id}-list`}
           aria-autocomplete="list"
           aria-label={ariaLabel}
+          aria-activedescendant={open && visible[highlight] ? `${id}-opt-${highlight}` : undefined}
           value={query}
+          required={required}
           disabled={disabled}
           placeholder={placeholder}
           onChange={(e) => {
@@ -240,6 +256,7 @@ export function SearchableSelect({
             visible.map((opt, i) => (
               <li
                 key={opt.value}
+                id={`${id}-opt-${i}`}
                 role="option"
                 aria-selected={selectedValue === opt.value}
                 onMouseEnter={() => setHighlight(i)}
@@ -271,15 +288,11 @@ export function SearchableSelect({
           )}
         </ul>
       )}
-      {/* Hidden form value — this is what the server action reads.
-          `required` gets forwarded so browser-native "please select"
-          triggers if the user tries to submit with no value. */}
-      <input
-        type="hidden"
-        name={name}
-        value={selectedValue}
-        required={required}
-      />
+      {/* Hidden form value — this is what the server action reads. `required`
+          lives on the VISIBLE combobox input above (a hidden input is exempt
+          from constraint validation, so requiring it here was a no-op — Karan
+          2026-07-27 audit). */}
+      <input type="hidden" name={name} value={selectedValue} />
     </div>
   );
 }
