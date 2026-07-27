@@ -31,7 +31,7 @@ import {
  * Mobile:
  *   - 44px min-h on every control + remove button.
  *   - Selects use the shared form-classnames so the inline-SVG chevron
- *     + emerald focus ring match the rest of the form.
+ *     + cc-brand focus ring match the rest of the form.
  */
 
 type StaffOption = { user_id: string; email: string; full_name: string | null };
@@ -125,7 +125,7 @@ export default function CommercialNewAccountTeamPicker({
           {pickedStaff && (
             <div className="flex items-center gap-2.5 -mt-1">
               <span
-                className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold shrink-0"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-cc-brand-100 text-cc-brand-700 text-sm font-bold shrink-0"
                 aria-hidden
               >
                 {initial}
@@ -136,11 +136,12 @@ export default function CommercialNewAccountTeamPicker({
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                   {row.is_primary ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-600 text-white border-emerald-700">
-                      ★ {assignmentRoleLabel(row.role)}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-600 text-white border-cc-brand-700">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="mr-0.5"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" /></svg>
+                      {assignmentRoleLabel(row.role)}
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200">
                       {assignmentRoleLabel(row.role)}
                     </span>
                   )}
@@ -169,7 +170,7 @@ export default function CommercialNewAccountTeamPicker({
                       email: "",
                     })
                   }
-                  className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 underline"
+                  className="text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline"
                 >
                   {row.mode === "user" ? "Or by email →" : "← Pick from list"}
                 </button>
@@ -207,7 +208,7 @@ export default function CommercialNewAccountTeamPicker({
                   type="email"
                   value={row.email}
                   onChange={(e) => updateRow(row.id, { email: e.target.value })}
-                  placeholder="alex@precisionpaintingplus.com"
+                  placeholder="alex@precisionpaintingplus.net"
                   autoComplete="off"
                   className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                   aria-label={`Team member ${idx + 1} email`}
@@ -270,7 +271,7 @@ export default function CommercialNewAccountTeamPicker({
         type="button"
         onClick={addRow}
         disabled={rows.length >= MAX_TEAM_ROWS}
-        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border-2 border-dashed border-emerald-300 bg-emerald-50/40 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400 min-h-[44px] touch-manipulation transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-50/40 disabled:hover:border-emerald-300"
+        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border-2 border-dashed border-cc-brand-300 bg-cc-brand-50/40 text-sm font-semibold text-cc-brand-700 hover:bg-cc-brand-50 hover:border-cc-brand-400 min-h-[44px] touch-manipulation transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-cc-brand-50/40 disabled:hover:border-cc-brand-300"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M12 5v14 M5 12h14" />
