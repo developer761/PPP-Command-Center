@@ -182,7 +182,10 @@ export async function listExclusions(
     const escaped = filters.search.replace(/[\\%_]/g, (m) => `\\${m}`);
     q = q.ilike("text", `%${escaped}%`);
   }
-  q = q.order("category", { ascending: true }).order("use_count", { ascending: false }).order("text", { ascending: true });
+  // 'standard' before 'optional' (Karan 2026-07-27 audit) — the header reads
+  // "standard · optional" and the 2 auto-added standard rows should lead;
+  // descending category order puts 'standard' (s) ahead of 'optional' (o).
+  q = q.order("category", { ascending: false }).order("use_count", { ascending: false }).order("text", { ascending: true });
   const { data } = await q;
   return (data as CommercialExclusion[] | null) ?? [];
 }

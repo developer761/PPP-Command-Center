@@ -146,6 +146,11 @@ async function updateIntelAction(formData: FormData) {
   if (!id) redirect("/commercial/settings/competitors?error=invalid");
   const bidLow = parseDollarsToCents(formData.get("bid_low")?.toString() ?? null);
   const bidHigh = parseDollarsToCents(formData.get("bid_high")?.toString() ?? null);
+  // Reject a backwards range (Karan 2026-07-27 audit) — low > high rendered as
+  // an inverted "$X–$Y" bid band.
+  if (bidLow !== null && bidHigh !== null && bidLow > bidHigh) {
+    redirect(`/commercial/settings/competitors?error=${encodeURIComponent("Typical bid low can't be higher than bid high.")}`);
+  }
   const result = await updateCompetitorIntel(
     id,
     {
