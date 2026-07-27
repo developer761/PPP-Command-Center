@@ -260,20 +260,22 @@ export async function listInvoicePayments(invoiceId: string): Promise<Commercial
 
 // ────────────── Writes ──────────────
 
-/** Generate the next invoice number via the DB sequence. */
+/** Generate the next invoice number via the DB sequence (migration 078
+ *  wrapper commercial_next_invoice_seq → nextval('commercial_invoice_seq')). */
 async function nextInvoiceNumber(): Promise<string> {
   const sb = commercialDb();
-  const { data, error } = await sb.rpc("nextval", { seq_name: "commercial_invoice_seq" });
-  // Fall back to a timestamp-suffixed random ID if the RPC isn't wired
-  // (some Supabase projects gate RPC on nextval). Number stays unique
-  // via the UNIQUE constraint on invoice_number; a UI collision would
-  // 500 the create, which is acceptable for the fallback path.
-  if (error || typeof data !== "number") {
+  const { data, error } = await sb.rpc("commercial_next_invoice_seq");
+  // Fall back to a random suffix only if the RPC genuinely fails (e.g. the
+  // migration hasn't been applied yet). Number stays unique via the UNIQUE
+  // constraint on invoice_number; a UI collision would 500 the create, which
+  // is acceptable for the fallback path.
+  const seq = typeof data === "number" ? data : Number(data);
+  if (error || !Number.isFinite(seq)) {
     console.warn("[commercial/invoices] sequence nextval failed:", error?.message);
     const suffix = Date.now().toString(36).toUpperCase().slice(-6);
     return `${DEFAULT_INVOICE_PREFIX}-${suffix}`;
   }
-  const n = String(data).padStart(4, "0");
+  const n = String(seq).padStart(4, "0");
   return `${DEFAULT_INVOICE_PREFIX}-${n}`;
 }
 

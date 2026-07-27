@@ -10,17 +10,21 @@
  *  matches the true value; drop the decimal above $100k where it
  *  reads as noise ($123.4k instead of $123k on a small tile). */
 export function formatCentsCompact(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars === 0) return "$0";
-  if (Math.abs(dollars) >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(dollars) >= 100_000) return `$${Math.round(dollars / 1_000)}k`;
-  if (Math.abs(dollars) >= 1_000) {
-    const thousands = dollars / 1_000;
-    // Trim a trailing "0" so $10,000 reads as "$10k" (not "$10.0k").
-    const trimmed = thousands.toFixed(1).replace(/\.0$/, "");
-    return `$${trimmed}k`;
-  }
-  return `$${Math.round(dollars).toLocaleString()}`;
+  if (cents === 0) return "$0";
+  // Hoist the sign so negatives read "-$500", not "$-500" (matches
+  // formatCentsFull). Balances can go negative on overpayment/credit.
+  const neg = cents < 0;
+  const dollars = Math.abs(cents) / 100;
+  const body =
+    dollars >= 1_000_000
+      ? `$${(dollars / 1_000_000).toFixed(1)}M`
+      : dollars >= 100_000
+      ? `$${Math.round(dollars / 1_000)}k`
+      : dollars >= 1_000
+      ? // Trim a trailing "0" so $10,000 reads as "$10k" (not "$10.0k").
+        `$${(dollars / 1_000).toFixed(1).replace(/\.0$/, "")}k`
+      : `$${Math.round(dollars).toLocaleString()}`;
+  return neg ? `-${body}` : body;
 }
 
 /** Format cents as full "$1,234.56" for line items + totals. Negatives read
