@@ -343,6 +343,22 @@ export function isLost(opp: StatusTuple): boolean {
   return opp.status === "pre_sale_closed" && opp.sub_status === "lost";
 }
 
+/**
+ * True when this opp is a post-sale Project — the moment it's Won
+ * (pre_sale_closed + won) OR any post-sale lifecycle stage
+ * (pre_construction / in_progress / billing / post_sale_closed).
+ *
+ * Use this — not isWon — to gate post-contract surfaces (Change Orders,
+ * and later AIA billing), so they don't vanish the moment a won deal moves
+ * into pre-construction or WIP.
+ */
+export function isPostSaleProject(opp: StatusTuple): boolean {
+  return (
+    isWon(opp) ||
+    (opp.status != null && (POST_SALE_STATUSES as readonly string[]).includes(opp.status))
+  );
+}
+
 /** True when this opp is in Proposal/Follow Up (waiting on customer). */
 export function isFollowUp(opp: StatusTuple): boolean {
   return opp.status === "proposal" && opp.sub_status === "follow_up";

@@ -37,11 +37,27 @@ import { pickFirst } from "@/lib/commercial/form-utils";
 import {
   isTerminalOpportunityStatus,
   isWon,
+  isPostSaleProject,
   isLost,
 } from "@/lib/commercial/opportunities/constants";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import {
+  listChangeOrders,
+  createChangeOrder,
+  updateChangeOrder,
+  decideChangeOrder,
+  billChangeOrder,
+  deleteChangeOrder,
+} from "@/lib/commercial/change-orders/db";
+import {
+  CHANGE_ORDER_STATUS_META,
+  formatChangeOrderNumber,
+  changeOrderKind,
+} from "@/lib/commercial/change-orders/constants";
+import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import {
   allowedNextStatuses,
   changeOpportunityStatus,
@@ -151,6 +167,9 @@ type SP = Promise<{
   details_saved?: string;
   /** Phase C: category filter chip on the Files sub-tab. */
   category?: string;
+  /** Phase G: Change Orders tab flash flag + inline-edit target. */
+  co_ok?: string;
+  edit_co?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
@@ -1244,13 +1263,126 @@ async function createSubmittalAction(formData: FormData) {
 //   Debrief   → terminal opps only (unchanged)
 //
 // Files sub-tab added 2026-07-10 for Phase C — general-purpose polymorphic
+// ────────────── Change Orders tab actions (Phase G) ──────────────
+// COs live on the post-sale opportunity (the Project). Every action is
+// form-driven + redirects back to ?tab=changeorders with a flash flag, and
+// revalidates the surfaces a CO touches (this opp + — for a bill — the
+// invoices list + account 360). Commercial has no field/manager role split
+// (binary has_new_platform_access), so assertCommercialAccess is the gate.
+function coRedirect(oppId: string, params: Record<string, string>): never {
+  const qs = new URLSearchParams({ tab: "changeorders", ...params });
+  redirect(`/commercial/opportunities/${oppId}?${qs.toString()}`);
+}
+
+async function addChangeOrderAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  if (amount_cents === null || amount_cents === 0) {
+    coRedirect(opp_id, { error: "Enter a non-zero amount (use a minus sign for a deduct, e.g. -500.00)." });
+  }
+  const result = await createChangeOrder({
+    opportunity_id: opp_id,
+    title,
+    description,
+    amount_cents: amount_cents!,
+    created_by_user_id: user.id,
+  });
+  if (!result.ok) coRedirect(opp_id, { error: result.error });
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  coRedirect(opp_id, { co_ok: "added" });
+}
+
+async function editChangeOrderAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const co_id = String(formData.get("co_id") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(co_id)) redirect("/commercial/opportunities");
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim() || null;
+  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  if (amount_cents === null || amount_cents === 0) {
+    coRedirect(opp_id, { error: "Enter a non-zero amount (use a minus sign for a deduct)." });
+  }
+  const result = await updateChangeOrder(co_id, { title, description, amount_cents: amount_cents! }, user.id);
+  if (!result.ok) coRedirect(opp_id, { error: result.error });
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  coRedirect(opp_id, { co_ok: "saved" });
+}
+
+async function decideChangeOrderAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const co_id = String(formData.get("co_id") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(co_id)) redirect("/commercial/opportunities");
+  if (decision !== "approved" && decision !== "declined") {
+    coRedirect(opp_id, { error: "Unknown decision." });
+  }
+  const result = await decideChangeOrder(co_id, decision as "approved" | "declined", user.id);
+  if (!result.ok) coRedirect(opp_id, { error: result.error });
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  coRedirect(opp_id, { co_ok: decision === "approved" ? "approved" : "declined" });
+}
+
+async function billChangeOrderAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const co_id = String(formData.get("co_id") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(co_id)) redirect("/commercial/opportunities");
+  const result = await billChangeOrder(co_id, user.id);
+  if (!result.ok) coRedirect(opp_id, { error: result.error });
+  // Revalidate every surface the new invoice shows on, then drop the operator
+  // straight onto the draft invoice to add terms / send it.
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  revalidatePath("/commercial/invoices");
+  revalidatePath("/commercial");
+  const ctx = await getInvoiceContext(result.value.id);
+  if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
+  redirect(`/commercial/invoices/${result.value.id}?co_billed=1`);
+}
+
+async function deleteChangeOrderAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  const co_id = String(formData.get("co_id") ?? "");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(co_id)) redirect("/commercial/opportunities");
+  const result = await deleteChangeOrder(co_id, user.id);
+  if (!result.ok) coRedirect(opp_id, { error: result.error });
+  revalidatePath(`/commercial/opportunities/${opp_id}`);
+  coRedirect(opp_id, { co_ok: "deleted" });
+}
+
 // docs (bid sets, RFIs, permits, contracts, site photos, correspondence)
 // with status DAG + version chain + favorites. Separate from Plans/
 // Finishes/Submittals which are structured / stage-specific.
 //
 // Sub-navigation drives from URL `?tab=X&sub=Y`. Missing/invalid `sub`
 // falls back to the group's default (Info / Plans / Notes).
-type PrimaryTab = "overview" | "docs" | "activity" | "invoices" | "debrief";
+type PrimaryTab = "overview" | "docs" | "activity" | "invoices" | "changeorders" | "debrief";
 type SubTab = "info" | "team" | "plans" | "finishes" | "submittals" | "files" | "notes" | "tasks" | "timeline";
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
 // Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
@@ -1259,7 +1391,7 @@ const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
   { key: "docs", label: "Documents" },
   { key: "activity", label: "Activity" },
 ];
-const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, { key: SubTab; label: string }[]> = {
+const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices" | "changeorders">, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
     { key: "team", label: "Team" },
@@ -1276,7 +1408,7 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, {
     { key: "timeline", label: "Timeline" },
   ],
 };
-const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, SubTab> = {
+const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices" | "changeorders">, SubTab> = {
   overview: "info",
   docs: "plans",
   activity: "notes",
@@ -1291,7 +1423,7 @@ const DEFAULT_SUB_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
   if (!raw) return { primary: "overview", sub: null };
   // Direct primary hits.
-  if (raw === "overview" || raw === "docs" || raw === "activity" || raw === "invoices" || raw === "debrief") {
+  if (raw === "overview" || raw === "docs" || raw === "activity" || raw === "invoices" || raw === "changeorders" || raw === "debrief") {
     return { primary: raw as PrimaryTab, sub: null };
   }
   // Legacy flat sub-tab keys → route to the primary + explicit sub.
@@ -1358,6 +1490,7 @@ export default async function OpportunityDetailPage({
     _rawTab === "team" ||
     _rawTab === "invoices" ||
     _rawTab === "invoice" ||
+    _rawTab === "changeorders" ||
     _rawAction === "change-status";
   // For DELETED deals we never bounce to the account — the account page
   // has no affordance for a deleted deal and the account itself may be
@@ -1434,6 +1567,11 @@ export default async function OpportunityDetailPage({
   // (+ Debrief on closed deals).
   const isOppTerminal = isTerminalOpportunityStatus(opp.status);
   const isOppWon = isWon(opp);
+  // Phase G: Change Orders live on the post-sale Project — visible from the
+  // moment the deal is Won through pre-construction / WIP / billing / closed,
+  // NOT just the pre_sale_closed·won instant (isWon), or the tab would vanish
+  // once the project moves into production.
+  const isProject = isPostSaleProject(opp);
   // Karan 2026-07-08: deleted-deal drill-in — the only surfaces that
   // matter are Invoices (record payment / void a straggler) and Overview
   // (see what the deal was). Everything else assumes an active workflow.
@@ -1444,6 +1582,10 @@ export default async function OpportunityDetailPage({
       ]
     : [
         ...PRIMARY_TABS_BASE,
+        // Phase G: Change Orders live on the post-sale Project. Peer to the
+        // base tabs; sits before Debrief. Uses isProject (won → closed), not
+        // isOppWon, so it survives the production lifecycle.
+        ...(isProject ? [{ key: "changeorders" as PrimaryTab, label: "Change Orders" }] : []),
         ...(isOppTerminal ? [{ key: "debrief" as PrimaryTab, label: "Debrief" }] : []),
       ];
   const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
@@ -1454,12 +1596,14 @@ export default async function OpportunityDetailPage({
       ? "overview"
       : resolvedPrimary === "invoices" && !isOppWon && !isDeletedDeal
       ? "overview"
+      : resolvedPrimary === "changeorders" && !isProject
+      ? "overview"
       : resolvedPrimary;
   const rawSub = pickFirst(sp.sub) as SubTab | undefined;
   // debrief + invoices are leaves (no sub-tabs). Only overview/docs/
   // activity carry sub-tabs.
   const sub: SubTab | null =
-    primary === "debrief" || primary === "invoices"
+    primary === "debrief" || primary === "invoices" || primary === "changeorders"
       ? null
       : (rawSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === rawSub))
       ? rawSub
@@ -1470,8 +1614,14 @@ export default async function OpportunityDetailPage({
   // `?tab=team&error=...` etc. The `tab` variable below stays a flat
   // SubTab | "debrief" so all the existing tab === "team" checks below
   // continue to work — we just derive it from the resolved primary+sub.
-  const tab: SubTab | "debrief" | "invoices" =
-    primary === "debrief" ? "debrief" : primary === "invoices" ? "invoices" : sub!;
+  const tab: SubTab | "debrief" | "invoices" | "changeorders" =
+    primary === "debrief"
+      ? "debrief"
+      : primary === "invoices"
+      ? "invoices"
+      : primary === "changeorders"
+      ? "changeorders"
+      : sub!;
 
   const editedOk = pickFirst(sp.edited) === "1";
   const clonedOk = pickFirst(sp.cloned) === "1";
@@ -1750,7 +1900,7 @@ export default async function OpportunityDetailPage({
           (Overview/Documents/Activity). Debrief has no sub-nav. Pills
           are red-tinted when active so the two-level hierarchy is
           visually obvious. */}
-      {primary !== "debrief" && primary !== "invoices" && (
+      {primary !== "debrief" && primary !== "invoices" && primary !== "changeorders" && (
         <div className="flex flex-wrap items-center gap-1.5">
           {SUB_TABS_BY_PRIMARY[primary].map((s) => {
             const active = s.key === sub;
@@ -1818,6 +1968,14 @@ export default async function OpportunityDetailPage({
           isDealDeleted={isDeletedDeal}
           editInvoiceId={pickFirst(sp.edit_invoice) ?? null}
           detailsSavedInvoiceId={pickFirst(sp.details_saved) ?? null}
+        />
+      )}
+      {tab === "changeorders" && isProject && (
+        <OpportunityChangeOrdersPanel
+          oppId={opp.id}
+          okFlag={pickFirst(sp.co_ok) ?? null}
+          errorMessage={pickFirst(sp.error)}
+          editCoId={pickFirst(sp.edit_co) ?? null}
         />
       )}
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} assignedOk={pickFirst(sp.assigned) === "1"} />}
@@ -2547,6 +2705,282 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
       <div className="text-sm sm:text-base font-bold text-ppp-charcoal mt-0.5 tabular-nums">
         {value}
       </div>
+    </div>
+  );
+}
+
+// ────────────── Change Orders panel (Phase G) ──────────────
+function ChangeOrderPill({ status }: { status: "pending" | "approved" | "declined" }) {
+  const meta = CHANGE_ORDER_STATUS_META[status];
+  const cls =
+    meta.tone === "emerald"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : meta.tone === "rose"
+      ? "bg-rose-50 text-rose-700 border-rose-200"
+      : "bg-amber-50 text-amber-800 border-amber-200";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold ${cls}`}>
+      {meta.label}
+    </span>
+  );
+}
+
+/** Signed CO amount, e.g. "+$1,200.00" (add) or "−$500.00" (deduct). */
+function signedCents(amountCents: number): string {
+  const abs = formatCentsFull(Math.abs(amountCents));
+  return amountCents < 0 ? `−${abs}` : `+${abs}`;
+}
+
+const CO_OK_MESSAGES: Record<string, string> = {
+  added: "Change order added.",
+  saved: "Change order updated.",
+  approved: "Change order approved — it now counts toward the contract sum.",
+  declined: "Change order declined — it won't affect the contract sum.",
+  deleted: "Change order deleted.",
+};
+
+async function OpportunityChangeOrdersPanel({
+  oppId,
+  okFlag,
+  errorMessage,
+  editCoId,
+}: {
+  oppId: string;
+  okFlag?: string | null;
+  errorMessage?: string;
+  editCoId?: string | null;
+}) {
+  const items = await listChangeOrders(oppId);
+  const netApprovedCents = items
+    .filter((c) => c.status === "approved")
+    .reduce((acc, c) => acc + c.amount_cents, 0);
+  const pendingCount = items.filter((c) => c.status === "pending").length;
+  const dismissHref = `/commercial/opportunities/${oppId}?tab=changeorders`;
+
+  return (
+    <div className="space-y-3">
+      {okFlag && CO_OK_MESSAGES[okFlag] ? (
+        <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700">
+          <span>{CO_OK_MESSAGES[okFlag]}</span>
+          <Link href={dismissHref} className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center">
+            Dismiss
+          </Link>
+        </div>
+      ) : null}
+      {errorMessage ? (
+        <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-rose-50 border border-rose-200 text-rose-700">
+          <span>{errorMessage}</span>
+          <Link href={dismissHref} className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center">
+            Dismiss
+          </Link>
+        </div>
+      ) : null}
+
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div className="flex items-center gap-2">
+            <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-100 text-cc-brand-700">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Change Orders</h2>
+              <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
+                Scope added or deducted mid-job. Approved change orders adjust the contract sum and bill on their own invoice.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Net approved</div>
+            <div className={`text-sm sm:text-base font-bold tabular-nums ${netApprovedCents < 0 ? "text-rose-700" : "text-emerald-700"}`}>
+              {netApprovedCents === 0 ? formatCentsFull(0) : signedCents(netApprovedCents)}
+            </div>
+            {pendingCount > 0 && (
+              <div className="text-[11px] text-amber-700 mt-0.5">
+                {pendingCount} pending {pendingCount === 1 ? "decision" : "decisions"}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Add form — progressive-enhancement <details>, no client JS. Stays
+            open when the panel re-renders with an error so the operator's
+            context isn't lost. */}
+        <details className="group mb-3 border border-cc-brand-200 rounded-lg" open={!!errorMessage && okFlag == null}>
+          <summary className="cursor-pointer list-none px-3.5 py-2.5 min-h-[44px] flex items-center gap-2 text-[12px] font-semibold text-cc-brand-700 select-none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform">
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            Add a change order
+          </summary>
+          <form action={addChangeOrderAction} className="px-3.5 pb-3.5 pt-1 space-y-2.5">
+            <input type="hidden" name="opp_id" value={oppId} />
+            <div>
+              <label className={LABEL_CLS} htmlFor="co-title">Title</label>
+              <input id="co-title" name="title" required maxLength={200} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="co-amount">Amount</label>
+              <input id="co-amount" name="amount" required inputMode="decimal" className={INPUT_CLS} placeholder="1,200.00" />
+              <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+                Enter a positive amount to add scope, or a minus sign to deduct (e.g. <span className="tabular-nums">-500.00</span>).
+              </p>
+            </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="co-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
+              <textarea id="co-desc" name="description" maxLength={4000} rows={2} className={TEXTAREA_CLS} placeholder="What changed and why" />
+            </div>
+            <PendingSubmitButton
+              pendingLabel="Adding…"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+            >
+              Add change order
+            </PendingSubmitButton>
+          </form>
+        </details>
+
+        {items.length === 0 ? (
+          <div className="text-center py-8 px-4">
+            <p className="text-sm text-ppp-charcoal-500">No change orders yet.</p>
+            <p className="text-[12px] text-ppp-charcoal-400 mt-1">
+              Add one when scope changes mid-job. Approved change orders roll into the contract sum to date.
+            </p>
+          </div>
+        ) : (
+          <ul className="space-y-2.5">
+            {items.map((co) => {
+              const isEditing = editCoId === co.id && co.status === "pending" && !co.invoiced_invoice_id;
+              const kind = changeOrderKind(co.amount_cents);
+              return (
+                <li key={co.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-3.5">
+                  {isEditing ? (
+                    <form action={editChangeOrderAction} className="space-y-2.5">
+                      <input type="hidden" name="opp_id" value={oppId} />
+                      <input type="hidden" name="co_id" value={co.id} />
+                      <div className="text-[12px] font-bold text-ppp-charcoal">{formatChangeOrderNumber(co.co_number)}</div>
+                      <div>
+                        <label className={LABEL_CLS} htmlFor={`edit-title-${co.id}`}>Title</label>
+                        <input id={`edit-title-${co.id}`} name="title" required maxLength={200} defaultValue={co.title} className={INPUT_CLS} />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS} htmlFor={`edit-amount-${co.id}`}>Amount</label>
+                        <input id={`edit-amount-${co.id}`} name="amount" required inputMode="decimal" defaultValue={(co.amount_cents / 100).toFixed(2)} className={INPUT_CLS} />
+                        <p className="text-[11px] text-ppp-charcoal-500 mt-1">Minus sign = deduct.</p>
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS} htmlFor={`edit-desc-${co.id}`}>Description</label>
+                        <textarea id={`edit-desc-${co.id}`} name="description" maxLength={4000} rows={2} defaultValue={co.description ?? ""} className={TEXTAREA_CLS} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <PendingSubmitButton pendingLabel="Saving…" className="px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Save</PendingSubmitButton>
+                        <Link href={dismissHref} className="px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] inline-flex items-center">Cancel</Link>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[12px] font-bold text-ppp-charcoal">{formatChangeOrderNumber(co.co_number)}</span>
+                            <ChangeOrderPill status={co.status} />
+                            {kind === "deduct" && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full border border-ppp-charcoal-200 bg-ppp-charcoal-50 text-[11px] font-medium text-ppp-charcoal-600">Deduct</span>
+                            )}
+                          </div>
+                          <div className="text-sm font-semibold text-ppp-charcoal mt-1 break-words">{co.title}</div>
+                          {co.description && (
+                            <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 break-words whitespace-pre-wrap">{co.description}</div>
+                          )}
+                          {co.decided_at && (
+                            <div className="text-[11px] text-ppp-charcoal-400 mt-1">
+                              {co.status === "approved" ? "Approved" : "Declined"} {fmtEtDate(co.decided_at)}
+                            </div>
+                          )}
+                        </div>
+                        <div className={`text-base font-bold tabular-nums shrink-0 ${kind === "deduct" ? "text-rose-700" : "text-emerald-700"}`}>
+                          {signedCents(co.amount_cents)}
+                        </div>
+                      </div>
+
+                      {/* Billing state / actions */}
+                      <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                        {co.invoiced_invoice_id ? (
+                          <Link
+                            href={`/commercial/invoices/${co.invoiced_invoice_id}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-100 min-h-[36px]"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
+                            </svg>
+                            View invoice
+                          </Link>
+                        ) : (
+                          <>
+                            {co.status === "pending" && (
+                              <>
+                                <form action={decideChangeOrderAction}>
+                                  <input type="hidden" name="opp_id" value={oppId} />
+                                  <input type="hidden" name="co_id" value={co.id} />
+                                  <input type="hidden" name="decision" value="approved" />
+                                  <PendingSubmitButton pendingLabel="Approving…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 min-h-[44px]">Approve</PendingSubmitButton>
+                                </form>
+                                <form action={decideChangeOrderAction}>
+                                  <input type="hidden" name="opp_id" value={oppId} />
+                                  <input type="hidden" name="co_id" value={co.id} />
+                                  <input type="hidden" name="decision" value="declined" />
+                                  <PendingSubmitButton pendingLabel="Declining…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 bg-white text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px]">Decline</PendingSubmitButton>
+                                </form>
+                                <Link href={`${dismissHref}&edit_co=${co.id}`} className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Edit</Link>
+                              </>
+                            )}
+                            {co.status === "approved" && co.amount_cents > 0 && (
+                              <form action={billChangeOrderAction}>
+                                <input type="hidden" name="opp_id" value={oppId} />
+                                <input type="hidden" name="co_id" value={co.id} />
+                                <PendingSubmitButton pendingLabel="Creating invoice…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                    <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                                  </svg>
+                                  Bill this change order
+                                </PendingSubmitButton>
+                              </form>
+                            )}
+                            {co.status === "approved" && co.amount_cents < 0 && (
+                              <span className="text-[11px] text-ppp-charcoal-500 italic">
+                                Reflected in the contract sum — deduct change orders aren&rsquo;t billed separately.
+                              </span>
+                            )}
+                            {co.status === "declined" && (
+                              <form action={decideChangeOrderAction}>
+                                <input type="hidden" name="opp_id" value={oppId} />
+                                <input type="hidden" name="co_id" value={co.id} />
+                                <input type="hidden" name="decision" value="approved" />
+                                <PendingSubmitButton pendingLabel="Reopening…" className="inline-flex items-center px-3 py-1.5 rounded-lg border border-emerald-200 bg-white text-[12px] font-semibold text-emerald-700 hover:bg-emerald-50 min-h-[44px]">Reopen &amp; approve</PendingSubmitButton>
+                              </form>
+                            )}
+                            <form action={deleteChangeOrderAction} className="ml-auto">
+                              <input type="hidden" name="opp_id" value={oppId} />
+                              <input type="hidden" name="co_id" value={co.id} />
+                              <ConfirmSubmitButton
+                                message={`Delete ${formatChangeOrderNumber(co.co_number)}? This can't be undone.`}
+                                pendingLabel="Deleting…"
+                                className="inline-flex items-center px-3 py-1.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[44px]"
+                              >
+                                Delete
+                              </ConfirmSubmitButton>
+                            </form>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

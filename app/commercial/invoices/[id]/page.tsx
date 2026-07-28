@@ -61,6 +61,8 @@ type SP = Promise<{
   applied?: string;
   requested?: string;
   from?: string;
+  /** Phase G: set when this invoice was just created to bill a change order. */
+  co_billed?: string;
 }>;
 
 // ────────────── Server actions ──────────────
@@ -578,6 +580,12 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
           <span aria-hidden>✓</span>
           <span>Invoice created.</span>
+        </div>
+      )}
+      {pickFirst(sp.co_billed) === "1" && (
+        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
+          <span aria-hidden>✓</span>
+          <span>Draft invoice created for this change order. Review the terms and send it when you&rsquo;re ready.</span>
         </div>
       )}
       {savedTarget === "status" && (
