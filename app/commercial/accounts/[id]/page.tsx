@@ -5511,14 +5511,6 @@ function DealEditSheet({
                   {oppStatusDisplayLabel(deal.status, deal.sub_status)}
                 </span>
               </div>
-              {/* Show the raw title too when it differs from the derived name,
-                  so the name here matches the list AND the operator can still
-                  see what they typed as the title. */}
-              {deal.title && deal.title.trim() && deal.title.trim() !== dealDisplayName && (
-                <div className="mt-1 text-[11.5px] text-ppp-charcoal-500 break-words">
-                  Title: {deal.title.trim()}
-                </div>
-              )}
               {primaryLead && (
                 <div className="mt-1 text-[11.5px] text-ppp-charcoal-500">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" /></svg> {primaryLead.user_full_name ?? primaryLead.user_email} lead
@@ -5643,8 +5635,8 @@ function DealEditSheet({
                 className={inputCls}
               />
               <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
-                Internal working title. Public display name is auto-derived
-                — override below to lock in a specific label.
+                Shown as &ldquo;{accountName} - {`{this title}`}&rdquo;. Use the
+                Custom display name below to override the whole label.
               </span>
             </div>
             {/* Katie 2026-07-20 (migration 069): title_override input.

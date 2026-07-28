@@ -198,21 +198,18 @@ export function derivedOppName(
   const override = opp.title_override?.trim();
   if (override) return override;
 
-  // (2) Computed. client_name is optional per Katie's spec: "If Client
-  //     Name is blank, then leave it out."
-  const parts: string[] = [];
-  if (accountName && accountName.trim()) parts.push(accountName.trim());
-  if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
-  const location = (opp.property_street && opp.property_street.trim()) || "";
-  if (location) parts.push(location);
-
-  // Need at least 2 parts to render the join; solo account name alone
-  // is uninformative next to opp.title. Otherwise: {account} - {client}
-  // or {account} - {street} or full {account} - {client} - {street}.
-  if (parts.length >= 2) return parts.join(" - ");
-
-  // (3) Legacy fallback — Phase B structural fields not populated yet.
-  return opp.title || parts[0] || "Untitled opportunity";
+  // (2) Karan 2026-07-28: display name = "{Account} - {Deal title}" so BOTH
+  //     the account and the deal's own title are visible at a glance (was
+  //     "{account} - {client} - {street}", which hid the title). Custom
+  //     display name (title_override, above) still overrides. Dedupe when the
+  //     two sides are identical so we never render "Karan - Karan"; fall back
+  //     gracefully when one side is missing.
+  const acct = accountName?.trim() ?? "";
+  const title = opp.title?.trim() ?? "";
+  if (acct && title) {
+    return acct.toLowerCase() === title.toLowerCase() ? title : `${acct} - ${title}`;
+  }
+  return title || acct || "Untitled opportunity";
 }
 
 // formatDealNumber (the "No. ALT-0125" formatter) was retired 2026-07-21:
