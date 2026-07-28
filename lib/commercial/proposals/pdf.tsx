@@ -842,6 +842,15 @@ function groupItemsByPhase(items: CommercialProposalLineItem[]): {
     }
     g.rows.push(it);
   }
+  // If a real phase is literally named "General" (any case), the ungrouped
+  // sentinel would DISPLAY the same "General" label → the reader sees two
+  // "General" sections + two "General subtotal" lines (keys differ, so the math
+  // is still correct — this is display-only). Relabel the sentinel so they're
+  // visually distinct.
+  const ungrouped = byKey.get(UNGROUPED_PHASE_KEY);
+  if (ungrouped && byKey.has("general")) {
+    ungrouped.label = "Unphased";
+  }
   groups.sort((a, b) => (a.key === UNGROUPED_PHASE_KEY ? -1 : b.key === UNGROUPED_PHASE_KEY ? 1 : 0));
   return { anyHasPhase, groups };
 }
@@ -1006,15 +1015,19 @@ function InclusionsInternal({
   items,
   internal,
   groupByPhase = false,
+  heading = "Inclusions",
 }: {
   items: CommercialProposalLineItem[];
   internal: boolean;
   groupByPhase?: boolean;
+  /** Section heading — "Inclusions" for the base scope, "Labor" for the
+   *  hourly rows (so the priced view doesn't show two "Inclusions:" headers). */
+  heading?: string;
 }) {
   if (items.length === 0) return null;
   return (
     <View style={{ marginTop: 4 }}>
-      <Text style={styles.sectionUnderlineHeader}>{internal ? "Inclusions (internal line-item view):" : "Inclusions:"}</Text>
+      <Text style={styles.sectionUnderlineHeader}>{internal ? `${heading} (internal line-item view):` : `${heading}:`}</Text>
       <LineItemTable items={items} showAlternateBadge={false} groupByPhase={groupByPhase} />
     </View>
   );
@@ -1250,7 +1263,7 @@ export function ProposalPdfDocument({
             (they carry price + qty just like inclusions). */}
         {!showLineTable && <LaborSection items={laborRows} />}
         {showLineTable && laborRows.length > 0 && (
-          <InclusionsInternal items={laborRows} internal={mode === "internal"} />
+          <InclusionsInternal items={laborRows} internal={mode === "internal"} heading="Labor" />
         )}
 
         {showLineTable ? (
