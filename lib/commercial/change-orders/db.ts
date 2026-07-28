@@ -16,7 +16,11 @@
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
-import { createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import {
+  createCommercialInvoice,
+  notifyCommercialInvoiceCreated,
+  type CommercialInvoice,
+} from "@/lib/commercial/invoices/db";
 import { formatChangeOrderNumber, type ChangeOrderStatus } from "./constants";
 
 export type CommercialChangeOrder = {
@@ -82,6 +86,28 @@ export async function netApprovedChangeOrderCents(opportunityId: string): Promis
     .eq("status", "approved")
     .is("deleted_at", null);
   return (data ?? []).reduce((acc, r) => acc + Number((r as { amount_cents: number }).amount_cents), 0);
+}
+
+/**
+ * Given a set of invoice ids, returns the subset that are still LIVE (not
+ * soft-deleted, not voided). The Change Orders panel uses this to decide, per
+ * CO, whether its linked invoice still counts as "billed" (show View invoice)
+ * or has been voided/removed (show the re-bill flow) — keying on liveness, not
+ * on the mere presence of invoiced_invoice_id.
+ */
+export async function liveInvoiceIds(ids: string[]): Promise<Set<string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return new Set();
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_invoices")
+    .select("id, deleted_at, status")
+    .in("id", unique);
+  const live = new Set<string>();
+  for (const row of (data ?? []) as { id: string; deleted_at: string | null; status: string }[]) {
+    if (!row.deleted_at && row.status !== "void") live.add(row.id);
+  }
+  return live;
 }
 
 export type CreateChangeOrderInput = {
@@ -272,7 +298,14 @@ export async function billChangeOrder(
         "Deduct change orders reduce the contract sum and aren't billed separately — the amount is reflected in the AIA net change orders.",
     };
   }
-  if (co.invoiced_invoice_id && (await invoiceIsLive(co.invoiced_invoice_id))) {
+  // `invoiced_invoice_id` is only ever SET, never cleared (the app soft-deletes
+  // / voids invoices, it never hard-deletes, so the FK's ON DELETE SET NULL
+  // doesn't fire). So a CO whose invoice was voided or removed still points at
+  // that dead id. If the linked invoice is still live, it's genuinely billed;
+  // if it's dead, this is a re-bill (e.g. the first invoice was voided to
+  // reissue), which we allow.
+  const priorInvoiceId = co.invoiced_invoice_id;
+  if (priorInvoiceId && (await invoiceIsLive(priorInvoiceId))) {
     return { ok: false, error: "This change order is already billed." };
   }
 
@@ -281,6 +314,9 @@ export async function billChangeOrder(
     account_id: co.account_id,
     created_by_user_id: userId,
     notes: `Bills ${formatChangeOrderNumber(co.co_number)} — ${co.title}`,
+    // Suppress the create-time notification — we only want the team to hear
+    // about this invoice if it wins the claim below (a loser gets voided).
+    skipCreatedNotification: true,
     line_items: [
       {
         description: `${formatChangeOrderNumber(co.co_number)} — ${co.title}`,
@@ -292,21 +328,24 @@ export async function billChangeOrder(
   if (!created.ok) return { ok: false, error: created.error };
 
   const sb = commercialDb();
-  // Atomic claim: link the invoice ONLY if the CO is still unbilled. The
-  // `.is("invoiced_invoice_id", null)` turns the read-then-write into a
-  // compare-and-swap, so a concurrent bill (double-click, second tab, second
-  // user, or a resubmit that races the button-disable) can't produce two
-  // live invoices for one CO — exactly one request wins the claim. The loser
-  // (and the link-write-failure path) soft-deletes its just-created draft so
-  // no orphan invoice is left behind, and a literal retry can't double-bill.
-  const { data: claimed, error } = await sb
+  // Atomic claim (compare-and-swap): link the new invoice ONLY if the CO's
+  // link column is still exactly what we saw a moment ago — null for a fresh
+  // bill, or the dead invoice id for a re-bill. Either way a concurrent bill
+  // (double-click, second tab, second user, raced resubmit) can only have ONE
+  // request match, so we can't mint two live invoices for one CO. The `.eq`
+  // on status also closes a decline-during-bill race. The loser (and the
+  // link-write-failure path) soft-deletes its just-created draft so no orphan
+  // is left behind and a literal retry can't double-bill.
+  const claim = sb
     .from("commercial_change_orders")
     .update({ invoiced_invoice_id: created.invoice.id, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .is("invoiced_invoice_id", null)
-    // Also require it to still be approved — closes a decline-during-bill race
-    // that could otherwise leave a declined CO carrying a live invoice.
-    .eq("status", "approved")
+    .eq("status", "approved");
+  const { data: claimed, error } = await (
+    priorInvoiceId
+      ? claim.eq("invoiced_invoice_id", priorInvoiceId)
+      : claim.is("invoiced_invoice_id", null)
+  )
     .select("id")
     .maybeSingle();
 
@@ -334,6 +373,8 @@ export async function billChangeOrder(
     { invoiced_invoice_id: created.invoice.id },
     userId
   );
+  // Claim won — NOW tell the team about the invoice (suppressed at create time).
+  void notifyCommercialInvoiceCreated(created.invoice, userId);
   return { ok: true, value: created.invoice };
 }
 
@@ -360,17 +401,20 @@ export async function deleteChangeOrder(id: string, userId: string): Promise<Res
 }
 
 /**
- * True when the invoice exists and isn't soft-deleted. A soft-deleted invoice
- * counts as "not billed" so the CO frees up for re-billing.
+ * True when the invoice exists and is neither soft-deleted NOR voided. Both a
+ * removed and a voided invoice count as "not billed" so the CO frees up for
+ * re-billing — which is exactly what the "void or delete its invoice first"
+ * copy on the decide / delete / re-bill guards tells the operator to do.
  */
 async function invoiceIsLive(invoiceId: string): Promise<boolean> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_invoices")
-    .select("id, deleted_at")
+    .select("id, deleted_at, status")
     .eq("id", invoiceId)
     .maybeSingle();
-  return !!data && !(data as { deleted_at: string | null }).deleted_at;
+  const row = data as { deleted_at: string | null; status: string } | null;
+  return !!row && !row.deleted_at && row.status !== "void";
 }
 
 /**

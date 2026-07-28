@@ -154,6 +154,14 @@ export type CreateInvoiceInput = {
     /** Phase D: optional catalog FK. NULL for legacy free-text rows. */
     product_id?: string | null;
   }>;
+  /**
+   * Phase G: suppress the "new invoice created" bell/email fanout. The change-
+   * order bill flow may create an invoice it then immediately voids if it loses
+   * the atomic claim race — skipping the fanout avoids a phantom notification
+   * for an invoice that never really existed. The caller fires its own notify
+   * only after the claim succeeds.
+   */
+  skipCreatedNotification?: boolean;
 };
 
 export type ListInvoicesFilters = {
@@ -391,33 +399,47 @@ export async function createCommercialInvoice(
   await logInsert("commercial_invoices", inserted.id, inserted, input.created_by_user_id);
 
   // Bell + email fanout — fire-and-forget. Team members on the parent
-  // opp see the new invoice in their bell without polling. Errors caught
-  // + logged inside the helper; never blocks the ok:true return.
-  void (async () => {
-    try {
-      const [actorName, oppTitle] = await Promise.all([
-        resolveActorName(input.created_by_user_id),
-        fetchOppTitle(input.opportunity_id),
-      ]);
-      const insertedRow = inserted as CommercialInvoice;
-      await insertCommercialInvoiceCreatedNotifications({
-        invoiceId: insertedRow.id,
-        invoiceNumber: insertedRow.invoice_number,
-        opportunityId: input.opportunity_id,
-        oppTitle: oppTitle ?? "the opportunity",
-        totalCents: insertedRow.total_cents,
-        actingUserId: input.created_by_user_id,
-        actorName,
-      });
-    } catch (err) {
-      console.warn(
-        "[commercial/invoices] invoice_created notify failed:",
-        err instanceof Error ? err.message : String(err)
-      );
-    }
-  })();
+  // opp see the new invoice in their bell without polling. Skipped when the
+  // caller fires its own notify after a downstream claim (Phase G change-order
+  // billing) so a voided-loser invoice doesn't notify.
+  if (!input.skipCreatedNotification) {
+    void notifyCommercialInvoiceCreated(inserted as CommercialInvoice, input.created_by_user_id);
+  }
 
   return { ok: true, invoice: inserted as CommercialInvoice };
+}
+
+/**
+ * Fire the "new invoice created" bell + email fanout for one invoice. Extracted
+ * so a caller that suppressed it at create time (skipCreatedNotification) can
+ * fire it itself once a downstream step commits — e.g. change-order billing
+ * fires this only after it wins the atomic claim, so a voided loser never
+ * notifies. Fire-and-forget: errors are caught + logged, never thrown.
+ */
+export async function notifyCommercialInvoiceCreated(
+  invoice: CommercialInvoice,
+  actingUserId: string
+): Promise<void> {
+  try {
+    const [actorName, oppTitle] = await Promise.all([
+      resolveActorName(actingUserId),
+      fetchOppTitle(invoice.opportunity_id),
+    ]);
+    await insertCommercialInvoiceCreatedNotifications({
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      opportunityId: invoice.opportunity_id,
+      oppTitle: oppTitle ?? "the opportunity",
+      totalCents: invoice.total_cents,
+      actingUserId,
+      actorName,
+    });
+  } catch (err) {
+    console.warn(
+      "[commercial/invoices] invoice_created notify failed:",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
 }
 
 /** Fetches the current status + returns an "editable?" verdict.

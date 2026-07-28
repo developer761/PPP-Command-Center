@@ -45,6 +45,7 @@ import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceS
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import {
   listChangeOrders,
+  liveInvoiceIds,
   createChangeOrder,
   updateChangeOrder,
   decideChangeOrder,
@@ -1292,7 +1293,10 @@ async function addChangeOrderAction(formData: FormData) {
   const rawTitle = String(formData.get("title") ?? "");
   const rawAmount = String(formData.get("amount") ?? "");
   const rawDesc = String(formData.get("description") ?? "");
-  const preserve = { co_title: rawTitle, co_amt: rawAmount, co_desc: rawDesc };
+  // Cap the round-tripped description so a long paste can't overflow the
+  // redirect (Location header) — the actual submit isn't truncated, only the
+  // preserved-on-error copy.
+  const preserve = { co_title: rawTitle.slice(0, 200), co_amt: rawAmount.slice(0, 40), co_desc: rawDesc.slice(0, 1000) };
   const title = rawTitle.trim();
   const description = rawDesc.trim() || null;
   const amount_cents = parseDollarsToCents(rawAmount);
@@ -1324,8 +1328,9 @@ async function editChangeOrderAction(formData: FormData) {
   const rawAmount = String(formData.get("amount") ?? "");
   const rawDesc = String(formData.get("description") ?? "");
   // On error, keep the inline edit form OPEN (edit_co) + re-fill the fields so
-  // the operator's edits aren't lost.
-  const preserve = { edit_co: co_id, co_title: rawTitle, co_amt: rawAmount, co_desc: rawDesc };
+  // the operator's edits aren't lost. Capped so a long paste can't overflow the
+  // redirect header.
+  const preserve = { edit_co: co_id, co_title: rawTitle.slice(0, 200), co_amt: rawAmount.slice(0, 40), co_desc: rawDesc.slice(0, 1000) };
   const title = rawTitle.trim();
   const description = rawDesc.trim() || null;
   const amount_cents = parseDollarsToCents(rawAmount);
@@ -2777,6 +2782,11 @@ async function OpportunityChangeOrdersPanel({
   preserveDesc?: string | null;
 }) {
   const items = await listChangeOrders(oppId);
+  // Which linked invoices are still live (not voided/removed)? A CO whose
+  // invoice was voided is treated as un-billed here so it offers a re-bill.
+  const liveInvoices = await liveInvoiceIds(
+    items.map((c) => c.invoiced_invoice_id).filter((x): x is string => !!x)
+  );
   const netApprovedCents = items
     .filter((c) => c.status === "approved")
     .reduce((acc, c) => acc + c.amount_cents, 0);
@@ -2793,7 +2803,7 @@ async function OpportunityChangeOrdersPanel({
       {okFlag && CO_OK_MESSAGES[okFlag] ? (
         <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700">
           <span>{CO_OK_MESSAGES[okFlag]}</span>
-          <Link href={dismissHref} className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center">
+          <Link href={dismissHref} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">
             Dismiss
           </Link>
         </div>
@@ -2801,7 +2811,7 @@ async function OpportunityChangeOrdersPanel({
       {errorMessage ? (
         <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-rose-50 border border-rose-200 text-rose-700">
           <span>{errorMessage}</span>
-          <Link href={dismissHref} className="text-[12px] underline shrink-0 min-h-[24px] inline-flex items-center">
+          <Link href={dismissHref} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">
             Dismiss
           </Link>
         </div>
@@ -2881,7 +2891,12 @@ async function OpportunityChangeOrdersPanel({
         ) : (
           <ul className="space-y-2.5">
             {items.map((co) => {
-              const isEditing = editCoId === co.id && co.status === "pending" && !co.invoiced_invoice_id;
+              // "Billed" means linked to a LIVE invoice. A CO whose invoice was
+              // voided/removed keeps its stale link but is treated as un-billed
+              // here — it shows the re-bill flow, not a dead "View invoice".
+              const billedLive = !!co.invoiced_invoice_id && liveInvoices.has(co.invoiced_invoice_id);
+              const invoiceVoided = !!co.invoiced_invoice_id && !billedLive;
+              const isEditing = editCoId === co.id && co.status === "pending" && !billedLive;
               const kind = changeOrderKind(co.amount_cents);
               return (
                 <li key={co.id} className="border border-ppp-charcoal-100 rounded-lg p-3 sm:p-3.5">
@@ -2935,8 +2950,13 @@ async function OpportunityChangeOrdersPanel({
                       </div>
 
                       {/* Billing state / actions */}
+                      {invoiceVoided && (
+                        <p className="mt-2 text-[11px] text-ppp-charcoal-500 italic">
+                          The invoice that billed this change order was voided or removed — you can bill it again.
+                        </p>
+                      )}
                       <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                        {co.invoiced_invoice_id ? (
+                        {billedLive ? (
                           <Link
                             href={`/commercial/invoices/${co.invoiced_invoice_id}`}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-100 min-h-[44px]"
