@@ -5648,6 +5648,26 @@ async function DealEditSheet({
             )}
           </Link>
         )}
+        {/* Phase H: AIA progress billing entry (post-sale projects). */}
+        {isPostSaleDeal && (
+          <Link
+            href={`/commercial/accounts/${accountId}/aia/${deal.id}`}
+            className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-white p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span aria-hidden className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-600 text-white shrink-0">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6 M9 9h1" /></svg>
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-ppp-charcoal leading-tight">AIA Billing</div>
+                  <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">G702 / G703 progress billing + Excel export</div>
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+            </div>
+          </Link>
+        )}
         {errorMessage && (
           <div
             role="alert"

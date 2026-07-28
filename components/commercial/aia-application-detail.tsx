@@ -1,0 +1,256 @@
+/**
+ * AIA application detail (Phase H2) — the computed G702 certificate summary +
+ * the editable G703 schedule of values. Reusable server component; the host
+ * page passes the resolved G702, the line items, and the server actions.
+ */
+import Link from "next/link";
+import { formatCentsFull } from "@/lib/commercial/invoices/format";
+import { INPUT_CLS } from "@/lib/commercial/form-classnames";
+import { AIA_STATUS_META, type AiaG702, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
+import { lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
+import type { AiaApplication, AiaLineItem } from "@/lib/commercial/aia/db";
+import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+
+type Action = (fd: FormData) => void | Promise<void>;
+
+function StatusPill({ status }: { status: AiaApplicationStatus }) {
+  const m = AIA_STATUS_META[status];
+  const cls =
+    m.tone === "emerald"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : m.tone === "ppp-blue"
+      ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
+      : "bg-amber-50 text-amber-800 border-amber-200";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold ${cls}`}>
+      {m.label}
+    </span>
+  );
+}
+
+/** One G702 summary line. */
+function G702Line({
+  n,
+  label,
+  cents,
+  emphasize,
+  muted,
+}: {
+  n: string;
+  label: string;
+  cents: number;
+  emphasize?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className={`flex items-baseline justify-between gap-3 py-1.5 ${emphasize ? "border-t border-ppp-charcoal-200 mt-1 pt-2" : ""}`}>
+      <span className={`text-[12px] ${emphasize ? "font-bold text-ppp-charcoal" : muted ? "text-ppp-charcoal-500" : "text-ppp-charcoal-700"}`}>
+        <span className="tabular-nums text-ppp-charcoal-400 mr-1.5">{n}</span>
+        {label}
+      </span>
+      <span className={`tabular-nums shrink-0 ${emphasize ? "text-base font-bold text-cc-brand-700" : muted ? "text-[12px] text-ppp-charcoal-500" : "text-[13px] font-semibold text-ppp-charcoal"}`}>
+        {cents < 0 ? `(${formatCentsFull(Math.abs(cents))})` : formatCentsFull(cents)}
+      </span>
+    </div>
+  );
+}
+
+export function AiaApplicationDetail({
+  application,
+  accountId,
+  dealId,
+  lines,
+  g702,
+  basePath,
+  exportHref,
+  upsertLineAction,
+  deleteLineAction,
+  setStatusAction,
+  errorMessage,
+}: {
+  application: AiaApplication;
+  accountId: string;
+  dealId: string;
+  lines: AiaLineItem[];
+  g702: AiaG702;
+  basePath: string; // list URL (drop ?app)
+  exportHref: string;
+  upsertLineAction: Action;
+  deleteLineAction: Action;
+  setStatusAction: Action;
+  errorMessage?: string | null;
+}) {
+  const selfHref = `${basePath}?app=${application.id}`;
+  const pct = g702.percentCompleteBps != null ? (g702.percentCompleteBps / 100).toFixed(1) : null;
+  // Every form carries the account + deal ids the server actions redirect with.
+  const Ctx = () => (
+    <>
+      <input type="hidden" name="account_id" value={accountId} />
+      <input type="hidden" name="opp_id" value={dealId} />
+    </>
+  );
+
+  return (
+    <div className="space-y-3">
+      {errorMessage && (
+        <div className="rounded-lg px-4 py-3 text-sm bg-rose-50 border border-rose-200 text-rose-700 flex items-start justify-between gap-3">
+          <span>{errorMessage}</span>
+          <Link href={selfHref} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <Link href={basePath} className="inline-flex items-center gap-1 text-[12px] text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
+          All applications
+        </Link>
+        <div className="flex items-center gap-2">
+          <StatusPill status={application.status} />
+          <a
+            href={exportHref}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-white text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[44px]"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
+            Export to Excel
+          </a>
+        </div>
+      </div>
+
+      {/* ── G702 summary ── */}
+      <section className="bg-gradient-to-br from-cc-brand-50/40 to-white border border-cc-brand-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <h2 className="text-sm font-bold text-ppp-charcoal">Application No. {application.application_number} — Certificate (G702)</h2>
+          {pct != null && <span className="text-[11px] font-semibold text-ppp-charcoal-500">{pct}% complete</span>}
+        </div>
+        <div className="grid sm:grid-cols-2 sm:gap-x-8">
+          <div>
+            <G702Line n="1" label="Original Contract Sum" cents={g702.originalContractCents} />
+            <G702Line n="2" label="Net change by Change Orders" cents={g702.netChangeOrdersCents} />
+            <G702Line n="3" label="Contract Sum to Date" cents={g702.contractSumToDateCents} emphasize />
+            <G702Line n="4" label="Total Completed & Stored" cents={g702.totalCompletedStoredCents} />
+            <G702Line n="5" label={`Retainage (${Number(application.retainage_pct)}%)`} cents={g702.retainageCents} muted />
+          </div>
+          <div>
+            <G702Line n="6" label="Total Earned Less Retainage" cents={g702.totalEarnedLessRetainageCents} />
+            <G702Line n="7" label="Less Previous Certificates" cents={g702.previousCertificatesCents} muted />
+            <G702Line n="8" label="Current Payment Due" cents={g702.currentPaymentDueCents} emphasize />
+            <G702Line n="9" label="Balance to Finish (incl. retainage)" cents={g702.balanceToFinishCents} />
+          </div>
+        </div>
+        {/* Status controls */}
+        <div className="mt-3 pt-3 border-t border-cc-brand-100 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] text-ppp-charcoal-500">Mark as:</span>
+          {(["draft", "submitted", "paid"] as AiaApplicationStatus[]).map((s) => (
+            <form action={setStatusAction} key={s}>
+              <input type="hidden" name="app_id" value={application.id} />
+                <Ctx />
+              <input type="hidden" name="status" value={s} />
+              <PendingSubmitButton
+                pendingLabel="…"
+                className={`px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[36px] ${application.status === s ? "bg-cc-brand-600 text-white border-cc-brand-600" : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"}`}
+              >
+                {AIA_STATUS_META[s].label}
+              </PendingSubmitButton>
+            </form>
+          ))}
+        </div>
+      </section>
+
+      {/* ── G703 schedule of values ── */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Schedule of Values (G703)</h2>
+        <p className="text-[11px] text-ppp-charcoal-500 mb-3">
+          One row per line of work. Enter the scheduled value + what&rsquo;s completed from previous periods, this period, and materials stored.
+        </p>
+
+        <div className="space-y-2">
+          {lines.length === 0 && (
+            <p className="text-[12px] text-ppp-charcoal-500 italic">No line items yet — add the first below.</p>
+          )}
+          {lines.map((li) => {
+            const total = lineCompletedStoredCents(li);
+            const balance = li.scheduled_value_cents - total;
+            return (
+              <form key={li.id} action={upsertLineAction} className="rounded-lg border border-ppp-charcoal-100 p-3 space-y-2">
+                <input type="hidden" name="app_id" value={application.id} />
+                <Ctx />
+                <input type="hidden" name="line_id" value={li.id} />
+                <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
+                  <label className="sm:col-span-1 block">
+                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Item</span>
+                    <input name="item_no" defaultValue={li.item_no ?? ""} className={`${INPUT_CLS} !py-1.5 text-[12px]`} />
+                  </label>
+                  <label className="col-span-2 sm:col-span-4 block">
+                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Description</span>
+                    <input name="description" defaultValue={li.description} maxLength={500} className={`${INPUT_CLS} !py-1.5 text-[12px]`} />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Scheduled</span>
+                    <input name="scheduled" inputMode="decimal" defaultValue={(li.scheduled_value_cents / 100).toFixed(2)} className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">From prev.</span>
+                    <input name="from_previous" inputMode="decimal" defaultValue={(li.from_previous_cents / 100).toFixed(2)} className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">This period</span>
+                    <input name="this_period" inputMode="decimal" defaultValue={(li.this_period_cents / 100).toFixed(2)} className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Stored</span>
+                    <input name="materials_stored" inputMode="decimal" defaultValue={(li.materials_stored_cents / 100).toFixed(2)} className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} />
+                  </label>
+                  <div className="sm:col-span-2 flex items-center gap-2 justify-end">
+                    <div className="text-right">
+                      <div className="text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Balance</div>
+                      <div className="text-[12px] font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(balance)}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 justify-end">
+                  <PendingSubmitButton pendingLabel="Saving…" className="px-3 py-1.5 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[36px]">Save</PendingSubmitButton>
+                  <ConfirmSubmitButton
+                    message="Remove this line?"
+                    pendingLabel="Removing…"
+                    formAction={deleteLineAction}
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[36px]"
+                  >
+                    Remove
+                  </ConfirmSubmitButton>
+                </div>
+              </form>
+            );
+          })}
+        </div>
+
+        {/* Add line */}
+        <form action={upsertLineAction} className="mt-3 rounded-lg border border-dashed border-cc-brand-200 p-3">
+          <input type="hidden" name="app_id" value={application.id} />
+                <Ctx />
+          <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
+            <label className="sm:col-span-1 block">
+              <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Item</span>
+              <input name="item_no" className={`${INPUT_CLS} !py-1.5 text-[12px]`} placeholder="1" />
+            </label>
+            <label className="col-span-2 sm:col-span-5 block">
+              <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Description</span>
+              <input name="description" maxLength={500} className={`${INPUT_CLS} !py-1.5 text-[12px]`} placeholder="Line of work" />
+            </label>
+            <label className="block">
+              <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Scheduled</span>
+              <input name="scheduled" inputMode="decimal" className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} placeholder="0.00" />
+            </label>
+            <label className="block">
+              <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">This period</span>
+              <input name="this_period" inputMode="decimal" className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} placeholder="0.00" />
+            </label>
+            <div className="sm:col-span-3 flex justify-end">
+              <PendingSubmitButton pendingLabel="Adding…" className="px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Add line</PendingSubmitButton>
+            </div>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
