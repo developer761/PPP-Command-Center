@@ -909,11 +909,14 @@ function LineItemTable({
   );
 }
 
-function InclusionsInternal({ items }: { items: CommercialProposalLineItem[] }) {
+// Renders the priced line-item table. Used for the internal Plan Report AND for
+// a customer PDF when Alex opts into per-line prices — so the header must NOT
+// say "internal" on the customer copy (2026-07-28 re-audit).
+function InclusionsInternal({ items, internal }: { items: CommercialProposalLineItem[]; internal: boolean }) {
   if (items.length === 0) return null;
   return (
     <View style={{ marginTop: 4 }}>
-      <Text style={styles.sectionUnderlineHeader}>Inclusions (internal line-item view):</Text>
+      <Text style={styles.sectionUnderlineHeader}>{internal ? "Inclusions (internal line-item view):" : "Inclusions:"}</Text>
       <LineItemTable items={items} showAlternateBadge={false} />
     </View>
   );
@@ -960,14 +963,16 @@ function AlternateSectionCustomer({
 function AlternateSectionInternal({
   items,
   altNotes,
+  internal,
 }: {
   items: CommercialProposalLineItem[];
   altNotes: string | null | undefined;
+  internal: boolean;
 }) {
   if (items.length === 0 && !altNotes) return null;
   return (
     <View style={styles.altSection}>
-      <Text style={styles.altHeader}>Alternate (internal):</Text>
+      <Text style={styles.altHeader}>{internal ? "Alternate (internal):" : "Alternate:"}</Text>
       {altNotes && (
         <Text style={{ marginBottom: 4, fontSize: 11 }}>{altNotes}</Text>
       )}
@@ -1135,7 +1140,7 @@ export function ProposalPdfDocument({
         <Text style={styles.intro}>{intro}</Text>
 
         {showLineTable ? (
-          <InclusionsInternal items={inclusions} />
+          <InclusionsInternal items={inclusions} internal={mode === "internal"} />
         ) : (
           <InclusionsCustomer items={inclusions} />
         )}
@@ -1147,13 +1152,14 @@ export function ProposalPdfDocument({
             (they carry price + qty just like inclusions). */}
         {!showLineTable && <LaborSection items={laborRows} />}
         {showLineTable && laborRows.length > 0 && (
-          <InclusionsInternal items={laborRows} />
+          <InclusionsInternal items={laborRows} internal={mode === "internal"} />
         )}
 
         {showLineTable ? (
           <AlternateSectionInternal
             items={alternates}
             altNotes={proposal.alternate_notes}
+            internal={mode === "internal"}
           />
         ) : (
           <AlternateSectionCustomer

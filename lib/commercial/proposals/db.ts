@@ -207,15 +207,20 @@ export async function createProposal(
           status: string;
           sub_status: string | null;
         } | null;
-        const postSaleStatuses = new Set([
+        // Statuses we must NOT rewind to Estimating on a bump. 2026-07-28
+        // re-audit: pre_sale_closed (Won/Lost) was missing — bumping a revision
+        // on a Won/Lost deal walked it back to Estimating, silently erasing the
+        // win/loss outcome. A closed deal should be Reopened before re-bidding.
+        const noRewindStatuses = new Set([
           "pre_construction",
           "in_progress",
           "billing",
           "post_sale_closed",
+          "pre_sale_closed",
         ]);
         if (
           opp &&
-          !postSaleStatuses.has(opp.status) &&
+          !noRewindStatuses.has(opp.status) &&
           !(opp.status === "qualifying") &&
           !(opp.status === "estimating" && opp.sub_status === "estimating")
         ) {
@@ -602,6 +607,13 @@ export async function markProposalOutcome(input: {
     .maybeSingle();
   if (!proposalRow) return { ok: false, error: "Proposal not found." };
   const proposalBefore = proposalRow as { id: string; opportunity_id: string; status: string };
+  // 2026-07-28 re-audit: a SUPERSEDED revision (replaced by a newer one) must
+  // not be markable Won/Lost — the kanban still renders superseded cards as
+  // draggable, so dragging the stale R1 to Won would mark the replaced revision
+  // and cascade the deal off a dead record. Everything else stays free-drag.
+  if (proposalBefore.status === "superseded") {
+    return { ok: false, error: "This revision was replaced by a newer one — mark the latest revision instead." };
+  }
   // Karan 2026-07-15 (round 5): dropped the "only Sent can be Won/Lost"
   // guard. The proposals kanban is fully free-drag now — a user might
   // decide a Draft proposal represents a verbal-yes deal and drag it

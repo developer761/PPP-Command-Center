@@ -808,7 +808,17 @@ export default async function ProposalEditorPage({
           ) : (
             <>
               <a
-                href={`/api/commercial/proposals/${proposalId}/pdf`}
+                href={
+                  // 2026-07-28 re-audit: for a SENT/closed proposal, link the
+                  // frozen snapshot PDF saved to Files at send time — the live
+                  // render re-resolves exclusion_ids to CURRENT library text, so
+                  // editing/deleting a library exclusion afterward would rewrite
+                  // the apparent "sent" record. Drafts (no snapshot yet) keep the
+                  // live render.
+                  proposal.status !== "draft" && proposal.snapshot_document_id
+                    ? `/api/commercial/documents/${proposal.snapshot_document_id}/download`
+                    : `/api/commercial/proposals/${proposalId}/pdf`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"

@@ -156,8 +156,10 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         setInFlight(false);
         let msg = "Move failed.";
         try {
-          const j = (await res.json()) as { error?: string };
-          if (j.error) msg = j.error;
+          const j = (await res.json()) as { error?: string; detail?: string };
+          // Prefer the human-readable `detail` the outcome route returns
+          // for guard rejections; fall back to `error`, then the default.
+          if (j.detail || j.error) msg = j.detail ?? j.error ?? msg;
         } catch {}
         flashError(msg);
         return;
@@ -186,8 +188,11 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
       } else if (targetStatus === "lost") {
         // Stash debrief link in state so the toast can render as a
         // link rather than force-navigating (Karan 2026-07-15).
-        setLostDebriefUrl(json.debrief_url ?? null);
+        // MUST set AFTER flashSuccess: flashSuccess() clears lostDebriefUrl
+        // on every new toast, so setting it first would be wiped in the same
+        // render tick and the debrief link would never appear (2026-07-28 audit).
         flashSuccess("Marked lost. Parent deal flipped to Pre-Sale Closed · Lost.");
+        setLostDebriefUrl(json.debrief_url ?? null);
       } else if (targetStatus === "sent" && json.reopened) {
         // Reopen path (Won/Lost → Sent) — has its own toast because
         // the parent-deal cascade may or may not have fired.
