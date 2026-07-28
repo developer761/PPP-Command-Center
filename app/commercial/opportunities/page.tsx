@@ -562,9 +562,17 @@ export default async function CommercialOpportunitiesPage({
   // Wins this month — mirrors the /commercial dashboard KPI so the two
   // surfaces agree. Uses UTC-month-start; close enough for exec-review
   // "how'd we do this month" scan.
-  const now = new Date();
-  const monthStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const wonThisMonth = oppsRaw.filter((o) => isWon(o) && (o.decided_at ?? "") >= monthStartIso).length;
+  // decided_at is a DATE column ("2026-07-01"). 2026-07-28 re-audit: comparing
+  // it against a full-timestamp month start (…T04:00:00Z) is a string compare
+  // where the date-only value is a prefix, so a win on the 1st ("2026-07-01" >=
+  // "2026-07-01T…" → false) was dropped every month. Compare date-only in ET.
+  const monthStartParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const monthStartDate = `${monthStartParts.find((p) => p.type === "year")?.value}-${monthStartParts.find((p) => p.type === "month")?.value}-01`;
+  const wonThisMonth = oppsRaw.filter((o) => isWon(o) && (o.decided_at ?? "").slice(0, 10) >= monthStartDate).length;
 
   // URL builders — behavior unchanged from prior file.
   const baseParams = new URLSearchParams();
@@ -2067,16 +2075,13 @@ function KanbanBoard({
     g.openCount = g.opps.filter(
       (o) => o.status !== "pre_sale_closed" && o.status !== "post_sale_closed"
     ).length;
-    // Weighted midpoint × probability (matches the pipeline KPI logic)
+    // Weighted via the shared helper (2026-07-28 re-audit) — the inline
+    // midpoint math here re-introduced the halved-bid bug (a high-only opp
+    // yielded high/2), disagreeing with the header KPI which uses the helper
+    // (single-sided value = point estimate, not halved).
     g.weightedCents = g.opps
       .filter((o) => o.status !== "pre_sale_closed" && o.status !== "post_sale_closed")
-      .reduce((sum, o) => {
-        const low = o.bid_value_low_cents ?? 0;
-        const high = o.bid_value_high_cents ?? low;
-        const mid = (low + high) / 2;
-        const prob = (o.probability_pct ?? 0) / 100;
-        return sum + mid * prob;
-      }, 0);
+      .reduce((sum, o) => sum + weightedPipelineCents(o), 0);
   }
   // Karan 2026-07-15 edge-case: if an account's opps are ALL
   // post_sale_closed, they were pushed to globalOverflow and byStatus

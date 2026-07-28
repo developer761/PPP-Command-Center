@@ -5,10 +5,8 @@ import { logUpdate, logInsert } from "@/lib/commercial/audit-log";
 import { insertCommercialOppStatusChangedNotifications } from "@/lib/notifications/commercial-events";
 import {
   ALLOWED_TRANSITIONS,
-  DEFAULT_PROBABILITY_BY_STATUS,
   DEFAULT_PROBABILITY_BY_SUB_STATUS,
   DEFAULT_SUB_STATUS_BY_STATUS,
-  PROBABILITY_PRESERVING_STATUSES,
   PROBABILITY_PRESERVING_SUB_STATUSES,
   TERMINAL_STATUSES,
   WARN_TRANSITIONS,
@@ -229,13 +227,18 @@ export async function changeOpportunityStatus(
   //   (follow_up in v1.1), keep the current value regardless — waiting
   //   on the customer doesn't change how likely you are to win.
   // - Otherwise auto-set to the new status's default.
-  const fromDefault = DEFAULT_PROBABILITY_BY_STATUS[beforeRow.status] ?? null;
+  // 2026-07-28 re-audit: probability tracks the SUB-STATUS in v2. This used the
+  // deprecated DEFAULT_PROBABILITY_BY_STATUS shim, which maps Estimating → 55
+  // (the proposal_pending_approval value) instead of the Estimating sub-status
+  // default 30 — so every deal being priced was over-weighted, inflating the
+  // weighted pipeline. Key off the resolved sub-status instead.
+  const fromDefault = DEFAULT_PROBABILITY_BY_SUB_STATUS[beforeRow.sub_status ?? ""] ?? null;
   const userOverrode = fromDefault !== null && beforeRow.probability_pct !== fromDefault;
-  const preserveProbability = PROBABILITY_PRESERVING_STATUSES.has(input.to_status);
+  const preserveProbability = PROBABILITY_PRESERVING_SUB_STATUSES.has(effectiveSubStatus ?? "");
   const nextProbability =
     userOverrode || preserveProbability
       ? beforeRow.probability_pct
-      : DEFAULT_PROBABILITY_BY_STATUS[input.to_status] ?? beforeRow.probability_pct;
+      : DEFAULT_PROBABILITY_BY_SUB_STATUS[effectiveSubStatus ?? ""] ?? beforeRow.probability_pct;
 
   // decided_at auto-management: set today when entering a terminal
   // state (won/lost/no_bid); CLEAR when leaving one (e.g. reopened).

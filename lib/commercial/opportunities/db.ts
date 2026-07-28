@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logUpdate } from "@/lib/commercial/audit-log";
+import { ilikeQuoted } from "@/lib/commercial/search";
 
 /**
  * Read helpers + types for commercial_opportunities (migration 028).
@@ -281,8 +282,14 @@ export async function listCommercialOpportunities(
   }
 
   if (filters.search) {
-    const term = `%${filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
-    q = q.ilike("title", term);
+    // 2026-07-28 re-audit: search matched only the raw `title` column, but the
+    // UI shows derivedOppName (title_override → account/client/street). So a
+    // renamed deal or a search by client/street returned nothing. Match all the
+    // fields that feed the displayed name. ilikeQuoted guards commas/parens.
+    const term = ilikeQuoted(filters.search);
+    q = q.or(
+      `title.ilike.${term},title_override.ilike.${term},client_name.ilike.${term},property_street.ilike.${term}`
+    );
   }
   if (filters.status) q = q.eq("status", filters.status);
   if (filters.accountId) q = q.eq("account_id", filters.accountId);
