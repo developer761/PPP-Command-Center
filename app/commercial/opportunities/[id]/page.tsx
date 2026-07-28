@@ -5159,21 +5159,22 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
   // Karan 2026-07-09 Phase A.1: v1.1 CEO status model. Map covers the
   // 8 Pre-Contract values + retired v1.0 values so any un-migrated
   // historic row still tints correctly.
+  // 2026-07-28 color audit: semantic palette (see opportunities list StatusPill).
   const map: Record<string, string> = {
     solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    rfp: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
+    rfp: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
     estimating: "bg-amber-100 text-amber-900 border-amber-300",
-    proposal_pending_approval: "bg-purple-100 text-purple-800 border-purple-300",
-    proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
-    follow_up: "bg-cyan-100 text-cyan-800 border-cyan-300",
+    proposal_pending_approval: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
+    proposal_sent: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
+    follow_up: "bg-amber-100 text-amber-900 border-amber-300",
     won: "bg-emerald-100 text-emerald-800 border-emerald-300",
     lost: "bg-rose-100 text-rose-800 border-rose-300",
     // Retired v1.0 values (fallback for un-migrated rows)
     inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    negotiating: "bg-orange-100 text-orange-900 border-orange-300",
+    negotiating: "bg-amber-100 text-amber-900 border-amber-300",
     on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
     no_bid: "bg-rose-100 text-rose-800 border-rose-300",
-    reopened: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
+    reopened: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
   };
   const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (

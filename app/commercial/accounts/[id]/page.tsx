@@ -3313,7 +3313,7 @@ function AccountOpportunityRow({
                     : `Follow up in ${days}d`;
                   return (
                     <span
-                      className={`inline-flex items-center gap-1 ${overdue ? "text-rose-700 font-medium" : "text-cyan-700 font-medium"}`}
+                      className={`inline-flex items-center gap-1 ${overdue ? "text-rose-700 font-medium" : "text-ppp-blue-700 font-medium"}`}
                       title={opp.follow_up_notes ?? undefined}
                     >
                       <IconClock size={12} className="shrink-0" /> {label}
@@ -3422,22 +3422,26 @@ function statusPillTone(
   if (status === "pre_sale_closed" && sub_status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
   if (status === "won") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
   if (status === "lost") return { cls: "bg-rose-50 text-rose-800 border-rose-200" };
-  // v2 Post-Sale lane — pre_construction blue, in_progress cyan, billing amber, closed emerald.
-  if (status === "pre_construction") return { cls: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200" };
-  if (status === "in_progress") return { cls: "bg-cyan-50 text-cyan-800 border-cyan-200" };
+  // 2026-07-28 color audit: semantic palette only (cc-brand red is the action
+  // color, never a status). Active stage → ppp-blue, working/attention →
+  // amber, done → emerald, lost → rose, early → charcoal. Labels distinguish
+  // stages that share a tone.
+  // v2 Post-Sale lane.
+  if (status === "pre_construction") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
+  if (status === "in_progress") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
   if (status === "billing") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
   if (status === "post_sale_closed") return { cls: "bg-emerald-50 text-emerald-800 border-emerald-200" };
-  // v2 Pre-Sale intermediate — proposal follow-up pings cyan, proposal sent orange.
-  if (status === "proposal" && sub_status === "follow_up") return { cls: "bg-cyan-50 text-cyan-800 border-cyan-200" };
-  if (status === "proposal") return { cls: "bg-orange-50 text-orange-800 border-orange-200" };
-  if (status === "estimating") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
-  if (status === "qualifying" && sub_status === "rfp") return { cls: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200" };
+  // v2 Pre-Sale intermediate.
+  if (status === "proposal" && sub_status === "follow_up") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
+  if (status === "proposal") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
+  if (status === "estimating") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
+  if (status === "qualifying" && sub_status === "rfp") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
   if (status === "qualifying") return { cls: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200" };
   // v1.1 legacy fallbacks (shouldn't hit post-migration but defensive).
-  if (status === "follow_up") return { cls: "bg-cyan-50 text-cyan-800 border-cyan-200" };
-  if (status === "proposal_sent") return { cls: "bg-orange-50 text-orange-800 border-orange-200" };
-  if (status === "proposal_pending_approval") return { cls: "bg-purple-50 text-purple-800 border-purple-200" };
-  if (status === "rfp") return { cls: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200" };
+  if (status === "follow_up") return { cls: "bg-amber-50 text-amber-800 border-amber-200" };
+  if (status === "proposal_sent") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
+  if (status === "proposal_pending_approval") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
+  if (status === "rfp") return { cls: "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200" };
   return { cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-100" };
 }
 
