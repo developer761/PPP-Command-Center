@@ -984,8 +984,17 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                 doesn't need windowing. */}
             {visibleJobs.length === 0 ? (
               searchQuery ? (
-                <div className="px-5 py-6 text-center text-xs text-ppp-charcoal-500 italic">
-                  No matches for &ldquo;{searchQuery}&rdquo;.
+                <div className="px-5 py-6 text-center text-xs text-ppp-charcoal-500">
+                  <p className="italic">No matches for &ldquo;{searchQuery}&rdquo;.</p>
+                  {/* Kate re-audit 2026-07-28: workers kept searching WO#s that
+                      exist but are already Paid/Complete/Cancelled and hit a
+                      bare dead-end. This list only holds active paint jobs, so
+                      tell them WHY it's missing instead of leaving them stuck. */}
+                  <p className="mt-1.5 text-[11px] text-ppp-charcoal-400 not-italic">
+                    This list only shows open paint jobs. If the work order is
+                    already paid, complete, or cancelled, it won&rsquo;t appear
+                    here — check it in Salesforce.
+                  </p>
                 </div>
               ) : null
             ) : (
