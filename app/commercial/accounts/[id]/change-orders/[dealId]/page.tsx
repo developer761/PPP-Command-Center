@@ -182,7 +182,7 @@ export default async function AccountChangeOrdersPage({
   // Change Orders only exist on post-sale Projects. A pre-sale deal has none —
   // send the user back to the account rather than showing an empty CO page.
   if (!isPostSaleProject(opp)) {
-    redirect(`/commercial/accounts/${id}?tab=opportunities#deal-row-${dealId}`);
+    redirect(`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}`);
   }
 
   const dealName = derivedOppName(opp, account.company_name);
