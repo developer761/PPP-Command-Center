@@ -2107,45 +2107,48 @@ function KanbanBoard({
     string,
     { label: string; accent: string; head: string; empty: string }
   > = {
+    // 2026-07-28 color audit: a pipeline reads as a PROGRESSION, not a rainbow.
+    // Pre-sale = deepening ppp-blue; crossing into post-sale (won) = deepening
+    // emerald. No raw slate/indigo/teal/cyan/fuchsia, no cc-brand-red.
     qualifying: {
       label: "Qualifying",
-      accent: "bg-slate-400",
+      accent: "bg-ppp-charcoal-400",
       head: "bg-white",
       empty: "Drop a bid here",
     },
     estimating: {
       label: "Estimating",
-      accent: "bg-indigo-400",
+      accent: "bg-ppp-blue-400",
       head: "bg-white",
       empty: "Drop while we're pricing",
     },
     proposal_drafted: {
       label: "Proposal Drafted",
-      accent: "bg-amber-400",
+      accent: "bg-ppp-blue-500",
       head: "bg-white",
       empty: "Drop when the proposal is ready",
     },
     proposal_sent: {
       label: "Proposal Sent",
-      accent: "bg-cc-brand-500",
+      accent: "bg-ppp-blue-600",
       head: "bg-white",
       empty: "Drop once the proposal is out to GC",
     },
     pre_construction: {
       label: "Pre-Construction",
-      accent: "bg-teal-400",
+      accent: "bg-emerald-400",
       head: "bg-white",
       empty: "Drop when scheduling with GC",
     },
     in_progress: {
       label: "In Progress",
-      accent: "bg-cyan-500",
+      accent: "bg-emerald-500",
       head: "bg-white",
       empty: "Drop when crews start",
     },
     billing: {
       label: "Billing",
-      accent: "bg-fuchsia-400",
+      accent: "bg-emerald-600",
       head: "bg-white",
       empty: "Drop when we're closing out",
     },
@@ -2358,7 +2361,7 @@ function KanbanBoard({
                       ? "bg-emerald-500"
                       : status === "lost"
                       ? "bg-rose-500"
-                      : "bg-slate-400";
+                      : "bg-ppp-charcoal-400";
                   return (
                     <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
                       <div className="w-full sm:w-44 lg:w-48 shrink-0 border border-ppp-charcoal-100 rounded-lg overflow-hidden flex flex-col h-full bg-white">
@@ -2600,7 +2603,7 @@ function KanbanCard({
             )}
             {submittalStats && submittalStats.total > 0 && (
               <span
-                className={`inline-flex items-center gap-0.5 tabular-nums ${submittalStats.awaiting_response > 0 ? "text-sky-700 font-semibold" : ""}`}
+                className={`inline-flex items-center gap-0.5 tabular-nums ${submittalStats.awaiting_response > 0 ? "text-ppp-blue-700 font-semibold" : ""}`}
                 title={
                   submittalStats.awaiting_response > 0
                     ? `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"} · ${submittalStats.awaiting_response} awaiting GC response`
@@ -3041,7 +3044,7 @@ function OpportunityRow({
                 )}
                 {submittalStats && submittalStats.total > 0 && (
                   <span
-                    className={`inline-flex items-center gap-1 ${submittalStats.awaiting_response > 0 ? "text-sky-700 font-medium" : "text-ppp-charcoal-600"}`}
+                    className={`inline-flex items-center gap-1 ${submittalStats.awaiting_response > 0 ? "text-ppp-blue-700 font-medium" : "text-ppp-charcoal-600"}`}
                     title={
                       submittalStats.awaiting_response > 0
                         ? `${submittalStats.awaiting_response} awaiting GC response`
@@ -3054,7 +3057,7 @@ function OpportunityRow({
                     </svg>
                     {submittalStats.total}
                     {submittalStats.awaiting_response > 0 && (
-                      <span className="ml-1 inline-flex items-center px-1 py-0 rounded bg-sky-100 text-sky-800 text-[10px] font-bold uppercase tracking-wider">
+                      <span className="ml-1 inline-flex items-center px-1 py-0 rounded bg-ppp-blue-100 text-ppp-blue-700 text-[10px] font-bold uppercase tracking-wider">
                         {submittalStats.awaiting_response} awaiting
                       </span>
                     )}
@@ -3096,7 +3099,7 @@ function OpportunityRow({
               href={`/commercial/opportunities/${opportunity.id}?tab=submittals`}
               className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border transition-colors min-h-[28px] touch-manipulation ${
                 submittalStats.awaiting_response > 0
-                  ? "text-sky-900 bg-sky-50 border-sky-100 hover:bg-sky-100"
+                  ? "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100 hover:bg-ppp-blue-100"
                   : "text-ppp-charcoal-700 bg-ppp-charcoal-50 border-ppp-charcoal-100 hover:bg-ppp-charcoal-100/70"
               }`}
             >
@@ -3294,9 +3297,11 @@ function StageChip({
   const subLabel = sub_status ? opportunitySubStatusLabel(sub_status) : "";
   // Dedupe: "Estimating · Estimating" collapses to just the top pill.
   const showSubBelow = subLabel && subLabel.toLowerCase() !== currentLabel.toLowerCase();
+  // Current-stage "you are here" pill: matches the kanban ramp — pre-sale
+  // active = ppp-blue, post-sale (won work) = emerald. (Was cyan / cc-brand-red.)
   const currentPillCls = isPostSale
-    ? "bg-cyan-600 text-white border-cyan-600 shadow-sm"
-    : "bg-cc-brand-600 text-white border-cc-brand-600 shadow-sm";
+    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+    : "bg-ppp-blue-600 text-white border-ppp-blue-600 shadow-sm";
   return (
     <span
       className="inline-flex flex-col items-start gap-1 min-w-0"
