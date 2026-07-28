@@ -246,21 +246,30 @@ export async function listInvoiceLineItems(invoiceId: string): Promise<Commercia
 }
 
 /**
- * Sum of payment amounts recorded with a paid_at at/after `fromIso` (Karan
- * 2026-07-27 audit). The "Paid this month" KPI used to sum each invoice's
- * lifetime paid_cents for invoices whose invoice.paid_at fell in the month —
- * which double-counted invoices finished this month (that were partly paid
- * earlier) and ignored partial payments on not-yet-fully-paid invoices. This
- * sums the actual payment rows by their recorded date instead. Payments on
- * soft-deleted invoices are excluded via the inner join.
+ * Sum of payment amounts recorded with a paid_at in [fromIso, toIso) (Karan
+ * 2026-07-27 audit; refined 2026-07-28 re-audit). Sums the actual payment rows
+ * by recorded date (not lifetime paid_cents) so partials + multi-month invoices
+ * count right. Excludes payments on soft-deleted OR VOIDED invoices (a voided
+ * invoice's payments shouldn't count as collected — matches the Account 360
+ * rollup). The upper bound keeps a future-dated payment from counting forever.
+ * Optional accountId scopes it so the "Paid this month" tile matches the other
+ * account-scoped tiles on a single-customer view.
  */
-export async function sumCommercialPaymentsSince(fromIso: string): Promise<number> {
+export async function sumCommercialPaymentsSince(
+  fromIso: string,
+  toIso: string,
+  accountId?: string
+): Promise<number> {
   const sb = commercialDb();
-  const { data, error } = await sb
+  let q = sb
     .from("commercial_invoice_payments")
-    .select("amount_cents, commercial_invoices!inner(deleted_at)")
+    .select("amount_cents, commercial_invoices!inner(deleted_at, status, account_id)")
     .gte("paid_at", fromIso)
-    .is("commercial_invoices.deleted_at", null);
+    .lt("paid_at", toIso)
+    .is("commercial_invoices.deleted_at", null)
+    .neq("commercial_invoices.status", "void");
+  if (accountId) q = q.eq("commercial_invoices.account_id", accountId);
+  const { data, error } = await q;
   if (error) {
     console.warn("[commercial/invoices] payments-since sum failed:", error.message);
     return 0;

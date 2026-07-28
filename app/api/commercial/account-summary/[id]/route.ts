@@ -49,19 +49,14 @@ export async function GET(
       .select("id", { count: "exact", head: true })
       .eq("account_id", id)
       .is("deleted_at", null)
-      // Audit fix 2026-07-11: explicit whitelist of OPEN statuses so
-      // a future new enum value doesn't silently get counted here.
-      // no_bid was dropped in migration 045 — was still in the old
-      // exclusion clause as dead code. lost and won are the current
-      // terminal states.
-      .in("status", [
-        "solicitation",
-        "rfp",
-        "estimating",
-        "proposal_pending_approval",
-        "proposal_sent",
-        "follow_up",
-      ]),
+      // Skip archived (buried) deals so this reconciles with the pipeline list
+      // (2026-07-28 re-audit).
+      .is("archived_at", null)
+      // 2026-07-28 re-audit: the old whitelist was STALE v1 statuses
+      // (solicitation/rfp/proposal_pending_approval/proposal_sent/follow_up) —
+      // only "estimating" survived the v2 migration, so this count was badly
+      // undercounting. "Open bids" = the pre-sale open lanes (v2).
+      .in("status", ["qualifying", "estimating", "proposal"]),
     sb
       .from("commercial_invoices")
       .select("total_cents")

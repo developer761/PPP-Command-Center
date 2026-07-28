@@ -81,6 +81,10 @@ export async function runHotDealsCoolingReminder(): Promise<Result> {
       .lte("proposal_due_at", decisionWindowEndDateStr)
       .lt("updated_at", coolingCutoff.toISOString())
       .is("deleted_at", null)
+      // Skip deliberately-archived (buried) deals — they're out of the active
+      // pipeline and shouldn't fire a cooling email (2026-07-28 re-audit; every
+      // other cron already filters archived_at).
+      .is("archived_at", null)
       .is("account.deleted_at", null);
     if (error) {
       out.ok = false;

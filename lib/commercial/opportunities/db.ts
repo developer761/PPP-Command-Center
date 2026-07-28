@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { logUpdate } from "@/lib/commercial/audit-log";
 
 /**
  * Read helpers + types for commercial_opportunities (migration 028).
@@ -493,6 +494,9 @@ export async function archiveOpportunity(
     .eq("id", id)
     .is("archived_at", null); // CAS guard against double-archive race
   if (error) return { ok: false, error: error.message };
+  // Audit trail (2026-07-28 re-audit) — archiving is a pipeline-visibility
+  // change and must record who/when, like every other mutation.
+  await logUpdate("commercial_opportunities", id, { archived_at: null }, { archived_at: "now" }, actorUserId);
   return { ok: true };
 }
 
@@ -526,5 +530,6 @@ export async function unarchiveOpportunity(
     .is("deleted_at", null)
     .not("archived_at", "is", null);
   if (error) return { ok: false, error: error.message };
+  await logUpdate("commercial_opportunities", id, { archived_at: b.archived_at }, { archived_at: null }, actorUserId);
   return { ok: true };
 }

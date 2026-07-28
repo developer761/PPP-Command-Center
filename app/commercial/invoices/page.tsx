@@ -458,6 +458,12 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     .formatToParts(now)
     .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
   const monthStartEtIso = `${etYear}-${etMonth}-01T00:00:00${offsetToken.replace("GMT", "")}`;
+  // Upper bound = start of NEXT ET month, so a future-dated payment can't count
+  // toward the current month forever (2026-07-28 re-audit).
+  const etMonthNum = parseInt(etMonth, 10);
+  const nextMonthNum = etMonthNum === 12 ? 1 : etMonthNum + 1;
+  const nextYearStr = etMonthNum === 12 ? String(parseInt(etYear, 10) + 1) : etYear;
+  const monthEndEtIso = `${nextYearStr}-${String(nextMonthNum).padStart(2, "0")}-01T00:00:00${offsetToken.replace("GMT", "")}`;
   // Karan 2026-07-07: include drafts in Outstanding so it stays
   // consistent with the opp panel + Account 360 tiles ("all the money
   // that could be owed once these invoices are sent"). Void is still
@@ -492,8 +498,14 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   );
   const hasAging = agingBuckets.b0_30_cents + agingBuckets.b30_60_cents + agingBuckets.b60_plus_cents > 0;
   // Sum actual payment ROWS recorded this ET month (not lifetime paid_cents on
-  // invoices finished this month) so partials + multi-month invoices count right.
-  const paidThisMonthCents = await sumCommercialPaymentsSince(monthStartEtIso);
+  // invoices finished this month) so partials + multi-month invoices count
+  // right. Bounded to [monthStart, monthEnd), excludes voided invoices, and
+  // scoped to the active account filter so it matches the other tiles.
+  const paidThisMonthCents = await sumCommercialPaymentsSince(
+    monthStartEtIso,
+    monthEndEtIso,
+    accountIdFilter || undefined
+  );
   const draftCount = kpiSource.filter((i) => i.status === "draft").length;
 
   const anyFilterActive = !!search || !!statusFilter || sortKey !== "recent" || !!accountIdFilter || !!agingFilter;

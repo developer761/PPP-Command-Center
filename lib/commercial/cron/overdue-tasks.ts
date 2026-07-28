@@ -64,6 +64,8 @@ export async function runOverdueTasksReminder(): Promise<Result> {
       .is("deleted_at", null)
       .lt("due_at", todayDateStr)
       .is("opportunity.deleted_at", null)
+      // Don't nag about tasks on archived (buried) deals (2026-07-28 re-audit).
+      .is("opportunity.archived_at", null)
       .is("opportunity.account.deleted_at", null);
     if (error) {
       out.ok = false;
