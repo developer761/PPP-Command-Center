@@ -170,6 +170,11 @@ type SP = Promise<{
   /** Phase G: Change Orders tab flash flag + inline-edit target. */
   co_ok?: string;
   edit_co?: string;
+  /** Phase G: round-tripped add/edit form values so a validation error
+   *  doesn't wipe the operator's typed title / amount / description. */
+  co_title?: string;
+  co_amt?: string;
+  co_desc?: string;
 }>;
 
 async function submitDebriefOnlyAction(formData: FormData) {
@@ -1282,11 +1287,17 @@ async function addChangeOrderAction(formData: FormData) {
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
-  const title = String(formData.get("title") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim() || null;
-  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  // Raw values round-tripped on error so a validation failure never wipes the
+  // operator's typed title / amount / description (forms-never-lose-work rule).
+  const rawTitle = String(formData.get("title") ?? "");
+  const rawAmount = String(formData.get("amount") ?? "");
+  const rawDesc = String(formData.get("description") ?? "");
+  const preserve = { co_title: rawTitle, co_amt: rawAmount, co_desc: rawDesc };
+  const title = rawTitle.trim();
+  const description = rawDesc.trim() || null;
+  const amount_cents = parseDollarsToCents(rawAmount);
   if (amount_cents === null || amount_cents === 0) {
-    coRedirect(opp_id, { error: "Enter a non-zero amount (use a minus sign for a deduct, e.g. -500.00)." });
+    coRedirect(opp_id, { error: "Enter a non-zero amount (use a minus sign for a deduct, e.g. -500.00).", ...preserve });
   }
   const result = await createChangeOrder({
     opportunity_id: opp_id,
@@ -1295,7 +1306,7 @@ async function addChangeOrderAction(formData: FormData) {
     amount_cents: amount_cents!,
     created_by_user_id: user.id,
   });
-  if (!result.ok) coRedirect(opp_id, { error: result.error });
+  if (!result.ok) coRedirect(opp_id, { error: result.error, ...preserve });
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   coRedirect(opp_id, { co_ok: "added" });
 }
@@ -1309,14 +1320,20 @@ async function editChangeOrderAction(formData: FormData) {
   const opp_id = String(formData.get("opp_id") ?? "");
   const co_id = String(formData.get("co_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(co_id)) redirect("/commercial/opportunities");
-  const title = String(formData.get("title") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim() || null;
-  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  const rawTitle = String(formData.get("title") ?? "");
+  const rawAmount = String(formData.get("amount") ?? "");
+  const rawDesc = String(formData.get("description") ?? "");
+  // On error, keep the inline edit form OPEN (edit_co) + re-fill the fields so
+  // the operator's edits aren't lost.
+  const preserve = { edit_co: co_id, co_title: rawTitle, co_amt: rawAmount, co_desc: rawDesc };
+  const title = rawTitle.trim();
+  const description = rawDesc.trim() || null;
+  const amount_cents = parseDollarsToCents(rawAmount);
   if (amount_cents === null || amount_cents === 0) {
-    coRedirect(opp_id, { error: "Enter a non-zero amount (use a minus sign for a deduct)." });
+    coRedirect(opp_id, { error: "Enter a non-zero amount (use a minus sign for a deduct).", ...preserve });
   }
   const result = await updateChangeOrder(co_id, { title, description, amount_cents: amount_cents! }, user.id);
-  if (!result.ok) coRedirect(opp_id, { error: result.error });
+  if (!result.ok) coRedirect(opp_id, { error: result.error, ...preserve });
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   coRedirect(opp_id, { co_ok: "saved" });
 }
@@ -1976,6 +1993,9 @@ export default async function OpportunityDetailPage({
           okFlag={pickFirst(sp.co_ok) ?? null}
           errorMessage={pickFirst(sp.error)}
           editCoId={pickFirst(sp.edit_co) ?? null}
+          preserveTitle={pickFirst(sp.co_title) ?? null}
+          preserveAmount={pickFirst(sp.co_amt) ?? null}
+          preserveDesc={pickFirst(sp.co_desc) ?? null}
         />
       )}
       {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} assignedOk={pickFirst(sp.assigned) === "1"} />}
@@ -2744,11 +2764,17 @@ async function OpportunityChangeOrdersPanel({
   okFlag,
   errorMessage,
   editCoId,
+  preserveTitle,
+  preserveAmount,
+  preserveDesc,
 }: {
   oppId: string;
   okFlag?: string | null;
   errorMessage?: string;
   editCoId?: string | null;
+  preserveTitle?: string | null;
+  preserveAmount?: string | null;
+  preserveDesc?: string | null;
 }) {
   const items = await listChangeOrders(oppId);
   const netApprovedCents = items
@@ -2756,6 +2782,11 @@ async function OpportunityChangeOrdersPanel({
     .reduce((acc, c) => acc + c.amount_cents, 0);
   const pendingCount = items.filter((c) => c.status === "pending").length;
   const dismissHref = `/commercial/opportunities/${oppId}?tab=changeorders`;
+  // An ADD attempt failed when we have round-tripped values but no edit target
+  // (an edit failure carries edit_co). Used to keep the add form expanded +
+  // pre-filled so the operator doesn't lose their typed input.
+  const hasPreserved = preserveTitle != null || preserveAmount != null || preserveDesc != null;
+  const addAttemptFailed = hasPreserved && !editCoId;
 
   return (
     <div className="space-y-3">
@@ -2807,7 +2838,7 @@ async function OpportunityChangeOrdersPanel({
         {/* Add form — progressive-enhancement <details>, no client JS. Stays
             open when the panel re-renders with an error so the operator's
             context isn't lost. */}
-        <details className="group mb-3 border border-cc-brand-200 rounded-lg" open={!!errorMessage && okFlag == null}>
+        <details className="group mb-3 border border-cc-brand-200 rounded-lg" open={addAttemptFailed}>
           <summary className="cursor-pointer list-none px-3.5 py-2.5 min-h-[44px] flex items-center gap-2 text-[12px] font-semibold text-cc-brand-700 select-none">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform">
               <path d="M12 5v14 M5 12h14" />
@@ -2818,18 +2849,18 @@ async function OpportunityChangeOrdersPanel({
             <input type="hidden" name="opp_id" value={oppId} />
             <div>
               <label className={LABEL_CLS} htmlFor="co-title">Title</label>
-              <input id="co-title" name="title" required maxLength={200} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
+              <input id="co-title" name="title" required maxLength={200} defaultValue={addAttemptFailed ? preserveTitle ?? "" : ""} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
             </div>
             <div>
               <label className={LABEL_CLS} htmlFor="co-amount">Amount</label>
-              <input id="co-amount" name="amount" required inputMode="decimal" className={INPUT_CLS} placeholder="1,200.00" />
+              <input id="co-amount" name="amount" required inputMode="decimal" defaultValue={addAttemptFailed ? preserveAmount ?? "" : ""} className={INPUT_CLS} placeholder="1,200.00" />
               <p className="text-[11px] text-ppp-charcoal-500 mt-1">
                 Enter a positive amount to add scope, or a minus sign to deduct (e.g. <span className="tabular-nums">-500.00</span>).
               </p>
             </div>
             <div>
               <label className={LABEL_CLS} htmlFor="co-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-              <textarea id="co-desc" name="description" maxLength={4000} rows={2} className={TEXTAREA_CLS} placeholder="What changed and why" />
+              <textarea id="co-desc" name="description" maxLength={4000} rows={2} defaultValue={addAttemptFailed ? preserveDesc ?? "" : ""} className={TEXTAREA_CLS} placeholder="What changed and why" />
             </div>
             <PendingSubmitButton
               pendingLabel="Adding…"
@@ -2861,16 +2892,16 @@ async function OpportunityChangeOrdersPanel({
                       <div className="text-[12px] font-bold text-ppp-charcoal">{formatChangeOrderNumber(co.co_number)}</div>
                       <div>
                         <label className={LABEL_CLS} htmlFor={`edit-title-${co.id}`}>Title</label>
-                        <input id={`edit-title-${co.id}`} name="title" required maxLength={200} defaultValue={co.title} className={INPUT_CLS} />
+                        <input id={`edit-title-${co.id}`} name="title" required maxLength={200} defaultValue={preserveTitle ?? co.title} className={INPUT_CLS} />
                       </div>
                       <div>
                         <label className={LABEL_CLS} htmlFor={`edit-amount-${co.id}`}>Amount</label>
-                        <input id={`edit-amount-${co.id}`} name="amount" required inputMode="decimal" defaultValue={(co.amount_cents / 100).toFixed(2)} className={INPUT_CLS} />
+                        <input id={`edit-amount-${co.id}`} name="amount" required inputMode="decimal" defaultValue={preserveAmount ?? (co.amount_cents / 100).toFixed(2)} className={INPUT_CLS} />
                         <p className="text-[11px] text-ppp-charcoal-500 mt-1">Minus sign = deduct.</p>
                       </div>
                       <div>
                         <label className={LABEL_CLS} htmlFor={`edit-desc-${co.id}`}>Description</label>
-                        <textarea id={`edit-desc-${co.id}`} name="description" maxLength={4000} rows={2} defaultValue={co.description ?? ""} className={TEXTAREA_CLS} />
+                        <textarea id={`edit-desc-${co.id}`} name="description" maxLength={4000} rows={2} defaultValue={preserveDesc ?? co.description ?? ""} className={TEXTAREA_CLS} />
                       </div>
                       <div className="flex items-center gap-2">
                         <PendingSubmitButton pendingLabel="Saving…" className="px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Save</PendingSubmitButton>
