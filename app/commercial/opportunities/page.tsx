@@ -1867,12 +1867,17 @@ function CustomerBoardRow({
                 className="group/deal flex items-center gap-3 px-2.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-white hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
                 title={`View ${account.company_name} · ${o.title} — ${opportunityStatusLabel(o.status)}`}
               >
-                <div className="min-w-[160px] max-w-[220px] shrink-0">
-                  <StageChip status={o.status} sub_status={o.sub_status} />
-                </div>
+                {/* 2026-07-28 audit: lead with the deal name (primary), a
+                    compact single-stage pill after it — was a 160–220px 4-pill
+                    stepper eating the row + wrapping to 2 lines on mobile. */}
                 <div className="min-w-0 flex-1">
-                  <div className="text-[12.5px] font-semibold text-ppp-charcoal truncate group-hover/deal:text-cc-brand-800">
-                    {o.title}
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 truncate text-[12.5px] font-semibold text-ppp-charcoal group-hover/deal:text-cc-brand-800">
+                      {o.title}
+                    </span>
+                    <span className="shrink-0">
+                      <StageChip status={o.status} sub_status={o.sub_status} compact />
+                    </span>
                   </div>
                   {(bidRange || prob !== null) && (
                     <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 tabular-nums flex items-center gap-1.5 flex-wrap">
@@ -3250,9 +3255,13 @@ const POST_SALE_STEPPER: { key: string; label: string }[] = [
 function StageChip({
   status,
   sub_status,
+  compact = false,
 }: {
   status: string;
   sub_status: string | null | undefined;
+  /** Single current-stage pill instead of the full stepper — for dense list
+   *  rows where the 4-pill stepper dominated the row (2026-07-28 audit). */
+  compact?: boolean;
 }) {
   const isWonDeal = status === "pre_sale_closed" && sub_status === "won";
   const isLostDeal = status === "pre_sale_closed" && sub_status === "lost";
@@ -3302,6 +3311,19 @@ function StageChip({
   const currentPillCls = isPostSale
     ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
     : "bg-ppp-blue-600 text-white border-ppp-blue-600 shadow-sm";
+  // Compact: just the current stage as one pill (list rows).
+  if (compact) {
+    return (
+      <span
+        className={`inline-flex items-center h-6 px-2.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${currentPillCls}`}
+        aria-label={`${laneLabel} stage: ${currentLabel}${showSubBelow ? ` · ${subLabel}` : ""}`}
+        title={`${currentLabel}${showSubBelow ? ` · ${subLabel}` : ""}`}
+      >
+        {currentLabel}
+        {showSubBelow && <span className="font-normal opacity-80 ml-1">· {subLabel}</span>}
+      </span>
+    );
+  }
   return (
     <span
       className="inline-flex flex-col items-start gap-1 min-w-0"
