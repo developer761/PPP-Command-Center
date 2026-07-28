@@ -513,6 +513,39 @@ const styles = StyleSheet.create({
     flex: 1.2,
     textAlign: "right",
   },
+  // Phase grouping in the priced table (Katie: "group products + pricing by
+  // Phase"). A bold phase header row above each group + a subtotal row below.
+  liPhaseHeader: {
+    paddingTop: 7,
+    paddingBottom: 2,
+  },
+  liPhaseHeaderText: {
+    fontFamily: "Times-Bold",
+    fontSize: 9.5,
+    color: CHARCOAL,
+  },
+  liSubtotalRow: {
+    flexDirection: "row",
+    paddingTop: 3,
+    paddingBottom: 5,
+    borderTopWidth: 0.5,
+    borderTopColor: "#9CA3AF",
+  },
+  liSubtotalLabel: {
+    flex: 7,
+    textAlign: "right",
+    paddingRight: 6,
+    fontFamily: "Times-Bold",
+    fontSize: 9,
+    color: CHARCOAL,
+  },
+  liSubtotalAmount: {
+    flex: 1.2,
+    textAlign: "right",
+    fontFamily: "Times-Bold",
+    fontSize: 9,
+    color: CHARCOAL,
+  },
 });
 
 function formatDollars(cents: number): string {
@@ -780,6 +813,45 @@ function BulletLine({ text }: { text: string }) {
   return <Text style={styles.itemLine}>{body}</Text>;
 }
 
+type PhaseGroup = { key: string; label: string; rows: CommercialProposalLineItem[] };
+const UNGROUPED_PHASE_KEY = "__ungrouped__";
+/**
+ * Group line items by phase (Katie F.6 / 2026-07-28 pricing-by-phase). The
+ * grouping is normalized (lowercased + internal whitespace collapsed) so
+ * "Phase 1" / "phase 1" / "Phase  1" merge into ONE group; the DISPLAY label
+ * keeps the first-seen spelling. Ungrouped (no phase) rows collect under a
+ * "General" sentinel and sort to the front. Shared by BOTH the customer bullet
+ * view and the priced table so the two never group differently.
+ */
+function groupItemsByPhase(items: CommercialProposalLineItem[]): {
+  anyHasPhase: boolean;
+  groups: PhaseGroup[];
+} {
+  const anyHasPhase = items.some((it) => it.phase && it.phase.trim());
+  const groups: PhaseGroup[] = [];
+  const byKey = new Map<string, PhaseGroup>();
+  for (const it of items) {
+    const raw = it.phase?.trim();
+    const key = raw ? raw.toLowerCase().replace(/\s+/g, " ") : UNGROUPED_PHASE_KEY;
+    const label = raw || "General";
+    let g = byKey.get(key);
+    if (!g) {
+      g = { key, label, rows: [] };
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    g.rows.push(it);
+  }
+  groups.sort((a, b) => (a.key === UNGROUPED_PHASE_KEY ? -1 : b.key === UNGROUPED_PHASE_KEY ? 1 : 0));
+  return { anyHasPhase, groups };
+}
+
+/** Line total in cents — the ONE definition, so per-line, per-phase-subtotal,
+ *  and grand-total all round identically and reconcile to the penny. */
+function lineTotalCents(it: CommercialProposalLineItem): number {
+  return Math.round(Number(it.quantity) * it.unit_price_cents);
+}
+
 function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) {
   if (items.length === 0) return null;
   // Karan 2026-07-20: reference PDF flows scope straight after the
@@ -792,7 +864,7 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
   // has a phase set. If NONE do, fall back to flat rendering (backward
   // compat with every existing proposal). Phase-null items when some
   // items DO have phases collect under a "General" section at the top.
-  const anyHasPhase = items.some((it) => it.phase && it.phase.trim());
+  const { anyHasPhase, groups } = groupItemsByPhase(items);
   if (!anyHasPhase) {
     return (
       <View style={{ marginTop: 14 }}>
@@ -805,40 +877,6 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
       </View>
     );
   }
-  // Group + preserve insertion order per phase. Ungrouped items surface
-  // first as "General scope".
-  type Group = { key: string; label: string; rows: CommercialProposalLineItem[] };
-  const groups: Group[] = [];
-  const byKey = new Map<string, Group>();
-  const ungroupedKey = "__ungrouped__";
-  for (const it of items) {
-    const raw = it.phase?.trim();
-    // 2026-07-21 audit (footgun): group on a NORMALIZED key (lowercased +
-    // internal-whitespace-collapsed) so "Phase 1" / "phase 1" / "Phase  1"
-    // merge into ONE section instead of rendering as two — a
-    // customer-visible broken proposal that a mobile field user could
-    // easily trip. The DISPLAY label stays the FIRST-seen spelling (byKey
-    // dedup keeps g.label from group creation).
-    const key = raw ? raw.toLowerCase().replace(/\s+/g, " ") : ungroupedKey;
-    // F.6 audit fix: bucket label "General Scope" would collide with a
-    // literal user-typed phase named "General Scope". Use a sentinel
-    // label ("General") that's short + unlikely to be typed as a phase
-    // name (Alex uses "Phase 1", "Base Contract", etc.).
-    const label = raw || "General";
-    let g = byKey.get(key);
-    if (!g) {
-      g = { key, label, rows: [] };
-      byKey.set(key, g);
-      groups.push(g);
-    }
-    g.rows.push(it);
-  }
-  // Move ungrouped to the front so unphased items always render first.
-  groups.sort((a, b) => {
-    if (a.key === ungroupedKey) return -1;
-    if (b.key === ungroupedKey) return 1;
-    return 0;
-  });
   // F.6 audit fix: don't wrap={false} the whole group — a phase with
   // 30+ line items would refuse to break across pages and overflow.
   // Instead, keep just the section header + FIRST row atomic (so a
@@ -864,44 +902,96 @@ function InclusionsCustomer({ items }: { items: CommercialProposalLineItem[] }) 
   );
 }
 
-function LineItemTable({
-  items,
+function LiRow({
+  it,
   showAlternateBadge,
 }: {
-  items: CommercialProposalLineItem[];
+  it: CommercialProposalLineItem;
   showAlternateBadge: boolean;
 }) {
   return (
-    <View style={styles.liTable}>
-      <View style={styles.liHeaderRow}>
-        <Text style={[styles.liHeaderCell, styles.liCellDesc]}>Description</Text>
-        <Text style={[styles.liHeaderCell, styles.liCellQty]}>Qty</Text>
-        <Text style={[styles.liHeaderCell, styles.liCellUnit]}>Unit</Text>
-        <Text style={[styles.liHeaderCell, styles.liCellPrice]}>Unit price</Text>
-        <Text style={[styles.liHeaderCell, styles.liCellLine]}>Line total</Text>
+    <View style={styles.liRow}>
+      <Text style={[styles.liCell, styles.liCellDesc]}>
+        {showAlternateBadge && it.is_alternate ? "[ALT] " : ""}
+        {it.product_name ? (
+          <Text style={{ fontFamily: "Times-Bold" }}>
+            {it.product_name}
+            {it.description ? " — " : ""}
+          </Text>
+        ) : null}
+        {it.description}
+      </Text>
+      <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
+      <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
+      <Text style={[styles.liCell, styles.liCellPrice]}>{formatDollars(it.unit_price_cents)}</Text>
+      <Text style={[styles.liCell, styles.liCellLine]}>{formatDollars(lineTotalCents(it))}</Text>
+    </View>
+  );
+}
+
+function LineItemTable({
+  items,
+  showAlternateBadge,
+  groupByPhase = false,
+}: {
+  items: CommercialProposalLineItem[];
+  showAlternateBadge: boolean;
+  /** Katie 2026-07-28: group the priced table by phase with a per-phase
+   *  subtotal. Only the base inclusions table sets this (not labor/alternates).
+   *  Falls back to a flat table when no line item carries a phase. */
+  groupByPhase?: boolean;
+}) {
+  const grouping = groupByPhase
+    ? groupItemsByPhase(items)
+    : { anyHasPhase: false, groups: [] as PhaseGroup[] };
+  const header = (
+    <View style={styles.liHeaderRow}>
+      <Text style={[styles.liHeaderCell, styles.liCellDesc]}>Description</Text>
+      <Text style={[styles.liHeaderCell, styles.liCellQty]}>Qty</Text>
+      <Text style={[styles.liHeaderCell, styles.liCellUnit]}>Unit</Text>
+      <Text style={[styles.liHeaderCell, styles.liCellPrice]}>Unit price</Text>
+      <Text style={[styles.liHeaderCell, styles.liCellLine]}>Line total</Text>
+    </View>
+  );
+  // Flat table when not grouping OR when no line carries a phase (every legacy
+  // proposal) — so we never render a lone "General" header + subtotal that just
+  // repeats the grand total.
+  if (!groupByPhase || !grouping.anyHasPhase) {
+    return (
+      <View style={styles.liTable}>
+        {header}
+        {items.map((it) => (
+          <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} />
+        ))}
       </View>
-      {items.map((it) => {
-        const line = Math.round(Number(it.quantity) * it.unit_price_cents);
+    );
+  }
+  // Grouped by phase. Each phase gets a bold header + its rows + a subtotal
+  // row. Subtotals sum the SAME per-line rounded value the grand total uses
+  // (lineTotalCents), so Σ(phase subtotals) === grand total to the penny.
+  return (
+    <View style={styles.liTable}>
+      {header}
+      {grouping.groups.map((g) => {
+        const subtotal = g.rows.reduce((sum, it) => sum + lineTotalCents(it), 0);
+        const [firstRow, ...restRows] = g.rows;
         return (
-          <View key={it.id} style={styles.liRow}>
-            <Text style={[styles.liCell, styles.liCellDesc]}>
-              {showAlternateBadge && it.is_alternate ? "[ALT] " : ""}
-              {it.product_name ? (
-                <Text style={{ fontFamily: "Times-Bold" }}>
-                  {it.product_name}
-                  {it.description ? " — " : ""}
-                </Text>
-              ) : null}
-              {it.description}
-            </Text>
-            <Text style={[styles.liCell, styles.liCellQty]}>{it.quantity}</Text>
-            <Text style={[styles.liCell, styles.liCellUnit]}>{productUnitLabel(it.unit)}</Text>
-            <Text style={[styles.liCell, styles.liCellPrice]}>
-              {formatDollars(it.unit_price_cents)}
-            </Text>
-            <Text style={[styles.liCell, styles.liCellLine]}>
-              {formatDollars(line)}
-            </Text>
+          <View key={g.key}>
+            {/* Header + first row atomic so a phase header never orphans at a
+                page break; remaining rows flow (a 30-row phase can still break). */}
+            <View wrap={false}>
+              <View style={styles.liPhaseHeader}>
+                <Text style={styles.liPhaseHeaderText}>{g.label}</Text>
+              </View>
+              {firstRow && <LiRow it={firstRow} showAlternateBadge={showAlternateBadge} />}
+            </View>
+            {restRows.map((it) => (
+              <LiRow key={it.id} it={it} showAlternateBadge={showAlternateBadge} />
+            ))}
+            <View style={styles.liSubtotalRow} wrap={false}>
+              <Text style={styles.liSubtotalLabel}>{g.label} subtotal</Text>
+              <Text style={styles.liSubtotalAmount}>{formatDollars(subtotal)}</Text>
+            </View>
           </View>
         );
       })}
@@ -912,12 +1002,20 @@ function LineItemTable({
 // Renders the priced line-item table. Used for the internal Plan Report AND for
 // a customer PDF when Alex opts into per-line prices — so the header must NOT
 // say "internal" on the customer copy (2026-07-28 re-audit).
-function InclusionsInternal({ items, internal }: { items: CommercialProposalLineItem[]; internal: boolean }) {
+function InclusionsInternal({
+  items,
+  internal,
+  groupByPhase = false,
+}: {
+  items: CommercialProposalLineItem[];
+  internal: boolean;
+  groupByPhase?: boolean;
+}) {
   if (items.length === 0) return null;
   return (
     <View style={{ marginTop: 4 }}>
       <Text style={styles.sectionUnderlineHeader}>{internal ? "Inclusions (internal line-item view):" : "Inclusions:"}</Text>
-      <LineItemTable items={items} showAlternateBadge={false} />
+      <LineItemTable items={items} showAlternateBadge={false} groupByPhase={groupByPhase} />
     </View>
   );
 }
@@ -1140,7 +1238,7 @@ export function ProposalPdfDocument({
         <Text style={styles.intro}>{intro}</Text>
 
         {showLineTable ? (
-          <InclusionsInternal items={inclusions} internal={mode === "internal"} />
+          <InclusionsInternal items={inclusions} internal={mode === "internal"} groupByPhase />
         ) : (
           <InclusionsCustomer items={inclusions} />
         )}
