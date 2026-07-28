@@ -879,24 +879,27 @@ function KpiCard({
   value: string;
   sub: string;
 }) {
+  // Color audit 2026-07-28: "blue" was a broken cc-brand-red border + raw
+  // blue fill; now real ppp-blue. Value type matches the dashboard KPI
+  // (Roboto Condensed black).
   const ring =
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/50"
       : "border-ppp-charcoal-100 bg-white";
   const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-cc-brand-500" : "bg-ppp-charcoal-200";
+    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-ppp-blue-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
       <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
-      <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1">
+      <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums">
         {value}
       </div>
-      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>
+      <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>
     </div>
   );
 }

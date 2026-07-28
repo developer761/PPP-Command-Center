@@ -2335,24 +2335,24 @@ function KpiCard({
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/50"
       : tone === "rose"
       ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
       : "border-ppp-charcoal-100 bg-white";
-  // blue tone must paint a BLUE stripe — was cc-brand-500 (red) on a blue wash
-  // (the win-loss KpiCard already fixed this; back-ported here).
+  // "blue" uses the ppp-blue brand cyan to match the dashboard (was raw
+  // Tailwind blue). Value type = Roboto Condensed black, also per dashboard.
   const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-ppp-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
       <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
-      <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1">
+      <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums">
         {value}
       </div>
-      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>
+      <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>
     </div>
   );
 }
