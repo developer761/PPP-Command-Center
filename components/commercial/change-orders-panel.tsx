@@ -167,7 +167,15 @@ export async function ChangeOrdersPanel({
 
       {/* ── Add + list ── */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-        <details className="group mb-3 border border-cc-brand-200 rounded-lg" open={addAttemptFailed}>
+        {/* When there are no change orders yet, a big empty block left the
+            page mostly white — open the add form so the page is immediately
+            usable + a compact one-line intro instead of a tall empty state. */}
+        {items.length === 0 && (
+          <p className="text-[12px] text-ppp-charcoal-500 mb-3">
+            No change orders yet. When scope changes mid-job, add one below — approved additions roll into the contract sum and bill on their own invoice.
+          </p>
+        )}
+        <details className="group mb-3 border border-cc-brand-200 rounded-lg" open={addAttemptFailed || items.length === 0}>
           <summary className="cursor-pointer list-none px-3.5 py-2.5 min-h-[44px] flex items-center gap-2 text-[12px] font-semibold text-cc-brand-700 select-none">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform">
               <path d="M12 5v14 M5 12h14" />
@@ -198,19 +206,7 @@ export async function ChangeOrdersPanel({
           </form>
         </details>
 
-        {items.length === 0 ? (
-          <div className="text-center py-8 px-4">
-            <span aria-hidden className="mx-auto mb-2 inline-flex items-center justify-center h-10 w-10 rounded-full bg-cc-brand-50 text-cc-brand-500">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-              </svg>
-            </span>
-            <p className="text-sm font-semibold text-ppp-charcoal">No change orders yet</p>
-            <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">
-              When scope changes mid-job, log it here. Approved additions roll into the contract sum and bill on their own invoice.
-            </p>
-          </div>
-        ) : (
+        {items.length === 0 ? null : (
           <ul className="space-y-2.5">
             {items.map((co) => {
               const billedLive = !!co.invoiced_invoice_id && liveInvoices.has(co.invoiced_invoice_id);

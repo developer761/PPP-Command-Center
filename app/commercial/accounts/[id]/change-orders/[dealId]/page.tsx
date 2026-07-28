@@ -195,9 +195,12 @@ export default async function AccountChangeOrdersPage({
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-4">
       {/* Back to the account (opportunities tab, scrolled to this deal). */}
       <div className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
-        <Link href={`/commercial/accounts/${id}?tab=opportunities#deal-row-${dealId}`} className="inline-flex items-center gap-1 hover:text-cc-brand-700 min-h-[32px]">
+        {/* Back to the deal DRAWER (where the operator clicked in from), not a
+            #deal-row anchor — the anchor scroll was unreliable and dumped the
+            user at the top of the account (Karan 2026-07-28). */}
+        <Link href={`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}`} className="inline-flex items-center gap-1 hover:text-cc-brand-700 min-h-[32px]">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
-          {account.company_name}
+          Back to {account.company_name}
         </Link>
         <span aria-hidden>/</span>
         <span className="text-ppp-charcoal-700 font-medium truncate">{dealName}</span>
@@ -205,7 +208,7 @@ export default async function AccountChangeOrdersPage({
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-ppp-charcoal tracking-tight">Change Orders</h1>
+          <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Change Orders</h1>
           <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
             {dealName} · <span className="font-medium">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</span>
           </p>
