@@ -62,6 +62,7 @@ import {
   TERMINAL_STATUSES,
   isTerminalOpportunityStatus,
   isWon,
+  isPostSaleProject,
   isLost,
   isFollowUp,
   opportunitySubStatusLabel,
@@ -3677,7 +3678,7 @@ function CustomerQuickSheet({
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="min-w-0 flex-1">
                           <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
-                            {d.title || "(untitled)"}
+                            {derivedOppName(d, account.company_name)}
                           </div>
                           <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
                             <StatusPill status={d.status} />
@@ -3686,6 +3687,17 @@ function CustomerQuickSheet({
                           </div>
                         </div>
                       </div>
+                      {/* Phase G: post-sale (in-progress / billing) deals can
+                          carry change orders — link straight to the tab. */}
+                      {isPostSaleProject(d) && (
+                        <Link
+                          href={`/commercial/opportunities/${d.id}?tab=changeorders`}
+                          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px]"
+                        >
+                          Change orders
+                          <span aria-hidden>→</span>
+                        </Link>
+                      )}
                       {nextStatuses.length > 0 && (
                         <form action={quickFlipStatusAction} className="mt-2 flex items-center gap-1.5">
                           <input type="hidden" name="opp_id" value={d.id} />
@@ -3743,7 +3755,16 @@ function CustomerQuickSheet({
                       }`}
                     >
                       <StatusPill status={d.status} />
-                      <span className="truncate flex-1">{d.title || "(untitled)"}</span>
+                      <span className="truncate flex-1">{derivedOppName(d, account.company_name)}</span>
+                      {isPostSaleProject(d) && (
+                        <Link
+                          href={`/commercial/opportunities/${d.id}?tab=changeorders`}
+                          className="shrink-0 text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
+                          title="Change orders"
+                        >
+                          Change orders →
+                        </Link>
+                      )}
                       <span className="text-ppp-charcoal-500 shrink-0">
                         {formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}
                       </span>

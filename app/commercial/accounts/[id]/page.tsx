@@ -3001,6 +3001,7 @@ async function OpportunitiesTab({
           <DealEditSheet
             deal={dealRow}
             accountId={accountId}
+            accountName={account.company_name}
             primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
             estimators={estimators}
             errorMessage={errorMessage}
@@ -5431,6 +5432,7 @@ function AccountKpisTab({
 function DealEditSheet({
   deal,
   accountId,
+  accountName,
   primaryLead,
   estimators,
   errorMessage,
@@ -5438,6 +5440,8 @@ function DealEditSheet({
 }: {
   deal: CommercialOpportunity;
   accountId: string;
+  /** For the derived deal name in the header — consistent with the list. */
+  accountName: string;
   primaryLead: { user_email: string; user_full_name: string | null; role: string } | null;
   estimators: EligibleEstimator[];
   /** Karan 2026-07-10 audit fix (P1): when the edit action fails +
@@ -5456,6 +5460,9 @@ function DealEditSheet({
   const bidLabel = formatBidRange(deal.bid_value_low_cents, deal.bid_value_high_cents);
   const weighted = weightedPipelineCents(deal);
   const statusInfo = statusPillTone(deal.status, deal.sub_status);
+  // Same derived name the list/rows show, so the drawer header is consistent
+  // (was showing the raw title, which mismatched the row label).
+  const dealDisplayName = derivedOppName(deal, accountName) || "(untitled)";
   // ISO date-picker defaults — extract YYYY-MM-DD from the stored UTC
   // timestamps so <input type="date"> renders them correctly.
   const dueDateDefault = deal.proposal_due_at ? deal.proposal_due_at.slice(0, 10) : "";
@@ -5498,12 +5505,20 @@ function DealEditSheet({
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 id="deal-edit-title" className="text-lg font-bold text-ppp-charcoal break-words leading-tight tracking-tight">
-                  {deal.title || "(untitled)"}
+                  {dealDisplayName}
                 </h2>
                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${statusInfo.cls}`}>
                   {oppStatusDisplayLabel(deal.status, deal.sub_status)}
                 </span>
               </div>
+              {/* Show the raw title too when it differs from the derived name,
+                  so the name here matches the list AND the operator can still
+                  see what they typed as the title. */}
+              {deal.title && deal.title.trim() && deal.title.trim() !== dealDisplayName && (
+                <div className="mt-1 text-[11.5px] text-ppp-charcoal-500 break-words">
+                  Title: {deal.title.trim()}
+                </div>
+              )}
               {primaryLead && (
                 <div className="mt-1 text-[11.5px] text-ppp-charcoal-500">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.8 5.9 21.4l1.4-6.8L2.2 9.9l6.9-.8z" /></svg> {primaryLead.user_full_name ?? primaryLead.user_email} lead
@@ -5575,6 +5590,23 @@ function DealEditSheet({
               }`}
             >
               {deal.win_loss_debriefed_at ? "View debrief" : "Open debrief"}
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
+        )}
+        {/* Phase G: on a Won / post-sale deal, surface the Change Orders tab.
+            The tab lives on the full deal page (this drawer is edit-only), so
+            without this link there's no way to reach it from the account. */}
+        {(isWon(deal) || isPostSale(deal)) && (
+          <div className="rounded-lg px-4 py-3 flex items-center justify-between gap-3 text-sm bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800">
+            <span className="min-w-0">
+              <span className="font-semibold">Change orders</span> — add or deduct scope mid-job and bill it separately.
+            </span>
+            <Link
+              href={`/commercial/opportunities/${deal.id}?tab=changeorders`}
+              className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold min-h-[36px] bg-white border border-cc-brand-300 text-cc-brand-800 hover:bg-cc-brand-100"
+            >
+              Change orders
               <span aria-hidden>→</span>
             </Link>
           </div>
