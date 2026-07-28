@@ -20,7 +20,31 @@ import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commerc
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string }>;
-type SP = Promise<{ error?: string; confirm_delete?: string; duplicate?: string }>;
+type SP = Promise<{
+  error?: string;
+  confirm_delete?: string;
+  duplicate?: string;
+  company_name?: string;
+  dba?: string;
+  industry?: string;
+  rating?: string;
+  billing_street?: string;
+  billing_city?: string;
+  billing_state?: string;
+  billing_zip?: string;
+  site_street?: string;
+  site_city?: string;
+  site_state?: string;
+  site_zip?: string;
+  phone?: string;
+  ap_phone?: string;
+  website?: string;
+  tax_exempt?: string;
+  tax_exempt_cert_number?: string;
+  is_key?: string;
+  site_same?: string;
+  notes?: string;
+}>;
 
 async function updateAction(formData: FormData) {
   "use server";
@@ -50,7 +74,23 @@ async function updateAction(formData: FormData) {
     const duplicates = await findNearDuplicates(company, id);
     if (duplicates.length > 0) {
       const ids = duplicates.map((d) => d.id).join(",");
-      redirect(`/commercial/accounts/${id}/edit?duplicate=${encodeURIComponent(ids)}`);
+      // Round-trip every edited TEXT field back so the warning re-render doesn't
+      // silently revert to the DB row (re-audit 2026-07-28 BUG) — otherwise
+      // "Save anyway" would save the ORIGINAL values, dropping the rename+edits.
+      const p = new URLSearchParams({ duplicate: ids });
+      p.set("company_name", company);
+      for (const k of [
+        "dba", "industry", "rating", "billing_street", "billing_city", "billing_state",
+        "billing_zip", "site_street", "site_city", "site_state", "site_zip", "phone",
+        "ap_phone", "website", "tax_exempt_cert_number", "notes",
+      ]) {
+        const v = get(k);
+        if (v) p.set(k, v);
+      }
+      if (formData.get("tax_exempt") === "on") p.set("tax_exempt", "1");
+      if (formData.get("is_key_relationship") === "on") p.set("is_key", "1");
+      if (formData.get("site_same_as_billing") === "1") p.set("site_same", "1");
+      redirect(`/commercial/accounts/${id}/edit?${p.toString()}`);
     }
   }
 
@@ -202,14 +242,14 @@ export default async function EditCommercialAccountPage({
         {duplicateCandidates.length > 0 && <input type="hidden" name="confirm_duplicate" value="1" />}
 
         <Section title="Identity" anchorId="edit-identity">
-          <EditField id="company_name" label="Company name *" required defaultValue={account.company_name} />
-          <EditField id="dba" label="DBA (doing business as)" defaultValue={account.dba ?? ""} />
-          <EditField id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" defaultValue={account.industry ?? ""} />
+          <EditField id="company_name" label="Company name *" required defaultValue={sp.company_name ?? account.company_name} />
+          <EditField id="dba" label="DBA (doing business as)" defaultValue={sp.dba ?? (account.dba ?? "")} />
+          <EditField id="industry" label="Industry" placeholder="Real estate, hospitality, healthcare…" defaultValue={sp.industry ?? (account.industry ?? "")} />
           <EditSelectField
             id="rating"
             label="Rating"
             options={[["", "—"], ["A", "A"], ["B", "B"], ["C", "C"]]}
-            defaultValue={account.rating ?? ""}
+            defaultValue={sp.rating ?? (account.rating ?? "")}
           />
         </Section>
 
@@ -217,10 +257,10 @@ export default async function EditCommercialAccountPage({
           <CommercialAddressFields
             prefix="billing"
             defaults={{
-              street: account.billing_street ?? "",
-              city: account.billing_city ?? "",
-              state: account.billing_state ?? "",
-              zip: account.billing_zip ?? "",
+              street: sp.billing_street ?? (account.billing_street ?? ""),
+              city: sp.billing_city ?? (account.billing_city ?? ""),
+              state: sp.billing_state ?? (account.billing_state ?? ""),
+              zip: sp.billing_zip ?? (account.billing_zip ?? ""),
             }}
           />
         </Section>
@@ -231,24 +271,26 @@ export default async function EditCommercialAccountPage({
               created before the toggle existed — they had to retype). */}
           <CommercialSiteAddressToggle
             defaultChecked={
-              (account.site_street ?? "") === (account.billing_street ?? "") &&
-              (account.site_city ?? "") === (account.billing_city ?? "") &&
-              (account.site_state ?? "") === (account.billing_state ?? "") &&
-              (account.site_zip ?? "") === (account.billing_zip ?? "")
+              duplicateCandidates.length > 0
+                ? sp.site_same === "1"
+                : (account.site_street ?? "") === (account.billing_street ?? "") &&
+                  (account.site_city ?? "") === (account.billing_city ?? "") &&
+                  (account.site_state ?? "") === (account.billing_state ?? "") &&
+                  (account.site_zip ?? "") === (account.billing_zip ?? "")
             }
             defaults={{
-              street: account.site_street ?? "",
-              city: account.site_city ?? "",
-              state: account.site_state ?? "",
-              zip: account.site_zip ?? "",
+              street: sp.site_street ?? (account.site_street ?? ""),
+              city: sp.site_city ?? (account.site_city ?? ""),
+              state: sp.site_state ?? (account.site_state ?? ""),
+              zip: sp.site_zip ?? (account.site_zip ?? ""),
             }}
           />
         </Section>
 
         <Section title="Contact" anchorId="edit-contact">
-          <EditField id="phone" label="Main phone" type="tel" defaultValue={account.phone ?? ""} />
-          <EditField id="ap_phone" label="Accounts Payable phone" type="tel" defaultValue={account.ap_phone ?? ""} />
-          <EditField id="website" label="Website" type="url" defaultValue={account.website ?? ""} />
+          <EditField id="phone" label="Main phone" type="tel" defaultValue={sp.phone ?? (account.phone ?? "")} />
+          <EditField id="ap_phone" label="Accounts Payable phone" type="tel" defaultValue={sp.ap_phone ?? (account.ap_phone ?? "")} />
+          <EditField id="website" label="Website" type="url" defaultValue={sp.website ?? (account.website ?? "")} />
         </Section>
 
         {/* Karan 2026-07-10 (Katie/Brendan notes): Compliance section
@@ -261,12 +303,12 @@ export default async function EditCommercialAccountPage({
             <input
               type="checkbox"
               name="tax_exempt"
-              defaultChecked={account.tax_exempt}
+              defaultChecked={duplicateCandidates.length > 0 ? sp.tax_exempt === "1" : account.tax_exempt}
               className="h-5 w-5 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
             />
             Tax exempt
           </label>
-          <EditField id="tax_exempt_cert_number" label="Tax exempt certificate #" defaultValue={account.tax_exempt_cert_number ?? ""} />
+          <EditField id="tax_exempt_cert_number" label="Tax exempt certificate #" defaultValue={sp.tax_exempt_cert_number ?? (account.tax_exempt_cert_number ?? "")} />
         </Section>
 
         <Section title="Strategic" anchorId="edit-strategic">
@@ -274,7 +316,7 @@ export default async function EditCommercialAccountPage({
             <input
               type="checkbox"
               name="is_key_relationship"
-              defaultChecked={Boolean(account.is_key_relationship)}
+              defaultChecked={duplicateCandidates.length > 0 ? sp.is_key === "1" : Boolean(account.is_key_relationship)}
               className="h-5 w-5 mt-0.5 rounded border-ppp-charcoal-300 focus:ring-cc-brand-600/30"
             />
             <span>
@@ -291,7 +333,8 @@ export default async function EditCommercialAccountPage({
             id="notes"
             name="notes"
             rows={4}
-            defaultValue={account.notes ?? ""}
+            maxLength={4000}
+            defaultValue={sp.notes ?? (account.notes ?? "")}
             placeholder="Anything PPP staff should know about this account."
             className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
           />

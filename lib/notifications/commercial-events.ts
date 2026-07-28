@@ -909,16 +909,23 @@ export async function insertCommercialInvoiceDunningMarker(input: {
   daysPastDue: number;
   balanceCents: number;
   sentToClient: boolean;
+  /** True when a contact email EXISTS but the send failed (vs. no contact). */
+  emailFailed?: boolean;
   clientEmailMasked: string | null;
 }): Promise<void> {
   const relativeLink = `/commercial/invoices/${input.invoiceId}`;
   const emailLink = appendBase(relativeLink);
   const money = formatMoneyCents(input.balanceCents);
+  // Three distinct states so the team isn't told "no contact" on a send failure.
   const title = input.sentToClient
     ? `Past-due reminder sent · ${input.invoiceNumber}`
+    : input.emailFailed
+    ? `Past-due reminder FAILED to send · ${input.invoiceNumber}`
     : `Past-due invoice needs a contact · ${input.invoiceNumber}`;
   const body = input.sentToClient
     ? `Emailed the client${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} — ${money}, ${input.daysPastDue}d past due.`
+    : input.emailFailed
+    ? `Couldn't email the client${input.clientEmailMasked ? ` (${input.clientEmailMasked})` : ""} for ${input.invoiceNumber} (${money}, ${input.daysPastDue}d past due) — the email failed; follow up manually.`
     : `${input.invoiceNumber} is ${input.daysPastDue}d past due but the account has no contact email — follow up manually.`;
 
   const subject = title;

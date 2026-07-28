@@ -107,7 +107,7 @@ export async function GET(request: Request) {
   );
   if (totalErrors > 0) {
     console.warn(
-      `[cron/commercial-daily] errors: tasks=${JSON.stringify(tasks.errors)} docs=${JSON.stringify(docs.errors)} hot=${JSON.stringify(hot.errors)} rules=${JSON.stringify(rules.errors)}`
+      `[cron/commercial-daily] errors: tasks=${JSON.stringify(tasks.errors)} docs=${JSON.stringify(docs.errors)} hot=${JSON.stringify(hot.errors)} rules=${JSON.stringify(rules.errors)} debrief=${JSON.stringify(debrief.errors)} dunning=${JSON.stringify(dunning.errors)}`
     );
   }
 
@@ -139,6 +139,8 @@ export async function GET(request: Request) {
         docs_errs: docs.errors.length,
         hot_errs: hot.errors.length,
         rules_errs: rules.errors.length,
+        debrief_errs: debrief.errors.length,
+        dunning_errs: dunning.errors.length,
         duration_ms: durationMs,
       },
     });
@@ -154,6 +156,8 @@ export async function GET(request: Request) {
         docs_ok: docs.ok,
         hot_ok: hot.ok,
         rules_ok: rules.ok,
+        debrief_ok: debrief.ok,
+        dunning_ok: dunning.ok,
       },
     });
   }

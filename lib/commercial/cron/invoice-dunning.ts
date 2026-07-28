@@ -21,6 +21,11 @@ type Result = { ok: boolean; found: number; sent: number; skipped: number; error
 
 const PAST_DUE_DAYS = 15; // client reminder starts 15 days past due
 const REDUN_DAYS = 7; // re-send at most weekly
+// Per-run cap (re-audit 2026-07-28): each row is an email send (up to a few
+// hundred ms) + 2-3 DB writes, under the route's 60s maxDuration. Cap well
+// below a count that could time out; the last_dunning_at gate drains any
+// backlog over subsequent days.
+const DUNNING_MAX_PER_RUN = 100;
 
 /** Mask an email for the internal bell: "jane@gc.com" → "j***@gc.com". */
 function maskEmail(email: string): string {
@@ -52,7 +57,7 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
       .is("account.deleted_at", null)
       .or(`last_dunning_at.is.null,last_dunning_at.lt.${redunCutoffIso}`)
       .order("due_at", { ascending: true })
-      .limit(500);
+      .limit(DUNNING_MAX_PER_RUN);
     if (error) {
       out.ok = false;
       out.errors.push(`dunning query failed: ${error.message}`);
@@ -69,8 +74,8 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
     const rows = (data ?? []) as unknown as Row[];
     out.found = rows.length;
     if (rows.length === 0) return out;
-    if (rows.length >= 500) {
-      console.warn("[cron/invoice-dunning] hit the 500-row cap — some reminders deferred.");
+    if (rows.length >= DUNNING_MAX_PER_RUN) {
+      console.warn(`[cron/invoice-dunning] hit the ${DUNNING_MAX_PER_RUN}-row cap — remaining reminders fire on later days.`);
     }
 
     // Batch-resolve the client billing email per account (prefer the primary
@@ -125,6 +130,23 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
           Math.floor((now - new Date(r.due_at).getTime()) / 86_400_000)
         );
         const clientEmail = emailByAccount.get(r.account_id) ?? null;
+
+        // CLAIM FIRST (re-audit 2026-07-28): mark the invoice as dunned BEFORE
+        // sending, and only send if the mark succeeded. This guarantees a
+        // client can't be re-emailed inside the 7-day window even if the marker
+        // write fails — a failed mark skips the send this run (retried next
+        // run) rather than risking a double-send. The opposite ordering could
+        // email the client, then fail to mark, and re-email tomorrow.
+        const { error: markErr } = await sb
+          .from("commercial_invoices")
+          .update({ last_dunning_at: new Date().toISOString() })
+          .eq("id", r.id);
+        if (markErr) {
+          out.errors.push(`invoice ${r.id.slice(0, 8)}: dunning mark failed, skipping send: ${markErr.message}`);
+          out.skipped += 1;
+          continue;
+        }
+
         let sentToClient = false;
         if (clientEmail) {
           const res = await sendClientInvoiceDunningEmail({
@@ -137,15 +159,10 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
           });
           sentToClient = res.ok;
         }
-        // Mark the invoice so it won't dun again for REDUN_DAYS — set even when
-        // there was no contact email, so we don't re-scan it daily.
-        await sb
-          .from("commercial_invoices")
-          .update({ last_dunning_at: new Date().toISOString() })
-          .eq("id", r.id);
 
         // Internal marker/bell to the primary lead (if any). Doubles as the
-        // visible record of client outreach.
+        // visible record of client outreach. emailFailed distinguishes a
+        // genuine send failure (a contact exists) from "no contact on file".
         const lead = leadByOpp.get(r.opportunity_id);
         if (lead) {
           await insertCommercialInvoiceDunningMarker({
@@ -155,6 +172,7 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
             daysPastDue,
             balanceCents: r.balance_cents,
             sentToClient,
+            emailFailed: !!clientEmail && !sentToClient,
             clientEmailMasked: clientEmail ? maskEmail(clientEmail) : null,
           });
         }

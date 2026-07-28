@@ -513,6 +513,7 @@ export default async function NewCommercialAccountPage({
             id="notes"
             name="notes"
             rows={4}
+            maxLength={4000}
             defaultValue={sp.notes ?? ""}
             placeholder="Anything PPP staff should know about this account."
             className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
@@ -530,7 +531,7 @@ export default async function NewCommercialAccountPage({
             type="submit"
             className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
           >
-            Create account
+            {duplicateCandidates.length > 0 ? "Create anyway" : "Create account"}
           </button>
         </div>
       </form>
