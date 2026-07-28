@@ -591,14 +591,14 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   return (
     <div className="space-y-5">
       {deletedFlash && (
-        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
-          <span aria-hidden>✓</span>
+        <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center gap-2">
+          <span aria-hidden className="shrink-0 text-ppp-charcoal-500"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
           <span>Invoice deleted.</span>
         </div>
       )}
       {bulkDeletedFlash > 0 && (
-        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-center gap-2">
-          <span aria-hidden>✓</span>
+        <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center gap-2">
+          <span aria-hidden className="shrink-0 text-ppp-charcoal-500"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span>
           <span><strong>{bulkDeletedFlash}</strong> invoice{bulkDeletedFlash === 1 ? "" : "s"} deleted.</span>
         </div>
       )}
@@ -676,7 +676,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         <div className={`rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 ${
           invoiceErrorsFlash > 0
             ? "bg-amber-50 border border-amber-200 text-amber-900"
-            : "bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800"
+            : "bg-emerald-50 border border-emerald-200 text-emerald-800"
         }`}>
           <span>
             <strong>{invoicesCreatedFlash}</strong> invoice{invoicesCreatedFlash === 1 ? "" : "s"} created.
@@ -1413,7 +1413,11 @@ function GroupedByOpp({
                           ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
                           : invStatus === "void"
                           ? "bg-ppp-charcoal-100 text-ppp-charcoal-500 border-ppp-charcoal-200"
-                          : "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-200";
+                          // sent / viewed = billed-and-waiting → ppp-blue, clearly
+                          // distinct from overdue (rose). Was cc-brand red, which
+                          // sat one hue from overdue — the two states Alex most
+                          // needs to tell apart (2026-07-28 color audit).
+                          : "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200";
                       return (
                         <li key={inv.id}>
                           <Link
