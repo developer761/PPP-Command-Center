@@ -5515,7 +5515,7 @@ async function DealEditSheet({
           desktop width from 520px → 720px so the form breathes; long
           field labels + hints don't wrap mid-word anymore. Full-width
           on mobile stays. */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[600px] lg:w-[720px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[600px] lg:w-[720px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
         {/* Karan 2026-07-08 simplification pass: killed the read-only KPI
             band (redundant with the form field values below) and the
             "status changes happen elsewhere" paragraph (users learn

@@ -3389,8 +3389,8 @@ function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
   const map = {
     not_started: { label: "Prequal: —", cls: "bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-100" },
     pending: { label: "Prequal: pending", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-    approved: { label: "Prequal: ✓", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    rejected: { label: "Prequal: ✗", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+    approved: { label: "Prequal: Approved", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+    rejected: { label: "Prequal: Declined", cls: "bg-rose-50 text-rose-700 border-rose-200" },
   }[status];
   if (!map) return null;
   return (
@@ -3489,7 +3489,7 @@ function CustomerQuickSheet({
       {/* Sheet — right-aligned slide-out. Wider than deal peek (480px)
           because it carries more content: team, financials, invoices,
           deals. Full width on mobile. */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden">
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
         {/* Header — company name + close + right-aligned View Account CTA
             per user's explicit ask ("top right of the sheet it says view
             full account button and brings the user to the account"). */}
