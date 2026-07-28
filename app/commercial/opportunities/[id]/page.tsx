@@ -1596,7 +1596,7 @@ export default async function OpportunityDetailPage({
       ? "overview"
       : resolvedPrimary === "invoices" && !isOppWon && !isDeletedDeal
       ? "overview"
-      : resolvedPrimary === "changeorders" && !isProject
+      : resolvedPrimary === "changeorders" && (!isProject || isDeletedDeal)
       ? "overview"
       : resolvedPrimary;
   const rawSub = pickFirst(sp.sub) as SubTab | undefined;
@@ -1970,7 +1970,7 @@ export default async function OpportunityDetailPage({
           detailsSavedInvoiceId={pickFirst(sp.details_saved) ?? null}
         />
       )}
-      {tab === "changeorders" && isProject && (
+      {tab === "changeorders" && isProject && !isDeletedDeal && (
         <OpportunityChangeOrdersPanel
           oppId={opp.id}
           okFlag={pickFirst(sp.co_ok) ?? null}
@@ -2908,7 +2908,7 @@ async function OpportunityChangeOrdersPanel({
                         {co.invoiced_invoice_id ? (
                           <Link
                             href={`/commercial/invoices/${co.invoiced_invoice_id}`}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-100 min-h-[36px]"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-100 min-h-[44px]"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />

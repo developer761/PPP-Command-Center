@@ -168,6 +168,7 @@ export async function updateChangeOrder(
 ): Promise<Result<CommercialChangeOrder>> {
   const before = await getChangeOrder(id);
   if (!before) return { ok: false, error: "not_found" };
+  if (!(await oppIsLive(before.opportunity_id))) return { ok: false, error: DELETED_DEAL_ERROR };
   if (before.status !== "pending") {
     return { ok: false, error: "Only a pending change order can be edited. Reopen it to pending first." };
   }
@@ -218,6 +219,7 @@ export async function decideChangeOrder(
 ): Promise<Result<CommercialChangeOrder>> {
   const before = await getChangeOrder(id);
   if (!before) return { ok: false, error: "not_found" };
+  if (!(await oppIsLive(before.opportunity_id))) return { ok: false, error: DELETED_DEAL_ERROR };
   if (before.status === decision) {
     return { ok: false, error: `This change order is already ${decision}.` };
   }
@@ -259,6 +261,7 @@ export async function billChangeOrder(
 ): Promise<Result<CommercialInvoice>> {
   const co = await getChangeOrder(id);
   if (!co) return { ok: false, error: "not_found" };
+  if (!(await oppIsLive(co.opportunity_id))) return { ok: false, error: DELETED_DEAL_ERROR };
   if (co.status !== "approved") {
     return { ok: false, error: "Approve the change order before billing it." };
   }
@@ -289,18 +292,41 @@ export async function billChangeOrder(
   if (!created.ok) return { ok: false, error: created.error };
 
   const sb = commercialDb();
-  const { error } = await sb
+  // Atomic claim: link the invoice ONLY if the CO is still unbilled. The
+  // `.is("invoiced_invoice_id", null)` turns the read-then-write into a
+  // compare-and-swap, so a concurrent bill (double-click, second tab, second
+  // user, or a resubmit that races the button-disable) can't produce two
+  // live invoices for one CO — exactly one request wins the claim. The loser
+  // (and the link-write-failure path) soft-deletes its just-created draft so
+  // no orphan invoice is left behind, and a literal retry can't double-bill.
+  const { data: claimed, error } = await sb
     .from("commercial_change_orders")
     .update({ invoiced_invoice_id: created.invoice.id, updated_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) {
-    // The invoice exists but the link write failed — surface it so the user
-    // doesn't double-bill on retry (they'll see the invoice on the Invoices tab).
+    .eq("id", id)
+    .is("invoiced_invoice_id", null)
+    // Also require it to still be approved — closes a decline-during-bill race
+    // that could otherwise leave a declined CO carrying a live invoice.
+    .eq("status", "approved")
+    .select("id")
+    .maybeSingle();
+
+  if (error || !claimed) {
+    // Lost the race (0 rows) or the link write errored — void the orphan draft
+    // we just created so it can't be sent, then tell the user it's already
+    // billed. Best-effort: even if this soft-delete fails, the invoice is an
+    // unsent draft and the CO already carries the winning invoice's id.
+    await sb
+      .from("commercial_invoices")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", created.invoice.id);
     return {
       ok: false,
-      error: "The invoice was created but couldn't be linked to the change order — check the Invoices tab before retrying.",
+      error: error
+        ? "Couldn't link the invoice to the change order — please try again."
+        : "This change order was just billed on another invoice — refresh to see it.",
     };
   }
+
   await logUpdate(
     "commercial_change_orders",
     id,
@@ -315,6 +341,7 @@ export async function billChangeOrder(
 export async function deleteChangeOrder(id: string, userId: string): Promise<Result<true>> {
   const before = await getChangeOrder(id);
   if (!before) return { ok: false, error: "not_found" };
+  if (!(await oppIsLive(before.opportunity_id))) return { ok: false, error: DELETED_DEAL_ERROR };
   if (before.invoiced_invoice_id && (await invoiceIsLive(before.invoiced_invoice_id))) {
     return {
       ok: false,
@@ -345,3 +372,23 @@ async function invoiceIsLive(invoiceId: string): Promise<boolean> {
     .maybeSingle();
   return !!data && !(data as { deleted_at: string | null }).deleted_at;
 }
+
+/**
+ * True when the parent opportunity exists and isn't soft-deleted. Every CO
+ * mutation checks this so a stale link / direct URL to a deleted deal can't
+ * still approve, bill, edit, or delete a change order (re-audit 2026-07-28,
+ * M2) — the CO panel is hidden for deleted deals, but the actions are the
+ * real gate.
+ */
+async function oppIsLive(opportunityId: string): Promise<boolean> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_opportunities")
+    .select("id, deleted_at")
+    .eq("id", opportunityId)
+    .maybeSingle();
+  return !!data && !(data as { deleted_at: string | null }).deleted_at;
+}
+
+const DELETED_DEAL_ERROR =
+  "This deal has been deleted — change orders can't be modified. Restore the deal first.";
