@@ -102,6 +102,7 @@ import {
   isWon,
   isLost,
   isPostSale,
+  isPostSaleProject,
 } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
 import { BidLifecycleTimeline } from "@/components/commercial/bid-lifecycle-timeline";
@@ -5467,7 +5468,9 @@ async function DealEditSheet({
   // Phase G v2: on a post-sale Project, pull a live change-order summary so the
   // drawer surfaces it prominently (count + net approved + pending) — Karan:
   // "make it visible... used most in post-contract."
-  const isPostSaleDeal = isWon(deal) || isPostSale(deal);
+  // One predicate shared with the CO page (isPostSaleProject) so the drawer
+  // card and the page can never disagree — even on a stray legacy v1 status.
+  const isPostSaleDeal = isPostSaleProject(deal);
   const changeOrders = isPostSaleDeal ? await listChangeOrders(deal.id) : [];
   const coCount = changeOrders.length;
   const coNetApprovedCents = changeOrders
@@ -5668,8 +5671,9 @@ async function DealEditSheet({
                 className={inputCls}
               />
               <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
-                Shown as &ldquo;{accountName} - {`{this title}`}&rdquo;. Use the
-                Custom display name below to override the whole label.
+                Internal working title. The public display name is auto-derived
+                as &ldquo;Account - Client - Location&rdquo; — set a Custom display
+                name below to override it.
               </span>
             </div>
             {/* Katie 2026-07-20 (migration 069): title_override input.

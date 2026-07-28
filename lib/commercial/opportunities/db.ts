@@ -176,22 +176,20 @@ export type CommercialOpportunity = {
 };
 
 /**
- * Derived display name — "{Account} - {Deal title}".
+ * Derived display name — "{Account} - {Client} - {Location}" (Katie's spec).
  * Priority order:
  *   1. opp.title_override (migration 069) — user's custom name wins if set.
- *   2. "{account} - {title}" (Karan 2026-07-28) — both the account and the
- *      deal's own title, deduped if identical.
- *   3. Whichever single side is present, else "Untitled opportunity".
+ *   2. Computed "{account} - {client} - {street}". If Client Name is blank
+ *      it's dropped from the join (Katie: "If Client Name is blank, leave it
+ *      out") → "{account} - {street}". Consecutive identical parts dedupe so
+ *      we never render "Karan - Karan".
+ *   3. opp.title fallback (single part / legacy rows).
  *
- * History: originally "{account} - {client} - {street}" (Katie 2026-07-20);
- * Karan 2026-07-28 switched it to surface the deal title. `title_override`
- * still lets a user set a fully custom name.
+ * Katie 2026-07-20; re-confirmed by Karan 2026-07-28 ("let's do Katie's").
+ * `title_override` still lets a user set a fully custom name.
  */
 export function derivedOppName(
-  opp: Pick<CommercialOpportunity, "title"> & {
-    // Accepted but no longer used in the output (callers still pass them);
-    // kept so existing object-literal callsites compile.
-    client_name?: string | null;
+  opp: Pick<CommercialOpportunity, "title" | "client_name"> & {
     property_street?: string | null;
     title_override?: string | null;
   },
@@ -201,18 +199,22 @@ export function derivedOppName(
   const override = opp.title_override?.trim();
   if (override) return override;
 
-  // (2) Karan 2026-07-28: display name = "{Account} - {Deal title}" so BOTH
-  //     the account and the deal's own title are visible at a glance (was
-  //     "{account} - {client} - {street}", which hid the title). Custom
-  //     display name (title_override, above) still overrides. Dedupe when the
-  //     two sides are identical so we never render "Karan - Karan"; fall back
-  //     gracefully when one side is missing.
-  const acct = accountName?.trim() ?? "";
-  const title = opp.title?.trim() ?? "";
-  if (acct && title) {
-    return acct.toLowerCase() === title.toLowerCase() ? title : `${acct} - ${title}`;
-  }
-  return title || acct || "Untitled opportunity";
+  // (2) Computed {account} - {client} - {street}, client dropped when blank.
+  const parts: string[] = [];
+  if (accountName && accountName.trim()) parts.push(accountName.trim());
+  if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
+  const location = (opp.property_street && opp.property_street.trim()) || "";
+  if (location) parts.push(location);
+
+  // Dedupe consecutive identical parts (case-insensitive) so a deal whose
+  // account == client doesn't read "Karan - Karan".
+  const deduped = parts.filter(
+    (p, i) => i === 0 || p.toLowerCase() !== parts[i - 1].toLowerCase()
+  );
+  if (deduped.length >= 2) return deduped.join(" - ");
+
+  // (3) Legacy / single-part fallback.
+  return opp.title || deduped[0] || "Untitled opportunity";
 }
 
 // formatDealNumber (the "No. ALT-0125" formatter) was retired 2026-07-21:
