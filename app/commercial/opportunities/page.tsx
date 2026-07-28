@@ -1865,7 +1865,7 @@ function CustomerBoardRow({
                 key={o.id}
                 href={sheetHref(account.id, o.id)}
                 className="group/deal flex items-center gap-3 px-2.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-white hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
-                title={`View ${account.company_name} · ${o.title} — ${opportunityStatusLabel(o.status)}`}
+                title={`View ${account.company_name} · ${derivedOppName(o, account.company_name)} — ${opportunityStatusLabel(o.status)}`}
               >
                 {/* 2026-07-28 audit: lead with the deal name (primary), a
                     compact single-stage pill after it — was a 160–220px 4-pill
@@ -1873,7 +1873,7 @@ function CustomerBoardRow({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 truncate text-[12.5px] font-semibold text-ppp-charcoal group-hover/deal:text-cc-brand-800">
-                      {o.title}
+                      {derivedOppName(o, account.company_name)}
                     </span>
                     <span className="shrink-0">
                       <StageChip status={o.status} sub_status={o.sub_status} compact />
@@ -1897,12 +1897,12 @@ function CustomerBoardRow({
                   key={o.id}
                   href={sheetHref(account.id, o.id)}
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-ppp-charcoal-50/70 text-ppp-charcoal-600 text-[11px] font-medium hover:bg-ppp-charcoal-100 max-w-[220px] truncate"
-                  title={`${o.title} — ${opportunityStatusLabel(o.status)}`}
+                  title={`${derivedOppName(o, account.company_name)} — ${opportunityStatusLabel(o.status)}`}
                 >
                   <span aria-hidden className={o.sub_status === "won" ? "text-emerald-600" : "text-rose-500"}>
                     {o.sub_status === "won" ? "✓" : "✗"}
                   </span>
-                  <span className="truncate">{o.title}</span>
+                  <span className="truncate">{derivedOppName(o, account.company_name)}</span>
                 </Link>
               ))}
               {closed.length > 3 && (
