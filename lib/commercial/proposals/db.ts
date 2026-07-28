@@ -886,6 +886,35 @@ function isMissingProductNameColumn(err: { code?: string; message?: string } | n
   return /product_name/i.test(err.message ?? "");
 }
 
+/**
+ * Guard: line-item add/edit/delete may only touch a DRAFT proposal (re-audit
+ * 2026-07-28). A Sent/Won/Lost/Superseded proposal is the frozen legal record
+ * the GC already has — its TOTAL must not change. `updateProposal` already
+ * enforces this for proposal-level fields, but the line-item path did not, so a
+ * stale form submit (proposal sent in another tab / by a teammate) or a forged
+ * POST could silently re-price a sent proposal. Every line-item mutation gates
+ * on this now.
+ */
+async function assertProposalDraft(
+  proposalId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_proposals")
+    .select("status, deleted_at")
+    .eq("id", proposalId)
+    .maybeSingle();
+  const row = data as { status?: string; deleted_at?: string | null } | null;
+  if (!row || row.deleted_at) return { ok: false, error: "Proposal not found." };
+  if (row.status !== "draft") {
+    return {
+      ok: false,
+      error: `Only draft proposals can be edited. This one is ${row.status}. Start a new revision to make changes.`,
+    };
+  }
+  return { ok: true };
+}
+
 export async function createLineItem(
   input: CreateLineItemInput,
   actorUserId: string | null
@@ -893,6 +922,8 @@ export async function createLineItem(
   | { ok: true; item: CommercialProposalLineItem }
   | { ok: false; error: string }
 > {
+  const draftGate = await assertProposalDraft(input.proposal_id);
+  if (!draftGate.ok) return draftGate;
   // Migration 071: a row needs EITHER a picked product (product_name) OR
   // a typed description — a catalog product with a blank description is a
   // valid line now that Product + Description are distinct fields. Labor
@@ -1072,6 +1103,9 @@ export async function updateLineItem(
     .eq("id", input.id)
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
+  // Only editable while the parent proposal is a draft.
+  const draftGate = await assertProposalDraft((before as CommercialProposalLineItem).proposal_id);
+  if (!draftGate.ok) return draftGate;
   let { data: after, error } = await sb
     .from("commercial_proposal_line_items")
     .update(patch)
@@ -1115,6 +1149,9 @@ export async function deleteLineItem(
     .eq("id", id)
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
+  // Only deletable while the parent proposal is a draft.
+  const draftGate = await assertProposalDraft((before as CommercialProposalLineItem).proposal_id);
+  if (!draftGate.ok) return draftGate;
   const { error } = await sb
     .from("commercial_proposal_line_items")
     .delete()
