@@ -110,8 +110,11 @@ export async function ChangeOrdersPanel({
   return (
     <div className="space-y-3">
       {okFlag && CO_OK_MESSAGES[okFlag] ? (
-        <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700">
-          <span>{CO_OK_MESSAGES[okFlag]}</span>
+        <div className="rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800">
+          <span className="inline-flex items-start gap-2">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg>
+            {CO_OK_MESSAGES[okFlag]}
+          </span>
           <Link href={basePath} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
         </div>
       ) : null}

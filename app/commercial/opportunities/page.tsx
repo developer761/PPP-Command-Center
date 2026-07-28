@@ -827,7 +827,7 @@ export default async function CommercialOpportunitiesPage({
             sub="low + high across open deals"
           />
           <KpiCard
-            tone="blue"
+            tone="emerald"
             label="Wins this month"
             value={wonThisMonth.toString()}
             sub={wonThisMonth === 0 ? "no closes yet" : "and counting"}
@@ -3564,9 +3564,9 @@ function CustomerQuickSheet({
                 <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Invoiced</div>
                 <div className="text-sm font-bold text-ppp-charcoal mt-0.5">{formatCentsFull(rollup.invoiced_cents)}</div>
               </div>
-              <div className="rounded-lg border border-cc-brand-100 bg-cc-brand-50/50 px-2.5 py-2">
-                <div className="text-[9.5px] text-cc-brand-800 font-medium uppercase tracking-wide">Paid</div>
-                <div className="text-sm font-bold text-cc-brand-800 mt-0.5">{formatCentsFull(rollup.paid_cents)}</div>
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2.5 py-2">
+                <div className="text-[9.5px] text-emerald-800 font-medium uppercase tracking-wide">Paid</div>
+                <div className="text-sm font-bold text-emerald-800 mt-0.5">{formatCentsFull(rollup.paid_cents)}</div>
               </div>
               <div className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-white"}`}>
                 <div className={`text-[9.5px] font-medium uppercase tracking-wide ${rollup.overdue_count > 0 ? "text-rose-800" : "text-ppp-charcoal-500"}`}>Balance</div>
@@ -3577,7 +3577,7 @@ function CustomerQuickSheet({
               <div className="mt-2.5">
                 <div className="h-1.5 rounded-full bg-ppp-charcoal-100 overflow-hidden">
                   <div
-                    className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-cc-brand-500"}`}
+                    className="h-full transition-all bg-emerald-500"
                     style={{ width: `${paidPct}%` }}
                     aria-label={`${paidPct}% of invoiced amount paid`}
                   />

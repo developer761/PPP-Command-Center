@@ -406,7 +406,7 @@ export default async function CommercialAccountsPage({
       {(justDeleted || bulkResult || bulkError) && (
         <div className="space-y-2">
           {justDeleted && (
-            <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
               <span aria-hidden>✓</span>
               <span className="flex-1">
                 Account deleted.
@@ -414,7 +414,7 @@ export default async function CommercialAccountsPage({
             </div>
           )}
           {bulkResult && (
-            <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start justify-between gap-3">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
               <span className="flex-1">{bulkResult}</span>
               <Link
                 href="/commercial/accounts"

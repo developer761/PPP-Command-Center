@@ -348,13 +348,13 @@ export default async function CommercialAccountDetailPage({
           out via reload (no client component needed — the user navigating
           away clears the query string naturally). */}
       {savedOk && (
-        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
           <span>Changes saved.</span>
         </div>
       )}
       {teamAddedCount > 0 && (
-        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2 flex-wrap">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2 flex-wrap">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
           <span className="flex-1 min-w-0">
             Added {teamAddedCount} team member{teamAddedCount === 1 ? "" : "s"}.
@@ -379,7 +379,7 @@ export default async function CommercialAccountDetailPage({
         </div>
       )}
       {(docsAddedCount > 0 || tagsAddedCount > 0) && (
-        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start gap-2 flex-wrap">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2 flex-wrap">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
           <span className="flex-1 min-w-0">
             {docsAddedCount > 0 && (
@@ -2912,7 +2912,7 @@ async function OpportunitiesTab({
           the URL has ?new_deal=1 (set by the retired
           /commercial/opportunities/new redirect shim). */}
       {createdTitle && (
-        <div className="bg-cc-brand-50 border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-cc-brand-800 flex items-start justify-between gap-3">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
           <span>
             <strong>{decodeURIComponent(createdTitle)}</strong> logged.
           </span>
@@ -4284,7 +4284,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
                       <span
                         className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                           n.source_outcome === "won"
-                            ? "bg-cc-brand-100 text-cc-brand-800"
+                            ? "bg-emerald-100 text-emerald-800"
                             : n.source_outcome === "lost"
                             ? "bg-rose-100 text-rose-800"
                             : "bg-ppp-charcoal-100 text-ppp-charcoal-700"
@@ -4956,7 +4956,7 @@ async function AccountInvoicesTab({
       {/* Rollup strip */}
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
-        <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="blue" />
+        <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="emerald" />
         <RollupTile label="Balance" value={formatCentsFull(rollup.balance_cents)} sub={rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents > 0 ? "warn" : "neutral"} />
         <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : rollup.overdue_count === 1 ? "invoice past due" : "invoices past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
       </section>
@@ -5151,7 +5151,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
           {invoice.total_cents > 0 && invoice.paid_cents > 0 && invoice.paid_cents < invoice.total_cents && (
             <div className="mt-1.5 max-w-[240px]">
               <div className="h-1 rounded-full bg-ppp-charcoal-100 overflow-hidden">
-                <div className="h-full bg-cc-brand-500" style={{ width: `${paidPct}%` }} aria-label={`${paidPct}% paid`} />
+                <div className="h-full bg-emerald-500" style={{ width: `${paidPct}%` }} aria-label={`${paidPct}% paid`} />
               </div>
             </div>
           )}
@@ -5259,25 +5259,30 @@ function RollupTile({
   label: string;
   value: string;
   sub: string;
-  tone: "neutral" | "blue" | "warn" | "danger";
+  tone: "neutral" | "blue" | "emerald" | "warn" | "danger";
 }) {
+  // Color-audit 2026-07-28: "blue" now uses the real brand cyan (ppp-blue),
+  // not cc-brand red; added "emerald" for positive money (Paid). Value type is
+  // Roboto Condensed black to match the dashboard KPI treatment.
   const ring =
     tone === "blue"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/50"
+      ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/50"
+      : tone === "emerald"
+      ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/50"
       : tone === "warn"
       ? "border-amber-200 bg-gradient-to-br from-white to-amber-50/40"
       : tone === "danger"
       ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
       : "border-ppp-charcoal-100 bg-white";
   const stripe =
-    tone === "blue" ? "bg-cc-brand-500" : tone === "warn" ? "bg-amber-500" : tone === "danger" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+    tone === "blue" ? "bg-ppp-blue-500" : tone === "emerald" ? "bg-emerald-500" : tone === "warn" ? "bg-amber-500" : tone === "danger" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
       <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
-      <div className="text-xl sm:text-2xl font-bold text-ppp-charcoal mt-1 leading-none">
+      <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums">
         {value}
       </div>
       <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>
@@ -5326,7 +5331,7 @@ function AccountKpisTab({
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
-          <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="blue" />
+          <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="emerald" />
           <RollupTile label="Balance" value={formatCentsFull(rollup.balance_cents)} sub={rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents > 0 ? "warn" : "neutral"} />
           <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : "past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
         </div>
