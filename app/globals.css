@@ -11,6 +11,10 @@
   --color-ppp-blue-500: #2baae1;
   --color-ppp-blue-600: #1e8fbf;
   --color-ppp-blue-700: #15749c;
+  /* 800 filled 2026-07-28 — the scale skipped it, so ~9 existing
+     `hover:text-ppp-blue-800` / `active:bg-ppp-blue-800` states resolved to no
+     color (hover did nothing). Interpolated between 700 and 900. */
+  --color-ppp-blue-800: #0f5978;
   --color-ppp-blue-900: #0a3d52;
 
   --color-ppp-orange: #ee662e;
