@@ -60,6 +60,7 @@ import {
   type AccountInvoiceRollup,
 } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listCommercialInvoices, addPayment, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
 import {
@@ -5429,7 +5430,7 @@ function AccountKpisTab({
  * Cross-account defense in the caller (deal only rendered when it
  * belongs to this accountId).
  */
-function DealEditSheet({
+async function DealEditSheet({
   deal,
   accountId,
   accountName,
@@ -5463,6 +5464,17 @@ function DealEditSheet({
   // Same derived name the list/rows show, so the drawer header is consistent
   // (was showing the raw title, which mismatched the row label).
   const dealDisplayName = derivedOppName(deal, accountName) || "(untitled)";
+  // Phase G v2: on a post-sale Project, pull a live change-order summary so the
+  // drawer surfaces it prominently (count + net approved + pending) — Karan:
+  // "make it visible... used most in post-contract."
+  const isPostSaleDeal = isWon(deal) || isPostSale(deal);
+  const changeOrders = isPostSaleDeal ? await listChangeOrders(deal.id) : [];
+  const coCount = changeOrders.length;
+  const coNetApprovedCents = changeOrders
+    .filter((c) => c.status === "approved")
+    .reduce((a, c) => a + c.amount_cents, 0);
+  const coPendingCount = changeOrders.filter((c) => c.status === "pending").length;
+  const coHref = `/commercial/accounts/${accountId}/change-orders/${deal.id}`;
   // ISO date-picker defaults — extract YYYY-MM-DD from the stored UTC
   // timestamps so <input type="date"> renders them correctly.
   const dueDateDefault = deal.proposal_due_at ? deal.proposal_due_at.slice(0, 10) : "";
@@ -5586,22 +5598,43 @@ function DealEditSheet({
             </Link>
           </div>
         )}
-        {/* Phase G: on a Won / post-sale deal, surface the Change Orders tab.
-            The tab lives on the full deal page (this drawer is edit-only), so
-            without this link there's no way to reach it from the account. */}
-        {(isWon(deal) || isPostSale(deal)) && (
-          <div className="rounded-lg px-4 py-3 flex items-center justify-between gap-3 text-sm bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800">
-            <span className="min-w-0">
-              <span className="font-semibold">Change orders</span> — add or deduct scope mid-job and bill it separately.
-            </span>
-            <Link
-              href={`/commercial/accounts/${accountId}/change-orders/${deal.id}`}
-              className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold min-h-[36px] bg-white border border-cc-brand-300 text-cc-brand-800 hover:bg-cc-brand-100"
-            >
-              Change orders
-              <span aria-hidden>→</span>
-            </Link>
-          </div>
+        {/* Phase G v2: prominent Change Orders entry on a post-sale Project.
+            Full page lives under the account; this card surfaces the live
+            summary (count · net approved · pending) so it's never hidden. */}
+        {isPostSaleDeal && (
+          <Link
+            href={coHref}
+            className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-white p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span aria-hidden className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-600 text-white shrink-0">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-ppp-charcoal leading-tight">Change Orders</div>
+                  <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">
+                    {coCount === 0
+                      ? "Log scope added or deducted mid-job"
+                      : `${coCount} change order${coCount === 1 ? "" : "s"}${coPendingCount > 0 ? ` · ${coPendingCount} pending` : ""}`}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {coNetApprovedCents !== 0 && (
+                  <span className={`text-sm font-bold tabular-nums ${coNetApprovedCents < 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                    {coNetApprovedCents < 0 ? "−" : "+"}{formatCentsFull(Math.abs(coNetApprovedCents))}
+                  </span>
+                )}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+              </div>
+            </div>
+            {coPendingCount > 0 && (
+              <div className="mt-2 text-[11px] font-medium text-amber-700">
+                {coPendingCount} awaiting your decision →
+              </div>
+            )}
+          </Link>
         )}
         {errorMessage && (
           <div
