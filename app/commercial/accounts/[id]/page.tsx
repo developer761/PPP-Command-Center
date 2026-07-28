@@ -5595,7 +5595,7 @@ function DealEditSheet({
               <span className="font-semibold">Change orders</span> — add or deduct scope mid-job and bill it separately.
             </span>
             <Link
-              href={`/commercial/opportunities/${deal.id}?tab=changeorders`}
+              href={`/commercial/accounts/${accountId}/change-orders/${deal.id}`}
               className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold min-h-[36px] bg-white border border-cc-brand-300 text-cc-brand-800 hover:bg-cc-brand-100"
             >
               Change orders

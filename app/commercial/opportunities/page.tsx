@@ -3691,7 +3691,7 @@ function CustomerQuickSheet({
                           carry change orders — link straight to the tab. */}
                       {isPostSaleProject(d) && (
                         <Link
-                          href={`/commercial/opportunities/${d.id}?tab=changeorders`}
+                          href={`/commercial/accounts/${account.id}/change-orders/${d.id}`}
                           className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px]"
                         >
                           Change orders
@@ -3758,7 +3758,7 @@ function CustomerQuickSheet({
                       <span className="truncate flex-1">{derivedOppName(d, account.company_name)}</span>
                       {isPostSaleProject(d) && (
                         <Link
-                          href={`/commercial/opportunities/${d.id}?tab=changeorders`}
+                          href={`/commercial/accounts/${account.id}/change-orders/${d.id}`}
                           className="shrink-0 text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
                           title="Change orders"
                         >
