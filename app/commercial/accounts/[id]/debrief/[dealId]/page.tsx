@@ -201,7 +201,10 @@ export default async function AccountDebriefPage({
   const justClosed = sp.just_closed === "1";
   const error = sp.error;
 
-  const backHref = `/commercial/accounts/${id}?tab=opportunities`;
+  // Back reopens the deal DRAWER (where the user came from) rather than the
+  // bare list, which scrolled to the top of the account (2026-07-28 nav sweep —
+  // same fix already on the sibling Change Orders page).
+  const backHref = `/commercial/accounts/${id}?tab=opportunities&edit=${dealId}`;
 
   return (
     <div className="min-h-screen bg-ppp-charcoal-50">

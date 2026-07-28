@@ -618,7 +618,7 @@ function TopOpenDealsCard({
             return (
               <li key={o.id}>
                 <Link
-                  href={`/commercial/accounts/${o.account_id}?tab=opportunities&deal=${o.id}#deal-row-${o.id}`}
+                  href={`/commercial/accounts/${o.account_id}?tab=opportunities&edit=${o.id}#deal-row-${o.id}`}
                   className="flex items-center gap-3 px-4 py-2.5 min-h-[52px] hover:bg-ppp-charcoal-50/60 touch-manipulation"
                 >
                   <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-cc-brand-100 text-cc-brand-700 text-[11px] font-bold tabular-nums shrink-0">
@@ -695,7 +695,7 @@ function RecentActivityCard({
             return (
               <li key={o.id}>
                 <Link
-                  href={`/commercial/accounts/${o.account_id}?tab=opportunities&deal=${o.id}#deal-row-${o.id}`}
+                  href={`/commercial/accounts/${o.account_id}?tab=opportunities&edit=${o.id}#deal-row-${o.id}`}
                   className="flex items-center gap-3 px-4 py-2.5 min-h-[52px] hover:bg-ppp-charcoal-50/60 touch-manipulation"
                 >
                   <div className="min-w-0 flex-1">
