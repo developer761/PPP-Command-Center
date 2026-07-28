@@ -2430,7 +2430,7 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
       ? "bg-rose-50 text-rose-700 border-rose-200"
       : tone === "soon"
       ? "bg-amber-50 text-amber-800 border-amber-200"
-      : "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200";
+      : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}>
       {label}

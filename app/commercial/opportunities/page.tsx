@@ -3194,7 +3194,7 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
       ? "bg-rose-50 text-rose-700 border-rose-200"
       : tone === "soon"
       ? "bg-amber-50 text-amber-800 border-amber-200"
-      : "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200";
+      : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}>
       {label}
@@ -3349,7 +3349,7 @@ function RatingPill({ rating }: { rating: CommercialAccountRating }) {
     rating === "A"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : rating === "B"
-      ? "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
+      ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
       : "bg-amber-50 text-amber-700 border-amber-200";
   return (
     <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-bold border ${cls}`}>
@@ -3378,21 +3378,25 @@ function StatusPill({ status }: { status: OpportunityStatus | string }) {
   // the 8 Pre-Contract values + retired v1.0 values so any un-migrated
   // historic row still tints correctly. Fallback to neutral if a truly
   // unknown status reaches the UI.
+  // 2026-07-28 color audit: replaced the raw purple/orange/cyan + red-for-stage
+  // tints with the semantic palette (pre-sale active → ppp-blue, working →
+  // amber, won → emerald, lost/no-bid → rose, neutral/early → charcoal). The
+  // pill LABEL keeps the stages distinct where they share a tone.
   const map: Record<string, string> = {
     solicitation: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    rfp: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
+    rfp: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
     estimating: "bg-amber-100 text-amber-900 border-amber-300",
-    proposal_pending_approval: "bg-purple-100 text-purple-800 border-purple-300",
-    proposal_sent: "bg-orange-100 text-orange-900 border-orange-300",
-    follow_up: "bg-cyan-100 text-cyan-800 border-cyan-300",
+    proposal_pending_approval: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
+    proposal_sent: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
+    follow_up: "bg-amber-100 text-amber-900 border-amber-300",
     won: "bg-emerald-100 text-emerald-800 border-emerald-300",
     lost: "bg-rose-100 text-rose-800 border-rose-300",
     // Retired v1.0 values (fallback for un-migrated rows)
     inquiry: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
-    negotiating: "bg-orange-100 text-orange-900 border-orange-300",
+    negotiating: "bg-amber-100 text-amber-900 border-amber-300",
     on_hold: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
     no_bid: "bg-rose-100 text-rose-800 border-rose-300",
-    reopened: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
+    reopened: "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200",
   };
   const cls = map[status] ?? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (

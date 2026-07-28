@@ -1347,12 +1347,13 @@ function SignalPill({
 }
 
 function RatingPill({ rating }: { rating: "A" | "B" | "C" }) {
-  // A + B share a positive-quality blue tint; C is amber (attention).
+  // Quality ramp A→C: emerald (top) → ppp-blue (good) → amber (watch).
+  // Was A+B both cc-brand red, which read as an alert (2026-07-28 color audit).
   const cls =
     rating === "A"
-      ? "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : rating === "B"
-      ? "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"
+      ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
       : "bg-amber-50 text-amber-700 border-amber-200";
   return (
     <span
