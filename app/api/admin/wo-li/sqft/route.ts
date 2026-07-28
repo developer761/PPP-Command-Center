@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getProfileByUserId } from "@/lib/auth/profile";
+import { isAdminEmail } from "@/lib/auth/admin";
+import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
 
 /**
  * Persist a per-room square-footage override for Materials Ordering.
@@ -20,8 +22,12 @@ import { getProfileByUserId } from "@/lib/auth/profile";
  *   body: { woliId: string, sqft: number, workOrderId?: string }
  *   returns: { ok: true, woliId, sqft }   (sqft 0 clears the override)
  *
- * Any authenticated PPP staff user can call this (workers must enter sqft from
- * the field; the Materials UI is already scope-gated).
+ * Access: requires `canEnterColors` (admin or account manager). Both roles
+ * also carry `canSeeAllWorkOrders`, so capability-gating fully scopes this —
+ * a Sales Rep (scoped to their own WOs, read-only in the UI) cannot write.
+ * Re-audit 2026-07-28 (F3): before this gate, ANY signed-in user could POST
+ * an arbitrary `woliId` and drive a bogus sqft (→ wrong gallon estimate →
+ * wrong supplier order) onto another rep's or admin's job — an IDOR write.
  */
 
 function overridesClient() {
@@ -38,11 +44,24 @@ export async function POST(request: Request) {
     if (!data?.user) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
-    // Profile lookup is here to log who wrote the value (audit trail in
-    // SF's LastModifiedById is the SF connected-app user, so for now we
-    // just print the PPP user to logs). Not used for auth — any signed-in
-    // staff user can write.
     const profile = await getProfileByUserId(data.user.id);
+    // Deactivated accounts lose API access immediately (bootstrap admins exempt),
+    // matching the supplier-order + customer-form routes.
+    if (profile && profile.is_active === false && !isAdminEmail(data.user.email)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    // Role-derived capability gate (consistent with the Materials UI + the
+    // customer-form/supplier-order routes) — NOT the legacy is_admin flag.
+    // canEnterColors = admin or account manager, both unscoped; closes the
+    // IDOR write flagged in the re-audit (F3).
+    const canEnterColors = capabilitiesFor(
+      normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email))
+    ).canEnterColors;
+    if (!canEnterColors) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    // Profile also labels who wrote the value (SF's LastModifiedById is the
+    // connected-app user, so we print the PPP user to logs for the audit trail).
     const writerLabel = profile?.sf_user_name ?? profile?.email ?? data.user.email ?? data.user.id;
 
     const body = (await request.json().catch(() => null)) as

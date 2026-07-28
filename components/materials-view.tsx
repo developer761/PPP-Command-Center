@@ -1866,6 +1866,7 @@ function JobDetailImpl({
               item={li}
               effectiveSqftValue={effectiveSqft(li.raw.id, li.raw.sqFootage)}
               onUpdateSqft={onUpdateSqft}
+              canEnterColors={canEnterColors}
             />
           ))}
         </ul>
@@ -1927,12 +1928,15 @@ function LineItemRow({
   item,
   effectiveSqftValue,
   onUpdateSqft,
+  canEnterColors,
 }: {
   item: ResolvedWoli;
   /** Sqft after applying the per-WOLI override (defaults to SF raw). */
   effectiveSqftValue: number;
   /** Fires the SF write + updates the parent override map. */
   onUpdateSqft: (woliId: string, sqft: number) => Promise<{ ok: boolean; error?: string }>;
+  /** Admin/AM only. Reps are read-only (server route gates the same way). */
+  canEnterColors: boolean;
 }) {
   const surfaces = (item.raw.surfaces ?? "").split(";").filter(Boolean);
   const slots: Array<{ label: string; surface: string; color: SnapshotPaintColor | null; finish: string | null }> = [
@@ -1976,12 +1980,26 @@ function LineItemRow({
               confirm)". Empty / cleared input falls back to the SF raw
               value. Wall-area-only rows (no floor sqft but have wall area)
               still get the input so the worker can supplement. */}
-          <SqftEditor
-            woliId={item.raw.id}
-            initialSqft={effectiveSqftValue}
-            rawSqftFromSf={item.raw.sqFootage}
-            onUpdateSqft={onUpdateSqft}
-          />
+          {/* Re-audit 2026-07-28 (F2): reps are read-only on this surface
+              (Customer tab says so, and the server route now enforces
+              canEnterColors). Only render the writable input for admin/AM;
+              reps see the current measurement as plain text. */}
+          {canEnterColors ? (
+            <SqftEditor
+              woliId={item.raw.id}
+              initialSqft={effectiveSqftValue}
+              rawSqftFromSf={item.raw.sqFootage}
+              onUpdateSqft={onUpdateSqft}
+            />
+          ) : (
+            <div className="mt-2 text-[11px] text-ppp-charcoal-500">
+              {effectiveSqftValue > 0 ? (
+                <span>{effectiveSqftValue.toLocaleString()} sq ft</span>
+              ) : (
+                <span className="italic">No square footage on file</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -2486,11 +2504,16 @@ function SendReminderButton({ token }: { token: string }) {
 /* ─── Preview Color Form button (admin opens form without sending email) ─── */
 
 /**
- * Admin "Preview" button — opens the customer color form in a new tab so
- * Katie / Alex can see exactly what the customer will see. Generates a
- * kind="preview" token via /api/admin/customer-form/preview. The preview
- * token doesn't fire an email, doesn't show in Mail Hub Sent, and any
- * submit through it is a no-op (no SF writes). 24-hour expiry.
+ * "Internal Entry" button — opens the customer color form in a new tab so
+ * staff (Katie / Alex / an AM) can fill it in on the customer's behalf.
+ *
+ * IMPORTANT (corrected 2026-07-28): despite hitting the …/preview route,
+ * this passes `internal: true`, which mints a **kind="internal"** token, NOT
+ * a preview token. An internal token DOES write to Salesforce on submit
+ * (that's the whole point — it's staff data entry) and gets a 7-day expiry.
+ * It does not fire a customer email and does not show in Mail Hub Sent.
+ * (A true `kind="preview"` token — the read-only, no-SF-write, 24h variant —
+ * would require `internal:false`, which this button does not send.)
  */
 function PreviewColorFormButton({ workOrderId }: { workOrderId: string }) {
   const [loading, setLoading] = useState(false);
@@ -2814,6 +2837,11 @@ function SendColorFormButton({
               <div className="p-5 sm:p-6 space-y-3 text-sm">
                 <div className="text-ppp-orange-700 font-semibold">Couldn&apos;t send the email.</div>
                 <div className="text-xs text-ppp-charcoal-500">{result.error}</div>
+                {!result.formUrl && (
+                  <div className="text-[11px] text-ppp-charcoal-500 italic">
+                    Check the email address and tap &ldquo;Try again&rdquo; below — what you typed is still saved.
+                  </div>
+                )}
                 {/* Partial-success fallback: when the API returns a 502
                     "email_send_failed" the token + form URL were created
                     successfully — only Resend itself rejected. Surface the
@@ -2868,6 +2896,21 @@ function SendColorFormButton({
               >
                 {result ? "Close" : "Cancel"}
               </button>
+              {/* Re-audit 2026-07-28 (F1): a send failure with NO form link
+                  (network drop, HTTP 500, or a mistyped address the endpoint
+                  rejected) used to leave only "Close" — the email field + Send
+                  button both vanished, so a worker who fat-fingered the address
+                  had no way to fix it in place. Clearing `result` returns to the
+                  form with the typed email preserved so they can correct + retry. */}
+              {result?.ok === false && !result.formUrl && (
+                <button
+                  type="button"
+                  onClick={() => setResult(null)}
+                  className="px-3.5 py-2 min-h-[44px] sm:min-h-0 rounded-lg bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 transition-colors inline-flex items-center gap-1.5"
+                >
+                  Try again
+                </button>
+              )}
               {!result && (
                 <button
                   type="button"
