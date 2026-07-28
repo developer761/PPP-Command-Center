@@ -22,6 +22,7 @@ import {
   type CommercialInvoice,
 } from "@/lib/commercial/invoices/db";
 import { formatChangeOrderNumber, type ChangeOrderStatus } from "./constants";
+import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 
 export type CommercialChangeOrder = {
   id: string;
@@ -135,16 +136,22 @@ export async function createChangeOrder(
 
   const sb = commercialDb();
 
-  // Chain-of-trust: opp must exist + be live; take account_id from it.
+  // Chain-of-trust: opp must exist, be live, AND be a post-sale Project; take
+  // account_id from it. The post-sale gate matches the CO page/UI so a hand-
+  // crafted POST can't attach a change order to a pre-sale deal.
   const { data: opp } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, deleted_at")
+    .select("id, account_id, deleted_at, status, sub_status")
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || (opp as { deleted_at: string | null }).deleted_at) {
     return { ok: false, error: "opportunity_not_found" };
   }
-  const account_id = (opp as { account_id: string }).account_id;
+  const row = opp as { account_id: string; status: string | null; sub_status: string | null };
+  if (!isPostSaleProject({ status: row.status, sub_status: row.sub_status })) {
+    return { ok: false, error: "Change orders can only be added to a Won/in-progress project." };
+  }
+  const account_id = row.account_id;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     // Next per-opp CO number. Only live rows count toward the max, but the

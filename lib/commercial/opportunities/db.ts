@@ -176,19 +176,22 @@ export type CommercialOpportunity = {
 };
 
 /**
- * Derived display name — {account} - {client_name} - {property_street}.
+ * Derived display name — "{Account} - {Deal title}".
  * Priority order:
  *   1. opp.title_override (migration 069) — user's custom name wins if set.
- *   2. Computed {account} - {client} - {street}. If client_name is blank,
- *      it's dropped from the join so we get {account} - {street}.
- *   3. opp.title fallback for legacy rows created before Phase B.
+ *   2. "{account} - {title}" (Karan 2026-07-28) — both the account and the
+ *      deal's own title, deduped if identical.
+ *   3. Whichever single side is present, else "Untitled opportunity".
  *
- * Katie 2026-07-20: switched separator em-dash `—` → hyphen ` - ` to
- * match her verbatim spec + made client_name-drop explicit + added
- * title_override precedence for editable names.
+ * History: originally "{account} - {client} - {street}" (Katie 2026-07-20);
+ * Karan 2026-07-28 switched it to surface the deal title. `title_override`
+ * still lets a user set a fully custom name.
  */
 export function derivedOppName(
-  opp: Pick<CommercialOpportunity, "title" | "client_name"> & {
+  opp: Pick<CommercialOpportunity, "title"> & {
+    // Accepted but no longer used in the output (callers still pass them);
+    // kept so existing object-literal callsites compile.
+    client_name?: string | null;
     property_street?: string | null;
     title_override?: string | null;
   },
