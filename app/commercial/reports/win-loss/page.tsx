@@ -16,6 +16,7 @@ import {
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import DatePicker from "@/components/commercial/date-picker";
+import { KpiTile } from "@/components/commercial/kpi-tile";
 
 type Preset = "this_quarter" | "last_quarter" | "this_year" | "last_year";
 const PRESETS: ReadonlyArray<{ key: Preset; label: string }> = [
@@ -252,9 +253,9 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           it. Win rate reads "—" instead of "0%" when there were no
           head-to-heads (only no-bids), so an empty period doesn't look
           like a wipeout. */}
-      <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <KpiCard
-          tone="cc-brand"
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <KpiTile
+          tone="emerald"
           label="Win rate"
           value={summary.wonCount + summary.lostCount > 0 ? `${summary.winRatePct}%` : "—"}
           sub={
@@ -263,8 +264,8 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
               : "no head-to-heads yet"
           }
         />
-        <KpiCard
-          tone="cc-brand"
+        <KpiTile
+          tone="navy"
           label="$ won ratio"
           value={(() => {
             const totalValue = summary.wonValueCents + summary.lostValueCents;
@@ -273,19 +274,19 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           })()}
           sub="of every $ we bid on"
         />
-        <KpiCard
-          tone="blue"
+        <KpiTile
+          tone="emerald"
           label="Won $"
           value={formatCents(summary.wonValueCents)}
           sub={summary.wonCount === 1 ? "1 deal" : `${summary.wonCount} deals`}
         />
-        <KpiCard
+        <KpiTile
           tone="rose"
           label="Lost $"
           value={formatCents(summary.lostValueCents)}
           sub={summary.lostCount === 1 ? "1 deal" : `${summary.lostCount} deals`}
         />
-        <KpiCard
+        <KpiTile
           tone="neutral"
           label="No-bid"
           value={String(summary.noBidCount)}
@@ -433,50 +434,6 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           </section>
         </>
       )}
-    </div>
-  );
-}
-
-function KpiCard({
-  tone,
-  label,
-  value,
-  sub,
-}: {
-  tone: "cc-brand" | "blue" | "rose" | "neutral";
-  label: string;
-  value: string;
-  sub: string;
-}) {
-  // Audit fix: blue tone ring was inheriting cc-brand-200 border + blue
-  // stripe was actually rendering cc-brand-500 (red). Both now match tone.
-  const ring =
-    tone === "cc-brand"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
-      : tone === "blue"
-      ? "border-blue-200 bg-gradient-to-br from-white to-blue-50/50"
-      : tone === "rose"
-      ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
-      : "border-ppp-charcoal-100 bg-white";
-  const stripe =
-    tone === "cc-brand"
-      ? "bg-cc-brand-600"
-      : tone === "blue"
-      ? "bg-blue-500"
-      : tone === "rose"
-      ? "bg-rose-500"
-      : "bg-ppp-charcoal-200";
-  const valueCls = tone === "rose" ? "text-rose-700" : "text-ppp-charcoal";
-  return (
-    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
-      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
-        {label}
-      </div>
-      <div className={`text-xl sm:text-2xl font-bold mt-1 ${valueCls}`}>
-        {value}
-      </div>
-      <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>
     </div>
   );
 }

@@ -21,7 +21,7 @@ function StatusPill({ status }: { status: AiaApplicationStatus }) {
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : m.tone === "ppp-blue"
       ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
-      : "bg-amber-50 text-amber-800 border-amber-200";
+      : "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold ${cls}`}>
       {m.label}

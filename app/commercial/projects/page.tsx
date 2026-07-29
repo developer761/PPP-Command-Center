@@ -102,8 +102,8 @@ function projectStatusTone(status: string): { stripe: string; pill: string } {
   }
 }
 
-const AIA_TONE_TEXT: Record<"amber" | "ppp-blue" | "emerald", string> = {
-  amber: "text-amber-700",
+const AIA_TONE_TEXT: Record<"charcoal" | "ppp-blue" | "emerald", string> = {
+  charcoal: "text-ppp-charcoal-600",
   "ppp-blue": "text-ppp-blue-700",
   emerald: "text-emerald-700",
 };

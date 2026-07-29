@@ -1277,7 +1277,7 @@ function GroupedByOpp({
               : overduePresent
               ? "bg-rose-500"
               : totalPaid > 0
-              ? "bg-cc-brand-500"
+              ? "bg-amber-500"
               : "bg-ppp-charcoal-300";
           // Karan 2026-07-07 fix: compact card click used to jump to
           // the opportunities detail page — Karan wants users to stay
@@ -1729,7 +1729,7 @@ function FullDetailByOpp({
             : overduePresent
             ? "bg-rose-500"
             : totalPaid > 0
-            ? "bg-cc-brand-500"
+            ? "bg-amber-500"
             : "bg-ppp-charcoal-300";
         const sortedGroup = [...groupInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
         return (
@@ -2220,7 +2220,7 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
       : invoice.paid_cents >= invoice.total_cents && invoice.total_cents > 0
       ? "bg-emerald-500"
       : invoice.paid_cents > 0
-      ? "bg-cc-brand-500"
+      ? "bg-amber-500"
       : displayStatus === "overdue"
       ? "bg-rose-500"
       : "bg-ppp-charcoal-300";
@@ -2413,7 +2413,7 @@ function StatusPill({ status }: { status: InvoiceStatus }) {
       : status === "void"
       ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
       : status === "sent" || status === "viewed"
-      ? "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300"
+      ? "bg-ppp-blue-100 text-ppp-blue-800 border-ppp-blue-200"
       : status === "partial"
       ? "bg-amber-100 text-amber-900 border-amber-300"
       : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";

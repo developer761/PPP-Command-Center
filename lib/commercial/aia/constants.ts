@@ -9,9 +9,11 @@ export type AiaApplicationStatus = (typeof AIA_APPLICATION_STATUSES)[number];
 
 export const AIA_STATUS_META: Record<
   AiaApplicationStatus,
-  { label: string; tone: "amber" | "ppp-blue" | "emerald" }
+  { label: string; tone: "charcoal" | "ppp-blue" | "emerald" }
 > = {
-  draft: { label: "Draft", tone: "amber" },
+  // Draft is neutral (not amber) — matches invoice/proposal draft across the
+  // platform; amber is reserved for pending/warning states.
+  draft: { label: "Draft", tone: "charcoal" },
   submitted: { label: "Submitted", tone: "ppp-blue" },
   paid: { label: "Paid", tone: "emerald" },
 };

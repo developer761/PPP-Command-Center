@@ -49,7 +49,7 @@ import { listAccountTeam, assignmentRoleLabel } from "@/lib/commercial/accounts/
 import { getInvoiceRollupForAccount, type AccountInvoiceRollup } from "@/lib/commercial/invoices/rollup";
 import { listCommercialInvoices, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel } from "@/lib/commercial/invoices/constants";
-import { formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
+import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
@@ -805,15 +805,15 @@ export default async function CommercialOpportunitiesPage({
             Weighted pipeline + Wins this month. Neutral = bid range. */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
-            tone="cc-brand"
+            tone="neutral"
             label="Open opportunities"
             value={openOpps.length.toString()}
             sub={`${opps.length - openOpps.length} closed`}
           />
           <KpiCard
-            tone="cc-brand"
+            tone="blue"
             label="Weighted pipeline"
-            value={formatCents(totalPipelineCents)}
+            value={formatCentsCompact(totalPipelineCents)}
             sub="Σ midpoint × probability"
           />
           <KpiCard
@@ -822,7 +822,7 @@ export default async function CommercialOpportunitiesPage({
             value={
               totalBidLowCents === 0 && totalBidHighCents === 0
                 ? "—"
-                : `${formatCents(totalBidLowCents)}–${formatCents(totalBidHighCents)}`
+                : `${formatCentsCompact(totalBidLowCents)}–${formatCentsCompact(totalBidHighCents)}`
             }
             sub="low + high across open deals"
           />
@@ -1799,7 +1799,7 @@ function CustomerBoardRow({
               </span>
               {weightedCents > 0 && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border bg-emerald-50 text-emerald-800 border-emerald-200 tabular-nums">
-                  {formatCents(weightedCents)}
+                  {formatCentsCompact(weightedCents)}
                   <span className="font-medium text-emerald-700">weighted</span>
                 </span>
               )}
@@ -1852,9 +1852,9 @@ function CustomerBoardRow({
         <div className="relative z-10 mt-3 space-y-1.5">
           {open.map((o) => {
             const bidRange = o.bid_value_high_cents
-              ? `${formatCents(o.bid_value_low_cents ?? 0)}–${formatCents(o.bid_value_high_cents)}`
+              ? `${formatCentsCompact(o.bid_value_low_cents ?? 0)}–${formatCentsCompact(o.bid_value_high_cents)}`
               : o.bid_value_low_cents
-              ? formatCents(o.bid_value_low_cents)
+              ? formatCentsCompact(o.bid_value_low_cents)
               : null;
             const prob =
               o.probability_pct ??
@@ -1920,14 +1920,6 @@ function CustomerBoardRow({
       )}
     </li>
   );
-}
-
-function formatCents(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars === 0) return "$0";
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${Math.round(dollars / 1_000)}k`;
-  return `$${Math.round(dollars).toLocaleString()}`;
 }
 
 /**
@@ -2232,7 +2224,7 @@ function KanbanBoard({
                   {acct.openCount > 0 && <> · {acct.openCount} open</>}
                   {closedCount > 0 && <> · {closedCount} closed</>}
                   {acct.weightedCents > 0 && (
-                    <> · <span className="text-emerald-700 font-semibold">{formatCents(acct.weightedCents)} weighted</span></>
+                    <> · <span className="text-emerald-700 font-semibold">{formatCentsCompact(acct.weightedCents)} weighted</span></>
                   )}
                 </div>
               </div>
@@ -2303,7 +2295,7 @@ function KanbanBoard({
                       </div>
                       {colTotal > 0 && (
                         <div className="text-[10px] text-ppp-charcoal-500 mt-0.5 tabular-nums">
-                          {formatCents(colTotal)} top-of-range
+                          {formatCentsCompact(colTotal)} top-of-range
                         </div>
                       )}
                     </div>

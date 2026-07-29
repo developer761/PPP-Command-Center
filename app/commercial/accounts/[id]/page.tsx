@@ -454,10 +454,10 @@ export default async function CommercialAccountDetailPage({
                 </span>
               )}
               {account.is_key_relationship && (
-                <Pill tone="amber"><IconStar size={11} className="shrink-0" /> Key Relationship</Pill>
+                <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Key Relationship</Pill>
               )}
               {!account.is_key_relationship && (overview?.won_opps_count ?? 0) > 0 && (
-                <Pill tone="amber"><IconStar size={11} className="shrink-0" /> Repeat customer</Pill>
+                <Pill tone="emerald"><IconStar size={11} className="shrink-0" /> Repeat customer</Pill>
               )}
               {account.rating && <Pill tone={ratingTone(account.rating)}>{account.rating}</Pill>}
               {account.industry && <Pill tone="neutral">{account.industry}</Pill>}
@@ -4635,7 +4635,7 @@ function AccountOverviewStrip({
       : invoiceRollup.overdue_count > 0
       ? "bg-rose-500"
       : paidCents > 0
-      ? "bg-cc-brand-500"
+      ? "bg-amber-500"
       : "bg-ppp-charcoal-300";
 
   const invoicedCountLabel =
@@ -4681,7 +4681,7 @@ function AccountOverviewStrip({
           value={formatCentsCompact(invoicedCents)}
           sub={invoicedCountLabel}
           href={`/commercial/invoices?account_id=${accountId}`}
-          tone="brand"
+          tone="muted"
         />
         <MoneyTile
           label="Paid"
@@ -4763,7 +4763,7 @@ function MoneyTile({
       : tone === "emerald"
       ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40"
       : tone === "blue"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-blue-50/40"
+      ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/40"
       : "border-ppp-charcoal-200 bg-white";
   const subCls = subTone === "rose" ? "text-rose-700 font-semibold" : "text-ppp-charcoal-500";
   return (
@@ -4879,7 +4879,7 @@ function Pill({ children, tone }: { children: React.ReactNode; tone: "emerald" |
   // account financial snapshot, etc.) got the wrong color for weeks.
   const cls = {
     emerald: "bg-emerald-100 text-emerald-800 border-emerald-300",
-    blue: "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300",
+    blue: "bg-ppp-blue-100 text-ppp-blue-800 border-ppp-blue-200",
     amber: "bg-amber-100 text-amber-900 border-amber-300",
     rose: "bg-rose-100 text-rose-800 border-rose-300",
     neutral: "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200",
@@ -5070,7 +5070,7 @@ async function AccountInvoicesTab({
               : dealOverdue
               ? "bg-rose-500"
               : dealPaid > 0
-              ? "bg-cc-brand-500"
+              ? "bg-amber-500"
               : "bg-ppp-charcoal-300";
             return (
               <section
@@ -5474,7 +5474,7 @@ async function AccountKpisTab({
           </div>
           <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
             <div
-              className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-cc-brand-500"}`}
+              className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-amber-500"}`}
               style={{ width: `${paidPct}%` }}
               aria-label={`${paidPct}% of invoiced amount collected`}
             />
@@ -5491,7 +5491,7 @@ async function AccountKpisTab({
             </div>
             <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
               <div
-                className="h-full bg-cc-brand-600 transition-all"
+                className="h-full bg-emerald-500 transition-all"
                 style={{ width: `${winRatePct ?? 0}%` }}
                 aria-label={`${winRatePct}% deals won of ${decidedCount} decided`}
               />

@@ -159,7 +159,7 @@ export async function ChangeOrdersPanel({
           <SummaryTile
             label="Billed"
             value={formatCentsFull(billedCents)}
-            tone={billedCents > 0 ? "cc-brand" : "neutral"}
+            tone={billedCents > 0 ? "emerald" : "neutral"}
             hint={pendingCount > 0 ? `${pendingCount} pending` : undefined}
           />
         </div>

@@ -375,7 +375,7 @@ export default async function CommercialAccountsPage({
             primary metric; blue on supporting. */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
-            tone="cc-brand"
+            tone="neutral"
             label={filterActive ? "Matching accounts" : "Total accounts"}
             value={universeCount.toLocaleString()}
             sub={filterActive ? "matching your filters" : universeCount === 1 ? "customer in your book" : "customers in your book"}
@@ -1200,7 +1200,7 @@ function AccountRow({
               {openBids > 0 ? (
                 <div className="text-right">
                   <div className="flex items-baseline gap-1.5 justify-end">
-                    <span className="font-condensed text-2xl font-black text-cc-brand-700 tabular-nums leading-none">
+                    <span className="font-condensed text-2xl font-black text-ppp-navy-700 tabular-nums leading-none">
                       {openBids}
                     </span>
                     <span className="text-[10.5px] font-semibold text-ppp-charcoal-500 uppercase tracking-wide">
@@ -1245,7 +1245,7 @@ function AccountRow({
             <div className="sm:hidden flex flex-col items-end shrink-0 gap-1 text-right">
               {openBids > 0 && (
                 <div>
-                  <div className="text-[14px] font-black text-cc-brand-700 tabular-nums leading-none">
+                  <div className="text-[14px] font-black text-ppp-navy-700 tabular-nums leading-none">
                     {openBids}
                   </div>
                   <div className="text-[9px] font-semibold text-ppp-charcoal-500 uppercase tracking-wider">
@@ -1328,7 +1328,7 @@ function SignalPill({
 }) {
   const chip =
     tone === "blue"
-      ? "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200"
+      ? "bg-ppp-blue-50 text-ppp-blue-800 border-ppp-blue-200"
       : tone === "amber"
       ? "bg-amber-50 text-amber-800 border-amber-200"
       : tone === "rose"

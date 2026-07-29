@@ -2062,7 +2062,7 @@ async function OpportunityInvoicesPanel({
               bid range (so % billed vs contract shows). Alex-love feature
               per audit: at-a-glance "am I under/over billed for this deal?" */}
           <div className={`grid ${pctBilled !== null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2 mb-3`}>
-            <MiniStat label="Invoiced" value={formatCentsCompact(totalInvoicedCents)} tone="cc-brand" />
+            <MiniStat label="Invoiced" value={formatCentsCompact(totalInvoicedCents)} tone="neutral" />
             <MiniStat label="Paid" value={formatCentsCompact(totalPaidCents)} tone="emerald" />
             <MiniStat
               label="Balance"
@@ -2568,7 +2568,7 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
       : tone === "emerald"
       ? "border-emerald-200 bg-emerald-50/50"
       : tone === "blue"
-      ? "border-cc-brand-200 bg-cc-brand-50/50"
+      ? "border-ppp-blue-200 bg-ppp-blue-50/50"
       : "border-ppp-charcoal-200 bg-ppp-charcoal-50/50";
   return (
     <div className={`border rounded-lg px-3 py-2 ${cls}`}>
@@ -2591,7 +2591,7 @@ function InvoicePill({ status }: { status: InvoiceStatus }) {
       : status === "void"
       ? "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200"
       : status === "sent" || status === "viewed"
-      ? "bg-cc-brand-100 text-cc-brand-800 border-cc-brand-300"
+      ? "bg-ppp-blue-100 text-ppp-blue-800 border-ppp-blue-200"
       : status === "partial"
       ? "bg-amber-100 text-amber-900 border-amber-300"
       : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
@@ -5143,14 +5143,14 @@ function KpiTile({
   // reads cleanly. Tinted top-bar + gradient background unchanged.
   return (
     <div
-      className="relative border border-ppp-charcoal-100 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-white to-sky-50 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden"
+      className="relative border border-ppp-blue-100/70 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-white to-ppp-blue-50/50 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden"
       title={tooltip}
     >
-      <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-sky-500 to-cyan-400" aria-hidden />
-      <div className="text-[12px] font-semibold text-ppp-charcoal-700">
+      <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-ppp-blue-500 to-ppp-blue-400" aria-hidden />
+      <div className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
         {label}
       </div>
-      <div className="text-base sm:text-lg font-bold text-ppp-charcoal mt-1 truncate">
+      <div className="font-condensed text-lg sm:text-xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums truncate">
         {value}
       </div>
     </div>
