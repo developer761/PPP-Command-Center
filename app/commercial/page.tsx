@@ -34,6 +34,7 @@ import { OPEN_OPP_STATUSES, TERMINAL_STATUSES, isWon } from "@/lib/commercial/op
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, BILLABLE_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
+import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 
 export const dynamic = "force-dynamic";
 
@@ -90,11 +91,19 @@ function relativeLabel(iso: string | null | undefined): string {
 }
 
 export default async function CommercialDashboardPage() {
-  const [opps, accounts, invoices] = await Promise.all([
+  const [opps, accounts, invoices, projectRows] = await Promise.all([
     listCommercialOpportunities({}),
     listCommercialAccounts({}),
     listCommercialInvoices({}),
+    listProjects({}),
   ]);
+
+  // ─── Production (post-contract) roll-up ───
+  const production = summarizeProduction(projectRows);
+  const billedPctOfContract =
+    production.contractValueCents > 0
+      ? Math.round((production.billedToDateCents / production.contractValueCents) * 100)
+      : null;
 
   // ─── AR ───
   // Real accounts-receivable = billed-and-unpaid only. Karan 2026-07-27:
@@ -432,6 +441,68 @@ export default async function CommercialDashboardPage() {
         />
       </section>
 
+      {/* ─── UNDER CONTRACT (production) ─── */}
+      {/* Only surface once there's at least one job under contract — an all-zero
+          production strip is noise before the first Won job (matches the
+          attention-strip discipline). */}
+      {production.activeProjects > 0 && (
+        <section>
+          <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            Under contract
+            <span className="text-[11px] font-medium text-ppp-charcoal-500">
+              — {production.activeProjects} active {production.activeProjects === 1 ? "project" : "projects"}
+              {production.inProductionProjects > 0 ? ` · ${production.inProductionProjects} in production` : ""}
+            </span>
+            <Link href="/commercial/projects" className="ml-auto text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">
+              All projects →
+            </Link>
+          </h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KpiTile
+              tone="blue"
+              value={formatCentsCompact(production.contractValueCents)}
+              label="Contract value"
+              sub="Under management (incl. approved COs)"
+              href="/commercial/projects"
+              icon={<IconContract />}
+            />
+            <KpiTile
+              tone="emerald"
+              value={formatCentsCompact(production.billedToDateCents)}
+              label="Billed to date"
+              sub={billedPctOfContract !== null ? `${billedPctOfContract}% of contract` : "Work completed & stored"}
+              href="/commercial/projects"
+              icon={<IconChart />}
+            />
+            <KpiTile
+              tone="blue"
+              value={formatCentsCompact(production.outstandingCents)}
+              label="Left to bill"
+              sub={
+                production.retainageHeldCents > 0
+                  ? `${formatCentsCompact(production.retainageHeldCents)} retainage held`
+                  : "Contract still to invoice"
+              }
+              href="/commercial/projects"
+              icon={<IconDollar />}
+            />
+            <KpiTile
+              tone={production.pendingCoCount > 0 ? "amber" : "blue"}
+              value={String(production.pendingCoCount)}
+              label="Change orders pending"
+              sub={
+                production.pendingCoCount === 0
+                  ? "None awaiting a decision"
+                  : `${formatCentsCompact(production.pendingCoCents)} awaiting decision`
+              }
+              href="/commercial/projects"
+              icon={<IconChangeOrder />}
+            />
+          </div>
+        </section>
+      )}
+
       {/* ─── Two-column: Top 5 open + Recent activity ─── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <TopOpenDealsCard opps={topOpenDeals} accountNameById={accountNameById} />
@@ -731,7 +802,7 @@ function KpiTile({
   href,
   icon,
 }: {
-  tone: "cc-brand" | "blue" | "rose" | "emerald";
+  tone: "cc-brand" | "blue" | "rose" | "emerald" | "amber";
   value: string;
   label: string;
   sub: string;
@@ -745,6 +816,8 @@ function KpiTile({
       ? "border-rose-100/70 bg-white hover:border-rose-300"
       : tone === "emerald"
       ? "border-emerald-100/70 bg-white hover:border-emerald-300"
+      : tone === "amber"
+      ? "border-amber-100/70 bg-white hover:border-amber-300"
       : "border-ppp-blue-100/70 bg-white hover:border-ppp-blue-300";
   const glow =
     tone === "cc-brand"
@@ -753,11 +826,14 @@ function KpiTile({
       ? "bg-rose-100/60"
       : tone === "emerald"
       ? "bg-emerald-100/60"
+      : tone === "amber"
+      ? "bg-amber-100/60"
       : "bg-ppp-blue-100/50";
   const stripe =
     tone === "cc-brand" ? "bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400"
     : tone === "rose" ? "bg-gradient-to-b from-rose-600 via-rose-500 to-rose-400"
     : tone === "emerald" ? "bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400"
+    : tone === "amber" ? "bg-gradient-to-b from-amber-500 via-amber-400 to-amber-300"
     : "bg-gradient-to-b from-ppp-blue-600 via-ppp-blue-500 to-ppp-blue-400";
   const iconCls =
     tone === "cc-brand"
@@ -766,6 +842,8 @@ function KpiTile({
       ? "bg-gradient-to-br from-rose-100 to-rose-50 text-rose-700 group-hover/kpi:from-rose-600 group-hover/kpi:to-rose-500 group-hover/kpi:text-white"
       : tone === "emerald"
       ? "bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-700 group-hover/kpi:from-emerald-600 group-hover/kpi:to-emerald-500 group-hover/kpi:text-white"
+      : tone === "amber"
+      ? "bg-gradient-to-br from-amber-100 to-amber-50 text-amber-700 group-hover/kpi:from-amber-500 group-hover/kpi:to-amber-400 group-hover/kpi:text-white"
       : "bg-gradient-to-br from-ppp-blue-100 to-ppp-blue-50 text-ppp-blue-700 group-hover/kpi:from-ppp-blue-600 group-hover/kpi:to-ppp-blue-500 group-hover/kpi:text-white";
   return (
     <Link
@@ -888,6 +966,20 @@ function IconKanban() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <rect x="3" y="3" width="7" height="18" rx="1" />
       <rect x="14" y="3" width="7" height="12" rx="1" />
+    </svg>
+  );
+}
+function IconContract() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h4" />
+    </svg>
+  );
+}
+function IconChangeOrder() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5" />
     </svg>
   );
 }

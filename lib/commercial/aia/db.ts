@@ -406,8 +406,15 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
     netApprovedChangeOrderCents(app.opportunity_id),
   ]);
   const previousCertificatesCents = _depth > 100 ? 0 : await priorCertificateCents(app, _depth);
+  // In AIA, the G703 scheduled-value column totals to the contract sum (G702
+  // line 1). When no explicit original contract was captured (e.g. the deal had
+  // no bid value at create time), fall back to the schedule-of-values total so
+  // the certificate never shows a $0 contract against a real schedule. An
+  // explicitly-set original always wins.
+  const sovTotalCents = lines.reduce((sum, l) => sum + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+  const effectiveOriginalCents = app.original_contract_cents > 0 ? app.original_contract_cents : sovTotalCents;
   return computeG702({
-    originalContractCents: app.original_contract_cents,
+    originalContractCents: effectiveOriginalCents,
     netChangeOrdersCents: netCO,
     retainagePct: app.retainage_pct,
     lines,

@@ -103,7 +103,11 @@ function ProjectCard({ p }: { p: ProjectRow }) {
         </div>
         <div className="text-right shrink-0">
           <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Contract to date</div>
-          <div className="font-condensed text-lg font-black text-ppp-charcoal tabular-nums leading-none">{formatCentsFull(p.contractToDateCents)}</div>
+          {p.contractToDateCents === 0 ? (
+            <div className="font-condensed text-lg font-black text-ppp-charcoal-300 tabular-nums leading-none">—</div>
+          ) : (
+            <div className="font-condensed text-lg font-black text-ppp-charcoal tabular-nums leading-none">{formatCentsFull(p.contractToDateCents)}</div>
+          )}
           {p.netApprovedCoCents !== 0 && (
             <div className={`text-[10.5px] font-medium tabular-nums ${p.netApprovedCoCents < 0 ? "text-rose-700" : "text-emerald-700"}`}>
               incl. {p.netApprovedCoCents < 0 ? "−" : "+"}{formatCentsFull(Math.abs(p.netApprovedCoCents))} COs
@@ -123,6 +127,8 @@ function ProjectCard({ p }: { p: ProjectRow }) {
               </div>
               <div className="text-ppp-charcoal-600 mt-0.5 tabular-nums">{pct}% complete</div>
             </>
+          ) : p.hasBilling ? (
+            <div className="text-amber-700 mt-1 italic">Set the contract value</div>
           ) : (
             <div className="text-ppp-charcoal-400 mt-1 italic">No billing yet</div>
           )}

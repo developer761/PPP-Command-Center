@@ -61,6 +61,7 @@ import {
 } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
+import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { listCommercialInvoices, addPayment, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
 import {
@@ -5301,7 +5302,8 @@ function RollupTile({
  * Financial Snapshot + Deals tab use, so drift can't happen between
  * surfaces. Read-only tiles + rolled-up progress bars.
  */
-function AccountKpisTab({
+async function AccountKpisTab({
+  accountId,
   overview,
   rollup,
 }: {
@@ -5309,6 +5311,12 @@ function AccountKpisTab({
   overview: AccountOverview | null;
   rollup: AccountInvoiceRollup;
 }) {
+  // Production roll-up for THIS GC's jobs under contract (Phase G/H numbers).
+  const production = summarizeProduction(await listProjects({ accountId }));
+  const billedPctOfContract =
+    production.contractValueCents > 0
+      ? Math.round((production.billedToDateCents / production.contractValueCents) * 100)
+      : null;
   // Audit fix 2026-07-08: winRate() returns a 0..1 decimal (won/total),
   // NOT a percentage. Previously the tab was rendering ".67%" instead
   // of "67%" — multiply by 100 + round for display.
@@ -5340,6 +5348,28 @@ function AccountKpisTab({
           <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : "past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
         </div>
       </section>
+
+      {/* Production group — only once this GC has a job under contract */}
+      {production.activeProjects > 0 && (
+        <section>
+          <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            Under contract
+            <span className="text-[11px] font-medium text-ppp-charcoal-500">
+              — {production.activeProjects} active {production.activeProjects === 1 ? "project" : "projects"}
+            </span>
+            <Link href="/commercial/projects" className="ml-auto text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">
+              Projects →
+            </Link>
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <RollupTile label="Contract value" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
+            <RollupTile label="Billed to date" value={formatCentsFull(production.billedToDateCents)} sub={billedPctOfContract !== null ? `${billedPctOfContract}% of contract` : "completed & stored"} tone="emerald" />
+            <RollupTile label="Left to bill" value={formatCentsFull(production.outstandingCents)} sub={production.retainageHeldCents > 0 ? `${formatCentsFull(production.retainageHeldCents)} retainage held` : "still to invoice"} tone="neutral" />
+            <RollupTile label="COs pending" value={production.pendingCoCount.toString()} sub={production.pendingCoCount === 0 ? "none open" : `${formatCentsFull(production.pendingCoCents)} awaiting`} tone={production.pendingCoCount > 0 ? "warn" : "neutral"} />
+          </div>
+        </section>
+      )}
 
       {/* Pipeline group */}
       <section>

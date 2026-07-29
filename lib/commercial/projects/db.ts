@@ -16,7 +16,15 @@ export type ProjectRow = {
   baseContractCents: number;
   netApprovedCoCents: number;
   contractToDateCents: number;
+  /** Latest application's Total Completed & Stored to date (AIA line 4). */
+  completedToDateCents: number;
+  /** Retainage held on the latest application (summed per line). */
+  retainageHeldCents: number;
   pendingCoCount: number;
+  /** Signed $ of pending (undecided) change orders. */
+  pendingCoCents: number;
+  /** True once an AIA application exists (even an empty draft). */
+  hasBilling: boolean;
   latestAppNumber: number | null;
   latestAppStatus: "draft" | "submitted" | "paid" | null;
   /** Latest application's Total Completed & Stored ÷ contract sum to date. */
@@ -50,6 +58,8 @@ async function paginateAll<T>(make: () => { range: (a: number, b: number) => Pro
 export async function listProjects(opts: {
   search?: string;
   includeClosed?: boolean;
+  /** Scope to a single GC account (Account 360 production summary). */
+  accountId?: string;
 } = {}): Promise<ProjectRow[]> {
   const sb = commercialDb();
 
@@ -59,15 +69,17 @@ export async function listProjects(opts: {
     (s) => opts.includeClosed || s !== "post_sale_closed"
   );
   let opps = await paginateAll<CommercialOpportunity & { account?: { id: string; company_name: string } }>(
-    () =>
-      sb
+    () => {
+      let q = sb
         .from("commercial_opportunities")
         .select("*, account:commercial_accounts!inner(id, company_name, deleted_at)")
         .is("deleted_at", null)
         .is("archived_at", null)
         .is("account.deleted_at", null)
-        .or(`status.in.(${postSale.join(",")}),and(status.eq.pre_sale_closed,sub_status.eq.won)`)
-        .order("updated_at", { ascending: false })
+        .or(`status.in.(${postSale.join(",")}),and(status.eq.pre_sale_closed,sub_status.eq.won)`);
+      if (opts.accountId) q = q.eq("account_id", opts.accountId);
+      return q.order("updated_at", { ascending: false });
+    }
   );
 
   // Search across the displayed-name fields (matches the pipeline list). Runs
@@ -98,37 +110,50 @@ export async function listProjects(opts: {
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
   );
-  const coByOpp = new Map<string, { netApproved: number; pending: number }>();
+  const coByOpp = new Map<string, { netApproved: number; pending: number; pendingCents: number }>();
   for (const c of coData) {
-    const e = coByOpp.get(c.opportunity_id) ?? { netApproved: 0, pending: 0 };
+    const e = coByOpp.get(c.opportunity_id) ?? { netApproved: 0, pending: 0, pendingCents: 0 };
     if (c.status === "approved") e.netApproved += Number(c.amount_cents);
-    else if (c.status === "pending") e.pending += 1;
+    else if (c.status === "pending") {
+      e.pending += 1;
+      e.pendingCents += Number(c.amount_cents);
+    }
     coByOpp.set(c.opportunity_id, e);
   }
 
   // ── Batch: latest AIA application per opp. We fetch ALL apps (paginated) and
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
-  const appData = await paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number }>(
+  const appData = await paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; retainage_pct: number }>(
     () =>
       sb
         .from("commercial_aia_applications")
-        .select("id, opportunity_id, application_number, status, original_contract_cents")
+        .select("id, opportunity_id, application_number, status, original_contract_cents, retainage_pct")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
   );
-  const latestAppByOpp = new Map<string, { id: string; application_number: number; status: string; original_contract_cents: number }>();
+  const latestAppByOpp = new Map<string, { id: string; application_number: number; status: string; original_contract_cents: number; retainage_pct: number }>();
   for (const a of appData) {
     const cur = latestAppByOpp.get(a.opportunity_id);
     if (!cur || a.application_number > cur.application_number) latestAppByOpp.set(a.opportunity_id, a);
   }
 
-  // ── Batch: completed-to-date for those latest applications ──
+  // ── Batch: completed-to-date + scheduled-value total for those latest apps ──
   const latestAppIds = [...latestAppByOpp.values()].map((a) => a.id);
   const completedByApp = new Map<string, number>();
+  const sovByApp = new Map<string, number>();
+  const retainageByApp = new Map<string, number>();
+  // App id → retainage %, so completed retainage can be summed PER LINE (the
+  // same way computeG702 / the G703 sheet does), keeping the portfolio total
+  // penny-consistent with each project's AIA page.
+  const pctByApp = new Map<string, number>();
+  for (const a of latestAppByOpp.values()) {
+    pctByApp.set(a.id, Math.min(100, Math.max(0, a.retainage_pct)));
+  }
   if (latestAppIds.length > 0) {
     const liData = await paginateAll<{
       application_id: string;
+      scheduled_value_cents: number;
       from_previous_cents: number;
       this_period_cents: number;
       materials_stored_cents: number;
@@ -136,7 +161,7 @@ export async function listProjects(opts: {
       () =>
         sb
           .from("commercial_aia_line_items")
-          .select("application_id, from_previous_cents, this_period_cents, materials_stored_cents")
+          .select("application_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents")
           .in("application_id", latestAppIds)
     );
     for (const l of liData) {
@@ -145,18 +170,30 @@ export async function listProjects(opts: {
         Math.max(0, Math.round(l.this_period_cents)) +
         Math.max(0, Math.round(l.materials_stored_cents));
       completedByApp.set(l.application_id, (completedByApp.get(l.application_id) ?? 0) + done);
+      sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.max(0, Math.round(l.scheduled_value_cents)));
+      const pct = pctByApp.get(l.application_id) ?? 0;
+      retainageByApp.set(l.application_id, (retainageByApp.get(l.application_id) ?? 0) + Math.round((done * pct) / 100));
     }
   }
 
   return opps.map((o) => {
-    const co = coByOpp.get(o.id) ?? { netApproved: 0, pending: 0 };
+    const co = coByOpp.get(o.id) ?? { netApproved: 0, pending: 0, pendingCents: 0 };
     const latest = latestAppByOpp.get(o.id) ?? null;
-    // Contract base: once AIA billing starts, use the app's SNAPSHOTTED signed
-    // contract so this card reconciles with the AIA page it links to. Before
-    // billing, fall back to the bid midpoint. Approved COs add on top of both.
-    const base = latest && latest.original_contract_cents > 0 ? latest.original_contract_cents : bidMidCents(o);
+    // Contract base — reconciles with the AIA page (resolveG702 uses the same
+    // precedence): once billing starts, use the app's explicit snapshotted
+    // contract, else its schedule-of-values total (which by AIA convention IS
+    // the contract sum), else the deal's bid midpoint. Approved COs add on top.
+    const sovTotal = latest ? sovByApp.get(latest.id) ?? 0 : 0;
+    const base = latest
+      ? latest.original_contract_cents > 0
+        ? latest.original_contract_cents
+        : sovTotal > 0
+        ? sovTotal
+        : bidMidCents(o)
+      : bidMidCents(o);
     const contractToDate = base + co.netApproved;
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
+    const retainageHeld = latest ? retainageByApp.get(latest.id) ?? 0 : 0;
     const pct = latest && contractToDate > 0 ? Math.round((completed / contractToDate) * 10000) : null;
     return {
       opp: o as CommercialOpportunity,
@@ -165,10 +202,63 @@ export async function listProjects(opts: {
       baseContractCents: base,
       netApprovedCoCents: co.netApproved,
       contractToDateCents: contractToDate,
+      completedToDateCents: completed,
+      retainageHeldCents: retainageHeld,
       pendingCoCount: co.pending,
+      pendingCoCents: co.pendingCents,
+      hasBilling: latest != null,
       latestAppNumber: latest?.application_number ?? null,
       latestAppStatus: (latest?.status as ProjectRow["latestAppStatus"]) ?? null,
       percentCompleteBps: pct,
     };
   });
+}
+
+/** Portfolio (or per-account) roll-up of production numbers. */
+export type ProductionSummary = {
+  activeProjects: number;
+  inProductionProjects: number;
+  billingProjects: number;
+  contractValueCents: number;
+  billedToDateCents: number;
+  outstandingCents: number;
+  retainageHeldCents: number;
+  pendingCoCount: number;
+  pendingCoCents: number;
+};
+
+/**
+ * Summarize a set of project rows into headline production KPIs. "Billed to
+ * date" = work completed & stored across the latest applications; "outstanding"
+ * = contract sum still to bill (never negative). Pure — call over the rows from
+ * listProjects (portfolio) or listProjects({ accountId }) (Account 360).
+ */
+export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
+  let contractValueCents = 0;
+  let billedToDateCents = 0;
+  let retainageHeldCents = 0;
+  let pendingCoCount = 0;
+  let pendingCoCents = 0;
+  let inProductionProjects = 0;
+  let billingProjects = 0;
+  for (const r of rows) {
+    contractValueCents += r.contractToDateCents;
+    billedToDateCents += r.completedToDateCents;
+    retainageHeldCents += r.retainageHeldCents;
+    pendingCoCount += r.pendingCoCount;
+    pendingCoCents += r.pendingCoCents;
+    if (r.opp.status === "in_progress" || r.opp.status === "billing") inProductionProjects += 1;
+    if (r.opp.status === "billing") billingProjects += 1;
+  }
+  return {
+    activeProjects: rows.length,
+    inProductionProjects,
+    billingProjects,
+    contractValueCents,
+    billedToDateCents,
+    outstandingCents: Math.max(0, contractValueCents - billedToDateCents),
+    retainageHeldCents,
+    pendingCoCount,
+    pendingCoCents,
+  };
 }
