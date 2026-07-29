@@ -18,11 +18,11 @@ export function ProjectToolbar({
   dealId: string;
   active: ProjectToolbarActive;
 }) {
-  // "Overview" points at the deal's own detail page (which renders this toolbar
-  // with active="overview") — so it's never a link AWAY from the page you're on,
-  // and every item is deal-scoped + archived-safe.
+  // "Overview" points straight at the deal drawer (its real home). It used to
+  // point at /commercial/opportunities/[id], which REDIRECTS to the drawer —
+  // that bounce was the visible "glitch" (2026-07-29 fix).
   const items: { key: ProjectToolbarActive; label: string; href: string }[] = [
-    { key: "overview", label: "Overview", href: `/commercial/opportunities/${dealId}` },
+    { key: "overview", label: "Overview", href: `/commercial/accounts/${accountId}?tab=opportunities&edit=${dealId}#deal-row-${dealId}` },
     { key: "change-orders", label: "Change Orders", href: `/commercial/accounts/${accountId}/change-orders/${dealId}` },
     { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}` },
     { key: "submittals", label: "Submittals", href: `/commercial/opportunities/${dealId}?tab=submittals` },

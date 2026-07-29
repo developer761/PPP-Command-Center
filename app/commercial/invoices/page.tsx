@@ -874,12 +874,18 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                       const bi = wonOpps.findIndex((o) => o.account_id === b[0]);
                       return ai - bi;
                     });
-                    return groupOrder.map(([accountId, deals]) => {
+                    return groupOrder.map(([accountId, deals], gi) => {
                       const acct = accountById.get(accountId);
                       return (
-                        <div key={accountId} className="pb-1.5">
-                          <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
-                            {acct?.company_name ?? "—"}
+                        // 2026-07-29: account name is the group HEADER (avatar +
+                        // company), its deals nested below, and a divider
+                        // separates one account from the next so connected
+                        // deals read as one bucket and unrelated ones don't blur.
+                        <div key={accountId} className={gi > 0 ? "mt-1.5 pt-1.5 border-t border-ppp-charcoal-100" : ""}>
+                          <div className="flex items-center gap-2 px-2 pt-1 pb-1.5">
+                            <AccountAvatar accountId={accountId} name={acct?.company_name ?? "—"} size="xs" />
+                            <span className="text-[12.5px] font-bold text-ppp-charcoal truncate">{acct?.company_name ?? "—"}</span>
+                            <span className="ml-auto shrink-0 text-[10px] font-semibold text-ppp-charcoal-400 tabular-nums">{deals.length} deal{deals.length === 1 ? "" : "s"}</span>
                           </div>
                           <div className="space-y-0.5">
                             {deals.map((o) => {

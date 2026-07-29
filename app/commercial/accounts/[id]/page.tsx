@@ -62,6 +62,7 @@ import {
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
+import { ProjectCard } from "@/components/commercial/project-card";
 import { listCommercialInvoices, addPayment, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
 import {
@@ -214,7 +215,7 @@ type SP = Promise<{
 // Karan 2026-07-08: added "invoices" + "kpis" as top-level tabs per user
 // ask ("add KPIs tab here as well" + "invoices tab where me kate katie or
 // alex or whoever can quick edit"). Both are leaves — no sub-tabs.
-type PrimaryTab = "overview" | "people" | "deals" | "proposals" | "invoices" | "activity";
+type PrimaryTab = "overview" | "people" | "deals" | "proposals" | "invoices" | "projects" | "activity";
 type SubTab =
   | "info"
   | "team"
@@ -237,14 +238,19 @@ const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
   // Alex + Katie kept asking "where do proposals live?" Now it's one
   // click from any customer's home. Positioned right after Deals so
   // the flow reads "pipeline → proposals → invoices" left-to-right.
+  // Karan 2026-07-29: "Projects" top-level tab — every Won/in-delivery deal
+  // for this account with direct jumps into its Change Orders / AIA Billing /
+  // Submittals / Closeout. Sits right after Invoices so the flow reads
+  // "pipeline → proposals → invoices → projects (delivery)".
   { key: "overview", label: "Overview" },
   { key: "deals", label: "Opportunities" },
   { key: "proposals", label: "Proposals" },
   { key: "invoices", label: "Invoices" },
+  { key: "projects", label: "Projects" },
   { key: "people", label: "People" },
   { key: "activity", label: "Activity" },
 ];
-type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "proposals">;
+type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "proposals" | "projects">;
 const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "info", label: "Info" },
@@ -268,7 +274,7 @@ const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
   // Karan 2026-07-08: Overview is the default landing tab.
   if (!raw) return { primary: "overview", sub: null };
-  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "proposals" || raw === "activity" || raw === "invoices") {
+  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "proposals" || raw === "activity" || raw === "invoices" || raw === "projects") {
     return { primary: raw, sub: null };
   }
   // 2026-07-10: `?tab=kpis` legacy links land on Overview → KPIs sub-tab
@@ -312,10 +318,11 @@ export default async function CommercialAccountDetailPage({
     : DEFAULT_SUB_BY_PRIMARY[primaryTab as PrimaryWithSubs];
   // Legacy compat: existing tab dispatchers below check `tab === "info"`
   // etc. Preserve that shape so the sub-tabs still route correctly.
-  const tab: SubTab | "activity" | "invoices" | "proposals" =
+  const tab: SubTab | "activity" | "invoices" | "proposals" | "projects" =
     primaryTab === "activity" ? "activity"
     : primaryTab === "invoices" ? "invoices"
     : primaryTab === "proposals" ? "proposals"
+    : primaryTab === "projects" ? "projects"
     : sub!;
 
   const account = await getCommercialAccount(id);
@@ -674,6 +681,66 @@ export default async function CommercialAccountDetailPage({
           errorMessage={sp.error}
         />
       )}
+      {tab === "projects" && <AccountProjectsTab accountId={account.id} />}
+    </div>
+  );
+}
+
+/**
+ * Account-scoped Projects tab (2026-07-29). Every Won / in-delivery deal for
+ * THIS customer, each as its own ProjectCard with direct jumps into that
+ * project's Change Orders / AIA Billing / Submittals / Closeout — so you can
+ * work a specific project's production tools without leaving the account.
+ * Multiple deals each get their own card (no clustering); a summary strip up
+ * top rolls the account's delivery numbers. Empty state guides you when the
+ * account has no jobs under contract yet.
+ */
+async function AccountProjectsTab({ accountId }: { accountId: string }) {
+  const projects = await listProjects({ accountId });
+  const active = projects.filter((p) => p.opp.status !== "post_sale_closed");
+  const summary = summarizeProduction(active);
+  return (
+    <div className="space-y-4">
+      {projects.length === 0 ? (
+        <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
+          <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-400">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 18h20 M4 18v-3a8 8 0 0 1 16 0v3 M10 6.3V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2.3" /></svg>
+          </span>
+          <p className="text-sm font-semibold text-ppp-charcoal">No projects yet</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">A deal becomes a project once it&rsquo;s Won. Win one from the Opportunities tab and it&rsquo;ll show here with its change orders, AIA billing, submittals, and closeout.</p>
+          <Link href={`/commercial/accounts/${accountId}?tab=opportunities`} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+            Go to Opportunities
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+          </Link>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <ProjectStat label="Under contract" value={formatCentsCompact(summary.contractValueCents)} sub={`${active.length} active project${active.length === 1 ? "" : "s"}`} />
+            <ProjectStat label="Completed to date" value={formatCentsCompact(summary.completedToDateCents)} tone="emerald" />
+            <ProjectStat label="Left to bill" value={formatCentsCompact(summary.remainingCents)} />
+            <ProjectStat label="Pending COs" value={String(summary.pendingCoCount)} sub={summary.pendingCoCount > 0 ? "awaiting a decision" : "all decided"} tone={summary.pendingCoCount > 0 ? "amber" : undefined} />
+          </div>
+          <ul className="space-y-2.5">
+            {projects.map((p) => (
+              <ProjectCard key={p.opp.id} p={p} hideAccountName />
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Compact summary tile for the account Projects tab (local KpiTile has a
+ *  different placeholder-oriented API, so this keeps the collision-free). */
+function ProjectStat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" }) {
+  const valueCls = tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : "text-ppp-charcoal";
+  return (
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-3.5 py-3 shadow-sm">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className={`font-condensed text-xl sm:text-2xl font-black tabular-nums leading-none mt-1 truncate ${valueCls}`} title={value}>{value}</div>
+      {sub && <div className="text-[10.5px] text-ppp-charcoal-500 mt-1 truncate" title={sub}>{sub}</div>}
     </div>
   );
 }
