@@ -176,7 +176,7 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
   if (!account || !opp) notFound();
   if (opp.account_id !== id) notFound();
   if (!isPostSaleProject(opp)) {
-    redirect(`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}`);
+    redirect(`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}&status_error=${encodeURIComponent("This opens once the deal is Won and in delivery — mark it Won first.")}`);
   }
 
   const dealName = derivedOppName(opp, account.company_name);
@@ -195,12 +195,12 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
       <div className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
-        <Link href={`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}`} className="inline-flex items-center gap-1 hover:text-cc-brand-700 min-h-[32px]">
+        <Link href={`/commercial/accounts/${id}?tab=projects`} className="inline-flex items-center gap-1 hover:text-cc-brand-700 min-h-[32px]">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
-          Back to {account.company_name}
+          {account.company_name} · Projects
         </Link>
         <span aria-hidden>/</span>
-        <span className="text-ppp-charcoal-700 font-medium truncate">{dealName}</span>
+        <Link href={`/commercial/accounts/${id}?tab=projects&project=${dealId}`} className="text-ppp-charcoal-700 font-medium truncate hover:text-cc-brand-700 min-h-[32px] inline-flex items-center">{dealName}</Link>
       </div>
 
       <div>

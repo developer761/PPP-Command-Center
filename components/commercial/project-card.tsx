@@ -59,9 +59,11 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
   const tone = projectStatusTone(p.opp.status);
   const hasContract = p.contractToDateCents > 0;
   const remaining = Math.max(0, p.contractToDateCents - p.completedToDateCents);
-  // Overview = the deal drawer (its real home) — a direct link, never the
-  // /opportunities/[id] route that redirects (that bounce was the "glitch").
-  const overviewHref = `/commercial/accounts/${p.accountId}?tab=opportunities&edit=${p.opp.id}#deal-row-${p.opp.id}`;
+  // Card title → the project's HOME under the account (folded), NOT the edit
+  // sheet. Pointing at ?edit= made the edit form auto-pop on navigation
+  // (2026-07-29 bug). The project home is a read view with the tool jumps;
+  // editing deal details is an explicit button there.
+  const overviewHref = `/commercial/accounts/${p.accountId}?tab=projects&project=${p.opp.id}`;
   const coHref = `/commercial/accounts/${p.accountId}/change-orders/${p.opp.id}`;
   const aiaHref = `/commercial/accounts/${p.accountId}/aia/${p.opp.id}`;
   const submittalsHref = `/commercial/opportunities/${p.opp.id}?tab=submittals`;

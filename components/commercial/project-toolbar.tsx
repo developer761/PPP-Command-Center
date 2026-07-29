@@ -18,11 +18,12 @@ export function ProjectToolbar({
   dealId: string;
   active: ProjectToolbarActive;
 }) {
-  // "Overview" points straight at the deal drawer (its real home). It used to
-  // point at /commercial/opportunities/[id], which REDIRECTS to the drawer —
-  // that bounce was the visible "glitch" (2026-07-29 fix).
+  // "Overview" → the project's HOME under the account (folded). It used to
+  // point at /opportunities/[id] (which redirected — the "glitch") and then at
+  // ?edit= (which auto-popped the edit form). The project home is a clean read
+  // view; editing deal details is an explicit button there.
   const items: { key: ProjectToolbarActive; label: string; href: string }[] = [
-    { key: "overview", label: "Overview", href: `/commercial/accounts/${accountId}?tab=opportunities&edit=${dealId}#deal-row-${dealId}` },
+    { key: "overview", label: "Overview", href: `/commercial/accounts/${accountId}?tab=projects&project=${dealId}` },
     { key: "change-orders", label: "Change Orders", href: `/commercial/accounts/${accountId}/change-orders/${dealId}` },
     { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}` },
     { key: "submittals", label: "Submittals", href: `/commercial/opportunities/${dealId}?tab=submittals` },

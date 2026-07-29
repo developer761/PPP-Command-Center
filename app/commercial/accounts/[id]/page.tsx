@@ -61,7 +61,7 @@ import {
 } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
-import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
+import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
 import { listCommercialInvoices, addPayment, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
@@ -197,6 +197,9 @@ type SP = Promise<{
    *  Deals tab. `?archived=1` reveals archived deals; default hides. */
   archived?: string;
   status_error?: string;
+  /** 2026-07-29: Projects tab drills into ONE project's home (folded under
+   *  the account) via ?tab=projects&project=<dealId>. */
+  project?: string;
 }>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
@@ -681,7 +684,12 @@ export default async function CommercialAccountDetailPage({
           errorMessage={sp.error}
         />
       )}
-      {tab === "projects" && <AccountProjectsTab accountId={account.id} />}
+      {tab === "projects" && (
+        <AccountProjectsTab
+          accountId={account.id}
+          projectId={typeof sp.project === "string" && /^[0-9a-f-]{36}$/i.test(sp.project) ? sp.project : null}
+        />
+      )}
     </div>
   );
 }
@@ -695,39 +703,148 @@ export default async function CommercialAccountDetailPage({
  * top rolls the account's delivery numbers. Empty state guides you when the
  * account has no jobs under contract yet.
  */
-async function AccountProjectsTab({ accountId }: { accountId: string }) {
-  const projects = await listProjects({ accountId });
+async function AccountProjectsTab({ accountId, projectId }: { accountId: string; projectId: string | null }) {
+  // includeClosed so finished jobs still show on the account (they were
+  // vanishing into "No projects yet" — 2026-07-29 audit finding).
+  const projects = await listProjects({ accountId, includeClosed: true });
+
+  // Drill-in: one project's home, folded under the account.
+  if (projectId) {
+    const p = projects.find((x) => x.opp.id === projectId);
+    if (p) return <AccountProjectHome p={p} accountId={accountId} />;
+    // Not found (e.g. no longer post-sale) — fall through to the list.
+  }
+
   const active = projects.filter((p) => p.opp.status !== "post_sale_closed");
+  const completed = projects.filter((p) => p.opp.status === "post_sale_closed");
   const summary = summarizeProduction(active);
+
+  if (projects.length === 0) {
+    return (
+      <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
+        <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-400">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 18h20 M4 18v-3a8 8 0 0 1 16 0v3 M10 6.3V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2.3" /></svg>
+        </span>
+        <p className="text-sm font-semibold text-ppp-charcoal">No projects yet</p>
+        <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">A deal becomes a project once it&rsquo;s Won. Win one from the Opportunities tab and it&rsquo;ll show here with its change orders, AIA billing, submittals, and closeout.</p>
+        <Link href={`/commercial/accounts/${accountId}?tab=opportunities`} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+          Go to Opportunities
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {projects.length === 0 ? (
-        <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
-          <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-400">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 18h20 M4 18v-3a8 8 0 0 1 16 0v3 M10 6.3V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2.3" /></svg>
-          </span>
-          <p className="text-sm font-semibold text-ppp-charcoal">No projects yet</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">A deal becomes a project once it&rsquo;s Won. Win one from the Opportunities tab and it&rsquo;ll show here with its change orders, AIA billing, submittals, and closeout.</p>
-          <Link href={`/commercial/accounts/${accountId}?tab=opportunities`} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
-            Go to Opportunities
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
-          </Link>
+      {active.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <ProjectStat label="Under contract" value={formatCentsCompact(summary.contractValueCents)} sub={`${active.length} active project${active.length === 1 ? "" : "s"}`} />
+          <ProjectStat label="Completed to date" value={formatCentsCompact(summary.completedToDateCents)} tone="emerald" />
+          <ProjectStat label="Left to bill" value={formatCentsCompact(summary.remainingCents)} />
+          <ProjectStat label="Pending COs" value={String(summary.pendingCoCount)} sub={summary.pendingCoCount > 0 ? "awaiting a decision" : "all decided"} tone={summary.pendingCoCount > 0 ? "amber" : undefined} />
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <ProjectStat label="Under contract" value={formatCentsCompact(summary.contractValueCents)} sub={`${active.length} active project${active.length === 1 ? "" : "s"}`} />
-            <ProjectStat label="Completed to date" value={formatCentsCompact(summary.completedToDateCents)} tone="emerald" />
-            <ProjectStat label="Left to bill" value={formatCentsCompact(summary.remainingCents)} />
-            <ProjectStat label="Pending COs" value={String(summary.pendingCoCount)} sub={summary.pendingCoCount > 0 ? "awaiting a decision" : "all decided"} tone={summary.pendingCoCount > 0 ? "amber" : undefined} />
-          </div>
-          <ul className="space-y-2.5">
-            {projects.map((p) => (
+      )}
+      {active.length > 0 && (
+        <ul className="space-y-2.5">
+          {active.map((p) => (
+            <ProjectCard key={p.opp.id} p={p} hideAccountName />
+          ))}
+        </ul>
+      )}
+      {completed.length > 0 && (
+        <details className="group" open={active.length === 0}>
+          <summary className="list-none cursor-pointer flex items-center gap-2 text-[12px] font-semibold text-ppp-charcoal-600 min-h-[36px] select-none">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
+            Completed projects · {completed.length}
+          </summary>
+          <ul className="space-y-2.5 mt-2">
+            {completed.map((p) => (
               <ProjectCard key={p.opp.id} p={p} hideAccountName />
             ))}
           </ul>
-        </>
+        </details>
       )}
+    </div>
+  );
+}
+
+/**
+ * A single project's HOME, folded under the account (?tab=projects&project=…).
+ * Read-only overview — status + contract KPIs — plus one card per production
+ * tool (Change Orders / AIA Billing / Submittals / Closeout). Editing the
+ * deal's details is an explicit "Edit deal details" button, so navigating here
+ * never auto-pops the edit form (that was the 2026-07-29 bug).
+ */
+function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string }) {
+  const name = derivedOppName(p.opp, p.accountName);
+  const oppCode = formatOpportunityNumber(p.opp.project_number);
+  const pct = p.percentCompleteBps != null ? Math.min(100, Math.round(p.percentCompleteBps / 100)) : null;
+  const location = p.opp.property_street?.trim() || null;
+  const base = `/commercial/accounts/${accountId}`;
+  const tools: { label: string; sub: string; href: string; icon: React.ReactNode }[] = [
+    { label: "Change Orders", sub: "Scope added or deducted mid-job", href: `${base}/change-orders/${p.opp.id}`, icon: <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" /> },
+    { label: "AIA Billing", sub: "G702 / G703 progress billing + Excel", href: `${base}/aia/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" /> },
+    { label: "Submittals", sub: "Shop drawings + product data → GC", href: `/commercial/opportunities/${p.opp.id}?tab=submittals`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h5 M8 17h4" /> },
+    { label: "Closeout & Warranty", sub: "Close-out package + transmittal + warranty", href: `${base}/closeout/${p.opp.id}`, icon: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /> },
+  ];
+  const hasContract = p.contractToDateCents > 0;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <Link href={`${base}?tab=projects`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M11 5l-7 7 7 7" /></svg>
+          All projects
+        </Link>
+        <Link href={`${base}?tab=opportunities&edit=${p.opp.id}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[40px]">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
+          Edit deal details
+        </Link>
+      </div>
+
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            {oppCode && <div className="text-[10px] font-mono text-ppp-navy-600 mb-0.5">{oppCode}</div>}
+            <h2 className="text-lg sm:text-xl font-bold text-ppp-charcoal leading-tight break-words">{name}</h2>
+            {location && <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 truncate">{location}</div>}
+          </div>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold uppercase tracking-wide text-emerald-700 shrink-0">
+            {oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <ProjectStat label="Contract to date" value={hasContract ? formatCentsCompact(p.contractToDateCents) : "—"} sub={hasContract ? undefined : "Set on AIA"} />
+          <ProjectStat label="Completed" value={formatCentsCompact(p.completedToDateCents)} tone="emerald" />
+          <ProjectStat label="Left to bill" value={formatCentsCompact(Math.max(0, p.contractToDateCents - p.completedToDateCents))} />
+          <ProjectStat label="Pending COs" value={String(p.pendingCoCount)} tone={p.pendingCoCount > 0 ? "amber" : undefined} />
+        </div>
+        {hasContract && pct != null && (
+          <div className="mt-3">
+            <div className="h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} aria-label={`${pct}% complete`} />
+            </div>
+            <div className="mt-1 text-[10.5px] font-semibold text-emerald-700 tabular-nums">{pct}% complete</div>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {tools.map((t) => (
+          <Link key={t.label} href={t.href} className="flex items-center justify-between gap-3 rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span aria-hidden className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-600 text-white shrink-0">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{t.icon}</svg>
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-ppp-charcoal leading-tight">{t.label}</div>
+                <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">{t.sub}</div>
+              </div>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
