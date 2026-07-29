@@ -259,6 +259,88 @@ export async function deleteCloseoutItem(id: string, package_id: string): Promis
   return { ok: true, value: true };
 }
 
+export type CloseoutIndexRow = {
+  id: string;
+  opportunityId: string;
+  accountId: string;
+  accountName: string;
+  dealName: string;
+  status: CloseoutStatus;
+  progressPct: number | null;
+  warrantyThrough: string | null;
+  sentAt: string | null;
+  updatedAt: string;
+};
+
+/** Cross-project close-out index (the sidebar Closeout & Warranty surface). */
+export async function listAllCloseoutPackages(
+  opts: { search?: string; status?: string } = {}
+): Promise<CloseoutIndexRow[]> {
+  const sb = commercialDb();
+  let q = sb
+    .from("commercial_closeout_packages")
+    .select("id, opportunity_id, account_id, status, substantial_completion_date, warranty_years, sent_at, updated_at")
+    .is("voided_at", null)
+    .order("updated_at", { ascending: false });
+  if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
+  const { data: pkgs } = await q;
+  const rows = (pkgs ?? []) as {
+    id: string;
+    opportunity_id: string;
+    account_id: string;
+    status: CloseoutStatus;
+    substantial_completion_date: string | null;
+    warranty_years: number;
+    sent_at: string | null;
+    updated_at: string;
+  }[];
+  if (rows.length === 0) return [];
+
+  const oppIds = [...new Set(rows.map((r) => r.opportunity_id))];
+  const acctIds = [...new Set(rows.map((r) => r.account_id))];
+  const pkgIds = rows.map((r) => r.id);
+  const [{ data: oppsData }, { data: acctsData }, { data: itemsData }] = await Promise.all([
+    sb.from("commercial_opportunities").select("id, title, title_override, client_name, property_street, deleted_at").in("id", oppIds),
+    sb.from("commercial_accounts").select("id, company_name, deleted_at").in("id", acctIds),
+    sb.from("commercial_closeout_items").select("package_id, included, item_status").in("package_id", pkgIds),
+  ]);
+  const oppById = new Map((((oppsData ?? []) as { id: string; deleted_at: string | null }[]).filter((o) => !o.deleted_at)).map((o) => [o.id, o as unknown as Record<string, unknown>]));
+  const acctById = new Map((((acctsData ?? []) as { id: string; company_name: string | null; deleted_at: string | null }[]).filter((a) => !a.deleted_at)).map((a) => [a.id, a]));
+  const itemsByPkg = new Map<string, { included: boolean; item_status: CloseoutItemStatus }[]>();
+  for (const it of (itemsData ?? []) as { package_id: string; included: boolean; item_status: CloseoutItemStatus }[]) {
+    const arr = itemsByPkg.get(it.package_id) ?? [];
+    arr.push({ included: it.included, item_status: it.item_status });
+    itemsByPkg.set(it.package_id, arr);
+  }
+
+  const { derivedOppName } = await import("@/lib/commercial/opportunities/db");
+  const { computeWarrantyEndDate, closeoutProgressPct } = await import("./constants");
+
+  let out: CloseoutIndexRow[] = [];
+  for (const r of rows) {
+    const opp = oppById.get(r.opportunity_id);
+    const acct = acctById.get(r.account_id);
+    if (!opp || !acct) continue;
+    out.push({
+      id: r.id,
+      opportunityId: r.opportunity_id,
+      accountId: r.account_id,
+      accountName: acct.company_name ?? "",
+      dealName: derivedOppName(opp as never, acct.company_name ?? null),
+      status: r.status,
+      progressPct: closeoutProgressPct(itemsByPkg.get(r.id) ?? []),
+      warrantyThrough: computeWarrantyEndDate(r.substantial_completion_date, r.warranty_years),
+      sentAt: r.sent_at,
+      updatedAt: r.updated_at,
+    });
+  }
+  if (opts.search && opts.search.trim()) {
+    const t = opts.search.trim().toLowerCase();
+    out = out.filter((r) => r.dealName.toLowerCase().includes(t) || r.accountName.toLowerCase().includes(t));
+  }
+  return out;
+}
+
 export async function deleteCloseoutPackage(id: string, actorUserId: string): Promise<Result<true>> {
   const sb = commercialDb();
   const before = await getCloseoutPackage(id);

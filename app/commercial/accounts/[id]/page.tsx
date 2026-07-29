@@ -5770,6 +5770,25 @@ async function DealEditSheet({
             </div>
           </Link>
         )}
+        {isPostSaleDeal && (
+          <Link
+            href={`/commercial/accounts/${accountId}/closeout/${deal.id}`}
+            className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span aria-hidden className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-600 text-white shrink-0">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-ppp-charcoal leading-tight">Closeout &amp; Warranty</div>
+                  <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">Close-out package + transmittal + warranty letter</div>
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+            </div>
+          </Link>
+        )}
         {errorMessage && (
           <div
             role="alert"

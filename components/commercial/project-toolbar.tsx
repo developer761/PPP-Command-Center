@@ -7,7 +7,7 @@
  */
 import Link from "next/link";
 
-export type ProjectToolbarActive = "overview" | "change-orders" | "aia" | "submittals" | "invoices";
+export type ProjectToolbarActive = "overview" | "change-orders" | "aia" | "submittals" | "closeout" | "invoices";
 
 export function ProjectToolbar({
   accountId,
@@ -26,6 +26,7 @@ export function ProjectToolbar({
     { key: "change-orders", label: "Change Orders", href: `/commercial/accounts/${accountId}/change-orders/${dealId}` },
     { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}` },
     { key: "submittals", label: "Submittals", href: `/commercial/opportunities/${dealId}?tab=submittals` },
+    { key: "closeout", label: "Closeout", href: `/commercial/accounts/${accountId}/closeout/${dealId}` },
     { key: "invoices", label: "Invoices", href: `/commercial/invoices?account_id=${accountId}#opp-${dealId}` },
   ];
   return (
