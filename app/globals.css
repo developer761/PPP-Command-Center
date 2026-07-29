@@ -118,6 +118,9 @@
   --color-surface: #ffffff;
   --color-surface-muted: #f7f6f4;
   --color-surface-subtle: #eeece7;
+  /* Elevated card (kanban cards etc.) — white in light, a lighter panel in dark
+     so cards sit ABOVE their column instead of blending into it. */
+  --color-surface-raised: #ffffff;
 
   /* ─── Type — Roboto is the official PPP primary font ─── */
   --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
@@ -164,10 +167,10 @@ body {
    * INDIGO in dark (Karan: the brand red read wrong on dark — drop it, use a
    * different colour). Status accents stay quietly desaturated.
    * Neutral ramp: 50 = darkest surface … 900 = lightest text. */
-  --color-ppp-charcoal-50:  #18181b;
-  --color-ppp-charcoal-100: #27272a;   /* hairline borders */
-  --color-ppp-charcoal-200: #3f3f46;
-  --color-ppp-charcoal-300: #52525b;
+  --color-ppp-charcoal-50:  #1b1b1f;
+  --color-ppp-charcoal-100: #34343c;   /* borders — visible, so cards/columns don't blend */
+  --color-ppp-charcoal-200: #46464f;
+  --color-ppp-charcoal-300: #5a5a63;
   --color-ppp-charcoal-400: #71717a;   /* muted text */
   --color-ppp-charcoal-500: #a1a1aa;   /* secondary text */
   --color-ppp-charcoal-600: #d4d4d8;
@@ -176,11 +179,12 @@ body {
   --color-ppp-charcoal-900: #fafafa;
   --color-ppp-charcoal:     #e4e4e7;   /* primary text (off-white) */
 
-  /* Surfaces — near-pure-black page, zinc-900 cards */
-  --color-surface:        #18181b;
-  --color-surface-muted:  #131316;
-  --color-surface-subtle: #100f12;
-  --background: #09090b;
+  /* Surfaces — elevation ladder: page < track < column < raised card */
+  --color-surface:        #1a1a1e;   /* column / card base */
+  --color-surface-muted:  #121215;   /* recessed track / wells */
+  --color-surface-subtle: #0e0e11;
+  --color-surface-raised: #26262c;   /* elevated cards — sit above the column */
+  --background: #0a0a0c;
   --foreground: #e4e4e7;
 
   /* navy — navy-900 NOT overridden (dark chip for white-text toasts) */

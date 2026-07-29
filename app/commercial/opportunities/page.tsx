@@ -2509,7 +2509,7 @@ function KanbanCard({
 
   if (compact) {
     return (
-      <li className="bg-surface border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
+      <li className="bg-surface-raised border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
         <Link href={sheetHref(opp.account_id, opp.id)} className="block">
           {oppCode && (
             <div className="text-[9px] font-mono text-ppp-navy-600 mb-0.5">
@@ -2532,7 +2532,7 @@ function KanbanCard({
     );
   }
   return (
-    <li className="bg-surface border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 hover:shadow-sm transition-all">
+    <li className="bg-surface-raised border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 hover:shadow-sm transition-all">
       <Link
         href={sheetHref(opp.account_id, opp.id)}
         className="block"
