@@ -157,7 +157,7 @@ function accountColorTone(accountId: string | null): AccountTone {
   // island on the dark page). Defaults = light mode; [data-theme="dark"]
   // overrides them in globals.css.
   return {
-    border: { borderLeftColor: `hsl(${hue}, 55%, var(--cust-border-l, 55%))` },
+    border: { borderLeftColor: `hsl(${hue}, var(--cust-border-sat, 55%), var(--cust-border-l, 55%))` },
     headerBg: { backgroundColor: `hsl(${hue}, var(--cust-sat, 62%), var(--cust-bg-l, 96%))` },
     avatar: {
       backgroundColor: `hsl(${hue}, var(--cust-sat, 55%), var(--cust-avatar-l, 88%))`,
@@ -2208,7 +2208,7 @@ function KanbanBoard({
           >
             <div className="flex items-center gap-3 min-w-0">
               <span
-                className="shrink-0 w-9 h-9 rounded-full inline-flex items-center justify-center text-[12px] font-bold shadow-sm ring-1 ring-white"
+                className="shrink-0 w-9 h-9 rounded-full inline-flex items-center justify-center text-[12px] font-bold shadow-sm ring-1 ring-ppp-charcoal-200"
                 style={acctTone.avatar}
                 aria-hidden
               >
@@ -2252,7 +2252,7 @@ function KanbanBoard({
               <path d="M6 9l6 6 6-6" />
             </svg>
           </summary>
-          <div className="border-t border-ppp-charcoal-100 overflow-x-auto snap-x snap-mandatory p-2 sm:p-3 bg-ppp-charcoal-50/30">
+          <div className="border-t border-ppp-charcoal-100 overflow-x-auto snap-x snap-mandatory p-2 sm:p-3 bg-surface-muted">
             <div className="flex gap-2 min-w-max items-stretch">
             {OPEN_COLUMNS.map((status) => {
               const colOpps = acct.byStatus.get(status) ?? [];

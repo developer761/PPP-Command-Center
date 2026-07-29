@@ -247,13 +247,15 @@ body {
   --color-cc-brand-700: #7580d4;   /* active-nav text + button hover */
   --color-cc-brand-800: #9aa3e4;
 
-  /* Per-customer HSL tints (opportunities group cards) — dark bg, light text */
-  --cust-sat: 34%;
+  /* Per-customer HSL tints (opportunities/proposals group + kanban) — dark bg,
+     light text, and a MUTED border (was a saturated near-highlighter stripe). */
+  --cust-sat: 30%;
   --cust-bg-l: 15%;
-  --cust-border-l: 52%;
+  --cust-border-sat: 30%;
+  --cust-border-l: 42%;
   --cust-avatar-l: 30%;
-  --cust-avatar-tx-l: 76%;
-  --cust-name-l: 78%;
+  --cust-avatar-tx-l: 78%;
+  --cust-name-l: 80%;
 }
 [data-theme="dark"] *::-webkit-scrollbar-thumb {
   background: #3f3f46;

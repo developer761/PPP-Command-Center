@@ -781,7 +781,7 @@ function accountColorStyles(accountId: string | null): {
   // Lightness/sat via CSS vars so the per-account tint flips in dark mode
   // ([data-theme=dark] overrides in globals.css); defaults = light.
   return {
-    border: { borderLeftColor: `hsl(${hue}, 55%, var(--cust-border-l, 55%))` },
+    border: { borderLeftColor: `hsl(${hue}, var(--cust-border-sat, 55%), var(--cust-border-l, 55%))` },
     headerBg: { backgroundColor: `hsl(${hue}, var(--cust-sat, 62%), var(--cust-bg-l, 96%))` },
     avatar: {
       backgroundColor: `hsl(${hue}, var(--cust-sat, 55%), var(--cust-avatar-l, 88%))`,
@@ -1286,7 +1286,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                   "(untitled deal)";
                 const dealHue = hueForAccountId(dealBucket.deal.id);
                 const dealBorderStyle = {
-                  borderLeftColor: `hsl(${dealHue}, 55%, var(--cust-border-l, 55%))`,
+                  borderLeftColor: `hsl(${dealHue}, var(--cust-border-sat, 55%), var(--cust-border-l, 55%))`,
                 };
                 const dealTintStyle = {
                   backgroundColor: `hsl(${dealHue}, var(--cust-sat, 62%), var(--cust-bg-l, 97%))`,
