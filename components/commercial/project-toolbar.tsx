@@ -18,8 +18,11 @@ export function ProjectToolbar({
   dealId: string;
   active: ProjectToolbarActive;
 }) {
+  // "Overview" points at the deal's own detail page (which renders this toolbar
+  // with active="overview") — so it's never a link AWAY from the page you're on,
+  // and every item is deal-scoped + archived-safe.
   const items: { key: ProjectToolbarActive; label: string; href: string }[] = [
-    { key: "overview", label: "Overview", href: `/commercial/accounts/${accountId}?tab=opportunities&edit=${dealId}` },
+    { key: "overview", label: "Overview", href: `/commercial/opportunities/${dealId}` },
     { key: "change-orders", label: "Change Orders", href: `/commercial/accounts/${accountId}/change-orders/${dealId}` },
     { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}` },
     { key: "submittals", label: "Submittals", href: `/commercial/opportunities/${dealId}?tab=submittals` },
@@ -35,9 +38,9 @@ export function ProjectToolbar({
               key={it.key}
               href={it.href}
               aria-current={on ? "page" : undefined}
-              className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap min-h-[36px] transition-colors ${
+              className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap min-h-[44px] transition-colors ${
                 on
-                  ? "bg-cc-brand-600 text-white"
+                  ? "bg-cc-brand-50 border border-cc-brand-300 text-cc-brand-800"
                   : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800"
               }`}
             >

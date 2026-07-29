@@ -35,6 +35,8 @@ import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, BILLABLE_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";
+import { KpiTile } from "@/components/commercial/kpi-tile";
 
 export const dynamic = "force-dynamic";
 
@@ -55,19 +57,6 @@ const PHASES = [
   { num: "G", name: "Deal IDs + archive + lifecycle dates", status: "Shipped", color: SHIPPED },
   { num: "H", name: "Project (post-sale) + Won→Project", status: "Up next", color: UP_NEXT },
 ];
-
-function formatCentsCompact(cents: number): string {
-  if (cents === 0) return "$0";
-  // Keep the sign BEFORE the $ (a negative AR balance from an overpayment
-  // should read "-$50", not "$-50").
-  const neg = cents < 0;
-  const dollars = Math.abs(cents) / 100;
-  let body: string;
-  if (dollars >= 1_000_000) body = `$${(dollars / 1_000_000).toFixed(1)}M`;
-  else if (dollars >= 1_000) body = `$${Math.round(dollars / 1_000)}k`;
-  else body = `$${Math.round(dollars).toLocaleString()}`;
-  return neg ? `-${body}` : body;
-}
 
 /** Days between two ISO dates (positive = a before b). Null-safe. */
 function daysBetween(fromIso: string | null | undefined, toIso: string): number | null {
@@ -240,7 +229,7 @@ export default async function CommercialDashboardPage() {
               </span>
             </div>
             <div className="flex items-baseline gap-2 flex-wrap">
-              <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight">
+              <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight tabular-nums">
                 {formatCentsCompact(weightedPipeline)}
               </div>
               {newThisWeek > 0 && (
@@ -268,7 +257,7 @@ export default async function CommercialDashboardPage() {
               Wins this month
             </div>
             <div className="flex items-baseline gap-2 flex-wrap">
-              <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight">
+              <div className="font-condensed text-3xl sm:text-4xl font-black text-ppp-charcoal leading-none tracking-tight tabular-nums">
                 {wonThisMonth.length}
               </div>
               {monthWinPct !== null && (
@@ -398,7 +387,7 @@ export default async function CommercialDashboardPage() {
       {/* ─── KPI strip ─── */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiTile
-          tone="cc-brand"
+          tone="navy"
           value={openOpps.length.toLocaleString()}
           label="Open opportunities"
           sub={`${decidedOpps.length} decided all-time`}
@@ -793,84 +782,6 @@ function RecentActivityCard({
 }
 
 // ─────────────── Reusable tiles ───────────────
-
-function KpiTile({
-  tone,
-  value,
-  label,
-  sub,
-  href,
-  icon,
-}: {
-  tone: "cc-brand" | "blue" | "rose" | "emerald" | "amber";
-  value: string;
-  label: string;
-  sub: string;
-  href: string;
-  icon: React.ReactNode;
-}) {
-  const ring =
-    tone === "cc-brand"
-      ? "border-cc-brand-100/70 bg-white hover:border-cc-brand-300"
-      : tone === "rose"
-      ? "border-rose-100/70 bg-white hover:border-rose-300"
-      : tone === "emerald"
-      ? "border-emerald-100/70 bg-white hover:border-emerald-300"
-      : tone === "amber"
-      ? "border-amber-100/70 bg-white hover:border-amber-300"
-      : "border-ppp-blue-100/70 bg-white hover:border-ppp-blue-300";
-  const glow =
-    tone === "cc-brand"
-      ? "bg-cc-brand-100/60"
-      : tone === "rose"
-      ? "bg-rose-100/60"
-      : tone === "emerald"
-      ? "bg-emerald-100/60"
-      : tone === "amber"
-      ? "bg-amber-100/60"
-      : "bg-ppp-blue-100/50";
-  const stripe =
-    tone === "cc-brand" ? "bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400"
-    : tone === "rose" ? "bg-gradient-to-b from-rose-600 via-rose-500 to-rose-400"
-    : tone === "emerald" ? "bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400"
-    : tone === "amber" ? "bg-gradient-to-b from-amber-500 via-amber-400 to-amber-300"
-    : "bg-gradient-to-b from-ppp-blue-600 via-ppp-blue-500 to-ppp-blue-400";
-  const iconCls =
-    tone === "cc-brand"
-      ? "bg-gradient-to-br from-cc-brand-100 to-cc-brand-50 text-cc-brand-700 group-hover/kpi:from-cc-brand-600 group-hover/kpi:to-cc-brand-500 group-hover/kpi:text-white"
-      : tone === "rose"
-      ? "bg-gradient-to-br from-rose-100 to-rose-50 text-rose-700 group-hover/kpi:from-rose-600 group-hover/kpi:to-rose-500 group-hover/kpi:text-white"
-      : tone === "emerald"
-      ? "bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-700 group-hover/kpi:from-emerald-600 group-hover/kpi:to-emerald-500 group-hover/kpi:text-white"
-      : tone === "amber"
-      ? "bg-gradient-to-br from-amber-100 to-amber-50 text-amber-700 group-hover/kpi:from-amber-500 group-hover/kpi:to-amber-400 group-hover/kpi:text-white"
-      : "bg-gradient-to-br from-ppp-blue-100 to-ppp-blue-50 text-ppp-blue-700 group-hover/kpi:from-ppp-blue-600 group-hover/kpi:to-ppp-blue-500 group-hover/kpi:text-white";
-  return (
-    <Link
-      href={href}
-      className={`group/kpi relative block border rounded-xl px-4 py-4 overflow-hidden shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 touch-manipulation ${ring}`}
-    >
-      <span aria-hidden className={`pointer-events-none absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl opacity-80 ${glow}`} />
-      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${stripe}`} />
-      <div className="relative pl-1">
-        <div className="flex items-start justify-between gap-2 mb-2.5">
-          <span className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
-            {label}
-          </span>
-          <span aria-hidden className={`inline-flex items-center justify-center h-9 w-9 rounded-xl shadow-sm transition-all group-hover/kpi:shadow-md ${iconCls}`}>
-            {icon}
-          </span>
-        </div>
-        <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal leading-none tracking-tight">
-          {value}
-        </div>
-        <div className="mt-1.5 text-[11px] text-ppp-charcoal-500 leading-snug">
-          {sub}
-        </div>
-      </div>
-    </Link>
-  );
-}
 
 function QuickAction({
   primary,

@@ -11,8 +11,9 @@ import { createClient } from "@/lib/supabase/server";
 import { derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
-import { listProjects, type ProjectRow } from "@/lib/commercial/projects/db";
+import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { AIA_STATUS_META } from "@/lib/commercial/aia/constants";
+import { KpiTile } from "@/components/commercial/kpi-tile";
 
 type SP = Promise<{ q?: string; closed?: string }>;
 
@@ -27,9 +28,9 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
   const includeClosed = sp.closed === "1";
   const projects = await listProjects({ search, includeClosed });
 
-  const totalContract = projects.reduce((s, p) => s + p.contractToDateCents, 0);
-  const totalPendingCo = projects.reduce((s, p) => s + p.pendingCoCount, 0);
-  const inBilling = projects.filter((p) => p.opp.status === "in_progress" || p.opp.status === "billing").length;
+  // KPIs describe ACTIVE work — never inflated by the "include closed" list
+  // toggle (the toggle only changes what the list below shows).
+  const activeSummary = summarizeProduction(projects.filter((p) => p.opp.status !== "post_sale_closed"));
 
   return (
     <div className="space-y-5">
@@ -42,10 +43,10 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi label="Active projects" value={String(projects.length)} tone="neutral" />
-        <Kpi label="In production" value={String(inBilling)} tone="blue" />
-        <Kpi label="Contract value" value={formatCentsCompact(totalContract)} tone="neutral" />
-        <Kpi label="Change orders pending" value={String(totalPendingCo)} tone={totalPendingCo > 0 ? "amber" : "neutral"} />
+        <KpiTile label="Active projects" value={String(activeSummary.activeProjects)} sub={includeClosed ? "closed shown below" : "under contract"} tone="navy" icon={<IconHardHat />} />
+        <KpiTile label="In production" value={String(activeSummary.inProductionProjects)} sub="in progress or billing" tone="blue" icon={<IconGauge />} />
+        <KpiTile label="Contract value" value={formatCentsCompact(activeSummary.contractValueCents)} sub="under management" tone="neutral" icon={<IconContract />} />
+        <KpiTile label="Change orders pending" value={String(activeSummary.pendingCoCount)} sub={activeSummary.pendingCoCount > 0 ? `${formatCentsCompact(activeSummary.pendingCoCents)} awaiting` : "none open"} tone={activeSummary.pendingCoCount > 0 ? "amber" : "neutral"} icon={<IconChangeOrder />} />
       </div>
 
       {/* Filters */}
@@ -66,7 +67,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
 
       {projects.length === 0 ? (
         <div className="text-center py-14 px-4 bg-white border border-ppp-charcoal-100 rounded-xl">
-          <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-cc-brand-50 text-cc-brand-500">
+          <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-400">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 20h20 M4 20V8l8-5 8 5v12 M9 20v-6h6v6" /></svg>
           </span>
           <p className="text-sm font-semibold text-ppp-charcoal">{search ? "No projects match your search" : "No active projects yet"}</p>
@@ -226,14 +227,31 @@ function MoneyStat({ label, value, tone }: { label: string; value: string; tone?
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone: "neutral" | "blue" | "amber" }) {
-  const ring = tone === "blue" ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/50" : tone === "amber" ? "border-amber-200 bg-gradient-to-br from-white to-amber-50/40" : "border-ppp-charcoal-100 bg-white";
-  const stripe = tone === "blue" ? "bg-ppp-blue-500" : tone === "amber" ? "bg-amber-500" : "bg-ppp-charcoal-200";
+function IconHardHat() {
   return (
-    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
-      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[12px] font-semibold text-ppp-charcoal-700">{label}</div>
-      <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums">{value}</div>
-    </div>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2 18h20 M4 18v-3a8 8 0 0 1 16 0v3 M10 6.3V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v2.3" />
+    </svg>
+  );
+}
+function IconGauge() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 14l4-4 M3.5 18a9 9 0 1 1 17 0z" />
+    </svg>
+  );
+}
+function IconContract() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h4" />
+    </svg>
+  );
+}
+function IconChangeOrder() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5" />
+    </svg>
   );
 }

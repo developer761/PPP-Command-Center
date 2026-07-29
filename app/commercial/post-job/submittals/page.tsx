@@ -10,6 +10,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { listAllSubmittals, summarizeSubmittals, type SubmittalIndexRow } from "@/lib/commercial/opportunities/submittals-index";
 import { submittalStatusLabel } from "@/lib/commercial/opportunities/submittal-constants";
+import { KpiTile } from "@/components/commercial/kpi-tile";
 
 type SP = Promise<{ q?: string; status?: string }>;
 
@@ -72,10 +73,10 @@ export default async function SubmittalsIndexPage({ searchParams }: { searchPara
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi label="Total submittals" value={String(summary.total)} tone="neutral" />
-        <Kpi label="Awaiting response" value={String(summary.awaiting)} tone={summary.awaiting > 0 ? "blue" : "neutral"} />
-        <Kpi label="Approved" value={String(summary.approved)} tone="emerald" />
-        <Kpi label="Revise & resubmit" value={String(summary.revised)} tone={summary.revised > 0 ? "amber" : "neutral"} />
+        <KpiTile label="Total submittals" value={String(summary.total)} sub="all live packages" tone="navy" icon={<IconDoc />} />
+        <KpiTile label="Awaiting response" value={String(summary.awaiting)} sub={summary.awaiting > 0 ? "ball in the GC's court" : "all responded"} tone={summary.awaiting > 0 ? "blue" : "neutral"} icon={<IconClock />} />
+        <KpiTile label="Approved" value={String(summary.approved)} sub="cleared to build" tone={summary.approved > 0 ? "emerald" : "neutral"} icon={<IconCheck />} />
+        <KpiTile label="Revise & resubmit" value={String(summary.revised)} sub={summary.revised > 0 ? "needs another pass" : "none"} tone={summary.revised > 0 ? "amber" : "neutral"} icon={<IconRefresh />} />
       </div>
 
       {/* Filters */}
@@ -98,7 +99,7 @@ export default async function SubmittalsIndexPage({ searchParams }: { searchPara
                 key={f.key || "active"}
                 href={qs({ status: f.key })}
                 aria-current={on ? "page" : undefined}
-                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap min-h-[36px] transition-colors ${on ? "bg-cc-brand-600 text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800"}`}
+                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap min-h-[44px] transition-colors ${on ? "bg-cc-brand-600 text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800"}`}
               >
                 {f.label}
               </Link>
@@ -109,7 +110,7 @@ export default async function SubmittalsIndexPage({ searchParams }: { searchPara
 
       {rows.length === 0 ? (
         <div className="text-center py-14 px-4 bg-white border border-ppp-charcoal-100 rounded-xl">
-          <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-cc-brand-50 text-cc-brand-500">
+          <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-400">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h4" /></svg>
           </span>
           <p className="text-sm font-semibold text-ppp-charcoal">{search || status ? "No submittals match" : "No submittals yet"}</p>
@@ -166,19 +167,31 @@ function SubmittalRow({ r }: { r: SubmittalIndexRow }) {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone: "neutral" | "blue" | "amber" | "emerald" }) {
-  const ring =
-    tone === "blue" ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/50"
-    : tone === "amber" ? "border-amber-200 bg-gradient-to-br from-white to-amber-50/40"
-    : tone === "emerald" ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40"
-    : "border-ppp-charcoal-100 bg-white";
-  const stripe =
-    tone === "blue" ? "bg-ppp-blue-500" : tone === "amber" ? "bg-amber-500" : tone === "emerald" ? "bg-emerald-500" : "bg-ppp-charcoal-200";
+function IconDoc() {
   return (
-    <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
-      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
-      <div className="text-[12px] font-semibold text-ppp-charcoal-700">{label}</div>
-      <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums">{value}</div>
-    </div>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h4" />
+    </svg>
+  );
+}
+function IconClock() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" />
+    </svg>
+  );
+}
+function IconCheck() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+function IconRefresh() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-15 6.7L3 16 M3 21v-5h5" />
+    </svg>
   );
 }
