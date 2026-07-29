@@ -977,6 +977,16 @@ async function createDealInlineAction(formData: FormData) {
     }
   }
 
+  // Katie gap #1 — Attention contact. Blank/unrecognized → leave unset so the
+  // create mutation auto-inherits the GC's default primary. A valid pick MUST
+  // belong to this GC (a forged id is ignored, not smuggled in).
+  const contactRaw = String(formData.get("primary_contact_id") ?? "").trim();
+  let primary_contact_id: string | undefined = undefined;
+  if (contactRaw !== "" && UUID_RE.test(contactRaw)) {
+    const accountContacts = await listAccountContacts(account_id);
+    if (accountContacts.some((r) => r.contact.id === contactRaw)) primary_contact_id = contactRaw;
+  }
+
   const result = await createCommercialOpportunity({
     account_id,
     title,
@@ -1000,6 +1010,7 @@ async function createDealInlineAction(formData: FormData) {
     estimator_user_id,
     estimator_name,
     rfp_received_at,
+    primary_contact_id,
     created_by_user_id: user.id,
   });
   if (!result.ok) {
@@ -1102,10 +1113,24 @@ async function editDealFromAccountAction(formData: FormData) {
   const titleOverrideRaw = String(formData.get("title_override") ?? "").trim();
   const title_override = titleOverrideRaw ? titleOverrideRaw.slice(0, 200) : null;
 
+  // Katie gap #1 — Attention contact. Empty = clear. A non-empty value MUST be
+  // one of THIS GC's contacts (a forged POST can't smuggle another account's
+  // contact PII into the proposal); an unrecognized value is left untouched
+  // (undefined) so a dangling "removed but still assigned" reference survives.
+  const contactRaw = String(formData.get("primary_contact_id") ?? "").trim();
+  let primary_contact_id: string | null | undefined = undefined;
+  if (contactRaw === "") {
+    primary_contact_id = null;
+  } else if (UUID_RE.test(contactRaw)) {
+    const accountContacts = await listAccountContacts(account_id);
+    if (accountContacts.some((r) => r.contact.id === contactRaw)) primary_contact_id = contactRaw;
+  }
+
   const result = await updateCommercialOpportunity({
     id: opp_id,
     title,
     source,
+    primary_contact_id,
     bid_value_low_cents: lowParsed as number | null,
     bid_value_high_cents: highParsed as number | null,
     probability_pct,
@@ -2506,11 +2531,14 @@ async function restoreDocumentAction(formData: FormData) {
 function NewDealForm({
   accountId,
   estimators,
+  contactOptions,
   duplicateWarning,
   account,
 }: {
   accountId: string;
   estimators: EligibleEstimator[];
+  /** Katie gap #1 — this GC's contacts, for the Attention-contact picker. */
+  contactOptions: Array<{ value: string; label: string; hint?: string }>;
   duplicateWarning: { id: string; label: string } | null;
   /** F.6+ (Katie 2026-07-19): new-deal form now pre-fills client_name
    *  and property_* defaults from the parent account so Alex isn't
@@ -2684,6 +2712,25 @@ function NewDealForm({
               : "Required to move this to Estimating."}
           </span>
         </label>
+        <label className="block">
+          <span className={labelCls}>Attention contact</span>
+          {/* Katie gap #1: who at the GC the proposal is addressed to. Blank =
+              auto-inherit the GC's default primary (create mutation fills it). */}
+          <SearchableSelect
+            name="primary_contact_id"
+            options={contactOptions}
+            defaultValue=""
+            placeholder={contactOptions.length === 0 ? "No contacts on this GC yet" : "Search this GC's contacts…"}
+            ariaLabel="Attention contact for proposals"
+            disabled={contactOptions.length === 0}
+            emptyMessage="No contacts match. Add one on the GC's People tab."
+          />
+          <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
+            {contactOptions.length === 0
+              ? "No contacts yet — the GC’s primary will be used once added."
+              : "Blank uses the GC’s default primary contact."}
+          </span>
+        </label>
       </div>
       {/* Project address — hoisted out of the "optional" expando 2026-07-20
           per Katie: address is a first-class deal field, not a hidden
@@ -2846,7 +2893,7 @@ async function OpportunitiesTab({
   // batch query regardless of opp count. Also preload the eligible
   // estimator list for the New + Edit forms (Phase B) so we don't need
   // a client-side fetch per form render.
-  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap, estimators] = await Promise.all([
+  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap, estimators, contactRows] = await Promise.all([
     listCurrentStatusEnteredAtByOpp(ids),
     listOpenTaskStatsByOpp(ids),
     listLastNoteByOpp(ids),
@@ -2855,7 +2902,16 @@ async function OpportunitiesTab({
     listSubmittalCountByOpp(ids),
     listFinishCountByOpp(ids),
     listEligibleEstimators(accountId),
+    listAccountContacts(accountId),
   ]);
+  // Katie gap #1 — Attention-contact options for the New-deal form (choose the
+  // GC contact this job's proposals will address; blank auto-inherits the GC's
+  // default primary via the create mutation).
+  const contactOptions = contactRows.map(({ contact }) => ({
+    value: contact.id,
+    label: contact.full_name,
+    hint: [contact.title, contact.phone].filter(Boolean).join(" · ") || undefined,
+  }));
 
   const open = all.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
   const decided = all.filter((o) => TERMINAL_STATUSES.has(o.status));
@@ -2898,7 +2954,7 @@ async function OpportunitiesTab({
               </p>
             </div>
           </div>
-          <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} account={account} />
+          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} />
         </div>
       </div>
     );
@@ -3078,7 +3134,7 @@ async function OpportunitiesTab({
           <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
         </summary>
         <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
-          <NewDealForm accountId={accountId} estimators={estimators} duplicateWarning={duplicateWarning ?? null} account={account} />
+          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} />
         </div>
       </details>
 
@@ -5523,6 +5579,22 @@ async function DealEditSheet({
   const startDateDefault = deal.proposed_start_at ? deal.proposed_start_at.slice(0, 10) : "";
   const endDateDefault = deal.proposed_end_at ? deal.proposed_end_at.slice(0, 10) : "";
   const rfpDateDefault = deal.rfp_received_at ? deal.rfp_received_at.slice(0, 10) : "";
+  // Katie gap #1 (2026-07-28): the "Attention contact" for this job. Drives the
+  // proposal's Attention / Phone / Email block (via primary_contact_id → the
+  // proposal hydrate). Options are this GC's saved contacts.
+  const contactRows = await listAccountContacts(accountId);
+  const currentContactMissing =
+    !!deal.primary_contact_id && !contactRows.some((r) => r.contact.id === deal.primary_contact_id);
+  const contactOptions = [
+    ...contactRows.map(({ contact }) => ({
+      value: contact.id,
+      label: contact.full_name,
+      hint: [contact.title, contact.phone].filter(Boolean).join(" · ") || undefined,
+    })),
+    ...(currentContactMissing
+      ? [{ value: deal.primary_contact_id as string, label: "Removed from this GC (still assigned)", hint: "Pick another below" }]
+      : []),
+  ];
   const closeHref = `/commercial/accounts/${accountId}?tab=opportunities`;
   const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]";
   // Karan 2026-07-10 (arrows-coming-down flag): all selects get an
@@ -5890,6 +5962,39 @@ async function DealEditSheet({
                   below is the canonical address input on the edit
                   sheet. Two inputs with the same name silently
                   clobbered user edits on submit. */}
+              <label className="block">
+                <span className={labelCls}>Attention contact</span>
+                {/* Katie gap #1: the person at this GC that proposals are
+                    addressed to. Sets primary_contact_id, which the proposal
+                    hydrate pulls into Attention / Phone / Email on every new
+                    revision. Blank = fall back to the GC's default contact. */}
+                <SearchableSelect
+                  name="primary_contact_id"
+                  defaultValue={deal.primary_contact_id ?? ""}
+                  options={contactOptions}
+                  placeholder={
+                    contactRows.length === 0
+                      ? "No contacts on this GC yet"
+                      : "Search this GC's contacts…"
+                  }
+                  disabled={contactRows.length === 0 && !deal.primary_contact_id}
+                  ariaLabel="Attention contact for proposals"
+                  emptyMessage="No contacts match. Add one on the GC's People tab."
+                />
+                <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
+                  {contactRows.length === 0 ? (
+                    <>
+                      No contacts yet —{" "}
+                      <Link href={`/commercial/accounts/${accountId}?tab=contacts`} className="text-cc-brand-700 font-semibold hover:underline">
+                        add one on People
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    "Flows to the proposal’s Attention / Phone / Email. Clear it (✕) to use no contact."
+                  )}
+                </span>
+              </label>
               <label className="block">
                 <span className={labelCls}>Estimator</span>
                 {/* Karan 2026-07-10 (searchable-dropdowns rule):
