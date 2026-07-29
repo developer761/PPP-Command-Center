@@ -132,9 +132,11 @@ export function pickContractBaseCents(opts: {
   sovTotalCents: number;
   bidMidCents: number;
 }): number {
+  // Once a billing app exists, the AIA doc is the system of record — the base is
+  // its explicit contract or its SOV total (0 when empty), NEVER the bid
+  // midpoint (that would diverge from the AIA page it reconciles with).
   if (opts.hasBillingApp) {
-    if (opts.originalContractCents > 0) return opts.originalContractCents;
-    if (opts.sovTotalCents > 0) return opts.sovTotalCents;
+    return opts.originalContractCents > 0 ? opts.originalContractCents : opts.sovTotalCents;
   }
   return opts.bidMidCents;
 }
