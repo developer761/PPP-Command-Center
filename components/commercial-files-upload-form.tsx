@@ -143,7 +143,7 @@ export function CommercialFilesUploadForm({
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 space-y-3"
+      className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3"
     >
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div>

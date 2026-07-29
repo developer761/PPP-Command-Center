@@ -152,7 +152,7 @@ export default function NewProposalPicker({
           <div
             role="dialog"
             aria-label="Start a new proposal"
-            className="fixed right-4 sm:right-6 top-20 z-40 w-[340px] max-w-[calc(100vw-24px)] bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl overflow-hidden"
+            className="fixed right-4 sm:right-6 top-20 z-40 w-[340px] max-w-[calc(100vw-24px)] bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl overflow-hidden"
           >
             <div className="px-4 py-3 border-b border-ppp-charcoal-100">
               <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">
@@ -176,7 +176,7 @@ export default function NewProposalPicker({
                   value={accountQuery}
                   onChange={(e) => setAccountQuery(e.target.value)}
                   placeholder="Search customers…"
-                  className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]"
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]"
                 />
                 <ul className="max-h-64 overflow-y-auto divide-y divide-ppp-charcoal-100 border border-ppp-charcoal-100 rounded-lg">
                   {filteredAccounts.length === 0 ? (
@@ -246,7 +246,7 @@ export default function NewProposalPicker({
                   value={dealQuery}
                   onChange={(e) => setDealQuery(e.target.value)}
                   placeholder="Search deals…"
-                  className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]"
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[40px]"
                 />
                 <ul className="max-h-64 overflow-y-auto divide-y divide-ppp-charcoal-100 border border-ppp-charcoal-100 rounded-lg">
                   {dealsForAccount.length === 0 ? (

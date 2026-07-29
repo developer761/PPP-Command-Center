@@ -363,7 +363,7 @@ export default async function CommercialAccountDetailPage({
           </span>
           <Link
             href={`/commercial/accounts/${account.id}?tab=documents`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-white text-cc-brand-700 border border-cc-brand-300 hover:bg-cc-brand-50 min-h-[36px] touch-manipulation shrink-0"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-semibold bg-surface text-cc-brand-700 border border-cc-brand-300 hover:bg-cc-brand-50 min-h-[36px] touch-manipulation shrink-0"
             title="Upload Certificate of Insurance (COI) and W-9 tax form"
           >
             Upload Certificate of Insurance / W-9 →
@@ -415,7 +415,7 @@ export default async function CommercialAccountDetailPage({
       {/* Karan 2026-07-08 polish: hero wrapped in a subtle gradient card
           so the account name has a distinct visual home. Same treatment
           as the dashboard hero for consistent design language. */}
-      <header className="relative bg-gradient-to-br from-cc-brand-50/40 via-white to-white border border-cc-brand-100 rounded-2xl p-5 sm:p-6 overflow-hidden">
+      <header className="relative bg-gradient-to-br from-cc-brand-50/40 via-surface to-surface border border-cc-brand-100 rounded-2xl p-5 sm:p-6 overflow-hidden">
         <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
         <div className="relative">
           <Link
@@ -569,7 +569,7 @@ export default async function CommercialAccountDetailPage({
             );
           })}
         </ul>
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent sm:hidden" aria-hidden />
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-surface to-transparent sm:hidden" aria-hidden />
       </nav>
 
       {/* Sub-tab pill row — only when the primary has sub-tabs.
@@ -1414,7 +1414,7 @@ function RecentActivityCard({
     return null;
   }
   return (
-    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden ${className ?? ""}`}>
+    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden ${className ?? ""}`}>
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ppp-charcoal">Recent activity</h2>
         <span className="text-[11px] text-ppp-charcoal-500">
@@ -1499,7 +1499,7 @@ async function ActivityTab({ accountId }: { accountId: string }) {
   const activity = await getAccountRecentActivity(accountId, 50);
   if (activity.length === 0) {
     return (
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-10 text-center">
         <div className="text-sm font-semibold text-ppp-charcoal mb-1">No activity yet</div>
         <p className="text-[12px] text-ppp-charcoal-500 max-w-md mx-auto leading-relaxed">
           Status changes, notes, and completed tasks on this account&apos;s deals show up here as a chronological feed.
@@ -1522,7 +1522,7 @@ function TagsCard({
   className?: string;
 }) {
   return (
-    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
       <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Tags</h2>
       <p className="text-[11px] text-ppp-charcoal-500 mb-3">
         Free-form labels — different from Industry. Use them to group accounts (Hospitality, Healthcare,
@@ -1770,7 +1770,7 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
         </div>
       )}
       {/* Add-contact form */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal">Add contact</h2>
         <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 mt-0.5 leading-snug">
           People at the <strong>account&apos;s (GC) company</strong> — decision-maker, PM, estimator, AP contact, etc.
@@ -1827,11 +1827,11 @@ async function ContactsTab({ accountId, errorMessage }: { accountId: string; err
 
       {/* Existing contacts */}
       {contacts.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
           No contacts yet. Add the decision-maker, estimator, PM, or anyone else from the account (GC) side.
         </div>
       ) : (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               {contacts.length} contact{contacts.length === 1 ? "" : "s"}
@@ -2180,7 +2180,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
       )}
 
       {/* Add assignment form */}
-      <section id="assign-ppp-staff" className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 scroll-mt-24">
+      <section id="assign-ppp-staff" className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 scroll-mt-24">
         <h2 className="text-sm font-bold text-ppp-charcoal">Assign PPP staff</h2>
         <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 mt-0.5 leading-snug">
           People from <strong>PPP</strong> working this account (sales rep, PM, estimator). For the
@@ -2340,7 +2340,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cc-brand-300 bg-white text-cc-brand-700 text-sm font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cc-brand-300 bg-surface text-cc-brand-700 text-sm font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
                 Add by email
               </button>
@@ -2351,7 +2351,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
 
       {/* Current team */}
       {team.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
           <div className="text-sm font-medium text-ppp-charcoal">No team yet</div>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto">
             Add the sales rep, project manager, and anyone else from PPP working on
@@ -2369,7 +2369,7 @@ async function TeamTab({ accountId, errorMessage }: { accountId: string; errorMe
           </a>
         </div>
       ) : (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               {team.length} team member{team.length === 1 ? "" : "s"}
@@ -2557,7 +2557,7 @@ function NewDealForm({
   };
 }) {
   const inputCls =
-    "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 bg-white";
+    "w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 bg-surface";
   // Karan 2026-07-10 (second flag on gray selects): the OS-default
   // <select> chevron on Mac/Chrome renders the whole control in a
   // grayscale gradient that reads as "disabled" even when it isn't.
@@ -2938,7 +2938,7 @@ async function OpportunitiesTab({
             {errorMessage}
           </div>
         )}
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
           <div className="flex items-start gap-3 mb-4">
             <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-100 text-cc-brand-700 shrink-0">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -3085,7 +3085,7 @@ async function OpportunitiesTab({
             className={`inline-flex items-center gap-1.5 px-3 py-2.5 sm:px-2.5 sm:py-1 rounded-full text-[11.5px] font-medium border min-h-[44px] sm:min-h-[28px] transition-colors touch-manipulation ${
               includeArchived
                 ? "bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200"
-                : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+                : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
             }`}
             aria-pressed={includeArchived}
             title={
@@ -3106,7 +3106,7 @@ async function OpportunitiesTab({
 
       <details
         open={openNewDeal || open.length === 0}
-        className="group/newdeal bg-white border border-cc-brand-200 rounded-xl overflow-hidden shadow-sm shadow-cc-brand-100/40"
+        className="group/newdeal bg-surface border border-cc-brand-200 rounded-xl overflow-hidden shadow-sm shadow-cc-brand-100/40"
       >
         <summary
           id="new-deal"
@@ -3139,7 +3139,7 @@ async function OpportunitiesTab({
       </details>
 
       {open.length > 0 && (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               Open · {open.length}
@@ -3172,7 +3172,7 @@ async function OpportunitiesTab({
       {decided.length > 0 && (
         <details
           open={open.length === 0}
-          className="group/decided bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden"
+          className="group/decided bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden"
         >
           <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-3 min-h-[44px] hover:bg-ppp-charcoal-50/60 touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-charcoal-300/40">
             <h2 className="text-sm font-semibold text-ppp-charcoal-700">
@@ -3662,7 +3662,7 @@ async function AccountProposalsTab({
           .filter((p) => p.status === "sent" || p.status === "pending_approval")
           .reduce((s, p) => s + p.total_cents, 0);
         return (
-          <div className="relative bg-white border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
+          <div className="relative bg-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden">
             <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-cc-brand-600 to-cc-brand-500" />
             <span aria-hidden className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-cc-brand-100/50 blur-2xl" />
             <div className="relative flex items-center justify-between gap-4 flex-wrap">
@@ -3704,7 +3704,7 @@ async function AccountProposalsTab({
                     <ConfirmSubmitButton
                       message={`Delete all ${draftCount} draft proposal${draftCount === 1 ? "" : "s"} for ${accountName}? Sent / Won / Lost / Replaced revisions are historical and will be SPARED. This can't be undone.`}
                       pendingLabel="Deleting…"
-                      className="inline-flex items-center px-3 py-1.5 rounded-lg border border-rose-200 bg-white text-rose-700 text-[11px] font-semibold hover:bg-rose-50 min-h-[32px]"
+                      className="inline-flex items-center px-3 py-1.5 rounded-lg border border-rose-200 bg-surface text-rose-700 text-[11px] font-semibold hover:bg-rose-50 min-h-[32px]"
                     >
                       Delete {draftCount} draft{draftCount === 1 ? "" : "s"}
                     </ConfirmSubmitButton>
@@ -3732,7 +3732,7 @@ async function AccountProposalsTab({
       })()}
 
       {proposals.length === 0 ? (
-        <div className="bg-white border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
+        <div className="bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
           <p className="text-sm font-semibold text-ppp-charcoal mb-1">
             No proposals for {accountName} yet.
           </p>
@@ -3760,9 +3760,9 @@ async function AccountProposalsTab({
               <section
                 key={dealId}
                 id={`deal-${dealId}`}
-                className="bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm scroll-mt-24"
+                className="bg-surface border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm scroll-mt-24"
               >
-                <header className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap bg-white">
+                <header className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap bg-surface">
                   <div className="min-w-0">
                     <Link
                       href={`/commercial/accounts/${accountId}?tab=deals&sub=opportunities#deal-row-${dealId}`}
@@ -3978,7 +3978,7 @@ async function AccountProposalsTab({
                               <path d="M6 9l6 6 6-6" />
                             </svg>
                           </summary>
-                          <ul className="divide-y divide-ppp-charcoal-100 bg-white">
+                          <ul className="divide-y divide-ppp-charcoal-100 bg-surface">
                             {olderRows.map((r) => renderRow(r, false))}
                           </ul>
                         </details>
@@ -4039,7 +4039,7 @@ async function DocumentsTab({ accountId, errorMessage }: { accountId: string; er
       <CommercialDocumentUploadForm accountId={accountId} />
 
       {/* Symbol key — what every badge means */}
-      <details className="bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden group">
+      <details className="bg-surface border border-ppp-charcoal-100 rounded-lg overflow-hidden group">
         <summary className="px-4 py-2 cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
           <span>What do the badges mean?</span>
           <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
@@ -4103,7 +4103,7 @@ function DocumentCategoryCard({
     // "Upload →" quick-links (href=?tab=documents#upload-{category})
     // land on the right card with breathing room from the sticky tab
     // bar. Without this, the anchor pointed at a non-existent DOM node.
-    <section id={`upload-${category}`} className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden scroll-mt-24">
+    <section id={`upload-${category}`} className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden scroll-mt-24">
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
         <h3 className="text-sm font-bold text-ppp-charcoal">{documentCategoryLabel(category)}</h3>
       </div>
@@ -4269,7 +4269,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
   const notes = await listAccountNotes(accountId);
 
   const addForm = (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
       <h3 className="text-sm font-bold text-ppp-charcoal mb-1">Add a note</h3>
       <p className="text-[11.5px] text-ppp-charcoal-500 mb-3">
         Post any manual note for this account — call summaries, competitor intel,
@@ -4284,7 +4284,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
           maxLength={5000}
           required
           placeholder="Type your note…"
-          className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 resize-y min-h-[80px] transition-colors"
+          className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 resize-y min-h-[80px] transition-colors"
         />
         <div className="flex items-center justify-end">
           <button
@@ -4305,7 +4305,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
     return (
       <div className="space-y-3">
         {addForm}
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-6 text-center text-sm text-ppp-charcoal-500">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-6 text-center text-sm text-ppp-charcoal-500">
           <strong className="block text-ppp-charcoal">No notes yet</strong>
           <p className="mt-1">
             Add your first one above. Won / Lost / No-bid debriefs also auto-post here.
@@ -4326,7 +4326,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
             className={`rounded-xl border p-4 sm:p-5 ${
               isAuto
                 ? "bg-slate-50/60 border-slate-200"
-                : "bg-white border-ppp-charcoal-100"
+                : "bg-surface border-ppp-charcoal-100"
             }`}
           >
             <header className="flex items-start justify-between gap-3 mb-2">
@@ -4385,7 +4385,7 @@ async function NotesTab({ accountId }: { accountId: string }) {
 
 function ComingSoonTab({ label, phase }: { label: string; phase: string }) {
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
       <strong className="block text-ppp-charcoal">{label} tab</strong>
       <p className="mt-1">Coming {phase} in the Phase 1 build.</p>
     </div>
@@ -4426,7 +4426,7 @@ function Card({
     return (
       <section
         id={`card-${section}`}
-        className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 focus-within:border-cc-brand-300 transition-colors ${className ?? ""}`}
+        className={`bg-surface border border-ppp-charcoal-100 rounded-xl p-5 focus-within:border-cc-brand-300 transition-colors ${className ?? ""}`}
       >
         <AccountInlineCardForm action={updateAccountSectionAction}>
           <input type="hidden" name="account_id" value={accountId} />
@@ -4437,7 +4437,7 @@ function Card({
     );
   }
   return (
-    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
+    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl p-5 ${className ?? ""}`}>
       {body}
     </section>
   );
@@ -4473,7 +4473,7 @@ function EditableField({
         required={required}
         defaultValue={defaultValue ?? ""}
         placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white hover:border-ppp-charcoal-300 focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 placeholder:italic min-h-[44px] text-ppp-charcoal transition-colors"
+        className="w-full px-3 py-2 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface hover:border-ppp-charcoal-300 focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 placeholder:text-ppp-charcoal-300 placeholder:italic min-h-[44px] text-ppp-charcoal transition-colors"
       />
     </label>
   );
@@ -4500,7 +4500,7 @@ function EditableSelect({
       <select
         name={name}
         defaultValue={defaultValue ?? ""}
-        className="w-full px-3 py-2 pr-9 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-white hover:border-ppp-charcoal-300 focus:bg-white focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 text-ppp-charcoal min-h-[44px] appearance-none bg-no-repeat transition-colors"
+        className="w-full px-3 py-2 pr-9 text-sm rounded-md border border-ppp-charcoal-200 bg-ppp-charcoal-50/40 hover:bg-surface hover:border-ppp-charcoal-300 focus:bg-surface focus:border-cc-brand-500 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/25 text-ppp-charcoal min-h-[44px] appearance-none bg-no-repeat transition-colors"
         style={{
           backgroundImage:
             "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
@@ -4648,7 +4648,7 @@ function AccountOverviewStrip({
       : undefined;
 
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
       {/* Top-right chip cluster — activity + repeat-customer signal,
           subtle so they don't compete with the money numbers below. */}
       <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
@@ -4759,12 +4759,12 @@ function MoneyTile({
 }) {
   const borderCls =
     tone === "brand"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/40"
+      ? "border-cc-brand-200 bg-gradient-to-br from-surface to-cc-brand-50/40"
       : tone === "emerald"
-      ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40"
+      ? "border-emerald-200 bg-gradient-to-br from-surface to-emerald-50/40"
       : tone === "blue"
-      ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/40"
-      : "border-ppp-charcoal-200 bg-white";
+      ? "border-ppp-blue-200 bg-gradient-to-br from-surface to-ppp-blue-50/40"
+      : "border-ppp-charcoal-200 bg-surface";
   const subCls = subTone === "rose" ? "text-rose-700 font-semibold" : "text-ppp-charcoal-500";
   return (
     <Link
@@ -4855,7 +4855,7 @@ function KpiTile({
   // of the opp page KPI strip.
   const cls =
     tone === "live"
-      ? "relative bg-gradient-to-br from-white to-sky-50 border-ppp-charcoal-200 shadow-sm"
+      ? "relative bg-gradient-to-br from-surface to-sky-50 border-ppp-charcoal-200 shadow-sm"
       : "bg-ppp-charcoal-50/60 border-ppp-charcoal-200 border-dashed";
 
   return href ? (
@@ -5035,7 +5035,7 @@ async function AccountInvoicesTab({
         </Link>
         <Link
           href={`/commercial/invoices?account_id=${accountId}`}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
         >
           Full invoicing surface →
         </Link>
@@ -5043,7 +5043,7 @@ async function AccountInvoicesTab({
 
       {/* Empty state */}
       {invoices.length === 0 && (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
           <div className="flex justify-center mb-2 text-ppp-charcoal-300" aria-hidden><IconFileDoc size={36} /></div>
           <div className="text-sm font-semibold text-ppp-charcoal">No invoices yet</div>
           <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto">
@@ -5075,9 +5075,9 @@ async function AccountInvoicesTab({
             return (
               <section
                 key={oppId}
-                className={`rounded-xl overflow-hidden border ${dealOverdue ? "border-rose-200" : "border-ppp-charcoal-100"} bg-white`}
+                className={`rounded-xl overflow-hidden border ${dealOverdue ? "border-rose-200" : "border-ppp-charcoal-100"} bg-surface`}
               >
-                <div className={`px-4 py-3 border-b ${dealOverdue ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-gradient-to-br from-white to-ppp-charcoal-50/60"}`}>
+                <div className={`px-4 py-3 border-b ${dealOverdue ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-gradient-to-br from-surface to-ppp-charcoal-50/60"}`}>
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2 flex-wrap">
@@ -5242,7 +5242,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
               </summary>
               <form
                 action={recordPaymentInlineAction}
-                className="mt-2 bg-white border border-ppp-charcoal-100 rounded-lg shadow-sm p-3 space-y-2 w-full sm:w-[260px] text-left"
+                className="mt-2 bg-surface border border-ppp-charcoal-100 rounded-lg shadow-sm p-3 space-y-2 w-full sm:w-[260px] text-left"
               >
                 <input type="hidden" name="account_id" value={accountId} />
                 <input type="hidden" name="invoice_id" value={invoice.id} />
@@ -5276,7 +5276,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
                     <select
                       name="method"
                       defaultValue=""
-                      className="w-full mt-0.5 px-2 py-1.5 pr-8 text-[13px] bg-white border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 appearance-none bg-no-repeat cursor-pointer"
+                      className="w-full mt-0.5 px-2 py-1.5 pr-8 text-[13px] bg-surface border border-ppp-charcoal-200 rounded-md focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 appearance-none bg-no-repeat cursor-pointer"
                       style={SELECT_BG_STYLE}
                     >
                       <option value="">Choose method</option>
@@ -5327,14 +5327,14 @@ function RollupTile({
   // Roboto Condensed black to match the dashboard KPI treatment.
   const ring =
     tone === "blue"
-      ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/50"
+      ? "border-ppp-blue-200 bg-gradient-to-br from-surface to-ppp-blue-50/50"
       : tone === "emerald"
-      ? "border-emerald-200 bg-gradient-to-br from-white to-emerald-50/50"
+      ? "border-emerald-200 bg-gradient-to-br from-surface to-emerald-50/50"
       : tone === "warn"
-      ? "border-amber-200 bg-gradient-to-br from-white to-amber-50/40"
+      ? "border-amber-200 bg-gradient-to-br from-surface to-amber-50/40"
       : tone === "danger"
-      ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
-      : "border-ppp-charcoal-100 bg-white";
+      ? "border-rose-200 bg-gradient-to-br from-surface to-rose-50/50"
+      : "border-ppp-charcoal-100 bg-surface";
   const stripe =
     tone === "blue" ? "bg-ppp-blue-500" : tone === "emerald" ? "bg-emerald-500" : tone === "warn" ? "bg-amber-500" : tone === "danger" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   return (
@@ -5462,7 +5462,7 @@ async function AccountKpisTab({
       </section>
 
       {/* Progress bars — collections + wins */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 space-y-4">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-4">
         <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
           Health
@@ -5596,14 +5596,14 @@ async function DealEditSheet({
       : []),
   ];
   const closeHref = `/commercial/accounts/${accountId}?tab=opportunities`;
-  const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]";
+  const inputCls = "w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]";
   // Karan 2026-07-10 (arrows-coming-down flag): all selects get an
   // identical chevron. `appearance-none` strips the OS default (which
   // rendered differently in Safari vs Firefox vs Chrome). SELECT_BG_STYLE
   // paints our own inline SVG chevron. `bg-no-repeat` is CRITICAL —
   // without it, the browser tiles the chevron across the whole select
   // width (~20 chevrons in a row — Karan's 4:09pm screenshot).
-  const selectCls = `${inputCls} appearance-none bg-white bg-no-repeat pr-9`;
+  const selectCls = `${inputCls} appearance-none bg-surface bg-no-repeat pr-9`;
   const labelCls = "block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5";
   return (
     <div id="deal-edit-sheet" className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="deal-edit-title">
@@ -5617,13 +5617,13 @@ async function DealEditSheet({
           desktop width from 520px → 720px so the form breathes; long
           field labels + hints don't wrap mid-word anymore. Full-width
           on mobile stays. */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[600px] lg:w-[720px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[600px] lg:w-[720px] max-w-full bg-surface border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
         {/* Karan 2026-07-08 simplification pass: killed the read-only KPI
             band (redundant with the form field values below) and the
             "status changes happen elsewhere" paragraph (users learn
             once, then that copy adds noise on every edit). Header is
             now just: eyebrow + title + status + close. */}
-        <header className="px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-r from-cc-brand-50/50 to-white">
+        <header className="px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-r from-cc-brand-50/50 to-surface">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700 mb-1.5">
@@ -5703,8 +5703,8 @@ async function DealEditSheet({
               href={`/commercial/accounts/${accountId}/debrief/${deal.id}`}
               className={`shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold min-h-[32px] ${
                 deal.win_loss_debriefed_at
-                  ? "bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100"
-                  : "bg-white border border-amber-300 text-amber-800 hover:bg-amber-100"
+                  ? "bg-surface border border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                  : "bg-surface border border-amber-300 text-amber-800 hover:bg-amber-100"
               }`}
             >
               {deal.win_loss_debriefed_at ? "View debrief" : "Open debrief"}
@@ -5718,7 +5718,7 @@ async function DealEditSheet({
         {isPostSaleDeal && (
           <Link
             href={coHref}
-            className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-white p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
+            className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -5754,7 +5754,7 @@ async function DealEditSheet({
         {isPostSaleDeal && (
           <Link
             href={`/commercial/accounts/${accountId}/aia/${deal.id}`}
-            className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-white p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
+            className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -6133,7 +6133,7 @@ async function DealEditSheet({
             </p>
           </div>
           <details className="relative">
-            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-300 bg-white text-[12.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation">
+            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-300 bg-surface text-[12.5px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px] touch-manipulation">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
               </svg>
@@ -6141,7 +6141,7 @@ async function DealEditSheet({
             </summary>
             <form
               action={deleteDealFromAccountAction}
-              className="mt-3 bg-white border border-rose-200 rounded-lg p-3 space-y-2.5"
+              className="mt-3 bg-surface border border-rose-200 rounded-lg p-3 space-y-2.5"
             >
               <input type="hidden" name="account_id" value={accountId} />
               <input type="hidden" name="opp_id" value={deal.id} />
@@ -6163,7 +6163,7 @@ async function DealEditSheet({
         {/* Footer — Karan 2026-07-10: simplified to Save + Cancel only.
             Delete moved into the Danger Zone section above so
             destructive isn't inches from the primary CTA. */}
-        <footer className="px-5 py-3 border-t border-ppp-charcoal-100 bg-white flex items-center gap-2">
+        <footer className="px-5 py-3 border-t border-ppp-charcoal-100 bg-surface flex items-center gap-2">
           {/* Karan 2026-07-10 (audit round 4 fix): Save was a plain
               <button> outside the form via form={id}, so useFormStatus
               couldn't reach it. PendingFormButton subscribes to the
@@ -6181,7 +6181,7 @@ async function DealEditSheet({
           </PendingFormButton>
           <Link
             href={closeHref}
-            className="inline-flex items-center gap-1 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+            className="inline-flex items-center gap-1 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-[13px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
           >
             Cancel
           </Link>
@@ -6209,7 +6209,7 @@ function SheetSection({
   children: ReactNode;
 }) {
   return (
-    <section className="bg-white border border-ppp-charcoal-200 rounded-xl p-5 space-y-4 shadow-sm">
+    <section className="bg-surface border border-ppp-charcoal-200 rounded-xl p-5 space-y-4 shadow-sm">
       <div>
         <h3 className="text-[15px] font-bold text-ppp-charcoal leading-tight">
           {title}

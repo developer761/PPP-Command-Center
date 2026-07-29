@@ -145,7 +145,7 @@ export function KeyboardShortcuts() {
         onClick={() => setHelpOpen(false)}
         className="absolute inset-0 bg-ppp-charcoal-900/50 backdrop-blur-[2px]"
       />
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-ppp-charcoal-200 overflow-hidden">
+      <div className="relative w-full max-w-md bg-surface rounded-2xl shadow-2xl border border-ppp-charcoal-200 overflow-hidden">
         <div className="px-5 py-3.5 border-b border-ppp-charcoal-100 flex items-center justify-between">
           <h2 className="text-[15px] font-bold text-ppp-charcoal">Keyboard shortcuts</h2>
           <button
@@ -172,7 +172,7 @@ export function KeyboardShortcuts() {
           <ShortcutRow keys={["Esc"]} label="Close any open sheet or modal" />
         </ul>
         <div className="px-5 py-2.5 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/40 text-[11px] text-ppp-charcoal-500">
-          Shortcuts ignored while typing in forms. Press <kbd className="font-mono bg-white border border-ppp-charcoal-200 rounded px-1">?</kbd> anywhere to reopen.
+          Shortcuts ignored while typing in forms. Press <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">?</kbd> anywhere to reopen.
         </div>
       </div>
     </div>
@@ -187,7 +187,7 @@ function ShortcutRow({ keys, label }: { keys: string[]; label: string }) {
         {keys.map((k, i) => (
           <kbd
             key={i}
-            className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded border border-ppp-charcoal-200 bg-white font-mono text-[11px] font-bold text-ppp-charcoal-700"
+            className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded border border-ppp-charcoal-200 bg-surface font-mono text-[11px] font-bold text-ppp-charcoal-700"
           >
             {k}
           </kbd>

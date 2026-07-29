@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { isAllowedToSignIn } from "@/lib/auth/admin";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
@@ -44,7 +45,13 @@ export default async function CommercialDashboardLayout({
   const firstName = fullName.split(" ")[0] ?? null;
   const initial = (firstName ?? email[0] ?? "P").charAt(0).toUpperCase();
 
+  // Phase I — dark mode. Read the persisted theme so the server renders the
+  // right one (no flash on navigation). Scoped to this wrapper, so the
+  // residential Command Center is never affected.
+  const theme = (await cookies()).get("cc-theme")?.value === "dark" ? "dark" : "light";
+
   return (
+    <div className="cc-theme-root" data-cc-root data-theme={theme}>
     <CommercialChrome
       user={{ email, fullName, firstName, initial }}
       showSwitcher={access.hasBoth}
@@ -68,5 +75,6 @@ export default async function CommercialDashboardLayout({
           layer. */}
       <KeyboardShortcuts />
     </CommercialChrome>
+    </div>
   );
 }

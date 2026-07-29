@@ -138,6 +138,89 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ─── Dark mode (Commercial Command Center, Phase I) ───
+ * Scoped: the commercial layout sets data-theme="dark" on its root wrapper, so
+ * these token overrides cascade to the whole commercial subtree ONLY (the
+ * residential Command Center is untouched). Pure token remap — no per-class
+ * `dark:` variants — so every existing bg-/text-/border- utility flips by
+ * following its CSS variable. `bg-white` is the one literal that can't flip via
+ * a token, so commercial surfaces use the `bg-surface` token instead.
+ * cc-brand-500/600 (button solids) + emerald/amber/rose-500 (stripes/bars) stay
+ * vibrant with white text; only the -50/-100/-200 tints + -700/-800 text flip. */
+.cc-theme-root {
+  background-color: var(--background);
+  color: var(--foreground);
+  min-height: 100vh;
+}
+[data-theme="dark"] {
+  /* Neutrals — dark ramp (50 = darkest surface … 900 = lightest text) */
+  --color-ppp-charcoal-50:  #202024;
+  --color-ppp-charcoal-100: #2b2b31;
+  --color-ppp-charcoal-200: #3a3a41;
+  --color-ppp-charcoal-300: #55555d;
+  --color-ppp-charcoal-400: #8b8a93;
+  --color-ppp-charcoal-500: #a9a8b1;
+  --color-ppp-charcoal-600: #c4c3cb;
+  --color-ppp-charcoal-700: #dbdae1;
+  --color-ppp-charcoal-800: #ececf1;
+  --color-ppp-charcoal-900: #f6f5f9;
+  --color-ppp-charcoal:     #e9e8ef;
+
+  /* Surfaces + page frame */
+  --color-surface:        #27272c;
+  --color-surface-muted:  #1c1c20;
+  --color-surface-subtle: #161619;
+  --background: #131316;
+  --foreground: #e9e8ef;
+
+  /* Navy (structural accent) — lighten so it reads on dark */
+  --color-ppp-navy-50:  #1a2438;
+  --color-ppp-navy-100: #24304a;
+  --color-ppp-navy-200: #33436a;
+  --color-ppp-navy-600: #8ea0c4;
+  --color-ppp-navy-700: #9fb0d0;
+  --color-ppp-navy-800: #b9c6de;
+
+  /* Blue (info) */
+  --color-ppp-blue-50:  #0d2b3a;
+  --color-ppp-blue-100: #123a4e;
+  --color-ppp-blue-200: #1a5170;
+  --color-ppp-blue-700: #6ec3e8;
+  --color-ppp-blue-800: #9bd6f0;
+
+  /* Status tints (Tailwind built-ins) — dark bg, lighter text */
+  --color-emerald-50:  #0e2a20;
+  --color-emerald-100: #12392b;
+  --color-emerald-200: #1c5a43;
+  --color-emerald-700: #6ee7b7;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-900: #d1fae5;
+
+  --color-amber-50:  #2e2410;
+  --color-amber-100: #3f3115;
+  --color-amber-200: #5c4a1f;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+
+  --color-rose-50:  #2e1416;
+  --color-rose-100: #3f1a1d;
+  --color-rose-200: #5c2529;
+  --color-rose-700: #fda4af;
+  --color-rose-800: #fecdd3;
+  --color-rose-900: #ffe4e6;
+
+  /* cc-brand red — solids stay vibrant; only tints/text flip */
+  --color-cc-brand-50:  #2e1416;
+  --color-cc-brand-100: #3f1a1d;
+  --color-cc-brand-200: #5c2529;
+  --color-cc-brand-700: #f87171;
+  --color-cc-brand-800: #fca5a5;
+}
+[data-theme="dark"] *::-webkit-scrollbar-thumb {
+  background: #3a3a41;
+}
+
 /* Headlines + label-style text use Roboto Condensed per brand guidelines */
 h1, h2, h3, h4, .font-condensed {
   font-family: var(--font-roboto-condensed), var(--font-roboto), ui-sans-serif, system-ui, sans-serif;

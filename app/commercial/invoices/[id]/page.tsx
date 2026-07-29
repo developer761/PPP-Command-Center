@@ -497,7 +497,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           back to the opp panel. Alex-love feature for staying in a
           single opp's billing story. */}
       {hasSiblings && opp && (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 text-[12px] text-ppp-charcoal-600">
             <span className="inline-flex items-center gap-1">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400">
@@ -527,7 +527,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/${prevSibling.id}`}
                 aria-label={`Previous invoice: ${prevSibling.invoice_number}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M15 18l-6-6 6-6" />
@@ -546,7 +546,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/${nextSibling.id}`}
                 aria-label={`Next invoice: ${nextSibling.invoice_number}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
               >
                 <span className="font-mono">{nextSibling.invoice_number.replace(/^(PPP-INV|INV)-/, "…")}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -619,7 +619,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       })()}
 
       {/* Hero */}
-      <header className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <header className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
         {/* In-hero "Invoices" back-link removed — the top Back button + the
             breadcrumb directly above already cover it (was a 3rd back path in
@@ -733,7 +733,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     </svg>
                     Delete all {siblingsForBulk.length}
                   </summary>
-                  <div className="absolute right-0 top-full mt-1.5 w-[calc(100vw-2rem)] max-w-xs bg-white border border-rose-200 rounded-lg shadow-lg p-3 z-10">
+                  <div className="absolute right-0 top-full mt-1.5 w-[calc(100vw-2rem)] max-w-xs bg-surface border border-rose-200 rounded-lg shadow-lg p-3 z-10">
                     <div className="text-[12px] text-ppp-charcoal-700 mb-2 leading-snug">
                       Permanently hide all <strong>{siblingsForBulk.length}</strong> invoice
                       {siblingsForBulk.length === 1 ? "" : "s"} attached to this deleted {scopeLabel}.
@@ -827,7 +827,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
       {/* Status actions */}
       {nextStatuses.length > 0 && !isVoid && (
-        <section className="bg-white border border-cc-brand-200 rounded-xl p-5 shadow-sm">
+        <section className="bg-surface border border-cc-brand-200 rounded-xl p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
             <div>
               <h2 className="text-sm font-bold text-ppp-charcoal">Status</h2>
@@ -845,7 +845,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                   type="submit"
                   className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors ${
                     s === "void"
-                      ? "border border-rose-200 text-rose-700 bg-white hover:bg-rose-50"
+                      ? "border border-rose-200 text-rose-700 bg-surface hover:bg-rose-50"
                       : "bg-cc-brand-600 text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30"
                   }`}
                 >
@@ -860,7 +860,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       {/* What this charge is for. Karan 2026-07-07: renamed from "Line
           items" — this platform's model is one bill per line, so "line
           items" reads as accountant-speak. Clearer plain-English name. */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <h2 className="text-sm font-bold text-ppp-charcoal">What this charge is for</h2>
@@ -964,7 +964,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       </section>
 
       {/* Payments */}
-      <section id="payments" className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 scroll-mt-4">
+      <section id="payments" className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 scroll-mt-4">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <h2 className="text-sm font-bold text-ppp-charcoal">Payments</h2>
@@ -1066,7 +1066,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           the due date or add a note. */}
       <details
         open={savedTarget === "details"}
-        className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 group/details"
+        className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 group/details"
       >
         <summary className="list-none cursor-pointer flex items-center justify-between gap-3 min-h-[36px]">
           <div>
@@ -1169,7 +1169,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       </details>
 
       {/* Status history */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Status history</h2>
         {statusLog.length === 0 ? (
           <p className="text-[12px] text-ppp-charcoal-500 italic">Nothing logged yet.</p>
@@ -1203,7 +1203,7 @@ function BigNumber({ label, value, sub, tone }: { label: string; value: string; 
   const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "emerald" ? "bg-emerald-500" : tone === "blue" ? "bg-ppp-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   const valueCls = tone === "rose" ? "text-rose-700" : tone === "emerald" ? "text-emerald-700" : "text-ppp-charcoal";
   return (
-    <div className="relative border border-ppp-charcoal-100 rounded-lg px-4 py-3 overflow-hidden bg-gradient-to-br from-white to-ppp-charcoal-50/40">
+    <div className="relative border border-ppp-charcoal-100 rounded-lg px-4 py-3 overflow-hidden bg-gradient-to-br from-surface to-ppp-charcoal-50/40">
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
       <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}

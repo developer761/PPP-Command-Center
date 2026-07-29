@@ -41,7 +41,7 @@ export function ProjectToolbar({
               className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap min-h-[44px] transition-colors ${
                 on
                   ? "bg-cc-brand-50 border border-cc-brand-300 text-cc-brand-800"
-                  : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800"
+                  : "bg-surface border border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800"
               }`}
             >
               {it.label}

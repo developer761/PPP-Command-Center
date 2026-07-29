@@ -171,7 +171,7 @@ export default function MentionTextarea({
         // text-base (16px) so iOS Safari doesn't auto-zoom on focus.
         // touch-manipulation lets long-press select work normally on
         // mobile without delayed click registration.
-        className={`w-full text-base px-3 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-white text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-cc-brand-600 focus:border-cc-brand-600 touch-manipulation min-h-[44px] ${className}`}
+        className={`w-full text-base px-3 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-surface text-ppp-charcoal focus:outline-none focus:ring-2 focus:ring-cc-brand-600 focus:border-cc-brand-600 touch-manipulation min-h-[44px] ${className}`}
       />
       {helperText && (
         <p className="mt-1 text-[11px] text-ppp-charcoal-500 leading-relaxed">
@@ -188,7 +188,7 @@ export default function MentionTextarea({
           // fix 2026-06-18: was "absolute" with document offsets,
           // which mispositioned the popup once the page was scrolled.
           style={{ top: popupTop, left: popupLeft, position: "fixed" }}
-          className="z-50 w-72 max-w-[calc(100vw-32px)] bg-white border border-ppp-charcoal-100 rounded-lg shadow-lg overflow-hidden max-h-[360px] overflow-y-auto"
+          className="z-50 w-72 max-w-[calc(100vw-32px)] bg-surface border border-ppp-charcoal-100 rounded-lg shadow-lg overflow-hidden max-h-[360px] overflow-y-auto"
         >
           {filtered.map((c, i) => (
             <li key={c.user_id}>
@@ -205,7 +205,7 @@ export default function MentionTextarea({
                 className={`block w-full text-left px-3 py-2.5 touch-manipulation min-h-[44px] ${
                   i === activeIdx
                     ? "bg-cc-brand-50 text-ppp-charcoal"
-                    : "bg-white text-ppp-charcoal-700 hover:bg-cc-brand-50"
+                    : "bg-surface text-ppp-charcoal-700 hover:bg-cc-brand-50"
                 } transition-colors`}
               >
                 <div className="text-sm font-medium truncate">

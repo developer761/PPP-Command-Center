@@ -53,20 +53,20 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
       <form className="flex items-center gap-2 flex-wrap" action="/commercial/projects">
         <div className="relative flex-1 min-w-[200px]">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.3-4.3" /></svg>
-          <input name="q" defaultValue={search} placeholder="Search projects…" className="w-full pl-9 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]" />
+          <input name="q" defaultValue={search} placeholder="Search projects…" className="w-full pl-9 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]" />
         </div>
         {includeClosed && <input type="hidden" name="closed" value="1" />}
         <button type="submit" className="px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">Search</button>
         <Link
           href={`/commercial/projects${includeClosed ? (search ? `?q=${encodeURIComponent(search)}` : "") : `?closed=1${search ? `&q=${encodeURIComponent(search)}` : ""}`}`}
-          className={`px-3 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] inline-flex items-center ${includeClosed ? "bg-cc-brand-50 border-cc-brand-300 text-cc-brand-800" : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
+          className={`px-3 py-2 rounded-lg border text-[12px] font-semibold min-h-[44px] inline-flex items-center ${includeClosed ? "bg-cc-brand-50 border-cc-brand-300 text-cc-brand-800" : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
         >
           {includeClosed ? "Hiding closed" : "Include closed"}
         </Link>
       </form>
 
       {projects.length === 0 ? (
-        <div className="text-center py-14 px-4 bg-white border border-ppp-charcoal-100 rounded-xl">
+        <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-400">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 20h20 M4 20V8l8-5 8 5v12 M9 20v-6h6v6" /></svg>
           </span>
@@ -121,7 +121,7 @@ function ProjectCard({ p }: { p: ProjectRow }) {
   const aiaHref = `/commercial/accounts/${p.accountId}/aia/${p.opp.id}`;
 
   return (
-    <li className="relative bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden hover:border-cc-brand-200 hover:shadow-md transition-all">
+    <li className="relative bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden hover:border-cc-brand-200 hover:shadow-md transition-all">
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${tone.stripe}`} />
 
       <div className="pl-5 pr-4 py-3.5">
@@ -182,7 +182,7 @@ function ProjectCard({ p }: { p: ProjectRow }) {
 
         {/* ── Status chips: AIA billing + change orders ── */}
         <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-ppp-charcoal-100 bg-white px-2 py-1 text-[11px]">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-ppp-charcoal-100 bg-surface px-2 py-1 text-[11px]">
             <span className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">AIA</span>
             {p.latestAppNumber != null ? (
               <span className="font-semibold text-ppp-charcoal-700">
@@ -192,7 +192,7 @@ function ProjectCard({ p }: { p: ProjectRow }) {
               <span className="text-ppp-charcoal-400">Not started</span>
             )}
           </span>
-          <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${p.pendingCoCount > 0 ? "border-amber-200 bg-amber-50/50" : "border-ppp-charcoal-100 bg-white"}`}>
+          <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${p.pendingCoCount > 0 ? "border-amber-200 bg-amber-50/50" : "border-ppp-charcoal-100 bg-surface"}`}>
             <span className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">COs</span>
             {p.pendingCoCount > 0 ? (
               <span className="font-semibold text-amber-700">{p.pendingCoCount} pending</span>

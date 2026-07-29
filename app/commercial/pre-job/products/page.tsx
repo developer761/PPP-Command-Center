@@ -175,7 +175,7 @@ export default async function ProductsCatalogPage({
       {/* Search + filter row */}
       <form
         method="GET"
-        className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row gap-2 flex-wrap"
+        className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row gap-2 flex-wrap"
       >
         <label className="flex-1 min-w-[180px]">
           <span className="sr-only">Search products</span>
@@ -184,7 +184,7 @@ export default async function ProductsCatalogPage({
             name="q"
             defaultValue={q}
             placeholder="Search SKU, name, or variation…"
-            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
           />
         </label>
         <label className="sm:w-40">
@@ -239,7 +239,7 @@ export default async function ProductsCatalogPage({
 
       {/* List — grouped by surface_area, variations nested under parents. */}
       {parents.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
           <p className="text-sm text-ppp-charcoal-500 mb-2">
             {q || category || surface
               ? "No products match those filters."
@@ -278,7 +278,7 @@ export default async function ProductsCatalogPage({
                     return (
                       <li
                         key={p.id}
-                        className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden"
+                        className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden"
                       >
                         <Link
                           href={`/commercial/pre-job/products/${p.id}`}
@@ -356,7 +356,7 @@ export default async function ProductsCatalogPage({
                                       <span className="text-[13px] font-medium text-ppp-charcoal group-hover:text-cc-brand-700 truncate">
                                         {v.variation_label ?? v.name}
                                       </span>
-                                      <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-ppp-charcoal-500 bg-white border border-ppp-charcoal-100 px-1.5 py-0.5 rounded font-mono">
+                                      <span className="inline-flex items-center text-[10px] font-bold tracking-widest uppercase text-ppp-charcoal-500 bg-surface border border-ppp-charcoal-100 px-1.5 py-0.5 rounded font-mono">
                                         {v.sku}
                                       </span>
                                       {!v.is_active && (

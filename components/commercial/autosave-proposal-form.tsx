@@ -161,7 +161,7 @@ function StatusPill({
       default:
         return [
           lastSavedAt ? `Saved ${formatRelative(lastSavedAt)}` : "",
-          "text-ppp-charcoal-600 bg-white border-ppp-charcoal-200",
+          "text-ppp-charcoal-600 bg-surface border-ppp-charcoal-200",
         ];
     }
   })();

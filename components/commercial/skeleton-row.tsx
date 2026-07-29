@@ -31,7 +31,7 @@ export function SkeletonRow({ lines = 2 }: { lines?: number }) {
 
 export function SkeletonList({ count = 4 }: { count?: number }) {
   return (
-    <ul className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+    <ul className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       {Array.from({ length: count }).map((_, i) => (
         <SkeletonRow key={i} />
       ))}

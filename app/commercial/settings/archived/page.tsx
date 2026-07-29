@@ -177,7 +177,7 @@ export default async function ArchivedDealsPage({
       ) : (
         <form action={unarchiveManyAction} className="space-y-3">
           {/* Bulk toolbar — sticky so it stays visible on long lists. */}
-          <div className="sticky top-0 z-10 -mx-4 sm:mx-0 bg-white/95 backdrop-blur px-4 sm:px-3 py-2 border-y sm:border sm:rounded-lg border-ppp-charcoal-100 flex items-center justify-between gap-3">
+          <div className="sticky top-0 z-10 -mx-4 sm:mx-0 bg-surface/95 backdrop-blur px-4 sm:px-3 py-2 border-y sm:border sm:rounded-lg border-ppp-charcoal-100 flex items-center justify-between gap-3">
             <span className="text-xs text-ppp-charcoal-500">
               {archived.length} archived deal{archived.length === 1 ? "" : "s"}
             </span>
@@ -293,7 +293,7 @@ export default async function ArchivedDealsPage({
               return (
                 <div
                   key={o.id}
-                  className="flex items-start gap-3 rounded-lg border border-ppp-charcoal-100 bg-white p-3"
+                  className="flex items-start gap-3 rounded-lg border border-ppp-charcoal-100 bg-surface p-3"
                 >
                   <input
                     type="checkbox"

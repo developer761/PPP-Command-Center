@@ -196,7 +196,7 @@ export default async function ExclusionsLibraryPage({
       {/* Toolbar */}
       <form
         method="get"
-        className="flex flex-wrap items-end gap-3 bg-white border border-ppp-charcoal-100 rounded-xl p-4"
+        className="flex flex-wrap items-end gap-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4"
       >
         <label className="flex-1 min-w-[200px]">
           <span className={LABEL_CLS}>Search</span>
@@ -246,7 +246,7 @@ export default async function ExclusionsLibraryPage({
       {isAdmin && (
         <form
           action={editing ? updateExclusionAction : createExclusionAction}
-          className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 space-y-3"
+          className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3"
         >
           {editing && <input type="hidden" name="id" value={editing.id} />}
           <div className="flex items-center gap-2 flex-wrap">
@@ -313,7 +313,7 @@ export default async function ExclusionsLibraryPage({
 
       {/* Rows */}
       {rows.length === 0 ? (
-        <div className="bg-white border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
+        <div className="bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
           <p className="text-sm text-ppp-charcoal-500">
             {q ? `No exclusions matched "${q}".` : "No exclusions in the library yet."}
           </p>
@@ -324,7 +324,7 @@ export default async function ExclusionsLibraryPage({
           )}
         </div>
       ) : (
-        <ul className="bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100">
+        <ul className="bg-surface border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100">
           {rows.map((r) => (
             <li key={r.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 hover:bg-ppp-charcoal-50 group">
               <span

@@ -110,7 +110,7 @@ function EditorSection({
   return (
     <section
       id={id}
-      className={`bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm scroll-mt-24 ${className}`}
+      className={`bg-surface border border-ppp-charcoal-200 rounded-xl overflow-hidden shadow-sm scroll-mt-24 ${className}`}
     >
       <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/40">
         <div className="flex items-start gap-2.5 min-w-0">
@@ -745,7 +745,7 @@ export default async function ProposalEditorPage({
           and Send/PDF actions stay reachable while scrolling the long form.
           NOT sticky on mobile — the buttons wrap into a tall block that
           would eat a 375px viewport if pinned. */}
-      <header className="sm:sticky sm:top-2 z-20 bg-white/95 backdrop-blur-sm border border-ppp-charcoal-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap shadow-md shadow-ppp-charcoal-900/5">
+      <header className="sm:sticky sm:top-2 z-20 bg-surface/95 backdrop-blur-sm border border-ppp-charcoal-200 rounded-xl p-4 flex items-center justify-between gap-3 flex-wrap shadow-md shadow-ppp-charcoal-900/5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="text-[11px] font-bold text-ppp-charcoal-500 uppercase tracking-widest tabular-nums">
@@ -764,7 +764,7 @@ export default async function ProposalEditorPage({
                 PROP-{String(proposal.proposal_seq).padStart(4, "0")}
               </span>
             )}
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200">
               {proposalStatusLabel(proposal.status)}
             </span>
             <span className="inline-flex items-baseline gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5">
@@ -821,7 +821,7 @@ export default async function ProposalEditorPage({
                 }
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
                 title="Customer proposal — what the GC sees. No internal bid notes or per-line prices."
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -851,7 +851,7 @@ export default async function ProposalEditorPage({
               quote after seeing R{n}. Now labeled with what it does. */}
           <Link
             href={`/commercial/accounts/${accountId}/deals/${dealId}/proposal/new?bump=${proposalId}`}
-            className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
+            className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[36px]"
             title={`Start R${proposal.revision_number + 1} as a fresh draft, copying all this revision's fields as a starting point. Use when the customer wants a revised quote.`}
           >
             + New revision (R{proposal.revision_number + 1})
@@ -882,7 +882,7 @@ export default async function ProposalEditorPage({
               <ConfirmSubmitButton
                 message={`Reopen R${proposal.revision_number}? Flips this proposal back to Sent AND (if the parent opportunity is still at Pre-Sale Closed) flips the opportunity back to Proposal · Sent. Use this if you marked ${proposal.status.toUpperCase()} by mistake.`}
                 pendingLabel="Reopening…"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-white text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-300 bg-surface text-cc-brand-700 text-[13px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M3 2v6h6 M3.5 8a9 9 0 1 0 2.3-3.3L3 8" />
@@ -918,7 +918,7 @@ export default async function ProposalEditorPage({
                 <ConfirmSubmitButton
                   message={`Mark R${proposal.revision_number} LOST? You'll be routed to the debrief page to capture the reason (competitor won / price / no response / etc.). This also flips the opportunity to Pre-Sale Closed · Lost.`}
                   pendingLabel="Marking lost…"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-300 bg-white text-rose-700 text-[13px] font-semibold hover:bg-rose-50 min-h-[40px] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-300 bg-surface text-rose-700 text-[13px] font-semibold hover:bg-rose-50 min-h-[40px] disabled:opacity-50"
                 >
                   Mark lost
                 </ConfirmSubmitButton>
@@ -1389,7 +1389,7 @@ function LineItemsTable({
         <li key={r.id}>
           <form
             action={updateAction}
-            className="rounded-xl border border-ppp-charcoal-200 bg-white p-4 space-y-3 shadow-sm"
+            className="rounded-xl border border-ppp-charcoal-200 bg-surface p-4 space-y-3 shadow-sm"
           >
             <input type="hidden" name="account_id" value={accountId} />
             <input type="hidden" name="deal_id" value={dealId} />

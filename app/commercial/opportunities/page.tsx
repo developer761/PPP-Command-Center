@@ -890,7 +890,7 @@ export default async function CommercialOpportunitiesPage({
 
       {/* ─── Toolbar: single row. Search + View toggle + Filter popover
           + Sort popover + Export + Clear. ─── */}
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
         <form className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[200px]">
             <svg
@@ -907,7 +907,7 @@ export default async function CommercialOpportunitiesPage({
               type="search"
               defaultValue={search ?? ""}
               placeholder="Search opportunities by title…"
-              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
+              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
             />
           </div>
           {validStatus && <input type="hidden" name="status" value={validStatus} />}
@@ -923,7 +923,7 @@ export default async function CommercialOpportunitiesPage({
           {/* View toggle — segmented control. Customer-first is the
               default (Karan 2026-07-08 Batch 1c). Kanban + List remain
               as opt-in alternate views for deal-first workflows. */}
-          <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden shrink-0">
+          <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-surface overflow-hidden shrink-0">
             <Link
               href={viewToggleHref("customer")}
               className={`px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center gap-1.5 touch-manipulation ${
@@ -978,7 +978,7 @@ export default async function CommercialOpportunitiesPage({
               className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                 activeFilterCount > 0
                   ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
-                  : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                  : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -987,7 +987,7 @@ export default async function CommercialOpportunitiesPage({
               <span>Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</span>
               <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
             </summary>
-            <div className="absolute right-0 sm:right-auto mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[320px] max-w-[calc(100vw-1rem)] max-h-[75vh] overflow-y-auto space-y-3">
+            <div className="absolute right-0 sm:right-auto mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[320px] max-w-[calc(100vw-1rem)] max-h-[75vh] overflow-y-auto space-y-3">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
                   Priority
@@ -1042,7 +1042,7 @@ export default async function CommercialOpportunitiesPage({
               className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                 sortChanged
                   ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
-                  : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                  : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1052,7 +1052,7 @@ export default async function CommercialOpportunitiesPage({
               <span className="max-w-[140px] truncate">{currentSortLabel}</span>
               <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
             </summary>
-            <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[260px] max-w-[calc(100vw-1rem)]">
+            <div className="absolute right-0 mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[260px] max-w-[calc(100vw-1rem)]">
               <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 pt-2 pb-1">
                 Sort by
               </div>
@@ -1072,7 +1072,7 @@ export default async function CommercialOpportunitiesPage({
           {/* Export CSV — takes the same params as the visible list. */}
           <a
             href={exportHref}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
             title="Download the current filter view as CSV"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1086,7 +1086,7 @@ export default async function CommercialOpportunitiesPage({
               // Preserve view mode when clearing filters — dropping filters
               // shouldn't yank the user from list view back to kanban default.
               href={viewMode === "list" ? "/commercial/opportunities?view=list" : "/commercial/opportunities"}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M18 6L6 18 M6 6l12 12" />
@@ -1123,7 +1123,7 @@ export default async function CommercialOpportunitiesPage({
       {/* ─── Status snapshot (list mode only — kanban columns ARE the
           snapshot) ─── */}
       {viewMode === "list" && statusSnapshot.length > 0 && (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3">
           <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2 flex items-center justify-between">
             <span>Open by status</span>
             <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal text-[10px]">
@@ -1140,7 +1140,7 @@ export default async function CommercialOpportunitiesPage({
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[44px] sm:min-h-[36px] touch-manipulation transition-colors ${
                     isActive
                       ? "bg-cc-brand-600 border-cc-brand-700 text-white"
-                      : "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                      : "bg-surface border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
                   }`}
                   title={isActive ? `Showing only ${opportunityStatusLabel(r.status)} — tap to clear` : `Filter to ${opportunityStatusLabel(r.status)}`}
                 >
@@ -1158,7 +1158,7 @@ export default async function CommercialOpportunitiesPage({
 
       {/* ─── List / Kanban / Empty ─── */}
       {opps.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-12 text-center">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-12 text-center">
           <div aria-hidden className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-4">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
@@ -1187,7 +1187,7 @@ export default async function CommercialOpportunitiesPage({
           ) : (
             <Link
               href="/commercial/opportunities"
-              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
+              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
             >
               Clear all filters
             </Link>
@@ -1236,7 +1236,7 @@ export default async function CommercialOpportunitiesPage({
             }
           }
           return (
-            <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold text-ppp-charcoal">
@@ -1276,7 +1276,7 @@ export default async function CommercialOpportunitiesPage({
                   return (
                   <li
                     key={g.accountId}
-                    className="bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden border-l-4"
+                    className="bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden border-l-4"
                     style={tone.border}
                   >
                     {/* Karan 2026-07-15 (round 6): each account is a
@@ -1315,13 +1315,13 @@ export default async function CommercialOpportunitiesPage({
                             </span>
                           )}
                           {g.account.industry && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 shrink-0">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 shrink-0">
                               {g.account.industry}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-white border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-surface border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
                             {g.opps.length} deal{g.opps.length === 1 ? "" : "s"}
                           </span>
                           <svg
@@ -1430,7 +1430,7 @@ function NewDealSlideOut({
       />
       <aside
         id="new-deal-sheet"
-        className="fixed right-0 top-0 bottom-0 z-50 w-full sm:max-w-md bg-white shadow-2xl flex flex-col"
+        className="fixed right-0 top-0 bottom-0 z-50 w-full sm:max-w-md bg-surface shadow-2xl flex flex-col"
         aria-label="Create a new opportunity"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-ppp-charcoal-100">
@@ -1685,7 +1685,7 @@ function CustomerBoard({
     });
 
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-bold text-ppp-charcoal">
@@ -1784,7 +1784,7 @@ function CustomerBoardRow({
                 </span>
               )}
               {account.industry && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border bg-white text-ppp-charcoal-700 border-ppp-charcoal-200">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200">
                   {account.industry}
                 </span>
               )}
@@ -1813,7 +1813,7 @@ function CustomerBoardRow({
                   daysAgo !== null && daysAgo <= 1
                     ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                     : daysAgo !== null && daysAgo <= 7
-                      ? "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200"
+                      ? "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200"
                       : "bg-amber-50 text-amber-800 border-amber-200"
                 }`}
                 title={latestUpdate ? new Date(latestUpdate).toLocaleString() : undefined}
@@ -1832,7 +1832,7 @@ function CustomerBoardRow({
             GoHighLevel-style sheet with team + invoices + progress. */}
         <Link
           href={sheetHref(account.id)}
-          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-700 min-h-[36px] touch-manipulation transition-colors"
+          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-700 min-h-[36px] touch-manipulation transition-colors"
           title={`Quick view of ${account.company_name}`}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1864,7 +1864,7 @@ function CustomerBoardRow({
               <Link
                 key={o.id}
                 href={sheetHref(account.id, o.id)}
-                className="group/deal flex items-center gap-3 px-2.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-white hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
+                className="group/deal flex items-center gap-3 px-2.5 py-2 rounded-lg border border-ppp-charcoal-100 bg-surface hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
                 title={`View ${account.company_name} · ${derivedOppName(o, account.company_name)} — ${opportunityStatusLabel(o.status)}`}
               >
                 {/* 2026-07-28 audit: lead with the deal name (primary), a
@@ -1912,7 +1912,7 @@ function CustomerBoardRow({
               {closed.length > 3 && (
                 <Link
                   href={`/commercial/accounts/${account.id}`}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-white text-ppp-charcoal-500 text-[11px] font-medium hover:bg-ppp-charcoal-50"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-surface text-ppp-charcoal-500 text-[11px] font-medium hover:bg-ppp-charcoal-50"
                   title={`See all ${closed.length} closed deals`}
                 >
                   +{closed.length - 3} more closed
@@ -2114,43 +2114,43 @@ function KanbanBoard({
     qualifying: {
       label: "Qualifying",
       accent: "bg-ppp-charcoal-400",
-      head: "bg-white",
+      head: "bg-surface",
       empty: "Drop a bid here",
     },
     estimating: {
       label: "Estimating",
       accent: "bg-ppp-blue-400",
-      head: "bg-white",
+      head: "bg-surface",
       empty: "Drop while we're pricing",
     },
     proposal_drafted: {
       label: "Proposal Drafted",
       accent: "bg-ppp-blue-500",
-      head: "bg-white",
+      head: "bg-surface",
       empty: "Drop when the proposal is ready",
     },
     proposal_sent: {
       label: "Proposal Sent",
       accent: "bg-ppp-blue-600",
-      head: "bg-white",
+      head: "bg-surface",
       empty: "Drop once the proposal is out to GC",
     },
     pre_construction: {
       label: "Pre-Construction",
       accent: "bg-emerald-400",
-      head: "bg-white",
+      head: "bg-surface",
       empty: "Drop when scheduling with GC",
     },
     in_progress: {
       label: "In Progress",
       accent: "bg-emerald-500",
-      head: "bg-white",
+      head: "bg-surface",
       empty: "Drop when crews start",
     },
     billing: {
       label: "Billing",
       accent: "bg-emerald-600",
-      head: "bg-white",
+      head: "bg-surface",
       empty: "Drop when we're closing out",
     },
   };
@@ -2175,7 +2175,7 @@ function KanbanBoard({
   return (
     <KanbanDnDProvider>
       <div className="space-y-3">
-        <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-white border border-ppp-charcoal-100 rounded-full px-3 py-1.5">
+        <div className="inline-flex items-center gap-2 text-[11px] text-ppp-charcoal-600 bg-surface border border-ppp-charcoal-100 rounded-full px-3 py-1.5">
           <IconBulb size={13} className="text-ppp-navy-500 shrink-0" />
           <span>
             <span className="hidden sm:inline">Drag between stages inside a customer to move an opportunity. Drop into <strong>Won / Lost</strong> to close.</span>
@@ -2196,7 +2196,7 @@ function KanbanBoard({
         <details
           key={acct.accountId}
           open
-          className="group/acct border border-ppp-charcoal-200 bg-white rounded-xl overflow-hidden border-l-4 shadow-sm"
+          className="group/acct border border-ppp-charcoal-200 bg-surface rounded-xl overflow-hidden border-l-4 shadow-sm"
           style={acctTone.border}
         >
           <summary
@@ -2256,7 +2256,7 @@ function KanbanBoard({
               const meta = COLUMN_META[status] ?? {
                 label: opportunityStatusLabel(status as OpportunityStatus),
                 accent: "bg-ppp-charcoal-300",
-                head: "bg-white",
+                head: "bg-surface",
                 empty: "Drop a bid here",
               };
               // Karan 2026-07-15: bring back the Pre-Sale / Post-Sale
@@ -2281,7 +2281,7 @@ function KanbanBoard({
               ) : null;
               const column = (
                 <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
-                  <div className="w-60 sm:w-64 shrink-0 snap-start border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-white shadow-sm">
+                  <div className="w-60 sm:w-64 shrink-0 snap-start border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-surface shadow-sm">
                     {/* Colored accent stripe on top — the whole card is
                         white; only the 3px stripe carries the stage
                         tone, so a row of 7 columns reads as a unified
@@ -2339,9 +2339,9 @@ function KanbanBoard({
                 emerald/rose stripe on top of each sub-column. Reads as
                 a single Closed section rather than two loud tinted
                 boxes shouting for attention. */}
-            <div className="shrink-0 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-white shadow-sm">
+            <div className="shrink-0 border border-ppp-charcoal-100 rounded-xl overflow-hidden flex flex-col h-full bg-surface shadow-sm">
               <div className="h-1 bg-ppp-charcoal-300" aria-hidden />
-              <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-white">
+              <div className="px-3 py-2 border-b border-ppp-charcoal-100 bg-surface">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[12px] font-bold text-ppp-charcoal tracking-tight">
                     Closed
@@ -2365,9 +2365,9 @@ function KanbanBoard({
                       : "bg-ppp-charcoal-400";
                   return (
                     <KanbanDnDColumn key={status} status={status} boundToAccountId={acct.accountId}>
-                      <div className="w-full sm:w-44 lg:w-48 shrink-0 border border-ppp-charcoal-100 rounded-lg overflow-hidden flex flex-col h-full bg-white">
+                      <div className="w-full sm:w-44 lg:w-48 shrink-0 border border-ppp-charcoal-100 rounded-lg overflow-hidden flex flex-col h-full bg-surface">
                         <div className={`h-0.5 ${accent}`} aria-hidden />
-                        <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-white">
+                        <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-surface">
                           <div className="flex items-center justify-between gap-1">
                             <span className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal">
                               {opportunityStatusLabel(status as OpportunityStatus)}
@@ -2414,13 +2414,13 @@ function KanbanBoard({
           );
         })}
         {accountBuckets.length === 0 && (
-          <div className="bg-white border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
+          <div className="bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
             <p className="text-[13px] font-semibold text-ppp-charcoal">No open opportunities yet.</p>
             <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">Add an opportunity above to start populating the pipeline.</p>
           </div>
         )}
         {globalOverflow.length > 0 && (
-          <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+          <details className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
             <summary className="px-4 py-2.5 cursor-pointer text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
               <span>Older decided deals · {globalOverflow.length}</span>
               <span aria-hidden className="text-ppp-charcoal-400">▾</span>
@@ -2505,7 +2505,7 @@ function KanbanCard({
 
   if (compact) {
     return (
-      <li className="bg-white border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
+      <li className="bg-surface border border-ppp-charcoal-100 rounded-md p-1.5 hover:border-ppp-charcoal-200 transition-colors">
         <Link href={sheetHref(opp.account_id, opp.id)} className="block">
           {oppCode && (
             <div className="text-[9px] font-mono text-ppp-navy-600 mb-0.5">
@@ -2528,7 +2528,7 @@ function KanbanCard({
     );
   }
   return (
-    <li className="bg-white border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 hover:shadow-sm transition-all">
+    <li className="bg-surface border border-ppp-charcoal-100 rounded-lg p-2.5 hover:border-ppp-charcoal-200 hover:shadow-sm transition-all">
       <Link
         href={sheetHref(opp.account_id, opp.id)}
         className="block"
@@ -2717,7 +2717,7 @@ function KpiCard({
   const t = toneMap[tone] ?? toneMap.neutral;
   return (
     <div
-      className={`group/kpi relative bg-white border ${t.border} rounded-xl px-4 py-3.5 overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all`}
+      className={`group/kpi relative bg-surface border ${t.border} rounded-xl px-4 py-3.5 overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all`}
     >
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${t.stripe}`} />
       <span
@@ -2817,7 +2817,7 @@ function FilterOption({
     >
       <span
         className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
-          active ? "bg-cc-brand-600 border-cc-brand-700 text-white" : "bg-white border-ppp-charcoal-300 text-transparent"
+          active ? "bg-cc-brand-600 border-cc-brand-700 text-white" : "bg-surface border-ppp-charcoal-300 text-transparent"
         }`}
         aria-hidden
       >
@@ -3337,7 +3337,7 @@ function StageChip({
             ? currentPillCls
             : isPast
               ? "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200"
-              : "bg-white text-ppp-charcoal-400 border-ppp-charcoal-200";
+              : "bg-surface text-ppp-charcoal-400 border-ppp-charcoal-200";
           const connectorCls = isPast
             ? "bg-ppp-charcoal-300"
             : "bg-ppp-charcoal-200 opacity-60";
@@ -3485,7 +3485,7 @@ function CustomerQuickSheet({
       {/* Sheet — right-aligned slide-out. Wider than deal peek (480px)
           because it carries more content: team, financials, invoices,
           deals. Full width on mobile. */}
-      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-white border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-surface border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
         {/* Header — company name + close + right-aligned View Account CTA
             per user's explicit ask ("top right of the sheet it says view
             full account button and brings the user to the account"). */}
@@ -3587,7 +3587,7 @@ function CustomerQuickSheet({
               Financials
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-lg border border-ppp-charcoal-100 bg-white px-2.5 py-2">
+              <div className="rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-2">
                 <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Invoiced</div>
                 <div className="text-sm font-bold text-ppp-charcoal mt-0.5">{formatCentsFull(rollup.invoiced_cents)}</div>
               </div>
@@ -3595,7 +3595,7 @@ function CustomerQuickSheet({
                 <div className="text-[9.5px] text-emerald-800 font-medium uppercase tracking-wide">Paid</div>
                 <div className="text-sm font-bold text-emerald-800 mt-0.5">{formatCentsFull(rollup.paid_cents)}</div>
               </div>
-              <div className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-white"}`}>
+              <div className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-surface"}`}>
                 <div className={`text-[9.5px] font-medium uppercase tracking-wide ${rollup.overdue_count > 0 ? "text-rose-800" : "text-ppp-charcoal-500"}`}>Balance</div>
                 <div className={`text-sm font-bold mt-0.5 ${rollup.overdue_count > 0 ? "text-rose-900" : "text-ppp-charcoal"}`}>{formatCentsFull(rollup.balance_cents)}</div>
               </div>
@@ -3699,7 +3699,7 @@ function CustomerQuickSheet({
                     <li
                       key={d.id}
                       className={`rounded-lg border px-3 py-2 ${
-                        isFocused ? "border-cc-brand-300 bg-cc-brand-50/40 ring-1 ring-cc-brand-200" : "border-ppp-charcoal-100 bg-white"
+                        isFocused ? "border-cc-brand-300 bg-cc-brand-50/40 ring-1 ring-cc-brand-200" : "border-ppp-charcoal-100 bg-surface"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">

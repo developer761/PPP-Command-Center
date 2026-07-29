@@ -250,7 +250,7 @@ function VersionBumpSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="version-sheet-title"
-        className="fixed inset-y-0 right-0 w-full sm:w-[440px] bg-white shadow-2xl z-50 flex flex-col animate-in slide-in-from-right"
+        className="fixed inset-y-0 right-0 w-full sm:w-[440px] bg-surface shadow-2xl z-50 flex flex-col animate-in slide-in-from-right"
       >
         <header className="px-5 py-4 border-b border-ppp-charcoal-100 flex items-center justify-between shrink-0">
           <div className="min-w-0">
@@ -305,7 +305,7 @@ function VersionBumpSheet({
               rows={3}
               maxLength={500}
               placeholder="e.g. Revised per RFI-14 responses."
-              className="block w-full rounded-md border border-ppp-charcoal-200 bg-white px-2.5 py-1.5 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 focus:border-cc-brand-500 min-h-[80px] resize-y"
+              className="block w-full rounded-md border border-ppp-charcoal-200 bg-surface px-2.5 py-1.5 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 focus:border-cc-brand-500 min-h-[80px] resize-y"
             />
           </label>
 

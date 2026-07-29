@@ -42,28 +42,28 @@ const VARIANT_STYLES: Record<
 > = {
   info: {
     stripe: "bg-blue-500",
-    tint: "bg-gradient-to-br from-white to-blue-50/40",
+    tint: "bg-gradient-to-br from-surface to-blue-50/40",
     iconWrap: "bg-blue-100",
     iconColor: "text-blue-700",
     text: "text-ppp-charcoal",
   },
   warn: {
     stripe: "bg-amber-500",
-    tint: "bg-gradient-to-br from-white to-amber-50/50",
+    tint: "bg-gradient-to-br from-surface to-amber-50/50",
     iconWrap: "bg-amber-100",
     iconColor: "text-amber-700",
     text: "text-ppp-charcoal",
   },
   success: {
     stripe: "bg-emerald-500",
-    tint: "bg-gradient-to-br from-white to-emerald-50/40",
+    tint: "bg-gradient-to-br from-surface to-emerald-50/40",
     iconWrap: "bg-emerald-100",
     iconColor: "text-emerald-700",
     text: "text-ppp-charcoal",
   },
   danger: {
     stripe: "bg-rose-500",
-    tint: "bg-gradient-to-br from-white to-rose-50/40",
+    tint: "bg-gradient-to-br from-surface to-rose-50/40",
     iconWrap: "bg-rose-100",
     iconColor: "text-rose-700",
     text: "text-ppp-charcoal",

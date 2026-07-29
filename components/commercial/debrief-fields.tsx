@@ -252,7 +252,7 @@ function FactorButtonGrid({
               className={`px-3 py-2.5 rounded-lg text-[13px] font-semibold border transition-all min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 ${
                 active
                   ? "bg-cc-brand-600 text-white border-cc-brand-600 shadow-sm shadow-cc-brand-600/25"
-                  : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 hover:text-cc-brand-700"
+                  : "bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 hover:text-cc-brand-700"
               }`}
               aria-pressed={active}
             >
@@ -364,7 +364,7 @@ function CompetitorTypeahead({
         <p className="text-[10px] text-amber-700 mt-1">{fuzzyHint}</p>
       )}
       {open && (query.length > 0 || suggestions.length > 0) && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
           {loading && suggestions.length === 0 ? (
             <div className="px-3 py-2 text-[12px] text-ppp-charcoal-500">Searching…</div>
           ) : suggestions.length === 0 ? (

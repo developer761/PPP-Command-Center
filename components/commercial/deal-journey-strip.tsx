@@ -53,7 +53,7 @@ function stagePillCls(state: StageState, laneTone: "pre" | "post"): string {
   if (state === "complete") {
     return "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   }
-  return "bg-white text-ppp-charcoal-400 border-ppp-charcoal-200";
+  return "bg-surface text-ppp-charcoal-400 border-ppp-charcoal-200";
 }
 
 function connectorCls(state: StageState): string {

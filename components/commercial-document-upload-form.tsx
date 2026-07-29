@@ -182,7 +182,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
   };
 
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
       <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Upload document</h2>
 
       {error && (
@@ -325,7 +325,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
                     className={`flex-1 px-2 py-2 rounded-lg text-[12px] font-medium border transition-colors min-h-[40px] touch-manipulation ${
                       active
                         ? "bg-emerald-600 text-white border-emerald-600"
-                        : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+                        : "bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
                     }`}
                   >
                     {o.label}
@@ -377,7 +377,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
             <button
               type="button"
               onClick={handleCancel}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-200 bg-white text-rose-700 text-sm font-medium hover:bg-rose-50 hover:border-rose-300 min-h-[44px] sm:min-h-0 touch-manipulation"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-200 bg-surface text-rose-700 text-sm font-medium hover:bg-rose-50 hover:border-rose-300 min-h-[44px] sm:min-h-0 touch-manipulation"
             >
               Cancel
             </button>

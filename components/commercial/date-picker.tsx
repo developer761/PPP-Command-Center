@@ -159,7 +159,7 @@ export default function DatePicker({
         <div
           role="dialog"
           aria-label="Date picker"
-          className="absolute z-50 mt-2 w-[288px] max-w-[92vw] bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3"
+          className="absolute z-50 mt-2 w-[288px] max-w-[92vw] bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-3"
         >
           <div className="flex items-center justify-between mb-2">
             <button

@@ -263,14 +263,14 @@ export function ExclusionPicker({
           onBlur={() => setTimeout(() => setOpen(false), 120)}
           onKeyDown={handleKeyDown}
           placeholder="Search library exclusions…"
-          className="w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
+          className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
         />
 
         {open && (results.length > 0 || (allowInlineAdd && query.trim())) && (
           <ul
             id={listboxId}
             role="listbox"
-            className="absolute z-30 top-full mt-1 w-full max-h-72 overflow-y-auto bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg divide-y divide-ppp-charcoal-100"
+            className="absolute z-30 top-full mt-1 w-full max-h-72 overflow-y-auto bg-surface border border-ppp-charcoal-200 rounded-lg shadow-lg divide-y divide-ppp-charcoal-100"
           >
             {loading && results.length === 0 && (
               <li className="px-3 py-2 text-[12px] text-ppp-charcoal-500 italic">Searching…</li>
@@ -358,7 +358,7 @@ export function ExclusionPicker({
           <ul className="flex flex-wrap gap-1.5">
             {customLines.map((line, i) => (
               <li key={`${i}-${line}`}>
-                <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-[12px] border bg-white text-amber-900 border-amber-300">
+                <span className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md text-[12px] border bg-surface text-amber-900 border-amber-300">
                   <span className="truncate max-w-[260px]" title={line}>
                     {line}
                   </span>
@@ -396,7 +396,7 @@ export function ExclusionPicker({
               }
             }}
             placeholder="Type a one-off exclusion and hit Enter…"
-            className="flex-1 px-3 py-2 text-base sm:text-sm bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 min-h-[44px]"
+            className="flex-1 px-3 py-2 text-base sm:text-sm bg-surface border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 min-h-[44px]"
           />
           <button
             type="button"

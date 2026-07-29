@@ -72,7 +72,7 @@ export default function AddNotificationRuleForm({
   return (
     <form
       action={action}
-      className="rounded-xl border border-ppp-charcoal-100 bg-white p-4 sm:p-5 space-y-5"
+      className="rounded-xl border border-ppp-charcoal-100 bg-surface p-4 sm:p-5 space-y-5"
     >
       <input type="hidden" name="trigger" value={trigger} />
       <input type="hidden" name="channel" value={channel} />
@@ -100,7 +100,7 @@ export default function AddNotificationRuleForm({
           required
           maxLength={80}
           placeholder="e.g. Chase invoices 15 days past due"
-          className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px]"
+          className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px]"
         />
       </label>
 
@@ -124,7 +124,7 @@ export default function AddNotificationRuleForm({
                       className={`flex items-start gap-2.5 text-left rounded-xl border px-3 py-2.5 min-h-[44px] transition-colors touch-manipulation ${
                         active
                           ? "border-cc-brand-500 bg-cc-brand-50 ring-1 ring-cc-brand-500"
-                          : "border-ppp-charcoal-200 bg-white hover:bg-ppp-charcoal-50"
+                          : "border-ppp-charcoal-200 bg-surface hover:bg-ppp-charcoal-50"
                       }`}
                     >
                       <span className={`mt-0.5 shrink-0 ${active ? "text-cc-brand-700" : "text-ppp-charcoal-400"}`}>
@@ -157,7 +157,7 @@ export default function AddNotificationRuleForm({
               value={days}
               onChange={(e) => setDays(Number(e.target.value) || 0)}
               inputMode="numeric"
-              className="w-24 px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px] tabular-nums"
+              className="w-24 px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px] tabular-nums"
             />
             <span className="text-[13px] text-ppp-charcoal-500">{meta.thresholdNoun}</span>
           </div>
@@ -179,7 +179,7 @@ export default function AddNotificationRuleForm({
                 onClick={() => setChannel(c)}
                 aria-pressed={active}
                 className={`flex-1 sm:flex-none inline-flex items-center justify-center rounded-lg px-3.5 min-h-[40px] text-[13px] font-semibold transition-colors touch-manipulation ${
-                  active ? "bg-white text-cc-brand-700 shadow-sm" : "text-ppp-charcoal-500 hover:text-ppp-charcoal-700"
+                  active ? "bg-surface text-cc-brand-700 shadow-sm" : "text-ppp-charcoal-500 hover:text-ppp-charcoal-700"
                 }`}
               >
                 {CHANNEL_SHORT[c]}

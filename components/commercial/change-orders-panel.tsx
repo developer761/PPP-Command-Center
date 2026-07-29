@@ -126,7 +126,7 @@ export async function ChangeOrdersPanel({
       ) : null}
 
       {/* ── Summary strip — the running contract picture ── */}
-      <section className="bg-gradient-to-br from-cc-brand-50/60 to-white border border-cc-brand-100 rounded-xl p-4 sm:p-5">
+      <section className="bg-gradient-to-br from-cc-brand-50/60 to-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5">
         <div className="flex items-center gap-2 mb-3">
           <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-600 text-white">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -166,7 +166,7 @@ export async function ChangeOrdersPanel({
       </section>
 
       {/* ── Add + list ── */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         {/* When there are no change orders yet, a big empty block left the
             page mostly white — open the add form so the page is immediately
             usable + a compact one-line intro instead of a tall empty state. */}
@@ -297,7 +297,7 @@ export async function ChangeOrdersPanel({
                                   <input type="hidden" name="account_id" value={accountId} />
                                   <input type="hidden" name="co_id" value={co.id} />
                                   <input type="hidden" name="decision" value="declined" />
-                                  <PendingSubmitButton pendingLabel="Declining…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 bg-white text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px]">Decline</PendingSubmitButton>
+                                  <PendingSubmitButton pendingLabel="Declining…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 bg-surface text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px]">Decline</PendingSubmitButton>
                                 </form>
                                 <Link href={`${basePath}?edit_co=${co.id}`} className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Edit</Link>
                               </>
@@ -326,7 +326,7 @@ export async function ChangeOrdersPanel({
                                 <input type="hidden" name="account_id" value={accountId} />
                                 <input type="hidden" name="co_id" value={co.id} />
                                 <input type="hidden" name="decision" value="approved" />
-                                <PendingSubmitButton pendingLabel="Reopening…" className="inline-flex items-center px-3 py-1.5 rounded-lg border border-emerald-200 bg-white text-[12px] font-semibold text-emerald-700 hover:bg-emerald-50 min-h-[44px]">Reopen &amp; approve</PendingSubmitButton>
+                                <PendingSubmitButton pendingLabel="Reopening…" className="inline-flex items-center px-3 py-1.5 rounded-lg border border-emerald-200 bg-surface text-[12px] font-semibold text-emerald-700 hover:bg-emerald-50 min-h-[44px]">Reopen &amp; approve</PendingSubmitButton>
                               </form>
                             )}
                             <form action={deleteAction} className="ml-auto">
@@ -378,7 +378,7 @@ function SummaryTile({
       ? "text-cc-brand-800"
       : "text-ppp-charcoal";
   return (
-    <div className={`rounded-lg border px-2.5 py-2 ${emphasize ? "border-cc-brand-300 bg-white" : "border-ppp-charcoal-100 bg-white/70"}`}>
+    <div className={`rounded-lg border px-2.5 py-2 ${emphasize ? "border-cc-brand-300 bg-surface" : "border-ppp-charcoal-100 bg-surface/70"}`}>
       <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
       <div className={`font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 ${valueCls}`}>{value}</div>
       {hint && <div className="text-[10px] text-amber-700 mt-0.5">{hint}</div>}

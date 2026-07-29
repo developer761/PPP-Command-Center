@@ -250,7 +250,7 @@ export default async function CompetitorsAdminPage({
       )}
 
       {/* Add new */}
-      <section className="mb-6 bg-white border border-ppp-charcoal-100 rounded-xl p-4">
+      <section className="mb-6 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
         <h2 className="text-sm font-semibold text-ppp-charcoal mb-3">
           Add a competitor
         </h2>
@@ -261,7 +261,7 @@ export default async function CompetitorsAdminPage({
             placeholder="e.g. ABC Painting"
             required
             maxLength={200}
-            className="flex-1 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-600 min-h-[44px]"
+            className="flex-1 px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-600 min-h-[44px]"
           />
           <button
             type="submit"
@@ -293,7 +293,7 @@ export default async function CompetitorsAdminPage({
       )}
 
       {/* Active competitors */}
-      <section className="mb-6 bg-white border border-ppp-charcoal-100 rounded-xl p-4">
+      <section className="mb-6 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
         <div className="flex items-baseline justify-between mb-3 gap-3">
           <h2 className="text-sm font-semibold text-ppp-charcoal">
             Active ({active.length})
@@ -404,7 +404,7 @@ export default async function CompetitorsAdminPage({
       </section>
 
       {inactive.length > 0 && (
-        <section className="mb-6 bg-white border border-ppp-charcoal-100 rounded-xl p-4">
+        <section className="mb-6 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
           <h2 className="text-sm font-semibold text-ppp-charcoal mb-3">
             Retired ({inactive.length})
           </h2>
@@ -429,7 +429,7 @@ export default async function CompetitorsAdminPage({
       )}
 
       {merged.length > 0 && (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
           <h2 className="text-sm font-semibold text-ppp-charcoal mb-3">
             Merged ({merged.length})
           </h2>
@@ -457,7 +457,7 @@ function RenameForm({ competitorId, currentName }: { competitorId: string; curre
       <summary className="cursor-pointer list-none text-xs font-medium px-3 py-2 rounded-md border border-ppp-charcoal-200 text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px] inline-flex items-center select-none">
         Rename
       </summary>
-      <form action={renameAction} className="absolute z-10 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg p-3 w-64 max-w-[calc(100vw-2rem)] flex gap-2">
+      <form action={renameAction} className="absolute z-10 right-0 mt-1 bg-surface border border-ppp-charcoal-200 rounded-lg shadow-lg p-3 w-64 max-w-[calc(100vw-2rem)] flex gap-2">
         <input type="hidden" name="id" value={competitorId} />
         <input
           type="text"
@@ -493,7 +493,7 @@ function MergeForm({
       <summary className="cursor-pointer list-none text-xs font-medium px-3 py-2 rounded-md border border-rose-200 text-rose-800 hover:bg-rose-50 min-h-[44px] inline-flex items-center select-none">
         Merge
       </summary>
-      <form action={mergeAction} className="absolute z-10 right-0 mt-1 bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg p-3 w-72 max-w-[calc(100vw-2rem)]">
+      <form action={mergeAction} className="absolute z-10 right-0 mt-1 bg-surface border border-ppp-charcoal-200 rounded-lg shadow-lg p-3 w-72 max-w-[calc(100vw-2rem)]">
         <input type="hidden" name="source_id" value={sourceId} />
         <p className="text-[11px] text-ppp-charcoal-500 mb-2">
           Merge <strong>{sourceName}</strong> into another competitor. All historic debriefs will roll up to the target.
@@ -565,33 +565,33 @@ function IntelEditor({ competitor }: { competitor: Competitor }) {
         <input type="hidden" name="id" value={competitor.id} />
         <label className="block sm:col-span-2">
           <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Website</span>
-          <input type="text" name="website" defaultValue={competitor.website ?? ""} maxLength={500} placeholder="abcpainting.com" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px]" />
+          <input type="text" name="website" defaultValue={competitor.website ?? ""} maxLength={500} placeholder="abcpainting.com" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px]" />
         </label>
         <label className="block">
           <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Home base</span>
-          <input type="text" name="home_base" defaultValue={competitor.home_base ?? ""} maxLength={200} placeholder="Bronx, NY" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px]" />
+          <input type="text" name="home_base" defaultValue={competitor.home_base ?? ""} maxLength={200} placeholder="Bronx, NY" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px]" />
         </label>
         <div className="grid grid-cols-2 gap-2">
           <label className="block">
             <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Bid low ($)</span>
-            <input type="text" name="bid_low" defaultValue={dollarStr(competitor.typical_bid_low_cents)} inputMode="decimal" placeholder="10000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
+            <input type="text" name="bid_low" defaultValue={dollarStr(competitor.typical_bid_low_cents)} inputMode="decimal" placeholder="10000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
           </label>
           <label className="block">
             <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Bid high ($)</span>
-            <input type="text" name="bid_high" defaultValue={dollarStr(competitor.typical_bid_high_cents)} inputMode="decimal" placeholder="75000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
+            <input type="text" name="bid_high" defaultValue={dollarStr(competitor.typical_bid_high_cents)} inputMode="decimal" placeholder="75000" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[40px] tabular-nums" />
           </label>
         </div>
         <label className="block">
           <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Strengths</span>
-          <textarea name="strengths" defaultValue={competitor.strengths ?? ""} maxLength={2000} rows={2} placeholder="Fast turnaround; strong GC relationships in the Bronx." className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
+          <textarea name="strengths" defaultValue={competitor.strengths ?? ""} maxLength={2000} rows={2} placeholder="Fast turnaround; strong GC relationships in the Bronx." className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
         </label>
         <label className="block">
           <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">Weaknesses</span>
-          <textarea name="weaknesses" defaultValue={competitor.weaknesses ?? ""} maxLength={2000} rows={2} placeholder="Weak on high-rise; won't do restoration work." className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
+          <textarea name="weaknesses" defaultValue={competitor.weaknesses ?? ""} maxLength={2000} rows={2} placeholder="Weak on high-rise; won't do restoration work." className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
         </label>
         <label className="block sm:col-span-2">
           <span className="block text-[11px] font-semibold text-ppp-charcoal-700 mb-0.5">General notes</span>
-          <textarea name="notes" defaultValue={competitor.notes ?? ""} maxLength={4000} rows={3} placeholder="Anything else the team should know — pricing tendencies, key contacts, past incidents…" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
+          <textarea name="notes" defaultValue={competitor.notes ?? ""} maxLength={4000} rows={3} placeholder="Anything else the team should know — pricing tendencies, key contacts, past incidents…" className="w-full px-2.5 py-2 rounded-md border border-ppp-charcoal-200 text-base sm:text-[13px] bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y" />
         </label>
         <div className="sm:col-span-2 flex justify-end">
           <button type="submit" className="inline-flex items-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px]">
@@ -624,7 +624,7 @@ function StatTile({
       ? "text-rose-700"
       : "text-ppp-charcoal";
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 shadow-sm">
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3 shadow-sm">
       <div className="text-[12px] font-semibold text-ppp-charcoal-700">{label}</div>
       <div className={`text-xl sm:text-2xl font-bold tabular-nums mt-1 truncate ${valueCls}`} title={value}>
         {value}

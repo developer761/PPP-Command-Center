@@ -330,7 +330,7 @@ export default function ProductPicker({
               aria-activedescendant={
                 open ? `product-picker-option-${highlight}` : undefined
               }
-              className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
+              className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-base sm:text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 min-h-[44px]"
             />
             {(picked || query) && (
               <button
@@ -354,7 +354,7 @@ export default function ProductPicker({
       </div>
 
       {open && results.length > 0 && (
-        <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg overflow-hidden">
+        <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-surface shadow-lg overflow-hidden">
           <ul
             ref={listRef}
             id="product-picker-listbox"
@@ -472,7 +472,7 @@ export default function ProductPicker({
       )}
 
       {open && query.trim() && results.length === 0 && (
-        <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg p-3 space-y-2">
+        <div className="absolute z-50 left-0 right-0 mt-1 rounded-lg border border-ppp-charcoal-200 bg-surface shadow-lg p-3 space-y-2">
           <div className="text-[12.5px] text-ppp-charcoal-600">
             No products match <span className="font-semibold text-ppp-charcoal">&ldquo;{query}&rdquo;</span>. Keep typing the row as free text below, or add it to the catalog:
           </div>

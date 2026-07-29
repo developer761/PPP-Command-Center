@@ -110,7 +110,7 @@ export function FillProjectFromDeal({
       {open && (
         <div
           role="menu"
-          className="absolute z-40 left-0 mt-1 w-72 max-w-[90vw] rounded-lg border border-ppp-charcoal-200 bg-white shadow-lg overflow-hidden"
+          className="absolute z-40 left-0 mt-1 w-72 max-w-[90vw] rounded-lg border border-ppp-charcoal-200 bg-surface shadow-lg overflow-hidden"
         >
           <div className="px-3 py-2 border-b border-ppp-charcoal-100 text-[11px] font-semibold uppercase tracking-widest text-ppp-charcoal-500">
             {deals.length} deals in this account

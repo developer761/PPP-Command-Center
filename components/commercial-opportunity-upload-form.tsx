@@ -78,7 +78,7 @@ export default function CommercialOpportunityUploadForm({ oppId }: { oppId: stri
   };
 
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
       <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Upload file</h2>
       <p className="text-[11px] text-ppp-charcoal-500 mb-3">
         Plans, specs, RFPs, proposals — any file relevant to this bid. Re-uploading the

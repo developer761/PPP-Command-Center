@@ -2,6 +2,7 @@
 
 import NotificationBell from "@/components/notification-bell";
 import UserMenu from "@/components/user-menu";
+import { ThemeToggle } from "@/components/commercial/theme-toggle";
 
 /**
  * Minimal topbar for `/commercial/*`.
@@ -24,7 +25,7 @@ export default function CommercialTopbar({
   onOpenMenu?: () => void;
 }) {
   return (
-    <header className="bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center gap-3">
+    <header className="bg-surface border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center gap-3">
       <div className="flex items-center gap-3 min-w-0 shrink-0">
         {onOpenMenu && (
           <button
@@ -67,6 +68,7 @@ export default function CommercialTopbar({
           <span className="hidden sm:inline text-xs font-medium">Search</span>
           <kbd className="hidden sm:inline text-[10px] font-mono text-ppp-charcoal-400 border border-ppp-charcoal-100 rounded px-1">⌘K</kbd>
         </button>
+        <ThemeToggle />
         <NotificationBell />
         <UserMenu name={user.fullName} email={user.email} initial={user.initial} />
       </div>

@@ -184,7 +184,7 @@ export default async function NewProductPage({
 
       <form
         action={createAction}
-        className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6 space-y-4"
+        className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6 space-y-4"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block">
@@ -198,7 +198,7 @@ export default async function NewProductPage({
               maxLength={100}
               defaultValue={sp.sku ?? ""}
               placeholder="BM-AURA-INT-SG"
-              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors font-mono"
+              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors font-mono"
             />
           </label>
           <label className="block">
@@ -212,7 +212,7 @@ export default async function NewProductPage({
               maxLength={300}
               defaultValue={sp.name ?? ""}
               placeholder="Benjamin Moore Aura Interior Semi-Gloss"
-              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
+              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
             />
           </label>
           <label className="block">
@@ -260,7 +260,7 @@ export default async function NewProductPage({
               inputMode="decimal"
               defaultValue={sp.price ?? ""}
               placeholder="79.99"
-              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
+              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
             />
             <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
               Retail per unit — what shows on invoices by default.
@@ -276,7 +276,7 @@ export default async function NewProductPage({
               inputMode="decimal"
               defaultValue={sp.cost ?? ""}
               placeholder="52.40"
-              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
+              className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
             />
             <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
               What PPP pays. Used for margin math on line items.
@@ -335,7 +335,7 @@ export default async function NewProductPage({
             maxLength={80}
             defaultValue={sp.variation_label ?? ""}
             placeholder="Seal & Poly"
-            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
+            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
           />
           <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
             Required when a parent is picked. Shows as "{'{parent name}'} ({'{label}'})" in the picker.
@@ -351,7 +351,7 @@ export default async function NewProductPage({
             rows={2}
             defaultValue={sp.description ?? ""}
             placeholder="Frame paint + wood door clear finish."
-            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
+            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
           />
           <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
             Shown under the line item on the customer proposal PDF.
@@ -367,7 +367,7 @@ export default async function NewProductPage({
             rows={2}
             defaultValue={sp.notes ?? ""}
             placeholder="Internal reference — spec, min-order, retailer contact."
-            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
+            className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
           />
           <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
             Never shown to customers. Team-only reference.

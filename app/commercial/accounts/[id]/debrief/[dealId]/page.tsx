@@ -228,7 +228,7 @@ export default async function AccountDebriefPage({
         </div>
 
         {/* Header */}
-        <header className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm">
+        <header className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm">
           <div className="flex items-start gap-3 flex-wrap">
             <div className="min-w-0 flex-1">
               <div className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700 mb-1.5">
@@ -295,7 +295,7 @@ export default async function AccountDebriefPage({
 
         {/* Legacy loss reason (pre-debrief data) */}
         {!isDebriefed && opp.loss_reason && (
-          <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
               Legacy loss reason (pre-debrief)
             </div>
@@ -338,7 +338,7 @@ function DebriefFormCard({
     ? "Two quick fields — who won and why. Feeds the quarterly Win/Loss report."
     : "Two quick fields — who took it and why you passed. Feeds the quarterly Win/Loss report.";
   return (
-    <section className="relative bg-white border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
+    <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
       <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600" />
       <div className="flex items-start gap-3 mb-4">
         <div className="shrink-0 w-9 h-9 rounded-lg bg-cc-brand-50 border border-cc-brand-100 flex items-center justify-center" aria-hidden>
@@ -392,7 +392,7 @@ function DebriefReadOnlyView({
   debriefCount: number;
 }) {
   return (
-    <section className="relative bg-white border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
+    <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
       <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500" />
       <div className="flex items-start gap-3 mb-4">
         <div className="shrink-0 w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center" aria-hidden>
@@ -477,7 +477,7 @@ function StartProjectCard({
   oppId: string;
 }) {
   return (
-    <section className="relative bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 rounded-xl p-5 shadow-sm overflow-hidden">
+    <section className="relative bg-gradient-to-br from-emerald-50 to-surface border border-emerald-200 rounded-xl p-5 shadow-sm overflow-hidden">
       <span
         aria-hidden
         className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500"

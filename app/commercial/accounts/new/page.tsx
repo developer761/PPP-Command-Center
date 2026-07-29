@@ -516,7 +516,7 @@ export default async function NewCommercialAccountPage({
             maxLength={4000}
             defaultValue={sp.notes ?? ""}
             placeholder="Anything PPP staff should know about this account."
-            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
+            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
           />
         </Section>
 
@@ -541,7 +541,7 @@ export default async function NewCommercialAccountPage({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 space-y-3">
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 space-y-3">
       <h2 className="text-sm font-bold text-ppp-charcoal">{title}</h2>
       {children}
     </section>

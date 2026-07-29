@@ -83,7 +83,7 @@ export default async function SubmittalsIndexPage({ searchParams }: { searchPara
       <form className="flex items-center gap-2 flex-wrap" action="/commercial/post-job/submittals">
         <div className="relative flex-1 min-w-[200px]">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-ppp-charcoal-400 pointer-events-none"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.3-4.3" /></svg>
-          <input name="q" defaultValue={search} placeholder="Search submittals, GC, subject…" className="w-full pl-9 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]" />
+          <input name="q" defaultValue={search} placeholder="Search submittals, GC, subject…" className="w-full pl-9 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]" />
         </div>
         {status && <input type="hidden" name="status" value={status} />}
         <button type="submit" className="px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">Search</button>
@@ -99,7 +99,7 @@ export default async function SubmittalsIndexPage({ searchParams }: { searchPara
                 key={f.key || "active"}
                 href={qs({ status: f.key })}
                 aria-current={on ? "page" : undefined}
-                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap min-h-[44px] transition-colors ${on ? "bg-cc-brand-600 text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800"}`}
+                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap min-h-[44px] transition-colors ${on ? "bg-cc-brand-600 text-white" : "bg-surface border border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-800"}`}
               >
                 {f.label}
               </Link>
@@ -109,7 +109,7 @@ export default async function SubmittalsIndexPage({ searchParams }: { searchPara
       </div>
 
       {rows.length === 0 ? (
-        <div className="text-center py-14 px-4 bg-white border border-ppp-charcoal-100 rounded-xl">
+        <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
           <span aria-hidden className="mx-auto mb-3 inline-flex items-center justify-center h-12 w-12 rounded-full bg-ppp-charcoal-100 text-ppp-charcoal-400">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h4" /></svg>
           </span>
@@ -130,7 +130,7 @@ export default async function SubmittalsIndexPage({ searchParams }: { searchPara
 function SubmittalRow({ r }: { r: SubmittalIndexRow }) {
   const href = `/commercial/opportunities/${r.opportunityId}/submittals/${r.id}`;
   return (
-    <li className="relative bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden hover:border-cc-brand-200 hover:shadow-sm transition-all">
+    <li className="relative bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden hover:border-cc-brand-200 hover:shadow-sm transition-all">
       {r.awaiting && <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-ppp-blue-500" />}
       <Link href={href} className="block pl-4 pr-4 py-3">
         <div className="flex items-start justify-between gap-3">

@@ -97,7 +97,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
       {open && matches.length > 0 && (
         <ul
           role="listbox"
-          className="absolute z-50 mt-1 left-0 right-0 max-h-64 overflow-y-auto bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl py-1"
+          className="absolute z-50 mt-1 left-0 right-0 max-h-64 overflow-y-auto bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl py-1"
         >
           {matches.map((a, i) => (
             <li
@@ -117,7 +117,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
         </ul>
       )}
       {open && matches.length === 0 && q && (
-        <div className="absolute z-50 mt-1 left-0 right-0 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl px-3 py-3 text-[13px] text-ppp-charcoal-500">
+        <div className="absolute z-50 mt-1 left-0 right-0 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl px-3 py-3 text-[13px] text-ppp-charcoal-500">
           No customer matches “{name}”.
         </div>
       )}

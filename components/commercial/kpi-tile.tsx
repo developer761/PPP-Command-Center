@@ -15,43 +15,43 @@ export type KpiTone = "neutral" | "blue" | "emerald" | "amber" | "rose" | "navy"
 
 const TONE: Record<KpiTone, { ring: string; stripe: string; glow: string; icon: string }> = {
   neutral: {
-    ring: "border-ppp-charcoal-100 bg-white hover:border-ppp-charcoal-300",
+    ring: "border-ppp-charcoal-100 bg-surface hover:border-ppp-charcoal-300",
     stripe: "bg-ppp-charcoal-300",
     glow: "bg-ppp-charcoal-100/50",
     icon: "bg-gradient-to-br from-ppp-charcoal-100 to-ppp-charcoal-50 text-ppp-charcoal-600 group-hover/kpi:from-ppp-charcoal-500 group-hover/kpi:to-ppp-charcoal-400 group-hover/kpi:text-white",
   },
   blue: {
-    ring: "border-ppp-blue-100/70 bg-white hover:border-ppp-blue-300",
+    ring: "border-ppp-blue-100/70 bg-surface hover:border-ppp-blue-300",
     stripe: "bg-gradient-to-b from-ppp-blue-600 via-ppp-blue-500 to-ppp-blue-400",
     glow: "bg-ppp-blue-100/50",
     icon: "bg-gradient-to-br from-ppp-blue-100 to-ppp-blue-50 text-ppp-blue-700 group-hover/kpi:from-ppp-blue-600 group-hover/kpi:to-ppp-blue-500 group-hover/kpi:text-white",
   },
   emerald: {
-    ring: "border-emerald-100/70 bg-white hover:border-emerald-300",
+    ring: "border-emerald-100/70 bg-surface hover:border-emerald-300",
     stripe: "bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400",
     glow: "bg-emerald-100/60",
     icon: "bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-700 group-hover/kpi:from-emerald-600 group-hover/kpi:to-emerald-500 group-hover/kpi:text-white",
   },
   amber: {
-    ring: "border-amber-100/70 bg-white hover:border-amber-300",
+    ring: "border-amber-100/70 bg-surface hover:border-amber-300",
     stripe: "bg-gradient-to-b from-amber-500 via-amber-400 to-amber-300",
     glow: "bg-amber-100/60",
     icon: "bg-gradient-to-br from-amber-100 to-amber-50 text-amber-700 group-hover/kpi:from-amber-500 group-hover/kpi:to-amber-400 group-hover/kpi:text-white",
   },
   rose: {
-    ring: "border-rose-100/70 bg-white hover:border-rose-300",
+    ring: "border-rose-100/70 bg-surface hover:border-rose-300",
     stripe: "bg-gradient-to-b from-rose-600 via-rose-500 to-rose-400",
     glow: "bg-rose-100/60",
     icon: "bg-gradient-to-br from-rose-100 to-rose-50 text-rose-700 group-hover/kpi:from-rose-600 group-hover/kpi:to-rose-500 group-hover/kpi:text-white",
   },
   navy: {
-    ring: "border-ppp-navy-100/70 bg-white hover:border-ppp-navy-300",
+    ring: "border-ppp-navy-100/70 bg-surface hover:border-ppp-navy-300",
     stripe: "bg-gradient-to-b from-ppp-navy-600 via-ppp-navy-500 to-ppp-navy-400",
     glow: "bg-ppp-navy-100/50",
     icon: "bg-gradient-to-br from-ppp-navy-100 to-ppp-navy-50 text-ppp-navy-700 group-hover/kpi:from-ppp-navy-600 group-hover/kpi:to-ppp-navy-500 group-hover/kpi:text-white",
   },
   action: {
-    ring: "border-cc-brand-100/70 bg-white hover:border-cc-brand-300",
+    ring: "border-cc-brand-100/70 bg-surface hover:border-cc-brand-300",
     stripe: "bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400",
     glow: "bg-cc-brand-100/60",
     icon: "bg-gradient-to-br from-cc-brand-100 to-cc-brand-50 text-cc-brand-700 group-hover/kpi:from-cc-brand-600 group-hover/kpi:to-cc-brand-500 group-hover/kpi:text-white",

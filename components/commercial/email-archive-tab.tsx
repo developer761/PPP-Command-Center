@@ -80,7 +80,7 @@ function ArchiveAddressBar({
     );
   }
   return (
-    <div className="rounded-xl border border-ppp-charcoal-100 bg-white p-4 sm:p-5 shadow-sm">
+    <div className="rounded-xl border border-ppp-charcoal-100 bg-surface p-4 sm:p-5 shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold text-ppp-charcoal mb-1">
@@ -135,7 +135,7 @@ function EmailCard({ email }: { email: ArchivedEmail }) {
   const dateLabel = formatDate(email.received_at);
 
   return (
-    <article className="rounded-xl border border-ppp-charcoal-100 bg-white shadow-sm overflow-hidden">
+    <article className="rounded-xl border border-ppp-charcoal-100 bg-surface shadow-sm overflow-hidden">
       <header className="px-4 sm:px-5 pt-4 pb-2">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1.5">
           <div className="min-w-0 flex-1">
@@ -208,7 +208,7 @@ function EmailCard({ email }: { email: ArchivedEmail }) {
                   inline-styled <img>/<table> elements to respect the
                   container width. */}
               <div
-                className="px-3 pb-3 pt-1 text-sm bg-white border-t border-ppp-charcoal-100 overflow-x-auto max-w-full [&_img]:max-w-full [&_img]:h-auto [&_table]:max-w-full"
+                className="px-3 pb-3 pt-1 text-sm bg-surface border-t border-ppp-charcoal-100 overflow-x-auto max-w-full [&_img]:max-w-full [&_img]:h-auto [&_table]:max-w-full"
                 // Server-side sanitization strips script/iframe/style/on-*
                 // handlers + javascript:/data:/vbscript: URLs (with HTML-
                 // entity decoding so `java&#x09;script:` is caught too) +
@@ -244,7 +244,7 @@ function AttachmentList({
           <li key={`${emailId}-${idx}`}>
             <a
               href={`/api/commercial/email-archive/${emailId}/attachments/${idx}`}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-ppp-charcoal-100 bg-white text-xs sm:text-sm text-ppp-blue hover:bg-ppp-blue-50 hover:border-ppp-blue-200 active:bg-ppp-blue-100 transition-colors touch-manipulation min-h-[44px] max-w-full"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-ppp-charcoal-100 bg-surface text-xs sm:text-sm text-ppp-blue hover:bg-ppp-blue-50 hover:border-ppp-blue-200 active:bg-ppp-blue-100 transition-colors touch-manipulation min-h-[44px] max-w-full"
             >
               <svg
                 width="14"

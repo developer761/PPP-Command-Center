@@ -349,7 +349,7 @@ export default async function CommercialAccountsPage({
             {accounts.length > 0 && (
               <a
                 href={`/api/commercial/accounts/export${exportQs ? `?${exportQs}` : ""}`}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal text-sm font-semibold hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation min-h-[44px] shadow-sm"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-sm font-semibold hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors touch-manipulation min-h-[44px] shadow-sm"
                 title="Download the visible list as CSV"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -444,7 +444,7 @@ export default async function CommercialAccountsPage({
           + Clear. Everything the user does BEFORE looking at rows lives
           here. Sticky-safe (regular flow; not position:sticky to keep
           the header interactive on mobile). ─── */}
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
         <form className="flex flex-wrap items-center gap-2">
           <div className="flex-1 min-w-[200px]">
             <CommercialAccountsSearchAutocomplete defaultValue={search ?? ""} />
@@ -457,7 +457,7 @@ export default async function CommercialAccountsPage({
               className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                 activeFilterCount > 0
                   ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
-                  : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                  : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -466,7 +466,7 @@ export default async function CommercialAccountsPage({
               <span>Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</span>
               <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
             </summary>
-            <div className="absolute right-0 sm:right-auto mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-4 min-w-[300px] sm:min-w-[420px] max-w-[calc(100vw-1rem)] max-h-[75vh] overflow-y-auto space-y-4">
+            <div className="absolute right-0 sm:right-auto mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-4 min-w-[300px] sm:min-w-[420px] max-w-[calc(100vw-1rem)] max-h-[75vh] overflow-y-auto space-y-4">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 mb-2">
                   Attributes
@@ -585,7 +585,7 @@ export default async function CommercialAccountsPage({
               className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                 sortChanged
                   ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
-                  : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                  : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -595,7 +595,7 @@ export default async function CommercialAccountsPage({
               <span className="max-w-[140px] truncate">{currentSortLabel}</span>
               <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
             </summary>
-            <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[240px] max-w-[calc(100vw-1rem)]">
+            <div className="absolute right-0 mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[240px] max-w-[calc(100vw-1rem)]">
               <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 pt-2 pb-1">
                 Sort by
               </div>
@@ -615,7 +615,7 @@ export default async function CommercialAccountsPage({
           {anyFilterActive && (
             <Link
               href="/commercial/accounts"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M18 6L6 18 M6 6l12 12" />
@@ -660,7 +660,7 @@ export default async function CommercialAccountsPage({
           when there are no filters + at least one recent match, same as
           before. Cleaner header, same 3-card body. ─── */}
       {!anyFilterActive && recentlyActive.length > 0 && (
-        <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
+        <details className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
           <summary className="list-none cursor-pointer px-4 py-3 flex items-center justify-between gap-3 hover:bg-ppp-charcoal-50 transition-colors touch-manipulation">
             <div className="flex items-center gap-2 min-w-0">
               <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-cc-brand-50 text-cc-brand-700 shrink-0">
@@ -711,7 +711,7 @@ export default async function CommercialAccountsPage({
 
       {/* ─── List / empty state ─── */}
       {accounts.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-12 text-center">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-12 text-center">
           <div aria-hidden className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-4">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="4" y="2" width="16" height="20" rx="1" />
@@ -739,14 +739,14 @@ export default async function CommercialAccountsPage({
           ) : (
             <Link
               href="/commercial/accounts"
-              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
+              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
             >
               Clear all filters
             </Link>
           )}
         </div>
       ) : (
-        <form className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <form className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           {/* List header + progressive-disclosure Bulk Actions. Was
               always-visible bar (busy); now behind a <details> so the
               default view is quiet. Server actions + form fields are
@@ -768,7 +768,7 @@ export default async function CommercialAccountsPage({
             {/* relative inline-block so the absolute popover below anchors to
                 this trigger, not the viewport (Karan 2026-07-27 audit). */}
             <details className="group relative inline-block">
-              <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">
+              <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
                   <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
@@ -776,7 +776,7 @@ export default async function CommercialAccountsPage({
                 Bulk actions
                 <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
               </summary>
-              <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-4 min-w-[280px] max-w-[calc(100vw-2rem)] sm:max-w-[420px] space-y-4">
+              <div className="absolute right-0 mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-4 min-w-[280px] max-w-[calc(100vw-2rem)] sm:max-w-[420px] space-y-4">
                 <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
                   Check the box next to each row, then use one of the actions below to tag or assign in one submit. Limit: {BULK_MAX_ACCOUNTS} accounts per action.
                 </p>
@@ -884,10 +884,10 @@ function KpiCard({
   // (Roboto Condensed black).
   const ring =
     tone === "cc-brand"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
+      ? "border-cc-brand-200 bg-gradient-to-br from-surface to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/50"
-      : "border-ppp-charcoal-100 bg-white";
+      ? "border-ppp-blue-200 bg-gradient-to-br from-surface to-ppp-blue-50/50"
+      : "border-ppp-charcoal-100 bg-surface";
   const stripe =
     tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-ppp-blue-500" : "bg-ppp-charcoal-200";
   return (
@@ -975,7 +975,7 @@ function FilterOption({
     >
       <span
         className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
-          active ? "bg-cc-brand-600 border-cc-brand-700 text-white" : "bg-white border-ppp-charcoal-300 text-transparent"
+          active ? "bg-cc-brand-600 border-cc-brand-700 text-white" : "bg-surface border-ppp-charcoal-300 text-transparent"
         }`}
         aria-hidden
       >

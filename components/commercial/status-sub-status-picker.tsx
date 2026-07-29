@@ -56,8 +56,8 @@ export type StatusSubStatusPickerProps = {
 };
 
 const INPUT_CLS =
-  "w-full px-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]";
-const SELECT_CLS = `${INPUT_CLS} appearance-none bg-white bg-no-repeat pr-9`;
+  "w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]";
+const SELECT_CLS = `${INPUT_CLS} appearance-none bg-surface bg-no-repeat pr-9`;
 const LABEL_CLS = "block text-[13px] font-semibold text-ppp-charcoal-800 mb-1.5";
 const HINT_CLS = "text-[11.5px] text-ppp-charcoal-500 mt-1";
 // Inline chevron so the select's caret matches the rest of the platform.

@@ -94,7 +94,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
     // (active pill background + logo tag), not the whole chrome.
     // Karan 2026-07-01: "do the same format as PPP command center just
     // like different colors, red and blue for the commercial side."
-    <aside className="w-64 lg:w-64 h-full bg-white border-r border-ppp-charcoal-100 flex flex-col shrink-0">
+    <aside className="w-64 lg:w-64 h-full bg-surface border-r border-ppp-charcoal-100 flex flex-col shrink-0">
       <div className="px-6 py-3 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
         <Link href="/commercial" className="block" onClick={onNavigate}>
           <Image

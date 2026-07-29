@@ -609,7 +609,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         </div>
       )}
       {showFocusBanner && (
-        <div className="bg-white border-l-4 border-amber-400 border-y border-r border-y-ppp-charcoal-100 border-r-ppp-charcoal-100 rounded-xl px-3 sm:px-4 py-3 flex items-center gap-3 flex-wrap">
+        <div className="bg-surface border-l-4 border-amber-400 border-y border-r border-y-ppp-charcoal-100 border-r-ppp-charcoal-100 rounded-xl px-3 sm:px-4 py-3 flex items-center gap-3 flex-wrap">
           {/* Back arrow — LEFT side per Karan's ask */}
           <Link
             href="/commercial/invoices"
@@ -648,7 +648,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   </svg>
                   Delete all {scopedInvoiceCount}
                 </summary>
-                <div className="absolute right-0 top-full mt-1.5 w-[calc(100vw-2rem)] max-w-xs sm:w-72 bg-white border border-rose-200 rounded-lg shadow-lg p-3 z-10">
+                <div className="absolute right-0 top-full mt-1.5 w-[calc(100vw-2rem)] max-w-xs sm:w-72 bg-surface border border-rose-200 rounded-lg shadow-lg p-3 z-10">
                   <div className="text-[12px] text-ppp-charcoal-700 mb-2 leading-snug">
                     Permanently hide all <strong>{scopedInvoiceCount}</strong> invoice{scopedInvoiceCount === 1 ? "" : "s"} from lists.
                     {scopedPaidCount > 0 && (
@@ -709,7 +709,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         // "Open account" chip on the right gives users the option to
         // navigate but requires an explicit click (labeled, not
         // ambient) so nobody misclicks into the wrong context.
-        <div className="bg-white border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center justify-between gap-3 flex-wrap">
+        <div className="bg-surface border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 rounded px-1.5 py-0.5">
               Filtered
@@ -795,7 +795,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               New invoice
               <span aria-hidden className="text-white/80 group-open:rotate-180 transition-transform">▾</span>
             </summary>
-            <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[300px] max-w-[calc(100vw-1rem)]">
+            <div className="absolute right-0 mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[300px] max-w-[calc(100vw-1rem)]">
               <div className="text-[12px] font-semibold text-ppp-charcoal-700 px-1 pb-2">
                 {accountIdFilter
                   ? `Pick a Won opportunity for ${accountFilter?.company_name ?? "this customer"} to bill`
@@ -949,7 +949,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
       </header>
 
       {/* Toolbar */}
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
         <form className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[200px]">
             <svg
@@ -966,7 +966,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               type="search"
               defaultValue={search ?? ""}
               placeholder="Search by invoice # or opportunity title…"
-              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
+              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
             />
           </div>
           {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
@@ -977,7 +977,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               phone; "show me what's overdue/unpaid" must be reachable). The
               4 short pills fit a 320px row; full-width on mobile so they're
               easy to hit, inline segmented control on sm+. */}
-          <div className="flex sm:inline-flex w-full sm:w-auto rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden shrink-0">
+          <div className="flex sm:inline-flex w-full sm:w-auto rounded-lg border border-ppp-charcoal-200 bg-surface overflow-hidden shrink-0">
             {[null, "sent" as InvoiceStatus, "overdue" as InvoiceStatus, "paid" as InvoiceStatus].map((s) => {
               const active = statusFilter === s || (!statusFilter && s === null);
               const label = s === null ? "All" : invoiceStatusLabel(s);
@@ -1004,7 +1004,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 ${
                 sortKey !== "recent"
                   ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
-                  : "bg-white border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                  : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1014,7 +1014,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               <span className="max-w-[140px] truncate">{currentSortLabel}</span>
               <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
             </summary>
-            <div className="absolute right-0 mt-2 z-30 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[240px] max-w-[calc(100vw-1rem)]">
+            <div className="absolute right-0 mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[240px] max-w-[calc(100vw-1rem)]">
               <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 pt-2 pb-1">Sort by</div>
               <div className="space-y-0.5">
                 {SORT_OPTIONS.map((o) => {
@@ -1048,7 +1048,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           {anyFilterActive && (
             <Link
               href="/commercial/invoices"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M18 6L6 18 M6 6l12 12" />
@@ -1082,7 +1082,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           pickableProducts={pickableProducts}
         />
       ) : sorted.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 sm:p-12 text-center">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 sm:p-12 text-center">
           <div aria-hidden className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-4">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
@@ -1098,7 +1098,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               </p>
               <Link
                 href="/commercial/invoices"
-                className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
+                className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px]"
               >
                 Clear all filters
               </Link>
@@ -1234,14 +1234,14 @@ function GroupedByOpp({
   const accountOrder = Array.from(byAccount.entries());
 
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm">
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm">
       {accountOrder.map(([accountId, dealRows], acctIdx) => {
         const acct = accountById.get(accountId);
         return (
           <div key={accountId} className={acctIdx > 0 ? "border-t border-ppp-charcoal-200" : ""}>
             <Link
               href={`/commercial/invoices?account_id=${accountId}`}
-              className="group/acct block px-4 sm:px-5 py-2.5 bg-gradient-to-b from-ppp-charcoal-50 to-white border-b border-ppp-charcoal-100 hover:bg-cc-brand-50/40 focus:outline-none focus:bg-cc-brand-50/40 transition-colors touch-manipulation"
+              className="group/acct block px-4 sm:px-5 py-2.5 bg-gradient-to-b from-ppp-charcoal-50 to-surface border-b border-ppp-charcoal-100 hover:bg-cc-brand-50/40 focus:outline-none focus:bg-cc-brand-50/40 transition-colors touch-manipulation"
               title={`View ${acct?.company_name ?? "this customer"}'s invoices`}
             >
               <div className="flex items-center justify-between gap-2">
@@ -1400,7 +1400,7 @@ function GroupedByOpp({
                   >
                     {headerBody}
                   </Link>
-                  <ul className="border-t border-ppp-charcoal-100 divide-y divide-ppp-charcoal-100 bg-white">
+                  <ul className="border-t border-ppp-charcoal-100 divide-y divide-ppp-charcoal-100 bg-surface">
                     {orphanSorted.map((inv) => {
                       const invStatus = deriveInvoiceStatus(inv);
                       const statusTone =
@@ -1638,7 +1638,7 @@ function FullDetailByOpp({
   if (oppOrder.length === 0) {
     const wonList = wonOppsForAccount ?? [];
     return (
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
         <div className="text-sm font-semibold text-ppp-charcoal">No invoices for this customer yet</div>
         {wonList.length > 0 ? (
           <p className="mt-1 text-sm text-ppp-charcoal-500 max-w-md mx-auto">
@@ -1737,11 +1737,11 @@ function FullDetailByOpp({
           <section
             key={oppId}
             id={`opp-${oppId}`}
-            className={`scroll-mt-20 bg-white border rounded-xl overflow-hidden shadow-sm ${
+            className={`scroll-mt-20 bg-surface border rounded-xl overflow-hidden shadow-sm ${
               overduePresent ? "border-rose-200" : "border-ppp-charcoal-100"
             }`}
           >
-            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-br from-white to-blue-50/30">
+            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-br from-surface to-blue-50/30">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2 flex-wrap">
@@ -1796,7 +1796,7 @@ function FullDetailByOpp({
                       </svg>
                       Delete all
                     </summary>
-                    <div className="absolute right-0 mt-2 z-20 bg-white border border-rose-200 rounded-lg shadow-xl p-3 w-[280px]">
+                    <div className="absolute right-0 mt-2 z-20 bg-surface border border-rose-200 rounded-lg shadow-xl p-3 w-[280px]">
                       <div className="text-[12.5px] text-ppp-charcoal-800 font-semibold">
                         Delete all {groupInvoices.length} invoices for this deal?
                       </div>
@@ -1985,7 +1985,7 @@ function FullDetailByOpp({
                             <select
                               name="method"
                               defaultValue=""
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-white min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-surface min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                             >
                               <option value="">— select —</option>
                               {PAYMENT_METHODS.map((m) => (
@@ -2338,12 +2338,12 @@ function KpiCard({
 }) {
   const ring =
     tone === "cc-brand"
-      ? "border-cc-brand-200 bg-gradient-to-br from-white to-cc-brand-50/50"
+      ? "border-cc-brand-200 bg-gradient-to-br from-surface to-cc-brand-50/50"
       : tone === "blue"
-      ? "border-ppp-blue-200 bg-gradient-to-br from-white to-ppp-blue-50/50"
+      ? "border-ppp-blue-200 bg-gradient-to-br from-surface to-ppp-blue-50/50"
       : tone === "rose"
-      ? "border-rose-200 bg-gradient-to-br from-white to-rose-50/50"
-      : "border-ppp-charcoal-100 bg-white";
+      ? "border-rose-200 bg-gradient-to-br from-surface to-rose-50/50"
+      : "border-ppp-charcoal-100 bg-surface";
   // "blue" uses the ppp-blue brand cyan to match the dashboard (was raw
   // Tailwind blue). Value type = Roboto Condensed black, also per dashboard.
   const stripe =

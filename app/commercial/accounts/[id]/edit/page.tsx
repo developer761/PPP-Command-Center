@@ -336,7 +336,7 @@ export default async function EditCommercialAccountPage({
             maxLength={4000}
             defaultValue={sp.notes ?? (account.notes ?? "")}
             placeholder="Anything PPP staff should know about this account."
-            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
+            className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 resize-y transition-colors"
           />
         </Section>
 
@@ -371,7 +371,7 @@ export default async function EditCommercialAccountPage({
             Delete this account
           </Link>
         ) : (
-          <div className="space-y-3 bg-white border border-rose-300 rounded-lg p-4">
+          <div className="space-y-3 bg-surface border border-rose-300 rounded-lg p-4">
             <p className="text-sm text-ppp-charcoal-700">
               Delete <strong>{account.company_name}</strong>?
             </p>
@@ -416,7 +416,7 @@ function Section({
   return (
     <section
       id={anchorId}
-      className={`bg-white border border-ppp-charcoal-100 rounded-xl p-5 space-y-3 ${anchorId ? "scroll-mt-24 target:ring-2 target:ring-cc-brand-600/30" : ""}`}
+      className={`bg-surface border border-ppp-charcoal-100 rounded-xl p-5 space-y-3 ${anchorId ? "scroll-mt-24 target:ring-2 target:ring-cc-brand-600/30" : ""}`}
     >
       <h2 className="text-sm font-bold text-ppp-charcoal">{title}</h2>
       {children}

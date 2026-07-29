@@ -107,8 +107,8 @@ type ColumnTone = {
  *  count pill so the eye can scan the board at a glance. */
 function toneForStatus(status: ProposalStatus): ColumnTone {
   const shared = {
-    col: "bg-white border-ppp-charcoal-100",
-    head: "bg-white border-ppp-charcoal-100",
+    col: "bg-surface border-ppp-charcoal-100",
+    head: "bg-surface border-ppp-charcoal-100",
   };
   switch (status) {
     case "draft":
@@ -377,7 +377,7 @@ export default async function ProposalsIndexPage({
         {/* Karan 2026-07-15: view toggle. Kanban is default; List
             is for high-volume days when 50 cards scrolling sideways
             is unreadable. */}
-        <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-white overflow-hidden text-[12px] font-semibold shrink-0">
+        <div className="inline-flex rounded-lg border border-ppp-charcoal-200 bg-surface overflow-hidden text-[12px] font-semibold shrink-0">
           <Link
             href={`/commercial/proposals${activeStatus ? `?status=${activeStatus}` : ""}`}
             className={`px-3 py-1.5 inline-flex items-center gap-1.5 min-h-[36px] ${
@@ -414,7 +414,7 @@ export default async function ProposalsIndexPage({
       </div>
 
       {rows.length === 0 ? (
-        <div className="bg-white border border-dashed border-ppp-charcoal-200 rounded-xl p-10 text-center">
+        <div className="bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl p-10 text-center">
           <p className="text-sm font-semibold text-ppp-charcoal mb-1">
             No proposals yet{activeStatus ? ` in "${proposalStatusLabel(activeStatus)}"` : ""}.
           </p>
@@ -561,7 +561,7 @@ function ProposalCard({
   const editorHref = `/commercial/accounts/${acctId}/deals/${dealId}/proposal/${row.id}`;
 
   return (
-    <li className="group bg-white border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+    <li className="group bg-surface border border-ppp-charcoal-100 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
       <div className={`h-1 ${accentBar}`} aria-hidden />
       {/* Karan 2026-07-16 (round 2): PDF icon is now INLINE next to
           the total in the header row. Absolute positioning kept
@@ -714,7 +714,7 @@ function StatTile({
   const t = toneMap[tone] ?? toneMap.charcoal;
   return (
     <div
-      className={`relative bg-white border ${t.border} rounded-xl px-4 py-3.5 overflow-hidden shadow-sm`}
+      className={`relative bg-surface border ${t.border} rounded-xl px-4 py-3.5 overflow-hidden shadow-sm`}
     >
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${t.stripe}`} />
       <span
@@ -744,7 +744,7 @@ function StatusChip({
 }) {
   const cls = active
     ? "bg-ppp-charcoal-900 text-white border-ppp-charcoal-900"
-    : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50";
+    : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50";
   return (
     <Link
       href={href}
@@ -929,7 +929,7 @@ function AccountMiniKanbans({ rows }: { rows: ProposalRow[] }) {
           <details
             key={acct.accountId}
             open
-            className="group border border-ppp-charcoal-200 bg-white rounded-xl overflow-hidden border-l-4"
+            className="group border border-ppp-charcoal-200 bg-surface rounded-xl overflow-hidden border-l-4"
             style={colors.border}
           >
             <summary
@@ -1020,7 +1020,7 @@ function DealMiniKanban({
   // Proposals tab, not clogging the kanban.
   const olderCount = Math.max(0, deal.totalRevs - 1);
   return (
-    <div className="bg-white">
+    <div className="bg-surface">
       <div className="px-3 sm:px-4 pt-3 pb-1.5 flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0 flex items-center gap-2">
           <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-ppp-charcoal-400" />
@@ -1097,13 +1097,13 @@ function DealMiniKanban({
               compact
             />
           </ProposalDnDColumn>
-          <div className="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px] border rounded-xl overflow-hidden flex flex-col bg-white border-ppp-charcoal-100">
+          <div className="snap-start shrink-0 basis-[46vw] sm:basis-0 sm:flex-1 sm:min-w-[120px] border rounded-xl overflow-hidden flex flex-col bg-surface border-ppp-charcoal-100">
             <div className="px-2 py-1.5 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-bold text-ppp-charcoal uppercase tracking-wide">
                   Closed
                 </span>
-                <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-white text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100">
+                <span className="inline-flex items-center justify-center min-w-[20px] h-4 px-1 rounded-full bg-surface text-ppp-charcoal-700 text-[10px] font-semibold border border-ppp-charcoal-100">
                   {CLOSED_TERMINAL.reduce(
                     (acc, s) => acc + (deal.byStatus.get(s)?.length ?? 0),
                     0
@@ -1214,7 +1214,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
           <details
             key={acct.account_id}
             open={defaultOpen}
-            className="group bg-white border border-ppp-charcoal-200 rounded-xl overflow-hidden border-l-4"
+            className="group bg-surface border border-ppp-charcoal-200 rounded-xl overflow-hidden border-l-4"
             style={colors.border}
           >
             {/* Account header — clickable to collapse/expand */}
@@ -1292,7 +1292,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                 return (
                   <div
                     key={dealBucket.deal.id}
-                    className="border-l-4 rounded-r-md overflow-hidden bg-white"
+                    className="border-l-4 rounded-r-md overflow-hidden bg-surface"
                     style={dealBorderStyle}
                   >
                     <div
@@ -1337,7 +1337,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               <span
                                 className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${
                                   LIST_STATUS_PILL[r.status] ??
-                                  "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200"
+                                  "bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200"
                                 }`}
                               >
                                 {proposalStatusLabel(r.status)}
@@ -1375,7 +1375,7 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               }
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-3 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-white border-l border-ppp-charcoal-100 shrink-0"
+                              className="inline-flex items-center gap-1 px-3 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-surface border-l border-ppp-charcoal-100 shrink-0"
                               title="Open the customer PDF in a new tab"
                               aria-label={`Open PDF for revision ${r.revision_number}`}
                             >

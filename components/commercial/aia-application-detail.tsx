@@ -113,7 +113,7 @@ export function AiaApplicationDetail({
           <StatusPill status={application.status} />
           <a
             href={exportHref}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-white text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[44px]"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cc-brand-200 bg-surface text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[44px]"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
             Export to Excel
@@ -122,7 +122,7 @@ export function AiaApplicationDetail({
       </div>
 
       {/* ── G702 summary ── */}
-      <section className="bg-gradient-to-br from-cc-brand-50/40 to-white border border-cc-brand-100 rounded-xl p-4 sm:p-5">
+      <section className="bg-gradient-to-br from-cc-brand-50/40 to-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3 mb-2">
           <h2 className="text-sm font-bold text-ppp-charcoal">Application No. {application.application_number} — Certificate (G702)</h2>
           {pct != null && <span className="text-[11px] font-semibold text-ppp-charcoal-500">{pct}% complete</span>}
@@ -152,7 +152,7 @@ export function AiaApplicationDetail({
               <input type="hidden" name="status" value={s} />
               <PendingSubmitButton
                 pendingLabel="…"
-                className={`px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[36px] ${application.status === s ? "bg-cc-brand-600 text-white border-cc-brand-600" : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"}`}
+                className={`px-3 py-1.5 rounded-lg border text-[12px] font-semibold min-h-[36px] ${application.status === s ? "bg-cc-brand-600 text-white border-cc-brand-600" : "bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"}`}
               >
                 {AIA_STATUS_META[s].label}
               </PendingSubmitButton>
@@ -162,7 +162,7 @@ export function AiaApplicationDetail({
       </section>
 
       {/* ── G703 schedule of values ── */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Schedule of Values (G703)</h2>
         {editable ? (
           <p className="text-[11px] text-ppp-charcoal-500 mb-3">

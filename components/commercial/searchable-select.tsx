@@ -218,7 +218,7 @@ export function SearchableSelect({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           autoComplete="off"
-          className="w-full px-3 py-2 pr-9 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors disabled:bg-ppp-charcoal-50 disabled:cursor-not-allowed"
+          className="w-full px-3 py-2 pr-9 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors disabled:bg-ppp-charcoal-50 disabled:cursor-not-allowed"
         />
         {/* Clear button — visible when there's a query OR a selection.
             Focus-visible outline so keyboard users still get feedback. */}
@@ -244,7 +244,7 @@ export function SearchableSelect({
         <ul
           id={`${id}-list`}
           role="listbox"
-          className="absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-ppp-charcoal-200 rounded-lg shadow-lg py-1 text-sm"
+          className="absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-surface border border-ppp-charcoal-200 rounded-lg shadow-lg py-1 text-sm"
         >
           {visible.length === 0 ? (
             <li className="px-3 py-2 text-ppp-charcoal-500 italic">

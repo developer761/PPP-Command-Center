@@ -195,7 +195,7 @@ export default async function CommercialDashboardPage() {
     <div className="space-y-4 sm:space-y-6">
       {/* Tomco "home" strip — their logo greets them on their own dashboard.
           On a white card so the logo's white background blends cleanly. */}
-      <div className="flex items-center gap-3 sm:gap-4 bg-white border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-2.5 shadow-sm">
+      <div className="flex items-center gap-3 sm:gap-4 bg-surface border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-2.5 shadow-sm">
         <Image
           src="/brand/tomco-logo.jpg"
           alt="Tomco Painting"
@@ -214,7 +214,7 @@ export default async function CommercialDashboardPage() {
       <header className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <Link
           href="/commercial/opportunities"
-          className="group/hero lg:col-span-2 relative bg-white border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden block transition-all hover:shadow-md hover:border-cc-brand-300 touch-manipulation"
+          className="group/hero lg:col-span-2 relative bg-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden block transition-all hover:shadow-md hover:border-cc-brand-300 touch-manipulation"
         >
           <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-cc-brand-600 via-cc-brand-500 to-cc-brand-400" />
           <span aria-hidden className="pointer-events-none absolute -top-12 -right-12 h-40 w-40 rounded-full bg-cc-brand-100/60 blur-2xl" />
@@ -248,7 +248,7 @@ export default async function CommercialDashboardPage() {
         </Link>
         <Link
           href="/commercial/reports/win-loss"
-          className="group/hero relative bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden block transition-all hover:shadow-md hover:border-emerald-300 touch-manipulation"
+          className="group/hero relative bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm overflow-hidden block transition-all hover:shadow-md hover:border-emerald-300 touch-manipulation"
         >
           <span aria-hidden className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-emerald-100/40 blur-2xl" />
           <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-600 via-emerald-500 to-emerald-400" />
@@ -538,7 +538,7 @@ export default async function CommercialDashboardPage() {
       </section>
 
       {/* Roadmap */}
-      <details className="group/roadmap bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <details className="group/roadmap bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 py-3 min-h-[44px] hover:bg-ppp-charcoal-50/60 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30">
           <span className="inline-flex items-center gap-2">
             <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
@@ -554,7 +554,7 @@ export default async function CommercialDashboardPage() {
         <div className="p-4 border-t border-ppp-charcoal-100">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             {PHASES.map((p) => (
-              <div key={String(p.num)} className="rounded-lg border border-ppp-charcoal-100 bg-white px-3 py-2.5">
+              <div key={String(p.num)} className="rounded-lg border border-ppp-charcoal-100 bg-surface px-3 py-2.5">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-ppp-charcoal text-white text-[10px] font-bold">
                     {p.num}
@@ -655,7 +655,7 @@ function TopOpenDealsCard({
   accountNameById: Map<string, string>;
 }) {
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <header className="flex items-center justify-between px-4 py-3 border-b border-ppp-charcoal-100">
         <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
@@ -732,7 +732,7 @@ function RecentActivityCard({
   accountNameById: Map<string, string>;
 }) {
   return (
-    <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <header className="flex items-center justify-between px-4 py-3 border-b border-ppp-charcoal-100">
         <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
@@ -801,8 +801,8 @@ function QuickAction({
   icon: React.ReactNode;
 }) {
   const shell = primary
-    ? "group/qa bg-gradient-to-br from-cc-brand-100/40 via-white to-white border-cc-brand-200 text-ppp-charcoal hover:border-cc-brand-400 shadow-sm shadow-cc-brand-100/40 relative overflow-hidden"
-    : "group/qa bg-white border-ppp-charcoal-100 text-ppp-charcoal hover:border-cc-brand-300 shadow-sm relative overflow-hidden";
+    ? "group/qa bg-gradient-to-br from-cc-brand-100/40 via-surface to-surface border-cc-brand-200 text-ppp-charcoal hover:border-cc-brand-400 shadow-sm shadow-cc-brand-100/40 relative overflow-hidden"
+    : "group/qa bg-surface border-ppp-charcoal-100 text-ppp-charcoal hover:border-cc-brand-300 shadow-sm relative overflow-hidden";
   const iconCls = primary
     ? "bg-gradient-to-br from-cc-brand-500 to-cc-brand-600 text-white shadow-md shadow-cc-brand-200 group-hover/qa:from-cc-brand-600 group-hover/qa:to-cc-brand-700"
     : "bg-gradient-to-br from-cc-brand-100 to-cc-brand-50 text-cc-brand-700 group-hover/qa:from-cc-brand-600 group-hover/qa:to-cc-brand-500 group-hover/qa:text-white group-hover/qa:shadow-md group-hover/qa:shadow-cc-brand-200";

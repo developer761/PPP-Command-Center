@@ -174,7 +174,7 @@ export default function CommercialAccountsSearchAutocomplete({
         <div
           id="search-autocomplete-list"
           role="listbox"
-          className="absolute z-30 mt-1 w-full bg-white border border-ppp-charcoal-200 rounded-xl shadow-lg max-h-72 overflow-y-auto"
+          className="absolute z-30 mt-1 w-full bg-surface border border-ppp-charcoal-200 rounded-xl shadow-lg max-h-72 overflow-y-auto"
         >
           {results.length === 0 && !loading ? (
             <div className="px-4 py-3 text-sm text-ppp-charcoal-500 italic">

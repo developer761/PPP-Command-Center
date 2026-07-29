@@ -366,7 +366,7 @@ export default async function ProductDetailPage({
           each child with its label + price and a jump link, so the admin
           can manage the whole variation group from the parent page. */}
       {childVariations.length > 0 && (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               Variations · {childVariations.length}
@@ -408,7 +408,7 @@ export default async function ProductDetailPage({
       )}
 
       {/* Core edit form */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
         <h2 className="text-sm font-semibold text-ppp-charcoal mb-4">
           Product details
         </h2>
@@ -426,7 +426,7 @@ export default async function ProductDetailPage({
                   required
                   maxLength={100}
                   defaultValue={sp.sku ?? product.sku}
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors font-mono"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors font-mono"
                 />
               </label>
               <label className="block">
@@ -439,7 +439,7 @@ export default async function ProductDetailPage({
                   required
                   maxLength={300}
                   defaultValue={sp.name ?? product.name}
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                 />
               </label>
               <label className="block">
@@ -494,7 +494,7 @@ export default async function ProductDetailPage({
                   required
                   inputMode="decimal"
                   defaultValue={sp.price ?? centsToDollarStr(product.default_unit_price_cents)}
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
                 />
               </label>
               <label className="block">
@@ -507,7 +507,7 @@ export default async function ProductDetailPage({
                   inputMode="decimal"
                   defaultValue={sp.cost ?? centsToDollarStr(product.default_unit_cost_cents)}
                   placeholder="—"
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
                 />
               </label>
             </div>
@@ -562,7 +562,7 @@ export default async function ProductDetailPage({
                 defaultValue={sp.variation_label ?? (product.variation_label ?? "")}
                 placeholder="Seal & Poly"
                 disabled={isParent}
-                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors disabled:bg-ppp-charcoal-50 disabled:cursor-not-allowed"
+                className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors disabled:bg-ppp-charcoal-50 disabled:cursor-not-allowed"
               />
               <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                 Required when a parent is picked.
@@ -578,7 +578,7 @@ export default async function ProductDetailPage({
                 rows={2}
                 defaultValue={sp.description ?? (product.description ?? "")}
                 placeholder="Frame paint + wood door clear finish."
-                className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
+                className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
               />
               <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                 Shown under the line item on the customer proposal PDF.
@@ -593,7 +593,7 @@ export default async function ProductDetailPage({
                 maxLength={2000}
                 rows={2}
                 defaultValue={sp.notes ?? (product.notes ?? "")}
-                className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
+                className="w-full px-3 py-2.5 rounded-lg border border-ppp-charcoal-200 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-500/40 resize-y"
               />
               <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                 Never shown to customers. Team-only reference.
@@ -631,7 +631,7 @@ export default async function ProductDetailPage({
       </section>
 
       {/* Customer-specific prices */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
         <div className="flex items-baseline justify-between gap-3 mb-3 flex-wrap">
           <div>
             <h2 className="text-sm font-semibold text-ppp-charcoal">
@@ -745,7 +745,7 @@ export default async function ProductDetailPage({
                   required
                   inputMode="decimal"
                   placeholder="65.00"
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
                 />
               </label>
               <label className="block">
@@ -755,7 +755,7 @@ export default async function ProductDetailPage({
                 <input
                   type="date"
                   name="effective_from"
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                 />
                 <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
                   Leave blank for &ldquo;always.&rdquo;
@@ -770,7 +770,7 @@ export default async function ProductDetailPage({
                   name="notes"
                   maxLength={500}
                   placeholder="Contract ref, memo…"
-                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-white border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
+                  className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
                 />
               </label>
             </div>
@@ -789,7 +789,7 @@ export default async function ProductDetailPage({
       {/* Archive — neutral border like every other section. The rose comes
           from the button only (destructive-lite), not the whole container. */}
       {isAdmin && product.is_active && (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-ppp-charcoal mb-2">
             Archive
           </h2>

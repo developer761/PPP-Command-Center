@@ -169,7 +169,7 @@ export function CommandPalette() {
         onClick={() => setOpen(false)}
         className="absolute inset-0 bg-ppp-charcoal-900/50 backdrop-blur-[2px]"
       />
-      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-ppp-charcoal-200 overflow-hidden">
+      <div className="relative w-full max-w-xl bg-surface rounded-2xl shadow-2xl border border-ppp-charcoal-200 overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-ppp-charcoal-100">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0">
             <circle cx="11" cy="11" r="8" />
@@ -263,14 +263,14 @@ export function CommandPalette() {
         <div className="px-4 py-2 border-t border-ppp-charcoal-100 bg-ppp-charcoal-50/40 text-[10px] text-ppp-charcoal-500 flex items-center justify-between">
           <span className="inline-flex items-center gap-3">
             <span>
-              <kbd className="font-mono bg-white border border-ppp-charcoal-200 rounded px-1">↑↓</kbd> navigate
+              <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">↑↓</kbd> navigate
             </span>
             <span>
-              <kbd className="font-mono bg-white border border-ppp-charcoal-200 rounded px-1">↵</kbd> jump
+              <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">↵</kbd> jump
             </span>
           </span>
           <span>
-            Press <kbd className="font-mono bg-white border border-ppp-charcoal-200 rounded px-1">⌘K</kbd> anywhere
+            Press <kbd className="font-mono bg-surface border border-ppp-charcoal-200 rounded px-1">⌘K</kbd> anywhere
           </span>
         </div>
       </div>

@@ -115,7 +115,7 @@ export function AccountHoverCard({
       {visible && (
         <span
           role="tooltip"
-          className="absolute z-40 top-full left-0 mt-2 w-64 bg-white border border-ppp-charcoal-200 rounded-xl shadow-xl overflow-hidden pointer-events-none"
+          className="absolute z-40 top-full left-0 mt-2 w-64 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl overflow-hidden pointer-events-none"
         >
           <span className="block px-3 py-2.5 border-l-4" style={tone.border}>
             {loading && !data ? (

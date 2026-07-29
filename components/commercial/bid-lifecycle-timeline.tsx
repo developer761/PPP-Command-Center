@@ -60,7 +60,7 @@ function Node({
       ? "bg-rose-500 border-rose-500"
       : state === "filled"
       ? "bg-cc-brand-600 border-cc-brand-600"
-      : "bg-white border-ppp-charcoal-300";
+      : "bg-surface border-ppp-charcoal-300";
   const dateTone =
     state === "won"
       ? "text-emerald-700"
@@ -173,7 +173,7 @@ export function BidLifecycleTimeline({
 
   return (
     <div
-      className={`rounded-xl border border-ppp-charcoal-100 bg-white p-4 ${className}`}
+      className={`rounded-xl border border-ppp-charcoal-100 bg-surface p-4 ${className}`}
     >
       <div className="mb-3 flex items-center gap-2">
         <svg

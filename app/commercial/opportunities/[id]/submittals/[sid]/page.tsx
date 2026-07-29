@@ -589,7 +589,7 @@ export default async function SubmittalDetailPage({
     : tone === "rose" ? "bg-rose-50 text-rose-800 border-rose-200"
     : tone === "sky" ? "bg-sky-50 text-sky-800 border-sky-200"
     : tone === "charcoal" ? "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200"
-    : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200";
+    : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200";
 
   // Mirrors the PDF's safeDateLabel — bare "YYYY-MM-DD" (Postgres DATE
   // column) parses as UTC midnight, which renders as the PREVIOUS day in
@@ -649,7 +649,7 @@ export default async function SubmittalDetailPage({
       )}
 
       {/* Header */}
-      <header className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <header className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
         <Link
           href={`/commercial/opportunities/${opportunity_id}?tab=submittals`}
@@ -693,7 +693,7 @@ export default async function SubmittalDetailPage({
               href={`/api/commercial/opportunities/${opportunity_id}/submittals/${submittal_id}/pdf`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-100 transition-colors min-h-[44px] touch-manipulation"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
@@ -777,7 +777,7 @@ export default async function SubmittalDetailPage({
       />
 
       {/* Cover form */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">
           Letter of Transmittal — cover
         </h2>
@@ -940,7 +940,7 @@ export default async function SubmittalDetailPage({
       </section>
 
       {/* Items table */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">
           Items · {items.length}
         </h2>
@@ -1216,7 +1216,7 @@ export default async function SubmittalDetailPage({
           Auto-links the uploaded attachment via `submittal_id` form
           field on the API endpoint. Karan: "make sure they can also
           add pdfs directly on here." */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-bold text-ppp-charcoal">
@@ -1244,7 +1244,7 @@ export default async function SubmittalDetailPage({
         {/* Linked attachments list */}
         {linkedAttachments.length === 0 ? (
           <div className="bg-ppp-charcoal-50/50 border border-dashed border-ppp-charcoal-200 rounded-lg p-6 text-center">
-            <div className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-white border border-ppp-charcoal-100 mb-2 mx-auto">
+            <div className="inline-flex items-center justify-center h-10 w-10 rounded-full bg-surface border border-ppp-charcoal-100 mb-2 mx-auto">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-400" aria-hidden>
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
               </svg>
@@ -1270,7 +1270,7 @@ export default async function SubmittalDetailPage({
               return (
                 <li
                   key={att.id}
-                  className="flex items-start justify-between gap-3 p-3 rounded-lg border border-ppp-charcoal-100 bg-white hover:border-cc-brand-200 hover:bg-cc-brand-50/30 transition-colors"
+                  className="flex items-start justify-between gap-3 p-3 rounded-lg border border-ppp-charcoal-100 bg-surface hover:border-cc-brand-200 hover:bg-cc-brand-50/30 transition-colors"
                 >
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     <span
@@ -1349,7 +1349,7 @@ export default async function SubmittalDetailPage({
                   const category = categorizeFilename(att.file_name);
                   return (
                     <li key={att.id}>
-                      <label className="flex items-center gap-3 p-2 rounded hover:bg-white transition-colors cursor-pointer min-h-[44px] touch-manipulation">
+                      <label className="flex items-center gap-3 p-2 rounded hover:bg-surface transition-colors cursor-pointer min-h-[44px] touch-manipulation">
                         <input
                           type="checkbox"
                           name="attachment_ids"
@@ -1399,7 +1399,7 @@ export default async function SubmittalDetailPage({
           journey). Dot color picks up the tone of the to_status so the
           eye can spot approved-vs-revise-vs-voided without reading. */}
       {statusLog.length > 0 && (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
           <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Status history</h2>
           <ol className="relative space-y-3">
             {/* Vertical rail */}
@@ -1528,7 +1528,7 @@ function StatusActionsPanel({
   );
 
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
           <h2 className="text-sm font-bold text-ppp-charcoal">What&apos;s next?</h2>
@@ -1712,7 +1712,7 @@ function StatusActionsPanel({
               <input type="hidden" name="to_status" value="closed" />
               <button
                 type="submit"
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
               >
                 Close without revision
               </button>
@@ -1728,7 +1728,7 @@ function StatusActionsPanel({
           filled) so it doesn't compete with the primary action above. */}
       {allowed.includes("voided") && (
         <details className="mt-5 group">
-          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-white text-[13px] font-semibold text-rose-800 hover:bg-rose-50 active:bg-rose-100 min-h-[40px] touch-manipulation select-none">
+          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-surface text-[13px] font-semibold text-rose-800 hover:bg-rose-50 active:bg-rose-100 min-h-[40px] touch-manipulation select-none">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open:rotate-90" aria-hidden>
               <path d="M9 18l6-6-6-6" />
             </svg>
@@ -1824,7 +1824,7 @@ function ResponseRecorder({
 
   return (
     <details className={`group rounded-lg border ${toneStyles.card} overflow-hidden`}>
-      <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-white/50 min-h-[44px] touch-manipulation select-none">
+      <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-surface/50 min-h-[44px] touch-manipulation select-none">
         <span className="flex items-center gap-2 min-w-0">
           <span aria-hidden className={`w-2 h-2 rounded-full shrink-0 ${toneStyles.dot}`} />
           <span className="text-sm font-semibold text-ppp-charcoal truncate">{label}</span>

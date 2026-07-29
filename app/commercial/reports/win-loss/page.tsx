@@ -179,7 +179,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
       </header>
 
       {/* ─── Toolbar with period picker (preset chips + custom range form) ─── */}
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-3 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {PRESETS.map((p) => {
             const active = range.activeKey === p.key;
@@ -192,7 +192,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                 className={`inline-flex items-center px-3.5 py-2 rounded-lg text-[13px] font-semibold border min-h-[44px] touch-manipulation transition-colors ${
                   active
                     ? "bg-cc-brand-600 text-white border-cc-brand-700 shadow-sm shadow-cc-brand-600/30"
-                    : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+                    : "bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
                 }`}
                 aria-current={active ? "page" : undefined}
               >
@@ -232,7 +232,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
               className={`inline-flex items-center px-3.5 py-2 rounded-lg text-[13px] font-semibold border min-h-[44px] touch-manipulation transition-colors ${
                 range.activeKey === "custom"
                   ? "bg-cc-brand-600 text-white border-cc-brand-700 shadow-sm shadow-cc-brand-600/30"
-                  : "bg-white text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
+                  : "bg-surface text-ppp-charcoal-700 border-ppp-charcoal-200 hover:border-ppp-charcoal-300 hover:bg-ppp-charcoal-50"
               }`}
             >
               Apply
@@ -295,7 +295,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
       </section>
 
       {summary.totalClosed === 0 ? (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
           <h2 className="text-base font-semibold text-ppp-charcoal mb-2">
             No debriefs in this period
           </h2>
@@ -308,7 +308,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
         <>
           {/* Competitor leaderboard + Deciding factor — side-by-side on desktop, stacked on mobile */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
-            <article className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+            <article className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
               <h2 className="text-base font-semibold text-ppp-charcoal mb-3">
                 Who we lose to most
               </h2>
@@ -351,7 +351,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
               )}
             </article>
 
-            <article className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+            <article className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
               <h2 className="text-base font-semibold text-ppp-charcoal mb-3">
                 Why we lose
               </h2>
@@ -390,7 +390,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           </section>
 
           {/* Lessons learned feed */}
-          <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5 mb-6">
+          <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 mb-6">
             <h2 className="text-base font-semibold text-ppp-charcoal mb-3">
               What we&apos;d do differently — recent
             </h2>

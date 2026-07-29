@@ -1637,7 +1637,7 @@ export default async function OpportunityDetailPage({
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <Link
               href={`/commercial/opportunities/${opp.id}/edit`}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
@@ -1648,7 +1648,7 @@ export default async function OpportunityDetailPage({
               <input type="hidden" name="opp_id" value={opp.id} />
               <button
                 type="submit"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
                 title="Re-bidding the same site? Clone the opp so you don't retype the scope + bid range."
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1684,7 +1684,7 @@ export default async function OpportunityDetailPage({
                 <input type="hidden" name="opp_id" value={opp.id} />
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-cc-brand-200 bg-white text-cc-brand-700 text-[12px] font-semibold hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[44px] touch-manipulation"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-cc-brand-200 bg-surface text-cc-brand-700 text-[12px] font-semibold hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[44px] touch-manipulation"
                   title="Customer's back in play? Reopen puts this opportunity back into the active pipeline."
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1774,7 +1774,7 @@ export default async function OpportunityDetailPage({
             );
           })}
         </ul>
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent sm:hidden" aria-hidden />
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-surface to-transparent sm:hidden" aria-hidden />
       </nav>
 
       {/* Sub-tab pill row — only renders when the primary has sub-tabs
@@ -2011,7 +2011,7 @@ async function OpportunityInvoicesPanel({
           </Link>
         </div>
       ) : null}
-    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 ${className ?? ""}`}>
+    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
         <div className="flex items-center gap-2">
           <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-100 text-cc-brand-700">
@@ -2295,7 +2295,7 @@ async function OpportunityInvoicesPanel({
                           <select
                             name="method"
                             defaultValue=""
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-white min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-surface min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                           >
                             <option value="">— select —</option>
                             {PAYMENT_METHODS.map((m) => (
@@ -2391,7 +2391,7 @@ async function OpportunityInvoicesPanel({
               aria-label="Close edit panel"
               className="absolute inset-0 bg-ppp-charcoal-900/40 backdrop-blur-[1px]"
             />
-            <aside className="relative z-10 w-full max-w-[92vw] sm:max-w-md h-full bg-white shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
+            <aside className="relative z-10 w-full max-w-[92vw] sm:max-w-md h-full bg-surface shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
               <header className="px-5 pt-5 pb-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-500">
@@ -2538,7 +2538,7 @@ async function OpportunityInvoicesPanel({
                   </Link>.
                 </div>
               </form>
-              <footer className="border-t border-ppp-charcoal-100 px-5 py-3 flex items-center justify-between gap-2 bg-white">
+              <footer className="border-t border-ppp-charcoal-100 px-5 py-3 flex items-center justify-between gap-2 bg-surface">
                 <Link
                   href={backHref}
                   className="inline-flex items-center justify-center px-3.5 py-2 rounded-md text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[36px] touch-manipulation"
@@ -2952,7 +2952,7 @@ function ChangeStatusCard({
   // up-front block makes the warning visible BEFORE the user picks).
   const warnNext = nextStatuses.filter((s) => shouldWarnTransition(opp.status, s));
   return (
-    <section className={`bg-white border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50 ${className ?? ""}`}>
+    <section className={`bg-surface border border-emerald-200 rounded-xl p-5 ring-1 ring-emerald-50 ${className ?? ""}`}>
       <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
         <div>
           <h2 className="text-base font-bold text-ppp-charcoal flex items-center gap-2">
@@ -3019,7 +3019,7 @@ function ChangeStatusCard({
               type="submit"
               name="debrief_skip"
               value="1"
-              className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-medium hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 transition-colors min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-medium hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 transition-colors min-h-[44px] touch-manipulation"
             >
               Save status, debrief later
             </button>
@@ -3095,7 +3095,7 @@ async function DebriefTab({
           doesn't supersede it. Keeps continuity for opps closed before
           the debrief feature shipped. */}
       {!isDebriefed && opp.loss_reason && (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
           <div className={LABEL_CLS}>Legacy loss reason (pre-debrief)</div>
           <p className="text-sm text-ppp-charcoal-700 mt-1">
             {opportunityLossReasonLabel(opp.loss_reason)}
@@ -3124,7 +3124,7 @@ function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
   // left-accent stripe. Sentence-case header, softer subhead, softer
   // sub-labels inside the form (see DebriefFields).
   return (
-    <section className="relative bg-white border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
+    <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
       <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600" />
       <div className="flex items-start gap-3 mb-4">
         <div className="shrink-0 w-9 h-9 rounded-lg bg-cc-brand-50 border border-cc-brand-100 flex items-center justify-center" aria-hidden>
@@ -3170,7 +3170,7 @@ function DebriefReadOnlyView({
   debriefCount: number;
 }) {
   return (
-    <section className="relative bg-white border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
+    <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm overflow-hidden">
       <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500" />
       <div className="flex items-start gap-3 mb-4">
         <div className="shrink-0 w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center" aria-hidden>
@@ -3321,7 +3321,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
 
       {/* Add assignment form */}
       {staff.length > 0 && (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
           <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add to team</h2>
           <form action={addTeamAction} className="space-y-3">
             <input type="hidden" name="opportunity_id" value={oppId} />
@@ -3399,11 +3399,11 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
 
       {/* Current team */}
       {team.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
           No team assigned yet. Add the sales rep, estimator, PM, and anyone else from PPP working this deal.
         </div>
       ) : (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               {team.length} team member{team.length === 1 ? "" : "s"}
@@ -3484,7 +3484,7 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
         </div>
       )}
 
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add task</h2>
         <form action={addTaskAction} className="space-y-3">
           <input type="hidden" name="opportunity_id" value={oppId} />
@@ -3586,7 +3586,7 @@ function TaskList({
   dim?: boolean;
 }) {
   return (
-    <div className={`bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden ${dim ? "opacity-80" : ""}`}>
+    <div className={`bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden ${dim ? "opacity-80" : ""}`}>
       <div className="px-4 py-3 border-b border-ppp-charcoal-100">
         <h2 className="text-sm font-semibold text-ppp-charcoal">{label}</h2>
       </div>
@@ -3706,7 +3706,7 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
         </div>
       )}
 
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add note</h2>
         <form action={addNoteAction} className="space-y-3">
           <input type="hidden" name="opportunity_id" value={oppId} />
@@ -3731,7 +3731,7 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
       </section>
 
       {notes.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
           No notes yet. The timeline starts with whatever you log first.
         </div>
       ) : (
@@ -3754,7 +3754,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
       className={`border rounded-xl p-4 ${
         isPinned
           ? "bg-amber-50 border-amber-200"
-          : "bg-white border-ppp-charcoal-100"
+          : "bg-surface border-ppp-charcoal-100"
       }`}
     >
       <div className="flex items-baseline justify-between gap-3 mb-2 flex-wrap">
@@ -3871,7 +3871,7 @@ async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
 
       <CommercialOpportunityUploadForm oppId={oppId} />
 
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ppp-charcoal">
             Current files · {active.length}
@@ -3896,7 +3896,7 @@ async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
       </section>
 
       {history.length > 0 && (
-        <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
+        <details className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
           <summary className="px-4 py-3 cursor-pointer text-[12px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
             <span>History · {history.length}</span>
             <span className="text-ppp-charcoal-300 group-open:rotate-180 transition-transform">▾</span>
@@ -4032,7 +4032,7 @@ async function FinishesTab({
       )}
 
       {/* Add finish form — inline at top, no modal (matches PlansTab + TasksTab) */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-5">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add finish</h2>
         <form action={addFinishAction} className="space-y-3">
           <input type="hidden" name="opportunity_id" value={oppId} />
@@ -4181,7 +4181,7 @@ async function FinishesTab({
       {/* Empty state — points to Plans & Specs since architect drawings
           are where the WD-1/P-1 codes come from (audit polish #L4). */}
       {finishes.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
           <p>
             No finishes captured yet. Add the WD-1, P-1, etc. codes from the architect spec book —
             they flow into your submittals later.
@@ -4200,7 +4200,7 @@ async function FinishesTab({
           </p>
         </div>
       ) : (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-bold text-ppp-charcoal">
               Finish Schedule · {finishes.length}{" "}
@@ -4265,7 +4265,7 @@ function FinishRow({
           </form>
           <Link
             href={`/commercial/opportunities/${oppId}?tab=finishes`}
-            className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-white text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+            className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-sm font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
           >
             Cancel
           </Link>
@@ -4502,12 +4502,12 @@ async function SubmittalsTab({
 
       {/* Empty state */}
       {submittals.length === 0 ? (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
+        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
           No submittals yet. The first submittal package usually goes out right after
           the Finish Schedule is locked + spec PDFs are uploaded to Plans &amp; Specs.
         </div>
       ) : (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               Submittal log · {submittals.length}{" "}
@@ -4545,7 +4545,7 @@ function SubmittalRow({
     : tone === "rose" ? "bg-rose-50 text-rose-800 border-rose-200"
     : tone === "sky" ? "bg-sky-50 text-sky-800 border-sky-200"
     : tone === "charcoal" ? "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200"
-    : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200";
+    : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200";
 
   // ET date rendering per platform convention (memory: project_commercial_cc_cleanup_conventions).
   const fmt = (iso: string | null): string => {
@@ -4701,7 +4701,7 @@ async function FilesTab({
       )}
 
       {favorites.length > 0 && (
-        <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 flex items-center gap-2">
             <span className="text-amber-500 inline-flex"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg></span>
             <h2 className="text-sm font-semibold text-ppp-charcoal">
@@ -4716,7 +4716,7 @@ async function FilesTab({
         </section>
       )}
 
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
           <h2 className="text-sm font-semibold text-ppp-charcoal">
             {favorites.length > 0 ? "All files" : "Files"} · {others.length + favorites.length}
@@ -4742,7 +4742,7 @@ async function FilesTab({
       </section>
 
       {superseded.length > 0 && (
-        <details className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
+        <details className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
           <summary className="px-4 py-3 cursor-pointer text-[12px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
             <span>Superseded · {superseded.length}</span>
             <span className="text-ppp-charcoal-300 group-open:rotate-180 transition-transform">▾</span>
@@ -4890,7 +4890,7 @@ async function TimelineTab({ oppId }: { oppId: string }) {
   const log = await listOpportunityStatusLog(oppId);
   if (log.length === 0) {
     return (
-      <div className="bg-white border border-ppp-charcoal-100 rounded-xl p-10 text-center">
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-10 text-center">
         <div className="text-sm font-semibold text-ppp-charcoal mb-1">
           No status changes yet
         </div>
@@ -4901,7 +4901,7 @@ async function TimelineTab({ oppId }: { oppId: string }) {
     );
   }
   return (
-    <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ppp-charcoal">
           Status history · {log.length}
@@ -5013,7 +5013,7 @@ function Card({
       ? "bg-amber-500"
       : "bg-ppp-charcoal-200";
   return (
-    <section className={`bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm ${className ?? ""}`}>
+    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden shadow-sm ${className ?? ""}`}>
       <header className="px-5 pt-4 pb-3 flex items-center gap-3 border-b border-ppp-charcoal-50">
         {icon && (
           <span aria-hidden className={`inline-flex items-center justify-center h-8 w-8 rounded-lg shrink-0 ${iconCls}`}>
@@ -5143,7 +5143,7 @@ function KpiTile({
   // reads cleanly. Tinted top-bar + gradient background unchanged.
   return (
     <div
-      className="relative border border-ppp-blue-100/70 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-white to-ppp-blue-50/50 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden"
+      className="relative border border-ppp-blue-100/70 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-surface to-ppp-blue-50/50 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden"
       title={tooltip}
     >
       <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-ppp-blue-500 to-ppp-blue-400" aria-hidden />

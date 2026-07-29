@@ -99,7 +99,7 @@ export default function CopyArchiveAddressButton({
             // text-base (16px) prevents iOS Safari from auto-zooming when
             // the input receives focus — text-xs would zoom and not zoom
             // back.
-            className="w-full font-mono text-base px-3 py-2.5 rounded border border-amber-300 bg-white text-ppp-charcoal min-h-[44px]"
+            className="w-full font-mono text-base px-3 py-2.5 rounded border border-amber-300 bg-surface text-ppp-charcoal min-h-[44px]"
           />
         </div>
       )}
