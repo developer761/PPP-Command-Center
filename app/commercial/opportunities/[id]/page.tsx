@@ -34,9 +34,11 @@ import { fetchOpportunityLifecycle, formatDurationDays } from "@/lib/commercial/
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
+import { ProjectToolbar } from "@/components/commercial/project-toolbar";
 import {
   isTerminalOpportunityStatus,
   isWon,
+  isPostSaleProject,
   isLost,
 } from "@/lib/commercial/opportunities/constants";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
@@ -1721,6 +1723,19 @@ export default async function OpportunityDetailPage({
           tooltip="Days until the proposal is due (or how overdue it is). Pulled from proposal_due_at on the new-opp or edit form."
         />
       </section>
+
+      {/* Phase H: on a post-sale project, a toolbar to the production tools
+          (Change Orders / AIA Billing / Submittals / Invoices) so they're
+          reachable from the project page, not just the deal drawer. */}
+      {isPostSaleProject(opp) && account && (
+        <div className="mb-3">
+          <ProjectToolbar
+            accountId={account.id}
+            dealId={opp.id}
+            active={tab === "submittals" ? "submittals" : "overview"}
+          />
+        </div>
+      )}
 
       {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
           the previous 9-tab row; each group has its own sub-nav below

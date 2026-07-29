@@ -22,6 +22,7 @@ import {
   derivedOppName,
 } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject, oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
+import { ProjectToolbar } from "@/components/commercial/project-toolbar";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { getInvoiceContext } from "@/lib/commercial/invoices/db";
@@ -214,6 +215,8 @@ export default async function AccountChangeOrdersPage({
           </p>
         </div>
       </div>
+
+      <ProjectToolbar accountId={id} dealId={dealId} active="change-orders" />
 
       <ChangeOrdersPanel
         oppId={opp.id}
