@@ -30,7 +30,7 @@ import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { listProducts } from "@/lib/commercial/products/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct, type TaxJurisdictionLite } from "@/lib/commercial/tax/constants";
-import ProductPicker from "@/components/commercial/product-picker";
+import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -1879,22 +1879,18 @@ function FullDetailByOpp({
               )}
               {totalInvoiced > 0 && (
                 <div className="mt-3">
-                  <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Opportunity progress</div>
-                    <div className="text-[10.5px] text-ppp-charcoal-600 tabular-nums">
-                      <strong className="text-ppp-charcoal">{formatCentsFull(totalPaid)}</strong>
-                      <span className="text-ppp-charcoal-500"> of {formatCentsFull(totalInvoiced)}</span>
-                      <span className="text-ppp-charcoal-400"> · {groupPct}%</span>
-                    </div>
-                  </div>
-                  <div className="h-2 bg-ppp-charcoal-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all ${groupBarTone}`} style={{ width: `${groupPct}%` }} />
-                  </div>
-                  {draftGroupCount > 0 && (
-                    <div className="mt-1 text-[10.5px] text-ppp-charcoal-500">
-                      Includes {draftGroupCount} draft{draftGroupCount === 1 ? "" : "s"} ({formatCentsFull(draftGroupCents)}) not yet sent.
-                    </div>
-                  )}
+                  <PaymentProgressBar
+                    paidCents={totalPaid}
+                    totalCents={totalInvoiced}
+                    overdue={overduePresent}
+                    label="Opportunity progress"
+                    amounts={{ paid: formatCentsFull(totalPaid), total: formatCentsFull(totalInvoiced) }}
+                    note={
+                      draftGroupCount > 0
+                        ? `Includes ${draftGroupCount} draft${draftGroupCount === 1 ? "" : "s"} (${formatCentsFull(draftGroupCents)}) not yet sent.`
+                        : null
+                    }
+                  />
                 </div>
               )}
             </div>
@@ -2102,17 +2098,10 @@ function FullDetailByOpp({
                 >
                   <input type="hidden" name="account_id" value={accountId} />
                   <input type="hidden" name="opp_id" value={oppId} />
-                  <input type="hidden" name="product_id" id={`inv-add-${oppId}-product-id`} value="" />
-                  {pickableProducts.length > 0 && (
-                    <ProductPicker
-                      products={pickableProducts}
-                      accountId={accountId}
-                      descriptionInputId={`inv-add-${oppId}-description`}
-                      unitInputId={`inv-add-${oppId}-unit-noop`}
-                      unitPriceInputId={`inv-add-${oppId}-amount`}
-                      productIdInputId={`inv-add-${oppId}-product-id`}
-                    />
-                  )}
+                  {/* 2026-07-29: dropped the product/SKU catalog picker here —
+                      a commercial progress-billing invoice is a description +
+                      dollar amount ("Progress payment 2 of 3"), not a catalog
+                      line, so the picker only added confusion. */}
                   <div>
                     <label className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
                       What this charge is for

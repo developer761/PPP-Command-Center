@@ -41,6 +41,7 @@ import {
 } from "@/lib/commercial/invoices/constants";
 import { formatCentsFull, fmtEtDate, parseDollarsToCents, daysBetween } from "@/lib/commercial/invoices/format";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
+import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
 import { getCommercialAccount, formatAccountNumber } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 import { isWon } from "@/lib/commercial/opportunities/constants";
@@ -784,35 +785,16 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         {invoice.total_cents > 0 && !isVoid && (
           <a
             href="#payments"
-            className="mt-5 block group/pb rounded-lg -mx-1 px-1 py-1 hover:bg-ppp-charcoal-50/60 transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+            className="mt-5 block rounded-lg -mx-1 px-1 py-1 hover:bg-ppp-charcoal-50/60 transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
             title="Jump to Payments"
-            aria-label={`Payment progress ${Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))}%. Click to jump to Payments.`}
           >
-            <div className="flex items-baseline justify-between text-[11px] font-semibold uppercase tracking-wider mb-1">
-              <span className="text-ppp-charcoal-500 group-hover/pb:text-ppp-charcoal-700 inline-flex items-center gap-1">
-                Payment progress
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="opacity-40 group-hover/pb:opacity-100 transition-opacity">
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
-              </span>
-              <span className="text-ppp-charcoal-700">
-                {Math.min(100, Math.round((invoice.paid_cents / invoice.total_cents) * 100))}%
-              </span>
-            </div>
-            <div className="h-2 w-full bg-ppp-charcoal-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  invoice.paid_cents >= invoice.total_cents
-                    ? "bg-emerald-500"
-                    : invoice.paid_cents > 0
-                    ? "bg-amber-500"
-                    : "bg-ppp-charcoal-300"
-                }`}
-                style={{
-                  width: `${Math.min(100, (invoice.paid_cents / invoice.total_cents) * 100)}%`,
-                }}
-              />
-            </div>
+            <PaymentProgressBar
+              paidCents={invoice.paid_cents}
+              totalCents={invoice.total_cents}
+              overdue={deriveInvoiceStatus(invoice) === "overdue"}
+              label="Payment progress"
+              amounts={{ paid: formatCentsFull(invoice.paid_cents), total: formatCentsFull(invoice.total_cents) }}
+            />
           </a>
         )}
 
