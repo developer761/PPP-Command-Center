@@ -115,7 +115,7 @@ export default function NotificationsView({
               href={buildHref({ filter: f, page: "1" })}
               aria-current={active ? "page" : undefined}
               className={`inline-flex items-center px-3.5 rounded-full text-[13px] font-semibold border min-h-[44px] transition-colors ${
-                active ? accent.activeBg : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+                active ? accent.activeBg : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
               }`}
             >
               {f === "all" ? "All" : `Unread${localUnread > 0 ? ` · ${localUnread}` : ""}`}
@@ -138,7 +138,7 @@ export default function NotificationsView({
               type="button"
               onClick={markAll}
               disabled={markingAll}
-              className={`inline-flex items-center rounded-lg border border-ppp-charcoal-200 bg-white px-3 min-h-[44px] text-xs font-semibold ${accent.text} hover:bg-ppp-charcoal-50 disabled:opacity-50 touch-manipulation`}
+              className={`inline-flex items-center rounded-lg border border-ppp-charcoal-200 bg-surface px-3 min-h-[44px] text-xs font-semibold ${accent.text} hover:bg-ppp-charcoal-50 disabled:opacity-50 touch-manipulation`}
             >
               {markingAll ? "Marking…" : "Mark all read"}
             </button>
@@ -148,7 +148,7 @@ export default function NotificationsView({
 
       {/* List */}
       {localRows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-ppp-charcoal-200 bg-white px-4 py-14 text-center">
+        <div className="rounded-xl border border-dashed border-ppp-charcoal-200 bg-surface px-4 py-14 text-center">
           <div className={`mx-auto h-12 w-12 rounded-full flex items-center justify-center mb-3 ${emptyEver && filter === "all" && !kind ? "bg-emerald-50 text-emerald-500" : "bg-ppp-charcoal-50 text-ppp-charcoal-400"}`}>
             {emptyEver && filter === "all" && !kind ? (
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
@@ -179,7 +179,7 @@ export default function NotificationsView({
           )}
         </div>
       ) : (
-        <ul className="bg-white border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden">
+        <ul className="bg-surface border border-ppp-charcoal-100 rounded-xl divide-y divide-ppp-charcoal-100 overflow-hidden">
           {localRows.map((n) => {
             const unreadRow = !n.read_at;
             const inner = (
@@ -253,7 +253,7 @@ export default function NotificationsView({
 
 function Kpi({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
-    <div className="rounded-xl border border-ppp-charcoal-100 bg-white px-3.5 py-3">
+    <div className="rounded-xl border border-ppp-charcoal-100 bg-surface px-3.5 py-3">
       <div className={`text-2xl font-bold tabular-nums leading-none ${accent}`}>{value.toLocaleString()}</div>
       <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-400">{label}</div>
     </div>
@@ -312,7 +312,7 @@ function KindMenu({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-3 min-h-[44px] text-[13px] font-medium touch-manipulation transition-colors focus:outline-none focus-visible:ring-2 ${accentRing} ${
+        className={`inline-flex items-center gap-1.5 rounded-lg border bg-surface px-3 min-h-[44px] text-[13px] font-medium touch-manipulation transition-colors focus:outline-none focus-visible:ring-2 ${accentRing} ${
           value ? "border-ppp-charcoal-300 text-ppp-charcoal-800" : "border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
         }`}
       >
@@ -324,7 +324,7 @@ function KindMenu({
       {open && (
         <div
           role="listbox"
-          className="absolute right-0 z-20 mt-1.5 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-ppp-charcoal-200 bg-white shadow-lg overflow-hidden"
+          className="absolute right-0 z-20 mt-1.5 w-60 max-w-[calc(100vw-2rem)] rounded-xl border border-ppp-charcoal-200 bg-surface shadow-lg overflow-hidden"
         >
           {showSearch && (
             <div className="p-2 border-b border-ppp-charcoal-100">

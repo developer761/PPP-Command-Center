@@ -162,7 +162,7 @@ export default function HealthChecksView({
         <button
           type="button"
           onClick={load}
-          className="px-3 py-1.5 rounded-md border border-rose-200 bg-white text-xs font-medium text-rose-700 hover:bg-rose-100 transition-colors touch-manipulation min-h-[44px]"
+          className="px-3 py-1.5 rounded-md border border-rose-200 bg-surface text-xs font-medium text-rose-700 hover:bg-rose-100 transition-colors touch-manipulation min-h-[44px]"
         >
           Retry
         </button>
@@ -204,7 +204,7 @@ export default function HealthChecksView({
               type="button"
               onClick={sendSlackTest}
               disabled={slackTestState === "sending"}
-              className="px-3 py-1.5 rounded-md border border-current text-xs font-medium hover:bg-white/40 transition-colors disabled:opacity-50 touch-manipulation min-h-[44px]"
+              className="px-3 py-1.5 rounded-md border border-current text-xs font-medium hover:bg-surface/40 transition-colors disabled:opacity-50 touch-manipulation min-h-[44px]"
             >
               {slackTestState === "sending" ? "Sending…" : "Send test Slack alert"}
             </button>
@@ -213,7 +213,7 @@ export default function HealthChecksView({
             type="button"
             onClick={load}
             disabled={loading}
-            className="px-3 py-1.5 rounded-md border border-current text-xs font-medium hover:bg-white/40 transition-colors disabled:opacity-50 touch-manipulation min-h-[44px]"
+            className="px-3 py-1.5 rounded-md border border-current text-xs font-medium hover:bg-surface/40 transition-colors disabled:opacity-50 touch-manipulation min-h-[44px]"
           >
             {loading ? "Checking…" : "Re-run"}
           </button>
@@ -255,7 +255,7 @@ export default function HealthChecksView({
                 return (
                   <li
                     key={c.id}
-                    className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden"
+                    className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden"
                   >
                     <button
                       type="button"

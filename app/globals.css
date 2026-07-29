@@ -244,6 +244,14 @@ body {
   --color-cc-brand-600: #5661c0;   /* button rest */
   --color-cc-brand-700: #4b55a8;   /* hover (darker) */
   --color-cc-brand-800: #3a4288;
+
+  /* Per-customer HSL tints (opportunities group cards) — dark bg, light text */
+  --cust-sat: 34%;
+  --cust-bg-l: 15%;
+  --cust-border-l: 52%;
+  --cust-avatar-l: 30%;
+  --cust-avatar-tx-l: 76%;
+  --cust-name-l: 78%;
 }
 [data-theme="dark"] *::-webkit-scrollbar-thumb {
   background: #3f3f46;

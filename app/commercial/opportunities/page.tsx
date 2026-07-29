@@ -152,14 +152,18 @@ function accountColorTone(accountId: string | null): AccountTone {
   // anything that lands there up by 60° → maps to red/orange band.
   let hue = h % 300;
   if (hue >= 200) hue = (hue + 60) % 360;
+  // Lightness is driven by CSS vars so the per-customer tint flips in dark mode
+  // (the inline HSL can't follow a token otherwise — it was a bright pastel
+  // island on the dark page). Defaults = light mode; [data-theme="dark"]
+  // overrides them in globals.css.
   return {
-    border: { borderLeftColor: `hsl(${hue}, 62%, 55%)` },
-    headerBg: { backgroundColor: `hsl(${hue}, 62%, 96%)` },
+    border: { borderLeftColor: `hsl(${hue}, 55%, var(--cust-border-l, 55%))` },
+    headerBg: { backgroundColor: `hsl(${hue}, var(--cust-sat, 62%), var(--cust-bg-l, 96%))` },
     avatar: {
-      backgroundColor: `hsl(${hue}, 55%, 88%)`,
-      color: `hsl(${hue}, 55%, 28%)`,
+      backgroundColor: `hsl(${hue}, var(--cust-sat, 55%), var(--cust-avatar-l, 88%))`,
+      color: `hsl(${hue}, 50%, var(--cust-avatar-tx-l, 28%))`,
     },
-    nameText: { color: `hsl(${hue}, 60%, 32%)` },
+    nameText: { color: `hsl(${hue}, 55%, var(--cust-name-l, 32%))` },
   };
 }
 
