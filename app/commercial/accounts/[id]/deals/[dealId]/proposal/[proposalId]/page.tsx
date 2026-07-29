@@ -904,7 +904,7 @@ export default async function ProposalEditorPage({
                 <ConfirmSubmitButton
                   message={`Mark R${proposal.revision_number} WON? This also flips the opportunity to Pre-Sale Closed · Won. You'll be able to start the project next.`}
                   pendingLabel="Marking won…"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-700 shadow-sm min-h-[40px] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-[13px] font-semibold hover:bg-emerald-600 shadow-sm min-h-[40px] disabled:opacity-50"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="20 6 9 17 4 12" />
@@ -954,7 +954,7 @@ export default async function ProposalEditorPage({
           </div>
           <Link
             href={`/commercial/accounts/${accountId}/debrief/${dealId}?just_closed=1`}
-            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700"
+            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-600"
           >
             Add loss reason →
           </Link>
@@ -1454,7 +1454,7 @@ function LineItemsTable({
                 >
                   Remove
                 </ConfirmSubmitButton>
-                <button type="submit" className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-white text-[13px] font-semibold hover:bg-ppp-charcoal-900 touch-manipulation">
+                <button type="submit" className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-white text-[13px] font-semibold hover:bg-ppp-navy-900 touch-manipulation">
                   Save row
                 </button>
               </div>

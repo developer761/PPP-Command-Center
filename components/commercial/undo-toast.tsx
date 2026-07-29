@@ -115,7 +115,7 @@ export function UndoToast() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-6 right-6 z-50 max-w-sm w-full sm:w-auto bg-ppp-charcoal-900 text-white rounded-xl shadow-xl border border-ppp-charcoal-700 px-4 py-3 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4"
+      className="fixed bottom-6 right-6 z-50 max-w-sm w-full sm:w-auto bg-ppp-navy-900 text-white rounded-xl shadow-xl border border-ppp-charcoal-700 px-4 py-3 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4"
     >
       <span className="text-[13px] font-medium truncate flex-1">
         {status === "restoring"

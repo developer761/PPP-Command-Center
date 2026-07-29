@@ -509,7 +509,7 @@ function MergeForm({
         />
         <button
           type="submit"
-          className="mt-2 w-full text-xs font-semibold px-3 py-2 rounded bg-rose-600 text-white hover:bg-rose-700 min-h-[44px]"
+          className="mt-2 w-full text-xs font-semibold px-3 py-2 rounded bg-rose-600 text-white hover:bg-rose-600 min-h-[44px]"
         >
           Merge
         </button>

@@ -1761,7 +1761,7 @@ function StatusActionsPanel({
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-700 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
               >
                 Void submittal
               </button>
@@ -1819,8 +1819,8 @@ function ResponseRecorder({
     tone === "emerald"
       ? { card: "border-emerald-200 bg-emerald-50/40", btn: "bg-cc-brand-600 hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-cc-brand-600/30", dot: "bg-emerald-500" }
       : tone === "amber"
-      ? { card: "border-amber-200 bg-amber-50/40", btn: "bg-amber-700 hover:bg-amber-800 active:bg-amber-900 shadow-amber-700/30", dot: "bg-amber-500" }
-      : { card: "border-rose-200 bg-rose-50/40", btn: "bg-rose-700 hover:bg-rose-800 active:bg-rose-900 shadow-rose-700/30", dot: "bg-rose-500" };
+      ? { card: "border-amber-200 bg-amber-50/40", btn: "bg-amber-600 hover:bg-amber-800 active:bg-amber-900 shadow-amber-700/30", dot: "bg-amber-500" }
+      : { card: "border-rose-200 bg-rose-50/40", btn: "bg-rose-600 hover:bg-rose-800 active:bg-rose-900 shadow-rose-700/30", dot: "bg-rose-500" };
 
   return (
     <details className={`group rounded-lg border ${toneStyles.card} overflow-hidden`}>

@@ -143,7 +143,7 @@ export function KeyboardShortcuts() {
         type="button"
         aria-label="Close shortcuts"
         onClick={() => setHelpOpen(false)}
-        className="absolute inset-0 bg-ppp-charcoal-900/50 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-ppp-navy-900/50 backdrop-blur-[2px]"
       />
       <div className="relative w-full max-w-md bg-surface rounded-2xl shadow-2xl border border-ppp-charcoal-200 overflow-hidden">
         <div className="px-5 py-3.5 border-b border-ppp-charcoal-100 flex items-center justify-between">

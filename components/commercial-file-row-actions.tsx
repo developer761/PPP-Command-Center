@@ -124,7 +124,7 @@ export function CommercialFileRowActions({
           {currentCategory && <input type="hidden" name="current_category" value={currentCategory} />}
           <button
             type="submit"
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 min-h-[44px] touch-manipulation"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-600 min-h-[44px] touch-manipulation"
           >
             Confirm delete
           </button>

@@ -55,7 +55,7 @@ export default function CopyArchiveAddressButton({
         type="button"
         onClick={onCopy}
         aria-label={`Copy archive address ${address}`}
-        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-700 active:bg-ppp-blue-800 transition-colors touch-manipulation min-h-[44px] shrink-0"
+        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-ppp-charcoal-100 bg-ppp-blue text-white text-sm font-semibold hover:bg-ppp-blue-600 active:bg-ppp-blue-800 transition-colors touch-manipulation min-h-[44px] shrink-0"
       >
         <svg
           width="16"

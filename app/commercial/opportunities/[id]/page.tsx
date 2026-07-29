@@ -2389,7 +2389,7 @@ async function OpportunityInvoicesPanel({
             <Link
               href={backHref}
               aria-label="Close edit panel"
-              className="absolute inset-0 bg-ppp-charcoal-900/40 backdrop-blur-[1px]"
+              className="absolute inset-0 bg-ppp-navy-900/40 backdrop-blur-[1px]"
             />
             <aside className="relative z-10 w-full max-w-[92vw] sm:max-w-md h-full bg-surface shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
               <header className="px-5 pt-5 pb-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3">
@@ -2905,7 +2905,7 @@ async function InfoTab({
                 <input type="hidden" name="account_id" value={opp.account_id} />
                 <button
                   type="submit"
-                  className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 min-h-[44px] touch-manipulation"
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-600 min-h-[44px] touch-manipulation"
                 >
                   Delete
                 </button>
@@ -3311,7 +3311,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
             </div>
             <button
               type="submit"
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-700 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 min-h-[44px] touch-manipulation"
             >
               Assign me
             </button>
@@ -4258,7 +4258,7 @@ function FinishRow({
             <input type="hidden" name="finish_id" value={finish.id} />
             <button
               type="submit"
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-700 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
             >
               Yes, delete
             </button>
@@ -4493,7 +4493,7 @@ async function SubmittalsTab({
           <input type="hidden" name="opportunity_id" value={oppId} />
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-700 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 transition-colors shadow-sm shadow-sky-700/30 min-h-[44px] touch-manipulation shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 transition-colors shadow-sm shadow-sky-700/30 min-h-[44px] touch-manipulation shrink-0"
           >
             + New submittal
           </button>

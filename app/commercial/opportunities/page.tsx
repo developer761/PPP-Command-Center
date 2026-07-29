@@ -1426,7 +1426,7 @@ function NewDealSlideOut({
       <Link
         href={closeHref}
         aria-label="Close new opportunity panel"
-        className="fixed inset-0 z-40 bg-ppp-charcoal-900/40 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-ppp-navy-900/40 backdrop-blur-sm"
       />
       <aside
         id="new-deal-sheet"

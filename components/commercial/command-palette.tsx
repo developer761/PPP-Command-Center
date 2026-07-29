@@ -167,7 +167,7 @@ export function CommandPalette() {
         type="button"
         aria-label="Close command palette"
         onClick={() => setOpen(false)}
-        className="absolute inset-0 bg-ppp-charcoal-900/50 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-ppp-navy-900/50 backdrop-blur-[2px]"
       />
       <div className="relative w-full max-w-xl bg-surface rounded-2xl shadow-2xl border border-ppp-charcoal-200 overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-ppp-charcoal-100">

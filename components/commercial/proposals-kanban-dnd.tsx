@@ -252,7 +252,7 @@ export function ProposalsKanbanDnDProvider({ children }: { children: ReactNode }
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-ppp-charcoal-900 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-fade-up"
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-ppp-navy-900 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-fade-up"
         >
           <svg
             className="animate-spin"

@@ -743,7 +743,7 @@ function StatusChip({
   label: string;
 }) {
   const cls = active
-    ? "bg-ppp-charcoal-900 text-white border-ppp-charcoal-900"
+    ? "bg-ppp-navy-900 text-white border-ppp-charcoal-900"
     : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50";
   return (
     <Link

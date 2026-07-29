@@ -103,6 +103,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             width={180}
             height={60}
             priority
+            className="cc-dark-invert"
           />
           <div className="mt-3 inline-flex items-center gap-1.5">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-brand-600" />
