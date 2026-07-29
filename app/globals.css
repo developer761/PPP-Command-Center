@@ -152,6 +152,11 @@ body {
   color: var(--foreground);
   min-height: 100vh;
 }
+/* color-scheme tells the browser to render NATIVE controls (inputs, selects,
+   checkboxes, date pickers, scrollbars, autofill) dark — without it those stay
+   white on a dark page, which is what made the search bars + gaps look white. */
+[data-theme="light"] { color-scheme: light; }
+[data-theme="dark"]  { color-scheme: dark; }
 [data-theme="dark"] {
   /* ── Dark theme v4 (Karan 2026-07-29) — rich near-black, NO red ──
    * Vercel/Linear/shadcn-style: near-pure-black page, softly-elevated zinc
