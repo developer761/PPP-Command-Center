@@ -6206,7 +6206,7 @@ async function DealEditSheet({
                 Are you sure? This will remove <strong>{deal.title || "this opportunity"}</strong> from the pipeline.
               </p>
               <PendingSubmitButton
-                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-600 min-h-[36px] touch-manipulation disabled:hover:bg-rose-600"
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation disabled:hover:bg-rose-700"
                 pendingLabel="Deleting…"
               >
                 Yes, delete this deal

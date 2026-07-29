@@ -183,7 +183,7 @@ export default async function ArchivedDealsPage({
             </span>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-md bg-cc-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 focus:ring-offset-2 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md bg-cc-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 focus:outline-none focus:ring-2 focus:ring-cc-brand-500 disabled:opacity-50"
             >
               Unarchive selected
             </button>
@@ -229,7 +229,7 @@ export default async function ArchivedDealsPage({
                       <td className="px-3 py-2 align-top">
                         <div className="font-medium text-ppp-charcoal">
                           <Link
-                            href={`/commercial/accounts/${o.account_id}?tab=deals&deal=${o.id}#deal-${o.id}`}
+                            href={`/commercial/accounts/${o.account_id}?tab=opportunities&archived=1&edit=${o.id}#deal-row-${o.id}`}
                             className="hover:text-cc-brand-700 hover:underline"
                           >
                             {display}
@@ -304,7 +304,7 @@ export default async function ArchivedDealsPage({
                   />
                   <div className="min-w-0 flex-1">
                     <Link
-                      href={`/commercial/accounts/${o.account_id}?tab=deals&deal=${o.id}#deal-${o.id}`}
+                      href={`/commercial/accounts/${o.account_id}?tab=opportunities&archived=1&edit=${o.id}#deal-row-${o.id}`}
                       className="font-medium text-ppp-charcoal hover:text-cc-brand-700 hover:underline block truncate"
                     >
                       {display}

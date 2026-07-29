@@ -740,7 +740,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               return (
                 <details className="relative">
                   <summary
-                    className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold min-h-[44px] touch-manipulation bg-rose-600 text-white hover:bg-rose-600 shadow-sm shadow-rose-600/25"
+                    className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold min-h-[44px] touch-manipulation bg-rose-600 text-white hover:bg-rose-700 shadow-sm shadow-rose-600/25"
                     title={`Delete every invoice attached to this deleted ${scopeLabel}. Paid invoices auto-void first.`}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -764,7 +764,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       <input type="hidden" name="back_href" value={backHref} />
                       <button
                         type="submit"
-                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-600 min-h-[36px] touch-manipulation"
+                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
                       >
                         Yes, delete all {siblingsForBulk.length}
                       </button>

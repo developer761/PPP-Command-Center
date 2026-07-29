@@ -671,7 +671,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <div className="flex items-center gap-2 flex-wrap shrink-0">
             {showDeleteAll && deleteAllForm && (
               <details className="relative">
-                <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-600 min-h-[36px] touch-manipulation shadow-sm shadow-rose-600/25">
+                <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation shadow-sm shadow-rose-600/25">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M3 6h18 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                   </svg>
@@ -690,7 +690,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                     <input type="hidden" name="confirm" value="yes" />
                     <button
                       type="submit"
-                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-600 min-h-[36px] touch-manipulation"
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
                     >
                       Yes, delete all {scopedInvoiceCount}
                     </button>
@@ -1850,7 +1850,7 @@ function FullDetailByOpp({
                         <input type="hidden" name="return_account_id" value={accountId} />
                         <button
                           type="submit"
-                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12.5px] font-semibold hover:bg-rose-600 min-h-[36px] touch-manipulation"
+                          className="flex-1 inline-flex items-center justify-center px-3 py-1.5 rounded-md bg-rose-600 text-white text-[12.5px] font-semibold hover:bg-rose-700 min-h-[36px] touch-manipulation"
                         >
                           Delete all
                         </button>

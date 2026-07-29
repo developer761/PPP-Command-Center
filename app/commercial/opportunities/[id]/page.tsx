@@ -86,6 +86,7 @@ import {
 } from "@/lib/commercial/win-loss/debrief";
 import DebriefFields from "@/components/commercial/debrief-fields";
 import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
+import { SearchableSelect } from "@/components/commercial/searchable-select";
 import {
   listOpportunityAttachments,
   archiveOpportunityAttachment,
@@ -2949,7 +2950,7 @@ async function InfoTab({
                 <input type="hidden" name="account_id" value={opp.account_id} />
                 <button
                   type="submit"
-                  className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-600 min-h-[44px] touch-manipulation"
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 min-h-[44px] touch-manipulation"
                 >
                   Delete
                 </button>
@@ -3374,21 +3375,17 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                 <label htmlFor="team_user" className={LABEL_CLS}>
                   Staff member <span className="text-rose-700">*</span>
                 </label>
-                <select
-                  id="team_user"
+                <SearchableSelect
                   name="user_id"
                   required
-                  defaultValue=""
-                  className={SELECT_CLS}
-                  style={SELECT_BG_STYLE}
-                >
-                  <option value="">Pick someone</option>
-                  {staff.map((s) => (
-                    <option key={s.user_id} value={s.user_id}>
-                      {s.full_name ?? s.email}
-                    </option>
-                  ))}
-                </select>
+                  ariaLabel="Staff member"
+                  placeholder="Search staff…"
+                  options={staff.map((s) => ({
+                    value: s.user_id,
+                    label: s.full_name ?? s.email,
+                    hint: s.full_name ? s.email : undefined,
+                  }))}
+                />
               </div>
               <div>
                 <label htmlFor="team_role" className={LABEL_CLS}>
@@ -3562,20 +3559,16 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
               <label htmlFor="task_assignee" className={LABEL_CLS}>
                 Assignee
               </label>
-              <select
-                id="task_assignee"
+              <SearchableSelect
                 name="assigned_user_id"
-                defaultValue=""
-                className={SELECT_CLS}
-                style={SELECT_BG_STYLE}
-              >
-                <option value="">Unassigned</option>
-                {staff.map((s) => (
-                  <option key={s.user_id} value={s.user_id}>
-                    {s.full_name ?? s.email}
-                  </option>
-                ))}
-              </select>
+                ariaLabel="Assignee"
+                placeholder="Unassigned — search staff…"
+                options={staff.map((s) => ({
+                  value: s.user_id,
+                  label: s.full_name ?? s.email,
+                  hint: s.full_name ? s.email : undefined,
+                }))}
+              />
             </div>
           </div>
           <div className="flex justify-end">

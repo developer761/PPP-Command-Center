@@ -954,7 +954,7 @@ export default async function ProposalEditorPage({
           </div>
           <Link
             href={`/commercial/accounts/${accountId}/debrief/${dealId}?just_closed=1`}
-            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-600"
+            className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[12px] font-semibold hover:bg-rose-700"
           >
             Add loss reason →
           </Link>

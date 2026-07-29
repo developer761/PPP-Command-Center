@@ -44,6 +44,7 @@ import {
 import { SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import CommercialAccountsSearchAutocomplete from "@/components/commercial-accounts-search-autocomplete";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
+import { SearchableSelect } from "@/components/commercial/searchable-select";
 import {
   listTagsForAccounts,
   listAllDistinctTags,
@@ -169,6 +170,11 @@ export default async function CommercialAccountsPage({
   ]);
   const bulkResult = pickFirst(sp.bulk_result);
   const bulkError = pickFirst(sp.bulk_error);
+  // 2026-07-29 re-audit fix: the dashboard "Start a bid" CTA and the retired
+  // /opportunities/new redirect send ?status_error=… to guide the user to
+  // pick a GC first. It was never rendered here, so those flows dead-ended
+  // silently. Surface it as an amber "do this first" hint.
+  const statusError = pickFirst(sp.status_error);
   const [overviewsById, tagsByAccount, allTags] = await Promise.all([
     listAccountOverviews(accountsRaw.map((a) => a.id)),
     listTagsForAccounts(accountsRaw.map((a) => a.id)),
@@ -403,8 +409,20 @@ export default async function CommercialAccountsPage({
 
       {/* ─── Banner strip — deleted / bulk result / bulk error all in
           one spot so the layout doesn't jump around. ─── */}
-      {(justDeleted || bulkResult || bulkError) && (
+      {(justDeleted || bulkResult || bulkError || statusError) && (
         <div className="space-y-2">
+          {statusError && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900 flex items-start justify-between gap-3">
+              <span className="flex-1">{statusError}</span>
+              <Link
+                href="/commercial/accounts"
+                className="text-[12px] text-amber-800 hover:text-amber-900 underline shrink-0 min-h-[24px] inline-flex items-center"
+                aria-label="Dismiss banner"
+              >
+                Dismiss
+              </Link>
+            </div>
+          )}
           {justDeleted && (
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
               <span aria-hidden>✓</span>
@@ -806,21 +824,17 @@ export default async function CommercialAccountsPage({
                     <label htmlFor="bulk_user_id" className="block text-[10px] font-bold tracking-wide uppercase text-ppp-charcoal-500">
                       Assign staff to selected
                     </label>
-                    <select
-                      id="bulk_user_id"
+                    <SearchableSelect
                       name="bulk_user_id"
-                      defaultValue=""
                       required
-                      className={SELECT_CLS}
-                      style={SELECT_BG_STYLE}
-                    >
-                      <option value="">Pick staff</option>
-                      {assignableStaff.map((p) => (
-                        <option key={p.user_id} value={p.user_id}>
-                          {p.full_name ?? p.email}
-                        </option>
-                      ))}
-                    </select>
+                      ariaLabel="Assign staff to selected"
+                      placeholder="Search staff…"
+                      options={assignableStaff.map((p) => ({
+                        value: p.user_id,
+                        label: p.full_name ?? p.email,
+                        hint: p.full_name ? p.email : undefined,
+                      }))}
+                    />
                     <select
                       id="bulk_role"
                       name="bulk_role"

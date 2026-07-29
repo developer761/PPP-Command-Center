@@ -387,7 +387,7 @@ export default async function EditCommercialAccountPage({
                 <input type="hidden" name="id" value={account.id} />
                 <button
                   type="submit"
-                  className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-600 active:bg-rose-800 min-h-[44px] touch-manipulation"
+                  className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 active:bg-rose-800 min-h-[44px] touch-manipulation"
                 >
                   Delete
                 </button>
