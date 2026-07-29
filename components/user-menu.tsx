@@ -63,7 +63,7 @@ export default function UserMenu({ name, email, initial }: Props) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 mt-2 z-40 w-64 rounded-lg bg-white border border-ppp-charcoal-100 shadow-xl shadow-ppp-charcoal/15 py-1 animate-fade-in"
+          className="absolute right-0 mt-2 z-40 w-64 rounded-lg bg-surface border border-ppp-charcoal-100 shadow-xl shadow-ppp-charcoal/15 py-1 animate-fade-in"
         >
           <div className="px-4 py-3 border-b border-ppp-charcoal-100">
             {name && (
