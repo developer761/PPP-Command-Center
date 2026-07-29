@@ -120,10 +120,13 @@ export async function createAiaApplication(
     return { ok: false, error: "AIA applications are only for Won/in-progress projects." };
   }
   // Default the original contract to the deal's bid midpoint when not given.
+  // (low ?? high ?? 0 — a high-only bid must not default to $0; matches the
+  // other bid-mid helpers.)
   const bidMid =
     row.bid_value_low_cents != null && row.bid_value_high_cents != null
       ? Math.round((row.bid_value_low_cents + row.bid_value_high_cents) / 2)
-      : row.bid_value_low_cents ?? 0;
+      : row.bid_value_low_cents ?? row.bid_value_high_cents ?? 0;
+  const contractWasDefaulted = input.original_contract_cents == null;
   const original = Math.max(0, Math.round(input.original_contract_cents ?? bidMid));
   const retainage =
     typeof input.retainage_pct === "number" && input.retainage_pct >= 0 && input.retainage_pct <= 100
@@ -163,6 +166,22 @@ export async function createAiaApplication(
       // the create (the operator can add lines manually).
       try {
         await seedAiaScheduleOfValues(appRow);
+        // AIA invariant: G702 line 1 (contract sum) == Σ G703 scheduled values.
+        // When the contract was auto-defaulted (from the bid midpoint) AND a
+        // schedule got seeded, snap the contract to the schedule total so the
+        // certificate reconciles (otherwise % complete could exceed 100% + the
+        // balance-to-finish go negative). An explicitly-provided contract wins.
+        if (contractWasDefaulted) {
+          const lines = await listAiaLineItems(appRow.id);
+          const sovTotal = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+          if (sovTotal > 0 && sovTotal !== appRow.original_contract_cents) {
+            await sb
+              .from("commercial_aia_applications")
+              .update({ original_contract_cents: sovTotal })
+              .eq("id", appRow.id);
+            appRow.original_contract_cents = sovTotal;
+          }
+        }
       } catch (e) {
         console.warn("[aia] schedule-of-values seed failed:", e instanceof Error ? e.message : String(e));
       }

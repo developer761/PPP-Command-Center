@@ -94,6 +94,7 @@ export async function listAllSubmittals(
       .from("commercial_opportunities")
       .select("id, title, title_override, client_name, property_street, account_id, deleted_at, archived_at")
       .in("id", oppIds)
+      .order("id", { ascending: true })
   );
   const oppById = new Map(opps.filter((o) => !o.deleted_at && !o.archived_at).map((o) => [o.id, o]));
 
@@ -102,7 +103,7 @@ export async function listAllSubmittals(
   type AcctRow = { id: string; company_name: string | null; deleted_at: string | null };
   const accts = acctIds.length
     ? await paginateAll<AcctRow>(() =>
-        sb.from("commercial_accounts").select("id, company_name, deleted_at").in("id", acctIds)
+        sb.from("commercial_accounts").select("id, company_name, deleted_at").in("id", acctIds).order("id", { ascending: true })
       )
     : [];
   const acctById = new Map(accts.filter((a) => !a.deleted_at).map((a) => [a.id, a]));
@@ -110,7 +111,7 @@ export async function listAllSubmittals(
   // 4. Item counts (bulk, no N+1).
   const subIds = subs.map((s) => s.id);
   const items = await paginateAll<{ submittal_id: string }>(() =>
-    sb.from("commercial_opp_submittal_items").select("submittal_id").in("submittal_id", subIds)
+    sb.from("commercial_opp_submittal_items").select("submittal_id").in("submittal_id", subIds).order("id", { ascending: true })
   );
   const countBy = new Map<string, number>();
   for (const r of items) countBy.set(r.submittal_id, (countBy.get(r.submittal_id) ?? 0) + 1);

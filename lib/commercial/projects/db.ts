@@ -110,6 +110,7 @@ export async function listProjects(opts: {
         .select("opportunity_id, status, amount_cents")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
+        .order("id", { ascending: true })
   );
   const coByOpp = new Map<string, { netApproved: number; pending: number; pendingCents: number }>();
   for (const c of coData) {
@@ -132,6 +133,7 @@ export async function listProjects(opts: {
         .select("id, opportunity_id, application_number, status, original_contract_cents, retainage_pct")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
+        .order("id", { ascending: true })
   );
   const latestAppByOpp = new Map<string, { id: string; application_number: number; status: string; original_contract_cents: number; retainage_pct: number }>();
   for (const a of appData) {
@@ -164,6 +166,7 @@ export async function listProjects(opts: {
           .from("commercial_aia_line_items")
           .select("application_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents")
           .in("application_id", latestAppIds)
+          .order("id", { ascending: true })
     );
     for (const l of liData) {
       const done =
