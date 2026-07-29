@@ -251,16 +251,16 @@ body {
   --color-cc-brand-700: #7580d4;   /* active-nav text + button hover */
   --color-cc-brand-800: #9aa3e4;
 
-  /* Per-customer color (opportunities/proposals group + kanban). In dark the
-     ONLY colored element is a DEEP, BOLD left spine; the header/avatar/name go
-     neutral (--cust-sat 0) so the card reads clean, not a fake rainbow. */
-  --cust-sat: 0%;
-  --cust-bg-l: 12%;
-  --cust-border-sat: 48%;
-  --cust-border-l: 38%;
-  --cust-avatar-l: 34%;
-  --cust-avatar-tx-l: 82%;
-  --cust-name-l: 86%;
+  /* Per-customer color (opportunities/proposals group + kanban). Curated
+     platform-harmonious hues (see NICE_HUES) at a MODERATE saturation — present
+     + tasteful, not a neon rainbow. Dark bg tint + light text; bold spine. */
+  --cust-sat: 30%;
+  --cust-bg-l: 16%;
+  --cust-border-sat: 52%;
+  --cust-border-l: 46%;
+  --cust-avatar-l: 36%;
+  --cust-avatar-tx-l: 84%;
+  --cust-name-l: 84%;
 }
 [data-theme="dark"] *::-webkit-scrollbar-thumb {
   background: #3f3f46;

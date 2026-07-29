@@ -253,6 +253,18 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
           it. Win rate reads "—" instead of "0%" when there were no
           head-to-heads (only no-bids), so an empty period doesn't look
           like a wipeout. */}
+      <div className="flex items-center gap-1.5 text-[11px] text-ppp-charcoal-500">
+        <span>How these are measured</span>
+        <span
+          tabIndex={0}
+          role="img"
+          aria-label="These numbers come from completed Win/Loss debriefs in the selected period — not raw deal status. A deal that was won or lost but never debriefed won't appear here; complete its debrief and it will."
+          title="These numbers come from completed Win/Loss debriefs in the selected period — not raw deal status. A deal that was won or lost but never debriefed won't appear here; complete its debrief and it will."
+          className="inline-flex items-center justify-center h-4 w-4 rounded-full border border-ppp-charcoal-300 text-ppp-charcoal-500 text-[9px] font-bold cursor-help focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+        >
+          ?
+        </span>
+      </div>
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiTile
           tone="emerald"

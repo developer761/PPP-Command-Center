@@ -767,9 +767,10 @@ function hueForAccountId(accountId: string | null): number {
   for (let i = 0; i < key.length; i++) {
     h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
   }
-  let hue = h % 300;
-  if (hue >= 200) hue = (hue + 60) % 360;
-  return hue;
+  // Curated, platform-harmonious hues (no harsh red/lime) — matches the
+  // opportunities board's account colors.
+  const NICE_HUES = [212, 246, 276, 308, 188, 158, 130, 40, 24];
+  return NICE_HUES[h % NICE_HUES.length];
 }
 
 function accountColorStyles(accountId: string | null): {

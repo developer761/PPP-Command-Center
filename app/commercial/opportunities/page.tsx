@@ -148,10 +148,11 @@ function accountColorTone(accountId: string | null): AccountTone {
   for (let i = 0; i < key.length; i++) {
     h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;
   }
-  // Map to 0-299° then skip the blue band (200-260°) by shifting
-  // anything that lands there up by 60° → maps to red/orange band.
-  let hue = h % 300;
-  if (hue >= 200) hue = (hue + 60) % 360;
+  // Curated hues that harmonize with the platform (blues / teals / violets /
+  // green / amber) — no harsh reds or limes, which read "off-brand". The old
+  // full-spectrum hash mapped some accounts (e.g. "Karan") to a clashing red.
+  const NICE_HUES = [212, 246, 276, 308, 188, 158, 130, 40, 24];
+  const hue = NICE_HUES[h % NICE_HUES.length];
   // Lightness is driven by CSS vars so the per-customer tint flips in dark mode
   // (the inline HSL can't follow a token otherwise — it was a bright pastel
   // island on the dark page). Defaults = light mode; [data-theme="dark"]
