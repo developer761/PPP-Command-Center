@@ -35,6 +35,7 @@ import {
   computeWarrantyEndDate,
   closeoutProgressPct,
   isCloseoutEditable,
+  isCloseoutItemStatusEditable,
   type CloseoutItemKind,
   type CloseoutItemStatus,
   type CloseoutStatus,
@@ -199,7 +200,16 @@ export default async function CloseoutPage({ params, searchParams }: { params: P
   const [account, opp] = await Promise.all([getCommercialAccount(id), getCommercialOpportunity(dealId)]);
   if (!account || !opp) notFound();
   if (opp.account_id !== id) notFound();
-  if (!isPostSaleProject(opp)) redirect(`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}`);
+  // Close-out is a post-award activity. Explain the gate instead of a silent
+  // bounce (2026-07-29 re-audit: the redirect fired with no message, so the
+  // page read as "broken").
+  if (!isPostSaleProject(opp)) {
+    redirect(
+      `/commercial/accounts/${id}?tab=opportunities&edit=${dealId}&status_error=${encodeURIComponent(
+        "Close-out opens once this deal is Won and in delivery — mark it Won first."
+      )}`
+    );
+  }
 
   const dealName = derivedOppName(opp, account.company_name);
   const packages = await listCloseoutPackages(dealId);
@@ -208,6 +218,9 @@ export default async function CloseoutPage({ params, searchParams }: { params: P
   const activePkg = pkg && pkg.opportunity_id === dealId ? pkg : null;
   const items = activePkg ? await listCloseoutItems(activePkg.id) : [];
   const editable = activePkg ? isCloseoutEditable(activePkg.status) : false;
+  // Issued but not closed → the cover + item set are frozen, but the checklist
+  // stays live so docs can be ticked "Received" as they come in.
+  const canTickItems = activePkg ? isCloseoutItemStatusEditable(activePkg.status) : false;
   const progress = closeoutProgressPct(items);
   const warrantyEnd = activePkg ? computeWarrantyEndDate(activePkg.substantial_completion_date, activePkg.warranty_years) : null;
 
@@ -300,7 +313,10 @@ export default async function CloseoutPage({ params, searchParams }: { params: P
 
           {!editable && (
             <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-2.5 text-[12px] text-ppp-charcoal-600">
-              This package is <strong>{CLOSEOUT_STATUS_META[activePkg.status].label.toLowerCase()}</strong> and locked. Void it and start a new one to change the cover or checklist.
+              This package is <strong>{CLOSEOUT_STATUS_META[activePkg.status].label.toLowerCase()}</strong>.{" "}
+              {canTickItems
+                ? "The cover + item list are locked, but you can still mark items Received as documents come in. Void it to change the cover or add/remove items."
+                : "It's closed and fully locked — void it and start a new one to make changes."}
             </div>
           )}
 
@@ -332,6 +348,25 @@ export default async function CloseoutPage({ params, searchParams }: { params: P
                       <label className="inline-flex items-center gap-1.5 text-[12px] text-ppp-charcoal-600">
                         <input type="checkbox" name="included" defaultChecked={it.included} className="w-4 h-4 accent-cc-brand-600" /> Include
                       </label>
+                      <div className="flex items-center gap-1.5">
+                        <select name="item_status" defaultValue={it.item_status} className={`${SELECT_CLS} !min-h-[40px] !py-1 text-[12px] w-[7.5rem]`} style={SELECT_BG_STYLE}>
+                          {(["pending", "received", "na"] as CloseoutItemStatus[]).map((s) => <option key={s} value={s}>{CLOSEOUT_ITEM_STATUS_LABEL[s]}</option>)}
+                        </select>
+                        <PendingSubmitButton className="px-2.5 py-1.5 rounded-md bg-ppp-charcoal text-white text-[11px] font-semibold min-h-[40px]" pendingLabel="…">Save</PendingSubmitButton>
+                      </div>
+                    </form>
+                  ) : canTickItems ? (
+                    // Issued (sent/acknowledged): the item set is frozen, but
+                    // you can still tick it Received/N-A as docs arrive.
+                    <form action={upsertItemAction} className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-center">
+                      <Ctx />
+                      <input type="hidden" name="item_id" value={it.id} />
+                      <input type="hidden" name="kind" value={it.kind} />
+                      <input type="hidden" name="label" value={it.label ?? ""} />
+                      <input type="hidden" name="included" value={it.included ? "on" : ""} />
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-semibold text-ppp-charcoal">{it.label || CLOSEOUT_ITEM_KIND_LABEL[it.kind]}{!it.included && <span className="ml-2 text-[10px] font-medium text-ppp-charcoal-400">(excluded)</span>}</div>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <select name="item_status" defaultValue={it.item_status} className={`${SELECT_CLS} !min-h-[40px] !py-1 text-[12px] w-[7.5rem]`} style={SELECT_BG_STYLE}>
                           {(["pending", "received", "na"] as CloseoutItemStatus[]).map((s) => <option key={s} value={s}>{CLOSEOUT_ITEM_STATUS_LABEL[s]}</option>)}

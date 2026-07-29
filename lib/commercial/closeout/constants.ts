@@ -28,10 +28,21 @@ export const ALLOWED_CLOSEOUT_TRANSITIONS: Record<CloseoutStatus, ReadonlyArray<
 
 export const TERMINAL_CLOSEOUT_STATUSES: ReadonlySet<CloseoutStatus> = new Set(["complete", "voided"]);
 
-/** A sent/complete package is issued — its cover + items are locked (like a
- *  submittal / AIA app). Only a draft is freely editable. */
+/** A sent/complete package is issued — its cover + the item SET (add/remove,
+ *  kind, included) lock on send, like a submittal / AIA app. Only a draft is
+ *  freely editable. */
 export function isCloseoutEditable(status: CloseoutStatus): boolean {
   return status === "draft";
+}
+
+/** The Received / N-A collection status on an EXISTING checklist item is a
+ *  LIVE working checklist: you transmit the package, THEN collect the docs and
+ *  tick them off — right up until the package is complete/voided. So the item
+ *  status (+ its attached doc / notes) stays editable through sent/acknowledged
+ *  even though the cover + item set are locked. (2026-07-29: fixes the flow
+ *  where "Mark sent" froze the checklist exactly when you'd start using it.) */
+export function isCloseoutItemStatusEditable(status: CloseoutStatus): boolean {
+  return !TERMINAL_CLOSEOUT_STATUSES.has(status);
 }
 
 export const CLOSEOUT_ITEM_KINDS = [

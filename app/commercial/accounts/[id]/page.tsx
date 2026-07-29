@@ -195,6 +195,7 @@ type SP = Promise<{
   /** Katie 2026-07-20: per-account "Include archived" toggle on the
    *  Deals tab. `?archived=1` reveals archived deals; default hides. */
   archived?: string;
+  status_error?: string;
 }>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
@@ -338,6 +339,7 @@ export default async function CommercialAccountDetailPage({
   const docsAddedCount = sp.docs_added ? Number(sp.docs_added) : 0;
   const docSkippedMsg = sp.doc_skipped ?? null;
   const savedOk = sp.saved === "1";
+  const statusError = sp.status_error;
 
   return (
     <div className="space-y-5">
@@ -346,6 +348,14 @@ export default async function CommercialAccountDetailPage({
           scroll to it, so cross-page links / the command palette don't land
           on hidden content. */}
       <HashReveal />
+      {/* Guidance banner from gated redirects (e.g. opening Closeout on a
+          not-yet-Won deal). Amber = "do this first," not a hard error. */}
+      {statusError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900 flex items-start gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5" aria-hidden><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+          <span>{statusError}</span>
+        </div>
+      )}
       {/* Toast surface from the new-account team-on-create flow. Fades
           out via reload (no client component needed — the user navigating
           away clears the query string naturally). */}
@@ -5820,6 +5830,29 @@ async function DealEditSheet({
                 <div className="min-w-0">
                   <div className="text-sm font-bold text-ppp-charcoal leading-tight">Closeout &amp; Warranty</div>
                   <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">Close-out package + transmittal + warranty letter</div>
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+            </div>
+          </Link>
+        )}
+        {/* 2026-07-29 re-audit fix: Submittals was the one post-contract
+            workflow with NO entry point in the deal drawer (CO / AIA /
+            Closeout / Debrief all had cards), so the feature felt "broken"
+            — you couldn't reach the create surface from where you land. */}
+        {isPostSaleDeal && (
+          <Link
+            href={`/commercial/opportunities/${deal.id}?tab=submittals`}
+            className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span aria-hidden className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-600 text-white shrink-0">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h5 M8 17h4" /></svg>
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-ppp-charcoal leading-tight">Submittals</div>
+                  <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">Shop drawings + product data → transmittal to the GC</div>
                 </div>
               </div>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>

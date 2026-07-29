@@ -114,7 +114,13 @@ export default async function SubmittalsIndexPage({ searchParams }: { searchPara
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h4" /></svg>
           </span>
           <p className="text-sm font-semibold text-ppp-charcoal">{search || status ? "No submittals match" : "No submittals yet"}</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Submittals are created on a deal&rsquo;s Submittals tab. They show up here across every GC.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Submittals are created on a project&rsquo;s Submittals tab (shop drawings + product data you transmit to the GC). Pick a project to start one.</p>
+          {!(search || status) && (
+            <Link href="/commercial/projects" className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+              Go to Projects
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+            </Link>
+          )}
         </div>
       ) : (
         <ul className="space-y-2">

@@ -98,7 +98,13 @@ export default async function CloseoutIndexPage({ searchParams }: { searchParams
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
           </span>
           <p className="text-sm font-semibold text-ppp-charcoal">{search || status ? "No close-out packages match" : "No close-out packages yet"}</p>
-          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Create one from a project (its Closeout tab) when a job wraps.</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">A close-out package is created on a project when the job wraps. Pick a project below to start one from its Closeout tab.</p>
+          {!(search || status) && (
+            <Link href="/commercial/projects" className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
+              Go to Projects
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
+            </Link>
+          )}
         </div>
       ) : (
         <ul className="space-y-2">{rows.map((r) => <Row key={r.id} r={r} />)}</ul>

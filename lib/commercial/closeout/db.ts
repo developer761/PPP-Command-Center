@@ -7,6 +7,7 @@ import {
   ALLOWED_CLOSEOUT_TRANSITIONS,
   DEFAULT_CLOSEOUT_ITEMS,
   isCloseoutEditable,
+  isCloseoutItemStatusEditable,
   type CloseoutStatus,
   type CloseoutItemKind,
   type CloseoutItemStatus,
@@ -214,12 +215,8 @@ export async function upsertCloseoutItem(
   const sb = commercialDb();
   const pkg = await getCloseoutPackage(input.package_id);
   if (!pkg) return { ok: false, error: "not_found" };
-  // Item collection status (received/na) is a working checklist even after
-  // sending — but structural edits (add/remove/kind) lock on issue. We allow
-  // any field edit only on draft to keep it simple + immutable-once-issued.
-  if (!isCloseoutEditable(pkg.status)) {
-    return { ok: false, error: "The package has been issued — reopen a draft to edit items." };
-  }
+  const isDraft = isCloseoutEditable(pkg.status);
+  const canTickItems = isCloseoutItemStatusEditable(pkg.status);
   const payload = {
     package_id: input.package_id,
     kind: input.kind,
@@ -231,10 +228,24 @@ export async function upsertCloseoutItem(
     position: input.position ?? 9000,
   };
   if (input.id) {
+    // Editing an EXISTING item: on a draft everything's editable; on a
+    // sent/acknowledged package only the collection state (received/N-A + its
+    // doc/notes) can change — the transmitted item set + kind + included stay
+    // frozen. On a complete/voided package nothing changes.
+    if (!isDraft && !canTickItems) {
+      return { ok: false, error: "This package is closed — its checklist can't be changed." };
+    }
     const { data: beforeItem } = await sb.from("commercial_closeout_items").select("*").eq("id", input.id).eq("package_id", input.package_id).maybeSingle();
+    const patch = isDraft
+      ? payload
+      : {
+          item_status: input.item_status,
+          document_id: input.document_id ?? null,
+          notes: input.notes ?? null,
+        };
     const { data, error } = await sb
       .from("commercial_closeout_items")
-      .update(payload)
+      .update(patch)
       .eq("id", input.id)
       .eq("package_id", input.package_id)
       .select("*")
@@ -242,6 +253,10 @@ export async function upsertCloseoutItem(
     if (error || !data) return { ok: false, error: error?.message ?? "update_failed" };
     await logUpdate("commercial_closeout_items", input.id, (beforeItem as Record<string, unknown>) ?? {}, data, actorUserId);
     return { ok: true, value: data as CloseoutItem };
+  }
+  // Adding a NEW item changes the transmitted set — draft only.
+  if (!isDraft) {
+    return { ok: false, error: "The package has been sent — reopen a draft to add or remove items." };
   }
   const { data, error } = await sb.from("commercial_closeout_items").insert(payload).select("*").maybeSingle();
   if (error || !data) return { ok: false, error: error?.message ?? "insert_failed" };
