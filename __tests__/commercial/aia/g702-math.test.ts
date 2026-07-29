@@ -127,6 +127,20 @@ describe("computeG702", () => {
     expect(g.totalEarnedLessRetainageCents).toBe(0);
   });
 
+  it("retainage sums PER-LINE rounded (ties to the G703 sheet), not round-of-total", () => {
+    // 3 lines each completed $1,000.05 @ 10%. Per-line round(10000.5)=10001 → 30003.
+    // Round-of-total would give round(30001.5)=30002 — a penny mismatch a GC rejects.
+    const g = computeG702({
+      originalContractCents: 1_000_000,
+      netChangeOrdersCents: 0,
+      retainagePct: 10,
+      lines: [line(200_010, 0, 100_005), line(200_010, 0, 100_005), line(200_010, 0, 100_005)],
+      previousCertificatesCents: 0,
+    });
+    expect(g.totalCompletedStoredCents).toBe(300_015);
+    expect(g.retainageCents).toBe(30_003); // Σ per-line, not round-of-total (30_002)
+  });
+
   it("lineCompletedStoredCents floors negatives and rounds", () => {
     expect(
       lineCompletedStoredCents({

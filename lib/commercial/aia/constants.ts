@@ -82,7 +82,14 @@ export function computeG702({
   const contractSumToDate = originalContractCents + netChangeOrdersCents;
   const totalCompletedStored = lines.reduce((sum, l) => sum + lineCompletedStoredCents(l), 0);
   const pct = Math.min(100, Math.max(0, retainagePct));
-  const retainage = Math.round((totalCompletedStored * pct) / 100);
+  // Retainage (G702 line 5) is the SUM of PER-LINE rounded retainage — the same
+  // way the G703 continuation sheet's retainage column totals — so the two
+  // sheets always tie to the penny. (Rounding the total instead of per-line
+  // drifts by ~N/2 cents and a GC's AP system can reject the mismatch.)
+  const retainage = lines.reduce(
+    (sum, l) => sum + Math.round((lineCompletedStoredCents(l) * pct) / 100),
+    0
+  );
   const totalEarnedLessRetainage = totalCompletedStored - retainage;
   const currentPaymentDue = totalEarnedLessRetainage - previousCertificatesCents;
   const balanceToFinish = contractSumToDate - totalEarnedLessRetainage;

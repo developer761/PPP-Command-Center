@@ -234,12 +234,15 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
                 g702={g702!}
                 basePath={b}
                 exportHref={`/api/commercial/aia/${selectedAppId}/export`}
+                editable={application.status === "draft"}
                 upsertLineAction={upsertLineAction}
                 deleteLineAction={deleteLineAction}
                 setStatusAction={setStatusAction}
                 errorMessage={sp.error ?? null}
               />
-              {/* Application settings + delete (compact) */}
+              {/* Application settings + delete (compact) — Draft only; an issued
+                  certificate's contract/retainage/period are locked. */}
+              {application.status === "draft" && (
               <details className="bg-white border border-ppp-charcoal-100 rounded-xl">
                 <summary className="cursor-pointer list-none px-4 py-3 min-h-[44px] flex items-center gap-2 text-[12px] font-semibold text-ppp-charcoal-700 select-none">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H1a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6h.09" /></svg>
@@ -281,6 +284,7 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
                   </div>
                 </form>
               </details>
+              )}
             </>
           );
         })()

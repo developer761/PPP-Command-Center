@@ -64,6 +64,7 @@ export function AiaApplicationDetail({
   g702,
   basePath,
   exportHref,
+  editable,
   upsertLineAction,
   deleteLineAction,
   setStatusAction,
@@ -76,6 +77,9 @@ export function AiaApplicationDetail({
   g702: AiaG702;
   basePath: string; // list URL (drop ?app)
   exportHref: string;
+  /** Only a Draft is editable — an issued (submitted/paid) certificate is
+   *  locked (it's been sent to the GC + may be carried forward). */
+  editable: boolean;
   upsertLineAction: Action;
   deleteLineAction: Action;
   setStatusAction: Action;
@@ -160,17 +164,47 @@ export function AiaApplicationDetail({
       {/* ── G703 schedule of values ── */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-1">Schedule of Values (G703)</h2>
-        <p className="text-[11px] text-ppp-charcoal-500 mb-3">
-          One row per line of work. Enter the scheduled value + what&rsquo;s completed from previous periods, this period, and materials stored.
-        </p>
+        {editable ? (
+          <p className="text-[11px] text-ppp-charcoal-500 mb-3">
+            One row per line of work. Enter the scheduled value + what&rsquo;s completed from previous periods, this period, and materials stored.
+          </p>
+        ) : (
+          <div className="mb-3 rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-200 px-3 py-2 text-[11.5px] text-ppp-charcoal-600 flex items-center gap-2">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+            This application is <strong className="mx-1">{AIA_STATUS_META[application.status].label.toLowerCase()}</strong> and locked. Reopen it to Draft (above) to edit the schedule of values.
+          </div>
+        )}
 
         <div className="space-y-2">
           {lines.length === 0 && (
-            <p className="text-[12px] text-ppp-charcoal-500 italic">No line items yet — add the first below.</p>
+            <p className="text-[12px] text-ppp-charcoal-500 italic">{editable ? "No line items yet — add the first below." : "No line items."}</p>
           )}
           {lines.map((li) => {
             const total = lineCompletedStoredCents(li);
             const balance = li.scheduled_value_cents - total;
+            if (!editable) {
+              return (
+                <div key={li.id} className="rounded-lg border border-ppp-charcoal-100 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[12.5px] font-semibold text-ppp-charcoal">
+                        {li.item_no ? <span className="text-ppp-charcoal-400 mr-1.5">{li.item_no}</span> : null}{li.description || "—"}
+                      </div>
+                      <div className="text-[11px] text-ppp-charcoal-500 tabular-nums mt-0.5 flex flex-wrap gap-x-3">
+                        <span>Sched {formatCentsFull(li.scheduled_value_cents)}</span>
+                        <span>Prev {formatCentsFull(li.from_previous_cents)}</span>
+                        <span>This {formatCentsFull(li.this_period_cents)}</span>
+                        <span>Stored {formatCentsFull(li.materials_stored_cents)}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Done · Balance</div>
+                      <div className="text-[12px] font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(total)} · {formatCentsFull(balance)}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
             return (
               <form key={li.id} action={upsertLineAction} className="rounded-lg border border-ppp-charcoal-100 p-3 space-y-2">
                 <input type="hidden" name="app_id" value={application.id} />
@@ -224,7 +258,8 @@ export function AiaApplicationDetail({
           })}
         </div>
 
-        {/* Add line */}
+        {/* Add line (draft only) */}
+        {editable && (
         <form action={upsertLineAction} className="mt-3 rounded-lg border border-dashed border-cc-brand-200 p-3">
           <input type="hidden" name="app_id" value={application.id} />
                 <Ctx />
@@ -250,6 +285,7 @@ export function AiaApplicationDetail({
             </div>
           </div>
         </form>
+        )}
       </section>
     </div>
   );

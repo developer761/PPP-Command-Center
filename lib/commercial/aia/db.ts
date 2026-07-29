@@ -170,6 +170,28 @@ export async function updateAiaApplication(
 ): Promise<Result<AiaApplication>> {
   const before = await getAiaApplication(id);
   if (!before) return { ok: false, error: "not_found" };
+  // An ISSUED certificate (submitted/paid) is immutable except for its own
+  // status — editing its contract/retainage/period would silently restate a
+  // document already sent to the GC (and, via the line-6 carry-forward, a
+  // downstream certificate too). Only a status-only patch is allowed on a
+  // non-draft app.
+  const isStatusOnly =
+    patch.status !== undefined &&
+    patch.period_from === undefined &&
+    patch.period_to === undefined &&
+    patch.original_contract_cents === undefined &&
+    patch.retainage_pct === undefined &&
+    patch.notes === undefined;
+  if (!isStatusOnly && before.status !== "draft") {
+    return { ok: false, error: "This application has been issued — reopen it to Draft before editing." };
+  }
+  // Block a status DOWNGRADE when a later application carries this one forward:
+  // reopening a certified period would over-bill the next application.
+  if (patch.status !== undefined && STATUS_RANK[patch.status] < STATUS_RANK[before.status]) {
+    if (await laterApplicationExists(before.opportunity_id, before.application_number)) {
+      return { ok: false, error: "A later application depends on this one — delete the later drafts before reopening it." };
+    }
+  }
   const next: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.period_from !== undefined) next.period_from = patch.period_from;
   if (patch.period_to !== undefined) next.period_to = patch.period_to;
@@ -198,9 +220,31 @@ export async function updateAiaApplication(
   return { ok: true, value: appRow };
 }
 
+const STATUS_RANK: Record<AiaApplicationStatus, number> = { draft: 0, submitted: 1, paid: 2 };
+
+/** True when a live application with a HIGHER number exists on the project —
+ *  i.e. a later period may carry this one forward as a previous certificate. */
+async function laterApplicationExists(opportunityId: string, applicationNumber: number): Promise<boolean> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_aia_applications")
+    .select("id")
+    .eq("opportunity_id", opportunityId)
+    .gt("application_number", applicationNumber)
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
+}
+
 export async function deleteAiaApplication(id: string, userId: string): Promise<Result<true>> {
   const before = await getAiaApplication(id);
   if (!before) return { ok: false, error: "not_found" };
+  // Only a DRAFT can be deleted — an issued certificate has been sent to the GC
+  // and (unless it's the last one) a later application carries it forward.
+  if (before.status !== "draft") {
+    return { ok: false, error: "Issued applications can't be deleted. Reopen to Draft first (only possible if no later application depends on it)." };
+  }
   const sb = commercialDb();
   const { error } = await sb
     .from("commercial_aia_applications")
@@ -218,6 +262,14 @@ export async function upsertAiaLineItem(
   applicationId: string,
   line: Partial<AiaLineItem> & { id?: string }
 ): Promise<Result<AiaLineItem>> {
+  // Line items can only change while the application is a Draft — editing an
+  // issued certificate's schedule of values would restate a document already
+  // sent to the GC (and any downstream certificate).
+  const app = await getAiaApplication(applicationId);
+  if (!app) return { ok: false, error: "not_found" };
+  if (app.status !== "draft") {
+    return { ok: false, error: "This application has been issued — reopen it to Draft to edit line items." };
+  }
   const sb = commercialDb();
   const payload = {
     application_id: applicationId,
@@ -251,6 +303,11 @@ export async function upsertAiaLineItem(
 }
 
 export async function deleteAiaLineItem(id: string, applicationId: string): Promise<Result<true>> {
+  const app = await getAiaApplication(applicationId);
+  if (!app) return { ok: false, error: "not_found" };
+  if (app.status !== "draft") {
+    return { ok: false, error: "This application has been issued — reopen it to Draft to edit line items." };
+  }
   const sb = commercialDb();
   const { error } = await sb
     .from("commercial_aia_line_items")
