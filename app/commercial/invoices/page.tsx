@@ -28,6 +28,8 @@ import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDolla
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { listProducts } from "@/lib/commercial/products/db";
+import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
+import { resolveTaxForZip, thouToPct, type TaxJurisdictionLite } from "@/lib/commercial/tax/constants";
 import ProductPicker from "@/components/commercial/product-picker";
 
 export const dynamic = "force-dynamic";
@@ -355,7 +357,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // At current volumes (< 5K invoices per workspace) this is fast enough
   // to be worth the simplicity. If we hit scale we swap in an RPC that
   // joins commercial_invoices to commercial_opportunities server-side.
-  const [invoicesRaw, accounts, accountFilter, allOpps, products] = await Promise.all([
+  const [invoicesRaw, accounts, accountFilter, allOpps, products, taxJurisdictions] = await Promise.all([
     listCommercialInvoices({ status: statusFilter, accountId: accountIdFilter, opportunityId: opportunityIdFilter }),
     listCommercialAccounts(),
     // Include-deleted so a deleted-account invoice cluster can render
@@ -364,6 +366,8 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     accountIdFilter ? getCommercialAccountIncludingDeleted(accountIdFilter) : Promise.resolve(null),
     listCommercialOpportunities({}),
     listProducts(),
+    // Sales tax by ZIP: active jurisdictions feed the invoice tax auto-fill.
+    listTaxJurisdictions({ activeOnly: true }),
   ]);
   // Phase D: hand the picker a lean shape so we're not shipping the
   // full CommercialProduct rows (audit cols, notes, cost) to the client.
@@ -1080,6 +1084,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           openAddOppId={pickFirst(sp.add) ?? null}
           wonOppsForAccount={wonOpps}
           pickableProducts={pickableProducts}
+          taxJurisdictions={taxJurisdictions}
         />
       ) : sorted.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 sm:p-12 text-center">
@@ -1544,9 +1549,10 @@ function FullDetailByOpp({
   openAddOppId,
   wonOppsForAccount,
   pickableProducts,
+  taxJurisdictions,
 }: {
   invoices: CommercialInvoice[];
-  oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; property_street: string | null }>;
+  oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; property_street: string | null; property_zip?: string | null }>;
   accountById: Map<string, { id: string; company_name: string }>;
   sortKey: string;
   accountId: string;
@@ -1556,6 +1562,9 @@ function FullDetailByOpp({
   createdInvoiceId?: string | null;
   errorMessage?: string | null;
   openAddOppId?: string | null;
+  /** Sales tax by ZIP: active jurisdictions to pre-fill the tax % from the
+   *  project's property ZIP. Empty = feature unconfigured → field stays blank. */
+  taxJurisdictions?: TaxJurisdictionLite[];
   /** Karan 2026-07-09: passed in so the empty state can show a mini
    *  Won-deal picker inline instead of dead-ending. Undefined = don't
    *  render the picker (used for the unfiltered overview which uses a
@@ -1713,6 +1722,11 @@ function FullDetailByOpp({
       {oppOrder.map(([oppId, groupInvoices]) => {
         const opp = oppById.get(oppId);
         const account = opp ? accountById.get(opp.account_id) : null;
+        // Sales tax by ZIP: resolve the project's property ZIP → jurisdiction
+        // and pre-fill the new-invoice tax %. Null when no ZIP / no match /
+        // feature unconfigured; the field then stays blank for manual entry.
+        const taxHit = resolveTaxForZip(opp?.property_zip, taxJurisdictions ?? []);
+        const suggestedTaxPct = taxHit ? thouToPct(taxHit.rateThou) : null;
         const nonVoid = groupInvoices.filter((i) => i.status !== "void");
         const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
         const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
@@ -2118,7 +2132,9 @@ function FullDetailByOpp({
                   {/* Progressive disclosure — advanced fields sit
                       behind another <details> so the common case stays
                       three fields. */}
-                  <details className="group/more">
+                  {/* Auto-open when tax was pre-filled from the project ZIP so
+                      the applied rate is visible, not silently added. */}
+                  <details className="group/more" open={suggestedTaxPct !== null}>
                     <summary className="list-none cursor-pointer text-[11.5px] font-medium text-cc-brand-700 hover:text-cc-brand-800 min-h-[28px] flex items-center gap-1.5 select-none">
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
                         <path d="M9 18l6-6-6-6" />
@@ -2144,8 +2160,18 @@ function FullDetailByOpp({
                           pattern="[0-9.]*"
                           name="tax_pct"
                           placeholder="0"
+                          defaultValue={suggestedTaxPct !== null ? String(suggestedTaxPct) : undefined}
                           className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                         />
+                        {taxHit && (
+                          <span className="mt-1 block text-[10.5px] leading-snug text-ppp-charcoal-500">
+                            Pre-filled for <strong className="text-ppp-charcoal-700">{taxHit.jurisdiction.name}</strong> ({opp?.property_zip}).
+                            {!taxHit.jurisdiction.verified && (
+                              <span className="text-amber-700"> Rate unverified — <Link href="/commercial/settings/tax" className="underline">confirm it</Link>.</span>
+                            )}{" "}
+                            Edit if this job is tax-exempt (capital improvement).
+                          </span>
+                        )}
                       </label>
                       <label className="block sm:col-span-2">
                         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">PO number</span>

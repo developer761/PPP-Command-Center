@@ -74,6 +74,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Setup Health", href: "/commercial/settings/health", icon: <IconHeart /> },
       { label: "Competitors", href: "/commercial/settings/competitors", icon: <IconUsers /> },
+      { label: "Sales tax", href: "/commercial/settings/tax", icon: <IconDollar /> },
       { label: "Archived deals", href: "/commercial/settings/archived", icon: <IconArchive /> },
     ],
   },

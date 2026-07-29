@@ -42,6 +42,8 @@ import {
   isLost,
 } from "@/lib/commercial/opportunities/constants";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
+import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
+import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import {
@@ -1831,6 +1833,7 @@ export default async function OpportunityDetailPage({
       {tab === "invoices" && (isOppWon || isDeletedDeal) && (
         <OpportunityInvoicesPanel
           oppId={opp.id}
+          propertyZip={opp.property_zip}
           bidMidpointCents={
             opp.bid_value_low_cents != null && opp.bid_value_high_cents != null
               ? Math.round((opp.bid_value_low_cents + opp.bid_value_high_cents) / 2)
@@ -1887,6 +1890,7 @@ export default async function OpportunityDetailPage({
  */
 async function OpportunityInvoicesPanel({
   oppId,
+  propertyZip = null,
   bidMidpointCents,
   className,
   invoicesCreated,
@@ -1900,6 +1904,7 @@ async function OpportunityInvoicesPanel({
   detailsSavedInvoiceId = null,
 }: {
   oppId: string;
+  propertyZip?: string | null;
   bidMidpointCents: number | null;
   className?: string;
   invoicesCreated?: number;
@@ -1912,7 +1917,17 @@ async function OpportunityInvoicesPanel({
   editInvoiceId?: string | null;
   detailsSavedInvoiceId?: string | null;
 }) {
-  const invoices = await listCommercialInvoices({ opportunityId: oppId });
+  const [invoices, taxJurisdictions] = await Promise.all([
+    listCommercialInvoices({ opportunityId: oppId }),
+    listTaxJurisdictions({ activeOnly: true }),
+  ]);
+  // Sales tax by ZIP: resolve this project's ZIP → jurisdiction once for the
+  // whole panel. Null when no ZIP / no match; the edit sheet shows a hint on
+  // draft invoices whose tax is still blank (never auto-overrides a set rate).
+  const taxHit = resolveTaxForZip(propertyZip, taxJurisdictions);
+  const taxSuggestion = taxHit
+    ? { pct: thouToPct(taxHit.rateThou), name: taxHit.jurisdiction.name, verified: taxHit.jurisdiction.verified }
+    : null;
   // Roll-ups (Karan 2026-07-07 bug fix): earlier version excluded drafts
   // from the totals, so a $9K sent + $1.2K draft + $200 draft opp showed
   // "$9K invoiced" and confused the operator. Fix: include EVERY non-void
@@ -2493,6 +2508,13 @@ async function OpportunityInvoicesPanel({
                       defaultValue={editing.tax_pct ?? ""}
                       className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 max-w-[140px]"
                     />
+                    {taxSuggestion && !editing.tax_pct && (
+                      <span className="mt-1 block text-[10.5px] leading-snug text-ppp-charcoal-500">
+                        This ZIP maps to <strong className="text-ppp-charcoal-700">{taxSuggestion.pct}%</strong> ({taxSuggestion.name}).
+                        {!taxSuggestion.verified && <span className="text-amber-700"> Rate unverified.</span>}{" "}
+                        Leave blank if tax-exempt.
+                      </span>
+                    )}
                   </label>
                 </section>
 
