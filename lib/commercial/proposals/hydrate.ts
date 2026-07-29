@@ -83,25 +83,26 @@ export async function hydrateProposalContext(
     proposal_number: opp.deal_number ?? undefined,
   };
 
-  // Attention/phone/email — pull the primary contact if set.
+  // Attention/phone/email — pull the primary contact if set. commercial_contacts
+  // stores a single `full_name` (NOT first_name/last_name — selecting those 400s
+  // and PostgREST returns null, which silently blanked the whole block).
   if (opp.primary_contact_id) {
     const sb = commercialDb();
-    const { data } = await sb
+    const { data, error } = await sb
       .from("commercial_contacts")
-      .select("first_name, last_name, email, phone")
+      .select("full_name, email, phone")
       .eq("id", opp.primary_contact_id)
       .maybeSingle();
+    if (error) {
+      console.warn("[proposals/hydrate] contact lookup failed:", error.message);
+    }
     const c = data as {
-      first_name: string | null;
-      last_name: string | null;
+      full_name: string | null;
       email: string | null;
       phone: string | null;
     } | null;
     if (c) {
-      const name = [c.first_name, c.last_name]
-        .filter((s): s is string => Boolean(s?.trim()))
-        .join(" ");
-      if (name) header.attention = name;
+      if (c.full_name?.trim()) header.attention = c.full_name.trim();
       if (c.email) header.email = c.email;
       if (c.phone) header.phone = c.phone;
     }

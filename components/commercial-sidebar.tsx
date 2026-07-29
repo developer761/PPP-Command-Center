@@ -57,7 +57,7 @@ const navSections: NavSection[] = [
     heading: "Post-Contract",
     items: [
       { label: "Projects", href: "/commercial/projects", icon: <IconHardHat /> },
-      { label: "Submittals", href: "/commercial/post-job/submittals", phase: 9, disabled: true, icon: <IconChangeOrder /> },
+      { label: "Submittals", href: "/commercial/post-job/submittals", icon: <IconChangeOrder /> },
       { label: "Invoices", href: "/commercial/invoices", icon: <IconDollar /> },
       { label: "Closeout & warranty", href: "/commercial/post-job/closeout", phase: 12, disabled: true, icon: <IconCheckSquare /> },
     ],
