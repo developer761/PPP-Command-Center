@@ -785,7 +785,7 @@ function accountColorStyles(accountId: string | null): {
     headerBg: { backgroundColor: `hsl(${hue}, var(--cust-sat, 62%), var(--cust-bg-l, 96%))` },
     avatar: {
       backgroundColor: `hsl(${hue}, var(--cust-sat, 55%), var(--cust-avatar-l, 88%))`,
-      color: `hsl(${hue}, 50%, var(--cust-avatar-tx-l, 28%))`,
+      color: `hsl(${hue}, var(--cust-sat, 50%), var(--cust-avatar-tx-l, 28%))`,
     },
   };
 }
