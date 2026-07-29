@@ -191,15 +191,15 @@ body {
   --color-ppp-navy-700: #b0b1b9;
   --color-ppp-navy-800: #c8c9d0;
 
-  /* Blue (info) — muted cyan */
-  --color-ppp-blue-50:  #12232b;
-  --color-ppp-blue-100: #17323d;
-  --color-ppp-blue-200: #204653;
-  --color-ppp-blue-400: #5b9bb8;
-  --color-ppp-blue-500: #55a0c2;
-  --color-ppp-blue-600: #4788a6;
-  --color-ppp-blue-700: #7fb6d0;
-  --color-ppp-blue-800: #a5ccdd;
+  /* Blue (info) — deep, bold blue (not a bright cyan highlighter) */
+  --color-ppp-blue-50:  #122430;
+  --color-ppp-blue-100: #16323f;
+  --color-ppp-blue-200: #1e4658;
+  --color-ppp-blue-400: #3f88b0;
+  --color-ppp-blue-500: #2f7ba8;   /* bolder / deeper */
+  --color-ppp-blue-600: #286a92;
+  --color-ppp-blue-700: #74aecb;   /* text — reads on dark */
+  --color-ppp-blue-800: #9dc6db;
 
   /* Emerald — muted sage */
   --color-emerald-50:  #14231c;
@@ -234,16 +234,18 @@ body {
   --color-rose-800: #d9b5ba;
   --color-rose-900: #e8d3d5;
 
-  /* cc-brand → INDIGO in dark (primary action; NO red). White text stays
-     legible on the -600 button + the darker -700 hover. */
-  --color-cc-brand-50:  #191a2e;
-  --color-cc-brand-100: #22243f;
-  --color-cc-brand-200: #2f3357;
-  --color-cc-brand-400: #7b86d6;
-  --color-cc-brand-500: #6470cc;
-  --color-cc-brand-600: #5661c0;   /* button rest */
-  --color-cc-brand-700: #4b55a8;   /* hover (darker) */
-  --color-cc-brand-800: #3a4288;
+  /* cc-brand → deep, bold INDIGO in dark (primary action; NO red). Deeper +
+     more saturated than before so buttons/accents read rich, not highlighter.
+     -700 kept light enough for the active-nav label (text-cc-brand-700 on the
+     dark -50 tint); button hover on -700 stays legible for bold white text. */
+  --color-cc-brand-50:  #181a30;
+  --color-cc-brand-100: #202249;
+  --color-cc-brand-200: #2b2e60;
+  --color-cc-brand-400: #6068c6;
+  --color-cc-brand-500: #454eb2;
+  --color-cc-brand-600: #3a43a6;   /* button rest — deep + bold */
+  --color-cc-brand-700: #7580d4;   /* active-nav text + button hover */
+  --color-cc-brand-800: #9aa3e4;
 
   /* Per-customer HSL tints (opportunities group cards) — dark bg, light text */
   --cust-sat: 34%;

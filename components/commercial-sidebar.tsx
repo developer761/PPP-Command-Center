@@ -170,7 +170,7 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
                           : "text-ppp-charcoal hover:bg-ppp-charcoal-50 active:bg-ppp-charcoal-50",
                       ].join(" ")}
                     >
-                      <span className={active ? "text-cc-brand-600" : "text-ppp-charcoal-500"}>
+                      <span className={active ? "text-cc-brand-700" : "text-ppp-charcoal-500"}>
                         {item.icon}
                       </span>
                       <span className="flex-1">{item.label}</span>
