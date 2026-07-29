@@ -725,7 +725,7 @@ function StatTile({
         <div className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
           {label}
         </div>
-        <div className="text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-tight tabular-nums">
+        <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums">
           {value}
         </div>
       </div>

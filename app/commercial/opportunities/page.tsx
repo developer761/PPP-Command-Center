@@ -1137,7 +1137,7 @@ export default async function CommercialOpportunitiesPage({
                 <Link
                   key={r.status}
                   href={statusDrillHref(r.status)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[36px] touch-manipulation transition-colors ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[44px] sm:min-h-[36px] touch-manipulation transition-colors ${
                     isActive
                       ? "bg-cc-brand-600 border-cc-brand-700 text-white"
                       : "bg-white border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"

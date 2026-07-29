@@ -261,7 +261,7 @@ export function SearchableSelect({
                 aria-selected={selectedValue === opt.value}
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => commitOption(opt)}
-                className={`px-3 py-2 cursor-pointer flex items-start justify-between gap-3 ${
+                className={`px-3 py-2.5 min-h-[44px] cursor-pointer flex items-center justify-between gap-3 touch-manipulation ${
                   i === highlight ? "bg-cc-brand-50" : "hover:bg-ppp-charcoal-50"
                 } ${selectedValue === opt.value ? "font-semibold" : ""}`}
               >

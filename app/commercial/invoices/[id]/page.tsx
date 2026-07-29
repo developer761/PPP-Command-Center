@@ -1200,15 +1200,15 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 function BigNumber({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "cc-brand" | "blue" | "emerald" | "rose" | "neutral" }) {
   // "Paid" is a success metric → emerald; blue stripe now paints real blue
   // (was cc-brand-500 red on a blue label).
-  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "emerald" ? "bg-emerald-500" : tone === "blue" ? "bg-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
-  const valueCls = tone === "rose" ? "text-rose-700" : tone === "emerald" ? "text-emerald-700" : tone === "cc-brand" ? "text-cc-brand-700" : "text-ppp-charcoal";
+  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "emerald" ? "bg-emerald-500" : tone === "blue" ? "bg-ppp-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+  const valueCls = tone === "rose" ? "text-rose-700" : tone === "emerald" ? "text-emerald-700" : "text-ppp-charcoal";
   return (
     <div className="relative border border-ppp-charcoal-100 rounded-lg px-4 py-3 overflow-hidden bg-gradient-to-br from-white to-ppp-charcoal-50/40">
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />
       <div className="text-[12px] font-semibold text-ppp-charcoal-700">
         {label}
       </div>
-      <div className={`text-xl sm:text-2xl font-bold mt-1 tabular-nums ${valueCls}`}>
+      <div className={`font-condensed text-2xl sm:text-3xl font-black mt-1 leading-none tabular-nums ${valueCls}`}>
         {value}
       </div>
       {sub && <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">{sub}</div>}

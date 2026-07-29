@@ -589,7 +589,7 @@ export default async function CommercialAccountDetailPage({
                 key={s.key}
                 href={`/commercial/accounts/${id}?tab=${primaryTab}&sub=${s.key}`}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[36px] ${
+                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[44px] sm:min-h-[36px] ${
                   active
                     ? "bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200"
                     : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border border-transparent hover:bg-ppp-charcoal-100"
@@ -5234,7 +5234,7 @@ function AccountInvoiceRow({ invoice, accountId }: { invoice: CommercialInvoice;
           </Link>
           {canRecordPayment && (
             <details className="text-right">
-              <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[28px] touch-manipulation">
+              <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[44px] sm:min-h-[28px] touch-manipulation">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 5v14 M5 12h14" />
                 </svg>

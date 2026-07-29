@@ -380,7 +380,7 @@ function SummaryTile({
   return (
     <div className={`rounded-lg border px-2.5 py-2 ${emphasize ? "border-cc-brand-300 bg-white" : "border-ppp-charcoal-100 bg-white/70"}`}>
       <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
-      <div className={`text-sm sm:text-[15px] font-bold tabular-nums mt-0.5 ${valueCls}`}>{value}</div>
+      <div className={`font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 ${valueCls}`}>{value}</div>
       {hint && <div className="text-[10px] text-amber-700 mt-0.5">{hint}</div>}
     </div>
   );
