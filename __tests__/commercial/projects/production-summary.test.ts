@@ -37,8 +37,8 @@ describe("summarizeProduction", () => {
     ]);
     expect(s.activeProjects).toBe(3);
     expect(s.contractValueCents).toBe(17_000_000);
-    expect(s.billedToDateCents).toBe(9_000_000);
-    expect(s.outstandingCents).toBe(8_000_000); // 17M contract − 9M billed
+    expect(s.completedToDateCents).toBe(9_000_000);
+    expect(s.remainingCents).toBe(8_000_000); // 17M contract − 9M completed
     expect(s.retainageHeldCents).toBe(450_000);
     expect(s.pendingCoCount).toBe(3);
     expect(s.pendingCoCents).toBe(800_000);
@@ -55,13 +55,13 @@ describe("summarizeProduction", () => {
     expect(s.billingProjects).toBe(2);
   });
 
-  it("never reports negative outstanding when billed exceeds contract", () => {
-    // Overbilling (COs completed but not yet reflected in the contract base)
-    // must not show a negative 'left to bill'.
+  it("never reports negative remaining when completed exceeds contract", () => {
+    // Over-completion (work in place ahead of a not-yet-restated contract base)
+    // must not show a negative 'left to complete'.
     const s = summarizeProduction([
       row({ contractToDateCents: 1_000_000, completedToDateCents: 1_200_000 }),
     ]);
-    expect(s.outstandingCents).toBe(0);
+    expect(s.remainingCents).toBe(0);
   });
 
   it("is all-zero for an empty portfolio", () => {
@@ -71,8 +71,8 @@ describe("summarizeProduction", () => {
       inProductionProjects: 0,
       billingProjects: 0,
       contractValueCents: 0,
-      billedToDateCents: 0,
-      outstandingCents: 0,
+      completedToDateCents: 0,
+      remainingCents: 0,
       retainageHeldCents: 0,
       pendingCoCount: 0,
       pendingCoCents: 0,

@@ -5313,9 +5313,9 @@ async function AccountKpisTab({
 }) {
   // Production roll-up for THIS GC's jobs under contract (Phase G/H numbers).
   const production = summarizeProduction(await listProjects({ accountId }));
-  const billedPctOfContract =
+  const completedPctOfContract =
     production.contractValueCents > 0
-      ? Math.round((production.billedToDateCents / production.contractValueCents) * 100)
+      ? Math.round((production.completedToDateCents / production.contractValueCents) * 100)
       : null;
   // Audit fix 2026-07-08: winRate() returns a 0..1 decimal (won/total),
   // NOT a percentage. Previously the tab was rendering ".67%" instead
@@ -5364,8 +5364,8 @@ async function AccountKpisTab({
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <RollupTile label="Contract value" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
-            <RollupTile label="Billed to date" value={formatCentsFull(production.billedToDateCents)} sub={billedPctOfContract !== null ? `${billedPctOfContract}% of contract` : "completed & stored"} tone="emerald" />
-            <RollupTile label="Left to bill" value={formatCentsFull(production.outstandingCents)} sub={production.retainageHeldCents > 0 ? `${formatCentsFull(production.retainageHeldCents)} retainage held` : "still to invoice"} tone="neutral" />
+            <RollupTile label="Completed to date" value={formatCentsFull(production.completedToDateCents)} sub={completedPctOfContract !== null ? `${completedPctOfContract}% of contract` : "work in place"} tone="emerald" />
+            <RollupTile label="Left to complete" value={formatCentsFull(production.remainingCents)} sub={production.retainageHeldCents > 0 ? `${formatCentsFull(production.retainageHeldCents)} retainage held` : "still to finish"} tone="neutral" />
             <RollupTile label="COs pending" value={production.pendingCoCount.toString()} sub={production.pendingCoCount === 0 ? "none open" : `${formatCentsFull(production.pendingCoCents)} awaiting`} tone={production.pendingCoCount > 0 ? "warn" : "neutral"} />
           </div>
         </section>

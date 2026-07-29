@@ -100,9 +100,9 @@ export default async function CommercialDashboardPage() {
 
   // ─── Production (post-contract) roll-up ───
   const production = summarizeProduction(projectRows);
-  const billedPctOfContract =
+  const completedPctOfContract =
     production.contractValueCents > 0
-      ? Math.round((production.billedToDateCents / production.contractValueCents) * 100)
+      ? Math.round((production.completedToDateCents / production.contractValueCents) * 100)
       : null;
 
   // ─── AR ───
@@ -469,20 +469,20 @@ export default async function CommercialDashboardPage() {
             />
             <KpiTile
               tone="emerald"
-              value={formatCentsCompact(production.billedToDateCents)}
-              label="Billed to date"
-              sub={billedPctOfContract !== null ? `${billedPctOfContract}% of contract` : "Work completed & stored"}
+              value={formatCentsCompact(production.completedToDateCents)}
+              label="Completed to date"
+              sub={completedPctOfContract !== null ? `${completedPctOfContract}% of contract` : "Work in place"}
               href="/commercial/projects"
               icon={<IconChart />}
             />
             <KpiTile
               tone="blue"
-              value={formatCentsCompact(production.outstandingCents)}
-              label="Left to bill"
+              value={formatCentsCompact(production.remainingCents)}
+              label="Left to complete"
               sub={
                 production.retainageHeldCents > 0
                   ? `${formatCentsCompact(production.retainageHeldCents)} retainage held`
-                  : "Contract still to invoice"
+                  : "Contract still to finish"
               }
               href="/commercial/projects"
               icon={<IconDollar />}

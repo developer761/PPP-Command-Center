@@ -179,17 +179,16 @@ export async function listProjects(opts: {
   return opps.map((o) => {
     const co = coByOpp.get(o.id) ?? { netApproved: 0, pending: 0, pendingCents: 0 };
     const latest = latestAppByOpp.get(o.id) ?? null;
-    // Contract base — reconciles with the AIA page (resolveG702 uses the same
-    // precedence): once billing starts, use the app's explicit snapshotted
-    // contract, else its schedule-of-values total (which by AIA convention IS
-    // the contract sum), else the deal's bid midpoint. Approved COs add on top.
+    // Contract base — MUST mirror resolveG702's ladder EXACTLY once an AIA
+    // application exists, so the card ties to the AIA doc it links to: explicit
+    // snapshotted contract, else the schedule-of-values total (0 when no lines).
+    // The deal's bid midpoint is only used BEFORE any billing exists (no AIA
+    // doc to reconcile against) — never as a fallback once an app is present.
     const sovTotal = latest ? sovByApp.get(latest.id) ?? 0 : 0;
     const base = latest
       ? latest.original_contract_cents > 0
         ? latest.original_contract_cents
-        : sovTotal > 0
-        ? sovTotal
-        : bidMidCents(o)
+        : sovTotal
       : bidMidCents(o);
     const contractToDate = base + co.netApproved;
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
@@ -220,22 +219,24 @@ export type ProductionSummary = {
   inProductionProjects: number;
   billingProjects: number;
   contractValueCents: number;
-  billedToDateCents: number;
-  outstandingCents: number;
+  /** Work completed & stored to date (AIA line 4) — production, not "billed". */
+  completedToDateCents: number;
+  remainingCents: number;
   retainageHeldCents: number;
   pendingCoCount: number;
   pendingCoCents: number;
 };
 
 /**
- * Summarize a set of project rows into headline production KPIs. "Billed to
- * date" = work completed & stored across the latest applications; "outstanding"
- * = contract sum still to bill (never negative). Pure — call over the rows from
- * listProjects (portfolio) or listProjects({ accountId }) (Account 360).
+ * Summarize a set of project rows into headline production KPIs. "Completed to
+ * date" = work completed & stored across the latest applications (AIA line 4 —
+ * NOT necessarily certified/invoiced, so it's labeled production, not "billed").
+ * "remaining" = contract sum still to complete (never negative). Pure — call
+ * over rows from listProjects (portfolio) or listProjects({ accountId }) (360).
  */
 export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
   let contractValueCents = 0;
-  let billedToDateCents = 0;
+  let completedToDateCents = 0;
   let retainageHeldCents = 0;
   let pendingCoCount = 0;
   let pendingCoCents = 0;
@@ -243,7 +244,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
   let billingProjects = 0;
   for (const r of rows) {
     contractValueCents += r.contractToDateCents;
-    billedToDateCents += r.completedToDateCents;
+    completedToDateCents += r.completedToDateCents;
     retainageHeldCents += r.retainageHeldCents;
     pendingCoCount += r.pendingCoCount;
     pendingCoCents += r.pendingCoCents;
@@ -255,8 +256,8 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     inProductionProjects,
     billingProjects,
     contractValueCents,
-    billedToDateCents,
-    outstandingCents: Math.max(0, contractValueCents - billedToDateCents),
+    completedToDateCents,
+    remainingCents: Math.max(0, contractValueCents - completedToDateCents),
     retainageHeldCents,
     pendingCoCount,
     pendingCoCents,
