@@ -30,6 +30,23 @@ function bidMidCents(o: CommercialOpportunity): number {
   return o.bid_value_low_cents ?? o.bid_value_high_cents ?? 0;
 }
 
+/**
+ * Fetch EVERY row of a select, paging past PostgREST's 1000-row cap. Without
+ * this, a large job count silently truncates the change-order / AIA-app /
+ * line-item batches and understates (or drops) projects (2026-07-28 post-audit).
+ */
+async function paginateAll<T>(make: () => { range: (a: number, b: number) => PromiseLike<{ data: unknown; error: unknown }> }): Promise<T[]> {
+  const PAGE = 1000;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data } = await make().range(from, from + PAGE - 1);
+    const rows = (data as T[] | null) ?? [];
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
 export async function listProjects(opts: {
   search?: string;
   includeClosed?: boolean;
@@ -41,19 +58,20 @@ export async function listProjects(opts: {
   const postSale = (POST_SALE_STATUSES as readonly string[]).filter(
     (s) => opts.includeClosed || s !== "post_sale_closed"
   );
-  let q = sb
-    .from("commercial_opportunities")
-    .select("*, account:commercial_accounts!inner(id, company_name, deleted_at)")
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .is("account.deleted_at", null)
-    .or(`status.in.(${postSale.join(",")}),and(status.eq.pre_sale_closed,sub_status.eq.won)`)
-    .order("updated_at", { ascending: false });
+  let opps = await paginateAll<CommercialOpportunity & { account?: { id: string; company_name: string } }>(
+    () =>
+      sb
+        .from("commercial_opportunities")
+        .select("*, account:commercial_accounts!inner(id, company_name, deleted_at)")
+        .is("deleted_at", null)
+        .is("archived_at", null)
+        .is("account.deleted_at", null)
+        .or(`status.in.(${postSale.join(",")}),and(status.eq.pre_sale_closed,sub_status.eq.won)`)
+        .order("updated_at", { ascending: false })
+  );
 
-  const { data: oppsData } = await q;
-  let opps = (oppsData ?? []) as (CommercialOpportunity & { account?: { id: string; company_name: string } })[];
-
-  // Search across the displayed-name fields (matches the pipeline list).
+  // Search across the displayed-name fields (matches the pipeline list). Runs
+  // over the FULLY-paginated set, so a match past row 1000 is still found.
   if (opts.search && opts.search.trim()) {
     const t = opts.search.trim().toLowerCase();
     opps = opps.filter((o) => {
@@ -72,45 +90,56 @@ export async function listProjects(opts: {
   const oppIds = opps.map((o) => o.id);
 
   // ── Batch: change orders (net approved + pending count per opp) ──
-  const { data: coData } = await sb
-    .from("commercial_change_orders")
-    .select("opportunity_id, status, amount_cents")
-    .in("opportunity_id", oppIds)
-    .is("deleted_at", null);
+  const coData = await paginateAll<{ opportunity_id: string; status: string; amount_cents: number }>(
+    () =>
+      sb
+        .from("commercial_change_orders")
+        .select("opportunity_id, status, amount_cents")
+        .in("opportunity_id", oppIds)
+        .is("deleted_at", null)
+  );
   const coByOpp = new Map<string, { netApproved: number; pending: number }>();
-  for (const c of (coData ?? []) as { opportunity_id: string; status: string; amount_cents: number }[]) {
+  for (const c of coData) {
     const e = coByOpp.get(c.opportunity_id) ?? { netApproved: 0, pending: 0 };
     if (c.status === "approved") e.netApproved += Number(c.amount_cents);
     else if (c.status === "pending") e.pending += 1;
     coByOpp.set(c.opportunity_id, e);
   }
 
-  // ── Batch: latest AIA application per opp ──
-  const { data: appData } = await sb
-    .from("commercial_aia_applications")
-    .select("id, opportunity_id, application_number, status")
-    .in("opportunity_id", oppIds)
-    .is("deleted_at", null)
-    .order("application_number", { ascending: false });
-  const latestAppByOpp = new Map<string, { id: string; application_number: number; status: string }>();
-  for (const a of (appData ?? []) as { id: string; opportunity_id: string; application_number: number; status: string }[]) {
-    if (!latestAppByOpp.has(a.opportunity_id)) latestAppByOpp.set(a.opportunity_id, a);
+  // ── Batch: latest AIA application per opp. We fetch ALL apps (paginated) and
+  // pick the max application_number per opp in memory — a global DB sort + row
+  // cap could otherwise starve a short project's only app and drop it. ──
+  const appData = await paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number }>(
+    () =>
+      sb
+        .from("commercial_aia_applications")
+        .select("id, opportunity_id, application_number, status, original_contract_cents")
+        .in("opportunity_id", oppIds)
+        .is("deleted_at", null)
+  );
+  const latestAppByOpp = new Map<string, { id: string; application_number: number; status: string; original_contract_cents: number }>();
+  for (const a of appData) {
+    const cur = latestAppByOpp.get(a.opportunity_id);
+    if (!cur || a.application_number > cur.application_number) latestAppByOpp.set(a.opportunity_id, a);
   }
 
   // ── Batch: completed-to-date for those latest applications ──
   const latestAppIds = [...latestAppByOpp.values()].map((a) => a.id);
   const completedByApp = new Map<string, number>();
   if (latestAppIds.length > 0) {
-    const { data: liData } = await sb
-      .from("commercial_aia_line_items")
-      .select("application_id, from_previous_cents, this_period_cents, materials_stored_cents")
-      .in("application_id", latestAppIds);
-    for (const l of (liData ?? []) as {
+    const liData = await paginateAll<{
       application_id: string;
       from_previous_cents: number;
       this_period_cents: number;
       materials_stored_cents: number;
-    }[]) {
+    }>(
+      () =>
+        sb
+          .from("commercial_aia_line_items")
+          .select("application_id, from_previous_cents, this_period_cents, materials_stored_cents")
+          .in("application_id", latestAppIds)
+    );
+    for (const l of liData) {
       const done =
         Math.max(0, Math.round(l.from_previous_cents)) +
         Math.max(0, Math.round(l.this_period_cents)) +
@@ -121,9 +150,12 @@ export async function listProjects(opts: {
 
   return opps.map((o) => {
     const co = coByOpp.get(o.id) ?? { netApproved: 0, pending: 0 };
-    const base = bidMidCents(o);
-    const contractToDate = base + co.netApproved;
     const latest = latestAppByOpp.get(o.id) ?? null;
+    // Contract base: once AIA billing starts, use the app's SNAPSHOTTED signed
+    // contract so this card reconciles with the AIA page it links to. Before
+    // billing, fall back to the bid midpoint. Approved COs add on top of both.
+    const base = latest && latest.original_contract_cents > 0 ? latest.original_contract_cents : bidMidCents(o);
+    const contractToDate = base + co.netApproved;
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
     const pct = latest && contractToDate > 0 ? Math.round((completed / contractToDate) * 10000) : null;
     return {
