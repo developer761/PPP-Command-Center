@@ -406,9 +406,13 @@ export default async function CommercialDashboardPage() {
               : "Unpaid balance"
           }
           href={
+            // Overdue present → focus the overdue view; otherwise the full
+            // grouped list (with per-deal balances) is the honest AR picture.
+            // ?status=sent would UNDERCOUNT the headline (which also sums
+            // viewed/partial), so we don't claim a filter that doesn't match.
             arOverdueCount > 0
               ? "/commercial/invoices?status=overdue"
-              : "/commercial/invoices?status=sent"
+              : "/commercial/invoices"
           }
           icon={<IconDollar />}
         />

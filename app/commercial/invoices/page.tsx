@@ -604,7 +604,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
       )}
       {showFocusBanner && errorFlash && (
         <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-sm text-rose-800 flex items-start gap-2">
-          <span aria-hidden>!</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10" /><path d="M12 8v4 M12 16h.01" /></svg>
           <span>{errorFlash}</span>
         </div>
       )}
@@ -985,6 +985,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                 <Link
                   key={label}
                   href={setStatusHref(s)}
+                  aria-current={active ? "page" : undefined}
                   className={`flex-1 sm:flex-none justify-center px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center touch-manipulation border-l first:border-l-0 border-ppp-charcoal-200 ${
                     active
                       ? "bg-cc-brand-50 text-cc-brand-700"

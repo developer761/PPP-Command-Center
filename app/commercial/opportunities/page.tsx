@@ -1899,8 +1899,12 @@ function CustomerBoardRow({
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-ppp-charcoal-100 bg-ppp-charcoal-50/70 text-ppp-charcoal-600 text-[11px] font-medium hover:bg-ppp-charcoal-100 max-w-[220px] truncate"
                   title={`${derivedOppName(o, account.company_name)} — ${opportunityStatusLabel(o.status)}`}
                 >
-                  <span aria-hidden className={o.sub_status === "won" ? "text-emerald-600" : "text-rose-500"}>
-                    {o.sub_status === "won" ? "✓" : "✗"}
+                  <span aria-hidden className={`shrink-0 ${o.sub_status === "won" ? "text-emerald-600" : "text-rose-500"}`}>
+                    {o.sub_status === "won" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18 M6 6l12 12" /></svg>
+                    )}
                   </span>
                   <span className="truncate">{derivedOppName(o, account.company_name)}</span>
                 </Link>

@@ -217,7 +217,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                 ariaLabel="From date"
               />
             </div>
-            <span className="text-[12px] text-ppp-charcoal-400" aria-hidden>→</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
             <div className="w-[168px]">
               <DatePicker
                 id="rng_to"

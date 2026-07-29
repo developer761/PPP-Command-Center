@@ -13,10 +13,19 @@ export default function AccountDetailLoading() {
           <div key={i} className="h-9 w-24 bg-white border border-ppp-charcoal-100 rounded" />
         ))}
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-20 bg-white border border-ppp-charcoal-100 rounded-xl" />
+      {/* Sub-tab pill row (Overview/People/Deals show one). */}
+      <div className="flex gap-2 overflow-hidden">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-9 w-20 bg-white border border-ppp-charcoal-100 rounded-full" />
         ))}
+      </div>
+      {/* Financial snapshot: 3-tile card matching the real first block. */}
+      <div className="border border-ppp-charcoal-100 rounded-xl p-4 bg-white">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-20 bg-ppp-charcoal-50 rounded-lg" />
+          ))}
+        </div>
       </div>
       <div className="h-64 bg-white border border-ppp-charcoal-100 rounded-xl" />
     </div>

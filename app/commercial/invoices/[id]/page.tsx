@@ -606,7 +606,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         return (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900">
             <div className="flex items-center gap-2 font-semibold">
-              <span aria-hidden>✓</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0"><path d="M20 6L9 17l-5-5" /></svg>
               <span>Payment recorded — capped to invoice balance</span>
             </div>
             <div className="mt-1 text-[12.5px] text-amber-800">
@@ -1052,7 +1052,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </form>
         )}
         {invoice.balance_cents === 0 && payments.length > 0 && (
-          <p className="mt-2 text-[12px] text-emerald-700 font-medium">✓ Fully paid.</p>
+          <p className="mt-2 text-[12px] text-emerald-700 font-medium inline-flex items-center gap-1"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg> Fully paid.</p>
         )}
       </section>
 
