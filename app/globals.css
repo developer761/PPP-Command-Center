@@ -153,82 +153,95 @@ body {
   min-height: 100vh;
 }
 [data-theme="dark"] {
-  /* ── "Black-blue" theme (Karan 2026-07-29) ──
-   * Deep navy-black base, blue as the accent, and cc-brand RED muted so it
-   * reads as a calm crimson instead of a neon/alarming red on dark.
-   * Neutral ramp is navy-tinted: 50 = darkest surface … 900 = lightest text. */
-  --color-ppp-charcoal-50:  #0f1728;
-  --color-ppp-charcoal-100: #1b2942;   /* borders / dividers */
-  --color-ppp-charcoal-200: #29395a;
-  --color-ppp-charcoal-300: #3d4f72;
-  --color-ppp-charcoal-400: #6b7c9c;   /* muted text */
-  --color-ppp-charcoal-500: #8896b6;
-  --color-ppp-charcoal-600: #a5b2cd;
-  --color-ppp-charcoal-700: #c4cee0;
-  --color-ppp-charcoal-800: #dce4ef;
-  --color-ppp-charcoal-900: #eef3fa;
-  --color-ppp-charcoal:     #dce4f2;   /* primary text */
+  /* ── Neutral dark theme (Karan 2026-07-29, "like Apple / GHL") ──
+   * Calm neutral-gray base, SUBTLE borders, and heavily DESATURATED accents —
+   * colour is a quiet signal, not a highlighter. Text hierarchy (not vivid
+   * fills) carries the design. Neutral ramp: 50 = darkest surface … 900 =
+   * lightest text. */
+  --color-ppp-charcoal-50:  #1a1b1e;
+  --color-ppp-charcoal-100: #2a2b2f;   /* subtle hairline borders */
+  --color-ppp-charcoal-200: #3a3b40;
+  --color-ppp-charcoal-300: #4e4f55;
+  --color-ppp-charcoal-400: #7c7d84;   /* secondary / muted text */
+  --color-ppp-charcoal-500: #96979e;
+  --color-ppp-charcoal-600: #b2b3b9;
+  --color-ppp-charcoal-700: #ccced3;
+  --color-ppp-charcoal-800: #e0e1e5;
+  --color-ppp-charcoal-900: #f1f2f5;
+  --color-ppp-charcoal:     #e0e1e5;   /* primary text (off-white) */
 
-  /* Surfaces — deep navy-black */
-  --color-surface:        #141d33;
-  --color-surface-muted:  #0e1526;
-  --color-surface-subtle: #0a0f1e;
-  --background: #080d1a;
-  --foreground: #dce4f2;
+  /* Surfaces — near-black neutral gray, gently elevated cards */
+  --color-surface:        #1e1f23;
+  --color-surface-muted:  #17181b;
+  --color-surface-subtle: #121315;
+  --background: #0d0e10;
+  --foreground: #e0e1e5;
 
-  /* Navy — navy-900 deliberately NOT overridden (stays #0d1a30, a dark chip for
-     toasts/badges with white text). Lighten the low shades for tints/text. */
-  --color-ppp-navy-50:  #16223c;
-  --color-ppp-navy-100: #1f2f50;
-  --color-ppp-navy-200: #2d4068;
-  --color-ppp-navy-600: #8ea2c8;
-  --color-ppp-navy-700: #a6b7d9;
-  --color-ppp-navy-800: #c3d0e6;
+  /* Navy — desaturated; navy-900 NOT overridden (stays dark, a chip for
+     toasts/badges with white text). */
+  --color-ppp-navy-50:  #1f242c;
+  --color-ppp-navy-100: #2a303a;
+  --color-ppp-navy-200: #39404c;
+  --color-ppp-navy-600: #979aa6;
+  --color-ppp-navy-700: #abaeba;
+  --color-ppp-navy-800: #c4c7d0;
 
-  /* Blue — the accent. Solids stay vibrant (#2baae1 reads great on dark);
-     text shades brightened. */
-  --color-ppp-blue-50:  #0b2b40;
-  --color-ppp-blue-100: #103a55;
-  --color-ppp-blue-200: #175173;
-  --color-ppp-blue-700: #5cc0ea;
-  --color-ppp-blue-800: #8fd4f2;
+  /* Blue (info accent) — muted, not neon */
+  --color-ppp-blue-50:  #16242c;
+  --color-ppp-blue-100: #1c333d;
+  --color-ppp-blue-200: #274955;
+  --color-ppp-blue-400: #5c9bba;
+  --color-ppp-blue-500: #559dbf;
+  --color-ppp-blue-600: #4a8aa8;
+  --color-ppp-blue-700: #82b7d1;   /* text — muted blue */
+  --color-ppp-blue-800: #a6ccdd;
 
-  /* Status tints — dark bg, lighter text (500/600 solids stay vibrant) */
-  --color-emerald-50:  #0d281e;
-  --color-emerald-100: #123a2b;
-  --color-emerald-200: #1b5842;
-  --color-emerald-700: #6ee7b7;
-  --color-emerald-800: #a7f3d0;
-  --color-emerald-900: #d1fae5;
+  /* Emerald — muted sage */
+  --color-emerald-50:  #172420;
+  --color-emerald-100: #1e3129;
+  --color-emerald-200: #2c453a;
+  --color-emerald-400: #5ea183;
+  --color-emerald-500: #559a7c;
+  --color-emerald-600: #48856b;
+  --color-emerald-700: #7fb89e;   /* text — muted sage */
+  --color-emerald-800: #a6d0bb;
+  --color-emerald-900: #cae3d6;
 
-  --color-amber-50:  #2b220f;
-  --color-amber-100: #3b3014;
-  --color-amber-200: #57481e;
-  --color-amber-700: #fcd34d;
-  --color-amber-800: #fde68a;
-  --color-amber-900: #fef3c7;
+  /* Amber — muted gold */
+  --color-amber-50:  #26200f;
+  --color-amber-100: #322a16;
+  --color-amber-200: #463c22;
+  --color-amber-400: #c6a35f;
+  --color-amber-500: #bb9853;
+  --color-amber-600: #a08140;
+  --color-amber-700: #d3b779;   /* text — muted gold */
+  --color-amber-800: #e0cb9c;
+  --color-amber-900: #ece0c3;
 
-  --color-rose-50:  #2c1518;
-  --color-rose-100: #3c1c20;
-  --color-rose-200: #56272c;
-  --color-rose-700: #fda4af;
-  --color-rose-800: #fecdd3;
-  --color-rose-900: #ffe4e6;
+  /* Rose — muted */
+  --color-rose-50:  #251a1c;
+  --color-rose-100: #322123;
+  --color-rose-200: #462f32;
+  --color-rose-400: #c07f86;
+  --color-rose-500: #b6767c;
+  --color-rose-600: #9f5f66;
+  --color-rose-700: #cd9aa0;   /* text — muted rose */
+  --color-rose-800: #dbb8bc;
+  --color-rose-900: #ead5d7;
 
-  /* cc-brand RED — MUTED for dark (was neon #ef4444/#dc2626 = "virus red").
-     Softer, deeper crimson. -600 = button rest, -700 = button hover (kept
-     DARK so white text stays legible on hover, unlike a lightened -700). */
-  --color-cc-brand-50:  #2a1518;
-  --color-cc-brand-100: #391b1f;
-  --color-cc-brand-200: #52262b;
-  --color-cc-brand-400: #cc6169;
-  --color-cc-brand-500: #bd505a;
-  --color-cc-brand-600: #a5424b;
-  --color-cc-brand-700: #8c373f;
-  --color-cc-brand-800: #732e35;
+  /* cc-brand RED — muted, calm crimson (never neon). -700 kept DARK so white
+     button text stays legible on hover. */
+  --color-cc-brand-50:  #271719;
+  --color-cc-brand-100: #331d20;
+  --color-cc-brand-200: #462a2d;
+  --color-cc-brand-400: #b06068;
+  --color-cc-brand-500: #a5545c;
+  --color-cc-brand-600: #92484f;   /* button rest — muted */
+  --color-cc-brand-700: #7a3a41;   /* hover — darker */
+  --color-cc-brand-800: #653036;
 }
 [data-theme="dark"] *::-webkit-scrollbar-thumb {
-  background: #29395a;
+  background: #3a3b40;
 }
 /* Sidebar/brand wordmark SVG has a hardcoded charcoal fill (#3F3E40) that
    vanishes on dark — lighten it (loses the multi-color glyph, gains a clean
