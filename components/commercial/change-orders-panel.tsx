@@ -185,16 +185,18 @@ export async function ChangeOrdersPanel({
           <form action={addAction} className="px-3.5 pb-3.5 pt-1 space-y-2.5">
             <input type="hidden" name="opp_id" value={oppId} />
             <input type="hidden" name="account_id" value={accountId} />
-            <div>
-              <label className={LABEL_CLS} htmlFor="co-title">Title</label>
-              <input id="co-title" name="title" required maxLength={200} defaultValue={addAttemptFailed ? preserveTitle ?? "" : ""} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
-            </div>
-            <div>
-              <label className={LABEL_CLS} htmlFor="co-amount">Amount</label>
-              <input id="co-amount" name="amount" required inputMode="decimal" defaultValue={addAttemptFailed ? preserveAmount ?? "" : ""} className={INPUT_CLS} placeholder="1,200.00" />
-              <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-                Positive to add scope, or a minus sign to deduct (e.g. <span className="tabular-nums">-500.00</span>).
-              </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className={LABEL_CLS} htmlFor="co-title">Title</label>
+                <input id="co-title" name="title" required maxLength={200} defaultValue={addAttemptFailed ? preserveTitle ?? "" : ""} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
+              </div>
+              <div>
+                <label className={LABEL_CLS} htmlFor="co-amount">Amount</label>
+                <input id="co-amount" name="amount" required inputMode="decimal" defaultValue={addAttemptFailed ? preserveAmount ?? "" : ""} className={INPUT_CLS} placeholder="1,200.00" />
+                <p className="text-[11px] text-ppp-charcoal-500 mt-1">
+                  Positive to add scope, or a minus sign to deduct (e.g. <span className="tabular-nums">-500.00</span>).
+                </p>
+              </div>
             </div>
             <div>
               <label className={LABEL_CLS} htmlFor="co-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>

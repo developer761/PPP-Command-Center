@@ -194,7 +194,7 @@ export default async function AccountChangeOrdersPage({
   const baseContractCents = base > 0 ? base : null;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
       {/* Back to the account (opportunities tab, scrolled to this deal). */}
       <div className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
         {/* Back to the deal DRAWER (where the operator clicked in from), not a
