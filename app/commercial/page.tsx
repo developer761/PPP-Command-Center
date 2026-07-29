@@ -194,16 +194,20 @@ export default async function CommercialDashboardPage() {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Tomco "home" strip — their logo greets them on their own dashboard.
-          On a white card so the logo's white background blends cleanly. */}
+          The logo JPG has a white background, so it sits in its own white chip
+          (deliberate in both light + dark, instead of a bare white box on a
+          dark card). */}
       <div className="flex items-center gap-3 sm:gap-4 bg-surface border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-2.5 shadow-sm">
-        <Image
-          src="/brand/tomco-logo.jpg"
-          alt="Tomco Painting"
-          width={268}
-          height={131}
-          priority
-          className="h-8 sm:h-9 w-auto shrink-0"
-        />
+        <span className="inline-flex items-center rounded-lg bg-white px-2 py-1 shrink-0">
+          <Image
+            src="/brand/tomco-logo.jpg"
+            alt="Tomco Painting"
+            width={268}
+            height={131}
+            priority
+            className="h-8 sm:h-9 w-auto"
+          />
+        </span>
         <div className="min-w-0 border-l border-ppp-charcoal-100 pl-3 sm:pl-4">
           <div className="text-sm font-semibold text-ppp-charcoal leading-tight">Welcome back</div>
           <div className="text-[11px] text-ppp-charcoal-500 leading-tight">Tomco Painting</div>
