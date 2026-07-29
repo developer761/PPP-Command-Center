@@ -1,6 +1,7 @@
 -- PPP Commercial Command Center — pending production migrations
 -- Paste this whole file into the Supabase SQL editor and Run. Idempotent + safe to re-run.
 -- Contains: 082 (account-overview view v2 status) · 083 (closeout) · 084 (sales tax).
+-- RLS uses DROP POLICY/CREATE POLICY (no dollar-quoted DO blocks) for editor compatibility.
 
 -- ========== 082 ==========
 -- Migration 082: recreate commercial_account_overview_v against the V2 status
@@ -281,18 +282,15 @@ CREATE INDEX IF NOT EXISTS idx_closeout_item_pkg
 ALTER TABLE public.commercial_closeout_packages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commercial_closeout_items    ENABLE ROW LEVEL SECURITY;
 
-DO $rls$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'commercial_closeout_packages' AND policyname = 'closeout_pkg_service_role') THEN
-    CREATE POLICY closeout_pkg_service_role ON public.commercial_closeout_packages
-      FOR ALL TO service_role USING (true) WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'commercial_closeout_items' AND policyname = 'closeout_item_service_role') THEN
-    CREATE POLICY closeout_item_service_role ON public.commercial_closeout_items
-      FOR ALL TO service_role USING (true) WITH CHECK (true);
-  END IF;
-END
-$rls$;
+-- DROP+CREATE (not a DO block) so the Supabase SQL editor's statement
+-- splitter doesn't choke on semicolons inside a dollar-quoted body.
+DROP POLICY IF EXISTS closeout_pkg_service_role ON public.commercial_closeout_packages;
+CREATE POLICY closeout_pkg_service_role ON public.commercial_closeout_packages
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS closeout_item_service_role ON public.commercial_closeout_items;
+CREATE POLICY closeout_item_service_role ON public.commercial_closeout_items
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- ========== 084 ==========
 -- Migration 084: NY sales-tax jurisdictions (Sales tax by ZIP).
@@ -331,22 +329,20 @@ CREATE TABLE IF NOT EXISTS public.commercial_tax_jurisdictions (
 CREATE INDEX IF NOT EXISTS idx_tax_jur_active ON public.commercial_tax_jurisdictions(active);
 
 ALTER TABLE public.commercial_tax_jurisdictions ENABLE ROW LEVEL SECURITY;
-DO $rls$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'commercial_tax_jurisdictions' AND policyname = 'tax_jur_service_role') THEN
-    CREATE POLICY tax_jur_service_role ON public.commercial_tax_jurisdictions
-      FOR ALL TO service_role USING (true) WITH CHECK (true);
-  END IF;
-END
-$rls$;
+
+-- DROP+CREATE (not a DO block) so the Supabase SQL editor's statement
+-- splitter doesn't choke on semicolons inside a dollar-quoted body.
+DROP POLICY IF EXISTS tax_jur_service_role ON public.commercial_tax_jurisdictions;
+CREATE POLICY tax_jur_service_role ON public.commercial_tax_jurisdictions
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- Seed PPP's likely NY service jurisdictions as a STARTING POINT — verified=FALSE
 -- so the app flags them "confirm the current rate" and Katie/Karan adjust. These
 -- ZIP prefixes are the common ones; the operator can refine per the admin page.
 INSERT INTO public.commercial_tax_jurisdictions (name, combined_rate_thou, zip_prefixes, verified, notes)
 SELECT * FROM (VALUES
-  ('New York City (all boroughs)', 8875, ARRAY['100','101','102','103','104','111','112','113','114'], FALSE, 'NYC combined rate. Verify current rate + confirm the ZIP set for the boroughs you work.'),
-  ('Nassau County', 8625, ARRAY['110','115','116','1180','1181'], FALSE, 'Long Island — Nassau. Verify rate + ZIP prefixes (11001-11599 range).'),
-  ('Suffolk County', 8625, ARRAY['117','118','119'], FALSE, 'Long Island — Suffolk. Verify rate + ZIP prefixes.')
+  ('New York City (all boroughs)', 8875, ARRAY['100','101','102','103','104','111','112','113','114','116'], FALSE, 'NYC combined rate. Verify current rate. Includes Rockaway (116xx = Queens).'),
+  ('Nassau County', 8625, ARRAY['110','115'], FALSE, 'Long Island - Nassau. Verify rate AND ZIP assignments: 11004/11005 are Queens (NYC), and 116xx (Far Rockaway) is Queens, not Nassau.'),
+  ('Suffolk County', 8625, ARRAY['117','118','119'], FALSE, 'Long Island - Suffolk. Verify rate + ZIP prefixes.')
 ) AS v(name, combined_rate_thou, zip_prefixes, verified, notes)
 WHERE NOT EXISTS (SELECT 1 FROM public.commercial_tax_jurisdictions);

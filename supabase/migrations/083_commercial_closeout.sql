@@ -82,15 +82,12 @@ CREATE INDEX IF NOT EXISTS idx_closeout_item_pkg
 ALTER TABLE public.commercial_closeout_packages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commercial_closeout_items    ENABLE ROW LEVEL SECURITY;
 
-DO $rls$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'commercial_closeout_packages' AND policyname = 'closeout_pkg_service_role') THEN
-    CREATE POLICY closeout_pkg_service_role ON public.commercial_closeout_packages
-      FOR ALL TO service_role USING (true) WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'commercial_closeout_items' AND policyname = 'closeout_item_service_role') THEN
-    CREATE POLICY closeout_item_service_role ON public.commercial_closeout_items
-      FOR ALL TO service_role USING (true) WITH CHECK (true);
-  END IF;
-END
-$rls$;
+-- DROP+CREATE (not a DO block) so the Supabase SQL editor's statement
+-- splitter doesn't choke on semicolons inside a dollar-quoted body.
+DROP POLICY IF EXISTS closeout_pkg_service_role ON public.commercial_closeout_packages;
+CREATE POLICY closeout_pkg_service_role ON public.commercial_closeout_packages
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS closeout_item_service_role ON public.commercial_closeout_items;
+CREATE POLICY closeout_item_service_role ON public.commercial_closeout_items
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
