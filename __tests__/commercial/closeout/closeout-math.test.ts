@@ -9,7 +9,10 @@ import {
 describe("computeWarrantyEndDate", () => {
   it("adds the term in whole years, no timezone drift", () => {
     expect(computeWarrantyEndDate("2026-07-15", 2)).toBe("2028-07-15");
-    expect(computeWarrantyEndDate("2026-02-29", 1)).toBe("2027-02-29"); // date-string math, no Date rollover
+  });
+  it("clamps a Feb-29 anniversary to Feb 28 in a non-leap year (valid date on the PDF)", () => {
+    expect(computeWarrantyEndDate("2024-02-29", 1)).toBe("2025-02-28");
+    expect(computeWarrantyEndDate("2024-02-29", 4)).toBe("2028-02-29"); // 2028 IS a leap year
   });
   it("null start → null", () => {
     expect(computeWarrantyEndDate(null, 2)).toBeNull();

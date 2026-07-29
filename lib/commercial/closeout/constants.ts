@@ -93,13 +93,23 @@ export const CLOSEOUT_TRANSMITTED_AS_LABEL: Record<CloseoutTransmittedAs, string
   for_review: "For review",
 };
 
-/** Warranty end = substantial-completion + N years (DATE-only, no TZ drift). */
+/** Warranty end = substantial-completion + N years (DATE-only, no TZ drift).
+ *  Normalized through a real calendar so an anniversary that doesn't exist —
+ *  Feb 29 → a non-leap year — CLAMPS to the last valid day of that month
+ *  (Feb 28) instead of producing "2025-02-29" (an invalid date that the PDF
+ *  would print verbatim while the UI's Date parser silently rolled to Mar 1). */
 export function computeWarrantyEndDate(startYmd: string | null, years: number): string | null {
   if (!startYmd) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startYmd);
   if (!m) return null;
-  const y = parseInt(m[1], 10) + Math.max(0, Math.floor(years));
-  return `${y}-${m[2]}-${m[3]}`;
+  const year = parseInt(m[1], 10) + Math.max(0, Math.floor(years));
+  const month = parseInt(m[2], 10); // 1-12
+  const day = parseInt(m[3], 10);
+  // Last valid day of the target month (Date.UTC(year, month, 0) → last day of
+  // the 1-indexed `month`). Clamp so Feb 29 → Feb 28 in a non-leap year.
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const d = Math.min(Math.max(1, day), lastDay);
+  return `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 /** Progress: received (or N/A) ÷ included items. Null when no included items. */

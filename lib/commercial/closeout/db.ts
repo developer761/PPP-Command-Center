@@ -231,6 +231,7 @@ export async function upsertCloseoutItem(
     position: input.position ?? 9000,
   };
   if (input.id) {
+    const { data: beforeItem } = await sb.from("commercial_closeout_items").select("*").eq("id", input.id).eq("package_id", input.package_id).maybeSingle();
     const { data, error } = await sb
       .from("commercial_closeout_items")
       .update(payload)
@@ -239,6 +240,7 @@ export async function upsertCloseoutItem(
       .select("*")
       .maybeSingle();
     if (error || !data) return { ok: false, error: error?.message ?? "update_failed" };
+    await logUpdate("commercial_closeout_items", input.id, (beforeItem as Record<string, unknown>) ?? {}, data, actorUserId);
     return { ok: true, value: data as CloseoutItem };
   }
   const { data, error } = await sb.from("commercial_closeout_items").insert(payload).select("*").maybeSingle();
@@ -247,15 +249,17 @@ export async function upsertCloseoutItem(
   return { ok: true, value: data as CloseoutItem };
 }
 
-export async function deleteCloseoutItem(id: string, package_id: string): Promise<Result<true>> {
+export async function deleteCloseoutItem(id: string, package_id: string, actorUserId: string): Promise<Result<true>> {
   const sb = commercialDb();
   const pkg = await getCloseoutPackage(package_id);
   if (!pkg) return { ok: false, error: "not_found" };
   if (!isCloseoutEditable(pkg.status)) {
     return { ok: false, error: "The package has been issued — reopen a draft to edit items." };
   }
+  const { data: before } = await sb.from("commercial_closeout_items").select("*").eq("id", id).eq("package_id", package_id).maybeSingle();
   const { error } = await sb.from("commercial_closeout_items").delete().eq("id", id).eq("package_id", package_id);
   if (error) return { ok: false, error: error.message };
+  await logDelete("commercial_closeout_items", id, (before as Record<string, unknown>) ?? {}, actorUserId);
   return { ok: true, value: true };
 }
 

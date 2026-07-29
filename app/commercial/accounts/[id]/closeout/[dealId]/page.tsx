@@ -67,6 +67,13 @@ function ymd(raw: string): string | null {
   const s = raw.trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
+/** Verify the posted package actually belongs to this account + deal before
+ *  mutating (defense-in-depth so a forged pkg_id can't revalidate/mutate under
+ *  the wrong account's context). Returns false on mismatch. */
+async function pkgBelongs(pkgId: string, id: string, dealId: string): Promise<boolean> {
+  const p = await getCloseoutPackage(pkgId);
+  return !!p && p.account_id === id && p.opportunity_id === dealId;
+}
 
 // ── Server actions ──────────────────────────────────────────────────
 async function createPackageAction(formData: FormData) {
@@ -88,6 +95,7 @@ async function updateCoverAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
+  if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
   const taRaw = String(formData.get("transmitted_as") ?? "").trim();
   const transmitted_as = (CLOSEOUT_TRANSMITTED_AS as readonly string[]).includes(taRaw)
     ? (taRaw as CloseoutTransmittedAs)
@@ -120,6 +128,7 @@ async function changeStatusAction(formData: FormData) {
   const pkgId = String(formData.get("pkg_id") ?? "");
   const to = String(formData.get("to") ?? "") as CloseoutStatus;
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
+  if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
   const res = await changeCloseoutStatus(pkgId, to, userId);
   if (!res.ok) redirect(`${base(id, dealId)}?pkg=${pkgId}&error=${encodeURIComponent(res.error)}`);
   revalidateCloseout(id, dealId);
@@ -133,6 +142,7 @@ async function upsertItemAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
+  if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
   const itemId = String(formData.get("item_id") ?? "").trim();
   const res = await upsertCloseoutItem(
     {
@@ -153,13 +163,14 @@ async function upsertItemAction(formData: FormData) {
 
 async function deleteItemAction(formData: FormData) {
   "use server";
-  await requireUser();
+  const userId = await requireUser();
   const id = String(formData.get("account_id") ?? "");
   const dealId = String(formData.get("opp_id") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   const itemId = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId) || !UUID_RE.test(itemId)) redirect("/commercial/accounts");
-  await deleteCloseoutItem(itemId, pkgId);
+  if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
+  await deleteCloseoutItem(itemId, pkgId, userId);
   revalidateCloseout(id, dealId);
   redirect(`${base(id, dealId)}?pkg=${pkgId}`);
 }
@@ -171,6 +182,7 @@ async function deletePackageAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const pkgId = String(formData.get("pkg_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId)) redirect("/commercial/accounts");
+  if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
   const res = await deleteCloseoutPackage(pkgId, userId);
   if (!res.ok) redirect(`${base(id, dealId)}?pkg=${pkgId}&error=${encodeURIComponent(res.error)}`);
   revalidateCloseout(id, dealId);

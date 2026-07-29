@@ -26,6 +26,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const pkg = await getCloseoutPackage(id);
   if (!pkg) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (pkg.voided_at) return NextResponse.json({ error: "not_found" }, { status: 404 }); // soft-deleted → not downloadable
 
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
