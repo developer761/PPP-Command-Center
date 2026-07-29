@@ -3265,7 +3265,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
         </div>
       )}
       {assignedOk && (
-        <div className="bg-sky-50 border border-sky-200 rounded-lg px-4 py-3 text-sm text-sky-800 flex items-start gap-2">
+        <div className="bg-ppp-blue-50 border border-ppp-blue-200 rounded-lg px-4 py-3 text-sm text-ppp-blue-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>You&apos;re on this opp. Open tasks + status changes will surface in your bell + email.</span>
         </div>
@@ -3286,11 +3286,11 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
           this opp. Cuts 5 clicks (open dropdown, scroll, pick self, role,
           submit) down to 2 (role, submit). */}
       {showSelfAssign && (
-        <section className="bg-sky-50 border border-sky-200 rounded-xl p-4">
+        <section className="bg-ppp-blue-50 border border-ppp-blue-200 rounded-xl p-4">
           <form action={quickAssignMeAction} className="flex flex-col sm:flex-row sm:items-end gap-3">
             <input type="hidden" name="opportunity_id" value={oppId} />
             <div className="flex-1 min-w-0">
-              <label htmlFor="self_assign_role" className="block text-[12px] font-semibold text-sky-900 mb-1">
+              <label htmlFor="self_assign_role" className="block text-[12px] font-semibold text-ppp-blue-900 mb-1">
                 Quick assign — add yourself to this opp
               </label>
               <select
@@ -3311,7 +3311,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
             </div>
             <button
               type="submit"
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-sky-700 text-white text-sm font-semibold hover:bg-sky-800 active:bg-sky-900 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-700 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 min-h-[44px] touch-manipulation"
             >
               Assign me
             </button>
@@ -4189,7 +4189,7 @@ async function FinishesTab({
           <p className="mt-3 text-[12px]">
             <Link
               href={`/commercial/opportunities/${oppId}?tab=plans`}
-              className="inline-flex items-center gap-1 text-sky-700 hover:text-sky-900 underline underline-offset-2"
+              className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-900 underline underline-offset-2"
             >
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" />
@@ -4284,7 +4284,7 @@ function FinishRow({
               — full code is in the title tooltip + expanded details
               (audit UI M2, 2026-06-30). */}
           <span
-            className="shrink-0 inline-flex items-center px-2 py-1 rounded-md bg-sky-50 text-sky-800 border border-sky-200 text-[12px] font-bold font-mono min-w-[3rem] max-w-[10rem] justify-center truncate"
+            className="shrink-0 inline-flex items-center px-2 py-1 rounded-md bg-ppp-blue-50 text-ppp-blue-800 border border-ppp-blue-200 text-[12px] font-bold font-mono min-w-[3rem] max-w-[10rem] justify-center truncate"
             title={finish.code}
           >
             {finish.code}
@@ -4482,18 +4482,18 @@ async function SubmittalsTab({
       )}
 
       {/* New Submittal CTA — single button, seeds a draft, redirects to detail */}
-      <section className="bg-sky-50 border border-sky-200 rounded-xl p-4">
+      <section className="bg-ppp-blue-50 border border-ppp-blue-200 rounded-xl p-4">
         <form action={createSubmittalAction} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="text-sm text-sky-900">
+          <div className="text-sm text-ppp-blue-900">
             <strong className="font-semibold">New submittal package</strong>
-            <p className="text-[12px] text-sky-800/80 mt-0.5">
+            <p className="text-[12px] text-ppp-blue-800/80 mt-0.5">
               Creates a draft Letter of Transmittal. Fill cover + items on the next page, attach spec PDFs, then send.
             </p>
           </div>
           <input type="hidden" name="opportunity_id" value={oppId} />
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-sky-700 text-white text-sm font-semibold hover:bg-sky-800 active:bg-sky-900 transition-colors shadow-sm shadow-sky-700/30 min-h-[44px] touch-manipulation shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-700 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 transition-colors shadow-sm shadow-sky-700/30 min-h-[44px] touch-manipulation shrink-0"
           >
             + New submittal
           </button>
@@ -4543,7 +4543,7 @@ function SubmittalRow({
     tone === "emerald" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
     : tone === "amber" ? "bg-amber-50 text-amber-900 border-amber-200"
     : tone === "rose" ? "bg-rose-50 text-rose-800 border-rose-200"
-    : tone === "sky" ? "bg-sky-50 text-sky-800 border-sky-200"
+    : tone === "sky" ? "bg-ppp-blue-50 text-ppp-blue-800 border-ppp-blue-200"
     : tone === "charcoal" ? "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200"
     : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200";
 

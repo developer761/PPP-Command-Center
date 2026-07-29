@@ -587,7 +587,7 @@ export default async function SubmittalDetailPage({
     tone === "emerald" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
     : tone === "amber" ? "bg-amber-50 text-amber-900 border-amber-200"
     : tone === "rose" ? "bg-rose-50 text-rose-800 border-rose-200"
-    : tone === "sky" ? "bg-sky-50 text-sky-800 border-sky-200"
+    : tone === "sky" ? "bg-ppp-blue-50 text-ppp-blue-800 border-ppp-blue-200"
     : tone === "charcoal" ? "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200"
     : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200";
 
@@ -741,7 +741,7 @@ export default async function SubmittalDetailPage({
             — this disambiguates from the header which already shows the
             current Rev N. Audit recheck 2026-06-30. */}
         {submittal.revises_submittal_id && (
-          <div className="mt-4 px-3 py-2.5 rounded-lg bg-sky-50 border border-sky-100 text-[12px] text-sky-900 flex items-start gap-2">
+          <div className="mt-4 px-3 py-2.5 rounded-lg bg-ppp-blue-50 border border-ppp-blue-100 text-[12px] text-ppp-blue-900 flex items-start gap-2">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0" aria-hidden>
               <path d="M3 7v6a2 2 0 0 0 2 2h13l-4-4M21 17v-6a2 2 0 0 0-2-2H6l4-4" />
             </svg>
@@ -752,7 +752,7 @@ export default async function SubmittalDetailPage({
               {" — cover + items copied forward from "}
               <Link
                 href={`/commercial/opportunities/${opportunity_id}/submittals/${submittal.revises_submittal_id}`}
-                className="text-sky-700 hover:text-sky-900 underline underline-offset-2 font-semibold"
+                className="text-ppp-blue-700 hover:text-ppp-blue-900 underline underline-offset-2 font-semibold"
               >
                 {submittal.revision_number > 1
                   ? `Rev ${submittal.revision_number - 1}`
@@ -1023,7 +1023,7 @@ export default async function SubmittalDetailPage({
                   {finishes.length === 0 && (
                     <Link
                       href={`/commercial/opportunities/${opportunity_id}?tab=finishes`}
-                      className="ml-2 text-[10px] font-normal text-sky-700 hover:text-sky-900 underline underline-offset-2"
+                      className="ml-2 text-[10px] font-normal text-ppp-blue-700 hover:text-ppp-blue-900 underline underline-offset-2"
                     >
                       Add finishes first →
                     </Link>
@@ -1087,7 +1087,7 @@ export default async function SubmittalDetailPage({
                           {item.item_number && <span>#{item.item_number}</span>}
                           {item.item_number && item.finish_code && <span> · </span>}
                           {item.finish_code && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-mono">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-ppp-blue-50 text-ppp-blue-800 border border-ppp-blue-200 font-mono">
                               {item.finish_code}
                             </span>
                           )}
@@ -1195,7 +1195,7 @@ export default async function SubmittalDetailPage({
                         {item.item_date && item.item_number && <span> · </span>}
                         {item.item_number && <span>#{item.item_number}</span>}
                         {item.finish_code && (
-                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-mono">
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded bg-ppp-blue-50 text-ppp-blue-800 border border-ppp-blue-200 font-mono">
                             {item.finish_code}
                           </span>
                         )}
@@ -1287,7 +1287,7 @@ export default async function SubmittalDetailPage({
                       </div>
                       <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                         {category && (
-                          <span className="inline-block px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 text-[10px] uppercase tracking-wider font-bold mr-1.5">
+                          <span className="inline-block px-1.5 py-0.5 rounded bg-ppp-blue-50 text-ppp-blue-800 border border-ppp-blue-200 text-[10px] uppercase tracking-wider font-bold mr-1.5">
                             {category}
                           </span>
                         )}
@@ -1361,7 +1361,7 @@ export default async function SubmittalDetailPage({
                           <div className="text-sm text-ppp-charcoal break-words">{att.file_name}</div>
                           <div className="text-[11px] text-ppp-charcoal-500 mt-0.5">
                             {category && (
-                              <span className="inline-block px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 text-[10px] uppercase tracking-wider font-bold mr-1.5">
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-ppp-blue-50 text-ppp-blue-800 border border-ppp-blue-200 text-[10px] uppercase tracking-wider font-bold mr-1.5">
                                 {category}
                               </span>
                             )}
@@ -1418,7 +1418,7 @@ export default async function SubmittalDetailPage({
                 tone === "emerald" ? "bg-emerald-500"
                 : tone === "rose" ? "bg-rose-500"
                 : tone === "amber" ? "bg-amber-500"
-                : tone === "sky" ? "bg-sky-500"
+                : tone === "sky" ? "bg-ppp-blue-500"
                 : tone === "charcoal" ? "bg-ppp-charcoal-500"
                 : "bg-ppp-charcoal-500";
               return (
@@ -1645,7 +1645,7 @@ function StatusActionsPanel({
               captured (sky-info nudging the user to close), and we should
               warn when no response is stamped (the unusual bypass path). */}
           {hasResponse ? (
-            <div className="px-3 py-2 rounded-lg bg-sky-50 border border-sky-100 text-[12px] text-sky-800">
+            <div className="px-3 py-2 rounded-lg bg-ppp-blue-50 border border-ppp-blue-100 text-[12px] text-ppp-blue-800">
               Response captured. Close to lock the package + move it into history.
             </div>
           ) : (

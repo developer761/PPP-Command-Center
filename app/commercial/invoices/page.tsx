@@ -1741,7 +1741,7 @@ function FullDetailByOpp({
               overduePresent ? "border-rose-200" : "border-ppp-charcoal-100"
             }`}
           >
-            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-br from-surface to-blue-50/30">
+            <div className="px-4 sm:px-5 py-4 border-b border-ppp-charcoal-100 bg-gradient-to-br from-surface to-ppp-blue-50/30">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2 flex-wrap">

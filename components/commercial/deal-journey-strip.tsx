@@ -48,7 +48,7 @@ function stagePillCls(state: StageState, laneTone: "pre" | "post"): string {
   if (state === "current") {
     return laneTone === "pre"
       ? "bg-emerald-500 text-white border-emerald-500 shadow-sm"
-      : "bg-cyan-600 text-white border-cyan-600 shadow-sm";
+      : "bg-ppp-blue-600 text-white border-ppp-blue-600 shadow-sm";
   }
   if (state === "complete") {
     return "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";

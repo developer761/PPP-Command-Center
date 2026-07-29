@@ -72,7 +72,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
   return (
     <div ref={rootRef} className="relative">
       <label htmlFor="new-deal-account" className={LABEL_CLS}>
-        Customer <span className="text-red-600">*</span>
+        Customer <span className="text-rose-600">*</span>
       </label>
       <input
         id="new-deal-account"
@@ -122,7 +122,7 @@ export default function NewDealAccountPicker({ accounts }: { accounts: Account[]
         </div>
       )}
       {name && !selectedId && !open && (
-        <p className="text-[11px] text-red-600 mt-1">Pick one from the list.</p>
+        <p className="text-[11px] text-rose-600 mt-1">Pick one from the list.</p>
       )}
       {selectedId && (
         <p className="text-[11px] text-emerald-700 mt-1">✓ Customer selected.</p>

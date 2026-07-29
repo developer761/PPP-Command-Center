@@ -1451,7 +1451,7 @@ function NewDealSlideOut({
           </Link>
         </div>
         {sheetError && (
-          <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          <div className="mx-5 mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
             {sheetError}
           </div>
         )}
@@ -1467,7 +1467,7 @@ function NewDealSlideOut({
 
           <div>
             <label htmlFor="new-deal-title" className={LABEL_CLS}>
-              Opportunity name <span className="text-red-600">*</span>
+              Opportunity name <span className="text-rose-600">*</span>
             </label>
             <input
               id="new-deal-title"
@@ -2686,11 +2686,11 @@ function KpiCard({
       iconTx: "text-cc-brand-700",
     },
     blue: {
-      border: "border-blue-100",
-      glow: "bg-blue-100/60",
-      stripe: "bg-gradient-to-b from-blue-600 to-blue-500",
-      iconBg: "bg-blue-100",
-      iconTx: "text-blue-700",
+      border: "border-ppp-blue-100",
+      glow: "bg-ppp-blue-100/60",
+      stripe: "bg-gradient-to-b from-ppp-blue-600 to-ppp-blue-500",
+      iconBg: "bg-ppp-blue-100",
+      iconTx: "text-ppp-blue-700",
     },
     emerald: {
       border: "border-emerald-100",

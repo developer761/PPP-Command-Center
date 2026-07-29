@@ -41,10 +41,10 @@ const VARIANT_STYLES: Record<
   }
 > = {
   info: {
-    stripe: "bg-blue-500",
-    tint: "bg-gradient-to-br from-surface to-blue-50/40",
-    iconWrap: "bg-blue-100",
-    iconColor: "text-blue-700",
+    stripe: "bg-ppp-blue-500",
+    tint: "bg-gradient-to-br from-surface to-ppp-blue-50/40",
+    iconWrap: "bg-ppp-blue-100",
+    iconColor: "text-ppp-blue-700",
     text: "text-ppp-charcoal",
   },
   warn: {

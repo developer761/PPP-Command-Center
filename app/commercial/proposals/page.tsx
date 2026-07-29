@@ -115,7 +115,7 @@ function toneForStatus(status: ProposalStatus): ColumnTone {
       return {
         ...shared,
         count: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border border-ppp-charcoal-100",
-        accentBar: "bg-slate-400",
+        accentBar: "bg-ppp-charcoal-400",
       };
     case "pending_approval":
       return {
@@ -154,7 +154,7 @@ function toneForStatus(status: ProposalStatus): ColumnTone {
       return {
         ...shared,
         count: "bg-ppp-charcoal-50 text-ppp-charcoal-500 border border-ppp-charcoal-100",
-        accentBar: "bg-slate-300",
+        accentBar: "bg-ppp-charcoal-300",
       };
   }
 }
@@ -1144,7 +1144,7 @@ const LIST_STATUS_PILL: Record<string, string> = {
   won: "bg-emerald-50 text-emerald-800 border-emerald-200",
   lost: "bg-rose-50 text-rose-800 border-rose-200",
   expired: "bg-rose-50 text-rose-800 border-rose-200",
-  superseded: "bg-slate-50 text-slate-600 border-slate-200",
+  superseded: "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200",
 };
 
 function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
