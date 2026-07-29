@@ -778,12 +778,14 @@ function accountColorStyles(accountId: string | null): {
   avatar: { backgroundColor: string; color: string };
 } {
   const hue = hueForAccountId(accountId);
+  // Lightness/sat via CSS vars so the per-account tint flips in dark mode
+  // ([data-theme=dark] overrides in globals.css); defaults = light.
   return {
-    border: { borderLeftColor: `hsl(${hue}, 62%, 55%)` },
-    headerBg: { backgroundColor: `hsl(${hue}, 62%, 96%)` },
+    border: { borderLeftColor: `hsl(${hue}, 55%, var(--cust-border-l, 55%))` },
+    headerBg: { backgroundColor: `hsl(${hue}, var(--cust-sat, 62%), var(--cust-bg-l, 96%))` },
     avatar: {
-      backgroundColor: `hsl(${hue}, 55%, 88%)`,
-      color: `hsl(${hue}, 55%, 28%)`,
+      backgroundColor: `hsl(${hue}, var(--cust-sat, 55%), var(--cust-avatar-l, 88%))`,
+      color: `hsl(${hue}, 50%, var(--cust-avatar-tx-l, 28%))`,
     },
   };
 }
@@ -1284,10 +1286,10 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                   "(untitled deal)";
                 const dealHue = hueForAccountId(dealBucket.deal.id);
                 const dealBorderStyle = {
-                  borderLeftColor: `hsl(${dealHue}, 62%, 55%)`,
+                  borderLeftColor: `hsl(${dealHue}, 55%, var(--cust-border-l, 55%))`,
                 };
                 const dealTintStyle = {
-                  backgroundColor: `hsl(${dealHue}, 62%, 97%)`,
+                  backgroundColor: `hsl(${dealHue}, var(--cust-sat, 62%), var(--cust-bg-l, 97%))`,
                 };
                 return (
                   <div
