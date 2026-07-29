@@ -7,6 +7,7 @@
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
+import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/proposals/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import {
   computeG702,
@@ -155,12 +156,84 @@ export async function createAiaApplication(
     if (!error && inserted) {
       const appRow = inserted as AiaApplication;
       await logInsert("commercial_aia_applications", appRow.id, appRow, input.created_by_user_id);
+      // Seed the schedule of values so nobody retypes the contract breakdown:
+      // first application → from the deal's latest proposal; later ones → carry
+      // the prior application forward. Best-effort — a seed failure never blocks
+      // the create (the operator can add lines manually).
+      try {
+        await seedAiaScheduleOfValues(appRow);
+      } catch (e) {
+        console.warn("[aia] schedule-of-values seed failed:", e instanceof Error ? e.message : String(e));
+      }
       return { ok: true, value: appRow };
     }
     if (error && (error as { code?: string }).code === "23505") continue;
     return { ok: false, error: error?.message ?? "insert_failed" };
   }
   return { ok: false, error: "Couldn't assign an application number — please try again." };
+}
+
+/**
+ * Seed a new application's G703 schedule of values.
+ *  - Application 2+ → carry the immediately-prior live application forward:
+ *    same lines + scheduled values, with "from previous" pre-filled with what
+ *    was already completed+stored, and this-period reset to 0.
+ *  - Application 1 → from the deal's latest proposal revision (each non-alternate
+ *    line becomes a schedule-of-values row; scheduled value = qty × unit price).
+ * No-op if there's nothing to seed from.
+ */
+async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
+  const sb = commercialDb();
+
+  if (app.application_number > 1) {
+    const { data: prior } = await sb
+      .from("commercial_aia_applications")
+      .select("id")
+      .eq("opportunity_id", app.opportunity_id)
+      .lt("application_number", app.application_number)
+      .is("deleted_at", null)
+      .order("application_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (prior) {
+      const priorLines = await listAiaLineItems((prior as { id: string }).id);
+      if (priorLines.length > 0) {
+        const rows = priorLines.map((l, i) => ({
+          application_id: app.id,
+          position: (i + 1) * 1000,
+          item_no: l.item_no,
+          description: l.description,
+          scheduled_value_cents: l.scheduled_value_cents,
+          // Everything completed/stored through the prior period becomes this
+          // period's starting "from previous".
+          from_previous_cents: l.from_previous_cents + l.this_period_cents + l.materials_stored_cents,
+          this_period_cents: 0,
+          materials_stored_cents: 0,
+        }));
+        await sb.from("commercial_aia_line_items").insert(rows);
+        return;
+      }
+    }
+    // No prior lines — fall through to the proposal seed.
+  }
+
+  const proposals = await listProposalsForOpp(app.opportunity_id);
+  if (proposals.length === 0) return;
+  const items = await listLineItemsForProposal(proposals[0].id);
+  const sov = items.filter((li) => !li.is_alternate);
+  if (sov.length === 0) return;
+  const rows = sov.map((li, i) => ({
+    application_id: app.id,
+    position: (i + 1) * 1000,
+    item_no: String(i + 1),
+    description:
+      ([li.product_name, li.description].filter((x) => x && String(x).trim()).join(" — ") || "Line of work").slice(0, 500),
+    scheduled_value_cents: Math.max(0, Math.round(Number(li.quantity) * li.unit_price_cents)),
+    from_previous_cents: 0,
+    this_period_cents: 0,
+    materials_stored_cents: 0,
+  }));
+  await sb.from("commercial_aia_line_items").insert(rows);
 }
 
 export async function updateAiaApplication(
