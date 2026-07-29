@@ -44,10 +44,12 @@ export default function PlatformSwitcher({ current }: { current: Platform }) {
   // that platform's chrome. Karan 2026-07-27 audit: the commercial side used
   // ppp-blue, but blue is the RESIDENTIAL signal (bell) and cc-brand (red) is
   // the commercial accent — so inside commercial the switcher read off-brand.
+  // Solid colored button → white text in BOTH themes. (Using tint shades like
+  // text-cc-brand-50 broke in dark: those flip to a dark tint = dark-on-dark.)
   const accent =
     current === "command_center"
-      ? { bg: "bg-emerald-600", hover: "hover:bg-emerald-700", text: "text-emerald-50", small: "text-emerald-100" }
-      : { bg: "bg-cc-brand-600", hover: "hover:bg-cc-brand-700", text: "text-cc-brand-50", small: "text-cc-brand-100" };
+      ? { bg: "bg-emerald-600", hover: "hover:bg-emerald-700", text: "text-white", small: "text-white/70" }
+      : { bg: "bg-cc-brand-600", hover: "hover:bg-cc-brand-700", text: "text-white", small: "text-white/70" };
 
   return (
     <button
