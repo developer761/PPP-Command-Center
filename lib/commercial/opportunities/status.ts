@@ -9,6 +9,7 @@ import {
   DEFAULT_SUB_STATUS_BY_STATUS,
   PROBABILITY_PRESERVING_SUB_STATUSES,
   TERMINAL_STATUSES,
+  PRE_SALE_OPEN_STATUSES,
   WARN_TRANSITIONS,
   isValidSubStatus,
   isLost,
@@ -241,13 +242,24 @@ export async function changeOpportunityStatus(
       : DEFAULT_PROBABILITY_BY_SUB_STATUS[effectiveSubStatus ?? ""] ?? beforeRow.probability_pct;
 
   // decided_at auto-management: set today when entering a terminal
-  // state (won/lost/no_bid); CLEAR when leaving one (e.g. reopened).
+  // state (won/lost); CLEAR only on a genuine REOPEN back to the active
+  // pre-sale pipeline.
+  //
+  // 2026-07-29 re-audit fix: advancing a WON deal into post-sale delivery
+  // (pre_sale_closed+won → pre_construction / in_progress / billing) is
+  // terminal→non-terminal, but it is NOT a reopen — the deal is still won.
+  // Clearing decided_at there made a just-won job vanish from "Wins this
+  // month" and (via the debrief-flag clear below) falsely reappear under
+  // "Awaiting debrief." Only clear when the destination is an ACTIVE
+  // pre-sale status (qualifying/estimating/proposal).
   const wasTerminal = TERMINAL_STATUSES.has(beforeRow.status);
   const isTerminal = TERMINAL_STATUSES.has(input.to_status);
+  const reopensToPipeline =
+    wasTerminal && PRE_SALE_OPEN_STATUSES.includes(input.to_status);
   let nextDecidedAt: string | null | undefined = undefined; // undefined = don't touch
   if (isTerminal && !wasTerminal) {
     nextDecidedAt = new Date().toISOString().slice(0, 10); // DATE column
-  } else if (!isTerminal && wasTerminal) {
+  } else if (reopensToPipeline) {
     nextDecidedAt = null;
   }
 

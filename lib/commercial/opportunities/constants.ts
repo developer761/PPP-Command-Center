@@ -31,6 +31,36 @@ export const POST_SALE_STATUSES = [
   "post_sale_closed",
 ] as const;
 
+/**
+ * THE definition of an "open opportunity" everywhere on the platform: an
+ * active pre-sale pursuit (qualifying / estimating / proposal) — not yet
+ * won or lost, and NOT yet a post-sale project in delivery. Every surface
+ * that shows an "Open" count, "Weighted pipeline", or "Bid range (open)"
+ * MUST use this set so the same deal is counted once across the dashboard,
+ * the pipeline list, and Account 360. (Contrast OPEN_OPP_STATUSES below,
+ * which also includes post-sale delivery statuses and therefore double-
+ * counts pipeline dollars — that constant is for "still-active work"
+ * filters, never for pipeline KPIs.)
+ */
+export const PRE_SALE_OPEN_STATUSES: readonly string[] = [
+  "qualifying",
+  "estimating",
+  "proposal",
+];
+
+/**
+ * Won and actively under contract — a project in delivery (post-sale but not
+ * yet fully closed). Distinct from PRE_SALE_OPEN_STATUSES ("open pipeline")
+ * and TERMINAL_STATUSES ("decided"). Together these three sets partition all
+ * seven opportunity statuses with no overlap and no gap, so a deal always
+ * lands in exactly one bucket on the Account 360 Opportunities tab.
+ */
+export const IN_DELIVERY_STATUSES: readonly string[] = [
+  "pre_construction",
+  "in_progress",
+  "billing",
+];
+
 export const OPPORTUNITY_STATUSES = [
   ...PRE_SALE_STATUSES,
   ...POST_SALE_STATUSES,

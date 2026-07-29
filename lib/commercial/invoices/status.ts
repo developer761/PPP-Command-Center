@@ -86,8 +86,22 @@ export async function changeInvoiceStatus(
     patch.voided_at = now;
   }
 
-  const { error } = await sb.from("commercial_invoices").update(patch).eq("id", input.invoice_id);
+  // 2026-07-29 re-audit fix (TOCTOU): the DAG was validated against the READ
+  // status, but the write didn't re-assert it. Two concurrent flips from the
+  // same state (e.g. sent→void and sent→viewed) both passed and both wrote,
+  // so a row could land status='viewed' WITH voided_at set — making a voided
+  // invoice editable/payable again. Compare-and-swap on the prior status +
+  // still-not-deleted so only one flip wins.
+  const { data: updated, error } = await sb
+    .from("commercial_invoices")
+    .update(patch)
+    .eq("id", input.invoice_id)
+    .eq("status", from_status)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!updated) return { ok: false, error: "invoice_status_changed_concurrently" };
 
   await logStatusChange(
     input.invoice_id,
@@ -115,11 +129,16 @@ export async function softDeleteInvoice(
     .maybeSingle();
   if (!before || before.deleted_at) return { ok: false, error: "invoice_not_found" };
   const from_status = before.status as InvoiceStatus;
-  const { error } = await sb
+  // CAS on deleted_at IS NULL so two concurrent deletes don't both log.
+  const { data: deleted, error } = await sb
     .from("commercial_invoices")
     .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("id", invoice_id);
+    .eq("id", invoice_id)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!deleted) return { ok: false, error: "invoice_not_found" };
   await logStatusChange(invoice_id, from_status, "void", actor_user_id, "Invoice deleted");
   return { ok: true };
 }
@@ -142,11 +161,16 @@ export async function restoreInvoice(
     .maybeSingle();
   if (!before) return { ok: false, error: "invoice_not_found" };
   if (!before.deleted_at) return { ok: false, error: "invoice_not_deleted" };
-  const { error } = await sb
+  // CAS on deleted_at IS NOT NULL so the "race-safe" claim is actually true.
+  const { data: restored, error } = await sb
     .from("commercial_invoices")
     .update({ deleted_at: null, updated_at: new Date().toISOString() })
-    .eq("id", invoice_id);
+    .eq("id", invoice_id)
+    .not("deleted_at", "is", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!restored) return { ok: false, error: "invoice_not_deleted" };
   await logStatusChange(
     invoice_id,
     before.status as InvoiceStatus,

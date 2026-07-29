@@ -25,7 +25,10 @@ export async function buildAiaWorkbookBuffer(input: {
   wb.creator = "PPP Command Center";
   wb.created = new Date(0); // deterministic; the app stamps real dates elsewhere
 
-  const pct = Number(app.retainage_pct);
+  // Clamp to [0,100] for parity with computeG702 (constants.ts) so the G703
+  // total-retainage column can't diverge from the G702 line-35 figure if the
+  // DB CHECK on retainage_pct is ever relaxed. Defense-in-depth.
+  const pct = Math.min(100, Math.max(0, Number(app.retainage_pct) || 0));
   const periodTo = app.period_to ? new Date(app.period_to) : null;
 
   // ── Sheet 1: G702 summary certificate ──

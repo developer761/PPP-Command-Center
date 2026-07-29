@@ -37,6 +37,7 @@ import { pickFirst } from "@/lib/commercial/form-utils";
 import { ProjectToolbar } from "@/components/commercial/project-toolbar";
 import {
   isTerminalOpportunityStatus,
+  PRE_SALE_OPEN_STATUSES,
   isWon,
   isPostSaleProject,
   isLost,
@@ -44,6 +45,8 @@ import {
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
+import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
+import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import {
@@ -358,10 +361,16 @@ async function changeStatusAction(formData: FormData) {
     // amber "Debrief needed" prompt on the second close.
     await clearDebriefFlagOnReopen(opp_id, user.id);
     redirect(`/commercial/opportunities/${opp_id}?tab=debrief&status_ok=1`);
-  } else {
-    // Non-terminal transition. If the opp WAS terminal (reopen case),
-    // clear the debriefed_at flag so a future re-close requires a fresh
-    // debrief. Idempotent — no-op if flag was already null.
+  } else if (PRE_SALE_OPEN_STATUSES.includes(to_status)) {
+    // Genuine REOPEN back to the active pre-sale pipeline (e.g. Won →
+    // Estimating): clear the debriefed_at flag so a future re-close
+    // requires a fresh debrief. Idempotent — no-op if flag was null.
+    //
+    // 2026-07-29 re-audit fix: do NOT clear when advancing a WON deal
+    // into post-sale delivery (→ pre_construction/in_progress/billing) —
+    // that's not a reopen, and clearing falsely surfaced the deal under
+    // "Awaiting debrief." Gate on the destination being active pre-sale,
+    // matching status.ts decided_at + the kanban move-status route.
     await clearDebriefFlagOnReopen(opp_id, user.id);
   }
 
@@ -1005,8 +1014,13 @@ async function saveInvoiceDetailsFromOppAction(formData: FormData) {
   } else {
     due_at = undefined;
   }
+  // 2026-07-29 re-audit fix (HIGH): the tax field is always present on this
+  // form, so a BLANK value is an explicit "no tax" (e.g. a tax-exempt capital
+  // improvement), not "leave unchanged." Previously blank → undefined → the
+  // old rate silently persisted, so clearing the field to exempt a job kept
+  // taxing the customer. Blank now means 0; a bad number leaves it untouched.
   const tax_pct_raw = String(formData.get("tax_pct") ?? "").trim();
-  const tax_pct = tax_pct_raw ? parseFloat(tax_pct_raw) : undefined;
+  const tax_pct = tax_pct_raw === "" ? 0 : parseFloat(tax_pct_raw);
   const patch: Parameters<typeof updateInvoiceCoreFields>[1] = {
     payment_terms: String(formData.get("payment_terms") ?? "").trim() || undefined,
     customer_message: (String(formData.get("customer_message") ?? "").trim() || null) as string | null,
@@ -1014,7 +1028,7 @@ async function saveInvoiceDetailsFromOppAction(formData: FormData) {
     notes: (String(formData.get("notes") ?? "").trim() || null) as string | null,
   };
   if (due_at !== undefined) patch.due_at = due_at;
-  if (tax_pct !== undefined && Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
+  if (Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
   const result = await updateInvoiceCoreFields(invoice_id, patch);
   if (!result.ok) {
     redirect(`/commercial/opportunities/${opp_id}?tab=invoices&edit_invoice=${invoice_id}&error=${encodeURIComponent(result.error ?? "Save failed.")}#inv-${invoice_id}`);
@@ -1917,10 +1931,17 @@ async function OpportunityInvoicesPanel({
   editInvoiceId?: string | null;
   detailsSavedInvoiceId?: string | null;
 }) {
-  const [invoices, taxJurisdictions] = await Promise.all([
+  const [invoices, taxJurisdictions, contractBaseCents, netCoCents] = await Promise.all([
     listCommercialInvoices({ opportunityId: oppId }),
     listTaxJurisdictions({ activeOnly: true }),
+    // 2026-07-29 re-audit fix: "% of contract" must use the SAME contract-to-
+    // date ladder as Projects / Account 360 / AIA (pickContractBaseCents +
+    // approved change orders), not the bare bid midpoint — otherwise this one
+    // tile showed e.g. "110% over" while every other screen showed 85%.
+    getEffectiveContractBaseCents(oppId),
+    netApprovedChangeOrderCents(oppId),
   ]);
+  const contractToDateCents = contractBaseCents + netCoCents;
   // Sales tax by ZIP: resolve this project's ZIP → jurisdiction once for the
   // whole panel. Null when no ZIP / no match; the edit sheet shows a hint on
   // draft invoices whose tax is still blank (never auto-overrides a set rate).
@@ -1963,13 +1984,14 @@ async function OpportunityInvoicesPanel({
       : totalPaidCents > 0
       ? "bg-cc-brand-500"
       : "bg-ppp-charcoal-300";
-  // % of contract billed — how much of the estimated deal value have we
-  // actually invoiced? Above 100% = we billed for more than we estimated
-  // (change orders, scope creep, or the estimate was low). Below = still
-  // room to bill. Null when the opp has no bid range (skip the stat).
+  // % of contract billed — how much of the CONTRACT TO DATE (original/SOV +
+  // approved change orders, via the shared ladder) have we actually invoiced?
+  // Above 100% = billed beyond the contract. Falls back to the bid midpoint
+  // only when there's no contract figure yet. Null when neither exists.
+  const contractDenomCents = contractToDateCents > 0 ? contractToDateCents : bidMidpointCents ?? 0;
   const pctBilled =
-    bidMidpointCents && bidMidpointCents > 0
-      ? Math.round((totalInvoicedCents / bidMidpointCents) * 100)
+    contractDenomCents > 0
+      ? Math.round((totalInvoicedCents / contractDenomCents) * 100)
       : null;
   return (
     <div className="space-y-3">

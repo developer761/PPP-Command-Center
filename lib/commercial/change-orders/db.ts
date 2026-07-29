@@ -227,22 +227,28 @@ export async function updateChangeOrder(
   }
 
   const sb = commercialDb();
+  // 2026-07-29 re-audit: CAS on status='pending' so a concurrent approve
+  // can't interleave with an edit and mutate an already-decided CO.
   const { data: updated, error } = await sb
     .from("commercial_change_orders")
     .update(next)
     .eq("id", id)
+    .eq("status", "pending")
     .is("deleted_at", null)
     .select(COLS)
     .maybeSingle();
-  if (error || !updated) return { ok: false, error: error?.message ?? "update_failed" };
+  if (error) return { ok: false, error: error.message };
+  if (!updated) return { ok: false, error: "This change order changed in another tab — reload and try again." };
   const row = updated as CommercialChangeOrder;
   await logUpdate("commercial_change_orders", id, before, row, userId);
   return { ok: true, value: row };
 }
 
 /**
- * Approve or decline a CO (manager gate — RBAC enforced in the action). A CO
- * that's already billed can't have its decision changed (would strand the
+ * Approve or decline a CO. NOTE: this is currently open to any commercial user
+ * (no manager-only RBAC gate exists for commercial yet — only admin gating).
+ * If CO approval should require a manager, add that gate in the calling action.
+ * A CO that's already billed can't have its decision changed (would strand the
  * invoice); un-bill by voiding/deleting the invoice first.
  */
 export async function decideChangeOrder(
@@ -264,6 +270,8 @@ export async function decideChangeOrder(
   }
 
   const sb = commercialDb();
+  // 2026-07-29 re-audit: CAS on the status we read so two concurrent decisions
+  // (or a decision racing an edit) can't both land.
   const { data: updated, error } = await sb
     .from("commercial_change_orders")
     .update({
@@ -273,10 +281,12 @@ export async function decideChangeOrder(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .eq("status", before.status)
     .is("deleted_at", null)
     .select(COLS)
     .maybeSingle();
-  if (error || !updated) return { ok: false, error: error?.message ?? "update_failed" };
+  if (error) return { ok: false, error: error.message };
+  if (!updated) return { ok: false, error: "This change order changed in another tab — reload and try again." };
   const row = updated as CommercialChangeOrder;
   await logUpdate("commercial_change_orders", id, before, row, userId);
   return { ok: true, value: row };

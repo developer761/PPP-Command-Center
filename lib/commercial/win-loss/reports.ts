@@ -145,6 +145,8 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   const { data } = await sb
     .from("commercial_win_loss_debrief")
     .select(`
+      opportunity_id,
+      debriefed_at,
       outcome,
       opportunity:commercial_opportunities!inner(bid_value_low_cents, bid_value_high_cents)
     `)
@@ -152,18 +154,31 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
     .lt("debriefed_at", range.toIso);
 
   type Row = {
+    opportunity_id: string;
+    debriefed_at: string;
     outcome: "won" | "lost" | "no_bid";
     opportunity: { bid_value_low_cents: number | null; bid_value_high_cents: number | null }
       | Array<{ bid_value_low_cents: number | null; bid_value_high_cents: number | null }>
       | null;
   };
 
+  // 2026-07-29 re-audit fix: a deal that was won+debriefed, reopened, then
+  // re-closed+debriefed leaves TWO debrief rows. Counting every row double-
+  // counted one opportunity (wonCount=1 AND lostCount=1 for a single deal).
+  // Keep only the LATEST debrief per opportunity within the range so each
+  // opp contributes exactly one outcome — its most recent decision.
+  const latestByOpp = new Map<string, Row>();
+  for (const r of (data as unknown as Row[] | null) ?? []) {
+    const prev = latestByOpp.get(r.opportunity_id);
+    if (!prev || r.debriefed_at > prev.debriefed_at) latestByOpp.set(r.opportunity_id, r);
+  }
+
   let wonCount = 0;
   let lostCount = 0;
   let noBidCount = 0;
   let wonValueCents = 0;
   let lostValueCents = 0;
-  for (const r of (data as unknown as Row[] | null) ?? []) {
+  for (const r of latestByOpp.values()) {
     const opp = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
     const mid = midpointCents(opp?.bid_value_low_cents ?? null, opp?.bid_value_high_cents ?? null);
     if (r.outcome === "won") {

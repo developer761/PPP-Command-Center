@@ -132,7 +132,7 @@ async function deleteApplicationAction(formData: FormData) {
 
 async function upsertLineAction(formData: FormData) {
   "use server";
-  await requireCommercialUser();
+  const userId = await requireCommercialUser();
   const id = String(formData.get("account_id") ?? "");
   const dealId = String(formData.get("opp_id") ?? "");
   const appId = String(formData.get("app_id") ?? "");
@@ -147,7 +147,7 @@ async function upsertLineAction(formData: FormData) {
     from_previous_cents: cents("from_previous"),
     this_period_cents: cents("this_period"),
     materials_stored_cents: cents("materials_stored"),
-  });
+  }, userId);
   if (!result.ok) redirect(`${base(id, dealId)}?app=${appId}&error=${encodeURIComponent(result.error)}`);
   revalidateAia(id, dealId);
   redirect(`${base(id, dealId)}?app=${appId}`);
@@ -155,13 +155,13 @@ async function upsertLineAction(formData: FormData) {
 
 async function deleteLineAction(formData: FormData) {
   "use server";
-  await requireCommercialUser();
+  const userId = await requireCommercialUser();
   const id = String(formData.get("account_id") ?? "");
   const dealId = String(formData.get("opp_id") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   const lineId = String(formData.get("line_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(lineId)) redirect("/commercial/accounts");
-  await deleteAiaLineItem(lineId, appId);
+  await deleteAiaLineItem(lineId, appId, userId);
   revalidateAia(id, dealId);
   redirect(`${base(id, dealId)}?app=${appId}`);
 }

@@ -54,6 +54,7 @@ import { pickFirst } from "@/lib/commercial/form-utils";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   OPEN_OPP_STATUSES,
+  PRE_SALE_OPEN_STATUSES,
   DEFAULT_PROBABILITY_BY_STATUS,
   STALE_OPP_DAYS,
   HOT_DEAL_BID_CENTS,
@@ -561,10 +562,16 @@ export default async function CommercialOpportunitiesPage({
     return stableTie(a, b);
   });
 
+  // `openOpps` (broad — includes post-sale delivery) drives the per-status
+  // snapshot pills below. The pipeline KPIs (count / weighted $ / bid range)
+  // MUST use the pre-sale-only set so they match the dashboard — including
+  // post-sale here double-counted contract dollars already under the "Under
+  // contract" strip (2026-07-29 re-audit: same metric showed two numbers).
   const openOpps = opps.filter((o) => (OPEN_OPP_STATUSES as readonly string[]).includes(o.status));
-  const totalPipelineCents = openOpps.reduce((acc, o) => acc + weightedPipelineCents(o), 0);
-  const totalBidLowCents = openOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
-  const totalBidHighCents = openOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
+  const presaleOpenOpps = opps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
+  const totalPipelineCents = presaleOpenOpps.reduce((acc, o) => acc + weightedPipelineCents(o), 0);
+  const totalBidLowCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
+  const totalBidHighCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
   // Wins this month — mirrors the /commercial dashboard KPI so the two
   // surfaces agree. Uses UTC-month-start; close enough for exec-review
   // "how'd we do this month" scan.
@@ -812,8 +819,8 @@ export default async function CommercialOpportunitiesPage({
           <KpiCard
             tone="neutral"
             label="Open opportunities"
-            value={openOpps.length.toString()}
-            sub={`${opps.length - openOpps.length} closed`}
+            value={presaleOpenOpps.length.toString()}
+            sub={`${opps.length - presaleOpenOpps.length} closed or in delivery`}
           />
           <KpiCard
             tone="blue"

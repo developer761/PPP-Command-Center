@@ -300,14 +300,19 @@ export async function updateAiaApplication(
   if (patch.notes !== undefined) next.notes = patch.notes?.slice(0, 4000) ?? null;
 
   const sb = commercialDb();
+  // 2026-07-29 re-audit fix (TOCTOU): compare-and-swap on the status we read,
+  // so a concurrent "Submit application" can't interleave with an edit and
+  // land a change on a certificate that just became issued.
   const { data: updated, error } = await sb
     .from("commercial_aia_applications")
     .update(next)
     .eq("id", id)
+    .eq("status", before.status)
     .is("deleted_at", null)
     .select(COLS)
     .maybeSingle();
-  if (error || !updated) return { ok: false, error: error?.message ?? "update_failed" };
+  if (error) return { ok: false, error: error.message };
+  if (!updated) return { ok: false, error: "This application changed status in another tab — reload and try again." };
   const appRow = updated as AiaApplication;
   await logUpdate("commercial_aia_applications", id, before, appRow, userId);
   return { ok: true, value: appRow };
@@ -353,7 +358,8 @@ export async function deleteAiaApplication(id: string, userId: string): Promise<
 
 export async function upsertAiaLineItem(
   applicationId: string,
-  line: Partial<AiaLineItem> & { id?: string }
+  line: Partial<AiaLineItem> & { id?: string },
+  actorUserId?: string
 ): Promise<Result<AiaLineItem>> {
   // Line items can only change while the application is a Draft — editing an
   // issued certificate's schedule of values would restate a document already
@@ -384,6 +390,9 @@ export async function upsertAiaLineItem(
       .select(COLS)
       .maybeSingle();
     if (error || !data) return { ok: false, error: error?.message ?? "update_failed" };
+    // 2026-07-29 re-audit fix: the G703 schedule of values IS the dollar
+    // breakdown of a payment certificate — every change now leaves a trail.
+    await logUpdate("commercial_aia_line_items", line.id, line, data, actorUserId ?? null);
     return { ok: true, value: data as AiaLineItem };
   }
   const { data, error } = await sb
@@ -392,22 +401,31 @@ export async function upsertAiaLineItem(
     .select(COLS)
     .maybeSingle();
   if (error || !data) return { ok: false, error: error?.message ?? "insert_failed" };
+  await logInsert("commercial_aia_line_items", (data as AiaLineItem).id, data, actorUserId ?? null);
   return { ok: true, value: data as AiaLineItem };
 }
 
-export async function deleteAiaLineItem(id: string, applicationId: string): Promise<Result<true>> {
+export async function deleteAiaLineItem(id: string, applicationId: string, actorUserId?: string): Promise<Result<true>> {
   const app = await getAiaApplication(applicationId);
   if (!app) return { ok: false, error: "not_found" };
   if (app.status !== "draft") {
     return { ok: false, error: "This application has been issued — reopen it to Draft to edit line items." };
   }
   const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_aia_line_items")
+    .select(COLS)
+    .eq("id", id)
+    .eq("application_id", applicationId)
+    .maybeSingle();
   const { error } = await sb
     .from("commercial_aia_line_items")
     .delete()
     .eq("id", id)
     .eq("application_id", applicationId);
   if (error) return { ok: false, error: error.message };
+  // 2026-07-29 re-audit fix: log the deletion of an SOV line.
+  if (before) await logDelete("commercial_aia_line_items", id, before, actorUserId ?? null);
   return { ok: true, value: true };
 }
 

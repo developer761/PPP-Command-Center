@@ -11,6 +11,7 @@ import {
 import {
   QUICK_FLIP_BLOCKED_STATUSES,
   isTerminalOpportunityStatus,
+  PRE_SALE_OPEN_STATUSES,
 } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
@@ -135,14 +136,19 @@ export async function POST(
       ? `/commercial/accounts/${accountId}/debrief/${opp_id}?just_closed=1`
       : `/commercial/opportunities/${opp_id}?tab=debrief&just_closed=1`;
   }
-  // If the drag flipped a terminal opp back to an active state (e.g.
-  // dragged Won → Estimating), clear the debriefed_at flag so a future
-  // re-close prompts for a fresh debrief. Mirrors what changeStatusAction
-  // does for the detail-page form path. Idempotent: no-op if flag already
-  // null. Only fires when prior was terminal AND new is not.
+  // If the drag REOPENED a terminal opp back to the active pre-sale
+  // pipeline (e.g. dragged Won → Estimating), clear the debriefed_at flag
+  // so a future re-close prompts for a fresh debrief. Mirrors the detail-
+  // page form path. Idempotent: no-op if flag already null.
+  //
+  // 2026-07-29 re-audit fix: advancing a WON deal into post-sale delivery
+  // (→ pre_construction/in_progress/billing) is terminal→non-terminal but
+  // is NOT a reopen — clearing the debrief flag there falsely surfaced the
+  // deal under "Awaiting debrief." Gate on the destination being an active
+  // pre-sale status, matching the decided_at logic in status.ts.
   const wasTerminal = isTerminalOpportunityStatus(priorStatus);
-  const nowTerminal = isTerminalOpportunityStatus(to_status);
-  if (wasTerminal && !nowTerminal) {
+  const reopensToPipeline = wasTerminal && PRE_SALE_OPEN_STATUSES.includes(to_status);
+  if (reopensToPipeline) {
     const { clearDebriefFlagOnReopen } = await import("@/lib/commercial/win-loss/debrief");
     await clearDebriefFlagOnReopen(opp_id, auth.user.id);
   }

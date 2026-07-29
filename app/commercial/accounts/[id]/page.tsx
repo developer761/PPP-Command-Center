@@ -96,7 +96,8 @@ import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
 import { findDuplicateOpportunities } from "@/lib/commercial/opportunities/duplicates";
 import {
-  OPEN_OPP_STATUSES,
+  PRE_SALE_OPEN_STATUSES,
+  IN_DELIVERY_STATUSES,
   TERMINAL_STATUSES,
   QUICK_FLIP_BLOCKED_STATUSES,
   isTerminalOpportunityStatus,
@@ -2913,7 +2914,13 @@ async function OpportunitiesTab({
     hint: [contact.title, contact.phone].filter(Boolean).join(" · ") || undefined,
   }));
 
-  const open = all.filter((o) => OPEN_OPP_STATUSES.includes(o.status));
+  // 2026-07-29 re-audit fix: three mutually-exclusive buckets covering all 7
+  // statuses so a won-in-delivery deal isn't mislabeled "Open" (it was, via
+  // OPEN_OPP_STATUSES, contradicting the scorecard's Won tile). "Open" now
+  // means active pre-sale ONLY, matching the scorecard's open_opps_count and
+  // the dashboard/pipeline definition.
+  const open = all.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
+  const inDelivery = all.filter((o) => IN_DELIVERY_STATUSES.includes(o.status));
   const decided = all.filter((o) => TERMINAL_STATUSES.has(o.status));
 
   // Bid Lifecycle (Katie 2026-07-20): fetch the 4 dates + 2 durations
@@ -3147,6 +3154,36 @@ async function OpportunitiesTab({
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {open.map((opp) => (
+              <AccountOpportunityRow
+                key={opp.id}
+                opp={opp}
+                accountId={accountId}
+                statusEnteredAt={statusEnteredMap.get(opp.id) ?? null}
+                taskStats={taskStatsMap.get(opp.id) ?? null}
+                lastNote={lastNoteMap.get(opp.id) ?? null}
+                primaryLead={primaryLeadMap.get(opp.id) ?? null}
+                fileCount={attachmentMap.get(opp.id) ?? 0}
+                submittalStats={submittalMap.get(opp.id) ?? null}
+                finishCount={finishMap.get(opp.id) ?? 0}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Won & under contract — active delivery work. Sits between the
+          open bids and the decided history so a won job in production reads
+          as "we're building this," not as an open bid or closed history. */}
+      {inDelivery.length > 0 && (
+        <section className="bg-surface border border-emerald-200 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-emerald-100 flex items-center justify-between bg-emerald-50/40">
+            <h2 className="text-sm font-semibold text-emerald-900">
+              In delivery · {inDelivery.length}
+            </h2>
+            <span className="text-[11px] font-medium text-emerald-700">Won · under contract</span>
+          </div>
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {inDelivery.map((opp) => (
               <AccountOpportunityRow
                 key={opp.id}
                 opp={opp}

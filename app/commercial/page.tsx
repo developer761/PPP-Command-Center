@@ -30,7 +30,7 @@ import {
   weightedPipelineCents,
   type CommercialOpportunity,
 } from "@/lib/commercial/opportunities/db";
-import { isPostSaleProject, isLost } from "@/lib/commercial/opportunities/constants";
+import { isPostSaleProject, isLost, PRE_SALE_OPEN_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, BILLABLE_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
@@ -109,8 +109,9 @@ export default async function CommercialDashboardPage() {
   // stages (pre_construction/in_progress/billing) are under contract, covered by
   // the "Under contract" strip — including them here double-counted their
   // dollars in the weighted pipeline (audit L4).
-  const PRE_SALE_OPEN = ["qualifying", "estimating", "proposal"];
-  const openOpps = opps.filter((o) => PRE_SALE_OPEN.includes(o.status));
+  // Shared platform definition (PRE_SALE_OPEN_STATUSES) so the dashboard, the
+  // pipeline list, and Account 360 all count the same deal once.
+  const openOpps = opps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
   // "Won" = won at ANY stage (isPostSaleProject), so a won deal that advanced
   // into production still counts as a win (isWon alone missed those — audit H2).
   const wonOpps = opps.filter((o) => isPostSaleProject(o));

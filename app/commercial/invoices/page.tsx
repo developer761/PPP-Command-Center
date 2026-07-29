@@ -250,6 +250,20 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
       .from("commercial_invoices")
       .update({ deleted_at: now })
       .in("id", rows.map((r) => r.id));
+    // 2026-07-29 re-audit fix: bulk void/delete previously left NO audit
+    // trail — paid invoices could be auto-voided + wiped with no record of
+    // who or what the balances were. Batch-log a status-change row per
+    // invoice (actor, prior status, payment amount) into the same log the
+    // single-record path writes.
+    await sb.from("commercial_invoice_status_log").insert(
+      rows.map((r) => ({
+        invoice_id: r.id,
+        from_status: r.status,
+        to_status: "void",
+        actor_user_id: user.id,
+        note: `Bulk-deleted (orphan cleanup on deleted deal)${(r.paid_cents ?? 0) > 0 ? ` — had $${((r.paid_cents ?? 0) / 100).toFixed(2)} paid; auto-voided` : ""}`.slice(0, 500),
+      }))
+    );
   }
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
@@ -316,6 +330,17 @@ async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
       .from("commercial_invoices")
       .update({ deleted_at: now })
       .in("id", rows.map((r) => r.id));
+    // 2026-07-29 re-audit fix: batch-log the bulk void/delete so the money
+    // trail survives orphan cleanup (see per-opp variant above).
+    await sb.from("commercial_invoice_status_log").insert(
+      rows.map((r) => ({
+        invoice_id: r.id,
+        from_status: r.status,
+        to_status: "void",
+        actor_user_id: user.id,
+        note: `Bulk-deleted (orphan cleanup on deleted account)${(r.paid_cents ?? 0) > 0 ? ` — had $${((r.paid_cents ?? 0) / 100).toFixed(2)} paid; auto-voided` : ""}`.slice(0, 500),
+      }))
+    );
   }
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");

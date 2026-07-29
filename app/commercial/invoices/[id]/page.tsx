@@ -216,8 +216,12 @@ async function updateCoreFieldsAction(formData: FormData) {
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
-  const tax_pct_raw = String(formData.get("tax_pct") ?? "");
-  const tax_pct = tax_pct_raw ? parseFloat(tax_pct_raw) : undefined;
+  // 2026-07-29 re-audit fix (HIGH): tax field is always present, so blank is
+  // an explicit "no tax" (tax-exempt), not "leave unchanged." Blank → 0 so
+  // clearing the field actually exempts the invoice instead of silently
+  // keeping the prior rate. A malformed value leaves it untouched.
+  const tax_pct_raw = String(formData.get("tax_pct") ?? "").trim();
+  const tax_pct = tax_pct_raw === "" ? 0 : parseFloat(tax_pct_raw);
   // Due date arrives as "YYYY-MM-DD" from <input type="date">. We store
   // TIMESTAMPTZ, so noon-ET (16:00Z) is our anchor — that avoids "one day
   // off" bugs when displayed in ET vs UTC boundaries. Empty string = clear.
@@ -237,7 +241,7 @@ async function updateCoreFieldsAction(formData: FormData) {
     notes: (String(formData.get("notes") ?? "").trim() || null) as string | null,
   };
   if (due_at !== undefined) patch.due_at = due_at;
-  if (tax_pct !== undefined && Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
+  if (Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
   const result = await updateInvoiceCoreFields(invoice_id, patch, user.id);
   if (!result.ok) {
     redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Could not save details."));
@@ -350,6 +354,17 @@ async function bulkDeleteInvoicesFromDetailAction(formData: FormData) {
       .from("commercial_invoices")
       .update({ deleted_at: now })
       .in("id", rows.map((r) => r.id));
+    // 2026-07-29 re-audit fix: batch-log the bulk void/delete so the money
+    // trail survives orphan cleanup (matches the invoices-list bulk actions).
+    await sb.from("commercial_invoice_status_log").insert(
+      rows.map((r) => ({
+        invoice_id: r.id,
+        from_status: r.status,
+        to_status: "void",
+        actor_user_id: user.id,
+        note: `Bulk-deleted (orphan cleanup, ${scope})${(r.paid_cents ?? 0) > 0 ? ` — had $${((r.paid_cents ?? 0) / 100).toFixed(2)} paid; auto-voided` : ""}`.slice(0, 500),
+      }))
+    );
   }
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
