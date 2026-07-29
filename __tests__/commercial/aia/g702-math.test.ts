@@ -1,5 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { computeG702, lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
+import { computeG702, lineCompletedStoredCents, pickContractBaseCents } from "@/lib/commercial/aia/constants";
+
+/**
+ * The ONE contract-base ladder shared by Projects / Account 360 / AIA G702 /
+ * Change Orders. If this drifts, those four surfaces show different contract
+ * totals for the same deal.
+ */
+describe("pickContractBaseCents", () => {
+  it("uses the bid midpoint before any AIA app exists", () => {
+    expect(pickContractBaseCents({ hasBillingApp: false, originalContractCents: 0, sovTotalCents: 999, bidMidCents: 10_000_00 })).toBe(10_000_00);
+  });
+  it("prefers the app's explicit snapshotted contract once billing exists", () => {
+    expect(pickContractBaseCents({ hasBillingApp: true, originalContractCents: 11_000_00, sovTotalCents: 9_500_00, bidMidCents: 10_000_00 })).toBe(11_000_00);
+  });
+  it("falls back to the schedule-of-values total when no explicit contract was set", () => {
+    expect(pickContractBaseCents({ hasBillingApp: true, originalContractCents: 0, sovTotalCents: 9_500_00, bidMidCents: 10_000_00 })).toBe(9_500_00);
+  });
+  it("does NOT fall back to the bid midpoint once an app exists (ties to the AIA doc)", () => {
+    // empty draft app, no SOV, but a stray bid — contract is 0, not the bid.
+    expect(pickContractBaseCents({ hasBillingApp: true, originalContractCents: 0, sovTotalCents: 0, bidMidCents: 10_000_00 })).toBe(0);
+  });
+});
 
 /**
  * G702 certificate math (Phase H). This is customer-facing money, so every

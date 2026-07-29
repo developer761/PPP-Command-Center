@@ -57,6 +57,7 @@ type ProposalRow = {
   sent_at: string | null;
   updated_at: string;
   opportunity_id: string;
+  snapshot_document_id: string | null;
   header_json: { gc_company?: string; project_name?: string } | null;
   opportunity: {
     id: string;
@@ -227,7 +228,7 @@ export default async function ProposalsIndexPage({
   let query = sb
     .from("commercial_proposals")
     .select(
-      `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, header_json,
+      `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, snapshot_document_id, header_json,
        opportunity:commercial_opportunities!inner(
          id, title, client_name, property_street, account_id, deleted_at,
          account:commercial_accounts!inner(id, company_name, deleted_at)
@@ -607,7 +608,14 @@ function ProposalCard({
             {row.total_cents ? formatDollars(row.total_cents) : "—"}
           </span>
           <a
-            href={`/api/commercial/proposals/${row.id}/pdf`}
+            href={
+              // Sent/closed → the frozen snapshot saved at send time (the live
+              // render re-resolves exclusions to CURRENT library text); drafts
+              // → live render. Mirrors the editor's PDF link.
+              row.status !== "draft" && row.snapshot_document_id
+                ? `/api/commercial/documents/${row.snapshot_document_id}/download`
+                : `/api/commercial/proposals/${row.id}/pdf`
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center w-5 h-5 rounded text-ppp-charcoal-400 hover:text-cc-brand-700 hover:bg-cc-brand-50"
@@ -1360,7 +1368,11 @@ function ProposalsListView({ rows }: { rows: ProposalRow[] }) {
                               </span>
                             </Link>
                             <a
-                              href={`/api/commercial/proposals/${r.id}/pdf`}
+                              href={
+                                r.status !== "draft" && r.snapshot_document_id
+                                  ? `/api/commercial/documents/${r.snapshot_document_id}/download`
+                                  : `/api/commercial/proposals/${r.id}/pdf`
+                              }
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 px-3 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 hover:bg-white border-l border-ppp-charcoal-100 shrink-0"

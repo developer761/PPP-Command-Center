@@ -22,6 +22,7 @@ import {
   derivedOppName,
 } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject, oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
+import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
 import { ProjectToolbar } from "@/components/commercial/project-toolbar";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
@@ -187,10 +188,10 @@ export default async function AccountChangeOrdersPage({
   }
 
   const dealName = derivedOppName(opp, account.company_name);
-  const baseContractCents =
-    opp.bid_value_low_cents != null && opp.bid_value_high_cents != null
-      ? Math.round((opp.bid_value_low_cents + opp.bid_value_high_cents) / 2)
-      : null;
+  // Same contract-base ladder the AIA G702 + Projects + Account 360 use, so all
+  // four surfaces show the same "contract to date" (was the bare bid midpoint).
+  const base = await getEffectiveContractBaseCents(dealId);
+  const baseContractCents = base > 0 ? base : null;
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-4">

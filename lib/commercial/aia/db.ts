@@ -11,6 +11,7 @@ import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import {
   computeG702,
+  pickContractBaseCents,
   DEFAULT_RETAINAGE_PCT,
   type AiaG702,
   type AiaApplicationStatus,
@@ -412,13 +413,58 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
   // the certificate never shows a $0 contract against a real schedule. An
   // explicitly-set original always wins.
   const sovTotalCents = lines.reduce((sum, l) => sum + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
-  const effectiveOriginalCents = app.original_contract_cents > 0 ? app.original_contract_cents : sovTotalCents;
+  const effectiveOriginalCents = pickContractBaseCents({
+    hasBillingApp: true,
+    originalContractCents: app.original_contract_cents,
+    sovTotalCents,
+    bidMidCents: 0,
+  });
   return computeG702({
     originalContractCents: effectiveOriginalCents,
     netChangeOrdersCents: netCO,
     retainagePct: app.retainage_pct,
     lines,
     previousCertificatesCents,
+  });
+}
+
+/**
+ * The effective contract base for ONE deal, via the shared ladder — so the
+ * Change Orders page's "contract to date" reconciles with the AIA G702, the
+ * Projects card, and the Account 360 production KPIs. Approved COs add on top.
+ */
+export async function getEffectiveContractBaseCents(opportunity_id: string): Promise<number> {
+  const sb = commercialDb();
+  const { data: oppRow } = await sb
+    .from("commercial_opportunities")
+    .select("bid_value_low_cents, bid_value_high_cents")
+    .eq("id", opportunity_id)
+    .maybeSingle();
+  const o = oppRow as { bid_value_low_cents: number | null; bid_value_high_cents: number | null } | null;
+  const bidMidCents =
+    o?.bid_value_low_cents != null && o?.bid_value_high_cents != null
+      ? Math.round((o.bid_value_low_cents + o.bid_value_high_cents) / 2)
+      : o?.bid_value_low_cents ?? o?.bid_value_high_cents ?? 0;
+
+  const { data: appRow } = await sb
+    .from("commercial_aia_applications")
+    .select("id, original_contract_cents")
+    .eq("opportunity_id", opportunity_id)
+    .is("deleted_at", null)
+    .order("application_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const app = appRow as { id: string; original_contract_cents: number } | null;
+  let sovTotalCents = 0;
+  if (app) {
+    const lines = await listAiaLineItems(app.id);
+    sovTotalCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
+  }
+  return pickContractBaseCents({
+    hasBillingApp: !!app,
+    originalContractCents: app?.original_contract_cents ?? 0,
+    sovTotalCents,
+    bidMidCents,
   });
 }
 

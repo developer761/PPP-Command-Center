@@ -7,6 +7,7 @@
  */
 import { commercialDb } from "@/lib/commercial/db";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { pickContractBaseCents } from "@/lib/commercial/aia/constants";
 import type { CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 
 export type ProjectRow = {
@@ -179,17 +180,15 @@ export async function listProjects(opts: {
   return opps.map((o) => {
     const co = coByOpp.get(o.id) ?? { netApproved: 0, pending: 0, pendingCents: 0 };
     const latest = latestAppByOpp.get(o.id) ?? null;
-    // Contract base — MUST mirror resolveG702's ladder EXACTLY once an AIA
-    // application exists, so the card ties to the AIA doc it links to: explicit
-    // snapshotted contract, else the schedule-of-values total (0 when no lines).
-    // The deal's bid midpoint is only used BEFORE any billing exists (no AIA
-    // doc to reconcile against) — never as a fallback once an app is present.
+    // Contract base — the ONE shared ladder (pickContractBaseCents), also used
+    // by the AIA G702 + Change Orders page, so every surface ties out.
     const sovTotal = latest ? sovByApp.get(latest.id) ?? 0 : 0;
-    const base = latest
-      ? latest.original_contract_cents > 0
-        ? latest.original_contract_cents
-        : sovTotal
-      : bidMidCents(o);
+    const base = pickContractBaseCents({
+      hasBillingApp: latest != null,
+      originalContractCents: latest?.original_contract_cents ?? 0,
+      sovTotalCents: sovTotal,
+      bidMidCents: bidMidCents(o),
+    });
     const contractToDate = base + co.netApproved;
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
     const retainageHeld = latest ? retainageByApp.get(latest.id) ?? 0 : 0;

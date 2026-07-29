@@ -116,3 +116,25 @@ export function computeG702({
 export function formatApplicationNumber(n: number): string {
   return `Application No. ${n}`;
 }
+
+/**
+ * The ONE contract-base ladder, shared by the Projects card, the Account 360
+ * production KPIs, the AIA G702 (via resolveG702), and the Change Orders page —
+ * so all four always agree on "contract to date" for a deal. Once an AIA app
+ * exists, its explicit snapshotted contract wins, else its schedule-of-values
+ * total (which by AIA convention IS the contract sum); before any billing, the
+ * deal's bid midpoint. Approved change orders are added on TOP of this base by
+ * the caller.
+ */
+export function pickContractBaseCents(opts: {
+  hasBillingApp: boolean;
+  originalContractCents: number;
+  sovTotalCents: number;
+  bidMidCents: number;
+}): number {
+  if (opts.hasBillingApp) {
+    if (opts.originalContractCents > 0) return opts.originalContractCents;
+    if (opts.sovTotalCents > 0) return opts.sovTotalCents;
+  }
+  return opts.bidMidCents;
+}
