@@ -943,7 +943,7 @@ export default async function ProposalEditorPage({
       )}
       {sp.outcome === "won" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-900 flex items-start gap-2">
-          <IconTrophy size={16} className="text-ppp-green-600 shrink-0 mt-0.5" />
+          <IconTrophy size={16} className="text-emerald-600 shrink-0 mt-0.5" />
           <span><strong>Marked won.</strong> Opportunity flipped to <em>Pre-Sale Closed · Won</em>. Start the project when the client&rsquo;s ready.</span>
         </div>
       )}
