@@ -777,17 +777,30 @@ async function AccountProjectsTab({ accountId, projectId }: { accountId: string;
  * deal's details is an explicit "Edit deal details" button, so navigating here
  * never auto-pops the edit form (that was the 2026-07-29 bug).
  */
-function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string }) {
+async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string }) {
   const name = derivedOppName(p.opp, p.accountName);
   const oppCode = formatOpportunityNumber(p.opp.project_number);
   const pct = p.percentCompleteBps != null ? Math.min(100, Math.round(p.percentCompleteBps / 100)) : null;
   const location = p.opp.property_street?.trim() || null;
   const base = `/commercial/accounts/${accountId}`;
-  const tools: { label: string; sub: string; href: string; icon: React.ReactNode }[] = [
-    { label: "Change Orders", sub: "Scope added or deducted mid-job", href: `${base}/change-orders/${p.opp.id}`, icon: <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" /> },
-    { label: "AIA Billing", sub: "G702 / G703 progress billing + Excel", href: `${base}/aia/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" /> },
-    { label: "Submittals", sub: "Shop drawings + product data → GC", href: `${base}/submittals/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h5 M8 17h4" /> },
-    { label: "Closeout & Warranty", sub: "Close-out package + transmittal + warranty", href: `${base}/closeout/${p.opp.id}`, icon: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /> },
+  // Mini-updates: the latest change orders (with the notes typed on each) for a
+  // quick glance without opening the tool. Newest first.
+  const [changeOrders, submittalCounts] = await Promise.all([
+    listChangeOrders(p.opp.id),
+    listSubmittalCountByOpp([p.opp.id]),
+  ]);
+  const recentCos = [...changeOrders].sort((a, b) => b.co_number - a.co_number).slice(0, 3);
+  const subC = submittalCounts.get(p.opp.id) ?? { total: 0, awaiting_response: 0 };
+  // Quick-glance stat per tool card (no full open needed).
+  const coStat = changeOrders.length === 0 ? "None yet" : p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : `${changeOrders.length} total`;
+  const aiaStat = p.latestAppNumber == null ? "Not started" : `App ${p.latestAppNumber}${p.latestAppStatus ? ` · ${p.latestAppStatus}` : ""}`;
+  const subStat = subC.total === 0 ? "None yet" : `${subC.total} sent${subC.awaiting_response > 0 ? ` · ${subC.awaiting_response} awaiting` : ""}`;
+  const closeStat = p.isClosedOut ? "Closed out" : p.closeoutStatus ? `In progress · ${p.closeoutStatus}` : "Not started";
+  const tools: { label: string; sub: string; stat: string; href: string; icon: React.ReactNode }[] = [
+    { label: "Change Orders", sub: "Scope added or deducted mid-job", stat: coStat, href: `${base}/change-orders/${p.opp.id}`, icon: <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" /> },
+    { label: "AIA Billing", sub: "G702 / G703 progress billing + Excel", stat: aiaStat, href: `${base}/aia/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" /> },
+    { label: "Submittals", sub: "Shop drawings + product data → GC", stat: subStat, href: `${base}/submittals/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h5 M8 17h4" /> },
+    { label: "Closeout & Warranty", sub: "Close-out package + transmittal + warranty", stat: closeStat, href: `${base}/closeout/${p.opp.id}`, icon: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /> },
   ];
   const hasContract = p.contractToDateCents > 0;
   return (
@@ -842,6 +855,52 @@ function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string
         )}
       </div>
 
+      {/* ── Change orders mini-feed — the notes typed on each CO, at a glance,
+          without opening the tool. "Open →" slides out the full drawer. ── */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
+          <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-cc-brand-600 text-white shrink-0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" /></svg>
+          </span>
+          <h3 className="text-[13px] font-bold text-ppp-charcoal">Change orders</h3>
+          {changeOrders.length > 0 && (
+            <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">
+              {changeOrders.length} · {p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : "all decided"}
+            </span>
+          )}
+          <Link href={`${base}/change-orders/${p.opp.id}`} className="ml-auto text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px] inline-flex items-center gap-0.5">
+            Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
+          </Link>
+        </div>
+        {recentCos.length === 0 ? (
+          <p className="px-4 py-3 text-[12px] text-ppp-charcoal-500">No change orders yet — added scope or credits show here with their notes.</p>
+        ) : (
+          <ul className="divide-y divide-ppp-charcoal-50">
+            {recentCos.map((co) => {
+              const deduct = co.amount_cents < 0;
+              const tone = co.status === "approved" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : co.status === "declined" ? "text-rose-700 bg-rose-50 border-rose-200" : "text-amber-800 bg-amber-50 border-amber-200";
+              return (
+                <li key={co.id} className="px-4 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-bold text-ppp-charcoal tabular-nums">CO-{String(co.co_number).padStart(3, "0")}</span>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{co.status}</span>
+                      </div>
+                      <div className="text-[12.5px] font-semibold text-ppp-charcoal mt-0.5 break-words">{co.title}</div>
+                      {co.description && <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 break-words line-clamp-2">{co.description}</div>}
+                    </div>
+                    <span className={`text-[13px] font-bold tabular-nums shrink-0 ${deduct ? "text-rose-700" : "text-emerald-700"}`}>
+                      {deduct ? "−" : "+"}{formatCentsCompact(Math.abs(co.amount_cents))}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {tools.map((t) => (
           <Link key={t.label} href={t.href} className="flex items-center justify-between gap-3 rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group">
@@ -851,7 +910,7 @@ function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string
               </span>
               <div className="min-w-0">
                 <div className="text-sm font-bold text-ppp-charcoal leading-tight">{t.label}</div>
-                <div className="text-[11.5px] text-ppp-charcoal-500 leading-snug">{t.sub}</div>
+                <div className="text-[11px] font-semibold text-cc-brand-700 leading-snug mt-0.5 truncate" title={t.stat}>{t.stat}</div>
               </div>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
