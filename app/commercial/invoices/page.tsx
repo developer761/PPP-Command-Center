@@ -16,6 +16,8 @@ import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercial
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
+import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
+import { getProposal } from "@/lib/commercial/proposals/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -119,6 +121,22 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
   redirect(`/commercial/invoices?${flash.toString()}#inv-${invoice_id}`);
 }
 
+/** Per-project proposal context for the inline create form: the proposals to
+ *  choose from + the accepted (won) proposal as the default + its contract
+ *  total. Empty/omitted when the project has no proposals. */
+type ProposalCtx = {
+  options: Array<{ id: string; label: string }>;
+  acceptedId: string | null;
+  acceptedTotalCents: number | null;
+};
+
+/** Label a proposal for the "bill against proposal" picker. */
+function proposalOptionLabel(p: CommercialProposal): string {
+  const num = formatProposalNumber(p.proposal_seq) || `Rev ${p.revision_number}`;
+  const status = p.status.charAt(0).toUpperCase() + p.status.slice(1);
+  return `${num} · ${formatCentsFull(p.total_cents)} · ${status}`;
+}
+
 /** Server action for the inline "+ New invoice" collapsible on the
  *  account-filtered detail view (Karan 2026-07-07: retired the batch
  *  creator page — everything happens inline on this one page). Creates
@@ -157,6 +175,21 @@ async function createInvoiceInlineAction(formData: FormData) {
     ? tax_pct_parsed
     : undefined;
 
+  // Invoice ↔ proposal link: when the user bills against a specific proposal,
+  // record it + snapshot the proposal total AT bill time (so a later proposal
+  // edit doesn't rewrite what this invoice was billed against). Chain-of-trust:
+  // the proposal must belong to this opp, else the link is dropped.
+  const proposal_id_raw = String(formData.get("proposal_id") ?? "").trim();
+  let proposal_id: string | null = null;
+  let proposal_total_cents_at_bill: number | null = null;
+  if (UUID_RE.test(proposal_id_raw)) {
+    const prop = await getProposal(proposal_id_raw);
+    if (prop && prop.opportunity_id === opp_id) {
+      proposal_id = prop.id;
+      proposal_total_cents_at_bill = prop.total_cents;
+    }
+  }
+
   const result = await createCommercialInvoice({
     opportunity_id: opp_id,
     account_id,
@@ -167,6 +200,8 @@ async function createInvoiceInlineAction(formData: FormData) {
     notes,
     tax_pct,
     due_at,
+    proposal_id,
+    proposal_total_cents_at_bill,
     line_items: [{
       description: description.slice(0, 500),
       quantity: 1,
@@ -406,6 +441,30 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   }));
   const accountById = new Map(accounts.map((a) => [a.id, a]));
   const oppById = new Map(allOpps.map((o) => [o.id, o]));
+
+  // Invoice ↔ proposal: for each project that appears in this (account-scoped)
+  // view, load its proposals so the inline create form can offer a "bill
+  // against proposal" picker + show the accepted contract total, and the rows
+  // can chip which proposal each invoice bills. Bounded to the opps on screen
+  // (this branch is account-filtered), so no platform-wide N+1.
+  const ctxOppIds = new Set<string>(invoicesRaw.map((i) => i.opportunity_id));
+  const addOppIdForCtx = pickFirst(sp.add);
+  if (addOppIdForCtx && UUID_RE.test(addOppIdForCtx)) ctxOppIds.add(addOppIdForCtx);
+  const proposalCtxByOpp = new Map<string, ProposalCtx>();
+  await Promise.all(
+    [...ctxOppIds].map(async (oppId) => {
+      const props = await listProposalsForOpp(oppId);
+      if (props.length === 0) return;
+      const won = props
+        .filter((p) => p.status === "won")
+        .sort((a, b) => b.total_cents - a.total_cents)[0] ?? null;
+      proposalCtxByOpp.set(oppId, {
+        options: props.map((p) => ({ id: p.id, label: proposalOptionLabel(p) })),
+        acceptedId: won?.id ?? null,
+        acceptedTotalCents: won?.total_cents ?? null,
+      });
+    }),
+  );
   const invoicesSearched = search
     ? (() => {
         const q = search.toLowerCase();
@@ -1117,6 +1176,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           wonOppsForAccount={wonOpps}
           pickableProducts={pickableProducts}
           taxJurisdictions={taxJurisdictions}
+          proposalCtxByOpp={proposalCtxByOpp}
         />
       ) : sorted.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 sm:p-12 text-center">
@@ -1582,6 +1642,7 @@ function FullDetailByOpp({
   wonOppsForAccount,
   pickableProducts,
   taxJurisdictions,
+  proposalCtxByOpp,
 }: {
   invoices: CommercialInvoice[];
   oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; property_street: string | null; property_zip?: string | null }>;
@@ -1613,12 +1674,24 @@ function FullDetailByOpp({
     unit: string;
     default_unit_price_cents: number;
   }>;
+  /** Per-opp proposal context for the inline create form's "bill against
+   *  proposal" picker + the row-level PROP chip. Omitted opps have no
+   *  proposals. */
+  proposalCtxByOpp: Map<string, ProposalCtx>;
 }) {
   const groups = new Map<string, CommercialInvoice[]>();
   for (const inv of invoices) {
     const arr = groups.get(inv.opportunity_id) ?? [];
     arr.push(inv);
     groups.set(inv.opportunity_id, arr);
+  }
+  // proposalId → short "PROP-000N" chip, harvested from the picker option
+  // labels ("PROP-0001 · $… · Won" → "PROP-0001"). Lets each invoice row show
+  // which proposal it bills, so multiple progress invoices under one proposal
+  // read as a set.
+  const proposalNumById = new Map<string, string>();
+  for (const ctx of proposalCtxByOpp.values()) {
+    for (const o of ctx.options) proposalNumById.set(o.id, o.label.split(" · ")[0]);
   }
   // Karan 2026-07-09 bug fix: when a user clicks "New invoice ▾" on a
   // filtered view for a customer with zero existing invoices, the
@@ -1931,6 +2004,11 @@ function FullDetailByOpp({
                               {inv.invoice_number}
                             </span>
                             <StatusPill status={displayStatus} />
+                            {inv.proposal_id && proposalNumById.has(inv.proposal_id) && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-ppp-charcoal-200 bg-ppp-charcoal-50 text-[10px] font-semibold text-ppp-charcoal-600" title="Bills against this proposal">
+                                {proposalNumById.get(inv.proposal_id)}
+                              </span>
+                            )}
                             {inv.due_at && (
                               <span
                                 className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
@@ -2127,6 +2205,36 @@ function FullDetailByOpp({
                       className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
                     />
                   </div>
+                  {/* Bill against a proposal — links this invoice to the deal's
+                      accepted proposal so a single proposal can be split across
+                      several progress invoices (Karan: "three invoices per
+                      proposal"). Only shown when the project has proposals. */}
+                  {(() => {
+                    const pc = proposalCtxByOpp.get(oppId);
+                    if (!pc || pc.options.length === 0) return null;
+                    return (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                          Bill against proposal <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+                        </label>
+                        <select
+                          name="proposal_id"
+                          defaultValue={pc.acceptedId ?? ""}
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        >
+                          <option value="">Not tied to a proposal</option>
+                          {pc.options.map((o) => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                          ))}
+                        </select>
+                        {pc.acceptedTotalCents != null && (
+                          <p className="mt-1 text-[10.5px] leading-snug text-ppp-charcoal-500">
+                            Accepted contract: <strong className="text-ppp-charcoal-700 tabular-nums">{formatCentsFull(pc.acceptedTotalCents)}</strong>. Split it across as many progress invoices as you need — each one you add here bills against it.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="block">
                       <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Amount</span>

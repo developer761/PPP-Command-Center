@@ -44,6 +44,7 @@ import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
 import { getCommercialAccount, formatAccountNumber } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
+import { getProposal, formatProposalNumber } from "@/lib/commercial/proposals/db";
 import { isWon } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
@@ -404,6 +405,20 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
     getCommercialOpportunity(invoice.opportunity_id),
     listCommercialInvoices({ opportunityId: invoice.opportunity_id }),
   ]);
+  // Invoice ↔ proposal: when this invoice bills against a proposal, resolve the
+  // proposal + its sibling progress invoices so we can show "invoice N of M
+  // against PROP-000N · $billed of $contract." Snapshot total (at bill time)
+  // is preferred so a later proposal edit doesn't rewrite history.
+  const linkedProposal = invoice.proposal_id ? await getProposal(invoice.proposal_id) : null;
+  const proposalSiblings = invoice.proposal_id
+    ? siblingInvoices
+        .filter((s) => s.proposal_id === invoice.proposal_id && s.status !== "void" && !s.deleted_at)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    : [];
+  const proposalIssuedSiblings = proposalSiblings.filter((s) => s.status !== "draft");
+  const billedAgainstProposalCents = proposalIssuedSiblings.reduce((s, i) => s + i.total_cents, 0);
+  const proposalContractCents = invoice.proposal_total_cents_at_bill ?? linkedProposal?.total_cents ?? null;
+  const thisInvoiceProposalIndex = proposalSiblings.findIndex((s) => s.id === invoice.id);
   // Karan 2026-07-07: sibling-invoice nav. If this opp has multiple
   // invoices (progress billing), show a compact strip so users can hop
   // between them without going back to the opp panel. Sort by
@@ -702,6 +717,22 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 </>
               )}
             </div>
+            {invoice.proposal_id && (
+              <div className="mt-2 inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/60 px-3 py-1.5 text-[11.5px] text-ppp-charcoal-600">
+                <span className="inline-flex items-center gap-1 font-semibold text-ppp-charcoal-700">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+                  {linkedProposal ? formatProposalNumber(linkedProposal.proposal_seq) || `Proposal Rev ${linkedProposal.revision_number}` : "Linked proposal"}
+                </span>
+                {thisInvoiceProposalIndex >= 0 && proposalSiblings.length > 1 && (
+                  <span>Progress invoice {thisInvoiceProposalIndex + 1} of {proposalSiblings.length}</span>
+                )}
+                {proposalContractCents != null && (
+                  <span>
+                    <strong className="text-ppp-charcoal-700 tabular-nums">{formatCentsFull(billedAgainstProposalCents)}</strong> of <span className="tabular-nums">{formatCentsFull(proposalContractCents)}</span> billed
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <CopyInvoiceLinkButton />
