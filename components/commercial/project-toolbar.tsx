@@ -35,7 +35,7 @@ export function ProjectToolbar({
     { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}${b("aia")}` },
     { key: "submittals", label: "Submittals", href: `/commercial/accounts/${accountId}/submittals/${dealId}${b("submittals")}` },
     { key: "closeout", label: "Closeout", href: `/commercial/accounts/${accountId}/closeout/${dealId}${b("closeout")}` },
-    { key: "invoices", label: "Invoices", href: `/commercial/invoices?account_id=${accountId}#opp-${dealId}` },
+    { key: "invoices", label: "Invoices", href: `/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=invoices#deal-invoices` },
   ];
   return (
     <nav aria-label="Project" className="-mx-1 overflow-x-auto overscroll-x-contain">

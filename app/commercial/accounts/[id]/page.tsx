@@ -207,6 +207,8 @@ type SP = Promise<{
   /** 2026-07-29: Projects tab drills into ONE project's home (folded under
    *  the account) via ?tab=projects&project=<dealId>. */
   project?: string;
+  /** Deal sub-tab (B1 content-swap): overview | proposals | invoices | documents. */
+  dt?: string;
 }>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
@@ -702,6 +704,7 @@ export default async function CommercialAccountDetailPage({
         <AccountProjectsTab
           accountId={account.id}
           projectId={typeof sp.project === "string" && /^[0-9a-f-]{36}$/i.test(sp.project) ? sp.project : null}
+          dealTab={typeof sp.dt === "string" ? sp.dt : "overview"}
         />
       )}
     </div>
@@ -848,7 +851,10 @@ function PipelineDealBlock({ accountId, opp }: { accountId: string; opp: Commerc
  * top rolls the account's delivery numbers. Empty state guides you when the
  * account has no jobs under contract yet.
  */
-async function AccountProjectsTab({ accountId, projectId }: { accountId: string; projectId: string | null }) {
+async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = "overview" }: { accountId: string; projectId: string | null; dealTab?: string }) {
+  // Normalize the deal sub-tab: an unknown ?dt= value falls back to Overview
+  // rather than rendering just the header with a blank panel below it.
+  const dealTab = ["overview", "proposals", "invoices", "documents"].includes(dealTabRaw) ? dealTabRaw : "overview";
   // includeClosed so finished jobs still show on the account (they were
   // vanishing into "No projects yet" — 2026-07-29 audit finding).
   const projects = await listProjects({ accountId, includeClosed: true });
@@ -858,9 +864,9 @@ async function AccountProjectsTab({ accountId, projectId }: { accountId: string;
   // every deal opens the same way, not the edit sheet.
   if (projectId) {
     const p = projects.find((x) => x.opp.id === projectId);
-    if (p) return <AccountProjectHome p={p} accountId={accountId} />;
+    if (p) return <AccountProjectHome p={p} accountId={accountId} dealTab={dealTab} />;
     const opp = await getCommercialOpportunity(projectId);
-    if (opp && opp.account_id === accountId) return <PreSaleDealHome opp={opp} accountId={accountId} />;
+    if (opp && opp.account_id === accountId) return <PreSaleDealHome opp={opp} accountId={accountId} dealTab={dealTab} />;
     // Not found / wrong account — fall through to the list.
   }
 
@@ -925,7 +931,7 @@ async function AccountProjectsTab({ accountId, projectId }: { accountId: string;
  * deal's details is an explicit "Edit deal details" button, so navigating here
  * never auto-pops the edit form (that was the 2026-07-29 bug).
  */
-async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string }) {
+async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: ProjectRow; accountId: string; dealTab?: string }) {
   const name = derivedOppName(p.opp, p.accountName);
   const oppCode = formatOpportunityNumber(p.opp.project_number);
   const pct = p.percentCompleteBps != null ? Math.min(100, Math.round(p.percentCompleteBps / 100)) : null;
@@ -960,6 +966,15 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
   const closeoutIncluded = closeoutItems.filter((i) => i.included).length;
   const hasContract = p.contractToDateCents > 0;
   const aiaBilledPct = hasContract ? Math.min(100, Math.round((p.invoicedCents / p.contractToDateCents) * 100)) : 0;
+  // Per-tab quick metrics (B1) — each swapped panel LEADS with its own KPIs +
+  // progress bar so the tab reads at a glance before the list below it.
+  const propWon = dealProposals.filter((pr) => pr.status === "won").length;
+  const propDecided = dealProposals.filter((pr) => pr.status === "won" || pr.status === "lost").length;
+  const propWinPct = propDecided > 0 ? Math.round((propWon / propDecided) * 100) : null;
+  const highestBidCents = dealProposals.reduce((m, pr) => Math.max(m, pr.total_cents), 0);
+  const paidInvCount = dealInvoices.filter((inv) => deriveInvoiceStatus(inv) === "paid").length;
+  const overdueInvCount = dealInvoices.filter((inv) => deriveInvoiceStatus(inv) === "overdue").length;
+  const docTotalMB = documents.reduce((s, d) => s + d.size_bytes, 0) / 1024 / 1024;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -973,22 +988,25 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
         </Link>
       </div>
 
-      {/* Deal sub-tab bar (S1) — the deal is the container; these are its tabs.
-          Overview is here; the delivery tools open as the right-hand drawer. */}
+      {/* Deal sub-tab bar (B1) — REAL content-swap: Overview / Proposals /
+          Invoices / Documents render their own panel below (via ?dt=); the
+          delivery tools (CO/AIA/Submittals/Closeout) open as the right-hand
+          drawer. Active tab highlights on the dealTab. */}
       <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[
           { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${p.opp.id}` },
-          { key: "proposals", label: "Proposals", href: `#deal-proposals` },
-          { key: "invoices", label: "Invoices", href: `#deal-invoices` },
+          { key: "proposals", label: "Proposals", href: `${base}?tab=projects&project=${p.opp.id}&dt=proposals` },
+          { key: "invoices", label: "Invoices", href: `${base}?tab=projects&project=${p.opp.id}&dt=invoices` },
           { key: "change-orders", label: "Change Orders", href: `${base}/change-orders/${p.opp.id}` },
           { key: "aia", label: "AIA Billing", href: `${base}/aia/${p.opp.id}` },
           { key: "submittals", label: "Submittals", href: `${base}/submittals/${p.opp.id}` },
           { key: "closeout", label: "Closeout", href: `${base}/closeout/${p.opp.id}` },
+          { key: "documents", label: "Documents", href: `${base}?tab=projects&project=${p.opp.id}&dt=documents` },
         ].map((t) => (
           <Link
             key={t.key}
             href={t.href}
-            className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${t.key === "overview" ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`}
+            className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${t.key === dealTab ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`}
           >
             {t.label}
           </Link>
@@ -1037,6 +1055,7 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
       {/* ── Project tools — clean neutral cards, each showing the real state
           (notes, which draft, form progress) at a glance. Colour is only a
           small per-tool accent, not a full orange card. Click = drawer. ── */}
+      {dealTab === "overview" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Change Orders — the notes typed on each CO */}
         <ToolMiniCard label="Change Orders" href={`${base}/change-orders/${p.opp.id}`} iconBg="bg-cc-brand-600" icon={<path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" />} chip={changeOrders.length === 0 ? null : { label: p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : "all decided", tone: p.pendingCoCount > 0 ? "amber" : "emerald" }}>
@@ -1099,11 +1118,36 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
           )}
         </ToolMiniCard>
       </div>
+      )}
 
-      <DealProposalsSection accountId={accountId} oppId={p.opp.id} proposals={dealProposals} />
+      {dealTab === "proposals" && (
+        <>
+          <DealPanelLead
+            stats={[
+              { label: "Proposals", value: String(dealProposals.length) },
+              { label: "Won", value: String(propWon), tone: propWon > 0 ? "emerald" : undefined },
+              { label: "Highest bid", value: highestBidCents > 0 ? formatCentsCompact(highestBidCents) : "—" },
+            ]}
+            bar={propWinPct != null ? { label: "Win rate", pct: propWinPct, barClass: "bg-emerald-500", valueClass: "text-emerald-700" } : undefined}
+          />
+          <DealProposalsSection accountId={accountId} oppId={p.opp.id} proposals={dealProposals} />
+        </>
+      )}
 
       {/* ── Deal invoices — invoices live under the deal (Katie 2026-08). List
           + create here; the global Invoices page is a read-only open list. ── */}
+      {dealTab === "invoices" && (
+      <>
+      <DealPanelLead
+        stats={[
+          { label: "Invoices", value: String(dealInvoices.length) },
+          { label: "Paid", value: String(paidInvCount), tone: paidInvCount > 0 ? "emerald" : undefined },
+          overdueInvCount > 0
+            ? { label: "Overdue", value: String(overdueInvCount), tone: "amber" as const }
+            : { label: "Open", value: String(dealInvoices.length - paidInvCount) },
+        ]}
+        bar={hasContract ? { label: "Billed of contract", pct: aiaBilledPct, barClass: "bg-cc-brand-600", valueClass: "text-cc-brand-700" } : undefined}
+      />
       <section id="deal-invoices" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
           <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-cc-brand-600 text-white shrink-0">
@@ -1132,7 +1176,7 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
               const tone = st === "paid" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : st === "overdue" ? "text-rose-700 bg-rose-50 border-rose-200" : st === "draft" ? "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200" : "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-200";
               return (
                 <li key={inv.id}>
-                  <Link href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}`)}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
+                  <Link href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}&dt=invoices`)}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
                     <span className="min-w-0 flex items-center gap-2">
                       <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800">{inv.invoice_number}</span>
                       <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{invoiceStatusLabel(st)}</span>
@@ -1155,17 +1199,62 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
           </ul>
         )}
       </section>
+      </>
+      )}
 
-      <DealDocumentsSection oppId={p.opp.id} documents={documents} />
+      {dealTab === "documents" && (
+        <>
+          <DealPanelLead
+            stats={[
+              { label: "Documents", value: String(documents.length) },
+              { label: "Total size", value: documents.length ? `${docTotalMB.toFixed(1)} MB` : "—" },
+            ]}
+          />
+          <DealDocumentsSection oppId={p.opp.id} documents={documents} />
+        </>
+      )}
 
-      {/* Per-deal activity feed (R3) — self-hides when quiet. */}
-      <RecentActivityCard entries={dealActivity} />
+      {/* Per-deal activity feed — on the Overview panel, self-hides when quiet. */}
+      {dealTab === "overview" && <RecentActivityCard entries={dealActivity} />}
     </div>
   );
 }
 
 /** Per-deal proposals section — shared by both deal homes. Lists the deal's
  *  proposals + a "New proposal" entry. (Proposals don't need a Won deal.) */
+/** Quick-KPI lead strip for a deal sub-tab (B1) — a few tab-scoped stats and an
+ *  optional progress bar, so each swapped panel opens with its numbers at a
+ *  glance above the list. Distinct from the persistent deal financial header. */
+function DealPanelLead({
+  stats,
+  bar,
+}: {
+  stats: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" }[];
+  bar?: { label: string; pct: number; barClass: string; valueClass: string };
+}) {
+  const cols = stats.length === 2 ? "grid-cols-2" : stats.length >= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
+  return (
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+      <div className={`grid ${cols} gap-3`}>
+        {stats.map((s, i) => (
+          <ProjectStat key={i} label={s.label} value={s.value} sub={s.sub} tone={s.tone} />
+        ))}
+      </div>
+      {bar && (
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-semibold text-ppp-charcoal-500 uppercase tracking-wide">{bar.label}</span>
+            <span className={`text-[10.5px] font-bold tabular-nums ${bar.valueClass}`}>{bar.pct}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${bar.barClass}`} style={{ width: `${bar.pct}%` }} aria-label={`${bar.label} ${bar.pct}%`} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DealProposalsSection({ accountId, oppId, proposals }: { accountId: string; oppId: string; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[] }) {
   const base = `/commercial/accounts/${accountId}/deals/${oppId}/proposal`;
   const sorted = [...proposals].sort((a, b) => b.revision_number - a.revision_number);
@@ -1253,7 +1342,11 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
  * post-sale project home: bid + proposals + documents + activity, with the
  * delivery tools noted as unlocking on Won. Same sub-tab bar shape.
  */
-async function PreSaleDealHome({ opp, accountId }: { opp: CommercialOpportunity; accountId: string }) {
+async function PreSaleDealHome({ opp, accountId, dealTab: dealTabRaw = "overview" }: { opp: CommercialOpportunity; accountId: string; dealTab?: string }) {
+  // Pre-sale deals only have Overview / Proposals / Documents (no invoices/tools
+  // until Won). A globally-valid ?dt=invoices routed here would otherwise render
+  // a blank panel — fall back to Overview for anything this view can't show.
+  const dealTab = dealTabRaw === "proposals" || dealTabRaw === "documents" ? dealTabRaw : "overview";
   const base = `/commercial/accounts/${accountId}`;
   const name = derivedOppName(opp, null);
   const oppCode = formatOpportunityNumber(opp.project_number);
@@ -1282,11 +1375,11 @@ async function PreSaleDealHome({ opp, accountId }: { opp: CommercialOpportunity;
 
       <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[
-          { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${opp.id}`, active: true },
-          { key: "proposals", label: "Proposals", href: `#deal-proposals`, active: false },
-          { key: "documents", label: "Documents", href: `#deal-documents`, active: false },
+          { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${opp.id}` },
+          { key: "proposals", label: "Proposals", href: `${base}?tab=projects&project=${opp.id}&dt=proposals` },
+          { key: "documents", label: "Documents", href: `${base}?tab=projects&project=${opp.id}&dt=documents` },
         ].map((t) => (
-          <Link key={t.key} href={t.href} className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${t.active ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`}>
+          <Link key={t.key} href={t.href} className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${t.key === dealTab ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`}>
             {t.label}
           </Link>
         ))}
@@ -1311,9 +1404,11 @@ async function PreSaleDealHome({ opp, accountId }: { opp: CommercialOpportunity;
         <p className="mt-3 text-[11.5px] text-ppp-charcoal-500">Invoices, change orders, AIA billing, submittals + closeout unlock once this deal is Won.</p>
       </div>
 
-      <DealProposalsSection accountId={accountId} oppId={opp.id} proposals={proposals} />
-      <DealDocumentsSection oppId={opp.id} documents={documents} />
-      <RecentActivityCard entries={dealActivity} />
+      {(dealTab === "overview" || dealTab === "proposals") && (
+        <DealProposalsSection accountId={accountId} oppId={opp.id} proposals={proposals} />
+      )}
+      {dealTab === "documents" && <DealDocumentsSection oppId={opp.id} documents={documents} />}
+      {dealTab === "overview" && <RecentActivityCard entries={dealActivity} />}
     </div>
   );
 }

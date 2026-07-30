@@ -735,7 +735,7 @@ export default async function ProposalEditorPage({
 
   // 2026-08 restructure: proposals live on the DEAL now — back goes to the
   // deal view's proposals section, not the (removed) account Proposals tab.
-  const listHref = `/commercial/accounts/${accountId}?tab=projects&project=${dealId}#deal-proposals`;
+  const listHref = `/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=proposals#deal-proposals`;
 
   // Hidden fields shared by every server action on this page.
   const hiddenIds = (
