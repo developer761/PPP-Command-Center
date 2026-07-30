@@ -21,7 +21,9 @@ export default async function ChangeOrdersIndexPage() {
 
   const projects = await listProjects({ includeClosed: true });
   const totalPending = projects.reduce((s, p) => s + p.pendingCoCount, 0);
+  const totalPendingCents = projects.reduce((s, p) => s + p.pendingCoCents, 0);
   const totalNet = projects.reduce((s, p) => s + p.netApprovedCoCents, 0);
+  const projectsWithCos = projects.filter((p) => p.pendingCoCount > 0 || p.netApprovedCoCents !== 0).length;
 
   return (
     <PostJobToolIndex
@@ -37,9 +39,11 @@ export default async function ChangeOrdersIndexPage() {
       }}
       hrefFor={(p) => `/commercial/accounts/${p.accountId}/change-orders/${p.opp.id}?back=/commercial/post-job/change-orders`}
       kpis={
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile label="Pending change orders" value={String(totalPending)} tone={totalPending > 0 ? "amber" : "neutral"} />
+          <Tile label="Pending value" value={formatCentsCompact(totalPendingCents)} tone={totalPendingCents > 0 ? "amber" : "neutral"} />
           <Tile label="Net approved (all projects)" value={`${totalNet < 0 ? "−" : ""}${formatCentsCompact(Math.abs(totalNet))}`} tone={totalNet < 0 ? "rose" : "emerald"} />
+          <Tile label="Projects with COs" value={String(projectsWithCos)} tone="neutral" />
         </div>
       }
     />

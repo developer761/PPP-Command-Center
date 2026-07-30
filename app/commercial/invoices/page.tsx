@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, sumCommercialPaymentsSince, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
-import { isWon } from "@/lib/commercial/opportunities/constants";
+import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -432,15 +432,16 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         return days > 60;
       })
     : invoicesSearched;
-  // Only Won opps can be invoiced; sort newest first so the picker shows
-  // the most recent wins on top (Karan's typical flow after a Win/Loss
-  // Debrief lands).
+  // Any post-sale Project can be invoiced — not just the moment it's Won, but
+  // through delivery (pre-construction / in-progress / billing). 2026-07-30:
+  // was isWon() only, which HID the create form once a deal moved into
+  // production — you couldn't bill a job that was actually underway. Sort
+  // newest first so the picker shows recent projects on top.
   // Karan 2026-07-09: when filtered by account, the picker scopes to that
-  // account's Won opportunities — otherwise Bob's filtered view showed every
-  // Won opportunity from every customer, and clicking one would jump away from
-  // Bob's filter context entirely.
+  // account's projects — otherwise Bob's filtered view showed every project
+  // from every customer, and clicking one would jump away from his filter.
   const wonOppsAll = allOpps
-    .filter((o) => isWon(o))
+    .filter((o) => isPostSaleProject(o))
     .sort((a, b) => (b.decided_at ?? b.created_at).localeCompare(a.decided_at ?? a.created_at));
   const wonOpps = accountIdFilter
     ? wonOppsAll.filter((o) => o.account_id === accountIdFilter)
@@ -1629,7 +1630,7 @@ function FullDetailByOpp({
   // that the opp actually belongs to this account and is Won.
   if (openAddOppId && !groups.has(openAddOppId)) {
     const opp = oppById.get(openAddOppId);
-    if (opp && opp.account_id === accountId && isWon(opp)) {
+    if (opp && opp.account_id === accountId && isPostSaleProject(opp)) {
       groups.set(openAddOppId, []);
     }
   }
@@ -2089,7 +2090,7 @@ function FullDetailByOpp({
                 terms, message, internal notes. Submits to
                 createInvoiceInlineAction which redirects back here
                 with an anchor to the newly-created row. */}
-            {opp && isWon(opp) && (
+            {opp && isPostSaleProject(opp) && (
               <details
                 id={`add-${oppId}`}
                 open={openAddOppId === oppId}

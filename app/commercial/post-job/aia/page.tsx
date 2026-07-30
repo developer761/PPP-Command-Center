@@ -9,6 +9,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { listProjects } from "@/lib/commercial/projects/db";
 import { AIA_STATUS_META } from "@/lib/commercial/aia/constants";
+import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { PostJobToolIndex, type ToolStatusTone } from "@/components/commercial/post-job-tool-index";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,8 @@ export default async function AiaIndexPage() {
   const projects = await listProjects({ includeClosed: true });
   const started = projects.filter((p) => p.latestAppNumber != null).length;
   const notStarted = projects.length - started;
+  const awaitingPayment = projects.filter((p) => p.latestAppStatus === "submitted").length;
+  const retainageHeldCents = projects.reduce((s, p) => s + p.retainageHeldCents, 0);
 
   return (
     <PostJobToolIndex
@@ -38,17 +41,19 @@ export default async function AiaIndexPage() {
       }}
       hrefFor={(p) => `/commercial/accounts/${p.accountId}/aia/${p.opp.id}?back=/commercial/post-job/aia`}
       kpis={
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile label="Projects billing" value={String(started)} tone="emerald" />
           <Tile label="Not started" value={String(notStarted)} tone="neutral" />
+          <Tile label="Awaiting payment" value={String(awaitingPayment)} tone={awaitingPayment > 0 ? "amber" : "neutral"} />
+          <Tile label="Retainage held" value={formatCentsCompact(retainageHeldCents)} tone="neutral" />
         </div>
       }
     />
   );
 }
 
-function Tile({ label, value, tone }: { label: string; value: string; tone?: "emerald" | "neutral" }) {
-  const cls = tone === "emerald" ? "text-emerald-700" : "text-ppp-charcoal";
+function Tile({ label, value, tone }: { label: string; value: string; tone?: "emerald" | "amber" | "neutral" }) {
+  const cls = tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : "text-ppp-charcoal";
   return (
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3 shadow-sm">
       <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>

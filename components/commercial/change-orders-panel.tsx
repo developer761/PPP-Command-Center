@@ -197,7 +197,7 @@ export async function ChangeOrdersPanel({
               <input id="co-title" name="title" required maxLength={200} defaultValue={addAttemptFailed ? preserveTitle ?? "" : ""} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <DirectionToggle idPrefix="add" defaultDirection={addAttemptFailed && (preserveAmount ?? "").trim().startsWith("-") ? "deduct" : "add"} />
+              <DirectionToggle defaultDirection={addAttemptFailed && (preserveAmount ?? "").trim().startsWith("-") ? "deduct" : "add"} />
               <div>
                 <label className={LABEL_CLS} htmlFor="co-amount">Amount</label>
                 <input id="co-amount" name="amount" required inputMode="decimal" defaultValue={addAttemptFailed ? (preserveAmount ?? "").replace(/^-/, "") : ""} className={INPUT_CLS} placeholder="1,200.00" />
@@ -237,7 +237,7 @@ export async function ChangeOrdersPanel({
                         <input id={`edit-title-${co.id}`} name="title" required maxLength={200} defaultValue={preserveTitle ?? co.title} className={INPUT_CLS} />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <DirectionToggle idPrefix={`edit-${co.id}`} defaultDirection={co.amount_cents < 0 ? "deduct" : "add"} />
+                        <DirectionToggle defaultDirection={co.amount_cents < 0 ? "deduct" : "add"} />
                         <div>
                           <label className={LABEL_CLS} htmlFor={`edit-amount-${co.id}`}>Amount</label>
                           <input id={`edit-amount-${co.id}`} name="amount" required inputMode="decimal" defaultValue={preserveAmount ?? (Math.abs(co.amount_cents) / 100).toFixed(2)} className={INPUT_CLS} />
@@ -387,29 +387,29 @@ export async function ChangeOrdersPanel({
  * an explicit choice — Karan 2026-07-29: "no way to tell... if we're adding or
  * taking away." Emits `direction` = "add" | "deduct".
  */
-function DirectionToggle({ idPrefix, defaultDirection }: { idPrefix: string; defaultDirection: "add" | "deduct" }) {
+function DirectionToggle({ defaultDirection }: { defaultDirection: "add" | "deduct" }) {
   const seg =
-    "relative overflow-hidden flex-1 cursor-pointer text-center px-3 py-2 min-h-[40px] inline-flex items-center justify-center gap-1.5 text-[12px] font-semibold rounded-md select-none transition-colors text-ppp-charcoal-600";
+    "relative overflow-hidden flex-1 cursor-pointer text-center px-3 py-2 min-h-[44px] inline-flex items-center justify-center gap-1.5 text-[12px] font-semibold rounded-md select-none transition-colors text-ppp-charcoal-600";
   return (
-    <div>
-      <span className={LABEL_CLS}>Direction</span>
+    <fieldset>
+      <legend className={LABEL_CLS}>Direction</legend>
       <div className="mt-1 flex gap-1 rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50 p-1">
         <label className={seg}>
           <input type="radio" name="direction" value="add" defaultChecked={defaultDirection === "add"} className="peer sr-only" />
-          <span className="absolute inset-0 rounded-md peer-checked:bg-emerald-600 peer-checked:shadow-sm pointer-events-none" aria-hidden />
+          <span className="absolute inset-0 rounded-md peer-checked:bg-emerald-600 peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-cc-brand-600/50 pointer-events-none" aria-hidden />
           <span className="relative z-10 peer-checked:text-white inline-flex items-center gap-1">
             <span aria-hidden className="text-sm leading-none">+</span> Add scope
           </span>
         </label>
         <label className={seg}>
           <input type="radio" name="direction" value="deduct" defaultChecked={defaultDirection === "deduct"} className="peer sr-only" />
-          <span className="absolute inset-0 rounded-md peer-checked:bg-rose-600 peer-checked:shadow-sm pointer-events-none" aria-hidden />
+          <span className="absolute inset-0 rounded-md peer-checked:bg-rose-600 peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-cc-brand-600/50 pointer-events-none" aria-hidden />
           <span className="relative z-10 peer-checked:text-white inline-flex items-center gap-1">
             <span aria-hidden className="text-sm leading-none">−</span> Deduct
           </span>
         </label>
       </div>
-    </div>
+    </fieldset>
   );
 }
 

@@ -88,6 +88,10 @@ export default async function AccountSubmittalsPage({ params, searchParams }: { 
   const sp = await searchParams;
   const dealName = derivedOppName(opp, account.company_name);
   const submittals = await listOpportunitySubmittals(dealId);
+  // Status buckets for the stat row (ball-in-court = still needs a response).
+  const openCount = submittals.filter((s) => ["draft", "submitted", "under_review"].includes(s.status)).length;
+  const approvedCount = submittals.filter((s) => ["approved", "approved_as_noted"].includes(s.status)).length;
+  const reworkCount = submittals.filter((s) => ["revise_and_resubmit", "rejected"].includes(s.status)).length;
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
@@ -99,6 +103,15 @@ export default async function AccountSubmittalsPage({ params, searchParams }: { 
           {dealName} · <span className="font-medium">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</span>
         </p>
       </div>
+
+      {submittals.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <SubmittalStat label="Total" value={submittals.length} tone="neutral" />
+          <SubmittalStat label="Open / in review" value={openCount} tone={openCount > 0 ? "amber" : "neutral"} />
+          <SubmittalStat label="Approved" value={approvedCount} tone={approvedCount > 0 ? "emerald" : "neutral"} />
+          <SubmittalStat label="Revise / rejected" value={reworkCount} tone={reworkCount > 0 ? "rose" : "neutral"} />
+        </div>
+      )}
 
       {sp.error && (
         <div role="alert" aria-live="polite" className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2">
@@ -137,6 +150,16 @@ export default async function AccountSubmittalsPage({ params, searchParams }: { 
           </ul>
         </section>
       )}
+    </div>
+  );
+}
+
+function SubmittalStat({ label, value, tone }: { label: string; value: number; tone: "neutral" | "amber" | "emerald" | "rose" }) {
+  const cls = tone === "amber" ? "text-amber-700" : tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : "text-ppp-charcoal";
+  return (
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-3.5 py-2.5 shadow-sm">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className={`font-condensed text-xl sm:text-2xl font-black tabular-nums mt-0.5 ${cls}`}>{value}</div>
     </div>
   );
 }

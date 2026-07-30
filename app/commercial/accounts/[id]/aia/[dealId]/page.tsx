@@ -26,6 +26,7 @@ import {
   upsertAiaLineItem,
   deleteAiaLineItem,
   resolveG702,
+  getEffectiveContractBaseCents,
 } from "@/lib/commercial/aia/db";
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { AiaApplicationDetail } from "@/components/commercial/aia-application-detail";
@@ -304,21 +305,40 @@ async function AiaApplicationList({
   dealId: string;
   createAction: (fd: FormData) => void | Promise<void>;
 }) {
-  const [applications, netCO] = await Promise.all([
+  const [applications, netCO, baseContract] = await Promise.all([
     listAiaApplications(dealId),
     netApprovedChangeOrderCents(dealId),
+    getEffectiveContractBaseCents(dealId),
   ]);
+  const baseContractCents = baseContract > 0 ? baseContract : null;
+  const contractToDateCents = baseContractCents != null ? baseContractCents + netCO : null;
+  const submittedCount = applications.filter((a) => a.status === "submitted").length;
+  const paidCount = applications.filter((a) => a.status === "paid").length;
+  const appsHint = applications.length === 0
+    ? "None yet"
+    : [paidCount > 0 ? `${paidCount} paid` : null, submittedCount > 0 ? `${submittedCount} submitted` : null]
+        .filter(Boolean).join(" · ") || undefined;
   return (
     <div className="space-y-3">
-      {netCO !== 0 && (
-        <div className="text-[12px] text-ppp-charcoal-500">
-          Approved change orders on this project:{" "}
-          <span className={`font-semibold ${netCO < 0 ? "text-rose-700" : "text-emerald-700"}`}>
-            {netCO < 0 ? "−" : "+"}{formatCentsFull(Math.abs(netCO))}
-          </span>{" "}
-          — folded into each application&rsquo;s contract sum to date.
+      {/* ── Contract summary strip — renders even with zero applications so the
+          page isn't a wall of white. Mirrors the Change Orders panel. ── */}
+      <section className="bg-gradient-to-br from-cc-brand-50/60 to-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-600 text-white">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" /></svg>
+          </span>
+          <div>
+            <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Contract to date</h2>
+            <p className="text-[11px] text-ppp-charcoal-500 leading-snug">The base contract plus approved change orders — what each G702 certifies against.</p>
+          </div>
         </div>
-      )}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <AiaSummaryTile label="Original contract" value={baseContractCents != null ? formatCentsFull(baseContractCents) : "—"} hint={baseContractCents == null ? "No bid set" : undefined} />
+          <AiaSummaryTile label="Net approved COs" value={netCO === 0 ? formatCentsFull(0) : `${netCO < 0 ? "−" : "+"}${formatCentsFull(Math.abs(netCO))}`} tone={netCO < 0 ? "rose" : netCO > 0 ? "emerald" : "neutral"} />
+          <AiaSummaryTile label="Contract to date" value={contractToDateCents != null ? formatCentsFull(contractToDateCents) : "—"} emphasize />
+          <AiaSummaryTile label="Applications" value={String(applications.length)} hint={appsHint} />
+        </div>
+      </section>
 
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Payment applications</h2>
@@ -367,6 +387,29 @@ async function AiaApplicationList({
           </PendingSubmitButton>
         </form>
       </section>
+    </div>
+  );
+}
+
+function AiaSummaryTile({
+  label,
+  value,
+  hint,
+  tone = "neutral",
+  emphasize = false,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "neutral" | "emerald" | "rose";
+  emphasize?: boolean;
+}) {
+  const valueCls = tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : "text-ppp-charcoal";
+  return (
+    <div className={`rounded-lg border px-2.5 py-2 ${emphasize ? "border-cc-brand-300 bg-surface" : "border-ppp-charcoal-100 bg-surface/70"}`}>
+      <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className={`font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 ${valueCls}`}>{value}</div>
+      {hint && <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">{hint}</div>}
     </div>
   );
 }
