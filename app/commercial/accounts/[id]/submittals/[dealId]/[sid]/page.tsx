@@ -272,10 +272,11 @@ async function deleteSubmittalAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
-  // Drop the badge count on the opp list page.
+  // Deleted the draft — land back on the account-scoped submittals list, not
+  // the retired opportunity submittals tab.
   revalidatePath(`/commercial/accounts/${account_id}`);
-  revalidatePath("/commercial/opportunities");
-  redirect(`/commercial/opportunities/${opportunity_id}?tab=submittals`);
+  revalidatePath("/commercial/post-job/submittals");
+  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -778,6 +779,7 @@ export default async function SubmittalDetailPage({
           Contextual buttons + inline forms that surface the next-step
           transitions allowed by the DAG for the current status. */}
       <StatusActionsPanel
+        accountId={account_id}
         opportunityId={opportunity_id}
         submittalId={submittal_id}
         status={submittal.status}
@@ -1494,12 +1496,14 @@ export default async function SubmittalDetailPage({
 // All buttons hit 44px min-h, touch-manipulation. Forms stack on mobile.
 
 function StatusActionsPanel({
+  accountId,
   opportunityId,
   submittalId,
   status,
   itemCount,
   hasResponse,
 }: {
+  accountId: string;
   opportunityId: string;
   submittalId: string;
   status: SubmittalStatus;
@@ -1534,9 +1538,12 @@ function StatusActionsPanel({
     );
   }
 
-  // Hidden inputs every form needs.
+  // Hidden inputs every form needs. account_id is REQUIRED — the status
+  // actions redirect to /commercial/accounts/${account_id}/submittals/... and
+  // an empty id 404s (2026-07-29 relocation bug).
   const hiddenIds = (
     <>
+      <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="opportunity_id" value={opportunityId} />
       <input type="hidden" name="submittal_id" value={submittalId} />
     </>
@@ -1616,6 +1623,7 @@ function StatusActionsPanel({
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ResponseRecorder
+              accountId={accountId}
               opportunityId={opportunityId}
               submittalId={submittalId}
               to_status="approved"
@@ -1624,6 +1632,7 @@ function StatusActionsPanel({
               defaultResponse="approved"
             />
             <ResponseRecorder
+              accountId={accountId}
               opportunityId={opportunityId}
               submittalId={submittalId}
               to_status="approved_as_noted"
@@ -1632,6 +1641,7 @@ function StatusActionsPanel({
               defaultResponse="approved_as_noted"
             />
             <ResponseRecorder
+              accountId={accountId}
               opportunityId={opportunityId}
               submittalId={submittalId}
               to_status="revise_and_resubmit"
@@ -1641,6 +1651,7 @@ function StatusActionsPanel({
               copiesPlaceholder="copies requested"
             />
             <ResponseRecorder
+              accountId={accountId}
               opportunityId={opportunityId}
               submittalId={submittalId}
               to_status="rejected"
@@ -1811,6 +1822,7 @@ function actionHelperLine(status: SubmittalStatus): string {
  * Tone drives the border + button color (emerald/amber/rose).
  */
 function ResponseRecorder({
+  accountId,
   opportunityId,
   submittalId,
   to_status,
@@ -1819,6 +1831,7 @@ function ResponseRecorder({
   defaultResponse,
   copiesPlaceholder,
 }: {
+  accountId: string;
   opportunityId: string;
   submittalId: string;
   to_status: SubmittalStatus;
@@ -1849,6 +1862,7 @@ function ResponseRecorder({
         </span>
       </summary>
       <form action={changeStatusAction} className="px-3 pb-3 pt-1 space-y-3 border-t border-ppp-charcoal-100">
+        <input type="hidden" name="account_id" value={accountId} />
         <input type="hidden" name="opportunity_id" value={opportunityId} />
         <input type="hidden" name="submittal_id" value={submittalId} />
         <input type="hidden" name="to_status" value={to_status} />

@@ -101,6 +101,10 @@ export type CommercialInvoice = {
   customer_message: string | null;
   po_number: string | null;
   notes: string | null;
+  /** Migration 085: accepted proposal this invoice bills against (progress
+   *  billing). NULL for change-order + free-text invoices. */
+  proposal_id: string | null;
+  proposal_total_cents_at_bill: number | null;
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
@@ -145,6 +149,11 @@ export type CreateInvoiceInput = {
   tax_pct?: number;
   /** Internal notes; never on customer copy. */
   notes?: string | null;
+  /** Migration 085: the accepted proposal this invoice bills against (progress
+   *  billing). NULL for CO invoices + free-text invoices. */
+  proposal_id?: string | null;
+  /** Snapshot of the proposal's total at bill time (defensive denominator). */
+  proposal_total_cents_at_bill?: number | null;
   /** Optional starting line items — usually blank and filled after create. */
   line_items?: Array<{
     description: string;
@@ -366,6 +375,8 @@ export async function createCommercialInvoice(
       customer_message: input.customer_message ?? null,
       po_number: input.po_number ?? null,
       notes: input.notes ?? null,
+      proposal_id: input.proposal_id ?? null,
+      proposal_total_cents_at_bill: input.proposal_total_cents_at_bill ?? null,
       due_at: input.due_at ?? new Date(Date.now() + due_days * 86_400_000).toISOString(),
       created_by_user_id: input.created_by_user_id,
     })

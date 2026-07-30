@@ -857,6 +857,35 @@ export async function listProposalsForOpp(
   return (data as CommercialProposal[] | null) ?? [];
 }
 
+/**
+ * The ACCEPTED (won) proposal for a deal + its billable inclusions (non-
+ * alternate line items) — the single choke-point the invoice form uses to
+ * "pull from the proposal." Mirrors the won-proposal query used by the AIA
+ * contract ladder + listProjects (largest total if >1, defensive). Returns
+ * null when the deal has no accepted proposal (form falls back to free text).
+ */
+export async function getAcceptedProposalForOpp(
+  opportunityId: string
+): Promise<{ proposal: CommercialProposal; inclusions: CommercialProposalLineItem[] } | null> {
+  const sb = commercialDb();
+  const { data: idRow } = await sb
+    .from("commercial_proposals")
+    .select("id, total_cents")
+    .eq("opportunity_id", opportunityId)
+    .eq("status", "won")
+    .is("deleted_at", null)
+    .order("total_cents", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const wonId = (idRow as { id: string } | null)?.id;
+  if (!wonId) return null;
+  const proposal = await getProposal(wonId);
+  if (!proposal) return null;
+  const allLines = await listLineItemsForProposal(wonId);
+  const inclusions = allLines.filter((l) => !l.is_alternate);
+  return { proposal, inclusions };
+}
+
 // ────────────── line-item CRUD + rollup ──────────────
 
 export type CreateLineItemInput = {

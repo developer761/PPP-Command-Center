@@ -37,6 +37,9 @@ export type ProjectRow = {
   paidCents: number;
   invoiceCount: number;
   draftInvoiceCount: number;
+  /** Σ of DRAFT invoice totals (not yet billed to the GC) — shown separately,
+   *  never counted toward invoiced / % billed / left-to-bill. */
+  draftedCents: number;
   /** Contract to date − invoiced, clamped ≥ 0. "How much you can still bill." */
   leftToBillCents: number;
   /** Invoiced − paid. The GC's outstanding balance (AR). */
@@ -149,14 +152,22 @@ export async function listProjects(opts: {
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
-  const invByOpp = new Map<string, { invoiced: number; paid: number; invoiceCount: number; draftCount: number }>();
+  // "Invoiced" = ISSUED invoices only (sent/viewed/partial/overdue/paid) — a
+  // draft isn't billed to the GC yet, so it must NOT inflate billed / %-billed
+  // / left-to-bill (2026-07-29 audit: a $50k draft was flipping a job to "100%
+  // billed"). Drafts are tracked separately + shown as a "$X in N drafts" note.
+  const invByOpp = new Map<string, { invoiced: number; paid: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
   for (const inv of invData) {
     if (inv.status === "void") continue;
-    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, paid: 0, invoiceCount: 0, draftCount: 0 };
-    e.invoiced += Number(inv.total_cents);
-    e.paid += Number(inv.paid_cents);
-    e.invoiceCount += 1;
-    if (inv.status === "draft") e.draftCount += 1;
+    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, paid: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
+    if (inv.status === "draft") {
+      e.draftCount += 1;
+      e.draftedCents += Number(inv.total_cents);
+    } else {
+      e.invoiced += Number(inv.total_cents);
+      e.paid += Number(inv.paid_cents);
+      e.invoiceCount += 1;
+    }
     invByOpp.set(inv.opportunity_id, e);
   }
 
@@ -251,7 +262,7 @@ export async function listProjects(opts: {
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
     const retainageHeld = latest ? retainageByApp.get(latest.id) ?? 0 : 0;
     const pct = latest && contractToDate > 0 ? Math.round((completed / contractToDate) * 10000) : null;
-    const inv = invByOpp.get(o.id) ?? { invoiced: 0, paid: 0, invoiceCount: 0, draftCount: 0 };
+    const inv = invByOpp.get(o.id) ?? { invoiced: 0, paid: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
     // Left to bill = contract − invoiced (clamped). Over-billed when invoiced
     // exceeds the contract (unapproved CO, deduct CO, or a mistake) — surfaced,
     // never a negative. hasContract gates whether "left to bill" is meaningful.
@@ -277,6 +288,7 @@ export async function listProjects(opts: {
       paidCents: inv.paid,
       invoiceCount: inv.invoiceCount,
       draftInvoiceCount: inv.draftCount,
+      draftedCents: inv.draftedCents,
       leftToBillCents: leftToBill,
       outstandingCents: inv.invoiced - inv.paid,
       overBilled,

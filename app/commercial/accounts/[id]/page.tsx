@@ -5650,10 +5650,10 @@ async function AccountKpisTab({
             </Link>
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <RollupTile label="Contract value" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
-            <RollupTile label="Completed to date" value={formatCentsFull(production.completedToDateCents)} sub={completedPctOfContract !== null ? `${completedPctOfContract}% of contract` : "work in place"} tone="emerald" />
-            <RollupTile label="Left to complete" value={formatCentsFull(production.remainingCents)} sub={production.retainageHeldCents > 0 ? `${formatCentsFull(production.retainageHeldCents)} retainage held` : "still to finish"} tone="neutral" />
-            <RollupTile label="COs pending" value={production.pendingCoCount.toString()} sub={production.pendingCoCount === 0 ? "none open" : `${formatCentsFull(production.pendingCoCents)} awaiting`} tone={production.pendingCoCount > 0 ? "warn" : "neutral"} />
+            <RollupTile label="Under contract" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
+            <RollupTile label="Invoiced" value={formatCentsFull(production.invoicedCents)} sub={`${formatCentsFull(production.paidCents)} paid`} tone="emerald" />
+            <RollupTile label="Left to bill" value={formatCentsFull(production.leftToBillCents)} sub="contract − invoiced" tone="neutral" />
+            <RollupTile label="Outstanding" value={formatCentsFull(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO${production.pendingCoCount === 1 ? "" : "s"} pending` : "invoiced − paid"} tone={production.outstandingCents > 0 ? "warn" : "neutral"} />
           </div>
         </section>
       )}

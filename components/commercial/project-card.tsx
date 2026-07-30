@@ -110,10 +110,13 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
               <div className="mt-1 flex items-center justify-between text-[10px]">
                 <span className={`tabular-nums font-semibold ${p.overBilled ? "text-amber-700" : "text-cc-brand-700"}`}>{pctBilled}% billed{p.overBilled ? " · over contract" : ""}</span>
                 <span className="tabular-nums font-medium text-ppp-charcoal-500">
-                  {pct != null ? `${pct}% complete` : ""}
+                  {p.draftedCents > 0 && (
+                    <span className="text-amber-700">{formatCentsCompact(p.draftedCents)} in draft{p.draftInvoiceCount === 1 ? "" : "s"}</span>
+                  )}
+                  {p.draftedCents === 0 && pct != null ? `${pct}% complete` : ""}
                   {p.netApprovedCoCents !== 0 && (
                     <span className={p.netApprovedCoCents < 0 ? "text-rose-700" : "text-emerald-700"}>
-                      {pct != null ? " · " : ""}{p.netApprovedCoCents < 0 ? "−" : "+"}{formatCentsCompact(Math.abs(p.netApprovedCoCents))} COs
+                      {p.draftedCents > 0 || pct != null ? " · " : ""}{p.netApprovedCoCents < 0 ? "−" : "+"}{formatCentsCompact(Math.abs(p.netApprovedCoCents))} COs
                     </span>
                   )}
                 </span>
