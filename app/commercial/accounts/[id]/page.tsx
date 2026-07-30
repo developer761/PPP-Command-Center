@@ -83,6 +83,9 @@ import {
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
 import { formatProposalNumber } from "@/lib/commercial/proposals/db";
+import { listDocumentsForParent } from "@/lib/commercial/documents/db";
+import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/commercial/documents/categories";
+import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -925,10 +928,13 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
   // Mini-updates: real per-tool state (the notes on each change order, which
   // submittal + status, which AIA application + draft state, closeout progress)
   // so the project reads at a glance without opening each tool.
-  const [changeOrders, submittals, closeoutPkgs] = await Promise.all([
+  const [changeOrders, submittals, closeoutPkgs, documents] = await Promise.all([
     listChangeOrders(p.opp.id),
     listOpportunitySubmittals(p.opp.id),
     listCloseoutPackages(p.opp.id),
+    // Per-deal documents (Katie 2026-08): everything filed against this deal in
+    // one place — direct uploads + the PDFs the tools snapshot here.
+    listDocumentsForParent("opportunity", p.opp.id),
   ]);
   const recentCos = [...changeOrders].sort((a, b) => b.co_number - a.co_number).slice(0, 3);
   const latestSub = [...submittals].sort((a, b) => b.submittal_number - a.submittal_number || b.revision_number - a.revision_number)[0] ?? null;
@@ -1057,6 +1063,42 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
           )}
         </ToolMiniCard>
       </div>
+
+      {/* ── Deal documents — everything filed against this deal in one place.
+          Upload directly here; the tools' PDFs (sent proposal, closeout) also
+          land here. (Katie 2026-08 per-deal documents.) ── */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
+          <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-white shrink-0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+          </span>
+          <h3 className="text-[13px] font-bold text-ppp-charcoal">Documents</h3>
+          <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{documents.length}</span>
+        </div>
+        <div className="p-4 space-y-3">
+          <CommercialFilesUploadForm parentType="opportunity" parentId={p.opp.id} />
+          {documents.length === 0 ? (
+            <p className="text-[11.5px] text-ppp-charcoal-500">No documents yet — upload plans, spec books, signed contracts, lien waivers, etc. Sent proposals also file here automatically.</p>
+          ) : (
+            <ul className="divide-y divide-ppp-charcoal-50">
+              {documents.map((d) => (
+                <li key={d.id}>
+                  <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-3 py-2 px-1 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] group">
+                    <span className="min-w-0 flex items-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+                      <span className="min-w-0">
+                        <span className="block text-[12.5px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
+                        <span className="block text-[10.5px] text-ppp-charcoal-500">{commercialDocCategoryLabel(d.category)} · {(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                      </span>
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
