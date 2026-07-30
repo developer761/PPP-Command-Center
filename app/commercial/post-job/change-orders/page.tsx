@@ -35,7 +35,7 @@ export default async function ChangeOrdersIndexPage() {
         if (p.netApprovedCoCents !== 0) return { label: `${p.netApprovedCoCents < 0 ? "−" : "+"}${formatCentsCompact(Math.abs(p.netApprovedCoCents))}`, tone: "emerald" };
         return { label: "No COs", tone: "neutral" };
       }}
-      hrefFor={(p) => `/commercial/accounts/${p.accountId}/change-orders/${p.opp.id}`}
+      hrefFor={(p) => `/commercial/accounts/${p.accountId}/change-orders/${p.opp.id}?back=/commercial/post-job/change-orders`}
       kpis={
         <div className="grid grid-cols-2 gap-3">
           <Tile label="Pending change orders" value={String(totalPending)} tone={totalPending > 0 ? "amber" : "neutral"} />

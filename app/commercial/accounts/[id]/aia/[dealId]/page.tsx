@@ -30,11 +30,12 @@ import {
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { AiaApplicationDetail } from "@/components/commercial/aia-application-detail";
 import { ProjectToolbar } from "@/components/commercial/project-toolbar";
+import { ToolBackHeader, resolveToolBack } from "@/components/commercial/tool-back-header";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 type PP = Promise<{ id: string; dealId: string }>;
-type SP = Promise<{ app?: string; error?: string; ok?: string }>;
+type SP = Promise<{ app?: string; error?: string; ok?: string; back?: string }>;
 
 async function requireCommercialUser(): Promise<string> {
   const supabase = await createClient();
@@ -194,14 +195,7 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-      <div className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
-        <Link href={`/commercial/accounts/${id}?tab=projects`} className="inline-flex items-center gap-1 hover:text-cc-brand-700 min-h-[32px]">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
-          {account.company_name} · Projects
-        </Link>
-        <span aria-hidden>/</span>
-        <Link href={`/commercial/accounts/${id}?tab=projects&project=${dealId}`} className="text-ppp-charcoal-700 font-medium truncate hover:text-cc-brand-700 min-h-[32px] inline-flex items-center">{dealName}</Link>
-      </div>
+      <ToolBackHeader accountId={id} dealId={dealId} accountName={account.company_name} dealName={dealName} back={sp.back} />
 
       <div>
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">AIA Billing</h1>
@@ -210,7 +204,7 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
         </p>
       </div>
 
-      <ProjectToolbar accountId={id} dealId={dealId} active="aia" />
+      <ProjectToolbar accountId={id} dealId={dealId} active="aia" fromTool={!!resolveToolBack(sp.back)} />
 
       {sp.error && !selectedAppId && (
         <div className="rounded-lg px-4 py-3 text-sm bg-rose-50 border border-rose-200 text-rose-700">{sp.error}</div>

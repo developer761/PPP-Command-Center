@@ -35,6 +35,7 @@ import {
   deleteChangeOrder,
 } from "@/lib/commercial/change-orders/db";
 import { ChangeOrdersPanel } from "@/components/commercial/change-orders-panel";
+import { ToolBackHeader, resolveToolBack } from "@/components/commercial/tool-back-header";
 
 type PP = Promise<{ id: string; dealId: string }>;
 type SP = Promise<{
@@ -44,6 +45,7 @@ type SP = Promise<{
   co_title?: string;
   co_amt?: string;
   co_desc?: string;
+  back?: string;
 }>;
 
 async function requireCommercialUser(): Promise<string> {
@@ -195,18 +197,7 @@ export default async function AccountChangeOrdersPage({
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-      {/* Back to the account (opportunities tab, scrolled to this deal). */}
-      <div className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
-        {/* Back to the deal DRAWER (where the operator clicked in from), not a
-            #deal-row anchor — the anchor scroll was unreliable and dumped the
-            user at the top of the account (Karan 2026-07-28). */}
-        <Link href={`/commercial/accounts/${id}?tab=projects`} className="inline-flex items-center gap-1 hover:text-cc-brand-700 min-h-[32px]">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
-          {account.company_name} · Projects
-        </Link>
-        <span aria-hidden>/</span>
-        <Link href={`/commercial/accounts/${id}?tab=projects&project=${dealId}`} className="text-ppp-charcoal-700 font-medium truncate hover:text-cc-brand-700 min-h-[32px] inline-flex items-center">{dealName}</Link>
-      </div>
+      <ToolBackHeader accountId={id} dealId={dealId} accountName={account.company_name} dealName={dealName} back={sp.back} />
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
@@ -217,7 +208,7 @@ export default async function AccountChangeOrdersPage({
         </div>
       </div>
 
-      <ProjectToolbar accountId={id} dealId={dealId} active="change-orders" />
+      <ProjectToolbar accountId={id} dealId={dealId} active="change-orders" fromTool={!!resolveToolBack(sp.back)} />
 
       <ChangeOrdersPanel
         oppId={opp.id}

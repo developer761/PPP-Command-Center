@@ -46,7 +46,7 @@ export async function SubmittalsGroupedIndex() {
         const suffix = count > 1 ? ` · ${count}` : "";
         return { label: `${submittalStatusLabel(latest.status)}${suffix}`, tone };
       }}
-      hrefFor={(p) => `/commercial/accounts/${p.accountId}/submittals/${p.opp.id}`}
+      hrefFor={(p) => `/commercial/accounts/${p.accountId}/submittals/${p.opp.id}?back=/commercial/post-job/submittals`}
       kpis={
         <div className="grid grid-cols-2 gap-3">
           <Tile label="Projects with submittals" value={String(withSubmittals)} tone="emerald" />

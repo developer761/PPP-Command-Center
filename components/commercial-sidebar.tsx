@@ -95,6 +95,16 @@ type Props = {
 export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
   const pathname = usePathname();
 
+  // 2026-07-29: a post-sale tool detail lives UNDER the account
+  // (/commercial/accounts/<id>/<tool>/<dealId>) but should light up its OWN
+  // sidebar tool tab — same feel as Invoices (?account_id filter) — instead of
+  // lighting up "Accounts" (which prefix-matches and made the tool feel like
+  // the account page). Map such a path to the owning tool's index href.
+  const toolDetailMatch = pathname.match(
+    /^\/commercial\/accounts\/[^/]+\/(submittals|change-orders|aia|closeout)(?:\/|$)/
+  );
+  const activeToolOverride = toolDetailMatch ? `/commercial/post-job/${toolDetailMatch[1]}` : null;
+
   return (
     // Same white/clean shape as the PPP CC sidebar. Red is the ACCENT
     // (active pill background + logo tag), not the whole chrome.
@@ -140,8 +150,9 @@ export default function CommercialSidebar({ showSwitcher, onNavigate }: Props) {
             </div>
             <ul className="space-y-0.5">
               {section.items.map((item) => {
-                const active =
-                  item.href === "/commercial"
+                const active = activeToolOverride
+                  ? item.href === activeToolOverride
+                  : item.href === "/commercial"
                     ? pathname === "/commercial"
                     : pathname.startsWith(item.href);
                 // min-h-[44px] so the mobile drawer rows clear the tap-target

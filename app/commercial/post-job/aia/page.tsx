@@ -36,7 +36,7 @@ export default async function AiaIndexPage() {
         const tone: ToolStatusTone = p.latestAppStatus === "paid" ? "emerald" : p.latestAppStatus === "submitted" ? "brand" : "amber";
         return { label: `App ${p.latestAppNumber} · ${meta ? meta.label : ""}`.trim(), tone };
       }}
-      hrefFor={(p) => `/commercial/accounts/${p.accountId}/aia/${p.opp.id}`}
+      hrefFor={(p) => `/commercial/accounts/${p.accountId}/aia/${p.opp.id}?back=/commercial/post-job/aia`}
       kpis={
         <div className="grid grid-cols-2 gap-3">
           <Tile label="Projects billing" value={String(started)} tone="emerald" />

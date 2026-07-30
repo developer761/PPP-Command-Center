@@ -13,21 +13,28 @@ export function ProjectToolbar({
   accountId,
   dealId,
   active,
+  fromTool = false,
 }: {
   accountId: string;
   dealId: string;
   active: ProjectToolbarActive;
+  /** When rendered on a tool page reached from a sidebar tool tab (via ?back),
+   *  switching tools carries a fresh ?back to the destination tool's index —
+   *  so the "← Back to <Tool>" arrow follows you (2026-07-29). Overview +
+   *  Invoices intentionally leave the tool context (no back param). */
+  fromTool?: boolean;
 }) {
   // "Overview" → the project's HOME under the account (folded). It used to
   // point at /opportunities/[id] (which redirected — the "glitch") and then at
   // ?edit= (which auto-popped the edit form). The project home is a clean read
   // view; editing deal details is an explicit button there.
+  const b = (tool: string) => (fromTool ? `?back=/commercial/post-job/${tool}` : "");
   const items: { key: ProjectToolbarActive; label: string; href: string }[] = [
     { key: "overview", label: "Overview", href: `/commercial/accounts/${accountId}?tab=projects&project=${dealId}` },
-    { key: "change-orders", label: "Change Orders", href: `/commercial/accounts/${accountId}/change-orders/${dealId}` },
-    { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}` },
-    { key: "submittals", label: "Submittals", href: `/commercial/accounts/${accountId}/submittals/${dealId}` },
-    { key: "closeout", label: "Closeout", href: `/commercial/accounts/${accountId}/closeout/${dealId}` },
+    { key: "change-orders", label: "Change Orders", href: `/commercial/accounts/${accountId}/change-orders/${dealId}${b("change-orders")}` },
+    { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}${b("aia")}` },
+    { key: "submittals", label: "Submittals", href: `/commercial/accounts/${accountId}/submittals/${dealId}${b("submittals")}` },
+    { key: "closeout", label: "Closeout", href: `/commercial/accounts/${accountId}/closeout/${dealId}${b("closeout")}` },
     { key: "invoices", label: "Invoices", href: `/commercial/invoices?account_id=${accountId}#opp-${dealId}` },
   ];
   return (

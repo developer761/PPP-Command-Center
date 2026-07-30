@@ -40,7 +40,7 @@ export async function CloseoutGroupedIndex() {
         const pct = pkg.progressPct != null ? ` · ${pkg.progressPct}%` : "";
         return { label: `${meta.label}${pct}`, tone: TONE_MAP[meta.tone] };
       }}
-      hrefFor={(p) => `/commercial/accounts/${p.accountId}/closeout/${p.opp.id}`}
+      hrefFor={(p) => `/commercial/accounts/${p.accountId}/closeout/${p.opp.id}?back=/commercial/post-job/closeout`}
       kpis={
         <div className="grid grid-cols-2 gap-3">
           <Tile label="Projects with a package" value={String(withPkg)} tone="emerald" />

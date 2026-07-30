@@ -20,10 +20,11 @@ import {
 } from "@/lib/commercial/opportunities/submittals";
 import { submittalStatusLabel, submittalStatusTone } from "@/lib/commercial/opportunities/submittal-constants";
 import { ProjectToolbar } from "@/components/commercial/project-toolbar";
+import { ToolBackHeader, resolveToolBack } from "@/components/commercial/tool-back-header";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
 type PP = Promise<{ id: string; dealId: string }>;
-type SP = Promise<{ error?: string }>;
+type SP = Promise<{ error?: string; back?: string }>;
 
 async function createSubmittalAction(formData: FormData) {
   "use server";
@@ -91,14 +92,7 @@ export default async function AccountSubmittalsPage({ params, searchParams }: { 
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-      <div className="flex items-center gap-2 text-[12px] text-ppp-charcoal-500 flex-wrap">
-        <Link href={`/commercial/accounts/${id}?tab=projects`} className="inline-flex items-center gap-1 hover:text-cc-brand-700 min-h-[32px]">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>
-          {account.company_name} · Projects
-        </Link>
-        <span aria-hidden>/</span>
-        <Link href={`/commercial/accounts/${id}?tab=projects&project=${dealId}`} className="text-ppp-charcoal-700 font-medium truncate hover:text-cc-brand-700 min-h-[32px] inline-flex items-center">{dealName}</Link>
-      </div>
+      <ToolBackHeader accountId={id} dealId={dealId} accountName={account.company_name} dealName={dealName} back={sp.back} />
 
       <div>
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Submittals</h1>
@@ -107,7 +101,7 @@ export default async function AccountSubmittalsPage({ params, searchParams }: { 
         </p>
       </div>
 
-      <ProjectToolbar accountId={id} dealId={dealId} active="submittals" />
+      <ProjectToolbar accountId={id} dealId={dealId} active="submittals" fromTool={!!resolveToolBack(sp.back)} />
 
       {sp.error && (
         <div role="alert" aria-live="polite" className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2">
