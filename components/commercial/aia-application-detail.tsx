@@ -88,7 +88,9 @@ export function AiaApplicationDetail({
   setStatusAction: Action;
   errorMessage?: string | null;
 }) {
-  const selfHref = `${basePath}?app=${application.id}`;
+  // basePath may already carry a query (the deal Project sub-tab), so append
+  // with the right separator instead of a bare `?`.
+  const selfHref = `${basePath}${basePath.includes("?") ? "&" : "?"}app=${application.id}`;
   const pct = g702.percentCompleteBps != null ? (g702.percentCompleteBps / 100).toFixed(1) : null;
   // Every form carries the account + deal ids the server actions redirect with.
   const Ctx = () => (

@@ -328,8 +328,9 @@ export async function AiaTool({
         await (async () => {
           const application = await getAiaApplication(selectedAppId);
           if (!application || application.opportunity_id !== dealId) {
-            // Stale / cross-deal app id — back to the list.
-            redirect(b);
+            // Stale / cross-deal app id — fall back to the list in place (no
+            // redirect, so it stays graceful inline just like Closeout).
+            return <AiaApplicationList id={id} dealId={dealId} createAction={createApplicationAction} />;
           }
           const [lines, g702] = await Promise.all([
             listAiaLineItems(selectedAppId),

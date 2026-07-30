@@ -1039,11 +1039,10 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         </Link>
       </div>
 
-      {/* Deal sub-tab bar (B1) — REAL content-swap only: every tab here renders
-          its own panel below via ?dt= and highlights on dealTab. The delivery
-          tools (Change Orders / AIA / Submittals / Closeout) are NOT tabs — they
-          open as the right-hand drawer from the Overview tool cards, so they're
-          not mixed in here where they'd navigate away + never show active. */}
+      {/* Deal sub-tab bar (B1) — REAL content-swap: every tab here renders its
+          own panel below via ?dt= and highlights on dealTab. The delivery tools
+          (Change Orders / AIA / Submittals / Closeout) live INLINE under the
+          Project tab (its own ?pt= sub-tab bar), not as separate flat tabs. */}
       <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[
           { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${p.opp.id}` },
@@ -1314,7 +1313,7 @@ async function ProjectToolsPanel({
               key={t.key}
               href={`${subTabBase}&pt=${t.key}`}
               aria-current={active ? "page" : undefined}
-              className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[12.5px] font-semibold min-h-[40px] touch-manipulation transition-colors ${
+              className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[12.5px] font-semibold min-h-[44px] touch-manipulation transition-colors ${
                 active
                   ? "bg-surface text-cc-brand-700 border border-cc-brand-200 shadow-sm"
                   : "text-ppp-charcoal-600 border border-transparent hover:bg-surface/70 hover:text-ppp-charcoal"
@@ -1589,7 +1588,7 @@ async function PreSaleDealHome({ opp, accountId, dealTab: dealTabRaw = "overview
 }
 
 /** A clean neutral project-tool card: small accent icon + a status chip + rich
- *  mini-content, linking into the tool (opens as a drawer from the account). */
+ *  mini-content, linking into that tool inline under the deal's Project tab. */
 function ToolMiniCard({
   label,
   href,

@@ -266,7 +266,11 @@ export async function CloseoutTool({
   const packages = await listCloseoutPackages(dealId);
   const selectedId = typeof sp.pkg === "string" && UUID_RE.test(sp.pkg) ? sp.pkg : packages[0]?.id ?? null;
   const pkg = selectedId ? await getCloseoutPackage(selectedId) : null;
-  const activePkg = pkg && pkg.opportunity_id === dealId ? pkg : null;
+  const selectedValid = pkg && pkg.opportunity_id === dealId ? pkg : null;
+  // A stale/cross-deal ?pkg= must NOT hide real packages — fall back to the
+  // deal's first package instead of rendering the empty state.
+  const activePkg =
+    selectedValid ?? (packages.length > 0 && packages[0].id !== selectedId ? await getCloseoutPackage(packages[0].id) : null);
   const items = activePkg ? await listCloseoutItems(activePkg.id) : [];
   const editable = activePkg ? isCloseoutEditable(activePkg.status) : false;
   // Issued but not closed → the cover + item set are frozen, but the checklist
