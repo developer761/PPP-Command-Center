@@ -22,7 +22,6 @@ import {
   type CommercialInvoice,
 } from "@/lib/commercial/invoices/db";
 import { formatChangeOrderNumber, type ChangeOrderStatus } from "./constants";
-import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 
 export type CommercialChangeOrder = {
   id: string;
@@ -163,9 +162,9 @@ export async function createChangeOrder(
 
   const sb = commercialDb();
 
-  // Chain-of-trust: opp must exist, be live, AND be a post-sale Project; take
-  // account_id from it. The post-sale gate matches the CO page/UI so a hand-
-  // crafted POST can't attach a change order to a pre-sale deal.
+  // Chain-of-trust: opp must exist + be live; take account_id from it. No
+  // Won-gate (Karan 2026-08: change orders are available on every deal — the UI
+  // exposes them on bids too; a bid simply has none yet).
   const { data: opp } = await sb
     .from("commercial_opportunities")
     .select("id, account_id, deleted_at, status, sub_status")
@@ -175,9 +174,6 @@ export async function createChangeOrder(
     return { ok: false, error: "opportunity_not_found" };
   }
   const row = opp as { account_id: string; status: string | null; sub_status: string | null };
-  if (!isPostSaleProject({ status: row.status, sub_status: row.sub_status })) {
-    return { ok: false, error: "Change orders can only be added to a Won/in-progress project." };
-  }
   const account_id = row.account_id;
   const proposal_id = await validProposalForOpp(sb, input.proposal_id, input.opportunity_id);
 

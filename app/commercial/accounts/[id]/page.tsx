@@ -1006,6 +1006,10 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   const closeoutIncluded = closeoutItems.filter((i) => i.included).length;
   const hasContract = p.contractToDateCents > 0;
   const aiaBilledPct = hasContract ? Math.min(100, Math.round((p.invoicedCents / p.contractToDateCents) * 100)) : 0;
+  // A bid that isn't Won has no signed contract — its "contract" figure is just
+  // the bid-range midpoint. Label it honestly as an estimate so the deal header
+  // doesn't imply a contract exists (the tools are still fully usable).
+  const isPostSale = isPostSaleProject(p.opp);
   // Per-tab quick metrics (B1) — each swapped panel LEADS with its own KPIs +
   // progress bar so the tab reads at a glance before the list below it.
   const propWon = dealProposals.filter((pr) => pr.status === "won").length;
@@ -1083,7 +1087,11 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           </div>
         </div>
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ProjectStat label="Contract to date" value={hasContract ? formatCentsCompact(p.contractToDateCents) : "—"} sub={hasContract ? undefined : "Set the contract"} />
+          <ProjectStat
+            label={isPostSale ? "Contract to date" : "Bid estimate"}
+            value={hasContract ? formatCentsCompact(p.contractToDateCents) : "—"}
+            sub={!hasContract ? "Set the contract" : isPostSale ? undefined : "not under contract yet"}
+          />
           <ProjectStat label="Invoiced" value={formatCentsCompact(p.invoicedCents)} tone="emerald" sub={p.paidCents > 0 ? `${formatCentsCompact(p.paidCents)} paid` : undefined} />
           <ProjectStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={hasContract ? formatCentsCompact(p.overBilled ? p.invoicedCents - p.contractToDateCents : p.leftToBillCents) : "—"} tone={p.overBilled ? "amber" : undefined} />
           <ProjectStat label="Outstanding" value={formatCentsCompact(p.outstandingCents)} sub={p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={p.outstandingCents > 0 ? "amber" : undefined} />

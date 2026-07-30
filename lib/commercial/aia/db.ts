@@ -8,7 +8,6 @@ import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/proposals/db";
-import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import {
   computeG702,
   pickContractBaseCents,
@@ -116,9 +115,8 @@ export async function createAiaApplication(
     bid_value_low_cents: number | null;
     bid_value_high_cents: number | null;
   };
-  if (!isPostSaleProject({ status: row.status, sub_status: row.sub_status })) {
-    return { ok: false, error: "AIA applications are only for Won/in-progress projects." };
-  }
+  // No Won-gate (Karan 2026-08: AIA billing is available on every deal — the UI
+  // exposes it on bids too; a bid simply has no applications yet).
   // Default the original contract to the deal's bid midpoint when not given.
   // (low ?? high ?? 0 — a high-only bid must not default to $0; matches the
   // other bid-mid helpers.)

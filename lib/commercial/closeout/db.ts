@@ -2,7 +2,6 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
-import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import {
   ALLOWED_CLOSEOUT_TRANSITIONS,
   DEFAULT_CLOSEOUT_ITEMS,
@@ -54,19 +53,20 @@ export type CloseoutItem = {
 const PKG_COLS =
   "id, opportunity_id, account_id, status, to_company, to_attention, to_address_lines, re_subject, transmitted_as, remarks, substantial_completion_date, warranty_years, sent_at, acknowledged_at, completed_at, snapshot_document_id, voided_at, created_at, updated_at";
 
-/** Load a deal's opp context (post-sale gate + account) or null. */
-async function loadPostSaleOpp(
+/** Load a deal's opp context (account + suggested completion date) or null. No
+ *  Won-gate (Karan 2026-08: closeout is available on every deal — a bid just
+ *  has no package yet). */
+async function loadOppContext(
   opportunity_id: string
 ): Promise<{ account_id: string; substantial_completion_date?: string | null } | null> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, deleted_at, status, sub_status, proposed_end_at")
+    .select("id, account_id, deleted_at, proposed_end_at")
     .eq("id", opportunity_id)
     .maybeSingle();
-  const row = data as { account_id: string; deleted_at: string | null; status: string | null; sub_status: string | null; proposed_end_at: string | null } | null;
+  const row = data as { account_id: string; deleted_at: string | null; proposed_end_at: string | null } | null;
   if (!row || row.deleted_at) return null;
-  if (!isPostSaleProject({ status: row.status, sub_status: row.sub_status })) return null;
   return { account_id: row.account_id, substantial_completion_date: row.proposed_end_at?.slice(0, 10) ?? null };
 }
 
@@ -103,8 +103,8 @@ export async function createCloseoutPackage(input: {
   warranty_years?: number;
 }): Promise<Result<CloseoutPackage>> {
   const sb = commercialDb();
-  const opp = await loadPostSaleOpp(input.opportunity_id);
-  if (!opp) return { ok: false, error: "Close-out packages are only for Won/in-progress projects." };
+  const opp = await loadOppContext(input.opportunity_id);
+  if (!opp) return { ok: false, error: "opportunity_not_found" };
 
   const { data: inserted, error } = await sb
     .from("commercial_closeout_packages")
