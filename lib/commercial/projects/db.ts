@@ -8,6 +8,7 @@
 import { commercialDb } from "@/lib/commercial/db";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { pickContractBaseCents } from "@/lib/commercial/aia/constants";
+import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import type { CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 
 export type ProjectRow = {
@@ -52,6 +53,9 @@ export type ProjectRow = {
   closeoutStatus: "draft" | "sent" | "acknowledged" | "complete" | null;
   /** True once a close-out package reaches `complete` — the deal is closed out. */
   isClosedOut: boolean;
+  // ── Submittals (2026-07-30) — so the project card shows all four tool states ──
+  submittalTotal: number;
+  submittalAwaiting: number;
 };
 
 function bidMidCents(o: CommercialOpportunity): number {
@@ -215,6 +219,9 @@ export async function listProjects(opts: {
     }
   }
 
+  // ── Batch: submittal counts per opp (total + awaiting GC response). ──
+  const submittalCounts = await listSubmittalCountByOpp(oppIds);
+
   // ── Batch: latest AIA application per opp. We fetch ALL apps (paginated) and
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
@@ -321,6 +328,8 @@ export async function listProjects(opts: {
       overBilled,
       closeoutStatus: closeoutByOpp.get(o.id) ?? null,
       isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",
+      submittalTotal: submittalCounts.get(o.id)?.total ?? 0,
+      submittalAwaiting: submittalCounts.get(o.id)?.awaiting_response ?? 0,
     };
   });
 }

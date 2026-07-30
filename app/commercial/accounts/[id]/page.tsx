@@ -93,7 +93,10 @@ import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
-import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
+import { listSubmittalCountByOpp, listOpportunitySubmittals } from "@/lib/commercial/opportunities/submittals";
+import { submittalStatusLabel } from "@/lib/commercial/opportunities/submittal-constants";
+import { listCloseoutPackages, listCloseoutItems } from "@/lib/commercial/closeout/db";
+import { closeoutProgressPct } from "@/lib/commercial/closeout/constants";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
 import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
 import { findDuplicateOpportunities } from "@/lib/commercial/opportunities/duplicates";
@@ -785,24 +788,24 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
   const base = `/commercial/accounts/${accountId}`;
   // Mini-updates: the latest change orders (with the notes typed on each) for a
   // quick glance without opening the tool. Newest first.
-  const [changeOrders, submittalCounts] = await Promise.all([
+  // Mini-updates: real per-tool state (the notes on each change order, which
+  // submittal + status, which AIA application + draft state, closeout progress)
+  // so the project reads at a glance without opening each tool.
+  const [changeOrders, submittals, closeoutPkgs] = await Promise.all([
     listChangeOrders(p.opp.id),
-    listSubmittalCountByOpp([p.opp.id]),
+    listOpportunitySubmittals(p.opp.id),
+    listCloseoutPackages(p.opp.id),
   ]);
   const recentCos = [...changeOrders].sort((a, b) => b.co_number - a.co_number).slice(0, 3);
-  const subC = submittalCounts.get(p.opp.id) ?? { total: 0, awaiting_response: 0 };
-  // Quick-glance stat per tool card (no full open needed).
-  const coStat = changeOrders.length === 0 ? "None yet" : p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : `${changeOrders.length} total`;
-  const aiaStat = p.latestAppNumber == null ? "Not started" : `App ${p.latestAppNumber}${p.latestAppStatus ? ` · ${p.latestAppStatus}` : ""}`;
-  const subStat = subC.total === 0 ? "None yet" : `${subC.total} sent${subC.awaiting_response > 0 ? ` · ${subC.awaiting_response} awaiting` : ""}`;
-  const closeStat = p.isClosedOut ? "Closed out" : p.closeoutStatus ? `In progress · ${p.closeoutStatus}` : "Not started";
-  const tools: { label: string; sub: string; stat: string; href: string; icon: React.ReactNode }[] = [
-    { label: "Change Orders", sub: "Scope added or deducted mid-job", stat: coStat, href: `${base}/change-orders/${p.opp.id}`, icon: <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" /> },
-    { label: "AIA Billing", sub: "G702 / G703 progress billing + Excel", stat: aiaStat, href: `${base}/aia/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" /> },
-    { label: "Submittals", sub: "Shop drawings + product data → GC", stat: subStat, href: `${base}/submittals/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h5 M8 17h4" /> },
-    { label: "Closeout & Warranty", sub: "Close-out package + transmittal + warranty", stat: closeStat, href: `${base}/closeout/${p.opp.id}`, icon: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /> },
-  ];
+  const latestSub = [...submittals].sort((a, b) => b.submittal_number - a.submittal_number || b.revision_number - a.revision_number)[0] ?? null;
+  const awaitingSubs = submittals.filter((s) => ["submitted", "under_review", "revise_and_resubmit"].includes(s.status)).length;
+  const latestPkg = closeoutPkgs[0] ?? null; // created_at DESC → latest first
+  const closeoutItems = latestPkg ? await listCloseoutItems(latestPkg.id) : [];
+  const closeoutPct = closeoutProgressPct(closeoutItems);
+  const closeoutReceived = closeoutItems.filter((i) => i.included && i.item_status === "received").length;
+  const closeoutIncluded = closeoutItems.filter((i) => i.included).length;
   const hasContract = p.contractToDateCents > 0;
+  const aiaBilledPct = hasContract ? Math.min(100, Math.round((p.invoicedCents / p.contractToDateCents) * 100)) : 0;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -855,69 +858,109 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
         )}
       </div>
 
-      {/* ── Change orders mini-feed — the notes typed on each CO, at a glance,
-          without opening the tool. "Open →" slides out the full drawer. ── */}
-      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
-          <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-cc-brand-600 text-white shrink-0">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" /></svg>
-          </span>
-          <h3 className="text-[13px] font-bold text-ppp-charcoal">Change orders</h3>
-          {changeOrders.length > 0 && (
-            <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">
-              {changeOrders.length} · {p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : "all decided"}
-            </span>
-          )}
-          <Link href={`${base}/change-orders/${p.opp.id}`} className="ml-auto text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px] inline-flex items-center gap-0.5">
-            Open <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
-          </Link>
-        </div>
-        {recentCos.length === 0 ? (
-          <p className="px-4 py-3 text-[12px] text-ppp-charcoal-500">No change orders yet — added scope or credits show here with their notes.</p>
-        ) : (
-          <ul className="divide-y divide-ppp-charcoal-50">
-            {recentCos.map((co) => {
-              const deduct = co.amount_cents < 0;
-              const tone = co.status === "approved" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : co.status === "declined" ? "text-rose-700 bg-rose-50 border-rose-200" : "text-amber-800 bg-amber-50 border-amber-200";
-              return (
-                <li key={co.id} className="px-4 py-2.5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-bold text-ppp-charcoal tabular-nums">CO-{String(co.co_number).padStart(3, "0")}</span>
-                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{co.status}</span>
-                      </div>
-                      <div className="text-[12.5px] font-semibold text-ppp-charcoal mt-0.5 break-words">{co.title}</div>
-                      {co.description && <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 break-words line-clamp-2">{co.description}</div>}
-                    </div>
-                    <span className={`text-[13px] font-bold tabular-nums shrink-0 ${deduct ? "text-rose-700" : "text-emerald-700"}`}>
-                      {deduct ? "−" : "+"}{formatCentsCompact(Math.abs(co.amount_cents))}
-                    </span>
+      {/* ── Project tools — clean neutral cards, each showing the real state
+          (notes, which draft, form progress) at a glance. Colour is only a
+          small per-tool accent, not a full orange card. Click = drawer. ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Change Orders — the notes typed on each CO */}
+        <ToolMiniCard label="Change Orders" href={`${base}/change-orders/${p.opp.id}`} iconBg="bg-cc-brand-600" icon={<path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" />} chip={changeOrders.length === 0 ? null : { label: p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : "all decided", tone: p.pendingCoCount > 0 ? "amber" : "emerald" }}>
+          {recentCos.length === 0 ? (
+            <p className="text-[11.5px] text-ppp-charcoal-500">No change orders yet — added scope or credits show here with their notes.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {recentCos.map((co) => (
+                <li key={co.id} className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-[10.5px] font-bold text-ppp-charcoal tabular-nums mr-1.5">CO-{String(co.co_number).padStart(3, "0")}</span>
+                    <span className="text-[11.5px] font-semibold text-ppp-charcoal">{co.title}</span>
+                    {co.description && <span className="block text-[10.5px] text-ppp-charcoal-500 line-clamp-1">{co.description}</span>}
                   </div>
+                  <span className={`text-[11px] font-bold tabular-nums shrink-0 ${co.amount_cents < 0 ? "text-rose-700" : "text-emerald-700"}`}>{co.amount_cents < 0 ? "−" : "+"}{formatCentsCompact(Math.abs(co.amount_cents))}</span>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+              ))}
+            </ul>
+          )}
+        </ToolMiniCard>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {tools.map((t) => (
-          <Link key={t.label} href={t.href} className="flex items-center justify-between gap-3 rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span aria-hidden className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-cc-brand-600 text-white shrink-0">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{t.icon}</svg>
-              </span>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-ppp-charcoal leading-tight">{t.label}</div>
-                <div className="text-[11px] font-semibold text-cc-brand-700 leading-snug mt-0.5 truncate" title={t.stat}>{t.stat}</div>
-              </div>
+        {/* AIA Billing — which application + draft state + billed progress */}
+        <ToolMiniCard label="AIA Billing" href={`${base}/aia/${p.opp.id}`} iconBg="bg-ppp-navy-700" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6 M9 13h6 M9 17h6" /></>} chip={p.latestAppNumber == null ? null : { label: p.latestAppStatus ?? "draft", tone: p.latestAppStatus === "paid" ? "emerald" : p.latestAppStatus === "submitted" ? "blue" : "neutral" }}>
+          {p.latestAppNumber == null ? (
+            <p className="text-[11.5px] text-ppp-charcoal-500">Not started — no G702/G703 application yet.</p>
+          ) : (
+            <div>
+              <div className="text-[11.5px] font-semibold text-ppp-charcoal">Application No. {p.latestAppNumber}</div>
+              <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 tabular-nums">{formatCentsCompact(p.invoicedCents)} of {formatCentsCompact(p.contractToDateCents)} billed</div>
+              <div className="mt-1.5 h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden"><div className="h-full bg-ppp-navy-600 rounded-full" style={{ width: `${aiaBilledPct}%` }} /></div>
             </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-600 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M5 12h14 M13 5l7 7-7 7" /></svg>
-          </Link>
-        ))}
+          )}
+        </ToolMiniCard>
+
+        {/* Submittals — latest submittal + status + how many awaiting GC */}
+        <ToolMiniCard label="Submittals" href={`${base}/submittals/${p.opp.id}`} iconBg="bg-ppp-blue-600" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6 M8 13h5 M8 17h4" /></>} chip={awaitingSubs > 0 ? { label: `${awaitingSubs} awaiting`, tone: "amber" } : latestSub ? { label: "up to date", tone: "emerald" } : null}>
+          {latestSub == null ? (
+            <p className="text-[11.5px] text-ppp-charcoal-500">None yet — shop drawings + product data you send the GC show here.</p>
+          ) : (
+            <div>
+              <div className="text-[11.5px] font-semibold text-ppp-charcoal">
+                SUB-{String(latestSub.submittal_number).padStart(3, "0")}{latestSub.revision_number > 0 ? ` Rev ${latestSub.revision_number}` : ""} · <span className="text-ppp-charcoal-600">{submittalStatusLabel(latestSub.status)}</span>
+              </div>
+              <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5">{submittals.length} package{submittals.length === 1 ? "" : "s"} total</div>
+            </div>
+          )}
+        </ToolMiniCard>
+
+        {/* Closeout — which draft the package is on + checklist progress + warranty */}
+        <ToolMiniCard label="Closeout & Warranty" href={`${base}/closeout/${p.opp.id}`} iconBg="bg-emerald-600" icon={<path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />} chip={latestPkg == null ? null : { label: latestPkg.status, tone: latestPkg.status === "complete" ? "emerald" : latestPkg.status === "sent" || latestPkg.status === "acknowledged" ? "blue" : "neutral" }}>
+          {latestPkg == null ? (
+            <p className="text-[11.5px] text-ppp-charcoal-500">Not started — the package you hand the GC when the job wraps.</p>
+          ) : (
+            <div>
+              <div className="text-[11.5px] font-semibold text-ppp-charcoal tabular-nums">{closeoutReceived}/{closeoutIncluded} items received{latestPkg.warranty_years ? ` · ${latestPkg.warranty_years}-yr warranty` : ""}</div>
+              {closeoutPct != null && (
+                <div className="mt-1.5 h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{ width: `${closeoutPct}%` }} /></div>
+              )}
+            </div>
+          )}
+        </ToolMiniCard>
       </div>
     </div>
+  );
+}
+
+/** A clean neutral project-tool card: small accent icon + a status chip + rich
+ *  mini-content, linking into the tool (opens as a drawer from the account). */
+function ToolMiniCard({
+  label,
+  href,
+  iconBg,
+  icon,
+  chip,
+  children,
+}: {
+  label: string;
+  href: string;
+  iconBg: string;
+  icon: React.ReactNode;
+  chip: { label: string; tone: "neutral" | "amber" | "emerald" | "blue" } | null;
+  children: React.ReactNode;
+}) {
+  const chipCls =
+    chip?.tone === "amber" ? "bg-amber-50 text-amber-800 border-amber-200"
+    : chip?.tone === "emerald" ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+    : chip?.tone === "blue" ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
+    : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
+  return (
+    <Link href={href} className="group block rounded-xl border border-ppp-charcoal-100 bg-surface p-4 hover:border-ppp-charcoal-200 hover:shadow-sm transition-all">
+      <div className="flex items-center gap-2.5 mb-2">
+        <span aria-hidden className={`inline-flex items-center justify-center h-8 w-8 rounded-lg ${iconBg} text-white shrink-0`}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{icon}</svg>
+        </span>
+        <span className="text-[13px] font-bold text-ppp-charcoal">{label}</span>
+        {chip && <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${chipCls}`}>{chip.label}</span>}
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="ml-auto text-ppp-charcoal-300 shrink-0 group-hover:text-ppp-charcoal-500 group-hover:translate-x-0.5 transition-all"><path d="M9 18l6-6-6-6" /></svg>
+      </div>
+      {children}
+    </Link>
   );
 }
 

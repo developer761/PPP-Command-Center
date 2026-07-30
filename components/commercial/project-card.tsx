@@ -159,6 +159,26 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
               <span className="text-ppp-charcoal-400">None pending</span>
             )}
           </span>
+          <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${p.submittalAwaiting > 0 ? "border-amber-200 bg-amber-50/50" : "border-ppp-charcoal-100 bg-surface"}`}>
+            <span className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Subs</span>
+            {p.submittalTotal === 0 ? (
+              <span className="text-ppp-charcoal-400">None yet</span>
+            ) : p.submittalAwaiting > 0 ? (
+              <span className="font-semibold text-amber-700">{p.submittalAwaiting} awaiting</span>
+            ) : (
+              <span className="font-semibold text-ppp-charcoal-700">{p.submittalTotal} sent</span>
+            )}
+          </span>
+          <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${p.isClosedOut ? "border-ppp-navy-200 bg-ppp-navy-50" : "border-ppp-charcoal-100 bg-surface"}`}>
+            <span className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Closeout</span>
+            {p.isClosedOut ? (
+              <span className="font-semibold text-ppp-navy-700">Done</span>
+            ) : p.closeoutStatus ? (
+              <span className="font-semibold text-ppp-charcoal-700 capitalize">{p.closeoutStatus}</span>
+            ) : (
+              <span className="text-ppp-charcoal-400">Not started</span>
+            )}
+          </span>
         </div>
       </div>
 
