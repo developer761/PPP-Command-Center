@@ -1758,9 +1758,13 @@ function FullDetailByOpp({
         // feature unconfigured; the field then stays blank for manual entry.
         const taxHit = resolveTaxForZip(opp?.property_zip, taxJurisdictions ?? []);
         const suggestedTaxPct = taxHit ? thouToPct(taxHit.rateThou) : null;
+        // 2026-07-29 financial truth: "Invoiced" = ISSUED only (drafts aren't
+        // billed yet). Drafts carried separately + shown as "N drafts not yet
+        // sent" so this ties out with the project card + Projects tab.
         const nonVoid = groupInvoices.filter((i) => i.status !== "void");
-        const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
-        const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
+        const issuedInGroup = nonVoid.filter((i) => i.status !== "draft");
+        const totalInvoiced = issuedInGroup.reduce((s, i) => s + i.total_cents, 0);
+        const totalPaid = issuedInGroup.reduce((s, i) => s + i.paid_cents, 0);
         const totalBalance = totalInvoiced - totalPaid;
         const draftInGroup = groupInvoices.filter((i) => i.status === "draft");
         const draftGroupCount = draftInGroup.length;
