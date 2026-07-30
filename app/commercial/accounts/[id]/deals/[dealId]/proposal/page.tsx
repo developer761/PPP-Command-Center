@@ -20,9 +20,10 @@ export default async function ProposalDealListRedirect({
 }: {
   params: Promise<{ id: string; dealId: string }>;
 }) {
-  const { id: accountId } = await params;
-  const target = UUID_RE.test(accountId)
-    ? `/commercial/accounts/${accountId}?tab=proposals`
+  const { id: accountId, dealId } = await params;
+  // Proposals live on the deal now — return to the deal view's proposals.
+  const target = UUID_RE.test(accountId) && UUID_RE.test(dealId)
+    ? `/commercial/accounts/${accountId}?tab=projects&project=${dealId}#deal-proposals`
     : "/commercial/proposals";
   redirect(target);
 }

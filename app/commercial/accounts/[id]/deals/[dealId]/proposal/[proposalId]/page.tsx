@@ -733,10 +733,9 @@ export default async function ProposalEditorPage({
     ...(proposal.custom_exclusions ?? []),
   ]);
 
-  // Karan 2026-07-15: the per-deal proposal-list page is dead (killed
-  // as a redirect stub); the Proposals tab on the account page is the
-  // single home for every revision. Link back there directly.
-  const listHref = `/commercial/accounts/${accountId}?tab=proposals`;
+  // 2026-08 restructure: proposals live on the DEAL now — back goes to the
+  // deal view's proposals section, not the (removed) account Proposals tab.
+  const listHref = `/commercial/accounts/${accountId}?tab=projects&project=${dealId}#deal-proposals`;
 
   // Hidden fields shared by every server action on this page.
   const hiddenIds = (

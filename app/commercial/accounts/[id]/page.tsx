@@ -959,9 +959,9 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link href={`${base}?tab=projects`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
+        <Link href={base} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M11 5l-7 7 7 7" /></svg>
-          All projects
+          All deals
         </Link>
         <Link href={`${base}?tab=opportunities&edit=${p.opp.id}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[40px]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
@@ -5402,12 +5402,13 @@ function AccountOverviewStrip({
             where relationship signals belong. Activity chip stays here
             since it's tied to the money numbers below (helps read
             "invoiced X, last touched Y" as a single story). */}
-        <span
-          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border shrink-0 ${activityClass}`}
-          title={`Most recent activity on this account. Last touched: ${overview.last_activity_at}`}
+        <Link
+          href={`/commercial/accounts/${accountId}?tab=activity`}
+          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border shrink-0 hover:brightness-95 ${activityClass}`}
+          title={`Most recent activity on this account. Last touched: ${overview.last_activity_at} — click for the full account activity feed.`}
         >
           Active {activity}
-        </span>
+        </Link>
       </div>
 
       {/* Three money tiles — same category (financials), same visual weight.
