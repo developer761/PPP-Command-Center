@@ -224,6 +224,7 @@ type SP = Promise<{
 // alex or whoever can quick edit"). Both are leaves — no sub-tabs.
 type PrimaryTab = "overview" | "people" | "deals" | "proposals" | "invoices" | "projects" | "activity";
 type SubTab =
+  | "home"
   | "info"
   | "team"
   | "kpis"
@@ -260,6 +261,7 @@ const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
 type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "proposals" | "projects">;
 const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string }[]> = {
   overview: [
+    { key: "home", label: "Summary" },
     { key: "info", label: "Info" },
     { key: "team", label: "Team" },
     { key: "kpis", label: "KPIs" },
@@ -274,7 +276,7 @@ const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string 
   ],
 };
 const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
-  overview: "info",
+  overview: "home",
   people: "contacts",
   deals: "opportunities",
 };
@@ -628,6 +630,7 @@ export default async function CommercialAccountDetailPage({
       )}
 
       {/* Tab content — dispatches on the flat `tab` key. */}
+      {tab === "home" && <AccountHome account={account} />}
       {tab === "info" && <InfoTab account={account} errorMessage={sp.error} />}
       {tab === "activity" && <ActivityTab accountId={account.id} />}
       {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
@@ -695,6 +698,116 @@ export default async function CommercialAccountDetailPage({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * AccountHome (R1, 2026-08) — the account's default landing. The account is now
+ * a LEAN container: a compact rollup strip + its deals shown as bordered blocks
+ * (in-delivery projects as rich ProjectCards, pipeline deals as compact blocks,
+ * completed folded away). Each block drills into that deal. Info / Team / KPIs
+ * moved to sub-tabs. This is the first step of the account↔deal restructure
+ * (Katie 2026-08 notes) — deals are the star, the account is the shelf.
+ */
+async function AccountHome({ account }: { account: CommercialAccount }) {
+  const [projects, allOpps] = await Promise.all([
+    listProjects({ accountId: account.id, includeClosed: true }),
+    listCommercialOpportunities({ accountId: account.id }),
+  ]);
+  const postSaleIds = new Set(projects.map((p) => p.opp.id));
+  const activeProjects = projects.filter((p) => p.opp.status !== "post_sale_closed");
+  const completedProjects = projects.filter((p) => p.opp.status === "post_sale_closed");
+  const pipelineDeals = allOpps.filter(
+    (o) => !postSaleIds.has(o.id) && PRE_SALE_OPEN_STATUSES.includes(o.status),
+  );
+  const totalDeals = allOpps.length;
+
+  // The account 360 rollup strip (AccountOverviewStrip) already sits above the
+  // tab bar on every tab, so the home stays lean: just the deal blocks.
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-[12px] text-ppp-charcoal-500">
+          {totalDeals} deal{totalDeals === 1 ? "" : "s"} under {account.company_name}
+        </p>
+        <Link
+          href={`/commercial/accounts/${account.id}?tab=opportunities&new=1`}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
+          New deal
+        </Link>
+      </div>
+
+      {totalDeals === 0 ? (
+        <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
+          <p className="text-sm font-semibold text-ppp-charcoal">No deals yet</p>
+          <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Add a deal to this account and it&rsquo;ll show here as its own block — with its proposals, invoices, change orders, and documents inside.</p>
+        </div>
+      ) : (
+        <>
+          {activeProjects.length > 0 && (
+            <section className="space-y-2.5">
+              <h2 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">In delivery · {activeProjects.length}</h2>
+              <ul className="space-y-2.5">
+                {activeProjects.map((p) => <ProjectCard key={p.opp.id} p={p} hideAccountName />)}
+              </ul>
+            </section>
+          )}
+          {pipelineDeals.length > 0 && (
+            <section className="space-y-2.5">
+              <h2 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Pipeline · {pipelineDeals.length}</h2>
+              <ul className="space-y-2.5">
+                {pipelineDeals.map((o) => <PipelineDealBlock key={o.id} accountId={account.id} opp={o} />)}
+              </ul>
+            </section>
+          )}
+          {completedProjects.length > 0 && (
+            <details className="group">
+              <summary className="list-none cursor-pointer flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 min-h-[36px] select-none">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
+                Completed · {completedProjects.length}
+              </summary>
+              <ul className="space-y-2.5 mt-2">
+                {completedProjects.map((p) => <ProjectCard key={p.opp.id} p={p} hideAccountName />)}
+              </ul>
+            </details>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Compact pipeline (pre-sale) deal block for the account home — the deal isn't
+ *  in delivery yet, so it shows its bid + stage and drills into the deal sheet. */
+function PipelineDealBlock({ accountId, opp }: { accountId: string; opp: CommercialOpportunity }) {
+  const name = derivedOppName(opp, null);
+  const code = formatOpportunityNumber(opp.project_number);
+  const lo = opp.bid_value_low_cents;
+  const hi = opp.bid_value_high_cents;
+  const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : null;
+  return (
+    <li>
+      <Link
+        href={`/commercial/accounts/${accountId}?tab=opportunities&edit=${opp.id}#deal-row-${opp.id}`}
+        className="block rounded-xl border border-ppp-charcoal-100 bg-surface p-4 hover:border-cc-brand-200 hover:shadow-sm transition-all"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            {code && <div className="text-[9.5px] font-mono text-ppp-navy-600">{code}</div>}
+            <div className="text-[14px] font-bold text-ppp-charcoal truncate">{name}</div>
+            {opp.property_street?.trim() && <div className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5">{opp.property_street}</div>}
+          </div>
+          <div className="text-right shrink-0">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600">
+              {oppStatusDisplayLabel(opp.status, opp.sub_status)}
+            </span>
+            {bid && <div className="text-[13px] font-bold tabular-nums text-ppp-charcoal mt-1">{bid}</div>}
+          </div>
+        </div>
+      </Link>
+    </li>
   );
 }
 
