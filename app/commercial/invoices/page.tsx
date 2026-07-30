@@ -7,6 +7,7 @@
  *   - Unified toolbar (search + status filter popover + sort)
  *   - Clean row hierarchy
  */
+import { Fragment } from "react";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
@@ -17,7 +18,7 @@ import { listCommercialAccounts, getCommercialAccount, getCommercialAccountInclu
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
-import { getProposal } from "@/lib/commercial/proposals/db";
+import { getProposal, getAcceptedProposalForOpp } from "@/lib/commercial/proposals/db";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { ProposalBillingFields, type ProposalBillingOption } from "@/components/commercial/proposal-billing-fields";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -470,19 +471,32 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   }
   await Promise.all(
     [...ctxOppIds].map(async (oppId) => {
-      const props = await listProposalsForOpp(oppId);
+      const [props, accepted] = await Promise.all([
+        listProposalsForOpp(oppId),
+        getAcceptedProposalForOpp(oppId),
+      ]);
       if (props.length === 0) return;
       const won = props
         .filter((p) => p.status === "won")
         .sort((a, b) => b.total_cents - a.total_cents)[0] ?? null;
+      // Real scope text from the accepted proposal's inclusions → a descriptive
+      // charge line ("Progress payment — Lobby repaint, Stairwell coating")
+      // instead of a bare PROP number. Bounded to ~120 chars.
+      const scope = accepted
+        ? accepted.inclusions.map((i) => i.description?.trim()).filter(Boolean).slice(0, 3).join(", ")
+        : "";
       proposalCtxByOpp.set(oppId, {
         options: props.map((p) => {
           const remaining = Math.max(0, p.total_cents - (billedByProposal.get(p.id) ?? 0));
+          const isAccepted = won != null && p.id === won.id;
+          const desc = isAccepted && scope
+            ? `Progress payment — ${scope.length > 120 ? scope.slice(0, 117) + "…" : scope}`
+            : `Progress payment — ${proposalDisplayNumber(p)}`;
           return {
             id: p.id,
             label: proposalOptionLabel(p),
             remainingCents: remaining,
-            suggestedDescription: `Progress payment — ${proposalDisplayNumber(p)}`,
+            suggestedDescription: desc,
           };
         }),
         acceptedId: won?.id ?? null,
@@ -1881,6 +1895,23 @@ function FullDetailByOpp({
             ? "bg-amber-500"
             : "bg-ppp-charcoal-300";
         const sortedGroup = [...groupInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
+        // Proposal-grouped dividers (Karan #32): order same-proposal invoices
+        // contiguously so each proposal's progress invoices read as a set, with
+        // unlinked charges last under "Other charges". Only kicks in when at
+        // least one invoice is linked to a proposal.
+        const propOrder: string[] = [];
+        const byProp = new Map<string, CommercialInvoice[]>();
+        const noProp: CommercialInvoice[] = [];
+        for (const inv of sortedGroup) {
+          if (inv.proposal_id) {
+            if (!byProp.has(inv.proposal_id)) propOrder.push(inv.proposal_id);
+            (byProp.get(inv.proposal_id) ?? byProp.set(inv.proposal_id, []).get(inv.proposal_id)!).push(inv);
+          } else noProp.push(inv);
+        }
+        const useProposalGroups = propOrder.length > 0;
+        const orderedGroup = useProposalGroups
+          ? [...propOrder.flatMap((pid) => byProp.get(pid) ?? []), ...noProp]
+          : sortedGroup;
         return (
           <section
             key={oppId}
@@ -2004,7 +2035,7 @@ function FullDetailByOpp({
               )}
             </div>
             <ul className="divide-y divide-ppp-charcoal-100">
-              {sortedGroup.map((inv) => {
+              {orderedGroup.map((inv, idx) => {
                 const displayStatus = deriveInvoiceStatus(inv);
                 const isVoid = inv.status === "void";
                 const isPaidInFull = inv.paid_cents >= inv.total_cents && inv.total_cents > 0;
@@ -2012,9 +2043,18 @@ function FullDetailByOpp({
                 const daysUntilDue = daysBetween(new Date().toISOString(), inv.due_at);
                 const isOverdue = displayStatus === "overdue";
                 const isFlashRow = paidInvoiceId === inv.id;
+                const prevInv = idx > 0 ? orderedGroup[idx - 1] : null;
+                const showDivider = useProposalGroups && (idx === 0 || prevInv?.proposal_id !== inv.proposal_id);
+                const dividerLabel = inv.proposal_id ? (proposalNumById.get(inv.proposal_id) ?? "Proposal") : "Other charges";
                 return (
+                  <Fragment key={inv.id}>
+                  {showDivider && (
+                    <li className="bg-ppp-charcoal-50/60 px-4 sm:px-5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 flex items-center gap-1.5">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+                      {dividerLabel}
+                    </li>
+                  )}
                   <li
-                    key={inv.id}
                     id={`inv-${inv.id}`}
                     className={`scroll-mt-4 ${isFlashRow ? "bg-cc-brand-50/40" : ""}`}
                   >
@@ -2184,6 +2224,7 @@ function FullDetailByOpp({
                       </details>
                     )}
                   </li>
+                  </Fragment>
                 );
               })}
             </ul>
