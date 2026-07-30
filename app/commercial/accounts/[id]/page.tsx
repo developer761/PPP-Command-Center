@@ -928,14 +928,17 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
   // Mini-updates: real per-tool state (the notes on each change order, which
   // submittal + status, which AIA application + draft state, closeout progress)
   // so the project reads at a glance without opening each tool.
-  const [changeOrders, submittals, closeoutPkgs, documents] = await Promise.all([
+  const [changeOrders, submittals, closeoutPkgs, documents, dealInvoices] = await Promise.all([
     listChangeOrders(p.opp.id),
     listOpportunitySubmittals(p.opp.id),
     listCloseoutPackages(p.opp.id),
     // Per-deal documents (Katie 2026-08): everything filed against this deal in
     // one place — direct uploads + the PDFs the tools snapshot here.
     listDocumentsForParent("opportunity", p.opp.id),
+    // Per-deal invoices (R2, Katie 2026-08): invoices live under the deal.
+    listCommercialInvoices({ opportunityId: p.opp.id }),
   ]);
+  const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
   const recentCos = [...changeOrders].sort((a, b) => b.co_number - a.co_number).slice(0, 3);
   const latestSub = [...submittals].sort((a, b) => b.submittal_number - a.submittal_number || b.revision_number - a.revision_number)[0] ?? null;
   const awaitingSubs = submittals.filter((s) => ["submitted", "under_review", "revise_and_resubmit"].includes(s.status)).length;
@@ -1063,6 +1066,60 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
           )}
         </ToolMiniCard>
       </div>
+
+      {/* ── Deal invoices — invoices live under the deal (Katie 2026-08). List
+          + create here; the global Invoices page is a read-only open list. ── */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
+          <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-cc-brand-600 text-white shrink-0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+          </span>
+          <h3 className="text-[13px] font-bold text-ppp-charcoal">Invoices</h3>
+          {dealInvoices.length > 0 && (
+            <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">
+              {formatCentsCompact(p.invoicedCents)} invoiced{p.outstandingCents > 0 ? ` · ${formatCentsCompact(p.outstandingCents)} outstanding` : ""}
+            </span>
+          )}
+          <Link
+            href={`/commercial/invoices?account_id=${accountId}&add=${p.opp.id}#add-${p.opp.id}`}
+            className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px]"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
+            New invoice
+          </Link>
+        </div>
+        {recentInvoices.length === 0 ? (
+          <p className="px-4 py-3 text-[12px] text-ppp-charcoal-500">No invoices yet — bill this deal from the button above (pull from its accepted proposal or enter a progress amount).</p>
+        ) : (
+          <ul className="divide-y divide-ppp-charcoal-50">
+            {recentInvoices.map((inv) => {
+              const st = deriveInvoiceStatus(inv);
+              const tone = st === "paid" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : st === "overdue" ? "text-rose-700 bg-rose-50 border-rose-200" : st === "draft" ? "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200" : "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-200";
+              return (
+                <li key={inv.id}>
+                  <Link href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}`)}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
+                    <span className="min-w-0 flex items-center gap-2">
+                      <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800">{inv.invoice_number}</span>
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{invoiceStatusLabel(st)}</span>
+                    </span>
+                    <span className="text-right shrink-0">
+                      <span className="block text-[12.5px] font-bold tabular-nums text-ppp-charcoal">{formatCentsFull(inv.total_cents)}</span>
+                      {inv.balance_cents > 0 && st !== "void" && <span className="block text-[10px] text-ppp-charcoal-500 tabular-nums">{formatCentsFull(inv.balance_cents)} due</span>}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+            {dealInvoices.length > recentInvoices.length && (
+              <li>
+                <Link href={`/commercial/invoices?account_id=${accountId}#opp-${p.opp.id}`} className="block px-4 py-2 text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[40px]">
+                  View all {dealInvoices.length} invoices →
+                </Link>
+              </li>
+            )}
+          </ul>
+        )}
+      </section>
 
       {/* ── Deal documents — everything filed against this deal in one place.
           Upload directly here; the tools' PDFs (sent proposal, closeout) also
