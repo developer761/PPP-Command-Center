@@ -720,7 +720,17 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
   const pipelineDeals = allOpps.filter(
     (o) => !postSaleIds.has(o.id) && PRE_SALE_OPEN_STATUSES.includes(o.status),
   );
+  // Lost / not-pursued deals — pre_sale_closed + lost. Not in listProjects (won
+  // only) and not pipeline-open, so without this they'd vanish while still
+  // being counted (audit finding #1: header said "5 deals", showed 2).
+  const lostDeals = allOpps.filter(
+    (o) => !postSaleIds.has(o.id) && o.status === "pre_sale_closed" && o.sub_status === "lost",
+  );
   const totalDeals = allOpps.length;
+  // Auto-open the folded sections when there's no active/pipeline work above
+  // them, so an account whose deals are all completed/lost doesn't land on a
+  // blank page + a single collapsed row (audit findings #1, #3).
+  const hasUpfront = activeProjects.length > 0 || pipelineDeals.length > 0;
 
   // The account 360 rollup strip (AccountOverviewStrip) already sits above the
   // tab bar on every tab, so the home stays lean: just the deal blocks.
@@ -731,7 +741,7 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
           {totalDeals} deal{totalDeals === 1 ? "" : "s"} under {account.company_name}
         </p>
         <Link
-          href={`/commercial/accounts/${account.id}?tab=opportunities&new=1`}
+          href={`/commercial/accounts/${account.id}?tab=deals&sub=opportunities&new_deal=1#new-deal`}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
@@ -763,13 +773,24 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
             </section>
           )}
           {completedProjects.length > 0 && (
-            <details className="group">
+            <details className="group" open={!hasUpfront}>
               <summary className="list-none cursor-pointer flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 min-h-[36px] select-none">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
                 Completed · {completedProjects.length}
               </summary>
               <ul className="space-y-2.5 mt-2">
                 {completedProjects.map((p) => <ProjectCard key={p.opp.id} p={p} hideAccountName />)}
+              </ul>
+            </details>
+          )}
+          {lostDeals.length > 0 && (
+            <details className="group" open={!hasUpfront && completedProjects.length === 0}>
+              <summary className="list-none cursor-pointer flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-500 min-h-[36px] select-none">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
+                Lost / not pursued · {lostDeals.length}
+              </summary>
+              <ul className="space-y-2.5 mt-2">
+                {lostDeals.map((o) => <PipelineDealBlock key={o.id} accountId={account.id} opp={o} />)}
               </ul>
             </details>
           )}
