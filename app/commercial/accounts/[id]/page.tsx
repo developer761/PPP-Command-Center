@@ -89,6 +89,7 @@ import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-
 // Inline delivery tools rendered under the deal's Project sub-tab (2026-08).
 import { ChangeOrdersTool } from "./change-orders/[dealId]/change-orders-tool";
 import { CloseoutTool } from "./closeout/[dealId]/closeout-tool";
+import { AiaTool } from "./aia/[dealId]/aia-tool";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -1340,6 +1341,14 @@ async function ProjectToolsPanel({
           }}
         />
       )}
+      {projectTool === "aia" && (
+        <AiaTool
+          id={accountId}
+          dealId={dealId}
+          variant="inline"
+          sp={{ app: sp?.app, error: sp?.error, ok: sp?.ok }}
+        />
+      )}
       {projectTool === "closeout" && (
         <CloseoutTool
           id={accountId}
@@ -1348,7 +1357,7 @@ async function ProjectToolsPanel({
           sp={{ pkg: sp?.pkg, error: sp?.error, ok: sp?.ok }}
         />
       )}
-      {(projectTool === "aia" || projectTool === "submittals") && (
+      {projectTool === "submittals" && (
         <InterimToolPanel
           label={PROJECT_TOOLS.find((t) => t.key === projectTool)?.label ?? "Tool"}
           href={`${base}/${PROJECT_TOOLS.find((t) => t.key === projectTool)?.route}/${dealId}`}
