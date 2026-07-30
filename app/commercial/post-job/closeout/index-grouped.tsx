@@ -25,6 +25,8 @@ export async function CloseoutGroupedIndex() {
   for (const p of packages) if (!latestByOpp.has(p.opportunityId)) latestByOpp.set(p.opportunityId, p);
 
   const withPkg = projects.filter((p) => latestByOpp.has(p.opp.id)).length;
+  const closedOut = projects.filter((p) => latestByOpp.get(p.opp.id)?.status === "complete").length;
+  const awaitingAck = projects.filter((p) => latestByOpp.get(p.opp.id)?.status === "sent").length;
 
   return (
     <PostJobToolIndex
@@ -43,8 +45,10 @@ export async function CloseoutGroupedIndex() {
       hrefFor={(p) => `/commercial/accounts/${p.accountId}/closeout/${p.opp.id}?back=/commercial/post-job/closeout`}
       accent="emerald"
       kpis={
-        <div className="grid grid-cols-2 gap-3">
-          <Tile label="Projects with a package" value={String(withPkg)} tone="emerald" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Tile label="Closed out" value={String(closedOut)} tone={closedOut > 0 ? "emerald" : "neutral"} />
+          <Tile label="Awaiting GC ack" value={String(awaitingAck)} tone={awaitingAck > 0 ? "amber" : "neutral"} />
+          <Tile label="In progress" value={String(withPkg - closedOut - awaitingAck)} tone="neutral" />
           <Tile label="No package yet" value={String(projects.length - withPkg)} tone="neutral" />
         </div>
       }
@@ -52,8 +56,8 @@ export async function CloseoutGroupedIndex() {
   );
 }
 
-function Tile({ label, value, tone }: { label: string; value: string; tone?: "emerald" | "neutral" }) {
-  const cls = tone === "emerald" ? "text-emerald-700" : "text-ppp-charcoal";
+function Tile({ label, value, tone }: { label: string; value: string; tone?: "emerald" | "amber" | "neutral" }) {
+  const cls = tone === "emerald" ? "text-emerald-700" : tone === "amber" ? "text-amber-700" : "text-ppp-charcoal";
   return (
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3 shadow-sm">
       <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
