@@ -19,7 +19,7 @@ import {
   getCommercialOpportunity,
   derivedOppName,
 } from "@/lib/commercial/opportunities/db";
-import { isPostSaleProject, oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
@@ -224,15 +224,8 @@ export async function ChangeOrdersTool({
   if (!account || !opp) notFound();
   // Ownership: the deal must belong to this account (enumeration-safe).
   if (opp.account_id !== id) notFound();
-  // Change Orders only exist on post-sale Projects. On the standalone route a
-  // pre-sale deal bounces back to the account; inline it never renders (the
-  // deal view gates the Project tab), so just no-op there.
-  if (!isPostSaleProject(opp)) {
-    if (variant === "route") {
-      redirect(`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}&status_error=${encodeURIComponent("This opens once the deal is Won and in delivery — mark it Won first.")}`);
-    }
-    return null;
-  }
+  // No Won-gate: Change Orders are available on every deal (Karan 2026-08 —
+  // nothing locked). A bid simply has none yet.
 
   const dealName = derivedOppName(opp, account.company_name);
   // Same contract-base ladder the AIA G702 + Projects + Account 360 use, so all

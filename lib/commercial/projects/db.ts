@@ -87,6 +87,12 @@ export async function listProjects(opts: {
   includeClosed?: boolean;
   /** Scope to a single GC account (Account 360 production summary). */
   accountId?: string;
+  /** Include EVERY deal (pre-sale bids too), not just post-sale/won projects.
+   *  Used by the deal drill-in so a bid opens the same full project view
+   *  (tools + invoicing unlocked) as a Won job — nothing gated on Won. The
+   *  production-summary + projects-list callers leave this off so those stay
+   *  scoped to real jobs under contract. */
+  allDeals?: boolean;
 } = {}): Promise<ProjectRow[]> {
   const sb = commercialDb();
 
@@ -102,8 +108,11 @@ export async function listProjects(opts: {
         .select("*, account:commercial_accounts!inner(id, company_name, deleted_at)")
         .is("deleted_at", null)
         .is("archived_at", null)
-        .is("account.deleted_at", null)
-        .or(`status.in.(${postSale.join(",")}),and(status.eq.pre_sale_closed,sub_status.eq.won)`);
+        .is("account.deleted_at", null);
+      // Gate to post-sale/won unless the caller wants every deal.
+      if (!opts.allDeals) {
+        q = q.or(`status.in.(${postSale.join(",")}),and(status.eq.pre_sale_closed,sub_status.eq.won)`);
+      }
       if (opts.accountId) q = q.eq("account_id", opts.accountId);
       return q.order("updated_at", { ascending: false });
     }

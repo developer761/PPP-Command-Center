@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { isPostSaleProject, oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import {
   listOpportunitySubmittals,
   createOpportunitySubmittal,
@@ -92,12 +92,8 @@ export async function SubmittalsTool({
   const [account, opp] = await Promise.all([getCommercialAccount(id), getCommercialOpportunity(dealId)]);
   if (!account || !opp) notFound();
   if (opp.account_id !== id) notFound();
-  if (!isPostSaleProject(opp)) {
-    if (variant === "route") {
-      redirect(`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}&status_error=${encodeURIComponent("Submittals open once the deal is Won and in delivery — mark it Won first.")}`);
-    }
-    return null;
-  }
+  // No Won-gate: submittals are available on every deal (Karan 2026-08 —
+  // nothing locked). A bid simply has none yet.
 
   const dealName = derivedOppName(opp, account.company_name);
   const submittals = await listOpportunitySubmittals(dealId);

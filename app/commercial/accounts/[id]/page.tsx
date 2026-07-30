@@ -897,21 +897,19 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
   const dealTab = ["overview", "proposals", "invoices", "project", "documents"].includes(dealTabRaw) ? dealTabRaw : "overview";
   // Normalize the Project sub-tab tool the same way.
   const projectTool = ["change-orders", "aia", "submittals", "closeout"].includes(projectToolRaw) ? projectToolRaw : "change-orders";
-  // includeClosed so finished jobs still show on the account (they were
-  // vanishing into "No projects yet" — 2026-07-29 audit finding).
-  const projects = await listProjects({ accountId, includeClosed: true });
-
-  // Drill-in: one deal's home, folded under the account. Post-sale deals get
-  // the rich project home; pre-sale deals (bids) still get a deal view (S2) so
-  // every deal opens the same way, not the edit sheet.
+  // Drill-in: one deal's home, folded under the account. EVERY deal — a bid or
+  // a Won job — opens the same full project view (allDeals:true), so the tools
+  // + invoicing are never gated on Won. Nothing is locked.
   if (projectId) {
-    const p = projects.find((x) => x.opp.id === projectId);
+    const allDeals = await listProjects({ accountId, includeClosed: true, allDeals: true });
+    const p = allDeals.find((x) => x.opp.id === projectId);
     if (p) return <AccountProjectHome p={p} accountId={accountId} dealTab={dealTab} projectTool={projectTool} sp={sp} />;
-    const opp = await getCommercialOpportunity(projectId);
-    if (opp && opp.account_id === accountId) return <PreSaleDealHome opp={opp} accountId={accountId} dealTab={dealTab} />;
     // Not found / wrong account — fall through to the list.
   }
 
+  // includeClosed so finished jobs still show on the account (they were
+  // vanishing into "No projects yet" — 2026-07-29 audit finding).
+  const projects = await listProjects({ accountId, includeClosed: true });
   const active = projects.filter((p) => p.opp.status !== "post_sale_closed");
   const completed = projects.filter((p) => p.opp.status === "post_sale_closed");
   const summary = summarizeProduction(active);
@@ -1532,153 +1530,6 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
         )}
       </div>
     </section>
-  );
-}
-
-/**
- * Pre-sale deal home (S2) — a deal that isn't Won yet still opens as a deal
- * view (not the edit sheet), so every deal opens the same way. Lighter than the
- * post-sale project home: bid + proposals + documents + activity, with the
- * delivery tools noted as unlocking on Won. Same sub-tab bar shape.
- */
-async function PreSaleDealHome({ opp, accountId, dealTab: dealTabRaw = "overview" }: { opp: CommercialOpportunity; accountId: string; dealTab?: string }) {
-  // Every deal shows the SAME tab bar (Overview/Proposals/Invoices/Project/
-  // Documents) so the shape never changes between a bid and a Won job. On a
-  // pre-sale deal, Invoices + Project render a "unlocks when Won" locked state
-  // instead of the live tool. Unknown ?dt= falls back to Overview.
-  const dealTab = ["overview", "proposals", "invoices", "project", "documents"].includes(dealTabRaw) ? dealTabRaw : "overview";
-  const base = `/commercial/accounts/${accountId}`;
-  const name = derivedOppName(opp, null);
-  const oppCode = formatOpportunityNumber(opp.project_number);
-  const location = opp.property_street?.trim() || null;
-  const [documents, activityAll, proposals] = await Promise.all([
-    listDocumentsForParent("opportunity", opp.id),
-    getAccountRecentActivity(accountId, 100),
-    listProposalsForOpp(opp.id),
-  ]);
-  const dealActivity = activityAll.filter((e) => e.opportunity_id === opp.id).slice(0, 8);
-  const lo = opp.bid_value_low_cents;
-  const hi = opp.bid_value_high_cents;
-  const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : "—";
-  // Per-tab lead metrics — mirror the post-sale deal home so pre-sale tabs open
-  // with the same quick-KPI + progress-bar shape.
-  const propWon = proposals.filter((pr) => pr.status === "won").length;
-  const propDecided = proposals.filter((pr) => pr.status === "won" || pr.status === "lost").length;
-  const propWinPct = propDecided > 0 ? Math.round((propWon / propDecided) * 100) : null;
-  const highestBidCents = proposals.reduce((m, pr) => Math.max(m, pr.total_cents), 0);
-  const docTotalMB = documents.reduce((s, d) => s + d.size_bytes, 0) / 1024 / 1024;
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link href={`${base}?tab=deals`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M11 5l-7 7 7 7" /></svg>
-          All deals
-        </Link>
-        <Link href={`${base}?tab=opportunities&edit=${opp.id}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[40px]">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
-          Edit deal details
-        </Link>
-      </div>
-
-      <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {[
-          { key: "overview", label: "Overview", locked: false },
-          { key: "proposals", label: "Proposals", locked: false },
-          { key: "invoices", label: "Invoices", locked: true },
-          { key: "project", label: "Project", locked: true },
-          { key: "documents", label: "Documents", locked: false },
-        ].map((t) => (
-          <Link
-            key={t.key}
-            href={`${base}?tab=projects&project=${opp.id}${t.key === "overview" ? "" : `&dt=${t.key}`}`}
-            title={t.locked ? "Unlocks once this deal is Won" : undefined}
-            className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center gap-1 touch-manipulation transition-colors ${t.key === dealTab ? "border-cc-brand-600 text-ppp-charcoal" : `border-transparent hover:text-ppp-charcoal hover:border-ppp-charcoal-200 ${t.locked ? "text-ppp-charcoal-400" : "text-ppp-charcoal-500"}`}`}
-          >
-            {t.label}
-            {t.locked && (
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="opacity-70"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-            )}
-          </Link>
-        ))}
-      </nav>
-
-      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="min-w-0">
-            {oppCode && <div className="text-[10px] font-mono text-ppp-navy-600 mb-0.5">{oppCode}</div>}
-            <h2 className="text-lg sm:text-xl font-bold text-ppp-charcoal leading-tight break-words">{name}</h2>
-            {location && <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 truncate">{location}</div>}
-          </div>
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-ppp-blue-50 border border-ppp-blue-200 text-[11px] font-bold uppercase tracking-wide text-ppp-blue-700 shrink-0">
-            {oppStatusDisplayLabel(opp.status, opp.sub_status)}
-          </span>
-        </div>
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <ProjectStat label="Bid range" value={bid} />
-          <ProjectStat label="Proposals" value={String(proposals.length)} sub={proposals.length === 0 ? "none yet" : undefined} />
-          <ProjectStat label="Documents" value={String(documents.length)} />
-        </div>
-        <p className="mt-3 text-[11.5px] text-ppp-charcoal-500">Invoices, change orders, AIA billing, submittals + closeout unlock once this deal is Won.</p>
-      </div>
-
-      {dealTab === "proposals" && (
-        <>
-          <DealPanelLead
-            stats={[
-              { label: "Proposals", value: String(proposals.length) },
-              { label: "Won", value: String(propWon), tone: propWon > 0 ? "emerald" : undefined },
-              { label: "Highest bid", value: highestBidCents > 0 ? formatCentsCompact(highestBidCents) : "—" },
-            ]}
-            bar={propWinPct != null ? { label: "Win rate", pct: propWinPct, barClass: "bg-emerald-500", valueClass: "text-emerald-700" } : undefined}
-          />
-          <DealProposalsSection accountId={accountId} oppId={opp.id} proposals={proposals} />
-        </>
-      )}
-      {dealTab === "documents" && (
-        <>
-          <DealPanelLead
-            stats={[
-              { label: "Documents", value: String(documents.length) },
-              { label: "Total size", value: documents.length ? `${docTotalMB.toFixed(1)} MB` : "—" },
-            ]}
-          />
-          <DealDocumentsSection oppId={opp.id} documents={documents} />
-        </>
-      )}
-      {dealTab === "invoices" && (
-        <DealLockedPanel
-          title="Invoices unlock when this deal is Won"
-          note="Bill this project once the bid is Won and moves into delivery. Convert a proposal to Won to start invoicing."
-          editHref={`${base}?tab=opportunities&edit=${opp.id}`}
-        />
-      )}
-      {dealTab === "project" && (
-        <DealLockedPanel
-          title="Project delivery tools unlock when this deal is Won"
-          note="Change orders, AIA billing, submittals and closeout open once the bid is Won and the project is in delivery."
-          editHref={`${base}?tab=opportunities&edit=${opp.id}`}
-        />
-      )}
-      {dealTab === "overview" && <RecentActivityCard entries={dealActivity} accountId={accountId} scope="deal" />}
-    </div>
-  );
-}
-
-/** Locked panel for the post-sale-only deal tabs (Invoices / Project) shown on a
- *  pre-sale bid — explains what unlocks on Won + a shortcut to update the deal. */
-function DealLockedPanel({ title, note, editHref }: { title: string; note: string; editHref: string }) {
-  return (
-    <div className="bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
-      <span aria-hidden className="inline-flex items-center justify-center h-11 w-11 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-3">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-      </span>
-      <p className="text-sm font-semibold text-ppp-charcoal">{title}</p>
-      <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto leading-relaxed">{note}</p>
-      <Link href={editHref} className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">
-        Update deal status
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 6l6 6-6 6" /></svg>
-      </Link>
-    </div>
   );
 }
 

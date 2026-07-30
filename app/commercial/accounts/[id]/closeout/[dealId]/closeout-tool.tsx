@@ -12,7 +12,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { isPostSaleProject, oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
@@ -291,21 +291,8 @@ export async function CloseoutTool({
   const [account, opp] = await Promise.all([getCommercialAccount(id), getCommercialOpportunity(dealId)]);
   if (!account || !opp) notFound();
   if (opp.account_id !== id) notFound();
-  // Close-out is a post-award activity. Explain the gate instead of a silent
-  // bounce (2026-07-29 re-audit: the redirect fired with no message, so the
-  // page read as "broken").
-  if (!isPostSaleProject(opp)) {
-    // Inline (deal Project tab) never renders for a pre-sale deal; on the
-    // standalone route, explain the gate instead of a silent bounce.
-    if (variant === "route") {
-      redirect(
-        `/commercial/accounts/${id}?tab=opportunities&edit=${dealId}&status_error=${encodeURIComponent(
-          "Close-out opens once this deal is Won and in delivery — mark it Won first."
-        )}`
-      );
-    }
-    return null;
-  }
+  // No Won-gate: closeout is available on every deal (Karan 2026-08 — nothing
+  // locked). A bid simply has no package yet.
 
   const dealName = derivedOppName(opp, account.company_name);
   const packages = await listCloseoutPackages(dealId);

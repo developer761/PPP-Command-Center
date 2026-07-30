@@ -11,7 +11,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { isPostSaleProject, oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
@@ -57,7 +57,8 @@ async function requireCommercialUser(): Promise<string> {
  */
 async function ownsAiaContext(accountId: string, dealId: string, appId?: string): Promise<boolean> {
   const opp = await getCommercialOpportunity(dealId);
-  if (!opp || opp.account_id !== accountId || !isPostSaleProject(opp)) return false;
+  // Ownership only — no Won-gate (Karan 2026-08: nothing locked).
+  if (!opp || opp.account_id !== accountId) return false;
   if (appId) {
     const app = await getAiaApplication(appId);
     if (!app || app.opportunity_id !== dealId) return false;
@@ -328,12 +329,8 @@ export async function AiaTool({
   const [account, opp] = await Promise.all([getCommercialAccount(id), getCommercialOpportunity(dealId)]);
   if (!account || !opp) notFound();
   if (opp.account_id !== id) notFound();
-  if (!isPostSaleProject(opp)) {
-    if (variant === "route") {
-      redirect(`/commercial/accounts/${id}?tab=opportunities&edit=${dealId}&status_error=${encodeURIComponent("This opens once the deal is Won and in delivery — mark it Won first.")}`);
-    }
-    return null;
-  }
+  // No Won-gate: AIA billing is available on every deal (Karan 2026-08 —
+  // nothing locked). A bid simply has no applications yet.
 
   const dealName = derivedOppName(opp, account.company_name);
   const b = base(id, dealId);
