@@ -71,7 +71,9 @@ export function ToolDrawer({ title, children }: { title: string; children: React
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18 M6 6l12 12" /></svg>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto overscroll-contain">{children}</div>
+        {/* The tool page's own "← Back to <Tool>" breadcrumb is redundant in a
+            drawer that has its own header + close, so hide it here only. */}
+        <div className="flex-1 overflow-y-auto overscroll-contain [&_[data-tool-back]]:hidden">{children}</div>
       </div>
     </div>
   );
