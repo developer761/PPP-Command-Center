@@ -82,7 +82,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
-import { formatProposalNumber } from "@/lib/commercial/proposals/db";
+import { formatProposalNumber, listProposalsForOpp } from "@/lib/commercial/proposals/db";
 import { listDocumentsForParent } from "@/lib/commercial/documents/db";
 import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/commercial/documents/categories";
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
@@ -814,7 +814,7 @@ function PipelineDealBlock({ accountId, opp }: { accountId: string; opp: Commerc
   return (
     <li>
       <Link
-        href={`/commercial/accounts/${accountId}?tab=opportunities&edit=${opp.id}#deal-row-${opp.id}`}
+        href={`/commercial/accounts/${accountId}?tab=projects&project=${opp.id}`}
         className="block rounded-xl border border-ppp-charcoal-100 bg-surface p-4 hover:border-cc-brand-200 hover:shadow-sm transition-all"
       >
         <div className="flex items-center justify-between gap-3">
@@ -849,11 +849,15 @@ async function AccountProjectsTab({ accountId, projectId }: { accountId: string;
   // vanishing into "No projects yet" — 2026-07-29 audit finding).
   const projects = await listProjects({ accountId, includeClosed: true });
 
-  // Drill-in: one project's home, folded under the account.
+  // Drill-in: one deal's home, folded under the account. Post-sale deals get
+  // the rich project home; pre-sale deals (bids) still get a deal view (S2) so
+  // every deal opens the same way, not the edit sheet.
   if (projectId) {
     const p = projects.find((x) => x.opp.id === projectId);
     if (p) return <AccountProjectHome p={p} accountId={accountId} />;
-    // Not found (e.g. no longer post-sale) — fall through to the list.
+    const opp = await getCommercialOpportunity(projectId);
+    if (opp && opp.account_id === accountId) return <PreSaleDealHome opp={opp} accountId={accountId} />;
+    // Not found / wrong account — fall through to the list.
   }
 
   const active = projects.filter((p) => p.opp.status !== "post_sale_closed");
@@ -1145,43 +1149,117 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
         )}
       </section>
 
-      {/* ── Deal documents — everything filed against this deal in one place.
-          Upload directly here; the tools' PDFs (sent proposal, closeout) also
-          land here. (Katie 2026-08 per-deal documents.) ── */}
-      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
-          <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-white shrink-0">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-          </span>
-          <h3 className="text-[13px] font-bold text-ppp-charcoal">Documents</h3>
-          <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{documents.length}</span>
-        </div>
-        <div className="p-4 space-y-3">
-          <CommercialFilesUploadForm parentType="opportunity" parentId={p.opp.id} />
-          {documents.length === 0 ? (
-            <p className="text-[11.5px] text-ppp-charcoal-500">No documents yet — upload plans, spec books, signed contracts, lien waivers, etc. Sent proposals also file here automatically.</p>
-          ) : (
-            <ul className="divide-y divide-ppp-charcoal-50">
-              {documents.map((d) => (
-                <li key={d.id}>
-                  <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-3 py-2 px-1 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] group">
-                    <span className="min-w-0 flex items-center gap-2">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-                      <span className="min-w-0">
-                        <span className="block text-[12.5px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
-                        <span className="block text-[10.5px] text-ppp-charcoal-500">{commercialDocCategoryLabel(d.category)} · {(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
-                      </span>
-                    </span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+      <DealDocumentsSection oppId={p.opp.id} documents={documents} />
 
       {/* Per-deal activity feed (R3) — self-hides when quiet. */}
+      <RecentActivityCard entries={dealActivity} />
+    </div>
+  );
+}
+
+/** Per-deal documents section — shared by the post-sale project home + the
+ *  pre-sale deal home. Direct upload + a list with download links. */
+function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: import("@/lib/commercial/documents/db").CommercialDocument[] }) {
+  return (
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
+        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-white shrink-0">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+        </span>
+        <h3 className="text-[13px] font-bold text-ppp-charcoal">Documents</h3>
+        <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{documents.length}</span>
+      </div>
+      <div className="p-4 space-y-3">
+        <CommercialFilesUploadForm parentType="opportunity" parentId={oppId} />
+        {documents.length === 0 ? (
+          <p className="text-[11.5px] text-ppp-charcoal-500">No documents yet — upload plans, spec books, signed contracts, lien waivers, etc. Sent proposals also file here automatically.</p>
+        ) : (
+          <ul className="divide-y divide-ppp-charcoal-50">
+            {documents.map((d) => (
+              <li key={d.id}>
+                <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-3 py-2 px-1 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] group">
+                  <span className="min-w-0 flex items-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+                    <span className="min-w-0">
+                      <span className="block text-[12.5px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
+                      <span className="block text-[10.5px] text-ppp-charcoal-500">{commercialDocCategoryLabel(d.category)} · {(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                    </span>
+                  </span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Pre-sale deal home (S2) — a deal that isn't Won yet still opens as a deal
+ * view (not the edit sheet), so every deal opens the same way. Lighter than the
+ * post-sale project home: bid + proposals + documents + activity, with the
+ * delivery tools noted as unlocking on Won. Same sub-tab bar shape.
+ */
+async function PreSaleDealHome({ opp, accountId }: { opp: CommercialOpportunity; accountId: string }) {
+  const base = `/commercial/accounts/${accountId}`;
+  const name = derivedOppName(opp, null);
+  const oppCode = formatOpportunityNumber(opp.project_number);
+  const location = opp.property_street?.trim() || null;
+  const [documents, activityAll, proposals] = await Promise.all([
+    listDocumentsForParent("opportunity", opp.id),
+    getAccountRecentActivity(accountId, 100),
+    listProposalsForOpp(opp.id),
+  ]);
+  const dealActivity = activityAll.filter((e) => e.opportunity_id === opp.id).slice(0, 8);
+  const lo = opp.bid_value_low_cents;
+  const hi = opp.bid_value_high_cents;
+  const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : "—";
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <Link href={base} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M11 5l-7 7 7 7" /></svg>
+          All deals
+        </Link>
+        <Link href={`${base}?tab=opportunities&edit=${opp.id}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[40px]">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
+          Edit deal details
+        </Link>
+      </div>
+
+      <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {[
+          { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${opp.id}`, active: true },
+          { key: "proposals", label: "Proposals", href: `${base}?tab=proposals`, active: false },
+        ].map((t) => (
+          <Link key={t.key} href={t.href} className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${t.active ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`}>
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            {oppCode && <div className="text-[10px] font-mono text-ppp-navy-600 mb-0.5">{oppCode}</div>}
+            <h2 className="text-lg sm:text-xl font-bold text-ppp-charcoal leading-tight break-words">{name}</h2>
+            {location && <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 truncate">{location}</div>}
+          </div>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-ppp-blue-50 border border-ppp-blue-200 text-[11px] font-bold uppercase tracking-wide text-ppp-blue-700 shrink-0">
+            {oppStatusDisplayLabel(opp.status, opp.sub_status)}
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <ProjectStat label="Bid range" value={bid} />
+          <ProjectStat label="Proposals" value={String(proposals.length)} sub={proposals.length === 0 ? "none yet" : undefined} />
+          <ProjectStat label="Documents" value={String(documents.length)} />
+        </div>
+        <p className="mt-3 text-[11.5px] text-ppp-charcoal-500">Invoices, change orders, AIA billing, submittals + closeout unlock once this deal is Won.</p>
+      </div>
+
+      <DealDocumentsSection oppId={opp.id} documents={documents} />
       <RecentActivityCard entries={dealActivity} />
     </div>
   );
