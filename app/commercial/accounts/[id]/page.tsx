@@ -225,7 +225,7 @@ type SP = Promise<{
 // Karan 2026-07-08: added "invoices" + "kpis" as top-level tabs per user
 // ask ("add KPIs tab here as well" + "invoices tab where me kate katie or
 // alex or whoever can quick edit"). Both are leaves — no sub-tabs.
-type PrimaryTab = "overview" | "people" | "deals" | "proposals" | "invoices" | "projects" | "activity";
+type PrimaryTab = "overview" | "people" | "deals" | "documents" | "proposals" | "invoices" | "projects" | "activity";
 type SubTab =
   | "home"
   | "info"
@@ -253,15 +253,16 @@ const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
   // for this account with direct jumps into its Change Orders / AIA Billing /
   // Submittals / Closeout. Sits right after Invoices so the flow reads
   // "pipeline → proposals → invoices → projects (delivery)".
-  // 2026-08 restructure: the account is a lean shelf. Proposals / Invoices /
-  // Projects / Activity moved ONTO the deal, so they're pulled from the account
-  // nav (their routes still resolve for bookmarks/bells — just not linked here).
-  // People stays: GC contacts belong to the company, not a single deal.
+  // 2026-08 refinement (Karan): the account is 3 leaf tabs. Overview = an
+  // all-deal KPI dashboard, Deals = the deal-blocks list, Documents = account
+  // info (editable) + compliance docs + a rollup of every deal's docs. People /
+  // Proposals / Invoices / Projects / Activity moved onto the deal (their routes
+  // still resolve for bookmarks/bells — just unlinked here).
   { key: "overview", label: "Overview" },
   { key: "deals", label: "Deals" },
-  { key: "people", label: "People" },
+  { key: "documents", label: "Documents" },
 ];
-type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "proposals" | "projects">;
+type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "proposals" | "projects" | "documents">;
 const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string }[]> = {
   overview: [
     { key: "home", label: "Summary" },
@@ -284,19 +285,16 @@ const DEFAULT_SUB_BY_PRIMARY: Record<PrimaryWithSubs, SubTab> = {
   deals: "opportunities",
 };
 function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
-  // Karan 2026-07-08: Overview is the default landing tab.
+  // 2026-08: Overview (all-deal KPI dashboard) is the default landing.
   if (!raw) return { primary: "overview", sub: null };
-  if (raw === "overview" || raw === "people" || raw === "deals" || raw === "proposals" || raw === "activity" || raw === "invoices" || raw === "projects") {
+  if (raw === "overview" || raw === "deals" || raw === "documents" || raw === "people" || raw === "proposals" || raw === "activity" || raw === "invoices" || raw === "projects") {
     return { primary: raw, sub: null };
   }
-  // 2026-07-10: `?tab=kpis` legacy links land on Overview → KPIs sub-tab
-  // so old bookmarks + bells don't 404.
-  if (raw === "kpis") return { primary: "overview", sub: "kpis" };
-  // "performance" was the old placeholder — normalize to the new KPIs sub-tab.
-  if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
-  if (raw === "performance") return { primary: "overview", sub: "kpis" };
-  if (raw === "contacts" || raw === "notes") return { primary: "people", sub: raw as SubTab };
-  if (raw === "opportunities" || raw === "documents") return { primary: "deals", sub: raw as SubTab };
+  // Legacy links remap onto the 3 leaf tabs so bookmarks/bells don't 404:
+  if (raw === "kpis" || raw === "performance") return { primary: "overview", sub: null };
+  if (raw === "home") return { primary: "deals", sub: null }; // old Summary → Deals list
+  if (raw === "opportunities") return { primary: "deals", sub: null };
+  if (raw === "info" || raw === "team" || raw === "contacts" || raw === "notes") return { primary: "documents", sub: null };
   return { primary: "overview", sub: null };
 }
 
@@ -317,25 +315,28 @@ export default async function CommercialAccountDetailPage({
   // Named `primaryTab` here to avoid collision with the `primary` local
   // below that refers to the primary contact record.
   const primaryTab: PrimaryTab = resolvedPrimary;
-  // Karan 2026-07-08: invoices + kpis + activity are LEAF tabs — no sub-navigation.
-  // 2026-07-15: proposals promoted to a leaf top-level tab.
-  // Only overview / people / deals carry sub-tabs.
-  const hasSubTabs = primaryTab === "overview" || primaryTab === "people" || primaryTab === "deals";
-  const sub: SubTab | null = !hasSubTabs
-    ? null
-    : (rawSub && SUB_TABS_BY_PRIMARY[primaryTab as PrimaryWithSubs].some((s) => s.key === rawSub))
-    ? (rawSub as SubTab)
-    : resolvedSub && SUB_TABS_BY_PRIMARY[primaryTab as PrimaryWithSubs].some((s) => s.key === resolvedSub)
-    ? resolvedSub
-    : DEFAULT_SUB_BY_PRIMARY[primaryTab as PrimaryWithSubs];
-  // Legacy compat: existing tab dispatchers below check `tab === "info"`
-  // etc. Preserve that shape so the sub-tabs still route correctly.
+  // 2026-08: the account is 3 LEAF tabs — no sub-navigation. Overview →
+  // KPI dashboard, Deals → the deal-blocks list, Documents → info + docs. The
+  // hidden legacy primaries (proposals/invoices/activity/projects) still map to
+  // their content so bookmarks + the deal drill-in (?tab=projects&project=)
+  // keep working.
+  const hasSubTabs = false;
+  const sub: SubTab | null = null;
+  void rawSub;
+  void resolvedSub;
   const tab: SubTab | "activity" | "invoices" | "proposals" | "projects" =
-    primaryTab === "activity" ? "activity"
+    // ?tab=opportunities stays a reachable (unlinked) create/manage surface so
+    // the "New deal" flow keeps working after the nav slimmed to 3 tabs.
+    rawTab === "opportunities" ? "opportunities"
+    : primaryTab === "overview" ? "kpis"
+    : primaryTab === "deals" ? "home"
+    : primaryTab === "documents" ? "documents"
+    : primaryTab === "activity" ? "activity"
     : primaryTab === "invoices" ? "invoices"
     : primaryTab === "proposals" ? "proposals"
     : primaryTab === "projects" ? "projects"
-    : sub!;
+    : primaryTab === "people" ? "contacts"
+    : "home";
 
   const account = await getCommercialAccount(id);
   if (!account) notFound();
@@ -537,7 +538,7 @@ export default async function CommercialAccountDetailPage({
               reachable but doesn't compete for attention. */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
             <Link
-              href={`/commercial/accounts/${account.id}?tab=deals&sub=opportunities&new_deal=1#new-deal`}
+              href={`/commercial/accounts/${account.id}?tab=opportunities&new_deal=1#new-deal`}
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px]"
               title={`Log a new opportunity for ${account.company_name}`}
             >
@@ -634,9 +635,7 @@ export default async function CommercialAccountDetailPage({
 
       {/* Tab content — dispatches on the flat `tab` key. */}
       {tab === "home" && <AccountHome account={account} />}
-      {tab === "info" && <InfoTab account={account} errorMessage={sp.error} />}
       {tab === "activity" && <ActivityTab accountId={account.id} />}
-      {tab === "team" && <TeamTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "contacts" && <ContactsTab accountId={account.id} errorMessage={sp.error} />}
       {tab === "opportunities" && (
         <OpportunitiesTab
@@ -667,7 +666,13 @@ export default async function CommercialAccountDetailPage({
           includeArchived={sp.archived === "1"}
         />
       )}
-      {tab === "documents" && <DocumentsTab accountId={account.id} errorMessage={sp.error} />}
+      {tab === "documents" && (
+        <div className="space-y-5">
+          <InfoTab account={account} errorMessage={sp.error} />
+          <DocumentsTab accountId={account.id} errorMessage={sp.error} />
+          <ContactsTab accountId={account.id} errorMessage={sp.error} />
+        </div>
+      )}
       {tab === "proposals" && (
         <AccountProposalsTab
           accountId={account.id}
@@ -681,7 +686,6 @@ export default async function CommercialAccountDetailPage({
           errorMessage={sp.error}
         />
       )}
-      {tab === "notes" && <NotesTab accountId={account.id} />}
       {tab === "kpis" && <AccountKpisTab accountId={account.id} overview={overview} rollup={invoiceRollup} />}
       {tab === "invoices" && (
         <AccountInvoicesTab
@@ -744,7 +748,7 @@ async function AccountHome({ account }: { account: CommercialAccount }) {
           {totalDeals} deal{totalDeals === 1 ? "" : "s"} under {account.company_name}
         </p>
         <Link
-          href={`/commercial/accounts/${account.id}?tab=deals&sub=opportunities&new_deal=1#new-deal`}
+          href={`/commercial/accounts/${account.id}?tab=opportunities&new_deal=1#new-deal`}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
