@@ -857,27 +857,68 @@ function PipelineDealBlock({ accountId, opp }: { accountId: string; opp: Commerc
   const code = formatOpportunityNumber(opp.project_number);
   const lo = opp.bid_value_low_cents;
   const hi = opp.bid_value_high_cents;
-  const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : null;
+  const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : "—";
+  const prob = opp.probability_pct ?? 0;
+  const weighted = weightedPipelineCents(opp);
+  const location = opp.property_street?.trim() || null;
+  const href = `/commercial/accounts/${accountId}?tab=projects&project=${opp.id}`;
+  // Stage tone — the accent stripe + pill read the pipeline stage at a glance
+  // (Proposal = hot/brand, Estimating = blue, earlier = neutral).
+  const tone =
+    opp.status === "proposal"
+      ? { stripe: "bg-cc-brand-500", pill: "border-cc-brand-200 bg-cc-brand-50 text-cc-brand-700", bar: "bg-cc-brand-500", val: "text-cc-brand-700" }
+      : opp.status === "estimating"
+      ? { stripe: "bg-ppp-blue-500", pill: "border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700", bar: "bg-ppp-blue-500", val: "text-ppp-blue-700" }
+      : { stripe: "bg-ppp-charcoal-300", pill: "border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600", bar: "bg-ppp-charcoal-400", val: "text-ppp-charcoal-600" };
+  // Bid-due urgency (proposal_due_at). Overdue → rose, ≤3 days → amber.
+  const dueMs = opp.proposal_due_at ? new Date(opp.proposal_due_at).getTime() - Date.now() : null;
+  const dueDays = dueMs != null ? Math.ceil(dueMs / 86_400_000) : null;
+  const dueTone = dueDays == null ? "" : dueDays < 0 ? "text-rose-700" : dueDays <= 3 ? "text-amber-700" : "text-ppp-charcoal-500";
+  const dueLabel = dueDays == null ? null : dueDays < 0 ? `Bid ${Math.abs(dueDays)}d overdue` : dueDays === 0 ? "Bid due today" : `Bid due in ${dueDays}d`;
   return (
-    <li>
-      <Link
-        href={`/commercial/accounts/${accountId}?tab=projects&project=${opp.id}`}
-        className="block rounded-xl border border-ppp-charcoal-100 bg-surface p-4 hover:border-cc-brand-200 hover:shadow-sm transition-all"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            {code && <div className="text-[9.5px] font-mono text-ppp-navy-600">{code}</div>}
-            <div className="text-[14px] font-bold text-ppp-charcoal truncate">{name}</div>
-            {opp.property_street?.trim() && <div className="text-[11px] text-ppp-charcoal-500 truncate mt-0.5">{opp.property_street}</div>}
+    <li className="relative bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden hover:border-cc-brand-200 hover:shadow-md transition-all">
+      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${tone.stripe}`} />
+      <div className="pl-5 pr-4 py-3.5">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          {code ? <span className="text-[9.5px] font-mono text-ppp-navy-600 truncate" title="Opportunity ID">{code}</span> : <span />}
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide shrink-0 ${tone.pill}`}>
+            {oppStatusDisplayLabel(opp.status, opp.sub_status)}
+          </span>
+        </div>
+
+        <Link href={href} className="block text-[15px] font-bold text-ppp-charcoal hover:text-cc-brand-800 leading-snug break-words">
+          {name}
+        </Link>
+        {location && <div className="mt-0.5 text-[11px] text-ppp-charcoal-500 truncate">{location}</div>}
+
+        {/* Quick KPIs — the numbers Alex scans a pipeline deal by. */}
+        <div className="mt-3 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/50 px-3 py-2.5">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Bid range</div>
+              <div className="font-condensed text-[15px] font-black text-ppp-charcoal tabular-nums leading-none mt-0.5">{bid}</div>
+            </div>
+            <div>
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Win prob.</div>
+              <div className={`font-condensed text-[15px] font-black tabular-nums leading-none mt-0.5 ${tone.val}`}>{prob}%</div>
+            </div>
+            <div>
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Weighted</div>
+              <div className="font-condensed text-[15px] font-black text-ppp-charcoal tabular-nums leading-none mt-0.5">{weighted > 0 ? formatCentsCompact(weighted) : "—"}</div>
+            </div>
           </div>
-          <div className="text-right shrink-0">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600">
-              {oppStatusDisplayLabel(opp.status, opp.sub_status)}
-            </span>
-            {bid && <div className="text-[13px] font-bold tabular-nums text-ppp-charcoal mt-1">{bid}</div>}
+          <div className="mt-2.5 h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${tone.bar}`} style={{ width: `${Math.min(100, Math.max(0, prob))}%` }} aria-label={`${prob}% win probability`} />
           </div>
         </div>
-      </Link>
+
+        {dueLabel && (
+          <div className={`mt-2 inline-flex items-center gap-1 text-[10.5px] font-semibold ${dueTone}`}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+            {dueLabel}
+          </div>
+        )}
+      </div>
     </li>
   );
 }
