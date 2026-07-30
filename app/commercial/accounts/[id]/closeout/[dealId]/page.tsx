@@ -45,6 +45,7 @@ import {
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { CloseoutItemControls } from "@/components/commercial/closeout-item-controls";
 import { INPUT_CLS, TEXTAREA_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 type PP = Promise<{ id: string; dealId: string }>;
@@ -161,6 +162,39 @@ async function upsertItemAction(formData: FormData) {
   if (!res.ok) redirect(`${base(id, dealId)}?pkg=${pkgId}&error=${encodeURIComponent(res.error)}`);
   revalidateCloseout(id, dealId);
   redirect(`${base(id, dealId)}?pkg=${pkgId}`);
+}
+
+/**
+ * Autosave variant of upsertItemAction — RETURNS a result instead of
+ * redirecting, so the checklist's Include toggle + status select can save the
+ * instant you change them (no Save button, no page jump). Same ownership guard.
+ */
+async function saveItemAutosaveAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  "use server";
+  const userId = await requireUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const pkgId = String(formData.get("pkg_id") ?? "");
+  const itemId = String(formData.get("item_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(pkgId) || !UUID_RE.test(itemId)) {
+    return { ok: false, error: "Bad request." };
+  }
+  if (!(await pkgBelongs(pkgId, id, dealId))) return { ok: false, error: "Not found." };
+  const res = await upsertCloseoutItem(
+    {
+      id: itemId,
+      package_id: pkgId,
+      kind: String(formData.get("kind") ?? "other") as CloseoutItemKind,
+      label: String(formData.get("label") ?? "").trim() || null,
+      included: String(formData.get("included") ?? "") === "on" || String(formData.get("included") ?? "") === "true",
+      item_status: String(formData.get("item_status") ?? "pending") as CloseoutItemStatus,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    },
+    userId
+  );
+  if (!res.ok) return { ok: false, error: res.error };
+  revalidateCloseout(id, dealId);
+  return { ok: true };
 }
 
 async function deleteItemAction(formData: FormData) {
@@ -328,44 +362,26 @@ export default async function CloseoutPage({ params, searchParams }: { params: P
             <ul className="space-y-2">
               {items.map((it) => (
                 <li key={it.id} className="border border-ppp-charcoal-100 rounded-lg p-3">
-                  {editable ? (
-                    <form action={upsertItemAction} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-center">
-                      <Ctx />
-                      <input type="hidden" name="item_id" value={it.id} />
-                      <input type="hidden" name="kind" value={it.kind} />
-                      <input type="hidden" name="label" value={it.label ?? ""} />
+                  {editable || canTickItems ? (
+                    // Autosave: Include toggle (draft only) + status select save
+                    // the instant you change them — no Save button.
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-center">
                       <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-ppp-charcoal">{it.label || CLOSEOUT_ITEM_KIND_LABEL[it.kind]}</div>
+                        <div className="text-[13px] font-semibold text-ppp-charcoal">{it.label || CLOSEOUT_ITEM_KIND_LABEL[it.kind]}{!it.included && !editable && <span className="ml-2 text-[10px] font-medium text-ppp-charcoal-400">(excluded)</span>}</div>
                       </div>
-                      <label className="inline-flex items-center gap-1.5 text-[12px] text-ppp-charcoal-600">
-                        <input type="checkbox" name="included" defaultChecked={it.included} className="w-4 h-4 accent-cc-brand-600" /> Include
-                      </label>
-                      <div className="flex items-center gap-1.5">
-                        <select name="item_status" defaultValue={it.item_status} className={`${SELECT_CLS} !min-h-[40px] !py-1 text-[12px] w-[7.5rem]`} style={SELECT_BG_STYLE}>
-                          {(["pending", "received", "na"] as CloseoutItemStatus[]).map((s) => <option key={s} value={s}>{CLOSEOUT_ITEM_STATUS_LABEL[s]}</option>)}
-                        </select>
-                        <PendingSubmitButton className="px-2.5 py-1.5 rounded-md bg-ppp-charcoal text-white text-[11px] font-semibold min-h-[40px]" pendingLabel="…">Save</PendingSubmitButton>
-                      </div>
-                    </form>
-                  ) : canTickItems ? (
-                    // Issued (sent/acknowledged): the item set is frozen, but
-                    // you can still tick it Received/N-A as docs arrive.
-                    <form action={upsertItemAction} className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-center">
-                      <Ctx />
-                      <input type="hidden" name="item_id" value={it.id} />
-                      <input type="hidden" name="kind" value={it.kind} />
-                      <input type="hidden" name="label" value={it.label ?? ""} />
-                      <input type="hidden" name="included" value={it.included ? "on" : ""} />
-                      <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-ppp-charcoal">{it.label || CLOSEOUT_ITEM_KIND_LABEL[it.kind]}{!it.included && <span className="ml-2 text-[10px] font-medium text-ppp-charcoal-400">(excluded)</span>}</div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <select name="item_status" defaultValue={it.item_status} className={`${SELECT_CLS} !min-h-[40px] !py-1 text-[12px] w-[7.5rem]`} style={SELECT_BG_STYLE}>
-                          {(["pending", "received", "na"] as CloseoutItemStatus[]).map((s) => <option key={s} value={s}>{CLOSEOUT_ITEM_STATUS_LABEL[s]}</option>)}
-                        </select>
-                        <PendingSubmitButton className="px-2.5 py-1.5 rounded-md bg-ppp-charcoal text-white text-[11px] font-semibold min-h-[40px]" pendingLabel="…">Save</PendingSubmitButton>
-                      </div>
-                    </form>
+                      <CloseoutItemControls
+                        itemId={it.id}
+                        pkgId={activePkg.id}
+                        accountId={id}
+                        dealId={dealId}
+                        kind={it.kind}
+                        label={it.label ?? ""}
+                        included={it.included}
+                        itemStatus={it.item_status}
+                        includeEditable={editable}
+                        saveAction={saveItemAutosaveAction}
+                      />
+                    </div>
                   ) : (
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-[13px] font-semibold text-ppp-charcoal">{it.label || CLOSEOUT_ITEM_KIND_LABEL[it.kind]}{!it.included && <span className="ml-2 text-[10px] font-medium text-ppp-charcoal-400">(excluded)</span>}</div>
