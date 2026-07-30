@@ -88,6 +88,7 @@ import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/comme
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
 // Inline delivery tools rendered under the deal's Project sub-tab (2026-08).
 import { ChangeOrdersTool } from "./change-orders/[dealId]/change-orders-tool";
+import { CloseoutTool } from "./closeout/[dealId]/closeout-tool";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -1339,7 +1340,15 @@ async function ProjectToolsPanel({
           }}
         />
       )}
-      {projectTool !== "change-orders" && (
+      {projectTool === "closeout" && (
+        <CloseoutTool
+          id={accountId}
+          dealId={dealId}
+          variant="inline"
+          sp={{ pkg: sp?.pkg, error: sp?.error, ok: sp?.ok }}
+        />
+      )}
+      {(projectTool === "aia" || projectTool === "submittals") && (
         <InterimToolPanel
           label={PROJECT_TOOLS.find((t) => t.key === projectTool)?.label ?? "Tool"}
           href={`${base}/${PROJECT_TOOLS.find((t) => t.key === projectTool)?.route}/${dealId}`}
