@@ -175,88 +175,76 @@ export function AiaApplicationDetail({
           </div>
         )}
 
-        <div className="space-y-2">
-          {lines.length === 0 && (
-            <p className="text-[12px] text-ppp-charcoal-500 italic">{editable ? "No line items yet — add the first below." : "No line items."}</p>
-          )}
-          {lines.map((li) => {
-            const total = lineCompletedStoredCents(li);
-            const balance = li.scheduled_value_cents - total;
-            if (!editable) {
-              return (
-                <div key={li.id} className="rounded-lg border border-ppp-charcoal-100 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-[12.5px] font-semibold text-ppp-charcoal">
-                        {li.item_no ? <span className="text-ppp-charcoal-400 mr-1.5">{li.item_no}</span> : null}{li.description || "—"}
+        {/* 2026-07-29 rebuild: a real schedule-of-values TABLE — one header
+            row + tight aligned rows — instead of stacked cards that repeated
+            the column labels on every line. Scrolls horizontally on narrow
+            screens (a G703 is inherently wide). */}
+        {lines.length === 0 ? (
+          <p className="text-[12px] text-ppp-charcoal-500 italic">{editable ? "No line items yet — add the first below." : "No line items."}</p>
+        ) : (
+          <div className="overflow-x-auto -mx-1 px-1">
+            <div className="min-w-[860px]">
+              {/* Header row */}
+              <div className="grid grid-cols-[46px_minmax(150px,1fr)_92px_92px_92px_92px_96px_104px] gap-2 px-1 pb-1.5 border-b-2 border-ppp-charcoal-200 text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
+                <div>Item</div>
+                <div>Description</div>
+                <div className="text-right">Scheduled</div>
+                <div className="text-right">From prev.</div>
+                <div className="text-right">This period</div>
+                <div className="text-right">Stored</div>
+                <div className="text-right">Balance</div>
+                <div className="text-right">{editable ? "" : " "}</div>
+              </div>
+              <div className="divide-y divide-ppp-charcoal-100">
+                {lines.map((li) => {
+                  const total = lineCompletedStoredCents(li);
+                  const balance = li.scheduled_value_cents - total;
+                  if (!editable) {
+                    return (
+                      <div key={li.id} className="grid grid-cols-[46px_minmax(150px,1fr)_92px_92px_92px_92px_96px_104px] gap-2 px-1 py-2 items-center text-[12px] tabular-nums text-ppp-charcoal-700">
+                        <div className="text-ppp-charcoal-400">{li.item_no ?? ""}</div>
+                        <div className="font-medium text-ppp-charcoal truncate whitespace-normal" title={li.description}>{li.description || "—"}</div>
+                        <div className="text-right">{formatCentsFull(li.scheduled_value_cents)}</div>
+                        <div className="text-right">{formatCentsFull(li.from_previous_cents)}</div>
+                        <div className="text-right">{formatCentsFull(li.this_period_cents)}</div>
+                        <div className="text-right">{formatCentsFull(li.materials_stored_cents)}</div>
+                        <div className="text-right font-semibold text-ppp-charcoal">{formatCentsFull(balance)}</div>
+                        <div aria-hidden>&nbsp;</div>
                       </div>
-                      <div className="text-[11px] text-ppp-charcoal-500 tabular-nums mt-0.5 flex flex-wrap gap-x-3">
-                        <span>Sched {formatCentsFull(li.scheduled_value_cents)}</span>
-                        <span>Prev {formatCentsFull(li.from_previous_cents)}</span>
-                        <span>This {formatCentsFull(li.this_period_cents)}</span>
-                        <span>Stored {formatCentsFull(li.materials_stored_cents)}</span>
+                    );
+                  }
+                  const CELL = "w-full px-1.5 py-1 border border-ppp-charcoal-200 rounded text-[12px] bg-surface focus:outline-none focus:ring-1 focus:ring-cc-brand-500/50 min-h-[34px]";
+                  return (
+                    <form key={li.id} action={upsertLineAction} className="grid grid-cols-[46px_minmax(150px,1fr)_92px_92px_92px_92px_96px_104px] gap-2 px-1 py-1.5 items-center">
+                      <input type="hidden" name="app_id" value={application.id} />
+                      <Ctx />
+                      <input type="hidden" name="line_id" value={li.id} />
+                      <input name="item_no" aria-label="Item number" defaultValue={li.item_no ?? ""} className={CELL} />
+                      <input name="description" aria-label="Description" defaultValue={li.description} maxLength={500} className={CELL} />
+                      <input name="scheduled" aria-label="Scheduled value" inputMode="decimal" defaultValue={(li.scheduled_value_cents / 100).toFixed(2)} className={`${CELL} text-right tabular-nums`} />
+                      <input name="from_previous" aria-label="From previous" inputMode="decimal" defaultValue={(li.from_previous_cents / 100).toFixed(2)} className={`${CELL} text-right tabular-nums`} />
+                      <input name="this_period" aria-label="This period" inputMode="decimal" defaultValue={(li.this_period_cents / 100).toFixed(2)} className={`${CELL} text-right tabular-nums`} />
+                      <input name="materials_stored" aria-label="Materials stored" inputMode="decimal" defaultValue={(li.materials_stored_cents / 100).toFixed(2)} className={`${CELL} text-right tabular-nums`} />
+                      <div className="text-right text-[12px] font-semibold tabular-nums text-ppp-charcoal">{formatCentsFull(balance)}</div>
+                      <div className="flex items-center justify-end gap-1">
+                        <PendingSubmitButton pendingLabel="…" className="px-2 py-1 rounded bg-cc-brand-600 text-white text-[11px] font-semibold hover:bg-cc-brand-700 min-h-[34px]">Save</PendingSubmitButton>
+                        <ConfirmSubmitButton
+                          message="Remove this line?"
+                          pendingLabel="…"
+                          formAction={deleteLineAction}
+                          className="h-[34px] w-[34px] inline-flex items-center justify-center rounded text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18 M6 6l12 12" /></svg>
+                          <span className="sr-only">Remove line</span>
+                        </ConfirmSubmitButton>
                       </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Done · Balance</div>
-                      <div className="text-[12px] font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(total)} · {formatCentsFull(balance)}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-            return (
-              <form key={li.id} action={upsertLineAction} className="rounded-lg border border-ppp-charcoal-100 p-3 space-y-2">
-                <input type="hidden" name="app_id" value={application.id} />
-                <Ctx />
-                <input type="hidden" name="line_id" value={li.id} />
-                <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
-                  <label className="sm:col-span-1 block">
-                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Item</span>
-                    <input name="item_no" defaultValue={li.item_no ?? ""} className={`${INPUT_CLS} !py-1.5 text-[12px]`} />
-                  </label>
-                  <label className="col-span-2 sm:col-span-4 block">
-                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Description</span>
-                    <input name="description" defaultValue={li.description} maxLength={500} className={`${INPUT_CLS} !py-1.5 text-[12px]`} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Scheduled</span>
-                    <input name="scheduled" inputMode="decimal" defaultValue={(li.scheduled_value_cents / 100).toFixed(2)} className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">From prev.</span>
-                    <input name="from_previous" inputMode="decimal" defaultValue={(li.from_previous_cents / 100).toFixed(2)} className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">This period</span>
-                    <input name="this_period" inputMode="decimal" defaultValue={(li.this_period_cents / 100).toFixed(2)} className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Stored</span>
-                    <input name="materials_stored" inputMode="decimal" defaultValue={(li.materials_stored_cents / 100).toFixed(2)} className={`${INPUT_CLS} !py-1.5 text-[12px] tabular-nums`} />
-                  </label>
-                  <div className="sm:col-span-2 flex items-center gap-2 justify-end">
-                    <div className="text-right">
-                      <div className="text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Balance</div>
-                      <div className="text-[12px] font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(balance)}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 justify-end">
-                  <PendingSubmitButton pendingLabel="Saving…" className="px-3 py-1.5 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[36px]">Save</PendingSubmitButton>
-                  <ConfirmSubmitButton
-                    message="Remove this line?"
-                    pendingLabel="Removing…"
-                    formAction={deleteLineAction}
-                    className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[36px]"
-                  >
-                    Remove
-                  </ConfirmSubmitButton>
-                </div>
-              </form>
-            );
-          })}
-        </div>
+                    </form>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add line (draft only) */}
         {editable && (

@@ -56,9 +56,12 @@ const navSections: NavSection[] = [
   {
     heading: "Post-Contract",
     items: [
+      // Karan 2026-07-29: Projects is the hub, Invoices second, then the four
+      // production tools each get their own tab. Change Orders + AIA Billing
+      // are added here once their index pages land (Phase 1).
       { label: "Projects", href: "/commercial/projects", icon: <IconHardHat /> },
-      { label: "Submittals", href: "/commercial/post-job/submittals", icon: <IconChangeOrder /> },
       { label: "Invoices", href: "/commercial/invoices", icon: <IconDollar /> },
+      { label: "Submittals", href: "/commercial/post-job/submittals", icon: <IconChangeOrder /> },
       { label: "Closeout & warranty", href: "/commercial/post-job/closeout", icon: <IconCheckSquare /> },
     ],
   },
