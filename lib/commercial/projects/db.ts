@@ -30,6 +30,19 @@ export type ProjectRow = {
   latestAppStatus: "draft" | "submitted" | "paid" | null;
   /** Latest application's Total Completed & Stored ÷ contract sum to date. */
   percentCompleteBps: number | null;
+  // ── Billing (financial truth, 2026-07-29) ──
+  /** Σ of this project's non-void invoice totals. */
+  invoicedCents: number;
+  /** Σ of payments recorded against those invoices. */
+  paidCents: number;
+  invoiceCount: number;
+  draftInvoiceCount: number;
+  /** Contract to date − invoiced, clamped ≥ 0. "How much you can still bill." */
+  leftToBillCents: number;
+  /** Invoiced − paid. The GC's outstanding balance (AR). */
+  outstandingCents: number;
+  /** Invoiced beyond the contract sum — flagged, never shown as negative. */
+  overBilled: boolean;
 };
 
 function bidMidCents(o: CommercialOpportunity): number {
@@ -123,6 +136,47 @@ export async function listProjects(opts: {
     coByOpp.set(c.opportunity_id, e);
   }
 
+  // ── Batch: invoicing per opp (2026-07-29 financial truth). Invoiced = Σ
+  // non-void invoice totals; Paid = Σ payments. These drive "left to bill"
+  // (contract − invoiced) + "outstanding" (invoiced − paid) so billing
+  // actually moves the numbers — the old rollup ignored invoices entirely. ──
+  const invData = await paginateAll<{ opportunity_id: string; status: string; total_cents: number; paid_cents: number }>(
+    () =>
+      sb
+        .from("commercial_invoices")
+        .select("opportunity_id, status, total_cents, paid_cents")
+        .in("opportunity_id", oppIds)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+  );
+  const invByOpp = new Map<string, { invoiced: number; paid: number; invoiceCount: number; draftCount: number }>();
+  for (const inv of invData) {
+    if (inv.status === "void") continue;
+    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, paid: 0, invoiceCount: 0, draftCount: 0 };
+    e.invoiced += Number(inv.total_cents);
+    e.paid += Number(inv.paid_cents);
+    e.invoiceCount += 1;
+    if (inv.status === "draft") e.draftCount += 1;
+    invByOpp.set(inv.opportunity_id, e);
+  }
+
+  // ── Batch: accepted (won) proposal total per opp — the signed contract. ──
+  const propData = await paginateAll<{ opportunity_id: string; total_cents: number }>(
+    () =>
+      sb
+        .from("commercial_proposals")
+        .select("opportunity_id, total_cents")
+        .in("opportunity_id", oppIds)
+        .eq("status", "won")
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+  );
+  const acceptedProposalByOpp = new Map<string, number>();
+  for (const p of propData) {
+    // If somehow >1 won proposal, keep the largest (defensive; should be one).
+    acceptedProposalByOpp.set(p.opportunity_id, Math.max(acceptedProposalByOpp.get(p.opportunity_id) ?? 0, Number(p.total_cents)));
+  }
+
   // ── Batch: latest AIA application per opp. We fetch ALL apps (paginated) and
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
@@ -190,12 +244,20 @@ export async function listProjects(opts: {
       hasBillingApp: latest != null,
       originalContractCents: latest?.original_contract_cents ?? 0,
       sovTotalCents: sovTotal,
+      acceptedProposalCents: acceptedProposalByOpp.get(o.id) ?? 0,
       bidMidCents: bidMidCents(o),
     });
     const contractToDate = base + co.netApproved;
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
     const retainageHeld = latest ? retainageByApp.get(latest.id) ?? 0 : 0;
     const pct = latest && contractToDate > 0 ? Math.round((completed / contractToDate) * 10000) : null;
+    const inv = invByOpp.get(o.id) ?? { invoiced: 0, paid: 0, invoiceCount: 0, draftCount: 0 };
+    // Left to bill = contract − invoiced (clamped). Over-billed when invoiced
+    // exceeds the contract (unapproved CO, deduct CO, or a mistake) — surfaced,
+    // never a negative. hasContract gates whether "left to bill" is meaningful.
+    const hasContract = contractToDate > 0;
+    const leftToBill = hasContract ? Math.max(0, contractToDate - inv.invoiced) : 0;
+    const overBilled = hasContract && inv.invoiced > contractToDate;
     return {
       opp: o as CommercialOpportunity,
       accountId: o.account?.id ?? o.account_id,
@@ -211,22 +273,38 @@ export async function listProjects(opts: {
       latestAppNumber: latest?.application_number ?? null,
       latestAppStatus: (latest?.status as ProjectRow["latestAppStatus"]) ?? null,
       percentCompleteBps: pct,
+      invoicedCents: inv.invoiced,
+      paidCents: inv.paid,
+      invoiceCount: inv.invoiceCount,
+      draftInvoiceCount: inv.draftCount,
+      leftToBillCents: leftToBill,
+      outstandingCents: inv.invoiced - inv.paid,
+      overBilled,
     };
   });
 }
 
-/** Portfolio (or per-account) roll-up of production numbers. */
+/** Portfolio (or per-account) roll-up of production + billing numbers. */
 export type ProductionSummary = {
   activeProjects: number;
   inProductionProjects: number;
   billingProjects: number;
   contractValueCents: number;
-  /** Work completed & stored to date (AIA line 4) — production, not "billed". */
+  /** Work completed & stored to date (AIA line 4) — PRODUCTION, not "billed". */
   completedToDateCents: number;
+  /** DEPRECATED name kept for callers: now = leftToBillCents (contract −
+   *  invoiced), not contract − completed. See leftToBillCents. */
   remainingCents: number;
   retainageHeldCents: number;
   pendingCoCount: number;
   pendingCoCents: number;
+  // ── Billing (financial truth) ──
+  invoicedCents: number;
+  paidCents: number;
+  /** Contract to date − invoiced (clamped ≥ 0). "How much you can still bill." */
+  leftToBillCents: number;
+  /** Invoiced − paid. Outstanding AR across these projects. */
+  outstandingCents: number;
 };
 
 /**
@@ -244,12 +322,20 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
   let pendingCoCents = 0;
   let inProductionProjects = 0;
   let billingProjects = 0;
+  let invoicedCents = 0;
+  let paidCents = 0;
+  let leftToBillCents = 0;
   for (const r of rows) {
     contractValueCents += r.contractToDateCents;
     completedToDateCents += r.completedToDateCents;
     retainageHeldCents += r.retainageHeldCents;
     pendingCoCount += r.pendingCoCount;
     pendingCoCents += r.pendingCoCents;
+    invoicedCents += r.invoicedCents;
+    paidCents += r.paidCents;
+    // Sum per-project left-to-bill (already clamped ≥0 per project), so one
+    // over-billed job can't mask another's remaining headroom.
+    leftToBillCents += r.leftToBillCents;
     if (r.opp.status === "in_progress" || r.opp.status === "billing") inProductionProjects += 1;
     if (r.opp.status === "billing") billingProjects += 1;
   }
@@ -259,9 +345,15 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     billingProjects,
     contractValueCents,
     completedToDateCents,
-    remainingCents: Math.max(0, contractValueCents - completedToDateCents),
     retainageHeldCents,
     pendingCoCount,
     pendingCoCents,
+    invoicedCents,
+    paidCents,
+    leftToBillCents,
+    outstandingCents: invoicedCents - paidCents,
+    // remaining now means "left to bill" (contract − invoiced), the number
+    // operators actually expect when they invoice.
+    remainingCents: leftToBillCents,
   };
 }

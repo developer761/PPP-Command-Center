@@ -740,9 +740,9 @@ async function AccountProjectsTab({ accountId, projectId }: { accountId: string;
       {active.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <ProjectStat label="Under contract" value={formatCentsCompact(summary.contractValueCents)} sub={`${active.length} active project${active.length === 1 ? "" : "s"}`} />
-          <ProjectStat label="Completed to date" value={formatCentsCompact(summary.completedToDateCents)} tone="emerald" />
-          <ProjectStat label="Left to bill" value={formatCentsCompact(summary.remainingCents)} />
-          <ProjectStat label="Pending COs" value={String(summary.pendingCoCount)} sub={summary.pendingCoCount > 0 ? "awaiting a decision" : "all decided"} tone={summary.pendingCoCount > 0 ? "amber" : undefined} />
+          <ProjectStat label="Invoiced" value={formatCentsCompact(summary.invoicedCents)} tone="emerald" sub={`${formatCentsCompact(summary.paidCents)} paid`} />
+          <ProjectStat label="Left to bill" value={formatCentsCompact(summary.leftToBillCents)} />
+          <ProjectStat label="Outstanding" value={formatCentsCompact(summary.outstandingCents)} sub={summary.pendingCoCount > 0 ? `${summary.pendingCoCount} CO${summary.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={summary.outstandingCents > 0 ? "amber" : undefined} />
         </div>
       )}
       {active.length > 0 && (
@@ -814,10 +814,10 @@ function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string
           </span>
         </div>
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ProjectStat label="Contract to date" value={hasContract ? formatCentsCompact(p.contractToDateCents) : "—"} sub={hasContract ? undefined : "Set on AIA"} />
-          <ProjectStat label="Completed" value={formatCentsCompact(p.completedToDateCents)} tone="emerald" />
-          <ProjectStat label="Left to bill" value={formatCentsCompact(Math.max(0, p.contractToDateCents - p.completedToDateCents))} />
-          <ProjectStat label="Pending COs" value={String(p.pendingCoCount)} tone={p.pendingCoCount > 0 ? "amber" : undefined} />
+          <ProjectStat label="Contract to date" value={hasContract ? formatCentsCompact(p.contractToDateCents) : "—"} sub={hasContract ? undefined : "Set the contract"} />
+          <ProjectStat label="Invoiced" value={formatCentsCompact(p.invoicedCents)} tone="emerald" sub={p.paidCents > 0 ? `${formatCentsCompact(p.paidCents)} paid` : undefined} />
+          <ProjectStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={hasContract ? formatCentsCompact(p.overBilled ? p.invoicedCents - p.contractToDateCents : p.leftToBillCents) : "—"} tone={p.overBilled ? "amber" : undefined} />
+          <ProjectStat label="Outstanding" value={formatCentsCompact(p.outstandingCents)} sub={p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={p.outstandingCents > 0 ? "amber" : undefined} />
         </div>
         {hasContract && pct != null && (
           <div className="mt-3">

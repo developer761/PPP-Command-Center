@@ -41,10 +41,10 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiTile label="Active projects" value={String(activeSummary.activeProjects)} sub={includeClosed ? "closed shown below" : "under contract"} tone="navy" icon={<IconHardHat />} />
-        <KpiTile label="In production" value={String(activeSummary.inProductionProjects)} sub="in progress or billing" tone="blue" icon={<IconGauge />} />
-        <KpiTile label="Contract value" value={formatCentsCompact(activeSummary.contractValueCents)} sub="under management" tone="neutral" icon={<IconContract />} />
-        <KpiTile label="Change orders pending" value={String(activeSummary.pendingCoCount)} sub={activeSummary.pendingCoCount > 0 ? `${formatCentsCompact(activeSummary.pendingCoCents)} awaiting` : "none open"} tone={activeSummary.pendingCoCount > 0 ? "amber" : "neutral"} icon={<IconChangeOrder />} />
+        <KpiTile label="Under contract" value={formatCentsCompact(activeSummary.contractValueCents)} sub={`${activeSummary.activeProjects} active project${activeSummary.activeProjects === 1 ? "" : "s"}`} tone="navy" icon={<IconContract />} />
+        <KpiTile label="Invoiced" value={formatCentsCompact(activeSummary.invoicedCents)} sub={`${formatCentsCompact(activeSummary.paidCents)} paid`} tone="blue" icon={<IconGauge />} />
+        <KpiTile label="Left to bill" value={formatCentsCompact(activeSummary.leftToBillCents)} sub="contract − invoiced" tone="neutral" icon={<IconHardHat />} />
+        <KpiTile label="Outstanding" value={formatCentsCompact(activeSummary.outstandingCents)} sub={activeSummary.pendingCoCount > 0 ? `${activeSummary.pendingCoCount} CO${activeSummary.pendingCoCount === 1 ? "" : "s"} pending` : "invoiced − paid"} tone={activeSummary.outstandingCents > 0 ? "amber" : "neutral"} icon={<IconChangeOrder />} />
       </div>
 
       {/* Filters */}

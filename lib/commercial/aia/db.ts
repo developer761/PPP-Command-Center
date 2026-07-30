@@ -497,10 +497,26 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
     const lines = await listAiaLineItems(app.id);
     sovTotalCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
   }
+  // Accepted (won) proposal = the signed contract, used when there's no AIA yet
+  // (2026-07-29 financial truth — keeps this in sync with listProjects).
+  let acceptedProposalCents = 0;
+  if (!app) {
+    const { data: propRow } = await sb
+      .from("commercial_proposals")
+      .select("total_cents")
+      .eq("opportunity_id", opportunity_id)
+      .eq("status", "won")
+      .is("deleted_at", null)
+      .order("total_cents", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    acceptedProposalCents = Number((propRow as { total_cents: number } | null)?.total_cents ?? 0);
+  }
   return pickContractBaseCents({
     hasBillingApp: !!app,
     originalContractCents: app?.original_contract_cents ?? 0,
     sovTotalCents,
+    acceptedProposalCents,
     bidMidCents,
   });
 }

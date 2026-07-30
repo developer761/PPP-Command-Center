@@ -468,39 +468,35 @@ export default async function CommercialDashboardPage() {
             <KpiTile
               tone="blue"
               value={formatCentsCompact(production.contractValueCents)}
-              label="Contract value"
-              sub="Under management (incl. approved COs)"
+              label="Under contract"
+              sub={completedPctOfContract !== null ? `${completedPctOfContract}% work complete` : "Incl. approved COs"}
               href="/commercial/projects"
               icon={<IconContract />}
             />
             <KpiTile
               tone="emerald"
-              value={formatCentsCompact(production.completedToDateCents)}
-              label="Completed to date"
-              sub={completedPctOfContract !== null ? `${completedPctOfContract}% of contract` : "Work in place"}
+              value={formatCentsCompact(production.invoicedCents)}
+              label="Invoiced"
+              sub={`${formatCentsCompact(production.paidCents)} paid`}
               href="/commercial/projects"
               icon={<IconChart />}
             />
             <KpiTile
               tone="blue"
-              value={formatCentsCompact(production.remainingCents)}
-              label="Left to complete"
-              sub={
-                production.retainageHeldCents > 0
-                  ? `${formatCentsCompact(production.retainageHeldCents)} retainage held`
-                  : "Contract still to finish"
-              }
+              value={formatCentsCompact(production.leftToBillCents)}
+              label="Left to bill"
+              sub="Contract − invoiced"
               href="/commercial/projects"
               icon={<IconDollar />}
             />
             <KpiTile
-              tone={production.pendingCoCount > 0 ? "amber" : "blue"}
-              value={String(production.pendingCoCount)}
-              label="Change orders pending"
+              tone={production.outstandingCents > 0 ? "amber" : "blue"}
+              value={formatCentsCompact(production.outstandingCents)}
+              label="Outstanding"
               sub={
-                production.pendingCoCount === 0
-                  ? "None awaiting a decision"
-                  : `${formatCentsCompact(production.pendingCoCents)} awaiting decision`
+                production.pendingCoCount > 0
+                  ? `${production.pendingCoCount} CO${production.pendingCoCount === 1 ? "" : "s"} pending`
+                  : "Invoiced − paid"
               }
               href="/commercial/projects"
               icon={<IconChangeOrder />}

@@ -58,7 +58,9 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
   const location = p.opp.property_street?.trim() || null;
   const tone = projectStatusTone(p.opp.status);
   const hasContract = p.contractToDateCents > 0;
-  const remaining = Math.max(0, p.contractToDateCents - p.completedToDateCents);
+  // Billing-honest: % billed = invoiced ÷ contract (the number that moves when
+  // you invoice). Production % (AIA completed) shown as a secondary note.
+  const pctBilled = hasContract ? Math.min(100, Math.round((p.invoicedCents / p.contractToDateCents) * 100)) : 0;
   // Card title → the project's HOME under the account (folded), NOT the edit
   // sheet. Pointing at ?edit= made the edit form auto-pop on navigation
   // (2026-07-29 bug). The project home is a read view with the tool jumps;
@@ -98,20 +100,23 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
           <div className="mt-3 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/50 px-3 py-2.5">
             <div className="grid grid-cols-3 gap-2 text-center">
               <MoneyStat label="Contract" value={formatCentsCompact(p.contractToDateCents)} />
-              <MoneyStat label="Completed" value={formatCentsCompact(p.completedToDateCents)} tone="emerald" />
-              <MoneyStat label="Remaining" value={formatCentsCompact(remaining)} />
+              <MoneyStat label="Invoiced" value={formatCentsCompact(p.invoicedCents)} tone="emerald" />
+              <MoneyStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={p.overBilled ? formatCentsCompact(p.invoicedCents - p.contractToDateCents) : formatCentsCompact(p.leftToBillCents)} />
             </div>
             <div className="mt-2.5">
               <div className="h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct ?? 0}%` }} aria-label={`${pct ?? 0}% complete`} />
+                <div className={`h-full rounded-full transition-all ${p.overBilled ? "bg-amber-500" : "bg-cc-brand-500"}`} style={{ width: `${pctBilled}%` }} aria-label={`${pctBilled}% billed`} />
               </div>
               <div className="mt-1 flex items-center justify-between text-[10px]">
-                <span className="tabular-nums font-semibold text-emerald-700">{pct ?? 0}% complete</span>
-                {p.netApprovedCoCents !== 0 && (
-                  <span className={`tabular-nums font-medium ${p.netApprovedCoCents < 0 ? "text-rose-700" : "text-emerald-700"}`}>
-                    incl. {p.netApprovedCoCents < 0 ? "−" : "+"}{formatCentsCompact(Math.abs(p.netApprovedCoCents))} COs
-                  </span>
-                )}
+                <span className={`tabular-nums font-semibold ${p.overBilled ? "text-amber-700" : "text-cc-brand-700"}`}>{pctBilled}% billed{p.overBilled ? " · over contract" : ""}</span>
+                <span className="tabular-nums font-medium text-ppp-charcoal-500">
+                  {pct != null ? `${pct}% complete` : ""}
+                  {p.netApprovedCoCents !== 0 && (
+                    <span className={p.netApprovedCoCents < 0 ? "text-rose-700" : "text-emerald-700"}>
+                      {pct != null ? " · " : ""}{p.netApprovedCoCents < 0 ? "−" : "+"}{formatCentsCompact(Math.abs(p.netApprovedCoCents))} COs
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
           </div>

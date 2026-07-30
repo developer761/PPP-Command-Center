@@ -130,6 +130,10 @@ export function pickContractBaseCents(opts: {
   hasBillingApp: boolean;
   originalContractCents: number;
   sovTotalCents: number;
+  /** Total of the ACCEPTED (won) proposal — the signed contract number. Sits
+   *  above the bid midpoint in the ladder: a won proposal is a real contract,
+   *  a bid range is just an estimate. Optional for backward-compatible callers. */
+  acceptedProposalCents?: number;
   bidMidCents: number;
 }): number {
   // Once a billing app exists, the AIA doc is the system of record — the base is
@@ -138,5 +142,8 @@ export function pickContractBaseCents(opts: {
   if (opts.hasBillingApp) {
     return opts.originalContractCents > 0 ? opts.originalContractCents : opts.sovTotalCents;
   }
+  // No AIA yet: the accepted proposal IS the contract. Fall back to the bid
+  // midpoint only when there's no signed proposal.
+  if (opts.acceptedProposalCents && opts.acceptedProposalCents > 0) return opts.acceptedProposalCents;
   return opts.bidMidCents;
 }
