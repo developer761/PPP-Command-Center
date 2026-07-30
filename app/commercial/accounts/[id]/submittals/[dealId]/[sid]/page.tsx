@@ -1422,7 +1422,7 @@ export default async function SubmittalDetailPage({
             {statusLog.map((log) => {
               const tone = submittalStatusTone(log.to_status);
               // Single solid dot in the tone's primary color, sitting on
-              // a `ring-white` halo so it punches over the vertical rail
+              // a `ring-surface` halo so it punches over the vertical rail
               // cleanly. Audit recheck 2026-06-30 caught the prior
               // outer-ring-overridden + same-color-inner-dot = invisible
               // nested-span structure. One dot, one color, done.
@@ -1440,7 +1440,7 @@ export default async function SubmittalDetailPage({
                 <li key={log.id} className="relative flex items-start gap-3 pl-1">
                   <span
                     aria-hidden
-                    className={`relative z-10 w-[15px] h-[15px] rounded-full ring-4 ring-white shrink-0 mt-0.5 ${dotCls}`}
+                    className={`relative z-10 w-[15px] h-[15px] rounded-full ring-4 ring-surface shrink-0 mt-0.5 ${dotCls}`}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline flex-wrap gap-x-2">
@@ -1848,7 +1848,7 @@ function ResponseRecorder({
           ▶
         </span>
       </summary>
-      <form action={changeStatusAction} className="px-3 pb-3 pt-1 space-y-3 border-t border-white/60">
+      <form action={changeStatusAction} className="px-3 pb-3 pt-1 space-y-3 border-t border-ppp-charcoal-100">
         <input type="hidden" name="opportunity_id" value={opportunityId} />
         <input type="hidden" name="submittal_id" value={submittalId} />
         <input type="hidden" name="to_status" value={to_status} />

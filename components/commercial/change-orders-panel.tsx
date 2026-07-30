@@ -292,7 +292,7 @@ export async function ChangeOrdersPanel({
                                   <input type="hidden" name="account_id" value={accountId} />
                                   <input type="hidden" name="co_id" value={co.id} />
                                   <input type="hidden" name="decision" value="approved" />
-                                  <PendingSubmitButton pendingLabel="Approving…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-600 min-h-[44px]">Approve</PendingSubmitButton>
+                                  <PendingSubmitButton pendingLabel="Approving…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 min-h-[44px]">Approve</PendingSubmitButton>
                                 </form>
                                 <form action={decideAction}>
                                   <input type="hidden" name="opp_id" value={oppId} />

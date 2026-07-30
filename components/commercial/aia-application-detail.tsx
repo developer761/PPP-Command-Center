@@ -213,7 +213,7 @@ export function AiaApplicationDetail({
                       </div>
                     );
                   }
-                  const CELL = "w-full px-1.5 py-1 border border-ppp-charcoal-200 rounded text-[12px] bg-surface focus:outline-none focus:ring-1 focus:ring-cc-brand-500/50 min-h-[34px]";
+                  const CELL = "w-full px-1.5 py-1 border border-ppp-charcoal-200 rounded text-[12px] bg-surface focus:outline-none focus:ring-1 focus:ring-cc-brand-500/50 min-h-[40px]";
                   return (
                     <form key={li.id} action={upsertLineAction} className="grid grid-cols-[46px_minmax(150px,1fr)_92px_92px_92px_92px_96px_104px] gap-2 px-1 py-1.5 items-center">
                       <input type="hidden" name="app_id" value={application.id} />
@@ -227,12 +227,12 @@ export function AiaApplicationDetail({
                       <input name="materials_stored" aria-label="Materials stored" inputMode="decimal" defaultValue={(li.materials_stored_cents / 100).toFixed(2)} className={`${CELL} text-right tabular-nums`} />
                       <div className="text-right text-[12px] font-semibold tabular-nums text-ppp-charcoal">{formatCentsFull(balance)}</div>
                       <div className="flex items-center justify-end gap-1">
-                        <PendingSubmitButton pendingLabel="…" className="px-2 py-1 rounded bg-cc-brand-600 text-white text-[11px] font-semibold hover:bg-cc-brand-700 min-h-[34px]">Save</PendingSubmitButton>
+                        <PendingSubmitButton pendingLabel="…" className="px-2 py-1 rounded bg-cc-brand-600 text-white text-[11px] font-semibold hover:bg-cc-brand-700 min-h-[40px]">Save</PendingSubmitButton>
                         <ConfirmSubmitButton
                           message="Remove this line?"
                           pendingLabel="…"
                           formAction={deleteLineAction}
-                          className="h-[34px] w-[34px] inline-flex items-center justify-center rounded text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50"
+                          className="h-[40px] w-[40px] inline-flex items-center justify-center rounded text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50"
                         >
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18 M6 6l12 12" /></svg>
                           <span className="sr-only">Remove line</span>

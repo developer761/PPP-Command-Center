@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Document, Page, View, Text, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
+import { PPP_BRAND } from "@/lib/brand";
 import * as React from "react";
 import {
   CLOSEOUT_ITEM_KIND_LABEL,
@@ -16,9 +17,10 @@ Font.registerHyphenationCallback((word) => [word]);
 
 const styles = StyleSheet.create({
   page: { paddingTop: 54, paddingBottom: 54, paddingHorizontal: 54, fontSize: 10, fontFamily: "Helvetica", color: "#1f2937", lineHeight: 1.4 },
-  wordmark: { fontSize: 20, fontFamily: "Helvetica-Bold", letterSpacing: 1, textAlign: "center" },
-  sub: { fontSize: 8, textAlign: "center", color: "#6b7280", marginTop: 2, letterSpacing: 0.5 },
-  rule: { borderBottomWidth: 1.5, borderBottomColor: "#b91c1c", marginTop: 10, marginBottom: 16 },
+  wordmark: { fontSize: 18, fontFamily: "Helvetica-Bold", letterSpacing: 1, textAlign: "center", color: "#172B4D" },
+  tagline: { fontSize: 8, textAlign: "center", color: "#6b7280", marginTop: 3, fontFamily: "Helvetica-Oblique" },
+  contact: { fontSize: 7.5, textAlign: "center", color: "#9ca3af", marginTop: 3, letterSpacing: 0.3 },
+  rule: { borderBottomWidth: 2, borderBottomColor: "#EE662E", marginTop: 12, marginBottom: 18 },
   h1: { fontSize: 13, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 },
   row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
   label: { fontSize: 7.5, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 },
@@ -58,10 +60,12 @@ function fmtDate(ymd: string | null): string {
 }
 
 function LogoBlock({ from }: { from: string }) {
+  const website = PPP_BRAND.contact.website.replace(/^https?:\/\//, "").replace(/\/$/, "");
   return (
     <View>
-      <Text style={styles.wordmark}>{from.toUpperCase()}</Text>
-      <Text style={styles.sub}>COMMERCIAL PAINTING</Text>
+      <Text style={styles.wordmark}>{from}</Text>
+      <Text style={styles.tagline}>{PPP_BRAND.tagline}</Text>
+      <Text style={styles.contact}>{PPP_BRAND.contact.phone}   ·   {website}</Text>
       <View style={styles.rule} />
     </View>
   );
