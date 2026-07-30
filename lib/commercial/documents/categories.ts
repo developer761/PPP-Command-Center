@@ -23,6 +23,13 @@ export const DOCUMENT_CATEGORIES = [
   // it lives alongside plans/permits/etc. Favorited on create so it
   // pins to the top of the Files tab.
   "proposal",
+  // Phase D (2026-08): per-tool document buckets so each delivery tool's docs
+  // (uploaded +, later, auto-collected PDFs) group under it in the deal's
+  // Project sub-tab AND roll up to the deal Documents tab.
+  "change_order",      // signed change orders + their backup
+  "aia_billing",       // G702/G703 applications + exports
+  "submittal",         // transmittals + shop drawings / product data
+  "closeout",          // closeout package: as-builts, O&M, waivers, warranty
   "other",             // fallback
 ] as const;
 
@@ -39,6 +46,10 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "site_photo": return "Site Photo";
     case "correspondence": return "Correspondence";
     case "proposal": return "Proposal";
+    case "change_order": return "Change Order";
+    case "aia_billing": return "AIA Billing";
+    case "submittal": return "Submittal";
+    case "closeout": return "Closeout";
     case "other": return "Other";
     default: return cat;
   }

@@ -21,6 +21,10 @@ const CATEGORIES = [
   { value: "contract", label: "Contract" },
   { value: "site_photo", label: "Site Photo" },
   { value: "correspondence", label: "Correspondence" },
+  { value: "change_order", label: "Change Order" },
+  { value: "aia_billing", label: "AIA Billing" },
+  { value: "submittal", label: "Submittal" },
+  { value: "closeout", label: "Closeout" },
   { value: "other", label: "Other" },
 ] as const;
 
@@ -53,9 +57,13 @@ function previewSanitized(name: string): string {
 export function CommercialFilesUploadForm({
   parentType,
   parentId,
+  defaultCategory = "other",
 }: {
   parentType: "opportunity" | "project";
   parentId: string;
+  /** Preselect the category picker (e.g. a Project sub-tab presets its tool's
+   *  bucket). The user can still change it. */
+  defaultCategory?: string;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -63,7 +71,7 @@ export function CommercialFilesUploadForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [category, setCategory] = useState<string>("other");
+  const [category, setCategory] = useState<string>(defaultCategory);
   const [notes, setNotes] = useState<string>("");
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {

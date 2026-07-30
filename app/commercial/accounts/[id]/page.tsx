@@ -1281,11 +1281,11 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
  * Selected tool via ?pt=; each tool carries its own documents (uploaded +
  * auto-collected) which also roll up to the deal Documents tab.
  */
-const PROJECT_TOOLS: { key: string; label: string }[] = [
-  { key: "change-orders", label: "Change Orders" },
-  { key: "aia", label: "AIA Billing" },
-  { key: "submittals", label: "Submittals" },
-  { key: "closeout", label: "Closeout & Warranty" },
+const PROJECT_TOOLS: { key: string; label: string; docCategory: string; docLabel: string }[] = [
+  { key: "change-orders", label: "Change Orders", docCategory: "change_order", docLabel: "Change order" },
+  { key: "aia", label: "AIA Billing", docCategory: "aia_billing", docLabel: "AIA billing" },
+  { key: "submittals", label: "Submittals", docCategory: "submittal", docLabel: "Submittal" },
+  { key: "closeout", label: "Closeout & Warranty", docCategory: "closeout", docLabel: "Closeout" },
 ];
 
 async function ProjectToolsPanel({
@@ -1365,7 +1365,59 @@ async function ProjectToolsPanel({
           sp={{ error: sp?.error }}
         />
       )}
+
+      {/* Per-tool documents (Katie docs spine) — everything filed against this
+          tool (uploaded here now; auto-collected PDFs later) in one place. Also
+          rolls up to the deal Documents tab (same parent_type=opportunity). */}
+      {(() => {
+        const activeTool = PROJECT_TOOLS.find((t) => t.key === projectTool);
+        return activeTool ? (
+          <ProjectToolDocuments dealId={dealId} category={activeTool.docCategory} label={activeTool.docLabel} />
+        ) : null;
+      })()}
     </div>
+  );
+}
+
+/** Documents filed against ONE Project tool (by category) — a compact upload +
+ *  list section shown under the tool. Shares the deal's opportunity-scoped doc
+ *  store, so anything here also appears on the deal Documents tab. */
+async function ProjectToolDocuments({ dealId, category, label }: { dealId: string; category: string; label: string }) {
+  const all = await listDocumentsForParent("opportunity", dealId);
+  const docs = all.filter((d) => d.category === category);
+  return (
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
+        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-white shrink-0">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+        </span>
+        <h3 className="text-[13px] font-bold text-ppp-charcoal">{label} documents</h3>
+        <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{docs.length}</span>
+      </div>
+      <div className="p-4 space-y-3">
+        <CommercialFilesUploadForm parentType="opportunity" parentId={dealId} defaultCategory={category} />
+        {docs.length === 0 ? (
+          <p className="text-[11.5px] text-ppp-charcoal-500">No {label.toLowerCase()} documents yet — upload signed copies, PDFs + backup here. They also show on the deal&rsquo;s Documents tab.</p>
+        ) : (
+          <ul className="divide-y divide-ppp-charcoal-50">
+            {docs.map((d) => (
+              <li key={d.id}>
+                <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-3 py-2 px-1 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] group">
+                  <span className="min-w-0 flex items-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+                    <span className="min-w-0">
+                      <span className="block text-[12.5px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
+                      <span className="block text-[10.5px] text-ppp-charcoal-500">{(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                    </span>
+                  </span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
 
