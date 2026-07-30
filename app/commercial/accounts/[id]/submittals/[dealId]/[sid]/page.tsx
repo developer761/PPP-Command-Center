@@ -3,6 +3,7 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import SubmittalDirectUpload from "@/components/commercial/submittal-direct-upload";
+import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
 
 import { createClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -125,6 +126,49 @@ async function editCoverAction(formData: FormData) {
     );
   }
   redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?saved=1`);
+}
+
+/**
+ * Autosave variant of editCoverAction (Karan #31) — REVALIDATES instead of
+ * redirecting, and throws on error so the AutosaveProposalForm wrapper shows
+ * its Saving/Saved/Retry pill in place. Debounced save on every cover-field
+ * change; no Save button.
+ */
+async function saveCoverAutosaveAction(formData: FormData): Promise<void> {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+
+  const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const account_id = String(formData.get("account_id") ?? "");
+  const submittal_id = String(formData.get("submittal_id") ?? "");
+  if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(submittal_id)) throw new Error("Bad request.");
+
+  const included_kinds: IncludedKind[] = [];
+  for (const kind of INCLUDED_KINDS) {
+    if (formData.get(`included_${kind}`) === "on") included_kinds.push(kind);
+  }
+  const transmittedRaw = (formData.get("transmitted_as") as string | null)?.trim() || "";
+  const transmitted_as = (transmittedRaw || null) as TransmittedAs | null;
+  const addressRaw = String(formData.get("to_address") ?? "");
+  const to_address_lines = addressRaw.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  const result = await editOpportunitySubmittal({
+    opportunity_id,
+    submittal_id,
+    to_company: (formData.get("to_company") as string)?.trim() || null,
+    to_attention: (formData.get("to_attention") as string)?.trim() || null,
+    to_address_lines: to_address_lines.length > 0 ? to_address_lines : null,
+    re_subject: (formData.get("re_subject") as string)?.trim() || "Submittals",
+    included_kinds,
+    transmitted_as,
+    remarks: (formData.get("remarks") as string)?.trim() || null,
+    updated_by_user_id: user.id,
+  });
+  if (!result.ok) throw new Error(result.error);
+  revalidatePath(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -810,7 +854,7 @@ export default async function SubmittalDetailPage({
             </div>
           </div>
         )}
-        <form action={editCoverAction} className="space-y-4">
+        <AutosaveProposalForm action={saveCoverAutosaveAction} disabled={!isDraft}>
           <input type="hidden" name="opportunity_id" value={opportunity_id} />
           <input type="hidden" name="submittal_id" value={submittal_id} />
                 <input type="hidden" name="account_id" value={account_id} />
@@ -939,16 +983,9 @@ export default async function SubmittalDetailPage({
           </div>
 
           {isDraft && (
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
-              >
-                Save cover
-              </button>
-            </div>
+            <p className="text-[11px] text-ppp-charcoal-400">Changes to the cover save automatically.</p>
           )}
-        </form>
+        </AutosaveProposalForm>
       </section>
 
       {/* Items table */}
