@@ -340,6 +340,17 @@ export default async function CommercialAccountDetailPage({
     : primaryTab === "people" ? "contacts"
     : "home";
 
+  // Viewing a single deal (drill-in). The deal view carries its OWN back-link,
+  // money header + sub-tab bar, so the account chrome (hero actions, financial
+  // strip + primary nav) is suppressed below to avoid stacked/duplicate nav +
+  // numbers. Keyed on a VALID uuid so ?project=garbage doesn't strip the chrome
+  // off the projects-list fallback.
+  const inDealDrillIn = tab === "projects" && typeof sp.project === "string" && /^[0-9a-f-]{36}$/i.test(sp.project);
+  // The persistent Financial-snapshot strip is a money glance while scanning the
+  // deal blocks — so show it only on the Deals tab. On Overview it duplicates the
+  // dashboard's Financials group; on Documents it's unrelated to the content.
+  const showOverviewStrip = primaryTab === "deals" && !inDealDrillIn;
+
   const account = await getCommercialAccount(id);
   if (!account) notFound();
 
@@ -537,7 +548,10 @@ export default async function CommercialAccountDetailPage({
           {/* Primary CTA cluster — "+ New deal" is the visually loud
               action Alex will reach for most often (add another bid
               for this customer). Edit is a subtle ghost link — always
-              reachable but doesn't compete for attention. */}
+              reachable but doesn't compete for attention. Hidden inside a
+              deal drill-in, where the deal view has its own New/Edit actions
+              (no duplicate account-level CTAs stacked above one deal). */}
+          {!inDealDrillIn && (
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
             <Link
               href={`/commercial/accounts/${account.id}?tab=opportunities&new_deal=1#new-deal`}
@@ -560,6 +574,7 @@ export default async function CommercialAccountDetailPage({
             Edit
           </Link>
         </div>
+        )}
         </div>
       </header>
 
@@ -568,7 +583,7 @@ export default async function CommercialAccountDetailPage({
           1). Grey tiles = "coming with Phase N" placeholders for the bid /
           invoiced / paid / balance numbers that fill in when later phases
           ship. The strip never changes shape — the data just gets richer. */}
-      <AccountOverviewStrip overview={overview} invoiceRollup={invoiceRollup} accountId={account.id} />
+      {showOverviewStrip && <AccountOverviewStrip overview={overview} invoiceRollup={invoiceRollup} accountId={account.id} />}
 
       {/* Stage 3: Expiring-doc banner — appears between the KPI strip
           and the tab bar when ANY active doc on this account expires
@@ -579,8 +594,10 @@ export default async function CommercialAccountDetailPage({
           glance. */}
       {/* Karan 2026-07-09 Phase A: AccountComplianceBanner removed. */}
 
-      {/* Primary tab bar — 4 groups. Consolidated from 9 flat tabs;
-          Email tab removed entirely. Karan 2026-07-05. */}
+      {/* Primary tab bar — 3 leaf tabs (Overview / Deals / Documents).
+          Suppressed inside a deal drill-in, where the deal view brings its own
+          back-link + sub-tab nav (no stacked account nav above it). */}
+      {!inDealDrillIn && (
       <nav className="relative border-b border-ppp-charcoal-100">
         <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {PRIMARY_TABS.map((t) => {
@@ -604,6 +621,7 @@ export default async function CommercialAccountDetailPage({
         </ul>
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-surface to-transparent sm:hidden" aria-hidden />
       </nav>
+      )}
 
       {/* Sub-tab pill row — only when the primary has sub-tabs.
           Activity / Invoices / Proposals are single-view leaves with no sub-nav.
@@ -972,13 +990,22 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
   const propDecided = dealProposals.filter((pr) => pr.status === "won" || pr.status === "lost").length;
   const propWinPct = propDecided > 0 ? Math.round((propWon / propDecided) * 100) : null;
   const highestBidCents = dealProposals.reduce((m, pr) => Math.max(m, pr.total_cents), 0);
+  // Count facets that MATCH the issued-only money on the invoices header
+  // (p.invoicedCents excludes drafts + voids): drop voids from the total, and
+  // "Open" means issued-but-unpaid (sent/overdue) — NOT total − paid, which
+  // would fold drafts + voids into "Open."
+  const nonVoidInvoices = dealInvoices.filter((inv) => deriveInvoiceStatus(inv) !== "void");
   const paidInvCount = dealInvoices.filter((inv) => deriveInvoiceStatus(inv) === "paid").length;
   const overdueInvCount = dealInvoices.filter((inv) => deriveInvoiceStatus(inv) === "overdue").length;
+  const openInvCount = dealInvoices.filter((inv) => {
+    const s = deriveInvoiceStatus(inv);
+    return s === "sent" || s === "overdue" || s === "partial";
+  }).length;
   const docTotalMB = documents.reduce((s, d) => s + d.size_bytes, 0) / 1024 / 1024;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link href={base} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
+        <Link href={`${base}?tab=deals`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M11 5l-7 7 7 7" /></svg>
           All deals
         </Link>
@@ -988,19 +1015,16 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
         </Link>
       </div>
 
-      {/* Deal sub-tab bar (B1) — REAL content-swap: Overview / Proposals /
-          Invoices / Documents render their own panel below (via ?dt=); the
-          delivery tools (CO/AIA/Submittals/Closeout) open as the right-hand
-          drawer. Active tab highlights on the dealTab. */}
+      {/* Deal sub-tab bar (B1) — REAL content-swap only: every tab here renders
+          its own panel below via ?dt= and highlights on dealTab. The delivery
+          tools (Change Orders / AIA / Submittals / Closeout) are NOT tabs — they
+          open as the right-hand drawer from the Overview tool cards, so they're
+          not mixed in here where they'd navigate away + never show active. */}
       <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[
           { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${p.opp.id}` },
           { key: "proposals", label: "Proposals", href: `${base}?tab=projects&project=${p.opp.id}&dt=proposals` },
           { key: "invoices", label: "Invoices", href: `${base}?tab=projects&project=${p.opp.id}&dt=invoices` },
-          { key: "change-orders", label: "Change Orders", href: `${base}/change-orders/${p.opp.id}` },
-          { key: "aia", label: "AIA Billing", href: `${base}/aia/${p.opp.id}` },
-          { key: "submittals", label: "Submittals", href: `${base}/submittals/${p.opp.id}` },
-          { key: "closeout", label: "Closeout", href: `${base}/closeout/${p.opp.id}` },
           { key: "documents", label: "Documents", href: `${base}?tab=projects&project=${p.opp.id}&dt=documents` },
         ].map((t) => (
           <Link
@@ -1140,11 +1164,11 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
       <>
       <DealPanelLead
         stats={[
-          { label: "Invoices", value: String(dealInvoices.length) },
+          { label: "Invoices", value: String(nonVoidInvoices.length) },
           { label: "Paid", value: String(paidInvCount), tone: paidInvCount > 0 ? "emerald" : undefined },
           overdueInvCount > 0
             ? { label: "Overdue", value: String(overdueInvCount), tone: "amber" as const }
-            : { label: "Open", value: String(dealInvoices.length - paidInvCount) },
+            : { label: "Open", value: String(openInvCount) },
         ]}
         bar={hasContract ? { label: "Billed of contract", pct: aiaBilledPct, barClass: "bg-cc-brand-600", valueClass: "text-cc-brand-700" } : undefined}
       />
@@ -1215,7 +1239,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
       )}
 
       {/* Per-deal activity feed — on the Overview panel, self-hides when quiet. */}
-      {dealTab === "overview" && <RecentActivityCard entries={dealActivity} />}
+      {dealTab === "overview" && <RecentActivityCard entries={dealActivity} accountId={accountId} scope="deal" />}
     </div>
   );
 }
@@ -1360,10 +1384,17 @@ async function PreSaleDealHome({ opp, accountId, dealTab: dealTabRaw = "overview
   const lo = opp.bid_value_low_cents;
   const hi = opp.bid_value_high_cents;
   const bid = lo != null && hi != null ? `${formatCentsCompact(lo)}–${formatCentsCompact(hi)}` : lo != null ? formatCentsCompact(lo) : hi != null ? formatCentsCompact(hi) : "—";
+  // Per-tab lead metrics — mirror the post-sale deal home so pre-sale tabs open
+  // with the same quick-KPI + progress-bar shape.
+  const propWon = proposals.filter((pr) => pr.status === "won").length;
+  const propDecided = proposals.filter((pr) => pr.status === "won" || pr.status === "lost").length;
+  const propWinPct = propDecided > 0 ? Math.round((propWon / propDecided) * 100) : null;
+  const highestBidCents = proposals.reduce((m, pr) => Math.max(m, pr.total_cents), 0);
+  const docTotalMB = documents.reduce((s, d) => s + d.size_bytes, 0) / 1024 / 1024;
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link href={base} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
+        <Link href={`${base}?tab=deals`} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 min-h-[36px]">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M11 5l-7 7 7 7" /></svg>
           All deals
         </Link>
@@ -1404,11 +1435,31 @@ async function PreSaleDealHome({ opp, accountId, dealTab: dealTabRaw = "overview
         <p className="mt-3 text-[11.5px] text-ppp-charcoal-500">Invoices, change orders, AIA billing, submittals + closeout unlock once this deal is Won.</p>
       </div>
 
-      {(dealTab === "overview" || dealTab === "proposals") && (
-        <DealProposalsSection accountId={accountId} oppId={opp.id} proposals={proposals} />
+      {dealTab === "proposals" && (
+        <>
+          <DealPanelLead
+            stats={[
+              { label: "Proposals", value: String(proposals.length) },
+              { label: "Won", value: String(propWon), tone: propWon > 0 ? "emerald" : undefined },
+              { label: "Highest bid", value: highestBidCents > 0 ? formatCentsCompact(highestBidCents) : "—" },
+            ]}
+            bar={propWinPct != null ? { label: "Win rate", pct: propWinPct, barClass: "bg-emerald-500", valueClass: "text-emerald-700" } : undefined}
+          />
+          <DealProposalsSection accountId={accountId} oppId={opp.id} proposals={proposals} />
+        </>
       )}
-      {dealTab === "documents" && <DealDocumentsSection oppId={opp.id} documents={documents} />}
-      {dealTab === "overview" && <RecentActivityCard entries={dealActivity} />}
+      {dealTab === "documents" && (
+        <>
+          <DealPanelLead
+            stats={[
+              { label: "Documents", value: String(documents.length) },
+              { label: "Total size", value: documents.length ? `${docTotalMB.toFixed(1)} MB` : "—" },
+            ]}
+          />
+          <DealDocumentsSection oppId={opp.id} documents={documents} />
+        </>
+      )}
+      {dealTab === "overview" && <RecentActivityCard entries={dealActivity} accountId={accountId} scope="deal" />}
     </div>
   );
 }
@@ -2199,9 +2250,17 @@ async function InfoTab({ account, errorMessage }: { account: CommercialAccount; 
 function RecentActivityCard({
   entries,
   className,
+  accountId,
+  scope = "account",
 }: {
   entries: import("@/lib/commercial/accounts/recent-activity").AccountActivityEntry[];
   className?: string;
+  /** When set, each entry links to the account-folded deal view instead of the
+   *  standalone global opportunity page (keeps the restructure's IA intact). */
+  accountId?: string;
+  /** "deal" → the feed is one deal; "account" → across all the account's deals.
+   *  Drives the header caption independent of how many entries are present. */
+  scope?: "deal" | "account";
 }) {
   if (entries.length === 0) {
     // Hide entirely on quiet accounts — better than rendering a blank
@@ -2214,7 +2273,7 @@ function RecentActivityCard({
       <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ppp-charcoal">Recent activity</h2>
         <span className="text-[11px] text-ppp-charcoal-500">
-          Across {entries.length === 1 ? "this deal" : "this account's deals"}
+          {scope === "deal" ? "This deal" : "Across this account's deals"}
         </span>
       </div>
       <ol className="divide-y divide-ppp-charcoal-100">
@@ -2258,7 +2317,7 @@ function RecentActivityCard({
                   <span className="font-medium">{describeActivity(entry)}</span>
                   <span className="text-ppp-charcoal-400">on</span>
                   <Link
-                    href={`/commercial/opportunities/${entry.opportunity_id}`}
+                    href={accountId ? `/commercial/accounts/${accountId}?tab=projects&project=${entry.opportunity_id}` : `/commercial/opportunities/${entry.opportunity_id}`}
                     className="text-cc-brand-700 hover:text-cc-brand-800 underline break-words"
                   >
                     {entry.opportunity_title || "(untitled)"}
@@ -2303,7 +2362,7 @@ async function ActivityTab({ accountId }: { accountId: string }) {
       </div>
     );
   }
-  return <RecentActivityCard entries={activity} />;
+  return <RecentActivityCard entries={activity} accountId={accountId} scope="account" />;
 }
 
 function TagsCard({
@@ -5519,7 +5578,7 @@ function AccountOverviewStrip({
           value={formatCentsCompact(invoicedCents)}
           sub={invoicedCountLabel}
           href={`/commercial/invoices?account_id=${accountId}`}
-          tone="muted"
+          tone="brand"
         />
         <MoneyTile
           label="Paid"
@@ -5920,7 +5979,7 @@ async function AccountInvoicesTab({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2 flex-wrap">
                         <Link
-                          href={`/commercial/opportunities/${opp.id}?tab=invoices`}
+                          href={`/commercial/accounts/${accountId}?tab=projects&project=${opp.id}&dt=invoices`}
                           title={derivedOppName(opp, null)}
                           className="text-[14px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
                         >
@@ -6157,7 +6216,7 @@ function RollupTile({
 }: {
   label: string;
   value: string;
-  sub: string;
+  sub?: string;
   tone: "neutral" | "blue" | "emerald" | "warn" | "danger";
 }) {
   // Color-audit 2026-07-28: "blue" now uses the real brand cyan (ppp-blue),
@@ -6184,7 +6243,7 @@ function RollupTile({
       <div className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal mt-1 leading-none tabular-nums">
         {value}
       </div>
-      <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>
+      {sub && <div className="text-[11px] text-ppp-charcoal-500 mt-1">{sub}</div>}
     </div>
   );
 }
@@ -6227,9 +6286,11 @@ async function AccountKpisTab({
   const bidRangeLabel = bidLow > 0 || bidHigh > 0
     ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}`
     : "—";
+  const hasInvoicing = rollup.invoiced_cents > 0;
   return (
     <div className="space-y-5">
-      {/* Financials group */}
+      {/* Financials group — account-wide invoicing. Collected % lives ONLY on
+          the bar below (not echoed on the Paid tile) so no number repeats. */}
       <section>
         <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
@@ -6237,13 +6298,34 @@ async function AccountKpisTab({
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
-          <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="emerald" />
-          <RollupTile label="Balance" value={formatCentsFull(rollup.balance_cents)} sub={rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents > 0 ? "warn" : "neutral"} />
+          <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={hasInvoicing ? "collected" : undefined} tone="emerald" />
+          <RollupTile label="Balance" value={formatCentsFull(rollup.balance_cents)} sub={!hasInvoicing ? "not billed yet" : rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents > 0 ? "warn" : "neutral"} />
           <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : "past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
         </div>
+        {hasInvoicing && (
+          <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-ppp-charcoal mb-1.5">
+              <span className="uppercase tracking-wide text-ppp-charcoal-500">Collected</span>
+              <span className="tabular-nums">{paidPct}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
+              <div
+                className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : rollup.overdue_count > 0 ? "bg-rose-500" : "bg-amber-500"}`}
+                style={{ width: `${paidPct}%` }}
+                aria-label={`${paidPct}% of invoiced amount collected`}
+              />
+            </div>
+            <p className="text-[11px] text-ppp-charcoal-500 mt-1.5 tabular-nums">
+              {formatCentsFull(rollup.paid_cents)} of {formatCentsFull(rollup.invoiced_cents)} collected
+            </p>
+          </div>
+        )}
       </section>
 
-      {/* Production group — only once this GC has a job under contract */}
+      {/* Production group — only once this GC has a job under contract. The
+          "Billed to date" tile is deliberately NOT labeled "Invoiced" — that
+          label is taken by the account-wide Financials tile above, and this one
+          is contract-scoped (different number). */}
       {production.activeProjects > 0 && (
         <section>
           <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
@@ -6258,20 +6340,21 @@ async function AccountKpisTab({
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <RollupTile label="Under contract" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
-            <RollupTile label="Invoiced" value={formatCentsFull(production.invoicedCents)} sub={`${formatCentsFull(production.paidCents)} paid`} tone="emerald" />
-            <RollupTile label="Left to bill" value={formatCentsFull(production.leftToBillCents)} sub="contract − invoiced" tone="neutral" />
-            <RollupTile label="Outstanding" value={formatCentsFull(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO${production.pendingCoCount === 1 ? "" : "s"} pending` : "invoiced − paid"} tone={production.outstandingCents > 0 ? "warn" : "neutral"} />
+            <RollupTile label="Billed to date" value={formatCentsFull(production.invoicedCents)} sub={`${formatCentsFull(production.paidCents)} paid`} tone="emerald" />
+            <RollupTile label="Left to bill" value={formatCentsFull(production.leftToBillCents)} sub="contract − billed" tone="neutral" />
+            <RollupTile label="Outstanding" value={formatCentsFull(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO${production.pendingCoCount === 1 ? "" : "s"} pending` : "billed − paid"} tone={production.outstandingCents > 0 ? "warn" : "neutral"} />
           </div>
         </section>
       )}
 
-      {/* Pipeline group */}
+      {/* Pipeline group — Win rate is shown ONCE, as the bar below (no separate
+          tile), so the % isn't printed twice. */}
       <section>
         <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
           Pipeline
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <RollupTile
             label="Open bids"
             value={(overview?.open_opps_count ?? 0).toString()}
@@ -6290,52 +6373,22 @@ async function AccountKpisTab({
             sub={decidedCount === 0 ? "no history" : `of ${decidedCount} decided`}
             tone="blue"
           />
-          <RollupTile
-            label="Win rate"
-            value={winRatePct === null ? "—" : `${winRatePct}%`}
-            sub={decidedCount === 0 ? "no history" : "won ÷ decided"}
-            tone="neutral"
-          />
-        </div>
-      </section>
-
-      {/* Progress bars — collections + wins */}
-      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-4">
-        <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
-          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-          Health
-        </h3>
-        <div>
-          <div className="flex items-center justify-between text-[11px] font-semibold text-ppp-charcoal mb-1">
-            <span>Collections</span>
-            <span>{paidPct}%</span>
-          </div>
-          <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
-            <div
-              className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : "bg-amber-500"}`}
-              style={{ width: `${paidPct}%` }}
-              aria-label={`${paidPct}% of invoiced amount collected`}
-            />
-          </div>
-          <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-            {formatCentsFull(rollup.paid_cents)} of {formatCentsFull(rollup.invoiced_cents)} collected
-          </p>
         </div>
         {decidedCount > 0 && (
-          <div>
-            <div className="flex items-center justify-between text-[11px] font-semibold text-ppp-charcoal mb-1">
-              <span>Win rate</span>
-              <span>{winRatePct}%</span>
+          <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-ppp-charcoal mb-1.5">
+              <span className="uppercase tracking-wide text-ppp-charcoal-500">Win rate</span>
+              <span className="tabular-nums">{winRatePct}%</span>
             </div>
             <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
               <div
                 className="h-full bg-emerald-500 transition-all"
                 style={{ width: `${winRatePct ?? 0}%` }}
-                aria-label={`${winRatePct}% deals won of ${decidedCount} decided`}
+                aria-label={`${winRatePct}% of decided deals won`}
               />
             </div>
-            <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-              {overview?.won_opps_count ?? 0} won · {overview?.lost_opps_count ?? 0} lost across {decidedCount} decided deal{decidedCount === 1 ? "" : "s"}
+            <p className="text-[11px] text-ppp-charcoal-500 mt-1.5 tabular-nums">
+              {overview?.won_opps_count ?? 0} won · {overview?.lost_opps_count ?? 0} lost
             </p>
           </div>
         )}
