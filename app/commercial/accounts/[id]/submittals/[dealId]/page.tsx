@@ -65,9 +65,9 @@ async function createSubmittalAction(formData: FormData) {
   revalidatePath(base);
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/post-job/submittals");
-  // Hand off to the detail page (still lives under /opportunities for now) so
-  // the cover + items can be filled in.
-  redirect(`/commercial/opportunities/${opportunity_id}/submittals/${result.submittal.id}`);
+  // Hand off to the account-scoped detail page so the cover + items can be
+  // filled in — never bounces to /opportunities anymore.
+  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${result.submittal.id}`);
 }
 
 export default async function AccountSubmittalsPage({ params, searchParams }: { params: PP; searchParams: SP }) {
@@ -141,7 +141,7 @@ export default async function AccountSubmittalsPage({ params, searchParams }: { 
           </div>
           <ul className="divide-y divide-ppp-charcoal-100">
             {submittals.map((s) => (
-              <SubmittalRow key={s.id} submittal={s} oppId={dealId} />
+              <SubmittalRow key={s.id} submittal={s} oppId={dealId} accountId={id} />
             ))}
           </ul>
         </section>
@@ -150,7 +150,7 @@ export default async function AccountSubmittalsPage({ params, searchParams }: { 
   );
 }
 
-function SubmittalRow({ submittal, oppId }: { submittal: OpportunitySubmittalWithItemCount; oppId: string }) {
+function SubmittalRow({ submittal, oppId, accountId }: { submittal: OpportunitySubmittalWithItemCount; oppId: string; accountId: string }) {
   const tone = submittalStatusTone(submittal.status);
   const tonePillCls =
     tone === "emerald" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
@@ -165,7 +165,7 @@ function SubmittalRow({ submittal, oppId }: { submittal: OpportunitySubmittalWit
   const responseLine = submittal.response_received_at ? ` · Response received ${fmt(submittal.response_received_at)}` : "";
   return (
     <li>
-      <Link href={`/commercial/opportunities/${oppId}/submittals/${submittal.id}`} className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px]">
+      <Link href={`/commercial/accounts/${accountId}/submittals/${oppId}/${submittal.id}`} className="block px-4 py-3 hover:bg-ppp-charcoal-50 transition-colors min-h-[44px]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2 flex-wrap">
