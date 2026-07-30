@@ -25,7 +25,7 @@ import { isPostSaleProject, oppStatusDisplayLabel } from "@/lib/commercial/oppor
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
-import { getInvoiceContext } from "@/lib/commercial/invoices/db";
+import { getInvoiceContext, listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
 import { formatCentsFull } from "@/lib/commercial/invoices/format";
 import {
@@ -232,10 +232,23 @@ export default async function AccountChangeOrdersPage({
   const base = await getEffectiveContractBaseCents(dealId);
   const baseContractCents = base > 0 ? base : null;
   // Proposals on this project — so a CO can name WHICH proposal's scope it
-  // amends (Karan 2026-07-29). Reduced to the fields the panel dropdown needs.
-  const proposals = (await listProposalsForOpp(dealId)).map((p) => ({
+  // amends (Karan 2026-07-29). A CO tied to a proposal adjusts THAT proposal's
+  // contract; if the proposal has no issued invoice yet we flag it so the user
+  // knows the CO just moves the contract total (nothing to bill against yet).
+  const [proposalRows, dealInvoices] = await Promise.all([
+    listProposalsForOpp(dealId),
+    listCommercialInvoices({ opportunityId: dealId }),
+  ]);
+  const proposalsWithIssuedInvoice = new Set(
+    dealInvoices
+      .filter((inv) => inv.proposal_id && inv.status !== "draft" && inv.status !== "void")
+      .map((inv) => inv.proposal_id as string),
+  );
+  const proposals = proposalRows.map((p) => ({
     id: p.id,
     label: proposalPickerLabel(p),
+    totalCents: p.total_cents,
+    hasInvoice: proposalsWithIssuedInvoice.has(p.id),
   }));
 
   return (

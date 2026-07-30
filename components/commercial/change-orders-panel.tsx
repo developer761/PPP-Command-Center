@@ -55,7 +55,7 @@ const CO_OK_MESSAGES: Record<string, string> = {
   deleted: "Change order deleted.",
 };
 
-type ProposalOption = { id: string; label: string };
+type ProposalOption = { id: string; label: string; totalCents?: number; hasInvoice?: boolean };
 
 export async function ChangeOrdersPanel({
   oppId,
@@ -98,7 +98,15 @@ export async function ChangeOrdersPanel({
   const liveInvoices = await liveInvoiceIds(
     items.map((c) => c.invoiced_invoice_id).filter((x): x is string => !!x)
   );
-  const proposalById = new Map(proposals.map((p) => [p.id, p.label]));
+  const proposalById = new Map(proposals.map((p) => [p.id, p]));
+  // Net APPROVED change-order $ per proposal — a CO tied to a proposal moves
+  // THAT proposal's effective contract (add for +, deduct for −).
+  const netApprovedByProposal = new Map<string, number>();
+  for (const c of items) {
+    if (c.status === "approved" && c.proposal_id) {
+      netApprovedByProposal.set(c.proposal_id, (netApprovedByProposal.get(c.proposal_id) ?? 0) + c.amount_cents);
+    }
+  }
 
   const approved = items.filter((c) => c.status === "approved");
   const netApprovedCents = approved.reduce((acc, c) => acc + c.amount_cents, 0);
@@ -271,14 +279,30 @@ export async function ChangeOrdersPanel({
                           {co.description && (
                             <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 break-words whitespace-pre-wrap">{co.description}</div>
                           )}
-                          {co.proposal_id && proposalById.has(co.proposal_id) && (
-                            <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-ppp-charcoal-500">
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
-                              </svg>
-                              Amends <span className="font-medium text-ppp-charcoal-700">{proposalById.get(co.proposal_id)}</span>
-                            </div>
-                          )}
+                          {(() => {
+                            const prop = co.proposal_id ? proposalById.get(co.proposal_id) : null;
+                            if (!prop) return null;
+                            const eff = prop.totalCents != null ? Math.max(0, prop.totalCents + (netApprovedByProposal.get(prop.id) ?? 0)) : null;
+                            return (
+                              <div className="mt-1 space-y-0.5">
+                                <div className="inline-flex items-center gap-1 text-[11px] text-ppp-charcoal-500 flex-wrap">
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
+                                  </svg>
+                                  Amends <span className="font-medium text-ppp-charcoal-700">{prop.label}</span>
+                                  {eff != null && (
+                                    <span className="text-ppp-charcoal-400">· contract → <span className="tabular-nums text-ppp-charcoal-700">{formatCentsFull(eff)}</span></span>
+                                  )}
+                                </div>
+                                {prop.hasInvoice === false && (
+                                  <div className="flex items-start gap-1 text-[10.5px] text-amber-700">
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01" /></svg>
+                                    Not invoiced yet — this change order adjusts the proposal&rsquo;s contract total; bill it when ready.
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {co.decided_at && (
                             <div className="text-[11px] text-ppp-charcoal-400 mt-1">
                               {co.status === "approved" ? "Approved" : "Declined"} {fmtEtDate(co.decided_at)}
@@ -430,7 +454,7 @@ function ProposalPicker({ idPrefix, proposals, selectedId }: { idPrefix: string;
           <option key={p.id} value={p.id}>{p.label}</option>
         ))}
       </select>
-      <p className="text-[11px] text-ppp-charcoal-500 mt-1">Ties this change to the proposal whose scope it revises.</p>
+      <p className="text-[11px] text-ppp-charcoal-500 mt-1">Ties this change to a proposal — once approved it adjusts that proposal&rsquo;s contract total (added scope raises it, a deduct lowers it).</p>
     </div>
   );
 }
