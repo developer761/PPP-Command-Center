@@ -18,6 +18,8 @@ import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
 import { getProposal } from "@/lib/commercial/proposals/db";
+import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
+import { ProposalBillingFields, type ProposalBillingOption } from "@/components/commercial/proposal-billing-fields";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -122,19 +124,26 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
 }
 
 /** Per-project proposal context for the inline create form: the proposals to
- *  choose from + the accepted (won) proposal as the default + its contract
- *  total. Empty/omitted when the project has no proposals. */
+ *  choose from (each carrying remaining-to-bill + a suggested description so
+ *  picking one auto-fills the amount + charge line) + the accepted (won)
+ *  proposal as the default. Empty/omitted when the project has no proposals. */
 type ProposalCtx = {
-  options: Array<{ id: string; label: string }>;
+  options: ProposalBillingOption[];
   acceptedId: string | null;
   acceptedTotalCents: number | null;
 };
 
+/** Canonical proposal identifier for UI: PROP-#### when sequenced, else the
+ *  per-deal revision as "R{n}" (single fallback used everywhere — matches the
+ *  chips on the proposals + proposal-detail pages). */
+function proposalDisplayNumber(p: CommercialProposal): string {
+  return formatProposalNumber(p.proposal_seq) || `R${p.revision_number}`;
+}
+
 /** Label a proposal for the "bill against proposal" picker. */
 function proposalOptionLabel(p: CommercialProposal): string {
-  const num = formatProposalNumber(p.proposal_seq) || `Rev ${p.revision_number}`;
   const status = p.status.charAt(0).toUpperCase() + p.status.slice(1);
-  return `${num} · ${formatCentsFull(p.total_cents)} · ${status}`;
+  return `${proposalDisplayNumber(p)} · ${formatCentsFull(p.total_cents)} · ${status}`;
 }
 
 /** Server action for the inline "+ New invoice" collapsible on the
@@ -451,6 +460,14 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const addOppIdForCtx = pickFirst(sp.add);
   if (addOppIdForCtx && UUID_RE.test(addOppIdForCtx)) ctxOppIds.add(addOppIdForCtx);
   const proposalCtxByOpp = new Map<string, ProposalCtx>();
+  // Billed-so-far per proposal = issued (non-draft, non-void) invoices already
+  // linked to it. Drives each option's remaining-to-bill so picking a proposal
+  // auto-fills the amount with what's LEFT, not the full contract twice.
+  const billedByProposal = new Map<string, number>();
+  for (const inv of invoicesRaw) {
+    if (!inv.proposal_id || inv.status === "draft" || inv.status === "void") continue;
+    billedByProposal.set(inv.proposal_id, (billedByProposal.get(inv.proposal_id) ?? 0) + inv.total_cents);
+  }
   await Promise.all(
     [...ctxOppIds].map(async (oppId) => {
       const props = await listProposalsForOpp(oppId);
@@ -459,7 +476,15 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         .filter((p) => p.status === "won")
         .sort((a, b) => b.total_cents - a.total_cents)[0] ?? null;
       proposalCtxByOpp.set(oppId, {
-        options: props.map((p) => ({ id: p.id, label: proposalOptionLabel(p) })),
+        options: props.map((p) => {
+          const remaining = Math.max(0, p.total_cents - (billedByProposal.get(p.id) ?? 0));
+          return {
+            id: p.id,
+            label: proposalOptionLabel(p),
+            remainingCents: remaining,
+            suggestedDescription: `Progress payment — ${proposalDisplayNumber(p)}`,
+          };
+        }),
         acceptedId: won?.id ?? null,
         acceptedTotalCents: won?.total_cents ?? null,
       });
@@ -2109,7 +2134,8 @@ function FullDetailByOpp({
                             <select
                               name="method"
                               defaultValue=""
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-surface min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className={SELECT_CLS}
+                              style={SELECT_BG_STYLE}
                             >
                               <option value="">— select —</option>
                               {PAYMENT_METHODS.map((m) => (
@@ -2191,77 +2217,71 @@ function FullDetailByOpp({
                       a commercial progress-billing invoice is a description +
                       dollar amount ("Progress payment 2 of 3"), not a catalog
                       line, so the picker only added confusion. */}
-                  <div>
-                    <label className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
-                      What this charge is for
-                    </label>
-                    <input
-                      id={`inv-add-${oppId}-description`}
-                      type="text"
-                      name="description"
-                      required
-                      maxLength={500}
-                      placeholder="e.g. Progress payment 1 of 3 — Lobby repaint"
-                      className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                    />
-                  </div>
-                  {/* Bill against a proposal — links this invoice to the deal's
-                      accepted proposal so a single proposal can be split across
-                      several progress invoices (Karan: "three invoices per
-                      proposal"). Only shown when the project has proposals. */}
                   {(() => {
                     const pc = proposalCtxByOpp.get(oppId);
-                    if (!pc || pc.options.length === 0) return null;
+                    const dueDefault = (() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + 30);
+                      return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+                    })();
+                    const dueDateNode = (
+                      <label className="block">
+                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Due date</span>
+                        <input
+                          type="date"
+                          name="due_at"
+                          defaultValue={dueDefault}
+                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                        />
+                      </label>
+                    );
+                    // With proposals: the client component wires proposal → auto-
+                    // fill of amount + "what this charge is for". Without: plain
+                    // free-text description + amount.
+                    if (pc && pc.options.length > 0) {
+                      return (
+                        <ProposalBillingFields
+                          oppId={oppId}
+                          options={pc.options}
+                          defaultProposalId={pc.acceptedId}
+                          dueDateNode={dueDateNode}
+                        />
+                      );
+                    }
                     return (
-                      <div>
-                        <label className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
-                          Bill against proposal <span className="font-normal text-ppp-charcoal-400">(optional)</span>
-                        </label>
-                        <select
-                          name="proposal_id"
-                          defaultValue={pc.acceptedId ?? ""}
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation bg-surface focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                        >
-                          <option value="">Not tied to a proposal</option>
-                          {pc.options.map((o) => (
-                            <option key={o.id} value={o.id}>{o.label}</option>
-                          ))}
-                        </select>
-                        {pc.acceptedTotalCents != null && (
-                          <p className="mt-1 text-[10.5px] leading-snug text-ppp-charcoal-500">
-                            Accepted contract: <strong className="text-ppp-charcoal-700 tabular-nums">{formatCentsFull(pc.acceptedTotalCents)}</strong>. Split it across as many progress invoices as you need — each one you add here bills against it.
-                          </p>
-                        )}
-                      </div>
+                      <>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5" htmlFor={`inv-add-${oppId}-description`}>
+                            What this charge is for
+                          </label>
+                          <input
+                            id={`inv-add-${oppId}-description`}
+                            type="text"
+                            name="description"
+                            required
+                            maxLength={500}
+                            placeholder="e.g. Progress payment 1 of 3 — Lobby repaint"
+                            className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <label className="block">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Amount</span>
+                            <input
+                              id={`inv-add-${oppId}-amount`}
+                              type="text"
+                              inputMode="decimal"
+                              name="amount"
+                              required
+                              placeholder="0.00"
+                              className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            />
+                          </label>
+                          {dueDateNode}
+                        </div>
+                      </>
                     );
                   })()}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="block">
-                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Amount</span>
-                      <input
-                        id={`inv-add-${oppId}-amount`}
-                        type="text"
-                        inputMode="decimal"
-                        name="amount"
-                        required
-                        placeholder="0.00"
-                        className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Due date</span>
-                      <input
-                        type="date"
-                        name="due_at"
-                        defaultValue={(() => {
-                          const d = new Date();
-                          d.setDate(d.getDate() + 30);
-                          return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-                        })()}
-                        className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                      />
-                    </label>
-                  </div>
                   {/* Progressive disclosure — advanced fields sit
                       behind another <details> so the common case stays
                       three fields. */}

@@ -20,7 +20,7 @@ import {
   changeOrderKind,
 } from "@/lib/commercial/change-orders/constants";
 import { formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
-import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
@@ -424,7 +424,7 @@ function ProposalPicker({ idPrefix, proposals, selectedId }: { idPrefix: string;
       <label className={LABEL_CLS} htmlFor={`${idPrefix}-proposal`}>
         Which proposal? <span className="font-normal text-ppp-charcoal-400">(optional)</span>
       </label>
-      <select id={`${idPrefix}-proposal`} name="proposal_id" defaultValue={selectedId ?? ""} className={INPUT_CLS}>
+      <select id={`${idPrefix}-proposal`} name="proposal_id" defaultValue={selectedId ?? ""} className={SELECT_CLS} style={SELECT_BG_STYLE}>
         <option value="">General change — no specific proposal</option>
         {proposals.map((p) => (
           <option key={p.id} value={p.id}>{p.label}</option>

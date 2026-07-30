@@ -82,6 +82,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
+import { formatProposalNumber } from "@/lib/commercial/proposals/db";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -4096,6 +4097,11 @@ async function AccountProposalsTab({
                               <span className={`font-bold text-ppp-charcoal tabular-nums shrink-0 ${isCurrent ? "text-[15px]" : "text-[12.5px] text-ppp-charcoal-600"}`}>
                                 R{r.revision_number}
                               </span>
+                              {formatProposalNumber(r.proposal_seq) && (
+                                <span className="font-mono text-[10px] text-ppp-navy-600 shrink-0" title="Global proposal number">
+                                  {formatProposalNumber(r.proposal_seq)}
+                                </span>
+                              )}
                               {isCurrent && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider bg-emerald-600 text-white shrink-0">
                                   <IconStar size={9} className="shrink-0" /> Current

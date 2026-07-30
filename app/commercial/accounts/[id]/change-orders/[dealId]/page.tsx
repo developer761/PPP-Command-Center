@@ -91,7 +91,7 @@ function signedAmountCents(rawAmount: string, direction: string): number | null 
 
 /** Human label for a proposal in the CO "which proposal" dropdown. */
 function proposalPickerLabel(p: CommercialProposal): string {
-  const num = formatProposalNumber(p.proposal_seq) || `Rev ${p.revision_number}`;
+  const num = formatProposalNumber(p.proposal_seq) || `R${p.revision_number}`;
   const status = p.status.charAt(0).toUpperCase() + p.status.slice(1);
   return `${num} · ${formatCentsFull(p.total_cents)} · ${status}`;
 }
