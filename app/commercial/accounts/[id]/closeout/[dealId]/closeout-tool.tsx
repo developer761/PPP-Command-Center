@@ -42,6 +42,7 @@ import {
   type CloseoutStatus,
   type CloseoutTransmittedAs,
 } from "@/lib/commercial/closeout/constants";
+import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -136,8 +137,52 @@ async function changeStatusAction(formData: FormData) {
   if (!(await pkgBelongs(pkgId, id, dealId))) redirect("/commercial/accounts");
   const res = await changeCloseoutStatus(pkgId, to, userId);
   if (!res.ok) redirect(`${base(id, dealId)}&pkg=${pkgId}&error=${encodeURIComponent(res.error)}`);
+  // Auto-file the transmittal (+ warranty) when the package is sent to the GC.
+  if (to === "sent") await autoFileCloseoutPackage(id, dealId, pkgId, userId);
   revalidateCloseout(id, dealId);
   redirect(`${base(id, dealId)}&pkg=${pkgId}`);
+}
+
+/** Render + file the closeout transmittal and (when a warranty term is set) the
+ *  warranty letter as deal documents (category closeout). Best-effort. */
+async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId: string, userId: string) {
+  try {
+    const pkg = await getCloseoutPackage(pkgId);
+    if (!pkg) return;
+    const [opp, account, items] = await Promise.all([
+      getCommercialOpportunity(dealId),
+      getCommercialAccount(accountId),
+      listCloseoutItems(pkgId),
+    ]);
+    if (!opp || !account) return;
+    const dealName = derivedOppName(opp, account.company_name);
+    const fromCompany = "Precision Painting Plus";
+    const { renderCloseoutTransmittalPdf, renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
+    const transmittal = await renderCloseoutTransmittalPdf({ pkg, items, dealName, fromCompany });
+    await autoFileOpportunityDocument({
+      opportunityId: dealId,
+      category: "closeout",
+      fileName: safeDocName("Closeout_Transmittal", dealName) + ".pdf",
+      mimeType: "application/pdf",
+      data: new Uint8Array(transmittal),
+      notes: sentStampNote("Closeout transmittal sent"),
+      actorUserId: userId,
+    });
+    if (pkg.warranty_years && pkg.warranty_years > 0) {
+      const warranty = await renderWarrantyLetterPdf({ pkg, dealName, fromCompany });
+      await autoFileOpportunityDocument({
+        opportunityId: dealId,
+        category: "closeout",
+        fileName: safeDocName("Warranty", dealName, `${pkg.warranty_years}yr`) + ".pdf",
+        mimeType: "application/pdf",
+        data: new Uint8Array(warranty),
+        notes: sentStampNote(`${pkg.warranty_years}-year warranty letter sent`),
+        actorUserId: userId,
+      });
+    }
+  } catch (err) {
+    console.warn("[auto-file closeout] failed:", err);
+  }
 }
 
 async function upsertItemAction(formData: FormData) {

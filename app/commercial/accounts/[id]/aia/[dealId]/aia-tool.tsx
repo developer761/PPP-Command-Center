@@ -29,6 +29,8 @@ import {
   getEffectiveContractBaseCents,
 } from "@/lib/commercial/aia/db";
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
+import { buildAiaWorkbookBuffer } from "@/lib/commercial/aia/export";
+import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
 import { AiaApplicationDetail } from "@/components/commercial/aia-application-detail";
 import type { AiaLineSaveResult } from "@/components/commercial/aia-line-row";
 import { AiaSettingsForm } from "@/components/commercial/aia-settings-form";
@@ -166,8 +168,48 @@ async function setStatusAction(formData: FormData) {
   if (!["draft", "submitted", "paid"].includes(status)) redirect(`${base(id, dealId)}&app=${appId}`);
   const result = await updateAiaApplication(appId, { status }, userId);
   if (!result.ok) redirect(`${base(id, dealId)}&app=${appId}&error=${encodeURIComponent(result.error)}`);
+  // Auto-file the G702/G703 workbook when the application is submitted to the GC
+  // (best-effort — never blocks the status change).
+  if (status === "submitted") await autoFileAiaApplication(id, dealId, appId, userId);
   revalidateAia(id, dealId);
   redirect(`${base(id, dealId)}&app=${appId}`);
+}
+
+/** Build + file the AIA application workbook as a deal document (category
+ *  aia_billing). Best-effort; mirrors the export route's data gathering. */
+async function autoFileAiaApplication(accountId: string, dealId: string, appId: string, userId: string) {
+  try {
+    const application = await getAiaApplication(appId);
+    if (!application) return;
+    const [opp, lines, g702, account] = await Promise.all([
+      getCommercialOpportunity(dealId),
+      listAiaLineItems(appId),
+      resolveG702(appId),
+      getCommercialAccount(accountId),
+    ]);
+    if (!opp || !g702 || !account) return;
+    const dealName = derivedOppName(opp, account.company_name);
+    const projectLabel = [dealName, opp.property_street].filter(Boolean).join(" · ");
+    const buf = await buildAiaWorkbookBuffer({
+      application,
+      lines,
+      g702,
+      projectLabel,
+      ownerLabel: account.company_name,
+      contractorLabel: "Precision Painting Plus",
+    });
+    await autoFileOpportunityDocument({
+      opportunityId: dealId,
+      category: "aia_billing",
+      fileName: safeDocName("AIA_App", application.application_number, dealName) + ".xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      data: new Uint8Array(buf),
+      notes: sentStampNote(`AIA Application No. ${application.application_number} submitted`),
+      actorUserId: userId,
+    });
+  } catch (err) {
+    console.warn("[auto-file aia] failed:", err);
+  }
 }
 
 async function deleteApplicationAction(formData: FormData) {

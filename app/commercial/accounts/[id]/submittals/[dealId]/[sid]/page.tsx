@@ -6,6 +6,10 @@ import SubmittalDirectUpload from "@/components/commercial/submittal-direct-uplo
 import { AutosaveProposalForm } from "@/components/commercial/autosave-proposal-form";
 
 import { createClient } from "@/lib/supabase/server";
+import { commercialDb } from "@/lib/commercial/db";
+import { PPP_BRAND } from "@/lib/brand";
+import { getCommercialAccount } from "@/lib/commercial/accounts/db";
+import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import {
@@ -453,6 +457,48 @@ async function unlinkAttachmentAction(formData: FormData) {
 //   approved/_as_noted/revise/rejected → Close → closed
 //   any non-closed → Void (with reason) → voided
 
+/** Render + file the submittal Letter of Transmittal as a deal document
+ *  (category submittal) when it's sent to the GC. Best-effort; mirrors the PDF
+ *  route's data gathering. Not exported — used only by changeStatusAction. */
+async function autoFileSubmittalTransmittal(accountId: string, opportunityId: string, submittalId: string, userId: string) {
+  try {
+    const loaded = await getOpportunitySubmittal(opportunityId, submittalId);
+    if (!loaded) return;
+    const { submittal, items } = loaded;
+    // The transmittal cover needs ppp_job_number (a raw column not on the opp
+    // type) — fetch the same lightweight shape the PDF route uses.
+    const sb = commercialDb();
+    const { data: oppRow } = await sb
+      .from("commercial_opportunities")
+      .select("title, ppp_job_number, client_name, property_street")
+      .eq("id", opportunityId)
+      .maybeSingle();
+    if (!oppRow) return;
+    const opp = oppRow as { title: string; ppp_job_number: string | null; client_name?: string | null; property_street?: string | null };
+    const account = await getCommercialAccount(accountId);
+    const { renderLetterOfTransmittalPdf } = await import("@/lib/commercial/opportunities/submittal-pdf");
+    const pdf = await renderLetterOfTransmittalPdf({
+      submittal,
+      items,
+      opp,
+      accountName: account?.company_name ?? null,
+      fromCompany: PPP_BRAND.name.replace("®", "").trim(),
+    });
+    const subLabel = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${submittal.revision_number > 0 ? `_Rev${submittal.revision_number}` : ""}`;
+    await autoFileOpportunityDocument({
+      opportunityId,
+      category: "submittal",
+      fileName: safeDocName("Submittal_LoT", subLabel) + ".pdf",
+      mimeType: "application/pdf",
+      data: new Uint8Array(pdf),
+      notes: sentStampNote(`${subLabel} transmittal sent`),
+      actorUserId: userId,
+    });
+  } catch (err) {
+    console.warn("[auto-file submittal] failed:", err);
+  }
+}
+
 async function changeStatusAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -533,6 +579,11 @@ async function changeStatusAction(formData: FormData) {
       `/commercial/accounts/${account_id}/submittals/${opportunity_id}/${submittal_id}?error=` +
         encodeURIComponent(result.error)
     );
+  }
+  // Auto-file the Letter of Transmittal when the submittal is sent to the GC
+  // (to_status "submitted") — best-effort, never blocks the status change.
+  if (to_status === "submitted") {
+    await autoFileSubmittalTransmittal(account_id, opportunity_id, submittal_id, user.id);
   }
   // Status-change ripples to the opp list badge ("awaiting GC" count).
   revalidatePath(`/commercial/accounts/${account_id}`);
