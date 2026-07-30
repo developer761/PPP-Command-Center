@@ -46,6 +46,22 @@ async function requireCommercialUser(): Promise<string> {
   return user.id;
 }
 
+/**
+ * Ownership guard (Karan #33): verify the deal belongs to this account + is a
+ * post-sale project, and (when given) that the application belongs to the deal.
+ * The page loader checks this on render, but the server actions must re-check —
+ * they're POST endpoints reachable with hand-crafted ids. Cheap indexed reads.
+ */
+async function ownsAiaContext(accountId: string, dealId: string, appId?: string): Promise<boolean> {
+  const opp = await getCommercialOpportunity(dealId);
+  if (!opp || opp.account_id !== accountId || !isPostSaleProject(opp)) return false;
+  if (appId) {
+    const app = await getAiaApplication(appId);
+    if (!app || app.opportunity_id !== dealId) return false;
+  }
+  return true;
+}
+
 function base(id: string, dealId: string): string {
   return `/commercial/accounts/${id}/aia/${dealId}`;
 }
@@ -65,6 +81,7 @@ async function createApplicationAction(formData: FormData) {
   const id = String(formData.get("account_id") ?? "");
   const dealId = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId))) redirect("/commercial/accounts");
   const retainageRaw = String(formData.get("retainage_pct") ?? "");
   const retainage_pct = retainageRaw ? Number(retainageRaw) : DEFAULT_RETAINAGE_PCT;
   const result = await createAiaApplication({
@@ -86,6 +103,7 @@ async function updateApplicationAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   const original = parseDollarsToCents(String(formData.get("original_contract") ?? ""));
   const retainageRaw = String(formData.get("retainage_pct") ?? "");
   const result = await updateAiaApplication(
@@ -112,6 +130,7 @@ async function setStatusAction(formData: FormData) {
   const appId = String(formData.get("app_id") ?? "");
   const status = String(formData.get("status") ?? "") as AiaApplicationStatus;
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   if (!["draft", "submitted", "paid"].includes(status)) redirect(`${base(id, dealId)}?app=${appId}`);
   const result = await updateAiaApplication(appId, { status }, userId);
   if (!result.ok) redirect(`${base(id, dealId)}?app=${appId}&error=${encodeURIComponent(result.error)}`);
@@ -126,6 +145,7 @@ async function deleteApplicationAction(formData: FormData) {
   const dealId = String(formData.get("opp_id") ?? "");
   const appId = String(formData.get("app_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   const result = await deleteAiaApplication(appId, userId);
   if (!result.ok) redirect(`${base(id, dealId)}?error=${encodeURIComponent(result.error)}`);
   revalidateAia(id, dealId);
@@ -140,6 +160,7 @@ async function upsertLineAction(formData: FormData) {
   const appId = String(formData.get("app_id") ?? "");
   const lineId = String(formData.get("line_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   const cents = (name: string) => parseDollarsToCents(String(formData.get(name) ?? "")) ?? 0;
   const result = await upsertAiaLineItem(appId, {
     ...(UUID_RE.test(lineId) ? { id: lineId } : {}),
@@ -171,6 +192,7 @@ async function saveLineAutosaveAction(formData: FormData): Promise<AiaLineSaveRe
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(lineId)) {
     return { ok: false, error: "Bad request." };
   }
+  if (!(await ownsAiaContext(id, dealId, appId))) return { ok: false, error: "Not found." };
   const cents = (name: string) => parseDollarsToCents(String(formData.get(name) ?? "")) ?? 0;
   const result = await upsertAiaLineItem(appId, {
     id: lineId,
@@ -208,6 +230,7 @@ async function deleteLineAction(formData: FormData) {
   const appId = String(formData.get("app_id") ?? "");
   const lineId = String(formData.get("line_id") ?? "");
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(lineId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   await deleteAiaLineItem(lineId, appId, userId);
   revalidateAia(id, dealId);
   redirect(`${base(id, dealId)}?app=${appId}`);
