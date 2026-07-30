@@ -86,6 +86,8 @@ import { formatProposalNumber, listProposalsForOpp } from "@/lib/commercial/prop
 import { listDocumentsForParent } from "@/lib/commercial/documents/db";
 import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/commercial/documents/categories";
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
+// Inline delivery tools rendered under the deal's Project sub-tab (2026-08).
+import { ChangeOrdersTool } from "./change-orders/[dealId]/change-orders-tool";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -207,9 +209,24 @@ type SP = Promise<{
   /** 2026-07-29: Projects tab drills into ONE project's home (folded under
    *  the account) via ?tab=projects&project=<dealId>. */
   project?: string;
-  /** Deal sub-tab (B1 content-swap): overview | proposals | invoices | documents. */
+  /** Deal sub-tab (B1 content-swap): overview | proposals | invoices | project | documents. */
   dt?: string;
+  /** Project sub-tab tool (the inline delivery tools under the Project tab):
+   *  change-orders | aia | submittals | closeout. */
+  pt?: string;
+  /** Passed through to the inline delivery tools rendered under the Project
+   *  sub-tab (each tool reads the ones it needs). */
+  co_ok?: string;
+  edit_co?: string;
+  co_title?: string;
+  co_amt?: string;
+  co_desc?: string;
+  ok?: string;
+  app?: string;
+  pkg?: string;
 }>;
+/** Resolved (awaited) shape of SP — passed to the inline Project tools. */
+type SPShape = Awaited<SP>;
 
 // Consolidated tab structure — see PRIMARY_TABS + SUB_TABS_BY_PRIMARY.
 // Karan 2026-07-05: "too cluttered, needs better organization." Went
@@ -723,6 +740,8 @@ export default async function CommercialAccountDetailPage({
           accountId={account.id}
           projectId={typeof sp.project === "string" && /^[0-9a-f-]{36}$/i.test(sp.project) ? sp.project : null}
           dealTab={typeof sp.dt === "string" ? sp.dt : "overview"}
+          projectTool={typeof sp.pt === "string" ? sp.pt : "change-orders"}
+          sp={sp}
         />
       )}
     </div>
@@ -869,10 +888,12 @@ function PipelineDealBlock({ accountId, opp }: { accountId: string; opp: Commerc
  * top rolls the account's delivery numbers. Empty state guides you when the
  * account has no jobs under contract yet.
  */
-async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = "overview" }: { accountId: string; projectId: string | null; dealTab?: string }) {
+async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = "overview", projectTool: projectToolRaw = "change-orders", sp }: { accountId: string; projectId: string | null; dealTab?: string; projectTool?: string; sp?: SPShape }) {
   // Normalize the deal sub-tab: an unknown ?dt= value falls back to Overview
   // rather than rendering just the header with a blank panel below it.
-  const dealTab = ["overview", "proposals", "invoices", "documents"].includes(dealTabRaw) ? dealTabRaw : "overview";
+  const dealTab = ["overview", "proposals", "invoices", "project", "documents"].includes(dealTabRaw) ? dealTabRaw : "overview";
+  // Normalize the Project sub-tab tool the same way.
+  const projectTool = ["change-orders", "aia", "submittals", "closeout"].includes(projectToolRaw) ? projectToolRaw : "change-orders";
   // includeClosed so finished jobs still show on the account (they were
   // vanishing into "No projects yet" — 2026-07-29 audit finding).
   const projects = await listProjects({ accountId, includeClosed: true });
@@ -882,7 +903,7 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
   // every deal opens the same way, not the edit sheet.
   if (projectId) {
     const p = projects.find((x) => x.opp.id === projectId);
-    if (p) return <AccountProjectHome p={p} accountId={accountId} dealTab={dealTab} />;
+    if (p) return <AccountProjectHome p={p} accountId={accountId} dealTab={dealTab} projectTool={projectTool} sp={sp} />;
     const opp = await getCommercialOpportunity(projectId);
     if (opp && opp.account_id === accountId) return <PreSaleDealHome opp={opp} accountId={accountId} dealTab={dealTab} />;
     // Not found / wrong account — fall through to the list.
@@ -949,7 +970,7 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
  * deal's details is an explicit "Edit deal details" button, so navigating here
  * never auto-pops the edit form (that was the 2026-07-29 bug).
  */
-async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: ProjectRow; accountId: string; dealTab?: string }) {
+async function AccountProjectHome({ p, accountId, dealTab = "overview", projectTool = "change-orders", sp }: { p: ProjectRow; accountId: string; dealTab?: string; projectTool?: string; sp?: SPShape }) {
   const name = derivedOppName(p.opp, p.accountName);
   const oppCode = formatOpportunityNumber(p.opp.project_number);
   const pct = p.percentCompleteBps != null ? Math.min(100, Math.round(p.percentCompleteBps / 100)) : null;
@@ -1025,6 +1046,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
           { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${p.opp.id}` },
           { key: "proposals", label: "Proposals", href: `${base}?tab=projects&project=${p.opp.id}&dt=proposals` },
           { key: "invoices", label: "Invoices", href: `${base}?tab=projects&project=${p.opp.id}&dt=invoices` },
+          { key: "project", label: "Project", href: `${base}?tab=projects&project=${p.opp.id}&dt=project` },
           { key: "documents", label: "Documents", href: `${base}?tab=projects&project=${p.opp.id}&dt=documents` },
         ].map((t) => (
           <Link
@@ -1076,13 +1098,13 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
         )}
       </div>
 
-      {/* ── Project tools — clean neutral cards, each showing the real state
-          (notes, which draft, form progress) at a glance. Colour is only a
-          small per-tool accent, not a full orange card. Click = drawer. ── */}
+      {/* ── Project tools glance — clean neutral cards, each showing the real
+          state (notes, which draft, form progress) at a glance on Overview.
+          Click jumps into that tool inline under the Project sub-tab. ── */}
       {dealTab === "overview" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Change Orders — the notes typed on each CO */}
-        <ToolMiniCard label="Change Orders" href={`${base}/change-orders/${p.opp.id}`} iconBg="bg-cc-brand-600" icon={<path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" />} chip={changeOrders.length === 0 ? null : { label: p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : "all decided", tone: p.pendingCoCount > 0 ? "amber" : "emerald" }}>
+        <ToolMiniCard label="Change Orders" href={`${base}?tab=projects&project=${p.opp.id}&dt=project&pt=change-orders`} iconBg="bg-cc-brand-600" icon={<path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" />} chip={changeOrders.length === 0 ? null : { label: p.pendingCoCount > 0 ? `${p.pendingCoCount} pending` : "all decided", tone: p.pendingCoCount > 0 ? "amber" : "emerald" }}>
           {recentCos.length === 0 ? (
             <p className="text-[11.5px] text-ppp-charcoal-500">No change orders yet — added scope or credits show here with their notes.</p>
           ) : (
@@ -1102,7 +1124,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
         </ToolMiniCard>
 
         {/* AIA Billing — which application + draft state + billed progress */}
-        <ToolMiniCard label="AIA Billing" href={`${base}/aia/${p.opp.id}`} iconBg="bg-ppp-navy-700" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6 M9 13h6 M9 17h6" /></>} chip={p.latestAppNumber == null ? null : { label: p.latestAppStatus ?? "draft", tone: p.latestAppStatus === "paid" ? "emerald" : p.latestAppStatus === "submitted" ? "blue" : "neutral" }}>
+        <ToolMiniCard label="AIA Billing" href={`${base}?tab=projects&project=${p.opp.id}&dt=project&pt=aia`} iconBg="bg-ppp-navy-700" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6 M9 13h6 M9 17h6" /></>} chip={p.latestAppNumber == null ? null : { label: p.latestAppStatus ?? "draft", tone: p.latestAppStatus === "paid" ? "emerald" : p.latestAppStatus === "submitted" ? "blue" : "neutral" }}>
           {p.latestAppNumber == null ? (
             <p className="text-[11.5px] text-ppp-charcoal-500">Not started — no G702/G703 application yet.</p>
           ) : (
@@ -1115,7 +1137,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
         </ToolMiniCard>
 
         {/* Submittals — latest submittal + status + how many awaiting GC */}
-        <ToolMiniCard label="Submittals" href={`${base}/submittals/${p.opp.id}`} iconBg="bg-ppp-blue-600" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6 M8 13h5 M8 17h4" /></>} chip={awaitingSubs > 0 ? { label: `${awaitingSubs} awaiting`, tone: "amber" } : latestSub ? { label: "up to date", tone: "emerald" } : null}>
+        <ToolMiniCard label="Submittals" href={`${base}?tab=projects&project=${p.opp.id}&dt=project&pt=submittals`} iconBg="bg-ppp-blue-600" icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6 M8 13h5 M8 17h4" /></>} chip={awaitingSubs > 0 ? { label: `${awaitingSubs} awaiting`, tone: "amber" } : latestSub ? { label: "up to date", tone: "emerald" } : null}>
           {latestSub == null ? (
             <p className="text-[11.5px] text-ppp-charcoal-500">None yet — shop drawings + product data you send the GC show here.</p>
           ) : (
@@ -1129,7 +1151,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
         </ToolMiniCard>
 
         {/* Closeout — which draft the package is on + checklist progress + warranty */}
-        <ToolMiniCard label="Closeout & Warranty" href={`${base}/closeout/${p.opp.id}`} iconBg="bg-emerald-600" icon={<path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />} chip={latestPkg == null ? null : { label: latestPkg.status, tone: latestPkg.status === "complete" ? "emerald" : latestPkg.status === "sent" || latestPkg.status === "acknowledged" ? "blue" : "neutral" }}>
+        <ToolMiniCard label="Closeout & Warranty" href={`${base}?tab=projects&project=${p.opp.id}&dt=project&pt=closeout`} iconBg="bg-emerald-600" icon={<path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />} chip={latestPkg == null ? null : { label: latestPkg.status, tone: latestPkg.status === "complete" ? "emerald" : latestPkg.status === "sent" || latestPkg.status === "acknowledged" ? "blue" : "neutral" }}>
           {latestPkg == null ? (
             <p className="text-[11.5px] text-ppp-charcoal-500">Not started — the package you hand the GC when the job wraps.</p>
           ) : (
@@ -1226,6 +1248,10 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
       </>
       )}
 
+      {dealTab === "project" && (
+        <ProjectToolsPanel accountId={accountId} dealId={p.opp.id} projectTool={projectTool} sp={sp} />
+      )}
+
       {dealTab === "documents" && (
         <>
           <DealPanelLead
@@ -1246,6 +1272,98 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview" }: { p: P
 
 /** Per-deal proposals section — shared by both deal homes. Lists the deal's
  *  proposals + a "New proposal" entry. (Proposals don't need a Won deal.) */
+/**
+ * Project tab (2026-08, Katie notes) — the deal's delivery/execution tools
+ * (Change Orders · AIA Billing · Submittals · Closeout) grouped under ONE
+ * "Project" tab with its own sub-tab bar, each rendering the full tool inline.
+ * Selected tool via ?pt=; each tool carries its own documents (uploaded +
+ * auto-collected) which also roll up to the deal Documents tab.
+ */
+const PROJECT_TOOLS: { key: string; label: string; route: string }[] = [
+  { key: "change-orders", label: "Change Orders", route: "change-orders" },
+  { key: "aia", label: "AIA Billing", route: "aia" },
+  { key: "submittals", label: "Submittals", route: "submittals" },
+  { key: "closeout", label: "Closeout & Warranty", route: "closeout" },
+];
+
+async function ProjectToolsPanel({
+  accountId,
+  dealId,
+  projectTool,
+  sp,
+}: {
+  accountId: string;
+  dealId: string;
+  projectTool: string;
+  sp?: SPShape;
+}) {
+  const base = `/commercial/accounts/${accountId}`;
+  const subTabBase = `${base}?tab=projects&project=${dealId}&dt=project`;
+  return (
+    <div className="space-y-4">
+      {/* Project tool sub-tab bar — a segmented pill row so it reads as a
+          second level under the deal tab bar (not a third row of deal tabs). */}
+      <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-ppp-charcoal-50 border border-ppp-charcoal-100 p-1.5">
+        {PROJECT_TOOLS.map((t) => {
+          const active = t.key === projectTool;
+          return (
+            <Link
+              key={t.key}
+              href={`${subTabBase}&pt=${t.key}`}
+              aria-current={active ? "page" : undefined}
+              className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[12.5px] font-semibold min-h-[40px] touch-manipulation transition-colors ${
+                active
+                  ? "bg-surface text-cc-brand-700 border border-cc-brand-200 shadow-sm"
+                  : "text-ppp-charcoal-600 border border-transparent hover:bg-surface/70 hover:text-ppp-charcoal"
+              }`}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Active tool, rendered inline. */}
+      {projectTool === "change-orders" && (
+        <ChangeOrdersTool
+          id={accountId}
+          dealId={dealId}
+          variant="inline"
+          sp={{
+            co_ok: sp?.co_ok,
+            error: sp?.error,
+            edit_co: sp?.edit_co,
+            co_title: sp?.co_title,
+            co_amt: sp?.co_amt,
+            co_desc: sp?.co_desc,
+          }}
+        />
+      )}
+      {projectTool !== "change-orders" && (
+        <InterimToolPanel
+          label={PROJECT_TOOLS.find((t) => t.key === projectTool)?.label ?? "Tool"}
+          href={`${base}/${PROJECT_TOOLS.find((t) => t.key === projectTool)?.route}/${dealId}`}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Interim state for a Project tool not yet moved inline — links to its full
+ *  standalone page. Replaced by the real inline tool as each is migrated. */
+function InterimToolPanel({ label, href }: { label: string; href: string }) {
+  return (
+    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
+      <p className="text-sm font-semibold text-ppp-charcoal">{label}</p>
+      <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">This tool opens on its own page while it&rsquo;s being moved inline here.</p>
+      <Link href={href} className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">
+        Open {label}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 6l6 6-6 6" /></svg>
+      </Link>
+    </div>
+  );
+}
+
 /** Quick-KPI lead strip for a deal sub-tab (B1) — a few tab-scoped stats and an
  *  optional progress bar, so each swapped panel opens with its numbers at a
  *  glance above the list. Distinct from the persistent deal financial header. */

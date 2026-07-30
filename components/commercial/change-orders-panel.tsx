@@ -73,9 +73,14 @@ export async function ChangeOrdersPanel({
   preserveTitle,
   preserveAmount,
   preserveDesc,
+  basePath,
 }: {
   oppId: string;
   accountId: string;
+  /** Canonical base URL for this panel's own links (Dismiss/Cancel/Edit). The
+   *  caller decides whether that's the standalone tool route or the deal's
+   *  Project sub-tab, so the panel works identically inline or on its own page. */
+  basePath: string;
   /** The deal's base bid (midpoint) — the "original contract" the COs adjust.
    *  Null when the deal has no bid range; the summary adapts. */
   baseContractCents: number | null;
@@ -118,7 +123,9 @@ export async function ChangeOrdersPanel({
   const contractToDateCents =
     baseContractCents != null ? baseContractCents + netApprovedCents : null;
 
-  const basePath = `/commercial/accounts/${accountId}/change-orders/${oppId}`;
+  // basePath is provided by the caller (route vs inline). Append query params
+  // with the right separator since the inline base already carries a query.
+  const joinUrl = (extra: string) => (basePath.includes("?") ? `${basePath}&${extra}` : `${basePath}?${extra}`);
   const hasPreserved = preserveTitle != null || preserveAmount != null || preserveDesc != null;
   const addAttemptFailed = hasPreserved && !editCoId;
 
@@ -348,7 +355,7 @@ export async function ChangeOrdersPanel({
                                   <input type="hidden" name="decision" value="declined" />
                                   <PendingSubmitButton pendingLabel="Declining…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 bg-surface text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px]">Decline</PendingSubmitButton>
                                 </form>
-                                <Link href={`${basePath}?edit_co=${co.id}`} className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Edit</Link>
+                                <Link href={joinUrl(`edit_co=${co.id}`)} className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 text-[12px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Edit</Link>
                               </>
                             )}
                             {co.status === "approved" && co.amount_cents > 0 && (
