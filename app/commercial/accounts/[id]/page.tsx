@@ -939,6 +939,8 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
     listCommercialInvoices({ opportunityId: p.opp.id }),
   ]);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
+  // Per-deal activity feed (R3) — the account's activity filtered to THIS deal.
+  const dealActivity = (await getAccountRecentActivity(accountId, 100)).filter((e) => e.opportunity_id === p.opp.id).slice(0, 8);
   const recentCos = [...changeOrders].sort((a, b) => b.co_number - a.co_number).slice(0, 3);
   const latestSub = [...submittals].sort((a, b) => b.submittal_number - a.submittal_number || b.revision_number - a.revision_number)[0] ?? null;
   const awaitingSubs = submittals.filter((s) => ["submitted", "under_review", "revise_and_resubmit"].includes(s.status)).length;
@@ -1156,6 +1158,9 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
           )}
         </div>
       </section>
+
+      {/* Per-deal activity feed (R3) — self-hides when quiet. */}
+      <RecentActivityCard entries={dealActivity} />
     </div>
   );
 }
