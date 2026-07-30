@@ -66,7 +66,7 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
   const overviewHref = `/commercial/accounts/${p.accountId}?tab=projects&project=${p.opp.id}`;
   const coHref = `/commercial/accounts/${p.accountId}/change-orders/${p.opp.id}`;
   const aiaHref = `/commercial/accounts/${p.accountId}/aia/${p.opp.id}`;
-  const submittalsHref = `/commercial/opportunities/${p.opp.id}?tab=submittals`;
+  const submittalsHref = `/commercial/accounts/${p.accountId}/submittals/${p.opp.id}`;
   const closeoutHref = `/commercial/accounts/${p.accountId}/closeout/${p.opp.id}`;
 
   return (

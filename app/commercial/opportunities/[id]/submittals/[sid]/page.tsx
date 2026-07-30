@@ -569,6 +569,14 @@ export default async function SubmittalDetailPage({
   if (!loaded) notFound();
   const { submittal, items, statusLog } = loaded;
 
+  // Account for the back-link (Submittals now lives under the account, matching
+  // the other production tools). Falls back to the pipeline if unresolved.
+  const { getCommercialOpportunity } = await import("@/lib/commercial/opportunities/db");
+  const backOpp = await getCommercialOpportunity(opportunity_id);
+  const submittalsListHref = backOpp?.account_id
+    ? `/commercial/accounts/${backOpp.account_id}/submittals/${opportunity_id}`
+    : "/commercial/post-job/submittals";
+
   // Finish-code suggestions for the items editor (autocomplete-friendly).
   // Attachments — linked + unlinked, fetched in parallel for the
   // "Attached spec sheets" section.
@@ -628,7 +636,7 @@ export default async function SubmittalDetailPage({
     <div className="space-y-5 max-w-4xl">
       {/* Back link */}
       <Link
-        href={`/commercial/opportunities/${opportunity_id}?tab=submittals`}
+        href={submittalsListHref}
         className="inline-flex items-center gap-1.5 text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 min-h-[44px] touch-manipulation"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5 M12 19l-7-7 7-7" /></svg>

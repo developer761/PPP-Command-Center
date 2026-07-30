@@ -26,7 +26,7 @@ export function ProjectToolbar({
     { key: "overview", label: "Overview", href: `/commercial/accounts/${accountId}?tab=projects&project=${dealId}` },
     { key: "change-orders", label: "Change Orders", href: `/commercial/accounts/${accountId}/change-orders/${dealId}` },
     { key: "aia", label: "AIA Billing", href: `/commercial/accounts/${accountId}/aia/${dealId}` },
-    { key: "submittals", label: "Submittals", href: `/commercial/opportunities/${dealId}?tab=submittals` },
+    { key: "submittals", label: "Submittals", href: `/commercial/accounts/${accountId}/submittals/${dealId}` },
     { key: "closeout", label: "Closeout", href: `/commercial/accounts/${accountId}/closeout/${dealId}` },
     { key: "invoices", label: "Invoices", href: `/commercial/invoices?account_id=${accountId}#opp-${dealId}` },
   ];

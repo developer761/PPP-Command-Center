@@ -3109,7 +3109,7 @@ function OpportunityRow({
           )}
           {submittalStats && submittalStats.total > 0 && (
             <Link
-              href={`/commercial/opportunities/${opportunity.id}?tab=submittals`}
+              href={`/commercial/accounts/${opportunity.account_id}/submittals/${opportunity.id}`}
               className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border transition-colors min-h-[28px] touch-manipulation ${
                 submittalStats.awaiting_response > 0
                   ? "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100 hover:bg-ppp-blue-100"

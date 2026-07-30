@@ -1270,7 +1270,7 @@ async function createSubmittalAction(formData: FormData) {
 // Sub-navigation drives from URL `?tab=X&sub=Y`. Missing/invalid `sub`
 // falls back to the group's default (Info / Plans / Notes).
 type PrimaryTab = "overview" | "docs" | "activity" | "invoices" | "debrief";
-type SubTab = "info" | "team" | "plans" | "finishes" | "submittals" | "files" | "notes" | "tasks" | "timeline";
+type SubTab = "info" | "team" | "plans" | "finishes" | "files" | "notes" | "tasks" | "timeline";
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
 // Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
 const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
@@ -1286,7 +1286,6 @@ const SUB_TABS_BY_PRIMARY: Record<Exclude<PrimaryTab, "debrief" | "invoices">, {
   docs: [
     { key: "plans", label: "Plans & Specs" },
     { key: "finishes", label: "Finishes" },
-    { key: "submittals", label: "Submittals" },
     { key: "files", label: "Files" },
   ],
   activity: [
@@ -1315,7 +1314,9 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
   }
   // Legacy flat sub-tab keys → route to the primary + explicit sub.
   if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
-  if (raw === "plans" || raw === "finishes" || raw === "submittals" || raw === "files") return { primary: "docs", sub: raw as SubTab };
+  if (raw === "plans" || raw === "finishes" || raw === "files") return { primary: "docs", sub: raw as SubTab };
+  // Submittals moved to its own account-scoped page (2026-07-29); a legacy
+  // ?tab=submittals now falls through to the account drill-in bounce below.
   if (raw === "notes" || raw === "tasks" || raw === "timeline") return { primary: "activity", sub: raw as SubTab };
   // Unknown / stale keys → fall through to Overview.
   return { primary: "overview", sub: null };
@@ -1368,7 +1369,6 @@ export default async function OpportunityDetailPage({
     _rawTab === "docs" ||
     _rawTab === "plans" ||
     _rawTab === "finishes" ||
-    _rawTab === "submittals" ||
     _rawTab === "files" ||
     _rawTab === "activity" ||
     _rawTab === "notes" ||
@@ -1749,7 +1749,7 @@ export default async function OpportunityDetailPage({
           <ProjectToolbar
             accountId={account.id}
             dealId={opp.id}
-            active={tab === "submittals" ? "submittals" : "overview"}
+            active="overview"
           />
         </div>
       )}
@@ -1879,9 +1879,6 @@ export default async function OpportunityDetailPage({
           errorMessage={pickFirst(sp.error)}
           confirmDeleteFinish={pickFirst(sp.confirm_delete_finish)}
         />
-      )}
-      {tab === "submittals" && (
-        <SubmittalsTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />
       )}
       {tab === "files" && (
         <FilesTab

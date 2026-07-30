@@ -785,7 +785,7 @@ function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string
   const tools: { label: string; sub: string; href: string; icon: React.ReactNode }[] = [
     { label: "Change Orders", sub: "Scope added or deducted mid-job", href: `${base}/change-orders/${p.opp.id}`, icon: <path d="M3 12a9 9 0 0 1 15-6.7L21 8 M21 3v5h-5" /> },
     { label: "AIA Billing", sub: "G702 / G703 progress billing + Excel", href: `${base}/aia/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M9 13h6 M9 17h6" /> },
-    { label: "Submittals", sub: "Shop drawings + product data → GC", href: `/commercial/opportunities/${p.opp.id}?tab=submittals`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h5 M8 17h4" /> },
+    { label: "Submittals", sub: "Shop drawings + product data → GC", href: `${base}/submittals/${p.opp.id}`, icon: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h5 M8 17h4" /> },
     { label: "Closeout & Warranty", sub: "Close-out package + transmittal + warranty", href: `${base}/closeout/${p.opp.id}`, icon: <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /> },
   ];
   const hasContract = p.contractToDateCents > 0;
@@ -6026,7 +6026,7 @@ async function DealEditSheet({
             — you couldn't reach the create surface from where you land. */}
         {isPostSaleDeal && (
           <Link
-            href={`/commercial/opportunities/${deal.id}?tab=submittals`}
+            href={`/commercial/accounts/${accountId}/submittals/${deal.id}`}
             className="block rounded-xl border border-cc-brand-200 bg-gradient-to-br from-cc-brand-50 to-surface p-4 hover:border-cc-brand-300 hover:shadow-sm transition-all group"
           >
             <div className="flex items-center justify-between gap-3">
