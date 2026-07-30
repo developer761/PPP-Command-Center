@@ -31,6 +31,7 @@ import {
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { AiaApplicationDetail } from "@/components/commercial/aia-application-detail";
 import type { AiaLineSaveResult } from "@/components/commercial/aia-line-row";
+import { AiaSettingsForm } from "@/components/commercial/aia-settings-form";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -120,6 +121,35 @@ async function updateApplicationAction(formData: FormData) {
   if (!result.ok) redirect(`${base(id, dealId)}?app=${appId}&error=${encodeURIComponent(result.error)}`);
   revalidateAia(id, dealId);
   redirect(`${base(id, dealId)}?app=${appId}`);
+}
+
+/** Non-redirecting variant of updateApplicationAction for the autosaving
+ *  settings panel. Returns {ok,error} so the client can show Saved in place. */
+async function saveSettingsAutosaveAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  "use server";
+  const userId = await requireCommercialUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const appId = String(formData.get("app_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) return { ok: false, error: "Bad request." };
+  if (!(await ownsAiaContext(id, dealId, appId))) return { ok: false, error: "Not found." };
+  const original = parseDollarsToCents(String(formData.get("original_contract") ?? ""));
+  const retainageRaw = String(formData.get("retainage_pct") ?? "");
+  const retainage = retainageRaw ? Number(retainageRaw) : NaN;
+  const result = await updateAiaApplication(
+    appId,
+    {
+      period_from: toEtNoon(String(formData.get("period_from") ?? "")),
+      period_to: toEtNoon(String(formData.get("period_to") ?? "")),
+      ...(original != null && original >= 0 ? { original_contract_cents: original } : {}),
+      ...(Number.isFinite(retainage) && retainage >= 0 && retainage <= 100 ? { retainage_pct: retainage } : {}),
+      notes: String(formData.get("notes") ?? "").slice(0, 4000) || null,
+    },
+    userId
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+  revalidateAia(id, dealId);
+  return { ok: true };
 }
 
 async function setStatusAction(formData: FormData) {
@@ -313,40 +343,30 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H1a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6h.09" /></svg>
                   Application settings
                 </summary>
-                <form action={updateApplicationAction} className="px-4 pb-4 pt-1 grid sm:grid-cols-2 gap-3">
+                <AiaSettingsForm
+                  appId={selectedAppId}
+                  accountId={id}
+                  dealId={dealId}
+                  saveAction={saveSettingsAutosaveAction}
+                  initial={{
+                    period_from: application.period_from?.slice(0, 10) ?? "",
+                    period_to: application.period_to?.slice(0, 10) ?? "",
+                    original_contract: (application.original_contract_cents / 100).toFixed(2),
+                    retainage_pct: String(Number(application.retainage_pct)),
+                    notes: application.notes ?? "",
+                  }}
+                />
+                {/* Delete stays a separate, explicit + confirmed action. */}
+                <form action={deleteApplicationAction} className="px-4 pb-4 pt-0 flex justify-end">
                   {ctx}
                   <input type="hidden" name="app_id" value={selectedAppId} />
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period from</span>
-                    <input type="date" name="period_from" defaultValue={application.period_from?.slice(0, 10) ?? ""} className={INPUT} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
-                    <input type="date" name="period_to" defaultValue={application.period_to?.slice(0, 10) ?? ""} className={INPUT} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Original contract ($)</span>
-                    <input name="original_contract" inputMode="decimal" defaultValue={(application.original_contract_cents / 100).toFixed(2)} className={INPUT} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Retainage (%)</span>
-                    <input name="retainage_pct" inputMode="decimal" defaultValue={String(Number(application.retainage_pct))} className={INPUT} />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Notes</span>
-                    <textarea name="notes" rows={2} defaultValue={application.notes ?? ""} maxLength={4000} className={INPUT} />
-                  </label>
-                  <div className="sm:col-span-2 flex items-center justify-between gap-2">
-                    <PendingSubmitButton pendingLabel="Saving…" className="px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">Save settings</PendingSubmitButton>
-                    <ConfirmSubmitButton
-                      message={`Delete Application No. ${application.application_number}? This can't be undone.`}
-                      pendingLabel="Deleting…"
-                      formAction={deleteApplicationAction}
-                      className="px-3.5 py-2 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[44px]"
-                    >
-                      Delete application
-                    </ConfirmSubmitButton>
-                  </div>
+                  <ConfirmSubmitButton
+                    message={`Delete Application No. ${application.application_number}? This can't be undone.`}
+                    pendingLabel="Deleting…"
+                    className="px-3.5 py-2 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[44px]"
+                  >
+                    Delete application
+                  </ConfirmSubmitButton>
                 </form>
               </details>
               )}
