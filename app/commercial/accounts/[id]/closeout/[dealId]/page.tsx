@@ -1,8 +1,9 @@
 /**
  * Closeout & Warranty — account-scoped project page. Lists close-out packages
  * for a post-sale project; a selected one (?pkg=) shows its transmittal cover,
- * warranty term, and the close-out checklist. Same account-scoped pattern +
- * ProjectToolbar as Change Orders / AIA.
+ * warranty term, and the close-out checklist. Same account-scoped pattern as
+ * Change Orders / AIA — a single focused page with a ToolBackHeader (no
+ * redundant tool tabs; this IS the closeout page).
  */
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -41,8 +42,7 @@ import {
   type CloseoutStatus,
   type CloseoutTransmittedAs,
 } from "@/lib/commercial/closeout/constants";
-import { ProjectToolbar } from "@/components/commercial/project-toolbar";
-import { ToolBackHeader, resolveToolBack } from "@/components/commercial/tool-back-header";
+import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { INPUT_CLS, TEXTAREA_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -241,8 +241,6 @@ export default async function CloseoutPage({ params, searchParams }: { params: P
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Closeout &amp; Warranty</h1>
         <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">{dealName} · <span className="font-medium">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</span></p>
       </div>
-
-      <ProjectToolbar accountId={id} dealId={dealId} active="closeout" fromTool={!!resolveToolBack(sp.back)} />
 
       {sp.error && <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{decodeURIComponent(sp.error)}</div>}
       {sp.ok && <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Saved.</div>}

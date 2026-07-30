@@ -33,6 +33,8 @@ export type CommercialChangeOrder = {
   description: string | null;
   amount_cents: number;
   status: ChangeOrderStatus;
+  /** Phase G v3 — the proposal this CO amends (migration 086). Nullable. */
+  proposal_id: string | null;
   decided_by_user_id: string | null;
   decided_at: string | null;
   invoiced_invoice_id: string | null;
@@ -116,8 +118,33 @@ export type CreateChangeOrderInput = {
   title: string;
   description?: string | null;
   amount_cents: number;
+  /** Phase G v3 — the proposal this CO amends (optional). Validated against
+   *  the opp before it's stored; an id that doesn't belong to the deal is
+   *  dropped to null rather than rejected. */
+  proposal_id?: string | null;
   created_by_user_id: string;
 };
+
+/**
+ * Verify a proposal id belongs to this opportunity (chain-of-trust) before we
+ * store it on a CO. Returns the id if valid + owned, else null — a stray/other-
+ * deal id is silently dropped, never persisted.
+ */
+async function validProposalForOpp(
+  sb: ReturnType<typeof commercialDb>,
+  proposalId: string | null | undefined,
+  opportunityId: string
+): Promise<string | null> {
+  if (!proposalId) return null;
+  const { data } = await sb
+    .from("commercial_proposals")
+    .select("id")
+    .eq("id", proposalId)
+    .eq("opportunity_id", opportunityId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  return data ? proposalId : null;
+}
 
 /**
  * Create a pending CO. account_id is derived from the opportunity (never
@@ -152,6 +179,7 @@ export async function createChangeOrder(
     return { ok: false, error: "Change orders can only be added to a Won/in-progress project." };
   }
   const account_id = row.account_id;
+  const proposal_id = await validProposalForOpp(sb, input.proposal_id, input.opportunity_id);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     // Next per-opp CO number. Only live rows count toward the max, but the
@@ -175,6 +203,7 @@ export async function createChangeOrder(
         title: title.slice(0, 200),
         description: input.description?.trim().slice(0, 4000) || null,
         amount_cents: amount,
+        proposal_id,
         status: "pending",
         created_by_user_id: input.created_by_user_id,
       })
@@ -196,7 +225,7 @@ export async function createChangeOrder(
 /** Edit a PENDING, un-billed CO. Decided or billed COs are locked. */
 export async function updateChangeOrder(
   id: string,
-  patch: { title?: string; description?: string | null; amount_cents?: number },
+  patch: { title?: string; description?: string | null; amount_cents?: number; proposal_id?: string | null },
   userId: string
 ): Promise<Result<CommercialChangeOrder>> {
   const before = await getChangeOrder(id);
@@ -227,6 +256,9 @@ export async function updateChangeOrder(
   }
 
   const sb = commercialDb();
+  if (patch.proposal_id !== undefined) {
+    next.proposal_id = await validProposalForOpp(sb, patch.proposal_id, before.opportunity_id);
+  }
   // 2026-07-29 re-audit: CAS on status='pending' so a concurrent approve
   // can't interleave with an edit and mutate an already-decided CO.
   const { data: updated, error } = await sb

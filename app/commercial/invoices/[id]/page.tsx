@@ -266,8 +266,16 @@ async function deleteDraftAction(formData: FormData) {
   // accept URLs that start with /commercial to prevent malicious form
   // input from bouncing the user off-domain.
   const rawFrom = String(formData.get("from") ?? "").trim();
+  // 2026-07-29: invoices live under the account now. Only honor a `from` that
+  // points at a canonical invoice surface (the global list or an account view).
+  // A stale opp-tab `from` (`/commercial/opportunities/…?tab=invoices`) can
+  // bounce/404 for a post-sale deal — reject it and fall back to the account
+  // invoices view below.
   const safeFrom =
-    rawFrom.startsWith("/commercial") ? rawFrom.split("#")[0] : null;
+    rawFrom.startsWith("/commercial/invoices") ||
+    rawFrom.startsWith("/commercial/accounts/")
+      ? rawFrom.split("#")[0]
+      : null;
   // Capture context BEFORE the soft-delete so we can revalidate the
   // parent opp + account. After deleted_at is set, the row is still in
   // the DB, but semantically the panel should re-render without it —
@@ -287,9 +295,14 @@ async function deleteDraftAction(formData: FormData) {
   if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
   const undoLabel = preInvoice?.invoice_number ?? "";
   const undoQuery = `deleted=1&undo_id=${invoice_id}&undo_kind=invoice&undo_label=${encodeURIComponent(undoLabel)}`;
+  // Fallback lands on the account's invoices view (canonical home) when we have
+  // the account; otherwise the global list. Never the opp tab.
+  const fallback = ctx.account_id
+    ? `/commercial/invoices?account_id=${ctx.account_id}`
+    : "/commercial/invoices";
   const target = safeFrom
     ? `${safeFrom}${safeFrom.includes("?") ? "&" : "?"}${undoQuery}`
-    : `/commercial/invoices?${undoQuery}`;
+    : `${fallback}${fallback.includes("?") ? "&" : "?"}${undoQuery}`;
   redirect(target);
 }
 
@@ -419,9 +432,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   const fromRaw = pickFirst(sp.from);
   const backHref = (() => {
     if (fromRaw && fromRaw.startsWith("/commercial/")) return fromRaw;
-    // Natural parent: opp invoices tab > account invoices tab > list
-    if (opp) return `/commercial/opportunities/${opp.id}?tab=invoices`;
-    if (account) return `/commercial/accounts/${account.id}?tab=invoices`;
+    // 2026-07-29: invoices are account-scoped now — return to the account's
+    // invoices view (guaranteed valid), NOT the opp tab (which can bounce/
+    // 404 for a post-sale deal). Scroll to this opp's group.
+    if (account) return `/commercial/invoices?account_id=${account.id}${opp ? `#opp-${opp.id}` : ""}`;
     return "/commercial/invoices";
   })();
 

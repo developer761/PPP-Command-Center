@@ -19,8 +19,7 @@ import {
   type OpportunitySubmittalWithItemCount,
 } from "@/lib/commercial/opportunities/submittals";
 import { submittalStatusLabel, submittalStatusTone } from "@/lib/commercial/opportunities/submittal-constants";
-import { ProjectToolbar } from "@/components/commercial/project-toolbar";
-import { ToolBackHeader, resolveToolBack } from "@/components/commercial/tool-back-header";
+import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { UUID_RE } from "@/lib/commercial/uuid";
 
 type PP = Promise<{ id: string; dealId: string }>;
@@ -100,8 +99,6 @@ export default async function AccountSubmittalsPage({ params, searchParams }: { 
           {dealName} · <span className="font-medium">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</span>
         </p>
       </div>
-
-      <ProjectToolbar accountId={id} dealId={dealId} active="submittals" fromTool={!!resolveToolBack(sp.back)} />
 
       {sp.error && (
         <div role="alert" aria-live="polite" className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2">

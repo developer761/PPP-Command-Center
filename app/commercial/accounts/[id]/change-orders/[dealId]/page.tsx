@@ -23,10 +23,11 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject, oppStatusDisplayLabel } from "@/lib/commercial/opportunities/constants";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
-import { ProjectToolbar } from "@/components/commercial/project-toolbar";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { getInvoiceContext } from "@/lib/commercial/invoices/db";
+import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
+import { formatCentsFull } from "@/lib/commercial/invoices/format";
 import {
   createChangeOrder,
   updateChangeOrder,
@@ -35,7 +36,7 @@ import {
   deleteChangeOrder,
 } from "@/lib/commercial/change-orders/db";
 import { ChangeOrdersPanel } from "@/components/commercial/change-orders-panel";
-import { ToolBackHeader, resolveToolBack } from "@/components/commercial/tool-back-header";
+import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 
 type PP = Promise<{ id: string; dealId: string }>;
 type SP = Promise<{
@@ -73,6 +74,28 @@ function coRedirect(accountId: string, oppId: string, params: Record<string, str
   redirect(q ? `${coBase(accountId, oppId)}?${q}` : coBase(accountId, oppId));
 }
 
+/**
+ * Resolve the signed CO amount from a positive dollar field + an explicit
+ * Add/Deduct direction. The amount field is always entered positive now; the
+ * radio decides the sign. Back-compat: a stray minus in the amount still forces
+ * a deduct. Returns null on unparseable input, 0 when the magnitude is zero.
+ */
+function signedAmountCents(rawAmount: string, direction: string): number | null {
+  const cents = parseDollarsToCents(rawAmount);
+  if (cents === null) return null;
+  const magnitude = Math.abs(cents);
+  if (magnitude === 0) return 0;
+  const isDeduct = direction === "deduct" || cents < 0;
+  return isDeduct ? -magnitude : magnitude;
+}
+
+/** Human label for a proposal in the CO "which proposal" dropdown. */
+function proposalPickerLabel(p: CommercialProposal): string {
+  const num = formatProposalNumber(p.proposal_seq) || `Rev ${p.revision_number}`;
+  const status = p.status.charAt(0).toUpperCase() + p.status.slice(1);
+  return `${num} · ${formatCentsFull(p.total_cents)} · ${status}`;
+}
+
 async function addChangeOrderAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
@@ -82,16 +105,19 @@ async function addChangeOrderAction(formData: FormData) {
   const rawTitle = String(formData.get("title") ?? "");
   const rawAmount = String(formData.get("amount") ?? "");
   const rawDesc = String(formData.get("description") ?? "");
+  const rawDirection = String(formData.get("direction") ?? "add");
+  const rawProposal = String(formData.get("proposal_id") ?? "");
   const preserve = { co_title: rawTitle.slice(0, 200), co_amt: rawAmount.slice(0, 40), co_desc: rawDesc.slice(0, 1000) };
-  const amount_cents = parseDollarsToCents(rawAmount);
-  if (amount_cents === null || amount_cents === 0) {
-    coRedirect(account_id, opp_id, { error: "Enter a non-zero amount (use a minus sign for a deduct, e.g. -500.00).", ...preserve });
+  const signed = signedAmountCents(rawAmount, rawDirection);
+  if (signed === null || signed === 0) {
+    coRedirect(account_id, opp_id, { error: "Enter an amount greater than zero, then pick Add or Deduct.", ...preserve });
   }
   const result = await createChangeOrder({
     opportunity_id: opp_id,
     title: rawTitle.trim(),
     description: rawDesc.trim() || null,
-    amount_cents: amount_cents!,
+    amount_cents: signed!,
+    proposal_id: UUID_RE.test(rawProposal) ? rawProposal : null,
     created_by_user_id: userId,
   });
   if (!result.ok) coRedirect(account_id, opp_id, { error: result.error, ...preserve });
@@ -109,12 +135,23 @@ async function editChangeOrderAction(formData: FormData) {
   const rawTitle = String(formData.get("title") ?? "");
   const rawAmount = String(formData.get("amount") ?? "");
   const rawDesc = String(formData.get("description") ?? "");
+  const rawDirection = String(formData.get("direction") ?? "add");
+  const rawProposal = String(formData.get("proposal_id") ?? "");
   const preserve = { edit_co: co_id, co_title: rawTitle.slice(0, 200), co_amt: rawAmount.slice(0, 40), co_desc: rawDesc.slice(0, 1000) };
-  const amount_cents = parseDollarsToCents(rawAmount);
-  if (amount_cents === null || amount_cents === 0) {
-    coRedirect(account_id, opp_id, { error: "Enter a non-zero amount (use a minus sign for a deduct).", ...preserve });
+  const signed = signedAmountCents(rawAmount, rawDirection);
+  if (signed === null || signed === 0) {
+    coRedirect(account_id, opp_id, { error: "Enter an amount greater than zero, then pick Add or Deduct.", ...preserve });
   }
-  const result = await updateChangeOrder(co_id, { title: rawTitle.trim(), description: rawDesc.trim() || null, amount_cents: amount_cents! }, userId);
+  const result = await updateChangeOrder(
+    co_id,
+    {
+      title: rawTitle.trim(),
+      description: rawDesc.trim() || null,
+      amount_cents: signed!,
+      proposal_id: UUID_RE.test(rawProposal) ? rawProposal : null,
+    },
+    userId,
+  );
   if (!result.ok) coRedirect(account_id, opp_id, { error: result.error, ...preserve });
   revalidateChangeOrderSurfaces(account_id, opp_id);
   coRedirect(account_id, opp_id, { co_ok: "saved" });
@@ -194,6 +231,12 @@ export default async function AccountChangeOrdersPage({
   // four surfaces show the same "contract to date" (was the bare bid midpoint).
   const base = await getEffectiveContractBaseCents(dealId);
   const baseContractCents = base > 0 ? base : null;
+  // Proposals on this project — so a CO can name WHICH proposal's scope it
+  // amends (Karan 2026-07-29). Reduced to the fields the panel dropdown needs.
+  const proposals = (await listProposalsForOpp(dealId)).map((p) => ({
+    id: p.id,
+    label: proposalPickerLabel(p),
+  }));
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
@@ -208,12 +251,11 @@ export default async function AccountChangeOrdersPage({
         </div>
       </div>
 
-      <ProjectToolbar accountId={id} dealId={dealId} active="change-orders" fromTool={!!resolveToolBack(sp.back)} />
-
       <ChangeOrdersPanel
         oppId={opp.id}
         accountId={id}
         baseContractCents={baseContractCents}
+        proposals={proposals}
         addAction={addChangeOrderAction}
         editAction={editChangeOrderAction}
         decideAction={decideChangeOrderAction}

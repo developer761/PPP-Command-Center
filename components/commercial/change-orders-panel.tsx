@@ -55,10 +55,13 @@ const CO_OK_MESSAGES: Record<string, string> = {
   deleted: "Change order deleted.",
 };
 
+type ProposalOption = { id: string; label: string };
+
 export async function ChangeOrdersPanel({
   oppId,
   accountId,
   baseContractCents,
+  proposals = [],
   addAction,
   editAction,
   decideAction,
@@ -76,6 +79,9 @@ export async function ChangeOrdersPanel({
   /** The deal's base bid (midpoint) — the "original contract" the COs adjust.
    *  Null when the deal has no bid range; the summary adapts. */
   baseContractCents: number | null;
+  /** Proposals on this project, for the "which proposal does this CO amend?"
+   *  picker. Empty when the deal has no proposals — the picker hides. */
+  proposals?: ProposalOption[];
   addAction: CoAction;
   editAction: CoAction;
   decideAction: CoAction;
@@ -92,6 +98,7 @@ export async function ChangeOrdersPanel({
   const liveInvoices = await liveInvoiceIds(
     items.map((c) => c.invoiced_invoice_id).filter((x): x is string => !!x)
   );
+  const proposalById = new Map(proposals.map((p) => [p.id, p.label]));
 
   const approved = items.filter((c) => c.status === "approved");
   const netApprovedCents = approved.reduce((acc, c) => acc + c.amount_cents, 0);
@@ -182,22 +189,24 @@ export async function ChangeOrdersPanel({
             </svg>
             Add a change order
           </summary>
-          <form action={addAction} className="px-3.5 pb-3.5 pt-1 space-y-2.5">
+          <form action={addAction} className="px-3.5 pb-3.5 pt-1 space-y-3">
             <input type="hidden" name="opp_id" value={oppId} />
             <input type="hidden" name="account_id" value={accountId} />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className={LABEL_CLS} htmlFor="co-title">Title</label>
-                <input id="co-title" name="title" required maxLength={200} defaultValue={addAttemptFailed ? preserveTitle ?? "" : ""} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
-              </div>
+            <div>
+              <label className={LABEL_CLS} htmlFor="co-title">Title</label>
+              <input id="co-title" name="title" required maxLength={200} defaultValue={addAttemptFailed ? preserveTitle ?? "" : ""} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <DirectionToggle idPrefix="add" defaultDirection={addAttemptFailed && (preserveAmount ?? "").trim().startsWith("-") ? "deduct" : "add"} />
               <div>
                 <label className={LABEL_CLS} htmlFor="co-amount">Amount</label>
-                <input id="co-amount" name="amount" required inputMode="decimal" defaultValue={addAttemptFailed ? preserveAmount ?? "" : ""} className={INPUT_CLS} placeholder="1,200.00" />
-                <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-                  Positive to add scope, or a minus sign to deduct (e.g. <span className="tabular-nums">-500.00</span>).
-                </p>
+                <input id="co-amount" name="amount" required inputMode="decimal" defaultValue={addAttemptFailed ? (preserveAmount ?? "").replace(/^-/, "") : ""} className={INPUT_CLS} placeholder="1,200.00" />
+                <p className="text-[11px] text-ppp-charcoal-500 mt-1">Enter a positive amount — the toggle sets add vs deduct.</p>
               </div>
             </div>
+            {proposals.length > 0 && (
+              <ProposalPicker idPrefix="add" proposals={proposals} selectedId={null} />
+            )}
             <div>
               <label className={LABEL_CLS} htmlFor="co-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
               <textarea id="co-desc" name="description" maxLength={4000} rows={2} defaultValue={addAttemptFailed ? preserveDesc ?? "" : ""} className={TEXTAREA_CLS} placeholder="What changed and why" />
@@ -227,11 +236,17 @@ export async function ChangeOrdersPanel({
                         <label className={LABEL_CLS} htmlFor={`edit-title-${co.id}`}>Title</label>
                         <input id={`edit-title-${co.id}`} name="title" required maxLength={200} defaultValue={preserveTitle ?? co.title} className={INPUT_CLS} />
                       </div>
-                      <div>
-                        <label className={LABEL_CLS} htmlFor={`edit-amount-${co.id}`}>Amount</label>
-                        <input id={`edit-amount-${co.id}`} name="amount" required inputMode="decimal" defaultValue={preserveAmount ?? (co.amount_cents / 100).toFixed(2)} className={INPUT_CLS} />
-                        <p className="text-[11px] text-ppp-charcoal-500 mt-1">Minus sign = deduct.</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <DirectionToggle idPrefix={`edit-${co.id}`} defaultDirection={co.amount_cents < 0 ? "deduct" : "add"} />
+                        <div>
+                          <label className={LABEL_CLS} htmlFor={`edit-amount-${co.id}`}>Amount</label>
+                          <input id={`edit-amount-${co.id}`} name="amount" required inputMode="decimal" defaultValue={preserveAmount ?? (Math.abs(co.amount_cents) / 100).toFixed(2)} className={INPUT_CLS} />
+                          <p className="text-[11px] text-ppp-charcoal-500 mt-1">Positive amount — the toggle sets the sign.</p>
+                        </div>
                       </div>
+                      {proposals.length > 0 && (
+                        <ProposalPicker idPrefix={`edit-${co.id}`} proposals={proposals} selectedId={co.proposal_id} />
+                      )}
                       <div>
                         <label className={LABEL_CLS} htmlFor={`edit-desc-${co.id}`}>Description</label>
                         <textarea id={`edit-desc-${co.id}`} name="description" maxLength={4000} rows={2} defaultValue={preserveDesc ?? co.description ?? ""} className={TEXTAREA_CLS} />
@@ -255,6 +270,14 @@ export async function ChangeOrdersPanel({
                           <div className="text-sm font-semibold text-ppp-charcoal mt-1 break-words">{co.title}</div>
                           {co.description && (
                             <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 break-words whitespace-pre-wrap">{co.description}</div>
+                          )}
+                          {co.proposal_id && proposalById.has(co.proposal_id) && (
+                            <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-ppp-charcoal-500">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
+                              </svg>
+                              Amends <span className="font-medium text-ppp-charcoal-700">{proposalById.get(co.proposal_id)}</span>
+                            </div>
                           )}
                           {co.decided_at && (
                             <div className="text-[11px] text-ppp-charcoal-400 mt-1">
@@ -354,6 +377,60 @@ export async function ChangeOrdersPanel({
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+/**
+ * Add / Deduct segmented control. A pair of radios styled as a two-button
+ * segment (peer-checked). Replaces the old "type a minus sign" convention with
+ * an explicit choice — Karan 2026-07-29: "no way to tell... if we're adding or
+ * taking away." Emits `direction` = "add" | "deduct".
+ */
+function DirectionToggle({ idPrefix, defaultDirection }: { idPrefix: string; defaultDirection: "add" | "deduct" }) {
+  const seg =
+    "relative overflow-hidden flex-1 cursor-pointer text-center px-3 py-2 min-h-[40px] inline-flex items-center justify-center gap-1.5 text-[12px] font-semibold rounded-md select-none transition-colors text-ppp-charcoal-600";
+  return (
+    <div>
+      <span className={LABEL_CLS}>Direction</span>
+      <div className="mt-1 flex gap-1 rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50 p-1">
+        <label className={seg}>
+          <input type="radio" name="direction" value="add" defaultChecked={defaultDirection === "add"} className="peer sr-only" />
+          <span className="absolute inset-0 rounded-md peer-checked:bg-emerald-600 peer-checked:shadow-sm pointer-events-none" aria-hidden />
+          <span className="relative z-10 peer-checked:text-white inline-flex items-center gap-1">
+            <span aria-hidden className="text-sm leading-none">+</span> Add scope
+          </span>
+        </label>
+        <label className={seg}>
+          <input type="radio" name="direction" value="deduct" defaultChecked={defaultDirection === "deduct"} className="peer sr-only" />
+          <span className="absolute inset-0 rounded-md peer-checked:bg-rose-600 peer-checked:shadow-sm pointer-events-none" aria-hidden />
+          <span className="relative z-10 peer-checked:text-white inline-flex items-center gap-1">
+            <span aria-hidden className="text-sm leading-none">−</span> Deduct
+          </span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Which proposal does this CO amend?" dropdown. Only rendered when the deal
+ * has proposals. Emits `proposal_id` ("" = none). A native <select> is fine —
+ * a project rarely carries more than a handful of proposals.
+ */
+function ProposalPicker({ idPrefix, proposals, selectedId }: { idPrefix: string; proposals: ProposalOption[]; selectedId: string | null }) {
+  return (
+    <div>
+      <label className={LABEL_CLS} htmlFor={`${idPrefix}-proposal`}>
+        Which proposal? <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+      </label>
+      <select id={`${idPrefix}-proposal`} name="proposal_id" defaultValue={selectedId ?? ""} className={INPUT_CLS}>
+        <option value="">General change — no specific proposal</option>
+        {proposals.map((p) => (
+          <option key={p.id} value={p.id}>{p.label}</option>
+        ))}
+      </select>
+      <p className="text-[11px] text-ppp-charcoal-500 mt-1">Ties this change to the proposal whose scope it revises.</p>
     </div>
   );
 }

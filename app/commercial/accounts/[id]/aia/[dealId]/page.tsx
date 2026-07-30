@@ -29,8 +29,7 @@ import {
 } from "@/lib/commercial/aia/db";
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { AiaApplicationDetail } from "@/components/commercial/aia-application-detail";
-import { ProjectToolbar } from "@/components/commercial/project-toolbar";
-import { ToolBackHeader, resolveToolBack } from "@/components/commercial/tool-back-header";
+import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
@@ -203,8 +202,6 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
           {dealName} · <span className="font-medium">{oppStatusDisplayLabel(opp.status, opp.sub_status)}</span> · G702 / G703 progress billing
         </p>
       </div>
-
-      <ProjectToolbar accountId={id} dealId={dealId} active="aia" fromTool={!!resolveToolBack(sp.back)} />
 
       {sp.error && !selectedAppId && (
         <div className="rounded-lg px-4 py-3 text-sm bg-rose-50 border border-rose-200 text-rose-700">{sp.error}</div>
