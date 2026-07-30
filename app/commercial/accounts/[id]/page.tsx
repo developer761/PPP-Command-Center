@@ -964,6 +964,28 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
         </Link>
       </div>
 
+      {/* Deal sub-tab bar (S1) — the deal is the container; these are its tabs.
+          Overview is here; the delivery tools open as the right-hand drawer. */}
+      <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {[
+          { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${p.opp.id}` },
+          { key: "proposals", label: "Proposals", href: `${base}?tab=proposals` },
+          { key: "invoices", label: "Invoices", href: `/commercial/invoices?account_id=${accountId}#opp-${p.opp.id}` },
+          { key: "change-orders", label: "Change Orders", href: `${base}/change-orders/${p.opp.id}` },
+          { key: "aia", label: "AIA Billing", href: `${base}/aia/${p.opp.id}` },
+          { key: "submittals", label: "Submittals", href: `${base}/submittals/${p.opp.id}` },
+          { key: "closeout", label: "Closeout", href: `${base}/closeout/${p.opp.id}` },
+        ].map((t) => (
+          <Link
+            key={t.key}
+            href={t.href}
+            className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${t.key === "overview" ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+
       <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
