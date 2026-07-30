@@ -48,6 +48,8 @@ import {
   proposalTotalLabel,
 } from "@/lib/commercial/proposals/constants";
 import { listProducts } from "@/lib/commercial/products/db";
+import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
+import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
 import ExclusionPicker from "@/components/commercial/exclusion-picker";
@@ -658,6 +660,27 @@ export default async function ProposalEditorPage({
     // any sibling deal's structured data. Filter to non-deleted only.
     listCommercialOpportunities({ accountId }),
   ]);
+  // Billing progress (Karan A2 2026-07-30): once this proposal is the accepted
+  // contract, show how much of it has been billed. Contract = proposal total +
+  // net APPROVED change orders tied to THIS proposal; billed = issued invoices
+  // linked to it. Deducts can't push the contract below $0.
+  const [proposalInvoices, dealChangeOrders] = await Promise.all([
+    listCommercialInvoices({ opportunityId: dealId }),
+    listChangeOrders(dealId),
+  ]);
+  const issuedForProposal = proposalInvoices.filter(
+    (inv) => inv.proposal_id === proposalId && inv.status !== "draft" && inv.status !== "void",
+  );
+  const billedCents = issuedForProposal.reduce((s, inv) => s + inv.total_cents, 0);
+  const netCoForProposal = dealChangeOrders
+    .filter((c) => c.status === "approved" && c.proposal_id === proposalId)
+    .reduce((s, c) => s + c.amount_cents, 0);
+  const effectiveContractCents = Math.max(0, proposal.total_cents + netCoForProposal);
+  const remainingCents = Math.max(0, effectiveContractCents - billedCents);
+  const billedPct = effectiveContractCents > 0 ? Math.min(100, Math.round((billedCents / effectiveContractCents) * 100)) : 0;
+  const overBilled = billedCents > effectiveContractCents;
+  const showBilling = proposal.status === "won" || billedCents > 0 || netCoForProposal !== 0;
+
   // Deals list for the fill-project-from-deal client picker. Skip the
   // current deal (nothing to fill from itself) + skip deals with no
   // usable name (label would be blank).
@@ -927,6 +950,54 @@ export default async function ProposalEditorPage({
           )}
         </div>
       </header>
+
+      {/* ── Billing progress (A2) — how much of this accepted contract has been
+          billed. Contract = proposal total + approved COs tied to it. ── */}
+      {showBilling && (
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-600 text-white shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Billing progress</h2>
+              <p className="text-[11px] text-ppp-charcoal-500 leading-snug">How much of this contract has been billed across its invoices.</p>
+            </div>
+            {overBilled && (
+              <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] font-bold uppercase tracking-wide text-amber-800 shrink-0">Over-billed</span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="rounded-lg border border-ppp-charcoal-100 bg-surface/70 px-2.5 py-2">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Contract</div>
+              <div className="font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 text-ppp-charcoal">{formatDollars(effectiveContractCents)}</div>
+              {netCoForProposal !== 0 && <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">incl {netCoForProposal < 0 ? "−" : "+"}{formatDollars(Math.abs(netCoForProposal))} COs</div>}
+            </div>
+            <div className="rounded-lg border border-ppp-charcoal-100 bg-surface/70 px-2.5 py-2">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Billed</div>
+              <div className="font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 text-emerald-700">{formatDollars(billedCents)}</div>
+              <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">{issuedForProposal.length} invoice{issuedForProposal.length === 1 ? "" : "s"}</div>
+            </div>
+            <div className="rounded-lg border border-ppp-charcoal-100 bg-surface/70 px-2.5 py-2">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Remaining</div>
+              <div className="font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 text-ppp-charcoal">{formatDollars(remainingCents)}</div>
+            </div>
+            <div className="rounded-lg border border-cc-brand-300 bg-surface px-2.5 py-2">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">% billed</div>
+              <div className="font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 text-cc-brand-800">{billedPct}%</div>
+            </div>
+          </div>
+          <div className="mt-3 h-2 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${overBilled ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${billedPct}%` }} aria-label={`${billedPct}% billed`} />
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-ppp-charcoal-500">{proposal.status === "won" ? "Accepted contract" : "Not yet accepted"}</span>
+            <Link href={`/commercial/invoices?account_id=${accountId}#opp-${dealId}`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-0.5 min-h-[36px]">
+              View invoices <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
+            </Link>
+          </div>
+        </section>
+      )}
 
       {sp.saved === "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-emerald-800">Saved.</div>
