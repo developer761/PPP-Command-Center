@@ -26,6 +26,17 @@ const TONE_CLS: Record<ToolStatusTone, string> = {
   brand: "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200",
 };
 
+/** Per-tool accent so the four tool pages read as distinct surfaces instead of
+ *  four identical orange-header lists. Full literal class strings so Tailwind's
+ *  JIT keeps them. */
+export type ToolAccent = "brand" | "blue" | "emerald" | "navy";
+const ACCENT: Record<ToolAccent, { tile: string; chevron: string; hover: string; groupHover: string; groupTint: string; heroText: string; heroRule: string }> = {
+  brand: { tile: "bg-cc-brand-600", chevron: "text-cc-brand-500", hover: "hover:bg-cc-brand-50/60", groupHover: "group-hover:text-cc-brand-800", groupTint: "from-surface to-cc-brand-50/20", heroText: "text-cc-brand-700", heroRule: "bg-cc-brand-500" },
+  blue: { tile: "bg-ppp-blue-600", chevron: "text-ppp-blue-500", hover: "hover:bg-ppp-blue-50/60", groupHover: "group-hover:text-ppp-blue-800", groupTint: "from-surface to-ppp-blue-50/25", heroText: "text-ppp-blue-700", heroRule: "bg-ppp-blue-500" },
+  emerald: { tile: "bg-emerald-600", chevron: "text-emerald-500", hover: "hover:bg-emerald-50/60", groupHover: "group-hover:text-emerald-800", groupTint: "from-surface to-emerald-50/25", heroText: "text-emerald-700", heroRule: "bg-emerald-500" },
+  navy: { tile: "bg-ppp-navy-700", chevron: "text-ppp-navy-500", hover: "hover:bg-ppp-navy-50/60", groupHover: "group-hover:text-ppp-navy-800", groupTint: "from-surface to-ppp-navy-50/25", heroText: "text-ppp-navy-700", heroRule: "bg-ppp-navy-600" },
+};
+
 function groupByAccount(projects: ProjectRow[]): { accountId: string; accountName: string; rows: ProjectRow[] }[] {
   const map = new Map<string, { accountId: string; accountName: string; rows: ProjectRow[] }>();
   for (const p of projects) {
@@ -41,31 +52,38 @@ function ProjectRowLink({
   p,
   status,
   hrefFor,
+  rowMeta,
+  accent,
 }: {
   p: ProjectRow;
   status: (p: ProjectRow) => { label: string; tone: ToolStatusTone };
   hrefFor: (p: ProjectRow) => string;
+  rowMeta?: (p: ProjectRow) => React.ReactNode;
+  accent: ToolAccent;
 }) {
   const name = derivedOppName(p.opp, p.accountName);
   const code = formatOpportunityNumber(p.opp.project_number);
   const st = status(p);
+  const a = ACCENT[accent];
+  const meta = rowMeta?.(p);
   return (
     <Link
       href={hrefFor(p)}
-      className="flex items-center justify-between gap-3 pl-5 pr-3 py-2.5 rounded-lg hover:bg-cc-brand-50/60 min-h-[52px] touch-manipulation group"
+      className={`flex items-center justify-between gap-3 pl-5 pr-3 py-2.5 rounded-lg ${a.hover} min-h-[52px] touch-manipulation group`}
     >
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate group-hover:text-cc-brand-800">{name}</div>
+        <div className={`text-[13.5px] font-semibold text-ppp-charcoal truncate ${a.groupHover}`}>{name}</div>
         <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
           {code && <span className="font-mono">{code}</span>}
           {code && <span aria-hidden className="text-ppp-charcoal-300">·</span>}
           <span>{oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}</span>
+          {meta && <><span aria-hidden className="text-ppp-charcoal-300">·</span>{meta}</>}
         </div>
       </div>
       <span className={`inline-flex items-center px-2 py-1 rounded-md border text-[11px] font-semibold tabular-nums shrink-0 ${TONE_CLS[st.tone]}`}>
         {st.label}
       </span>
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-cc-brand-500 shrink-0 group-hover:translate-x-0.5 transition-transform"><path d="M9 18l6-6-6-6" /></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={`${a.chevron} shrink-0 group-hover:translate-x-0.5 transition-transform`}><path d="M9 18l6-6-6-6" /></svg>
     </Link>
   );
 }
@@ -74,14 +92,19 @@ function AccountGroup({
   group,
   status,
   hrefFor,
+  rowMeta,
+  accent,
 }: {
   group: { accountId: string; accountName: string; rows: ProjectRow[] };
   status: (p: ProjectRow) => { label: string; tone: ToolStatusTone };
   hrefFor: (p: ProjectRow) => string;
+  rowMeta?: (p: ProjectRow) => React.ReactNode;
+  accent: ToolAccent;
 }) {
+  const a = ACCENT[accent];
   return (
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100 bg-gradient-to-br from-surface to-ppp-blue-50/20">
+      <div className={`flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100 bg-gradient-to-br ${a.groupTint}`}>
         <AccountAvatar accountId={group.accountId} name={group.accountName} size="xs" />
         <Link href={`/commercial/accounts/${group.accountId}?tab=projects`} className="text-[13px] font-bold text-ppp-charcoal truncate hover:text-cc-brand-700">
           {group.accountName}
@@ -93,7 +116,7 @@ function AccountGroup({
       <ul className="divide-y divide-ppp-charcoal-50 p-1.5">
         {group.rows.map((p) => (
           <li key={p.opp.id}>
-            <ProjectRowLink p={p} status={status} hrefFor={hrefFor} />
+            <ProjectRowLink p={p} status={status} hrefFor={hrefFor} rowMeta={rowMeta} accent={accent} />
           </li>
         ))}
       </ul>
@@ -110,6 +133,8 @@ export function PostJobToolIndex({
   hrefFor,
   emptyHint,
   kpis,
+  rowMeta,
+  accent = "brand",
 }: {
   title: string;
   subtitle: string;
@@ -119,22 +144,28 @@ export function PostJobToolIndex({
   hrefFor: (p: ProjectRow) => string;
   emptyHint: string;
   kpis?: React.ReactNode;
+  /** Optional per-tool secondary detail shown on each project row. */
+  rowMeta?: (p: ProjectRow) => React.ReactNode;
+  /** Per-tool accent so the four tool pages read as distinct surfaces. */
+  accent?: ToolAccent;
 }) {
   const active = projects.filter((p) => p.opp.status !== "post_sale_closed");
   const completed = projects.filter((p) => p.opp.status === "post_sale_closed");
   const activeGroups = groupByAccount(active);
   const completedGroups = groupByAccount(completed);
+  const a = ACCENT[accent];
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-5">
       <header>
         <div className="flex items-center gap-2.5">
-          <span aria-hidden className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-cc-brand-600 text-white shrink-0">{icon}</span>
+          <span aria-hidden className={`inline-flex items-center justify-center h-10 w-10 rounded-xl ${a.tile} text-white shrink-0`}>{icon}</span>
           <div>
             <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">{title}</h1>
             <p className="text-[12px] text-ppp-charcoal-500 mt-1">{subtitle}</p>
           </div>
         </div>
+        <div className={`mt-3 h-0.5 w-full rounded-full ${a.heroRule} opacity-70`} />
       </header>
 
       {kpis}
@@ -151,7 +182,7 @@ export function PostJobToolIndex({
       ) : (
         <div className="space-y-3">
           {activeGroups.map((g) => (
-            <AccountGroup key={g.accountId} group={g} status={status} hrefFor={hrefFor} />
+            <AccountGroup key={g.accountId} group={g} status={status} hrefFor={hrefFor} rowMeta={rowMeta} accent={accent} />
           ))}
           {completedGroups.length > 0 && (
             <details className="group">
@@ -161,7 +192,7 @@ export function PostJobToolIndex({
               </summary>
               <div className="space-y-3 mt-2">
                 {completedGroups.map((g) => (
-                  <AccountGroup key={g.accountId} group={g} status={status} hrefFor={hrefFor} />
+                  <AccountGroup key={g.accountId} group={g} status={status} hrefFor={hrefFor} rowMeta={rowMeta} accent={accent} />
                 ))}
               </div>
             </details>

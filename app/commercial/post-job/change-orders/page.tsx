@@ -38,6 +38,7 @@ export default async function ChangeOrdersIndexPage() {
         return { label: "No COs", tone: "neutral" };
       }}
       hrefFor={(p) => `/commercial/accounts/${p.accountId}/change-orders/${p.opp.id}?back=/commercial/post-job/change-orders`}
+      accent="brand"
       kpis={
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile label="Pending change orders" value={String(totalPending)} tone={totalPending > 0 ? "amber" : "neutral"} />

@@ -40,6 +40,8 @@ export default async function AiaIndexPage() {
         return { label: `App ${p.latestAppNumber} · ${meta ? meta.label : ""}`.trim(), tone };
       }}
       hrefFor={(p) => `/commercial/accounts/${p.accountId}/aia/${p.opp.id}?back=/commercial/post-job/aia`}
+      accent="navy"
+      rowMeta={(p) => (p.contractToDateCents > 0 ? <span className="tabular-nums">{formatCentsCompact(p.contractToDateCents)} contract</span> : null)}
       kpis={
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile label="Projects billing" value={String(started)} tone="emerald" />
