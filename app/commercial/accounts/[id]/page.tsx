@@ -1490,10 +1490,11 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
  * delivery tools noted as unlocking on Won. Same sub-tab bar shape.
  */
 async function PreSaleDealHome({ opp, accountId, dealTab: dealTabRaw = "overview" }: { opp: CommercialOpportunity; accountId: string; dealTab?: string }) {
-  // Pre-sale deals only have Overview / Proposals / Documents (no invoices/tools
-  // until Won). A globally-valid ?dt=invoices routed here would otherwise render
-  // a blank panel — fall back to Overview for anything this view can't show.
-  const dealTab = dealTabRaw === "proposals" || dealTabRaw === "documents" ? dealTabRaw : "overview";
+  // Every deal shows the SAME tab bar (Overview/Proposals/Invoices/Project/
+  // Documents) so the shape never changes between a bid and a Won job. On a
+  // pre-sale deal, Invoices + Project render a "unlocks when Won" locked state
+  // instead of the live tool. Unknown ?dt= falls back to Overview.
+  const dealTab = ["overview", "proposals", "invoices", "project", "documents"].includes(dealTabRaw) ? dealTabRaw : "overview";
   const base = `/commercial/accounts/${accountId}`;
   const name = derivedOppName(opp, null);
   const oppCode = formatOpportunityNumber(opp.project_number);
@@ -1529,12 +1530,22 @@ async function PreSaleDealHome({ opp, accountId, dealTab: dealTabRaw = "overview
 
       <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[
-          { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${opp.id}` },
-          { key: "proposals", label: "Proposals", href: `${base}?tab=projects&project=${opp.id}&dt=proposals` },
-          { key: "documents", label: "Documents", href: `${base}?tab=projects&project=${opp.id}&dt=documents` },
+          { key: "overview", label: "Overview", locked: false },
+          { key: "proposals", label: "Proposals", locked: false },
+          { key: "invoices", label: "Invoices", locked: true },
+          { key: "project", label: "Project", locked: true },
+          { key: "documents", label: "Documents", locked: false },
         ].map((t) => (
-          <Link key={t.key} href={t.href} className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${t.key === dealTab ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`}>
+          <Link
+            key={t.key}
+            href={`${base}?tab=projects&project=${opp.id}${t.key === "overview" ? "" : `&dt=${t.key}`}`}
+            title={t.locked ? "Unlocks once this deal is Won" : undefined}
+            className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center gap-1 touch-manipulation transition-colors ${t.key === dealTab ? "border-cc-brand-600 text-ppp-charcoal" : `border-transparent hover:text-ppp-charcoal hover:border-ppp-charcoal-200 ${t.locked ? "text-ppp-charcoal-400" : "text-ppp-charcoal-500"}`}`}
+          >
             {t.label}
+            {t.locked && (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="opacity-70"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+            )}
           </Link>
         ))}
       </nav>
@@ -1582,7 +1593,39 @@ async function PreSaleDealHome({ opp, accountId, dealTab: dealTabRaw = "overview
           <DealDocumentsSection oppId={opp.id} documents={documents} />
         </>
       )}
+      {dealTab === "invoices" && (
+        <DealLockedPanel
+          title="Invoices unlock when this deal is Won"
+          note="Bill this project once the bid is Won and moves into delivery. Convert a proposal to Won to start invoicing."
+          editHref={`${base}?tab=opportunities&edit=${opp.id}`}
+        />
+      )}
+      {dealTab === "project" && (
+        <DealLockedPanel
+          title="Project delivery tools unlock when this deal is Won"
+          note="Change orders, AIA billing, submittals and closeout open once the bid is Won and the project is in delivery."
+          editHref={`${base}?tab=opportunities&edit=${opp.id}`}
+        />
+      )}
       {dealTab === "overview" && <RecentActivityCard entries={dealActivity} accountId={accountId} scope="deal" />}
+    </div>
+  );
+}
+
+/** Locked panel for the post-sale-only deal tabs (Invoices / Project) shown on a
+ *  pre-sale bid — explains what unlocks on Won + a shortcut to update the deal. */
+function DealLockedPanel({ title, note, editHref }: { title: string; note: string; editHref: string }) {
+  return (
+    <div className="bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl p-8 text-center">
+      <span aria-hidden className="inline-flex items-center justify-center h-11 w-11 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-3">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+      </span>
+      <p className="text-sm font-semibold text-ppp-charcoal">{title}</p>
+      <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto leading-relaxed">{note}</p>
+      <Link href={editHref} className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">
+        Update deal status
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 6l6 6-6 6" /></svg>
+      </Link>
     </div>
   );
 }
