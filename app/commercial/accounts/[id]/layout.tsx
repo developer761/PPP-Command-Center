@@ -1,24 +1,12 @@
 /**
- * Account layout — adds a `@drawer` parallel slot so a project tool (Change
- * Orders / AIA / Submittals / Closeout) opened FROM the account slides in as a
- * right-hand drawer (GHL style) over the account, while a hard nav / shared
- * link / the tool index still renders the full tool page.
+ * Account layout.
  *
- * The slot is transparent when idle: `@drawer/default.tsx` returns null, so the
- * account + every sub-route renders exactly as before. See the intercepting
- * routes under `@drawer/(.)<tool>/[dealId]`.
+ * The delivery tools (Change Orders / AIA / Submittals / Closeout) now render
+ * INLINE under the deal's Project sub-tab (deal view → Project), so the old
+ * right-hand `@drawer` parallel slot was retired (2026-08). This layout is a
+ * plain pass-through; the standalone tool routes still render full pages for
+ * direct hits / bookmarks.
  */
-export default function AccountLayout({
-  children,
-  drawer,
-}: {
-  children: React.ReactNode;
-  drawer: React.ReactNode;
-}) {
-  return (
-    <>
-      {children}
-      {drawer}
-    </>
-  );
+export default function AccountLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
