@@ -30,6 +30,7 @@ import {
 } from "@/lib/commercial/aia/db";
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { AiaApplicationDetail } from "@/components/commercial/aia-application-detail";
+import type { AiaLineSaveResult } from "@/components/commercial/aia-line-row";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -154,6 +155,51 @@ async function upsertLineAction(formData: FormData) {
   redirect(`${base(id, dealId)}?app=${appId}`);
 }
 
+/**
+ * Autosave variant of upsertLineAction — RETURNS a result instead of
+ * redirecting, so the client G703 row can save on blur without a navigation
+ * that would clobber a cell being typed elsewhere. Revalidates so the G702
+ * totals refresh on the next render.
+ */
+async function saveLineAutosaveAction(formData: FormData): Promise<AiaLineSaveResult> {
+  "use server";
+  const userId = await requireCommercialUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const appId = String(formData.get("app_id") ?? "");
+  const lineId = String(formData.get("line_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(lineId)) {
+    return { ok: false, error: "Bad request." };
+  }
+  const cents = (name: string) => parseDollarsToCents(String(formData.get(name) ?? "")) ?? 0;
+  const result = await upsertAiaLineItem(appId, {
+    id: lineId,
+    item_no: String(formData.get("item_no") ?? "").trim() || null,
+    description: String(formData.get("description") ?? "").trim(),
+    scheduled_value_cents: cents("scheduled"),
+    from_previous_cents: cents("from_previous"),
+    this_period_cents: cents("this_period"),
+    materials_stored_cents: cents("materials_stored"),
+  }, userId);
+  if (!result.ok) return { ok: false, error: result.error };
+  revalidateAia(id, dealId);
+  // Return the STORED (normalized/clamped) values so the client row reconciles
+  // its display to the DB — kills the "typed 100.999, stored 0, still shows
+  // 100.999 with a green Saved ✓" divergence the audit caught.
+  const v = result.value;
+  return {
+    ok: true,
+    line: {
+      item_no: v.item_no,
+      description: v.description,
+      scheduled_value_cents: v.scheduled_value_cents,
+      from_previous_cents: v.from_previous_cents,
+      this_period_cents: v.this_period_cents,
+      materials_stored_cents: v.materials_stored_cents,
+    },
+  };
+}
+
 async function deleteLineAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
@@ -231,6 +277,7 @@ export default async function AiaBillingPage({ params, searchParams }: { params:
                 exportHref={`/api/commercial/aia/${selectedAppId}/export`}
                 editable={application.status === "draft"}
                 upsertLineAction={upsertLineAction}
+                saveLineAutosaveAction={saveLineAutosaveAction}
                 deleteLineAction={deleteLineAction}
                 setStatusAction={setStatusAction}
                 errorMessage={sp.error ?? null}
