@@ -253,13 +253,13 @@ const PRIMARY_TABS: { key: PrimaryTab; label: string }[] = [
   // for this account with direct jumps into its Change Orders / AIA Billing /
   // Submittals / Closeout. Sits right after Invoices so the flow reads
   // "pipeline → proposals → invoices → projects (delivery)".
+  // 2026-08 restructure: the account is a lean shelf. Proposals / Invoices /
+  // Projects / Activity moved ONTO the deal, so they're pulled from the account
+  // nav (their routes still resolve for bookmarks/bells — just not linked here).
+  // People stays: GC contacts belong to the company, not a single deal.
   { key: "overview", label: "Overview" },
-  { key: "deals", label: "Opportunities" },
-  { key: "proposals", label: "Proposals" },
-  { key: "invoices", label: "Invoices" },
-  { key: "projects", label: "Projects" },
+  { key: "deals", label: "Deals" },
   { key: "people", label: "People" },
-  { key: "activity", label: "Activity" },
 ];
 type PrimaryWithSubs = Exclude<PrimaryTab, "activity" | "invoices" | "proposals" | "projects">;
 const SUB_TABS_BY_PRIMARY: Record<PrimaryWithSubs, { key: SubTab; label: string }[]> = {
