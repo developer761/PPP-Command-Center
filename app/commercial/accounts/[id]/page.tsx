@@ -90,6 +90,7 @@ import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-
 import { ChangeOrdersTool } from "./change-orders/[dealId]/change-orders-tool";
 import { CloseoutTool } from "./closeout/[dealId]/closeout-tool";
 import { AiaTool } from "./aia/[dealId]/aia-tool";
+import { SubmittalsTool } from "./submittals/[dealId]/submittals-tool";
 import { revalidatePath } from "next/cache";
 import {
   listCurrentStatusEnteredAtByOpp,
@@ -1281,11 +1282,11 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
  * Selected tool via ?pt=; each tool carries its own documents (uploaded +
  * auto-collected) which also roll up to the deal Documents tab.
  */
-const PROJECT_TOOLS: { key: string; label: string; route: string }[] = [
-  { key: "change-orders", label: "Change Orders", route: "change-orders" },
-  { key: "aia", label: "AIA Billing", route: "aia" },
-  { key: "submittals", label: "Submittals", route: "submittals" },
-  { key: "closeout", label: "Closeout & Warranty", route: "closeout" },
+const PROJECT_TOOLS: { key: string; label: string }[] = [
+  { key: "change-orders", label: "Change Orders" },
+  { key: "aia", label: "AIA Billing" },
+  { key: "submittals", label: "Submittals" },
+  { key: "closeout", label: "Closeout & Warranty" },
 ];
 
 async function ProjectToolsPanel({
@@ -1358,26 +1359,13 @@ async function ProjectToolsPanel({
         />
       )}
       {projectTool === "submittals" && (
-        <InterimToolPanel
-          label={PROJECT_TOOLS.find((t) => t.key === projectTool)?.label ?? "Tool"}
-          href={`${base}/${PROJECT_TOOLS.find((t) => t.key === projectTool)?.route}/${dealId}`}
+        <SubmittalsTool
+          id={accountId}
+          dealId={dealId}
+          variant="inline"
+          sp={{ error: sp?.error }}
         />
       )}
-    </div>
-  );
-}
-
-/** Interim state for a Project tool not yet moved inline — links to its full
- *  standalone page. Replaced by the real inline tool as each is migrated. */
-function InterimToolPanel({ label, href }: { label: string; href: string }) {
-  return (
-    <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
-      <p className="text-sm font-semibold text-ppp-charcoal">{label}</p>
-      <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">This tool opens on its own page while it&rsquo;s being moved inline here.</p>
-      <Link href={href} className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">
-        Open {label}
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14 M13 6l6 6-6 6" /></svg>
-      </Link>
     </div>
   );
 }

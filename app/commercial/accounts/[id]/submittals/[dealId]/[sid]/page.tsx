@@ -316,11 +316,11 @@ async function deleteSubmittalAction(formData: FormData) {
         encodeURIComponent(result.error)
     );
   }
-  // Deleted the draft — land back on the account-scoped submittals list, not
-  // the retired opportunity submittals tab.
+  // Deleted the draft — land back on the submittal log, which now lives inline
+  // under the deal's Project sub-tab.
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/post-job/submittals");
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}`);
+  redirect(`/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=project&pt=submittals`);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -627,7 +627,8 @@ export default async function SubmittalDetailPage({
   if (!loaded) notFound();
   const { submittal, items, statusLog } = loaded;
 
-  const submittalsListHref = `/commercial/accounts/${account_id}/submittals/${opportunity_id}`;
+  // The submittal log now lives inline under the deal's Project sub-tab.
+  const submittalsListHref = `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=project&pt=submittals`;
 
   // Finish-code suggestions for the items editor (autocomplete-friendly).
   // Attachments — linked + unlinked, fetched in parallel for the
