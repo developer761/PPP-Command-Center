@@ -942,6 +942,7 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
     // Per-deal invoices (R2, Katie 2026-08): invoices live under the deal.
     listCommercialInvoices({ opportunityId: p.opp.id }),
   ]);
+  const dealProposals = await listProposalsForOpp(p.opp.id);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
   // Per-deal activity feed (R3) — the account's activity filtered to THIS deal.
   const dealActivity = (await getAccountRecentActivity(accountId, 100)).filter((e) => e.opportunity_id === p.opp.id).slice(0, 8);
@@ -973,8 +974,8 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
       <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[
           { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${p.opp.id}` },
-          { key: "proposals", label: "Proposals", href: `${base}?tab=proposals` },
-          { key: "invoices", label: "Invoices", href: `/commercial/invoices?account_id=${accountId}#opp-${p.opp.id}` },
+          { key: "proposals", label: "Proposals", href: `#deal-proposals` },
+          { key: "invoices", label: "Invoices", href: `#deal-invoices` },
           { key: "change-orders", label: "Change Orders", href: `${base}/change-orders/${p.opp.id}` },
           { key: "aia", label: "AIA Billing", href: `${base}/aia/${p.opp.id}` },
           { key: "submittals", label: "Submittals", href: `${base}/submittals/${p.opp.id}` },
@@ -1095,9 +1096,11 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
         </ToolMiniCard>
       </div>
 
+      <DealProposalsSection accountId={accountId} oppId={p.opp.id} proposals={dealProposals} />
+
       {/* ── Deal invoices — invoices live under the deal (Katie 2026-08). List
           + create here; the global Invoices page is a read-only open list. ── */}
-      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <section id="deal-invoices" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
           <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-cc-brand-600 text-white shrink-0">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
@@ -1157,11 +1160,55 @@ async function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: 
   );
 }
 
+/** Per-deal proposals section — shared by both deal homes. Lists the deal's
+ *  proposals + a "New proposal" entry. (Proposals don't need a Won deal.) */
+function DealProposalsSection({ accountId, oppId, proposals }: { accountId: string; oppId: string; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[] }) {
+  const base = `/commercial/accounts/${accountId}/deals/${oppId}/proposal`;
+  const sorted = [...proposals].sort((a, b) => b.revision_number - a.revision_number);
+  return (
+    <section id="deal-proposals" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
+        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-blue-600 text-white shrink-0">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+        </span>
+        <h3 className="text-[13px] font-bold text-ppp-charcoal">Proposals</h3>
+        <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{proposals.length}</span>
+        <Link href={`${base}/new`} className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px]">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
+          New proposal
+        </Link>
+      </div>
+      {sorted.length === 0 ? (
+        <p className="px-4 py-3 text-[12px] text-ppp-charcoal-500">No proposals yet — build one from the button above (a deal doesn&rsquo;t need to be Won to propose).</p>
+      ) : (
+        <ul className="divide-y divide-ppp-charcoal-50">
+          {sorted.map((pr) => {
+            const num = formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`;
+            const status = pr.status.charAt(0).toUpperCase() + pr.status.slice(1);
+            const tone = pr.status === "won" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : pr.status === "lost" ? "text-rose-700 bg-rose-50 border-rose-200" : pr.status === "sent" ? "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-200" : "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200";
+            return (
+              <li key={pr.id}>
+                <Link href={`${base}/${pr.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
+                  <span className="min-w-0 flex items-center gap-2">
+                    <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800">{num}</span>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{status}</span>
+                  </span>
+                  <span className="text-[12.5px] font-bold tabular-nums text-ppp-charcoal shrink-0">{formatCentsCompact(pr.total_cents)}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** Per-deal documents section — shared by the post-sale project home + the
  *  pre-sale deal home. Direct upload + a list with download links. */
 function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: import("@/lib/commercial/documents/db").CommercialDocument[] }) {
   return (
-    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+    <section id="deal-documents" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
         <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-white shrink-0">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
@@ -1232,7 +1279,8 @@ async function PreSaleDealHome({ opp, accountId }: { opp: CommercialOpportunity;
       <nav className="flex gap-1 overflow-x-auto border-b border-ppp-charcoal-100 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {[
           { key: "overview", label: "Overview", href: `${base}?tab=projects&project=${opp.id}`, active: true },
-          { key: "proposals", label: "Proposals", href: `${base}?tab=proposals`, active: false },
+          { key: "proposals", label: "Proposals", href: `#deal-proposals`, active: false },
+          { key: "documents", label: "Documents", href: `#deal-documents`, active: false },
         ].map((t) => (
           <Link key={t.key} href={t.href} className={`shrink-0 px-3 py-2 text-[13px] font-semibold border-b-2 min-h-[44px] inline-flex items-center touch-manipulation transition-colors ${t.active ? "border-cc-brand-600 text-ppp-charcoal" : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-200"}`}>
             {t.label}
@@ -1259,6 +1307,7 @@ async function PreSaleDealHome({ opp, accountId }: { opp: CommercialOpportunity;
         <p className="mt-3 text-[11.5px] text-ppp-charcoal-500">Invoices, change orders, AIA billing, submittals + closeout unlock once this deal is Won.</p>
       </div>
 
+      <DealProposalsSection accountId={accountId} oppId={opp.id} proposals={proposals} />
       <DealDocumentsSection oppId={opp.id} documents={documents} />
       <RecentActivityCard entries={dealActivity} />
     </div>
