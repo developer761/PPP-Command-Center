@@ -810,9 +810,21 @@ function AccountProjectHome({ p, accountId }: { p: ProjectRow; accountId: string
             <h2 className="text-lg sm:text-xl font-bold text-ppp-charcoal leading-tight break-words">{name}</h2>
             {location && <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 truncate">{location}</div>}
           </div>
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold uppercase tracking-wide text-emerald-700 shrink-0">
-            {oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
+            {p.isClosedOut ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-ppp-navy-50 border border-ppp-navy-200 text-[11px] font-bold uppercase tracking-wide text-ppp-navy-700" title="A close-out package for this project is complete">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
+                Closed out
+              </span>
+            ) : p.closeoutStatus ? (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-bold uppercase tracking-wide text-amber-800" title="A close-out package is in progress">
+                Closeout {p.closeoutStatus}
+              </span>
+            ) : null}
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+              {oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}
+            </span>
+          </div>
         </div>
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <ProjectStat label="Contract to date" value={hasContract ? formatCentsCompact(p.contractToDateCents) : "—"} sub={hasContract ? undefined : "Set the contract"} />

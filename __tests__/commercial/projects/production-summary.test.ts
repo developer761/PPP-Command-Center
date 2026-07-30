@@ -35,6 +35,8 @@ describe("summarizeProduction", () => {
       leftToBillCents: 0,
       outstandingCents: 0,
       overBilled: false,
+      closeoutStatus: null,
+      isClosedOut: false,
       ...rest,
     };
   };

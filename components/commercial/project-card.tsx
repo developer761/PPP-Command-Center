@@ -80,9 +80,17 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
           {oppCode ? (
             <span className="text-[9.5px] font-mono text-ppp-navy-600 truncate" title="Opportunity ID">{oppCode}</span>
           ) : <span />}
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide shrink-0 ${tone.pill}`}>
-            {oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}
-          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {p.isClosedOut && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-ppp-navy-200 bg-ppp-navy-50 text-[9.5px] font-bold uppercase tracking-wide text-ppp-navy-700" title="Close-out package complete">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6L9 17l-5-5" /></svg>
+                Closed out
+              </span>
+            )}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone.pill}`}>
+              {oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}
+            </span>
+          </div>
         </div>
 
         <Link href={overviewHref} className="block text-[15px] font-bold text-ppp-charcoal hover:text-cc-brand-800 leading-snug break-words">

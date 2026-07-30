@@ -46,6 +46,12 @@ export type ProjectRow = {
   outstandingCents: number;
   /** Invoiced beyond the contract sum — flagged, never shown as negative. */
   overBilled: boolean;
+  // ── Closeout (2026-07-30) — so the account/deal shows a "closed out" state ──
+  /** Most-advanced non-void close-out package status for this project, or null
+   *  when no package exists yet. */
+  closeoutStatus: "draft" | "sent" | "acknowledged" | "complete" | null;
+  /** True once a close-out package reaches `complete` — the deal is closed out. */
+  isClosedOut: boolean;
 };
 
 function bidMidCents(o: CommercialOpportunity): number {
@@ -188,6 +194,27 @@ export async function listProjects(opts: {
     acceptedProposalByOpp.set(p.opportunity_id, Math.max(acceptedProposalByOpp.get(p.opportunity_id) ?? 0, Number(p.total_cents)));
   }
 
+  // ── Batch: close-out package status per opp. Keep the most-advanced non-void
+  // status so the account/deal can badge "Closed out" (2026-07-30). ──
+  const CLOSEOUT_RANK: Record<string, number> = { draft: 1, sent: 2, acknowledged: 3, complete: 4 };
+  const closeoutData = await paginateAll<{ opportunity_id: string; status: string }>(
+    () =>
+      sb
+        .from("commercial_closeout_packages")
+        .select("opportunity_id, status")
+        .in("opportunity_id", oppIds)
+        .is("voided_at", null)
+        .order("id", { ascending: true })
+  );
+  const closeoutByOpp = new Map<string, ProjectRow["closeoutStatus"]>();
+  for (const c of closeoutData) {
+    if (c.status === "voided") continue;
+    const cur = closeoutByOpp.get(c.opportunity_id);
+    if (!cur || (CLOSEOUT_RANK[c.status] ?? 0) > (CLOSEOUT_RANK[cur] ?? 0)) {
+      closeoutByOpp.set(c.opportunity_id, c.status as ProjectRow["closeoutStatus"]);
+    }
+  }
+
   // ── Batch: latest AIA application per opp. We fetch ALL apps (paginated) and
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
@@ -292,6 +319,8 @@ export async function listProjects(opts: {
       leftToBillCents: leftToBill,
       outstandingCents: inv.invoiced - inv.paid,
       overBilled,
+      closeoutStatus: closeoutByOpp.get(o.id) ?? null,
+      isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",
     };
   });
 }

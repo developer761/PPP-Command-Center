@@ -2258,7 +2258,8 @@ async function OpportunityInvoicesPanel({
                           <select
                             name="method"
                             defaultValue=""
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] bg-surface min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            className={SELECT_CLS}
+                            style={SELECT_BG_STYLE}
                           >
                             <option value="">— select —</option>
                             {PAYMENT_METHODS.map((m) => (
