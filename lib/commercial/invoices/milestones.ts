@@ -135,6 +135,32 @@ export async function getMilestonePaidMapForInvoices(invoiceIds: string[]): Prom
   return out;
 }
 
+/**
+ * Truthful per-milestone paid for DISPLAY. A milestone's own paid is its tagged
+ * payments; but an invoice-level (untagged) payment still pays the bill, so a
+ * $10k payment on a 4×$2,500 invoice should show all four milestones paid, not
+ * zero. This spreads the untagged remainder across milestones in order, each
+ * capped at its own balance (the leftover — e.g. the tax portion — stays
+ * unallocated). Pure; safe to call from any server surface.
+ */
+export function allocateMilestonePaid(
+  milestones: { id: string; amount_cents: number }[],
+  taggedPaid: Map<string, number>,
+  invoicePaidCents: number
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const taggedTotal = milestones.reduce((s, m) => s + (taggedPaid.get(m.id) ?? 0), 0);
+  let untagged = Math.max(0, invoicePaidCents - taggedTotal);
+  for (const m of milestones) {
+    const tagged = taggedPaid.get(m.id) ?? 0;
+    const room = Math.max(0, m.amount_cents - tagged);
+    const alloc = Math.min(room, untagged);
+    out.set(m.id, tagged + alloc);
+    untagged -= alloc;
+  }
+  return out;
+}
+
 export async function getMilestone(id: string): Promise<InvoiceMilestone | null> {
   const sb = commercialDb();
   const { data } = await sb

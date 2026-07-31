@@ -896,7 +896,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               const targetAccount = targetOpp ? targetOpp.account_id : accountIdFilter;
               return (
                 <Link
-                  href={`/commercial/invoices?account_id=${targetAccount}&add=${singleOppTarget}#opp-${singleOppTarget}`}
+                  href={`/commercial/accounts/${targetAccount}?tab=projects&project=${singleOppTarget}&dt=invoices#deal-invoices`}
                   className="sm:self-end inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2236,178 +2236,17 @@ function FullDetailByOpp({
                 createInvoiceInlineAction which redirects back here
                 with an anchor to the newly-created row. */}
             {opp && isPostSaleProject(opp) && (
-              <details
-                id={`add-${oppId}`}
-                open={openAddOppId === oppId}
-                className="group/add border-t border-ppp-charcoal-100"
+              <Link
+                href={`/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=invoices#deal-invoices`}
+                className="flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] border-t border-ppp-charcoal-100 touch-manipulation"
+                title="Create another invoice for this deal — flat or broken into milestones"
               >
-                <summary className="list-none cursor-pointer flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 5v14 M5 12h14" />
-                  </svg>
-                  New invoice for this deal
-                  <span aria-hidden className="ml-auto text-ppp-charcoal-400 transition-transform group-open/add:rotate-180">▾</span>
-                </summary>
-                <form
-                  action={createInvoiceInlineAction}
-                  className="px-4 sm:px-5 pb-4 pt-1 space-y-3"
-                >
-                  <input type="hidden" name="account_id" value={accountId} />
-                  <input type="hidden" name="opp_id" value={oppId} />
-                  {/* 2026-07-29: dropped the product/SKU catalog picker here —
-                      a commercial progress-billing invoice is a description +
-                      dollar amount ("Progress payment 2 of 3"), not a catalog
-                      line, so the picker only added confusion. */}
-                  {(() => {
-                    const pc = proposalCtxByOpp.get(oppId);
-                    const dueDefault = (() => {
-                      const d = new Date();
-                      d.setDate(d.getDate() + 30);
-                      return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-                    })();
-                    const dueDateNode = (
-                      <label className="block">
-                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Due date</span>
-                        <input
-                          type="date"
-                          name="due_at"
-                          defaultValue={dueDefault}
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                        />
-                      </label>
-                    );
-                    // With proposals: the client component wires proposal → auto-
-                    // fill of amount + "what this charge is for". Without: plain
-                    // free-text description + amount.
-                    if (pc && pc.options.length > 0) {
-                      return (
-                        <ProposalBillingFields
-                          oppId={oppId}
-                          options={pc.options}
-                          defaultProposalId={pc.acceptedId}
-                          dueDateNode={dueDateNode}
-                        />
-                      );
-                    }
-                    return (
-                      <>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5" htmlFor={`inv-add-${oppId}-description`}>
-                            What this charge is for
-                          </label>
-                          <input
-                            id={`inv-add-${oppId}-description`}
-                            type="text"
-                            name="description"
-                            required
-                            maxLength={500}
-                            placeholder="e.g. Progress payment 1 of 3 — Lobby repaint"
-                            className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                          />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <label className="block">
-                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Amount</span>
-                            <input
-                              id={`inv-add-${oppId}-amount`}
-                              type="text"
-                              inputMode="decimal"
-                              name="amount"
-                              required
-                              placeholder="0.00"
-                              className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                            />
-                          </label>
-                          {dueDateNode}
-                        </div>
-                      </>
-                    );
-                  })()}
-                  {/* Progressive disclosure — advanced fields sit
-                      behind another <details> so the common case stays
-                      three fields. */}
-                  {/* Auto-open when tax was pre-filled from the project ZIP so
-                      the applied rate is visible, not silently added. */}
-                  <details className="group/more" open={suggestedTaxPct !== null}>
-                    <summary className="list-none cursor-pointer text-[11.5px] font-medium text-cc-brand-700 hover:text-cc-brand-800 min-h-[28px] flex items-center gap-1.5 select-none">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-open/more:rotate-90" aria-hidden>
-                        <path d="M9 18l6-6-6-6" />
-                      </svg>
-                      More details (terms, tax, PO, notes)
-                    </summary>
-                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <label className="block">
-                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Payment terms</span>
-                        <input
-                          type="text"
-                          name="payment_terms"
-                          maxLength={60}
-                          placeholder="Net 30"
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Tax % (flat)</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          pattern="[0-9.]*"
-                          name="tax_pct"
-                          placeholder="0"
-                          defaultValue={suggestedTaxPct !== null ? String(suggestedTaxPct) : undefined}
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                        />
-                        {taxHit && (
-                          <span className="mt-1 block text-[10.5px] leading-snug text-ppp-charcoal-500">
-                            Pre-filled for <strong className="text-ppp-charcoal-700">{taxHit.jurisdiction.name}</strong> ({opp?.property_zip}).
-                            {!taxHit.jurisdiction.verified && (
-                              <span className="text-amber-700"> Rate unverified — <Link href="/commercial/settings/tax" className="underline">confirm it</Link>.</span>
-                            )}{" "}
-                            Edit if this job is tax-exempt (capital improvement).
-                          </span>
-                        )}
-                      </label>
-                      <label className="block sm:col-span-2">
-                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">PO number</span>
-                        <input
-                          type="text"
-                          name="po_number"
-                          maxLength={80}
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                        />
-                      </label>
-                      <label className="block sm:col-span-2">
-                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Message to customer</span>
-                        <textarea
-                          name="customer_message"
-                          rows={2}
-                          maxLength={1000}
-                          placeholder="Optional — appears above line items on the customer's copy."
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                        />
-                      </label>
-                      <label className="block sm:col-span-2">
-                        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">Internal notes</span>
-                        <textarea
-                          name="notes"
-                          rows={2}
-                          maxLength={2000}
-                          placeholder="Never on the customer copy."
-                          className="w-full px-2.5 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                        />
-                      </label>
-                    </div>
-                  </details>
-                  <div className="flex justify-end pt-1">
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
-                    >
-                      Create invoice
-                    </button>
-                  </div>
-                </form>
-              </details>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 5v14 M5 12h14" />
+                </svg>
+                New invoice for this deal
+                <span aria-hidden className="ml-auto text-ppp-charcoal-400">→</span>
+              </Link>
             )}
           </section>
         );

@@ -15,10 +15,12 @@
 
 import { useEffect, useState } from "react";
 
-export type MeterTone = "brand" | "emerald" | "amber" | "rose" | "navy";
+export type MeterTone = "blue" | "brand" | "emerald" | "amber" | "rose" | "navy";
 
 const TONE: Record<MeterTone, { a: string; b: string; glow: string; text: string }> = {
-  // Brand orange (#EE662E) — the platform's in-progress tone.
+  // Blue (#2BAAE1) — the platform's in-progress tone (Karan: blue reads better
+  // than orange, and nothing on a bar should be red).
+  blue: { a: "var(--cc-m-blue-a)", b: "var(--cc-m-blue-b)", glow: "var(--cc-m-blue-b)", text: "text-ppp-blue-700" },
   brand: { a: "var(--cc-m-brand-a)", b: "var(--cc-m-brand-b)", glow: "var(--cc-m-brand-b)", text: "text-cc-brand-700" },
   emerald: { a: "var(--cc-m-emerald-a)", b: "var(--cc-m-emerald-b)", glow: "var(--cc-m-emerald-b)", text: "text-emerald-700" },
   amber: { a: "var(--cc-m-amber-a)", b: "var(--cc-m-amber-b)", glow: "var(--cc-m-amber-b)", text: "text-amber-700" },
@@ -112,6 +114,7 @@ export function ProgressMeter({
 
       <style>{`
         :root {
+          --cc-m-blue-a: #5bc0ea; --cc-m-blue-b: #2baae1;
           --cc-m-brand-a: #f2814e; --cc-m-brand-b: #ee662e;
           --cc-m-emerald-a: #34d399; --cc-m-emerald-b: #10b981;
           --cc-m-amber-a: #fbbf24; --cc-m-amber-b: #f59e0b;
@@ -119,6 +122,7 @@ export function ProgressMeter({
           --cc-m-navy-a: #3b5b95; --cc-m-navy-b: #172b4d;
         }
         :root[data-theme="dark"] {
+          --cc-m-blue-a: #2baae1; --cc-m-blue-b: #5bc0ea;
           --cc-m-brand-a: #ee662e; --cc-m-brand-b: #f2814e;
           --cc-m-emerald-a: #10b981; --cc-m-emerald-b: #34d399;
           --cc-m-amber-a: #f59e0b; --cc-m-amber-b: #fbbf24;

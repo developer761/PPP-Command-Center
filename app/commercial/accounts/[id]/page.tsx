@@ -65,7 +65,7 @@ import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commer
 import { ProjectCard } from "@/components/commercial/project-card";
 import { ProgressMeter } from "@/components/commercial/progress-meter";
 import { listCommercialInvoices, addPayment, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
-import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
+import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
@@ -1045,13 +1045,28 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // (name · amount · due · lien waiver). Fetch them for the deal's invoices so
   // the list nests them + we can surface the next one due.
   const milestonesByInvoice = await listMilestonesForInvoices(dealInvoices.map((i) => i.id));
-  const milestonePaidByDeal = await getMilestonePaidMapForInvoices(dealInvoices.map((i) => i.id));
+  const milestonePaidTagged = await getMilestonePaidMapForInvoices(dealInvoices.map((i) => i.id));
+  // Effective per-milestone paid across the deal (tagged + allocated untagged),
+  // so a milestone paid via an invoice-level payment reads as paid everywhere
+  // (audit 1A/2A).
+  const milestonePaidByDeal = new Map<string, number>();
+  for (const inv of dealInvoices) {
+    const ms = milestonesByInvoice.get(inv.id) ?? [];
+    if (ms.length === 0) continue;
+    allocateMilestonePaid(ms, milestonePaidTagged, inv.paid_cents).forEach((v, k) => milestonePaidByDeal.set(k, v));
+  }
+  // Next milestone due: earliest-due milestone that is NOT fully paid, on an
+  // issued (non-draft, non-void, still-owed) invoice (audit 2A + 4D).
   const upcomingMilestone =
     [...milestonesByInvoice.entries()]
       .flatMap(([invId, ms]) => {
         const inv = dealInvoices.find((i) => i.id === invId);
-        if (!inv || deriveInvoiceStatus(inv) === "void" || inv.balance_cents <= 0) return [];
-        return ms.filter((m) => m.due_at).map((m) => ({ due: m.due_at as string, name: m.name, amount: m.amount_cents }));
+        if (!inv) return [];
+        const st = deriveInvoiceStatus(inv);
+        if (st === "void" || st === "draft" || inv.balance_cents <= 0) return [];
+        return ms
+          .filter((m) => m.due_at && (milestonePaidByDeal.get(m.id) ?? 0) < m.amount_cents)
+          .map((m) => ({ due: m.due_at as string, name: m.name, amount: m.amount_cents }));
       })
       .sort((a, b) => a.due.localeCompare(b.due))[0] ?? null;
   // Per-deal activity feed (R3) — the account's activity filtered to THIS deal.
@@ -1194,7 +1209,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             <div>
               <div className="text-[11.5px] font-semibold text-ppp-charcoal">Application No. {p.latestAppNumber}</div>
               <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 tabular-nums">{formatCentsCompact(p.invoicedCents)} of {formatCentsCompact(p.contractToDateCents)} billed</div>
-              <ProgressMeter className="mt-1.5" pct={aiaBilledPct} tone="navy" size="sm" />
+              <ProgressMeter className="mt-1.5" pct={aiaBilledPct} tone="blue" size="sm" />
             </div>
           )}
         </ToolMiniCard>
@@ -1255,7 +1270,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             ? { label: "Overdue", value: String(overdueInvCount), tone: "amber" as const }
             : { label: "Open", value: String(openInvCount) },
         ]}
-        bar={hasContract ? { label: "Billed of contract", pct: aiaBilledPct, tone: p.overBilled ? "rose" : "brand" } : undefined}
+        bar={hasContract ? { label: "Billed of contract", pct: aiaBilledPct, tone: p.overBilled ? "amber" : "blue" } : undefined}
       />
       {sp?.created === "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Invoice created.</div>
@@ -1277,7 +1292,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
       )}
       {/* Create an invoice right here — flat or broken into milestones. The
           global invoices page stays a read view. */}
-      <DealNewInvoiceForm accountId={accountId} oppId={p.opp.id} propertyZip={p.opp.property_zip ?? null} proposals={dealProposals} />
+      <DealNewInvoiceForm accountId={accountId} oppId={p.opp.id} propertyZip={p.opp.property_zip ?? null} proposals={dealProposals} invoices={dealInvoices} />
       <section id="deal-invoices" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
           <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-cc-brand-600 text-white shrink-0">
@@ -1344,7 +1359,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                             {mFullyPaid ? (
                               <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title="Paid"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>paid</span>
                             ) : mPartial ? (
-                              <span className="text-amber-600 shrink-0 tabular-nums" title="Partially paid">{formatCentsCompact(mPaid)} paid</span>
+                              <span className="text-ppp-blue-600 shrink-0 tabular-nums" title="Partially paid">{formatCentsCompact(mPaid)} paid</span>
                             ) : m.due_at ? (
                               <span className="text-ppp-charcoal-400 shrink-0">· due {fmtEtDate(m.due_at)}</span>
                             ) : null}
@@ -1688,12 +1703,19 @@ async function createDealInvoiceAction(formData: FormData) {
 
 /** "New invoice for this deal" — flat OR milestone-broken, via the client
  *  builder. Invoices are created under the project (Phase 1, Katie). */
-async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals }: { accountId: string; oppId: string; propertyZip: string | null; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[] }) {
+async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals, invoices }: { accountId: string; oppId: string; propertyZip: string | null; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[]; invoices: CommercialInvoice[] }) {
   // Pre-fill the tax rate from the deal's property ZIP (same engine as the
   // global invoices page). Editable on the form + the invoice.
   const taxHit = resolveTaxForZip(propertyZip, await listTaxJurisdictions({ activeOnly: true }));
   const defaultTax = taxHit ? thouToPct(taxHit.jurisdiction.combined_rate_thou).toFixed(3).replace(/\.?0+$/, "") : "";
   const wonProposals = proposals.filter((pr) => pr.status === "won" || pr.status === "sent");
+  // Already billed (pre-tax) against each proposal across this deal's invoices,
+  // so the builder can autofill what's LEFT to bill, not the full total.
+  const billedByProposal = new Map<string, number>();
+  for (const inv of invoices) {
+    if (!inv.proposal_id || inv.status === "void" || inv.deleted_at) continue;
+    billedByProposal.set(inv.proposal_id, (billedByProposal.get(inv.proposal_id) ?? 0) + inv.subtotal_cents);
+  }
   return (
     <DealInvoiceBuilder
       action={createDealInvoiceAction}
@@ -1701,11 +1723,16 @@ async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals }: 
       oppId={oppId}
       defaultTax={defaultTax}
       taxNote={taxHit ? `Tax pre-filled for ${taxHit.jurisdiction.name} (${propertyZip}). Edit if needed.` : null}
-      proposals={wonProposals.map((pr) => ({
-        id: pr.id,
-        label: `${formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`} · ${formatCentsFull(pr.total_cents)} · ${pr.status}`,
-        totalCents: pr.total_cents,
-      }))}
+      proposals={wonProposals.map((pr) => {
+        const billed = billedByProposal.get(pr.id) ?? 0;
+        const remaining = Math.max(0, pr.total_cents - billed);
+        return {
+          id: pr.id,
+          label: `${formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`} · ${formatCentsFull(pr.total_cents)}${billed > 0 ? ` · ${formatCentsFull(remaining)} left` : ""} · ${pr.status}`,
+          totalCents: pr.total_cents,
+          remainingCents: remaining,
+        };
+      })}
     />
   );
 }
@@ -5146,7 +5173,7 @@ async function AccountProposalsTab({
                                 tab with no link). */}
                             {r.status === "won" && (
                               <Link
-                                href={`/commercial/invoices?account_id=${accountId}&add=${dealId}#opp-${dealId}`}
+                                href={`/commercial/accounts/${accountId}?tab=projects&project=${dealId}&dt=invoices#deal-invoices`}
                                 className="inline-flex items-center justify-center gap-1 px-3 min-w-[44px] h-full text-[11px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 border-r border-ppp-charcoal-100 touch-manipulation"
                                 title="Create an invoice for this deal"
                                 aria-label={`Bill this deal from revision ${r.revision_number}`}
@@ -6651,7 +6678,7 @@ async function AccountKpisTab({
               label="Collected"
               value={rollup.paid_cents}
               max={rollup.invoiced_cents}
-              tone={paidPct === 100 ? "emerald" : rollup.overdue_count > 0 ? "rose" : "brand"}
+              tone={paidPct === 100 ? "emerald" : rollup.overdue_count > 0 ? "amber" : "blue"}
               amounts={{ done: formatCentsFull(rollup.paid_cents), total: formatCentsFull(rollup.invoiced_cents) }}
             />
           </div>
@@ -6678,7 +6705,7 @@ async function AccountKpisTab({
             <RollupTile label="Under contract" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
             <RollupTile label="Billed to date" value={formatCentsFull(production.invoicedCents)} sub={`${formatCentsFull(production.paidCents)} paid`} tone="emerald" />
             {overBilledCents > 0 ? (
-              <RollupTile label="Over-billed" value={formatCentsFull(overBilledCents)} sub="billed past contract" tone="danger" />
+              <RollupTile label="Over-billed" value={formatCentsFull(overBilledCents)} sub="billed past contract" tone="warn" />
             ) : (
               <RollupTile label="Left to bill" value={formatCentsFull(production.leftToBillCents)} sub="contract − billed" tone="neutral" />
             )}
@@ -6690,7 +6717,7 @@ async function AccountKpisTab({
                 label="Billed of contract"
                 value={production.invoicedCents}
                 max={production.contractValueCents}
-                tone={overBilledCents > 0 ? "rose" : billedOfContractPct === 100 ? "emerald" : "brand"}
+                tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"}
                 rightLabel={overBilledCents > 0 ? `${Math.round((production.invoicedCents / production.contractValueCents) * 100)}%` : `${billedOfContractPct}%`}
                 amounts={{ done: formatCentsFull(production.invoicedCents), total: formatCentsFull(production.contractValueCents) }}
                 note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null}

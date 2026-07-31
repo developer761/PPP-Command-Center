@@ -44,12 +44,12 @@ const TONE: Record<Tone, { fill: string; glow: string; text: string }> = {
   overdue: {
     fill: "linear-gradient(90deg, var(--cc-prog-rose-a), var(--cc-prog-rose-b))",
     glow: "var(--cc-prog-rose-b)",
-    text: "text-rose-700",
+    text: "text-amber-700",
   },
   partial: {
     fill: "linear-gradient(90deg, var(--cc-prog-brand-a), var(--cc-prog-brand-b))",
     glow: "var(--cc-prog-brand-b)",
-    text: "text-cc-brand-700",
+    text: "text-ppp-blue-700",
   },
   empty: {
     fill: "linear-gradient(90deg, var(--cc-prog-brand-a), var(--cc-prog-brand-b))",
@@ -178,14 +178,15 @@ export function PaymentProgressBar({
       <style>{`
         :root {
           --cc-prog-emerald-a: #34d399; --cc-prog-emerald-b: #10b981;
-          --cc-prog-rose-a: #fb7185; --cc-prog-rose-b: #f43f5e;
-          /* On-brand orange (#EE662E) for the in-progress tone. */
-          --cc-prog-brand-a: #f2814e; --cc-prog-brand-b: #ee662e;
+          /* Karan: bars are blue/green/amber, never red. "overdue" → amber. */
+          --cc-prog-rose-a: #fbbf24; --cc-prog-rose-b: #f59e0b;
+          /* In-progress → blue (#2BAAE1). */
+          --cc-prog-brand-a: #5bc0ea; --cc-prog-brand-b: #2baae1;
         }
         :root[data-theme="dark"] {
           --cc-prog-emerald-a: #10b981; --cc-prog-emerald-b: #34d399;
-          --cc-prog-rose-a: #f43f5e; --cc-prog-rose-b: #fb7185;
-          --cc-prog-brand-a: #ee662e; --cc-prog-brand-b: #f2814e;
+          --cc-prog-rose-a: #f59e0b; --cc-prog-rose-b: #fbbf24;
+          --cc-prog-brand-a: #2baae1; --cc-prog-brand-b: #5bc0ea;
         }
         @keyframes cc-prog-sheen-kf {
           0% { transform: translateX(-120%); }

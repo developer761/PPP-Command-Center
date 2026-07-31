@@ -1605,7 +1605,7 @@ export default async function OpportunityDetailPage({
                 page. Phase 3 primary conversion action. */}
             {isWon(opp) && account && (
               <Link
-                href={`/commercial/invoices?account_id=${account.id}&add=${opp.id}#opp-${opp.id}`}
+                href={`/commercial/accounts/${account.id}?tab=projects&project=${opp.id}&dt=invoices#deal-invoices`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
                 title={`Open ${account.company_name}'s invoicing surface with a fresh draft ready for this deal.`}
               >

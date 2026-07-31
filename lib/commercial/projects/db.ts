@@ -342,7 +342,9 @@ export async function listProjects(opts: {
       draftInvoiceCount: inv.draftCount,
       draftedCents: inv.draftedCents,
       leftToBillCents: leftToBill,
-      outstandingCents: inv.invoiced - inv.paid,
+      // Clamp: an overpaid project (paid > invoiced) is a credit, not negative
+      // AR — don't let it drag the account's Outstanding below zero (audit 4C).
+      outstandingCents: Math.max(0, inv.invoiced - inv.paid),
       overBilled,
       closeoutStatus: closeoutByOpp.get(o.id) ?? null,
       isClosedOut: (closeoutByOpp.get(o.id) ?? null) === "complete",
@@ -419,7 +421,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     invoicedCents,
     paidCents,
     leftToBillCents,
-    outstandingCents: invoicedCents - paidCents,
+    outstandingCents: Math.max(0, invoicedCents - paidCents),
     // remaining now means "left to bill" (contract − invoiced), the number
     // operators actually expect when they invoice.
     remainingCents: leftToBillCents,

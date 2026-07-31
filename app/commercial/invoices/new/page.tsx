@@ -53,5 +53,5 @@ export default async function NewInvoiceRedirect({ searchParams }: { searchParam
   // URL hash fragments; the query param is the only way to server-
   // render `open={true}`. The #opp-<id> hash is still there for the
   // browser's built-in scroll-into-view.
-  redirect(`/commercial/invoices?account_id=${opp!.account_id}&add=${opp!.id}#opp-${opp!.id}`);
+  redirect(`/commercial/accounts/${opp!.account_id}?tab=projects&project=${opp!.id}&dt=invoices#deal-invoices`);
 }

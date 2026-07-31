@@ -41,6 +41,7 @@ import {
   deleteMilestone,
   getMilestoneLienWaiver,
   getMilestonePaidMap,
+  allocateMilestonePaid,
 } from "@/lib/commercial/invoices/milestones";
 import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
 import {
@@ -52,6 +53,7 @@ import {
 import { formatCentsFull, fmtEtDate, parseDollarsToCents, daysBetween } from "@/lib/commercial/invoices/format";
 import { productUnitLabel } from "@/lib/commercial/products/constants";
 import { PaymentProgressBar } from "@/components/commercial/payment-progress-bar";
+import { SegmentedMeter, type MeterSegment } from "@/components/commercial/segmented-meter";
 import { getCommercialAccount, formatAccountNumber } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName, formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
 import { getProposal, formatProposalNumber } from "@/lib/commercial/proposals/db";
@@ -541,7 +543,31 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   const milestoneSum = milestones.reduce((s, m) => s + m.amount_cents, 0);
   // Per-milestone paid (Σ payments tagged to each). Invoice paid_cents is
   // unchanged — the trigger sums ALL payments; this is just the milestone slice.
-  const milestonePaid = hasMilestones ? await getMilestonePaidMap(invoice.id) : new Map<string, number>();
+  // Effective per-milestone paid: tagged payments + an allocation of any
+  // untagged (invoice-level) payment, so the segments never read $0 paid while
+  // the invoice is actually Paid (audit 1A).
+  const milestonePaid = hasMilestones
+    ? allocateMilestonePaid(milestones, await getMilestonePaidMap(invoice.id), invoice.paid_cents)
+    : new Map<string, number>();
+  // Per-milestone segments for the segmented progress bar.
+  const nowIso = new Date().toISOString();
+  const milestoneSegments: MeterSegment[] = milestones.map((m) => {
+    const paid = milestonePaid.get(m.id) ?? 0;
+    return {
+      name: m.name,
+      due: m.due_at ? fmtEtDate(m.due_at) : null,
+      amountCents: m.amount_cents,
+      paidCents: paid,
+      overdue: !!m.due_at && m.due_at < nowIso && paid < m.amount_cents,
+    };
+  });
+  // If milestones don't cover the whole subtotal (a flat line item still sits
+  // alongside them), show a remainder segment so the bar spans the full bill
+  // (audit 1C).
+  const unscheduledCents = invoice.subtotal_cents - milestoneSum;
+  if (hasMilestones && unscheduledCents > 0) {
+    milestoneSegments.push({ name: "Unscheduled", due: null, amountCents: unscheduledCents, paidCents: 0 });
+  }
   // Invoice ↔ proposal: when this invoice bills against a proposal, resolve the
   // proposal + its sibling progress invoices so we can show "invoice N of M
   // against PROP-000N · $billed of $contract." Snapshot total (at bill time)
@@ -986,6 +1012,16 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </a>
         )}
 
+        {/* Per-milestone breakdown — the bar splits into one labeled chunk per
+            milestone (name · due date · paid state) so the schedule reads at a
+            glance. */}
+        {hasMilestones && !isVoid && (
+          <div className="mt-4">
+            <div className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-ppp-charcoal-500 mb-2">Milestones</div>
+            <SegmentedMeter segments={milestoneSegments} />
+          </div>
+        )}
+
         {/* Big numbers */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
           <BigNumber label="Total invoiced" value={formatCentsFull(invoice.total_cents)} tone="cc-brand" />
@@ -1390,53 +1426,35 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 const mPayments = payments.filter((pp) => pp.milestone_id === m.id);
                 return (
                   <li key={m.id} className="rounded-xl border border-ppp-charcoal-100 p-3.5">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10.5px] font-bold uppercase tracking-wide text-cc-brand-700">
-                          Milestone {idx + 1}
-                          {m.change_order_id && <span className="ml-1.5 text-ppp-navy-600">· from change order</span>}
-                        </span>
-                        {mFullyPaid ? (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9.5px] font-bold uppercase tracking-wide text-emerald-700"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Paid</span>
-                        ) : mPartial ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[9.5px] font-bold uppercase tracking-wide text-amber-800 tabular-nums">{formatCentsFull(mPaid)} of {formatCentsFull(m.amount_cents)}</span>
-                        ) : null}
-                      </span>
-                      {!isVoid && (
-                        <form action={deleteMilestoneAction} className="inline">
-                          <input type="hidden" name="invoice_id" value={invoice.id} />
-                          <input type="hidden" name="milestone_id" value={m.id} />
-                          <button type="submit" className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[32px] px-1.5" title="Remove this milestone (also removes its charge from the invoice)">Remove</button>
-                        </form>
-                      )}
+                    {/* Header — reads at a glance: name, amount, status, due. */}
+                    <div className="flex items-start justify-between gap-3 mb-2.5">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-ppp-blue-700">Milestone {idx + 1}</span>
+                          {mFullyPaid ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9.5px] font-bold uppercase tracking-wide text-emerald-700"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Paid</span>
+                          ) : mPartial ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-ppp-blue-50 border border-ppp-blue-200 text-[9.5px] font-bold uppercase tracking-wide text-ppp-blue-800 tabular-nums">{formatCentsFull(mPaid)} paid</span>
+                          ) : null}
+                        </div>
+                        <div className="text-[13px] font-semibold text-ppp-charcoal mt-0.5 truncate">{m.name}</div>
+                        <div className="text-[11px] text-ppp-charcoal-500">
+                          {m.due_at ? `Due ${fmtEtDate(m.due_at)}` : "No due date"}
+                          {m.change_order_id && <span className="text-ppp-navy-600"> · from change order</span>}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-[15px] font-bold tabular-nums text-ppp-charcoal">{formatCentsFull(m.amount_cents)}</div>
+                        {mDue > 0 && mPaid > 0 && <div className="text-[10px] text-ppp-charcoal-500 tabular-nums">{formatCentsFull(mDue)} left</div>}
+                      </div>
                     </div>
-                    <form action={updateMilestoneAction} className="grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem_auto] gap-2 items-end mb-2.5">
-                      <input type="hidden" name="invoice_id" value={invoice.id} />
-                      <input type="hidden" name="milestone_id" value={m.id} />
-                      <div>
-                        <label className={LABEL_CLS} htmlFor={`m-name-${m.id}`}>Name</label>
-                        <input id={`m-name-${m.id}`} name="name" defaultValue={m.name} maxLength={200} disabled={isVoid} className={INPUT_CLS} />
-                      </div>
-                      <div>
-                        <label className={LABEL_CLS} htmlFor={`m-amt-${m.id}`}>Amount</label>
-                        <input id={`m-amt-${m.id}`} name="amount" defaultValue={(m.amount_cents / 100).toFixed(2)} inputMode="decimal" disabled={isVoid} className={INPUT_CLS} />
-                      </div>
-                      <div>
-                        <label className={LABEL_CLS} htmlFor={`m-due-${m.id}`}>Due date</label>
-                        <input id={`m-due-${m.id}`} name="due_at" type="date" defaultValue={m.due_at ? m.due_at.slice(0, 10) : ""} disabled={isVoid} className={INPUT_CLS} />
-                      </div>
-                      {!isVoid && (
-                        <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">Save</button>
-                      )}
-                    </form>
 
-                    {/* ✓ Record payment for THIS milestone — captures method /
-                        reference / date / notes; the note shows in the history
-                        below. Hidden once fully paid or on a void invoice. */}
+                    {/* Actions — Record payment is a clear green button; Edit +
+                        Remove tuck behind toggles so the card stays clean. */}
                     {!isVoid && !mFullyPaid && (
-                      <details className="group mb-2.5 rounded-lg border border-emerald-200 bg-emerald-50/40">
-                        <summary className="list-none cursor-pointer flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-[12px] font-semibold text-emerald-800 select-none">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg>
+                      <details className="group/mp mb-2.5">
+                        <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 min-h-[40px] touch-manipulation select-none">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg>
                           Record payment{mDue > 0 ? ` · ${formatCentsFull(mDue)} due` : ""}
                         </summary>
                         <form action={recordMilestonePaymentAction} className="px-3 pb-3 pt-1 space-y-2">
@@ -1501,6 +1519,41 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       fileName={w?.file_name ?? null}
                       compact
                     />
+
+                    {/* Edit name/amount/due + Remove — tucked away so the card
+                        stays clean. */}
+                    {!isVoid && (
+                      <div className="flex items-center gap-3 mt-2.5">
+                        <details className="group/edit flex-1 min-w-0">
+                          <summary className="list-none cursor-pointer inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[32px] select-none">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z" /></svg>
+                            Edit
+                          </summary>
+                          <form action={updateMilestoneAction} className="grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem_auto] gap-2 items-end mt-2">
+                            <input type="hidden" name="invoice_id" value={invoice.id} />
+                            <input type="hidden" name="milestone_id" value={m.id} />
+                            <div>
+                              <label className={LABEL_CLS} htmlFor={`m-name-${m.id}`}>Name</label>
+                              <input id={`m-name-${m.id}`} name="name" defaultValue={m.name} maxLength={200} className={INPUT_CLS} />
+                            </div>
+                            <div>
+                              <label className={LABEL_CLS} htmlFor={`m-amt-${m.id}`}>Amount</label>
+                              <input id={`m-amt-${m.id}`} name="amount" defaultValue={(m.amount_cents / 100).toFixed(2)} inputMode="decimal" className={INPUT_CLS} />
+                            </div>
+                            <div>
+                              <label className={LABEL_CLS} htmlFor={`m-due-${m.id}`}>Due date</label>
+                              <input id={`m-due-${m.id}`} name="due_at" type="date" defaultValue={m.due_at ? m.due_at.slice(0, 10) : ""} className={INPUT_CLS} />
+                            </div>
+                            <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">Save</button>
+                          </form>
+                        </details>
+                        <form action={deleteMilestoneAction} className="inline shrink-0">
+                          <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="milestone_id" value={m.id} />
+                          <button type="submit" className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[32px] px-1.5" title="Remove this milestone (also removes its charge from the invoice)">Remove</button>
+                        </form>
+                      </div>
+                    )}
                   </li>
                 );
               })}

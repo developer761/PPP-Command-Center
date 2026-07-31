@@ -19,7 +19,7 @@ import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commerc
  * flag. Waiver files ride the submit (server-action body limit raised to 25 MB).
  */
 
-type ProposalOpt = { id: string; label: string; totalCents: number };
+type ProposalOpt = { id: string; label: string; totalCents: number; remainingCents: number };
 
 const WAIVER_ACCEPT = "application/pdf,image/png,image/jpeg,image/webp";
 
@@ -58,7 +58,9 @@ export function DealInvoiceBuilder({
   const [proposalId, setProposalId] = useState("");
 
   const selectedProposal = proposals.find((p) => p.id === proposalId) ?? null;
-  const targetDollars = selectedProposal ? selectedProposal.totalCents / 100 : 0;
+  // Target = what's LEFT to bill on the proposal (contract − already billed), so
+  // a 2nd/3rd progress invoice can't re-bill the whole contract (audit 3B).
+  const targetDollars = selectedProposal ? selectedProposal.remainingCents / 100 : 0;
 
   const milestoneTotal = rows.reduce((s, r) => s + parseAmount(r.amount), 0);
   const flatTotal = parseAmount(flatAmount);
@@ -78,8 +80,8 @@ export function DealInvoiceBuilder({
   function onPickProposal(id: string) {
     setProposalId(id);
     const prop = proposals.find((p) => p.id === id);
-    // Flat: autofill the amount from the proposal total (user can still edit).
-    if (prop && mode === "flat") setFlatAmount((prop.totalCents / 100).toFixed(2));
+    // Flat: autofill the REMAINING to bill (user can still edit).
+    if (prop && mode === "flat") setFlatAmount((prop.remainingCents / 100).toFixed(2));
   }
 
   return (
@@ -149,8 +151,8 @@ export function DealInvoiceBuilder({
             {selectedProposal && (
               <div className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[11.5px] ${Math.abs(remainingToAllocate) < 0.005 ? "border-emerald-200 bg-emerald-50/60 text-emerald-800" : "border-ppp-blue-200 bg-ppp-blue-50/60 text-ppp-charcoal-700"}`}>
                 <span>
-                  Billing against <strong className="tabular-nums">{fmtUSD(targetDollars)}</strong> proposal ·{" "}
-                  {Math.abs(remainingToAllocate) < 0.005 ? "fully allocated" : remainingToAllocate > 0 ? <><strong className="tabular-nums">{fmtUSD(remainingToAllocate)}</strong> left to allocate</> : <><strong className="tabular-nums">{fmtUSD(-remainingToAllocate)}</strong> over the proposal</>}
+                  <strong className="tabular-nums">{fmtUSD(targetDollars)}</strong> left to bill on this proposal ·{" "}
+                  {Math.abs(remainingToAllocate) < 0.005 ? "fully allocated" : remainingToAllocate > 0 ? <><strong className="tabular-nums">{fmtUSD(remainingToAllocate)}</strong> left to allocate</> : <><strong className="tabular-nums">{fmtUSD(-remainingToAllocate)}</strong> over</>}
                 </span>
                 {remainingToAllocate > 0.005 && (
                   <button type="button" onClick={() => addRow(remainingToAllocate)} className="shrink-0 font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1">Fill remaining →</button>
