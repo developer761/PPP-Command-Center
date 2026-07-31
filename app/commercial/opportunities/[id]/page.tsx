@@ -43,6 +43,7 @@ import {
   isLost,
 } from "@/lib/commercial/opportunities/constants";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
+import { listMilestonesForInvoice } from "@/lib/commercial/invoices/milestones";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
@@ -930,6 +931,10 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   const invoice_id = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(invoice_id)) {
     redirect("/commercial/opportunities");
+  }
+  // Milestone invoices are paid per-milestone — reject an invoice-level payment.
+  if ((await listMilestonesForInvoice(invoice_id)).length > 0) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("This invoice is billed in milestones — open it and record the payment on the milestone.")}`);
   }
   const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amount_cents === null || amount_cents <= 0) {
@@ -3770,7 +3775,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
             <div className="flex justify-end gap-2">
               <button
                 type="submit"
-                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-ppp-charcoal text-white text-[12px] font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-ppp-charcoal text-surface text-[12px] font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
               >
                 Save edit
               </button>
@@ -4397,7 +4402,7 @@ function FinishRow({
             </Link>
             <button
               type="submit"
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation"
             >
               Save changes
             </button>

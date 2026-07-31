@@ -376,6 +376,26 @@ async function saveInvoiceNotesAction(formData: FormData) {
   redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=notes`, from));
 }
 
+/** Save ONLY the invoice's due date (the small inline editor on flat invoices).
+ *  Milestone invoices set due dates per-milestone instead. */
+async function saveDueDateAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const raw = String(formData.get("due_at") ?? "").trim();
+  const due_at = raw === "" ? null : /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T16:00:00.000Z` : undefined;
+  if (due_at === undefined) redirect(withFrom(`/commercial/invoices/${invoice_id}?error=${encodeURIComponent("Enter a valid date.")}`, from));
+  const result = await updateInvoiceCoreFields(invoice_id, { due_at }, user.id);
+  if (!result.ok) redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Could not save the due date."), from));
+  await revalidateInvoiceContext(invoice_id);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=due`, from));
+}
+
 async function updateCoreFieldsAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -849,10 +869,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <span>Milestones updated.</span>
         </div>
       )}
-      {savedTarget === "notes" && (
+      {(savedTarget === "notes" || savedTarget === "due") && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
           <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
-          <span>Notes saved.</span>
+          <span>{savedTarget === "due" ? "Due date saved." : "Notes saved."}</span>
         </div>
       )}
       {savedTarget === "payment" && pickFirst(sp.capped) !== "1" && (
@@ -1302,7 +1322,15 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </ul>
         )}
 
-        {invoice.balance_cents > 0 && !isVoid && (
+        {/* Milestone invoices are paid PER MILESTONE (each 'Record payment' up in
+            the Milestones section), so there's no ambiguous invoice-level record
+            here — that keeps a payment tied to the milestone it satisfies. */}
+        {invoice.balance_cents > 0 && !isVoid && hasMilestones && (
+          <p className="mt-4 pt-4 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-500">
+            This invoice is billed in milestones — record each payment on its milestone above, so it&rsquo;s tied to the right one.
+          </p>
+        )}
+        {invoice.balance_cents > 0 && !isVoid && !hasMilestones && (
           <form action={addPaymentAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-12 gap-2">
             <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
@@ -1346,115 +1374,25 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         )}
       </section>
 
-      {/* Details — Karan 2026-07-07: due date + PO + terms + messages
-          editable at ANY status (they're presentation fields). Only tax
-          is draft-only because it changes the total (guarded server-side
-          in verifyEditable). Void/deleted invoices can't be edited at all.
-          Karan 2026-07-07 (follow-up): wrapped in <details> so the form
-          doesn't dominate the page — most viewers just want the hero +
-          progress; the form only opens when someone needs to change
-          the due date or add a note. */}
-      <details
-        open={savedTarget === "details"}
-        className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 group/details"
-      >
-        <summary className="list-none cursor-pointer flex items-center justify-between gap-3 min-h-[36px]">
-          <div>
-            <h2 className="text-sm font-bold text-ppp-charcoal inline-flex items-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/details:rotate-90 text-ppp-charcoal-500">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-              Details
-            </h2>
-            <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 ml-[18px]">
-              {isVoid
-                ? "This invoice is void. Restore it to draft to make changes."
-                : "Payment terms, PO#, tax %, message to the GC, and the invoice due date."}
-            </p>
-          </div>
-          <span className="text-[11px] font-semibold text-cc-brand-700 group-open/details:hidden">Edit</span>
-          <span className="text-[11px] font-semibold text-ppp-charcoal-500 hidden group-open/details:inline">Close</span>
-        </summary>
-        {/* Karan 2026-07-07: Details form used to render as 6 fields
-            stacked in 2 loud ALL-CAPS columns — got crowded fast when a
-            deal had multiple invoices. New layout uses softer sentence-
-            case labels (SOFT_LABEL_CLS below) and puts the 4 short fields
-            on a single 4-col row when width allows, then Message + Notes
-            span full-width. Same fields, half the vertical footprint. */}
-        <form action={updateCoreFieldsAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 space-y-3">
-          <input type="hidden" name="invoice_id" value={invoice.id} />
-                          <input type="hidden" name="from" value={fromRaw ?? ""} />
-          {/* Row 1 — 4 short fields side-by-side on md+, 2 per row on sm,
-              stacked on mobile. Due-date presets keep the taller footprint
-              but fit within the same 4-col track. */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label htmlFor="dt-due" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">
-                {hasMilestones ? "Invoice due (overall)" : "Due date"}
-              </label>
-              <DueDatePickerWithPresets
-                id="dt-due"
-                name="due_at"
-                defaultValue={invoice.due_at ? invoice.due_at.slice(0, 10) : ""}
-                disabled={isVoid}
-              />
-              {hasMilestones && <p className="text-[10px] text-ppp-charcoal-400 mt-1">Each milestone has its own due date — edit those on the milestones above.</p>}
+      {/* Invoice due date — flat invoices only (milestone invoices set their
+          due dates per milestone above). Notes have their own section below. */}
+      {!hasMilestones && !isVoid && (
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
+          <h2 className="text-sm font-bold text-ppp-charcoal mb-1 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-blue-500" />
+            Due date
+          </h2>
+          <p className="text-[12px] text-ppp-charcoal-500 mb-3">{invoice.due_at ? `Currently due ${fmtEtDate(invoice.due_at)}.` : "No due date set."} Leave it blank for no due date.</p>
+          <form action={saveDueDateAction} className="flex items-end gap-2 flex-wrap">
+            <input type="hidden" name="invoice_id" value={invoice.id} />
+            <input type="hidden" name="from" value={fromRaw ?? ""} />
+            <div className="min-w-[220px]">
+              <DueDatePickerWithPresets id="dt-due" name="due_at" defaultValue={invoice.due_at ? invoice.due_at.slice(0, 10) : ""} />
             </div>
-            <div>
-              <label htmlFor="dt-terms" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Payment terms</label>
-              {/* Karan 2026-07-07 Alex-love: datalist gives Alex a picker
-                  (Net 15/30/45/60/EOM) but keeps the free-text field so
-                  custom wording like "Net 30 upon delivery" still works. */}
-              <input
-                id="dt-terms"
-                name="payment_terms"
-                type="text"
-                maxLength={60}
-                list="dt-terms-presets"
-                defaultValue={invoice.payment_terms ?? ""}
-                disabled={isVoid}
-                placeholder="Net 30"
-                className={INPUT_CLS}
-              />
-              <datalist id="dt-terms-presets">
-                <option value="Due on receipt" />
-                <option value="Net 15" />
-                <option value="Net 30" />
-                <option value="Net 45" />
-                <option value="Net 60" />
-                <option value="Net 90" />
-                <option value="End of month" />
-                <option value="50% deposit, 50% on completion" />
-                <option value="Progress billing per contract" />
-              </datalist>
-            </div>
-            <div>
-              <label htmlFor="dt-tax" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">
-                Tax % (flat)
-                {!isDraft && !isVoid && <span className="ml-1 text-[10px] font-normal text-ppp-charcoal-400">(draft-only)</span>}
-              </label>
-              <input id="dt-tax" name="tax_pct" type="text" inputMode="decimal" pattern="[0-9.]*" defaultValue={invoice.tax_pct} disabled={!isDraft} className={INPUT_CLS} />
-            </div>
-            <div>
-              <label htmlFor="dt-po" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">PO number</label>
-              <input id="dt-po" name="po_number" type="text" maxLength={80} defaultValue={invoice.po_number ?? ""} disabled={isVoid} className={INPUT_CLS} />
-            </div>
-          </div>
-          {/* Message to the GC — appears on the customer copy. Internal notes
-              moved to their own section at the bottom. */}
-          <div>
-            <label htmlFor="dt-msg" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Message to GC</label>
-            <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={isVoid} placeholder="Optional — appears above line items on the GC's copy." className={TEXTAREA_CLS} />
-          </div>
-          {!isVoid && (
-            <div className="flex justify-end">
-              <button type="submit" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px]">
-                Save details
-              </button>
-            </div>
-          )}
-        </form>
-      </details>
+            <button type="submit" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px]">Save</button>
+          </form>
+        </section>
+      )}
 
       {/* Milestones — an optional schedule-of-values breakdown of this invoice.
           Each milestone has its own amount, due date and lien waiver. Flat

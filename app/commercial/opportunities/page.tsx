@@ -3161,7 +3161,7 @@ function OpportunityRow({
           </select>
           <button
             type="submit"
-            className="px-3 py-1.5 rounded-md bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+            className="px-3 py-1.5 rounded-md bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             Go
           </button>

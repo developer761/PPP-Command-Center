@@ -1159,7 +1159,7 @@ export default async function SubmittalDetailPage({
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] touch-manipulation"
+                className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] touch-manipulation"
               >
                 Add item
               </button>
@@ -1268,7 +1268,7 @@ export default async function SubmittalDetailPage({
                       <div className="flex items-center justify-between gap-2">
                         <button
                           type="submit"
-                          className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] touch-manipulation"
+                          className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] touch-manipulation"
                         >
                           Save item
                         </button>

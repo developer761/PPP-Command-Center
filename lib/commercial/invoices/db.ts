@@ -178,6 +178,10 @@ export type CreateInvoiceInput = {
    * only after the claim succeeds.
    */
   skipCreatedNotification?: boolean;
+  /** Karan 2026-08: create the invoice already ISSUED (status 'sent' + issued/
+   *  sent stamps) so it counts as Invoiced immediately. Used by the deal builder
+   *  where "create" means "bill this deal". */
+  issue?: boolean;
 };
 
 export type ListInvoicesFilters = {
@@ -367,13 +371,21 @@ export async function createCommercialInvoice(
     0
   );
 
+  // Auto-issue (Karan 2026-08): a deal-created invoice counts as INVOICED the
+  // moment you make it — not after the first payment. `issue` sets it straight
+  // to 'sent' + stamps issued_at/sent_at, so the account/deal "Invoiced" KPI
+  // reflects it immediately. (Line items + milestones stay editable — the edit
+  // gate is non-void, not draft-only.)
+  const nowIso = new Date().toISOString();
   const { data: inserted, error } = await sb
     .from("commercial_invoices")
     .insert({
       opportunity_id: input.opportunity_id,
       account_id: input.account_id,
       invoice_number,
-      status: "draft",
+      status: input.issue ? "sent" : "draft",
+      issued_at: input.issue ? nowIso : null,
+      sent_at: input.issue ? nowIso : null,
       subtotal_cents,
       tax_pct: typeof input.tax_pct === "number" && input.tax_pct >= 0 && input.tax_pct <= 100 ? input.tax_pct : 0,
       paid_cents: 0,
@@ -413,7 +425,7 @@ export async function createCommercialInvoice(
     }
   }
 
-  await logStatusChange(inserted.id, null, "draft", input.created_by_user_id, "Created");
+  await logStatusChange(inserted.id, null, input.issue ? "sent" : "draft", input.created_by_user_id, input.issue ? "Issued on create" : "Created");
   // Central audit trail (Karan 2026-07-27 audit): invoice mutations were the
   // only domain with no logInsert/logUpdate/logDelete — the money had no trail.
   await logInsert("commercial_invoices", inserted.id, inserted, input.created_by_user_id);

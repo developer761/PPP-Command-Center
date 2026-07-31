@@ -14,6 +14,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, sumCommercialPaymentsSince, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { listMilestonesForInvoices, listMilestonesForInvoice } from "@/lib/commercial/invoices/milestones";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
@@ -83,6 +84,11 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
   const account_id = String(formData.get("account_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(account_id)) {
     redirect("/commercial/invoices");
+  }
+  // Milestone invoices are paid per-milestone (UI already routes them to the
+  // invoice; this guards a forged/stale post).
+  if ((await listMilestonesForInvoice(invoice_id)).length > 0) {
+    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("This invoice is billed in milestones — open it and record the payment on the milestone.")}`);
   }
   const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amount_cents === null || amount_cents <= 0) {
@@ -557,6 +563,13 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     if (sortKey === "balance_high") return b.balance_cents - a.balance_cents;
     return b.created_at.localeCompare(a.created_at);
   });
+
+  // Invoices billed in milestones are paid PER MILESTONE (on the invoice), so
+  // the list's inline invoice-level "Record payment" is suppressed for them —
+  // it points into the invoice instead, keeping a payment tied to its milestone.
+  const milestoneInvoiceIds = new Set(
+    (await listMilestonesForInvoices(invoices.map((i) => i.id))).keys()
+  );
 
   // KPI strip. Scoped by account when the list is filtered so the KPIs
   // match the visible rows; otherwise reflects the whole book. Refetches
@@ -1216,6 +1229,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           pickableProducts={pickableProducts}
           taxJurisdictions={taxJurisdictions}
           proposalCtxByOpp={proposalCtxByOpp}
+          milestoneInvoiceIds={milestoneInvoiceIds}
         />
       ) : sorted.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 sm:p-12 text-center">
@@ -1397,7 +1411,7 @@ function GroupedByOpp({
           const opp = oppById.get(oppId);
           const account = opp ? accountById.get(opp.account_id) : null;
           const nonVoid = groupInvoices.filter((i) => i.status !== "void");
-          const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
+          const totalInvoiced = nonVoid.filter((i) => i.status !== "draft").reduce((s, i) => s + i.total_cents, 0);
           const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
           const totalBalance = totalInvoiced - totalPaid;
           const overduePresent = groupInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");
@@ -1616,7 +1630,7 @@ function GroupedByOpp({
           <ul className="divide-y divide-ppp-charcoal-100">
             {orphanRows.map(([oppId, groupInvoices]) => {
               const nonVoid = groupInvoices.filter((i) => i.status !== "void");
-              const totalInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
+              const totalInvoiced = nonVoid.filter((i) => i.status !== "draft").reduce((s, i) => s + i.total_cents, 0);
               const totalPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
               const totalBalance = totalInvoiced - totalPaid;
               return (
@@ -1682,6 +1696,7 @@ function FullDetailByOpp({
   pickableProducts,
   taxJurisdictions,
   proposalCtxByOpp,
+  milestoneInvoiceIds,
 }: {
   invoices: CommercialInvoice[];
   oppById: Map<string, { id: string; title: string; account_id: string; status: string; sub_status: string | null; client_name: string | null; property_street: string | null; property_zip?: string | null }>;
@@ -1717,6 +1732,9 @@ function FullDetailByOpp({
    *  proposal" picker + the row-level PROP chip. Omitted opps have no
    *  proposals. */
   proposalCtxByOpp: Map<string, ProposalCtx>;
+  /** Invoice IDs billed in milestones — their inline record-payment is
+   *  suppressed (pay per milestone on the invoice instead). */
+  milestoneInvoiceIds: Set<string>;
 }) {
   const groups = new Map<string, CommercialInvoice[]>();
   for (const inv of invoices) {
@@ -2128,6 +2146,16 @@ function FullDetailByOpp({
                         </svg>
                         Paid in full{inv.paid_at ? ` on ${fmtEtDate(inv.paid_at)}` : ""}.
                       </div>
+                    ) : milestoneInvoiceIds.has(inv.id) ? (
+                      <Link
+                        href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/invoices${accountId ? `?account_id=${accountId}` : ""}`)}`}
+                        className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 min-h-[44px] touch-manipulation"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
+                        Record milestone payment
+                        <span className="text-[11px] font-normal text-ppp-charcoal-500">· {formatCentsFull(inv.balance_cents)} outstanding</span>
+                        <span aria-hidden className="ml-auto text-ppp-charcoal-400">→</span>
+                      </Link>
                     ) : (
                       <details className="group/pay border-t border-ppp-charcoal-100">
                         <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">

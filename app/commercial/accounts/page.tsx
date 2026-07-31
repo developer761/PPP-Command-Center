@@ -814,7 +814,7 @@ export default async function CommercialAccountsPage({
                   <button
                     type="submit"
                     formAction={bulkTagAccountsAction}
-                    className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px]"
+                    className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px]"
                   >
                     Apply tag
                   </button>
@@ -851,7 +851,7 @@ export default async function CommercialAccountsPage({
                     <button
                       type="submit"
                       formAction={bulkAssignAccountsAction}
-                      className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-white text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px]"
+                      className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 min-h-[44px]"
                     >
                       Assign
                     </button>

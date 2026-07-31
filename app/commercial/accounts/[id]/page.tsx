@@ -1529,7 +1529,7 @@ async function ProjectToolDocuments({ dealId, category, label }: { dealId: strin
   return (
     <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
-        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-white shrink-0">
+        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-surface shrink-0">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
         </span>
         <h3 className="text-[13px] font-bold text-ppp-charcoal">{label} documents</h3>
@@ -1668,6 +1668,8 @@ async function createDealInvoiceAction(formData: FormData) {
     proposal_id,
     proposal_total_cents_at_bill,
     line_items: lineItems,
+    // Creating from the deal = billing the deal → count it as Invoiced now.
+    issue: true,
   });
   if (!result.ok) redirect(`${back}&error=${encodeURIComponent(result.error)}`);
   if (milestones.length > 0) {
@@ -1785,7 +1787,7 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
   return (
     <section id="deal-documents" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
-        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-white shrink-0">
+        <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-ppp-charcoal-700 text-surface shrink-0">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
         </span>
         <h3 className="text-[13px] font-bold text-ppp-charcoal">Documents</h3>
@@ -2500,6 +2502,11 @@ async function recordPaymentInlineAction(formData: FormData) {
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   const returnUrl = `/commercial/accounts/${account_id}?tab=invoices`;
   if (!UUID_RE.test(invoice_id)) redirect(`${returnUrl}&error=${encodeURIComponent("Invalid invoice.")}`);
+  // Milestone invoices are paid per-milestone (keeps a payment tied to the right
+  // one). Reject an invoice-level payment here + point to the invoice.
+  if ((await listMilestonesForInvoice(invoice_id)).length > 0) {
+    redirect(`${returnUrl}&error=${encodeURIComponent("This invoice is billed in milestones — open it and record the payment on the milestone.")}#inv-${invoice_id}`);
+  }
   const amountRaw = String(formData.get("amount") ?? "").trim();
   const cents = parseDollarsToCents(amountRaw);
   if (cents === null || cents <= 0) {
@@ -4696,7 +4703,7 @@ function AccountOpportunityRow({
             <option value="billing">→ Billing</option>
           </select>
           <PendingSubmitButton
-            className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-white hover:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation disabled:hover:bg-ppp-charcoal-700"
+            className="px-3 py-1.5 text-[11px] font-semibold rounded-md bg-ppp-charcoal-700 text-surface hover:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation disabled:hover:bg-ppp-charcoal-700"
             pendingLabel="Moving…"
           >
             Go
@@ -6312,7 +6319,7 @@ async function AccountInvoicesTab({
           {dealOrder.map(([oppId, dealInvoices]) => {
             const opp = oppById.get(oppId)!;
             const nonVoid = dealInvoices.filter((i) => i.status !== "void");
-            const dealInvoiced = nonVoid.reduce((s, i) => s + i.total_cents, 0);
+            const dealInvoiced = nonVoid.filter((i) => i.status !== "draft").reduce((s, i) => s + i.total_cents, 0);
             const dealPaid = nonVoid.reduce((s, i) => s + i.paid_cents, 0);
             const dealBalance = dealInvoiced - dealPaid;
             const dealOverdue = dealInvoices.some((i) => deriveInvoiceStatus(i) === "overdue");

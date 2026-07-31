@@ -565,7 +565,7 @@ export default async function CommercialDashboardPage() {
             {PHASES.map((p) => (
               <div key={String(p.num)} className="rounded-lg border border-ppp-charcoal-100 bg-surface px-3 py-2.5">
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-ppp-charcoal text-white text-[10px] font-bold">
+                  <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-ppp-charcoal text-surface text-[10px] font-bold">
                     {p.num}
                   </span>
                   <span className={`text-[9px] font-bold tracking-widest uppercase border px-1.5 py-0.5 rounded ${p.color}`}>

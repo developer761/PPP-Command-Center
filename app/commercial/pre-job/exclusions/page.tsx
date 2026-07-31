@@ -236,7 +236,7 @@ export default async function ExclusionsLibraryPage({
         </label>
         <button
           type="submit"
-          className="inline-flex items-center px-4 py-2 rounded-lg bg-ppp-charcoal-800 text-white text-sm font-semibold hover:bg-ppp-navy-900 min-h-[44px]"
+          className="inline-flex items-center px-4 py-2 rounded-lg bg-ppp-charcoal-800 text-surface text-sm font-semibold hover:bg-ppp-navy-900 min-h-[44px]"
         >
           Apply
         </button>

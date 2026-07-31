@@ -1524,7 +1524,7 @@ function LineItemsTable({
                 >
                   Remove
                 </ConfirmSubmitButton>
-                <button type="submit" className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-white text-[13px] font-semibold hover:bg-ppp-navy-900 touch-manipulation">
+                <button type="submit" className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[13px] font-semibold hover:bg-ppp-navy-900 touch-manipulation">
                   Save row
                 </button>
               </div>
