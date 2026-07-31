@@ -1083,8 +1083,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           )}
           <BigNumber
             label="Due"
-            value={fmtEtDate(invoice.due_at)}
-            sub={daysUntilDue === null ? undefined : daysUntilDue < 0 ? `${Math.abs(daysUntilDue)} days overdue` : daysUntilDue === 0 ? "Due today" : `In ${daysUntilDue} days`}
+            value={invoice.due_at ? fmtEtDate(invoice.due_at) : "—"}
+            sub={!invoice.due_at ? "No due date set" : daysUntilDue === null ? undefined : daysUntilDue < 0 ? `${Math.abs(daysUntilDue)} days overdue` : daysUntilDue === 0 ? "Due today" : `In ${daysUntilDue} days`}
             tone={
               daysUntilDue !== null && daysUntilDue < 0 && !isVoid && invoice.balance_cents > 0
                 ? "rose"

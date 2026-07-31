@@ -361,7 +361,6 @@ export async function createCommercialInvoice(
   if (!acct || acct.deleted_at) return { ok: false, error: "account_not_found" };
 
   const invoice_number = await nextInvoiceNumber();
-  const due_days = input.due_days ?? DEFAULT_DUE_DAYS;
 
   const subtotal_cents = (input.line_items ?? []).reduce(
     (acc, li) => acc + Math.round(li.quantity * li.unit_price_cents),
@@ -384,7 +383,10 @@ export async function createCommercialInvoice(
       notes: input.notes ?? null,
       proposal_id: input.proposal_id ?? null,
       proposal_total_cents_at_bill: input.proposal_total_cents_at_bill ?? null,
-      due_at: input.due_at ?? new Date(Date.now() + due_days * 86_400_000).toISOString(),
+      // No silent auto-due-date (Karan 2026-08): if the user didn't set one, it
+      // stays empty ("No due date set") rather than inventing Net-30. A caller
+      // that wants a default passes due_at/due_days explicitly.
+      due_at: input.due_at ?? (input.due_days ? new Date(Date.now() + input.due_days * 86_400_000).toISOString() : null),
       created_by_user_id: input.created_by_user_id,
     })
     .select("*")

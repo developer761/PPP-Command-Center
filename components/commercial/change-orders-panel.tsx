@@ -60,6 +60,7 @@ type ProposalOption = { id: string; label: string; totalCents?: number; hasInvoi
 export async function ChangeOrdersPanel({
   oppId,
   accountId,
+  back = "",
   baseContractCents,
   proposals = [],
   addAction,
@@ -77,6 +78,8 @@ export async function ChangeOrdersPanel({
 }: {
   oppId: string;
   accountId: string;
+  /** The ?back= sidebar-tool origin to carry through every form action. */
+  back?: string;
   /** Canonical base URL for this panel's own links (Dismiss/Cancel/Edit). The
    *  caller decides whether that's the standalone tool route or the deal's
    *  Project sub-tab, so the panel works identically inline or on its own page. */
@@ -207,6 +210,7 @@ export async function ChangeOrdersPanel({
           <form action={addAction} className="px-3.5 pb-3.5 pt-1 space-y-3">
             <input type="hidden" name="opp_id" value={oppId} />
             <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="back" value={back} />
             <div>
               <label className={LABEL_CLS} htmlFor="co-title">Title</label>
               <input id="co-title" name="title" required maxLength={200} defaultValue={addAttemptFailed ? preserveTitle ?? "" : ""} className={INPUT_CLS} placeholder="e.g. Add second-floor hallway repaint" />
@@ -245,6 +249,7 @@ export async function ChangeOrdersPanel({
                     <form action={editAction} className="space-y-2.5">
                       <input type="hidden" name="opp_id" value={oppId} />
                       <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="back" value={back} />
                       <input type="hidden" name="co_id" value={co.id} />
                       <div className="text-[12px] font-bold text-ppp-charcoal">{formatChangeOrderNumber(co.co_number)}</div>
                       <div>
@@ -344,6 +349,7 @@ export async function ChangeOrdersPanel({
                                 <form action={decideAction}>
                                   <input type="hidden" name="opp_id" value={oppId} />
                                   <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="back" value={back} />
                                   <input type="hidden" name="co_id" value={co.id} />
                                   <input type="hidden" name="decision" value="approved" />
                                   <PendingSubmitButton pendingLabel="Approving…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 min-h-[44px]">Approve</PendingSubmitButton>
@@ -351,6 +357,7 @@ export async function ChangeOrdersPanel({
                                 <form action={decideAction}>
                                   <input type="hidden" name="opp_id" value={oppId} />
                                   <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="back" value={back} />
                                   <input type="hidden" name="co_id" value={co.id} />
                                   <input type="hidden" name="decision" value="declined" />
                                   <PendingSubmitButton pendingLabel="Declining…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 bg-surface text-[12px] font-semibold text-rose-700 hover:bg-rose-50 min-h-[44px]">Decline</PendingSubmitButton>
@@ -362,6 +369,7 @@ export async function ChangeOrdersPanel({
                               <form action={billAction}>
                                 <input type="hidden" name="opp_id" value={oppId} />
                                 <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="back" value={back} />
                                 <input type="hidden" name="co_id" value={co.id} />
                                 <PendingSubmitButton pendingLabel="Creating invoice…" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]">
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -380,6 +388,7 @@ export async function ChangeOrdersPanel({
                               <form action={decideAction}>
                                 <input type="hidden" name="opp_id" value={oppId} />
                                 <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="back" value={back} />
                                 <input type="hidden" name="co_id" value={co.id} />
                                 <input type="hidden" name="decision" value="approved" />
                                 <PendingSubmitButton pendingLabel="Reopening…" className="inline-flex items-center px-3 py-1.5 rounded-lg border border-emerald-200 bg-surface text-[12px] font-semibold text-emerald-700 hover:bg-emerald-50 min-h-[44px]">Reopen &amp; approve</PendingSubmitButton>
@@ -388,6 +397,7 @@ export async function ChangeOrdersPanel({
                             <form action={deleteAction} className="ml-auto">
                               <input type="hidden" name="opp_id" value={oppId} />
                               <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="back" value={back} />
                               <input type="hidden" name="co_id" value={co.id} />
                               <ConfirmSubmitButton
                                 message={`Delete ${formatChangeOrderNumber(co.co_number)}? This can't be undone.`}
