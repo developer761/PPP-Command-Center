@@ -64,7 +64,8 @@ import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
 import { listCommercialInvoices, addPayment, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
-import { seedMilestonesFromLineItems, listMilestonesForInvoices, getMilestonePaidMapForInvoices, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
+import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
+import { attachInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
@@ -1625,6 +1626,9 @@ async function createDealInvoiceAction(formData: FormData) {
   // Build the line items (+ milestone drafts, if any) that define the invoice.
   let lineItems: Array<{ description: string; quantity: number; unit_price_cents: number }>;
   let milestones: MilestoneDraft[] = [];
+  // Which form-row each milestone draft came from — so the ms_waiver_<row> file
+  // pairs to the right created milestone even when blank rows are skipped.
+  const milestoneRowIndex: number[] = [];
   let invoiceDue: string | undefined;
 
   if (mode === "milestones") {
@@ -1636,6 +1640,7 @@ async function createDealInvoiceAction(formData: FormData) {
       const name = (rawName || `Milestone ${milestones.length + 1}`).slice(0, 200);
       const due = parseDueDate(String(formData.get(`ms_due_${i}`) ?? "")) ?? null;
       milestones.push({ name, amount_cents: amt, due_at: due });
+      milestoneRowIndex.push(i);
     }
     if (milestones.length === 0) redirect(`${back}&error=${encodeURIComponent("Add at least one milestone with an amount.")}`);
     lineItems = milestones.map((m) => ({ description: m.name, quantity: 1, unit_price_cents: m.amount_cents }));
@@ -1667,6 +1672,29 @@ async function createDealInvoiceAction(formData: FormData) {
   if (milestones.length > 0) {
     await seedMilestonesFromLineItems(result.invoice.id, milestones);
   }
+
+  // Optional lien waivers attached right on the create form (best-effort — a
+  // failed upload never blocks the invoice; the waiver can always be added
+  // later from the invoice). Files ride the submit (25 MB server-action cap).
+  const readWaiver = async (key: string): Promise<{ name: string; type: string; data: Uint8Array } | null> => {
+    const f = formData.get(key);
+    if (!(f instanceof File) || f.size === 0) return null;
+    if (!["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"].includes(f.type)) return null;
+    return { name: f.name || "lien-waiver.pdf", type: f.type, data: new Uint8Array(await f.arrayBuffer()) };
+  };
+  if (mode === "flat") {
+    const w = await readWaiver("flat_waiver");
+    if (w) await attachInvoiceLienWaiver({ invoiceId: result.invoice.id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(() => {});
+  } else if (milestones.length > 0) {
+    // Re-fetch the created milestones (position order == draft order) so each
+    // ms_waiver_<row> file pairs to the right milestone.
+    const created = await listMilestonesForInvoice(result.invoice.id);
+    for (let k = 0; k < created.length && k < milestoneRowIndex.length; k++) {
+      const w = await readWaiver(`ms_waiver_${milestoneRowIndex[k]}`);
+      if (w) await attachMilestoneLienWaiver({ milestoneId: created[k].id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(() => {});
+    }
+  }
+
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/invoices");
   redirect(`${back}&created=1`);
@@ -1690,6 +1718,7 @@ async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals }: 
       proposals={wonProposals.map((pr) => ({
         id: pr.id,
         label: `${formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`} · ${formatCentsFull(pr.total_cents)} · ${pr.status}`,
+        totalCents: pr.total_cents,
       }))}
     />
   );

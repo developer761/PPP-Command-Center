@@ -6,15 +6,22 @@ import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commerc
 
 /**
  * Deal invoice builder (2026-08). One deal → one (or more) invoices; each
- * invoice can OPTIONALLY be broken into milestones (name · amount · due date),
- * each of which later gets its own lien waiver. Flat mode = a single amount.
- * Milestone mode = rows whose amounts SUM to the invoice total, shown live.
+ * invoice can OPTIONALLY be broken into milestones (name · amount · due date ·
+ * lien waiver). Flat mode = a single amount. Milestone mode = rows whose amounts
+ * SUM to the invoice total, shown live at the TOP.
+ *
+ * Billing against a proposal autofills the total (flat) or shows the target +
+ * "left to allocate" (milestones). A signed lien waiver can be attached per
+ * milestone (or once for a flat invoice) right here, and always added later.
  *
  * Submits to the deal's server action; milestone rows post as contiguous
- * ms_name_i / ms_amount_i / ms_due_i fields + ms_count + a mode flag.
+ * ms_name_i / ms_amount_i / ms_due_i / ms_waiver_i fields + ms_count + a mode
+ * flag. Waiver files ride the submit (server-action body limit raised to 25 MB).
  */
 
-type ProposalOpt = { id: string; label: string };
+type ProposalOpt = { id: string; label: string; totalCents: number };
+
+const WAIVER_ACCEPT = "application/pdf,image/png,image/jpeg,image/webp";
 
 function parseAmount(s: string): number {
   const n = parseFloat(s.replace(/[$,\s]/g, ""));
@@ -48,20 +55,31 @@ export function DealInvoiceBuilder({
     { name: "", amount: "", due: "" },
     { name: "", amount: "", due: "" },
   ]);
+  const [proposalId, setProposalId] = useState("");
+
+  const selectedProposal = proposals.find((p) => p.id === proposalId) ?? null;
+  const targetDollars = selectedProposal ? selectedProposal.totalCents / 100 : 0;
 
   const milestoneTotal = rows.reduce((s, r) => s + parseAmount(r.amount), 0);
   const flatTotal = parseAmount(flatAmount);
   const liveTotal = mode === "milestones" ? milestoneTotal : flatTotal;
   const filledRows = rows.filter((r) => parseAmount(r.amount) > 0).length;
+  const remainingToAllocate = targetDollars > 0 ? Math.round((targetDollars - milestoneTotal) * 100) / 100 : 0;
 
   function setRow(i: number, patch: Partial<Row>) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
-  function addRow() {
-    setRows((rs) => [...rs, { name: "", amount: "", due: "" }]);
+  function addRow(prefillAmount?: number) {
+    setRows((rs) => [...rs, { name: "", amount: prefillAmount && prefillAmount > 0 ? prefillAmount.toFixed(2) : "", due: "" }]);
   }
   function removeRow(i: number) {
     setRows((rs) => (rs.length <= 1 ? rs : rs.filter((_, idx) => idx !== i)));
+  }
+  function onPickProposal(id: string) {
+    setProposalId(id);
+    const prop = proposals.find((p) => p.id === id);
+    // Flat: autofill the amount from the proposal total (user can still edit).
+    if (prop && mode === "flat") setFlatAmount((prop.totalCents / 100).toFixed(2));
   }
 
   return (
@@ -74,6 +92,20 @@ export function DealInvoiceBuilder({
         <input type="hidden" name="account_id" value={accountId} />
         <input type="hidden" name="opp_id" value={oppId} />
         <input type="hidden" name="mode" value={mode} />
+
+        {/* Running invoice total — always visible at the TOP. */}
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-cc-brand-200 bg-surface px-4 py-2.5">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-ppp-charcoal-500">Invoice total</div>
+            <div className="font-condensed text-2xl font-black leading-none tabular-nums text-cc-brand-800">{fmtUSD(liveTotal)}</div>
+          </div>
+          {mode === "milestones" && (
+            <div className="text-right text-[11px] text-ppp-charcoal-500">
+              {filledRows} milestone{filledRows === 1 ? "" : "s"}
+              {defaultTax ? <div className="text-ppp-charcoal-400">before tax</div> : null}
+            </div>
+          )}
+        </div>
 
         {/* Mode toggle — flat amount vs a milestone breakdown. */}
         <div className="inline-flex rounded-lg border border-cc-brand-200 bg-surface p-0.5 text-[12px] font-semibold">
@@ -103,12 +135,28 @@ export function DealInvoiceBuilder({
               <label htmlFor="dni-due" className={LABEL_CLS}>Due date</label>
               <input id="dni-due" name="due_at" type="date" className={INPUT_CLS} />
             </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="dni-waiver" className={LABEL_CLS}>Signed lien waiver (optional)</label>
+              <input id="dni-waiver" name="flat_waiver" type="file" accept={WAIVER_ACCEPT} className="block w-full text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[40px] cursor-pointer" />
+              <p className="text-[10.5px] text-ppp-charcoal-400 mt-1">You can also add it later from the invoice — waivers usually arrive after billing.</p>
+            </div>
           </div>
         ) : (
           <div className="space-y-2.5">
             <p className="text-[11.5px] text-ppp-charcoal-500">
-              Split this invoice into milestones — each with its own amount and due date. You&rsquo;ll upload a lien waiver per milestone once it&rsquo;s billed. The amounts add up to the invoice total.
+              Split this invoice into milestones — each with its own amount, due date and (optional) lien waiver. The amounts add up to the invoice total above.
             </p>
+            {selectedProposal && (
+              <div className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[11.5px] ${Math.abs(remainingToAllocate) < 0.005 ? "border-emerald-200 bg-emerald-50/60 text-emerald-800" : "border-ppp-blue-200 bg-ppp-blue-50/60 text-ppp-charcoal-700"}`}>
+                <span>
+                  Billing against <strong className="tabular-nums">{fmtUSD(targetDollars)}</strong> proposal ·{" "}
+                  {Math.abs(remainingToAllocate) < 0.005 ? "fully allocated" : remainingToAllocate > 0 ? <><strong className="tabular-nums">{fmtUSD(remainingToAllocate)}</strong> left to allocate</> : <><strong className="tabular-nums">{fmtUSD(-remainingToAllocate)}</strong> over the proposal</>}
+                </span>
+                {remainingToAllocate > 0.005 && (
+                  <button type="button" onClick={() => addRow(remainingToAllocate)} className="shrink-0 font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1">Fill remaining →</button>
+                )}
+              </div>
+            )}
             <input type="hidden" name="ms_count" value={rows.length} />
             <div className="space-y-2">
               {rows.map((r, i) => (
@@ -124,10 +172,14 @@ export function DealInvoiceBuilder({
                     <input name={`ms_amount_${i}`} value={r.amount} onChange={(e) => setRow(i, { amount: e.target.value })} inputMode="decimal" placeholder="0.00" aria-label={`Milestone ${i + 1} amount`} className={INPUT_CLS} />
                     <input name={`ms_due_${i}`} value={r.due} onChange={(e) => setRow(i, { due: e.target.value })} type="date" aria-label={`Milestone ${i + 1} due date`} className={INPUT_CLS} />
                   </div>
+                  <div className="mt-1.5">
+                    <label htmlFor={`ms-waiver-${i}`} className="text-[10px] font-semibold text-ppp-charcoal-500">Signed lien waiver (optional)</label>
+                    <input id={`ms-waiver-${i}`} name={`ms_waiver_${i}`} type="file" accept={WAIVER_ACCEPT} className="block w-full text-[11px] text-ppp-charcoal-500 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-ppp-charcoal-100 file:text-ppp-charcoal-700 hover:file:bg-ppp-charcoal-200 cursor-pointer mt-0.5" />
+                  </div>
                 </div>
               ))}
             </div>
-            <button type="button" onClick={addRow} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[40px]">
+            <button type="button" onClick={() => addRow()} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[40px]">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
               Add milestone
             </button>
@@ -143,7 +195,7 @@ export function DealInvoiceBuilder({
           {proposals.length > 0 && (
             <div>
               <label htmlFor="dni-prop" className={LABEL_CLS}>Bill against proposal (optional)</label>
-              <select id="dni-prop" name="proposal_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              <select id="dni-prop" name="proposal_id" value={proposalId} onChange={(e) => onPickProposal(e.target.value)} className={SELECT_CLS} style={SELECT_BG_STYLE}>
                 <option value="">— none —</option>
                 {proposals.map((pr) => (
                   <option key={pr.id} value={pr.id}>{pr.label}</option>
@@ -155,15 +207,11 @@ export function DealInvoiceBuilder({
 
         {taxNote && <p className="text-[10.5px] text-ppp-charcoal-500">{taxNote}</p>}
 
-        {/* Live total + create — the invoice button sits right under the
-            milestones, per Karan. */}
+        {/* Create — right under everything, per Karan. */}
         <div className="flex items-center justify-between gap-3 flex-wrap border-t border-cc-brand-200/60 pt-3">
           <div className="text-[12px] text-ppp-charcoal-600">
-            <span className="font-semibold text-ppp-charcoal">Invoice total </span>
+            <span className="font-semibold text-ppp-charcoal">Total </span>
             <span className="font-bold tabular-nums text-cc-brand-800">{fmtUSD(liveTotal)}</span>
-            {mode === "milestones" && (
-              <span className="text-ppp-charcoal-400"> · {filledRows} milestone{filledRows === 1 ? "" : "s"}{defaultTax ? " · before tax" : ""}</span>
-            )}
           </div>
           <PendingSubmitButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation disabled:opacity-60" pendingLabel="Creating…">
             Create invoice

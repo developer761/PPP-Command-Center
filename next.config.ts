@@ -40,6 +40,12 @@ const nextConfig: NextConfig = {
       "@supabase/supabase-js",
       "@supabase/ssr",
     ],
+    // The deal invoice builder can carry optional lien-waiver files (one per
+    // milestone) on the create submit, so raise the server-action body ceiling
+    // above the 1 MB default. Scanned/emailed waiver PDFs are a few MB each.
+    serverActions: {
+      bodySizeLimit: "25mb",
+    },
   },
   async headers() {
     return [
