@@ -14,7 +14,6 @@ export function SignaturePad({ hasSignature }: { hasSignature: boolean }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
-  const dirty = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [empty, setEmpty] = useState(true);
@@ -38,6 +37,19 @@ export function SignaturePad({ hasSignature }: { hasSignature: boolean }) {
 
   useEffect(() => {
     setup();
+    // Re-size the backing store on viewport/orientation change so pointer
+    // coordinates stay aligned (setting canvas width clears it, so reset the
+    // empty state — a rare mid-draw resize starts fresh rather than misaligned).
+    const onResize = () => {
+      setup();
+      setEmpty(true);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
   }, [setup]);
 
   const pos = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -61,7 +73,6 @@ export function SignaturePad({ hasSignature }: { hasSignature: boolean }) {
     const { x, y } = pos(e);
     ctx.lineTo(x, y);
     ctx.stroke();
-    dirty.current = true;
     if (empty) setEmpty(false);
   };
   const end = () => {
@@ -73,7 +84,6 @@ export function SignaturePad({ hasSignature }: { hasSignature: boolean }) {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    dirty.current = false;
     setEmpty(true);
     setError(null);
   };

@@ -12,17 +12,16 @@ import { SignaturePad } from "@/components/commercial/signature-pad";
 /**
  * Operating Company — the single identity that flows into every generated
  * document (proposals, invoices, AIA, transmittals, warranty, work order,
- * statement). Edit once here; every PDF picks it up. Admin-only.
+ * statement). Edit once here; every PDF picks it up.
  *
- * Logo + signature image upload land in the next step (brand-assets bucket).
- * Mobile: single column, ≥44px controls.
+ *  * Mobile: single column, ≥44px controls.
  */
 
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/settings/operating-company";
 
-async function requireAdmin() {
+async function requireCommercialUser() {
   // Roles are open for now (Karan 2026-07-31) — any commercial user can manage
   // the operating company (so e.g. Brendan can set up his own signature).
   const supabase = await createClient();
@@ -34,7 +33,7 @@ async function requireAdmin() {
 
 async function saveAction(formData: FormData) {
   "use server";
-  const user = await requireAdmin();
+  const user = await requireCommercialUser();
   const get = (k: string) => {
     const v = formData.get(k);
     return typeof v === "string" ? v : "";
@@ -65,7 +64,7 @@ export default async function OperatingCompanyPage({
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
-  await requireAdmin();
+  await requireCommercialUser();
   const sp = await searchParams;
   const c = await getOperatingCompany();
 
