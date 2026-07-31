@@ -63,7 +63,9 @@ import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } f
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
-import { listCommercialInvoices, addPayment, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { listCommercialInvoices, addPayment, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
+import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
 import {
   listCommercialOpportunities,
@@ -82,7 +84,7 @@ import {
 } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
-import { formatProposalNumber, listProposalsForOpp } from "@/lib/commercial/proposals/db";
+import { formatProposalNumber, listProposalsForOpp, getProposal } from "@/lib/commercial/proposals/db";
 import { listDocumentsForParent } from "@/lib/commercial/documents/db";
 import { documentCategoryLabel as commercialDocCategoryLabel } from "@/lib/commercial/documents/categories";
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
@@ -1251,6 +1253,15 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
         ]}
         bar={hasContract ? { label: "Billed of contract", pct: aiaBilledPct, barClass: "bg-cc-brand-600", valueClass: "text-cc-brand-700" } : undefined}
       />
+      {sp?.created === "1" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Invoice created for this milestone.</div>
+      )}
+      {sp?.error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-700">{decodeURIComponent(sp.error)}</div>
+      )}
+      {/* Create an invoice right here — invoices are created under the project
+          (Phase 1, Katie). The global invoices page stays a read view. */}
+      <DealNewInvoiceForm accountId={accountId} oppId={p.opp.id} propertyZip={p.opp.property_zip ?? null} proposals={dealProposals} />
       <section id="deal-invoices" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
           <span aria-hidden className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-cc-brand-600 text-white shrink-0">
@@ -1516,6 +1527,114 @@ function DealPanelLead({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Create an invoice/milestone directly on the deal (Phase 1, Katie: invoices
+ * are created under the project). Single line item; bill against an accepted
+ * proposal or enter a progress amount. Redirects back to the deal Invoices tab.
+ */
+async function createDealInvoiceAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const account_id = String(formData.get("account_id") ?? "");
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(account_id) || !/^[0-9a-f-]{36}$/i.test(opp_id)) redirect("/commercial/accounts");
+  const back = `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}&dt=invoices`;
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description) redirect(`${back}&error=${encodeURIComponent("Describe what this milestone bills for.")}`);
+  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  if (amount_cents === null || amount_cents <= 0) redirect(`${back}&error=${encodeURIComponent("Enter a valid amount.")}`);
+  const dueRaw = String(formData.get("due_at") ?? "").trim();
+  const due_at = dueRaw && /^\d{4}-\d{2}-\d{2}$/.test(dueRaw) ? `${dueRaw}T16:00:00.000Z` : undefined;
+  const taxRaw = String(formData.get("tax_pct") ?? "").trim();
+  const taxParsed = taxRaw !== "" ? parseFloat(taxRaw) : NaN;
+  const tax_pct = Number.isFinite(taxParsed) && taxParsed >= 0 && taxParsed <= 100 ? taxParsed : undefined;
+  // Bill against a proposal (progress billing) — chain-of-trust: it must belong
+  // to this deal, else the link is dropped.
+  const propRaw = String(formData.get("proposal_id") ?? "").trim();
+  let proposal_id: string | null = null;
+  let proposal_total_cents_at_bill: number | null = null;
+  if (/^[0-9a-f-]{36}$/i.test(propRaw)) {
+    const prop = await getProposal(propRaw);
+    if (prop && prop.opportunity_id === opp_id) {
+      proposal_id = prop.id;
+      proposal_total_cents_at_bill = prop.total_cents;
+    }
+  }
+  const result = await createCommercialInvoice({
+    opportunity_id: opp_id,
+    account_id,
+    created_by_user_id: user.id,
+    tax_pct,
+    due_at,
+    proposal_id,
+    proposal_total_cents_at_bill,
+    line_items: [{ description: description.slice(0, 500), quantity: 1, unit_price_cents: amount_cents }],
+  });
+  if (!result.ok) redirect(`${back}&error=${encodeURIComponent(result.error)}`);
+  revalidatePath(`/commercial/accounts/${account_id}`);
+  revalidatePath("/commercial/invoices");
+  redirect(`${back}&created=1`);
+}
+
+/** Collapsible "New milestone invoice" form on the deal Invoices tab. */
+async function DealNewInvoiceForm({ accountId, oppId, propertyZip, proposals }: { accountId: string; oppId: string; propertyZip: string | null; proposals: import("@/lib/commercial/proposals/db").CommercialProposal[] }) {
+  // Pre-fill the tax rate from the deal's property ZIP (same engine as the
+  // global invoices page). Editable on the form + the invoice.
+  const taxHit = resolveTaxForZip(propertyZip, await listTaxJurisdictions({ activeOnly: true }));
+  const defaultTax = taxHit ? thouToPct(taxHit.jurisdiction.combined_rate_thou).toFixed(3).replace(/\.?0+$/, "") : "";
+  const wonProposals = proposals.filter((pr) => pr.status === "won" || pr.status === "sent");
+  return (
+    <details className="group bg-cc-brand-50/40 border border-cc-brand-200 rounded-xl">
+      <summary className="list-none cursor-pointer flex items-center gap-2 px-4 py-3 min-h-[44px] text-[13px] font-semibold text-cc-brand-800 select-none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-45"><path d="M12 5v14 M5 12h14" /></svg>
+        New milestone invoice
+      </summary>
+      <form action={createDealInvoiceAction} className="px-4 pb-4 pt-1 space-y-3">
+        <input type="hidden" name="account_id" value={accountId} />
+        <input type="hidden" name="opp_id" value={oppId} />
+        <div>
+          <label htmlFor="dni-desc" className={LABEL_CLS}>What this milestone bills for</label>
+          <input id="dni-desc" name="description" required maxLength={500} placeholder="e.g. Progress payment — Phase 1 lobby repaint" className={INPUT_CLS} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label htmlFor="dni-amount" className={LABEL_CLS}>Amount</label>
+            <input id="dni-amount" name="amount" required inputMode="decimal" placeholder="0.00" className={INPUT_CLS} />
+          </div>
+          <div>
+            <label htmlFor="dni-tax" className={LABEL_CLS}>Tax %{taxHit ? "" : ""}</label>
+            <input id="dni-tax" name="tax_pct" inputMode="decimal" defaultValue={defaultTax} placeholder="0" className={INPUT_CLS} />
+          </div>
+          <div>
+            <label htmlFor="dni-due" className={LABEL_CLS}>Due date</label>
+            <input id="dni-due" name="due_at" type="date" className={INPUT_CLS} />
+          </div>
+        </div>
+        {wonProposals.length > 0 && (
+          <div>
+            <label htmlFor="dni-prop" className={LABEL_CLS}>Bill against proposal (optional)</label>
+            <select id="dni-prop" name="proposal_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              <option value="">— none —</option>
+              {wonProposals.map((pr) => (
+                <option key={pr.id} value={pr.id}>{formatProposalNumber(pr.proposal_seq) || `R${pr.revision_number}`} · {formatCentsFull(pr.total_cents)} · {pr.status}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        {taxHit && <p className="text-[10.5px] text-ppp-charcoal-500">Tax pre-filled for {taxHit.jurisdiction.name} ({propertyZip}). Edit if needed.</p>}
+        <div className="flex justify-end">
+          <PendingSubmitButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation" pendingLabel="Creating…">
+            Create invoice
+          </PendingSubmitButton>
+        </div>
+      </form>
+    </details>
   );
 }
 
