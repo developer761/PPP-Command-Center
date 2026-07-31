@@ -66,7 +66,7 @@ async function startProjectAction(formData: FormData) {
   }
   const opp = await getCommercialOpportunity(opp_id);
   if (!opp || opp.account_id !== account_id) {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+    redirect(`/commercial/accounts/${account_id}?tab=deals`);
   }
   // Belt-and-braces: only Won deals can start a project. The button
   // itself already gates this — but a stale form POST could otherwise
@@ -96,7 +96,7 @@ async function startProjectAction(formData: FormData) {
     );
   }
   redirect(
-    `/commercial/accounts/${account_id}?tab=opportunities&project_started=${opp_id}`
+    `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}&project_started=1`
   );
 }
 
@@ -110,11 +110,11 @@ async function submitDebriefAction(formData: FormData) {
   }
   const opp = await getCommercialOpportunity(opp_id);
   if (!opp || opp.account_id !== account_id) {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+    redirect(`/commercial/accounts/${account_id}?tab=deals`);
   }
   // Only pre-sale bid outcomes are debriefable (see the page-level gate).
   if (opp.status !== "pre_sale_closed") {
-    redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+    redirect(`/commercial/accounts/${account_id}?tab=deals`);
   }
   // Outcome from the v2 (status, sub_status, loss_reason) tuple. Gated above to
   // pre_sale_closed, so the sub_status branches are exhaustive; the final
@@ -123,7 +123,7 @@ async function submitDebriefAction(formData: FormData) {
   if (opp.sub_status === "won") outcome = "won";
   else if (opp.sub_status === "lost" && opp.loss_reason === "no_bid") outcome = "no_bid";
   else if (opp.sub_status === "lost") outcome = "lost";
-  else redirect(`/commercial/accounts/${account_id}?tab=opportunities`);
+  else redirect(`/commercial/accounts/${account_id}?tab=deals`);
 
   const competitor = String(formData.get("debrief_competitor") ?? "").trim();
   const decidingFactor = String(formData.get("debrief_deciding_factor") ?? "").trim();
@@ -162,7 +162,7 @@ async function submitDebriefAction(formData: FormData) {
     );
   }
   redirect(
-    `/commercial/accounts/${account_id}?tab=opportunities&edit=${opp_id}#deal-row-${opp_id}`
+    `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}`
   );
 }
 
@@ -191,7 +191,7 @@ export default async function AccountDebriefPage({
   // then mislabeled it "No-bid" and submitDebriefAction had no branch, so the
   // save silently no-op'd. Gate strictly to pre_sale_closed.
   if (opp.status !== "pre_sale_closed") {
-    redirect(`/commercial/accounts/${id}?tab=opportunities`);
+    redirect(`/commercial/accounts/${id}?tab=deals`);
   }
 
   const debriefs = await listDebriefsForOpp(dealId);
@@ -204,7 +204,7 @@ export default async function AccountDebriefPage({
   // Back reopens the deal DRAWER (where the user came from) rather than the
   // bare list, which scrolled to the top of the account (2026-07-28 nav sweep —
   // same fix already on the sibling Change Orders page).
-  const backHref = `/commercial/accounts/${id}?tab=opportunities&edit=${dealId}`;
+  const backHref = `/commercial/accounts/${id}?tab=projects&project=${dealId}`;
 
   return (
     <div className="min-h-screen bg-ppp-charcoal-50">
