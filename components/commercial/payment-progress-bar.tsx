@@ -10,8 +10,8 @@
  * recorded the page re-renders and the bar animates to the new level, so the
  * money visibly "fills up."
  *
- * Tone: fully paid → emerald, overdue balance → rose, partial → brand indigo.
- * Milestone ticks at 25/50/75%. At 100% the whole bar gives a gentle pulse.
+ * Tone: fully paid → emerald, overdue balance → amber, partial → blue.
+ * At 100% the whole bar gives a gentle pulse.
  *
  * Pure CSS transitions + a tiny rAF count-up; no external deps, theme-aware.
  */
@@ -159,16 +159,10 @@ export function PaymentProgressBar({
             />
           )}
         </div>
-        {/* Milestone ticks (hidden once fully paid so a clean bar reads "done") */}
-        {!fullyPaid &&
-          [25, 50, 75].map((m) => (
-            <span
-              key={m}
-              aria-hidden
-              className="absolute top-0 bottom-0 w-px bg-white/45"
-              style={{ left: `${m}%` }}
-            />
-          ))}
+        {/* No decorative quartile ticks — on a $25-of-$50 bar the 25% tick read
+            as a "the bar stops at 1/4" boundary and confused the number. The %
+            label already communicates progress; real milestone breaks live in
+            SegmentedMeter, not here. */}
       </div>
 
       {note && <div className="mt-1.5 text-[10.5px] text-ppp-charcoal-500">{note}</div>}

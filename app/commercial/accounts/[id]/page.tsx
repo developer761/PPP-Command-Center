@@ -5895,7 +5895,7 @@ function AccountOverviewStrip({
       : invoiceRollup.overdue_count > 0
       ? "bg-rose-500"
       : paidCents > 0
-      ? "bg-amber-500"
+      ? "bg-ppp-blue-500"
       : "bg-ppp-charcoal-300";
 
   const invoicedCountLabel =

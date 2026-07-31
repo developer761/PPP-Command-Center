@@ -1434,7 +1434,7 @@ function GroupedByOpp({
               : overduePresent
               ? "bg-rose-500"
               : totalPaid > 0
-              ? "bg-amber-500"
+              ? "bg-ppp-blue-500"
               : "bg-ppp-charcoal-300";
           // Karan 2026-07-07 fix: compact card click used to jump to
           // the opportunities detail page — Karan wants users to stay
@@ -1919,7 +1919,7 @@ function FullDetailByOpp({
             : overduePresent
             ? "bg-rose-500"
             : totalPaid > 0
-            ? "bg-amber-500"
+            ? "bg-ppp-blue-500"
             : "bg-ppp-charcoal-300";
         const sortedGroup = [...groupInvoices].sort((a, b) => a.created_at.localeCompare(b.created_at));
         // Proposal-grouped dividers (Karan #32): order same-proposal invoices
@@ -2316,10 +2316,10 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
       ? "bg-ppp-charcoal-300"
       : invoice.paid_cents >= invoice.total_cents && invoice.total_cents > 0
       ? "bg-emerald-500"
-      : invoice.paid_cents > 0
-      ? "bg-amber-500"
       : displayStatus === "overdue"
       ? "bg-rose-500"
+      : invoice.paid_cents > 0
+      ? "bg-ppp-blue-500"
       : "bg-ppp-charcoal-300";
   // Karan 2026-07-11 signature-moments stage 5: days-idle heat on
   // overdue invoices — mirror the deal-side treatment. 15d+ overdue
