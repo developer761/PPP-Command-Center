@@ -34,6 +34,13 @@ import {
   allowedNextStatuses,
 } from "@/lib/commercial/invoices/status";
 import { getInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
+import {
+  listMilestonesForInvoice,
+  addMilestone,
+  updateMilestone,
+  deleteMilestone,
+  getMilestoneLienWaiver,
+} from "@/lib/commercial/invoices/milestones";
 import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
 import {
   deriveInvoiceStatus,
@@ -192,6 +199,70 @@ async function removePaymentAction(formData: FormData) {
   await removePayment(invoice_id, payment_id, user.id);
   await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}`);
+}
+
+function milestoneDue(raw: string): string | null | undefined {
+  const v = raw.trim();
+  if (v === "") return null; // explicit clear
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T16:00:00.000Z`;
+  return undefined; // malformed — leave unchanged
+}
+
+async function addMilestoneAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const name = String(formData.get("name") ?? "").trim();
+  const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  const due_at = milestoneDue(String(formData.get("due_at") ?? "")) ?? null;
+  if (!name || amount === null || amount <= 0) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Name the milestone and enter an amount."));
+  }
+  const res = await addMilestone(invoice_id, { name, amount_cents: amount!, due_at }, user.id);
+  if (!res.ok) redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(res.error));
+  await revalidateInvoiceContext(invoice_id);
+  redirect(`/commercial/invoices/${invoice_id}?saved=milestone`);
+}
+
+async function updateMilestoneAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const milestone_id = String(formData.get("milestone_id") ?? "");
+  if (!UUID_RE.test(invoice_id) || !UUID_RE.test(milestone_id)) redirect("/commercial/invoices");
+  const name = String(formData.get("name") ?? "").trim();
+  const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  const due_at = milestoneDue(String(formData.get("due_at") ?? ""));
+  if (!name || amount === null || amount <= 0) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Name the milestone and enter an amount."));
+  }
+  const patch: Parameters<typeof updateMilestone>[1] = { name, amount_cents: amount! };
+  if (due_at !== undefined) patch.due_at = due_at;
+  const res = await updateMilestone(milestone_id, patch, user.id);
+  if (!res.ok) redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(res.error));
+  await revalidateInvoiceContext(invoice_id);
+  redirect(`/commercial/invoices/${invoice_id}?saved=milestone`);
+}
+
+async function deleteMilestoneAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const milestone_id = String(formData.get("milestone_id") ?? "");
+  if (!UUID_RE.test(invoice_id) || !UUID_RE.test(milestone_id)) redirect("/commercial/invoices");
+  await deleteMilestone(milestone_id, user.id);
+  await revalidateInvoiceContext(invoice_id);
+  redirect(`/commercial/invoices/${invoice_id}?saved=milestone`);
 }
 
 async function changeStatusAction(formData: FormData) {
@@ -399,7 +470,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
   const invoice = await getCommercialInvoice(id);
   if (!invoice) notFound();
-  const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver] = await Promise.all([
+  const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver, milestones] = await Promise.all([
     listInvoiceLineItems(invoice.id),
     listInvoicePayments(invoice.id),
     listInvoiceStatusLog(invoice.id),
@@ -407,7 +478,15 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
     getCommercialOpportunity(invoice.opportunity_id),
     listCommercialInvoices({ opportunityId: invoice.opportunity_id }),
     getInvoiceLienWaiver(invoice.id),
+    listMilestonesForInvoice(invoice.id),
   ]);
+  // Per-milestone lien-waiver docs (for the ✓/download state on each row).
+  const milestoneWaivers = new Map<string, Awaited<ReturnType<typeof getMilestoneLienWaiver>>>();
+  await Promise.all(
+    milestones.map(async (m) => milestoneWaivers.set(m.id, await getMilestoneLienWaiver(m.id)))
+  );
+  const hasMilestones = milestones.length > 0;
+  const milestoneSum = milestones.reduce((s, m) => s + m.amount_cents, 0);
   // Invoice ↔ proposal: when this invoice bills against a proposal, resolve the
   // proposal + its sibling progress invoices so we can show "invoice N of M
   // against PROP-000N · $billed of $contract." Snapshot total (at bill time)
@@ -640,6 +719,12 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
           <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
           <span>Status updated.</span>
+        </div>
+      )}
+      {savedTarget === "milestone" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
+          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span>Milestones updated.</span>
         </div>
       )}
       {savedTarget === "payment" && pickFirst(sp.capped) !== "1" && (
@@ -910,7 +995,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <div>
             <h2 className="text-sm font-bold text-ppp-charcoal">What this charge is for</h2>
             <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-              {lineItems.length === 0 ? "Nothing on this bill yet." : `Subtotal ${formatCentsFull(invoice.subtotal_cents)}`}
+              {lineItems.length === 0
+                ? "Nothing on this bill yet."
+                : `Subtotal ${formatCentsFull(invoice.subtotal_cents)}${hasMilestones ? " · managed via Milestones below" : ""}`}
             </p>
           </div>
         </div>
@@ -939,7 +1026,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     <td className="py-2.5 pr-3 text-right text-ppp-charcoal-700 tabular-nums align-top">{formatCentsFull(li.unit_price_cents)}</td>
                     <td className="py-2.5 pr-3 text-right font-semibold text-ppp-charcoal tabular-nums align-top">{formatCentsFull(li.subtotal_cents)}</td>
                     <td className="py-2.5 pl-2 text-right align-top">
-                      {!isVoid && (
+                      {/* When milestones drive the charges, they own add/remove —
+                          editing a line item directly here would desync the
+                          milestone/charge pairing. Manage via Milestones below. */}
+                      {!isVoid && !hasMilestones && (
                         <form action={removeLineItemAction} className="inline">
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="item_id" value={li.id} />
@@ -1213,21 +1303,116 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         </form>
       </details>
 
-      {/* Lien waiver — every invoice IS a milestone, and every milestone stores
-          its lien waiver (uploaded, never generated). Lands in the deal's
-          Documents automatically. */}
+      {/* Milestones — an optional schedule-of-values breakdown of this invoice.
+          Each milestone has its own amount, due date and lien waiver. Flat
+          invoices (no milestones) keep a single invoice-level lien waiver. */}
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
-        <h2 className="text-sm font-bold text-ppp-charcoal mb-1 flex items-center gap-2">
-          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-          Milestone lien waiver
-        </h2>
-        <p className="text-[12px] text-ppp-charcoal-500 mb-3">This milestone ({invoice.invoice_number}) needs a signed lien waiver on file. Upload the one the GC sends back.</p>
-        <LienWaiverUpload
-          invoiceId={invoice.id}
-          hasWaiver={!!lienWaiver}
-          downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
-          fileName={lienWaiver?.file_name ?? null}
-        />
+        <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
+          <h2 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            {hasMilestones ? "Milestones & lien waivers" : "Lien waiver"}
+          </h2>
+          {hasMilestones && (
+            <span className="text-[11px] font-semibold text-ppp-charcoal-500 tabular-nums">
+              {milestones.length} milestone{milestones.length === 1 ? "" : "s"} · {formatCentsFull(milestoneSum)}
+              {milestoneSum !== invoice.subtotal_cents && (
+                <span className="ml-1 text-amber-700">≠ subtotal {formatCentsFull(invoice.subtotal_cents)}</span>
+              )}
+            </span>
+          )}
+        </div>
+
+        {hasMilestones ? (
+          <>
+            <p className="text-[12px] text-ppp-charcoal-500 mb-3">This invoice is billed in milestones. Set each one&rsquo;s due date and upload its signed lien waiver as the GC returns them.</p>
+            <ul className="space-y-3">
+              {milestones.map((m, idx) => {
+                const w = milestoneWaivers.get(m.id) ?? null;
+                return (
+                  <li key={m.id} className="rounded-xl border border-ppp-charcoal-100 p-3.5">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-[10.5px] font-bold uppercase tracking-wide text-cc-brand-700">
+                        Milestone {idx + 1}
+                        {m.change_order_id && <span className="ml-1.5 text-ppp-navy-600">· from change order</span>}
+                      </span>
+                      {!isVoid && (
+                        <form action={deleteMilestoneAction} className="inline">
+                          <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="milestone_id" value={m.id} />
+                          <button type="submit" className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[32px] px-1.5" title="Remove this milestone (also removes its charge from the invoice)">Remove</button>
+                        </form>
+                      )}
+                    </div>
+                    <form action={updateMilestoneAction} className="grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem_auto] gap-2 items-end mb-2.5">
+                      <input type="hidden" name="invoice_id" value={invoice.id} />
+                      <input type="hidden" name="milestone_id" value={m.id} />
+                      <div>
+                        <label className={LABEL_CLS} htmlFor={`m-name-${m.id}`}>Name</label>
+                        <input id={`m-name-${m.id}`} name="name" defaultValue={m.name} maxLength={200} disabled={isVoid} className={INPUT_CLS} />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS} htmlFor={`m-amt-${m.id}`}>Amount</label>
+                        <input id={`m-amt-${m.id}`} name="amount" defaultValue={(m.amount_cents / 100).toFixed(2)} inputMode="decimal" disabled={isVoid} className={INPUT_CLS} />
+                      </div>
+                      <div>
+                        <label className={LABEL_CLS} htmlFor={`m-due-${m.id}`}>Due date</label>
+                        <input id={`m-due-${m.id}`} name="due_at" type="date" defaultValue={m.due_at ? m.due_at.slice(0, 10) : ""} disabled={isVoid} className={INPUT_CLS} />
+                      </div>
+                      {!isVoid && (
+                        <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">Save</button>
+                      )}
+                    </form>
+                    <LienWaiverUpload
+                      milestoneId={m.id}
+                      hasWaiver={!!w}
+                      downloadHref={w ? `/api/commercial/documents/${w.id}/download` : null}
+                      fileName={w?.file_name ?? null}
+                      compact
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        ) : (
+          <>
+            <p className="text-[12px] text-ppp-charcoal-500 mb-3">Upload the signed lien waiver the GC sends back — it also lands in this deal&rsquo;s Documents. Or break this invoice into milestones below.</p>
+            <LienWaiverUpload
+              invoiceId={invoice.id}
+              hasWaiver={!!lienWaiver}
+              downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
+              fileName={lienWaiver?.file_name ?? null}
+            />
+          </>
+        )}
+
+        {/* Add a milestone — a scheduled charge that grows the invoice total.
+            Also how a flat invoice gets broken into milestones. */}
+        {!isVoid && (
+          <details className="group mt-3">
+            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[40px]">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-45"><path d="M12 5v14 M5 12h14" /></svg>
+              Add a milestone
+            </summary>
+            <form action={addMilestoneAction} className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem_auto] gap-2 items-end">
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <div>
+                <label className={LABEL_CLS} htmlFor="am-name">Name</label>
+                <input id="am-name" name="name" required maxLength={200} placeholder="e.g. Retainage release" className={INPUT_CLS} />
+              </div>
+              <div>
+                <label className={LABEL_CLS} htmlFor="am-amt">Amount</label>
+                <input id="am-amt" name="amount" required inputMode="decimal" placeholder="0.00" className={INPUT_CLS} />
+              </div>
+              <div>
+                <label className={LABEL_CLS} htmlFor="am-due">Due date</label>
+                <input id="am-due" name="due_at" type="date" className={INPUT_CLS} />
+              </div>
+              <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">Add</button>
+            </form>
+            <p className="text-[10.5px] text-ppp-charcoal-400 mt-1.5">Adds a scheduled charge to this invoice (raises the total by the amount). Each milestone then carries its own lien waiver.</p>
+          </details>
+        )}
       </section>
 
       {/* Status history */}

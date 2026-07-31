@@ -10,25 +10,35 @@ import { useRouter } from "next/navigation";
  */
 export function LienWaiverUpload({
   invoiceId,
+  milestoneId,
   hasWaiver,
   downloadHref,
   fileName,
+  compact = false,
 }: {
-  invoiceId: string;
+  /** Invoice-level waiver (flat invoice, no milestones). */
+  invoiceId?: string;
+  /** Milestone-level waiver — wins over invoiceId when set. */
+  milestoneId?: string;
   hasWaiver: boolean;
   downloadHref?: string | null;
   fileName?: string | null;
+  /** Denser layout for inline milestone rows. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const endpoint = milestoneId
+    ? `/api/commercial/milestones/${milestoneId}/lien-waiver`
+    : `/api/commercial/invoices/${invoiceId}/lien-waiver`;
 
   async function send(fd: FormData) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/commercial/invoices/${invoiceId}/lien-waiver`, { method: "POST", body: fd });
+      const res = await fetch(endpoint, { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(json.error ?? "Upload failed.");
@@ -44,7 +54,7 @@ export function LienWaiverUpload({
   }
 
   return (
-    <div className="rounded-lg border border-ppp-charcoal-100 bg-surface p-3.5">
+    <div className={`rounded-lg border border-ppp-charcoal-100 bg-surface ${compact ? "p-2.5" : "p-3.5"}`}>
       <div className="flex items-center justify-between gap-2 mb-2">
         <span className="text-[12.5px] font-semibold text-ppp-charcoal">Lien waiver</span>
         {hasWaiver ? (
@@ -64,7 +74,7 @@ export function LienWaiverUpload({
         </a>
       )}
 
-      <p className="text-[11px] text-ppp-charcoal-500 mb-2">Upload the signed waiver (PDF or image). It also lands in this deal&rsquo;s Documents.</p>
+      {!compact && <p className="text-[11px] text-ppp-charcoal-500 mb-2">Upload the signed waiver (PDF or image). It also lands in this deal&rsquo;s Documents.</p>}
       <div className="flex items-center gap-2 flex-wrap">
         <input
           ref={fileRef}
