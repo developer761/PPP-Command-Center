@@ -715,7 +715,7 @@ export async function addPayment(
      *  (as well as the invoice balance). NULL/undefined = invoice-level. */
     milestone_id?: string | null;
   }
-): Promise<{ ok: boolean; error?: string; applied_cents?: number; requested_cents?: number; capped?: boolean }> {
+): Promise<{ ok: boolean; error?: string; applied_cents?: number; requested_cents?: number; capped?: boolean; warning?: string }> {
   const sb = commercialDb();
   if (input.amount_cents <= 0) return { ok: false, error: "amount_must_be_positive" };
   // Cap at balance so a fat-fingered overpayment doesn't create a negative
@@ -728,6 +728,21 @@ export async function addPayment(
     .maybeSingle();
   if (!inv) return { ok: false, error: "invoice_not_found" };
   if (inv.status === "void") return { ok: false, error: "cannot_pay_voided" };
+  // Milestone invoices are paid PER MILESTONE so a payment normally ties to the
+  // one it satisfies (the UI hides the invoice-level form once milestones exist).
+  // A stale/forged untagged POST on a milestoned invoice is still ACCEPTED
+  // (Karan rule: never reject) — it records invoice-level and rolls up via the
+  // paid trigger, but we flag it so the recorder knows it isn't attributed to a
+  // milestone and the milestone bars won't reflect it (audit #4).
+  let untaggedOnMilestoneInvoice = false;
+  if (!input.milestone_id) {
+    const { count } = await sb
+      .from("commercial_invoice_milestones")
+      .select("id", { count: "exact", head: true })
+      .eq("invoice_id", invoice_id)
+      .is("deleted_at", null);
+    untaggedOnMilestoneInvoice = (count ?? 0) > 0;
+  }
   // Karan 2026-07-07: "don't make me mark as sent in order to record
   // payments. Mark as sent should just be for UI purposes." Dropped the
   // draft-only gate. The trigger will flip draft → partial → paid
@@ -760,7 +775,20 @@ export async function addPayment(
   }
 
   const cappedAmount = Math.min(input.amount_cents, balance, milestoneCap);
-  if (cappedAmount <= 0) return { ok: false, error: milestone_id ? "milestone_already_paid" : "no_balance_due" };
+  // Nothing left to apply (invoice or milestone already fully paid). Never reject
+  // (Karan rule) — record nothing but hand back a small heads-up instead of an
+  // error so the recorder sees why, not a red failure.
+  if (cappedAmount <= 0) {
+    return {
+      ok: true,
+      applied_cents: 0,
+      requested_cents: input.amount_cents,
+      capped: true,
+      warning: milestone_id
+        ? "That milestone is already fully paid, so nothing was recorded."
+        : "This invoice was already fully paid, so nothing was recorded.",
+    };
+  }
   const capped = input.amount_cents > cappedAmount;
 
   const { data: insertedPayment, error } = await sb
@@ -782,6 +810,7 @@ export async function addPayment(
   if (insertedPayment) {
     await logInsert("commercial_invoice_payments", (insertedPayment as { id: string }).id, insertedPayment, input.recorded_by_user_id);
   }
+  let appliedAmount = cappedAmount;
   // The DB trigger `trg_recompute_paid_cents` should auto-update
   // paid_cents (which feeds the generated balance_cents column) + flip
   // status. Karan 2026-07-07 defense: an older version of the trigger
@@ -798,6 +827,41 @@ export async function addPayment(
     .select("status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id")
     .eq("id", invoice_id)
     .maybeSingle();
+  // Concurrency guard (audit #2): if a simultaneous payment overshot the balance
+  // (both read the same balance before either inserted), paid now exceeds total.
+  // Trim THIS payment by the overshoot so paid never exceeds total — the loser's
+  // excess is refused, never persisted as a negative balance / phantom credit.
+  if (after && (after.balance_cents as number) < 0) {
+    const overshoot = -(after.balance_cents as number);
+    appliedAmount = Math.max(0, cappedAmount - overshoot);
+    const pid = (insertedPayment as { id: string } | null)?.id;
+    if (pid) {
+      if (appliedAmount <= 0) {
+        await sb.from("commercial_invoice_payments").delete().eq("id", pid);
+      } else {
+        await sb.from("commercial_invoice_payments").update({ amount_cents: appliedAmount }).eq("id", pid);
+      }
+      const { data: reAfter } = await sb
+        .from("commercial_invoices")
+        .select("status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id")
+        .eq("id", invoice_id)
+        .maybeSingle();
+      after = reAfter;
+    }
+    // Never reject (Karan rule): if a concurrent payment already zeroed the
+    // balance there's nothing left to apply, but we don't error — return a
+    // capped success so the UI shows a small "nothing was owed" heads-up
+    // instead of a red failure. Nothing was persisted (the row was deleted).
+    if (appliedAmount <= 0) {
+      return {
+        ok: true,
+        applied_cents: 0,
+        requested_cents: input.amount_cents,
+        capped: true,
+        warning: "This invoice was already fully paid, so nothing was recorded.",
+      };
+    }
+  }
   if (after) {
     const paid = (after as { paid_cents: number }).paid_cents;
     const total = (after as { total_cents: number }).total_cents;
@@ -865,7 +929,7 @@ export async function addPayment(
             invoiceNumber: afterRow.invoice_number,
             opportunityId: afterRow.opportunity_id,
             oppTitle: oppTitle ?? "the opportunity",
-            amountCents: cappedAmount,
+            amountCents: appliedAmount,
             balanceRemainingCents: afterRow.balance_cents,
             actingUserId: input.recorded_by_user_id,
             actorName,
@@ -880,7 +944,15 @@ export async function addPayment(
     })();
   }
 
-  return { ok: true, applied_cents: cappedAmount, requested_cents: input.amount_cents, capped };
+  return {
+    ok: true,
+    applied_cents: appliedAmount,
+    requested_cents: input.amount_cents,
+    capped: capped || appliedAmount < input.amount_cents,
+    warning: untaggedOnMilestoneInvoice
+      ? "Recorded on the invoice, but not tied to a milestone — the milestone bars won't reflect it."
+      : undefined,
+  };
 }
 
 export async function removePayment(

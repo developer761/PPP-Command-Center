@@ -14,7 +14,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, sumCommercialPaymentsSince, type CommercialInvoice } from "@/lib/commercial/invoices/db";
-import { listMilestonesForInvoices, listMilestonesForInvoice } from "@/lib/commercial/invoices/milestones";
+import { listMilestonesForInvoices } from "@/lib/commercial/invoices/milestones";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
@@ -56,6 +56,7 @@ type SP = Promise<{
   paid_ok?: string;
   paid_invoice?: string;
   paid_capped?: string;
+  paid_heads_up?: string;
   error?: string;
   /** Set by createInvoiceInlineAction with the new invoice id (for flash + scroll). */
   created?: string;
@@ -85,11 +86,10 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(account_id)) {
     redirect("/commercial/invoices");
   }
-  // Milestone invoices are paid per-milestone (UI already routes them to the
-  // invoice; this guards a forged/stale post).
-  if ((await listMilestonesForInvoice(invoice_id)).length > 0) {
-    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("This invoice is billed in milestones — open it and record the payment on the milestone.")}`);
-  }
+  // Milestone invoices are normally paid per-milestone (the UI routes them to
+  // the invoice detail). We never reject a stale/forged invoice-level post here
+  // (Karan rule) — addPayment records it invoice-level, rolls it up, and returns
+  // a warning we surface as a small heads-up.
   const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amount_cents === null || amount_cents <= 0) {
     redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}`);
@@ -127,6 +127,7 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
     paid_invoice: invoice_id,
   });
   if (result.capped) flash.set("paid_capped", "1");
+  if (result.warning) flash.set("paid_heads_up", result.warning);
   redirect(`/commercial/invoices?${flash.toString()}#inv-${invoice_id}`);
 }
 
@@ -1222,6 +1223,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           paidOk={pickFirst(sp.paid_ok) === "1"}
           paidInvoiceId={pickFirst(sp.paid_invoice) ?? null}
           paidCapped={pickFirst(sp.paid_capped) === "1"}
+          paidHeadsUp={pickFirst(sp.paid_heads_up) ?? null}
           createdInvoiceId={pickFirst(sp.created) ?? null}
           errorMessage={pickFirst(sp.error) ?? null}
           openAddOppId={pickFirst(sp.add) ?? null}
@@ -1689,6 +1691,7 @@ function FullDetailByOpp({
   paidOk,
   paidInvoiceId,
   paidCapped,
+  paidHeadsUp,
   createdInvoiceId,
   errorMessage,
   openAddOppId,
@@ -1706,6 +1709,7 @@ function FullDetailByOpp({
   paidOk?: boolean;
   paidInvoiceId?: string | null;
   paidCapped?: boolean;
+  paidHeadsUp?: string | null;
   createdInvoiceId?: string | null;
   errorMessage?: string | null;
   openAddOppId?: string | null;
@@ -1850,6 +1854,7 @@ function FullDetailByOpp({
           <span>
             Payment recorded.
             {paidCapped && <> Amount was capped to the remaining balance — invoice is fully paid.</>}
+            {paidHeadsUp && <> {paidHeadsUp}</>}
           </span>
           <Link
             href={`/commercial/invoices?account_id=${accountId}`}

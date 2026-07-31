@@ -74,6 +74,8 @@ type SP = Promise<{
   capped?: string;
   applied?: string;
   requested?: string;
+  /** Small non-blocking heads-up (e.g. an edit left the invoice showing a credit). */
+  heads_up?: string;
   from?: string;
   /** Phase G: set when this invoice was just created to bill a change order. */
   co_billed?: string;
@@ -205,9 +207,14 @@ async function addPaymentAction(formData: FormData) {
       applied: String(result.applied_cents),
       requested: String(result.requested_cents),
     });
+    if (result.warning) q.set("heads_up", result.warning);
     redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
   }
-  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=payment`, from));
+  {
+    const q = new URLSearchParams({ saved: "payment" });
+    if (result.warning) q.set("heads_up", result.warning);
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
+  }
 }
 
 async function removePaymentAction(formData: FormData) {
@@ -274,7 +281,9 @@ async function updateMilestoneAction(formData: FormData) {
   const res = await updateMilestone(milestone_id, patch, user.id);
   if (!res.ok) redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(res.error), from));
   await revalidateInvoiceContext(invoice_id);
-  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=milestone`, from));
+  const q = new URLSearchParams({ saved: "milestone" });
+  if (res.warning) q.set("heads_up", res.warning);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
 }
 
 async function deleteMilestoneAction(formData: FormData) {
@@ -287,9 +296,11 @@ async function deleteMilestoneAction(formData: FormData) {
   const from = String(formData.get("from") ?? "");
   const milestone_id = String(formData.get("milestone_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(milestone_id)) redirect("/commercial/invoices");
-  await deleteMilestone(milestone_id, user.id);
+  const res = await deleteMilestone(milestone_id, user.id);
   await revalidateInvoiceContext(invoice_id);
-  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=milestone`, from));
+  const q = new URLSearchParams({ saved: "milestone" });
+  if (res.ok && res.warning) q.set("heads_up", res.warning);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
 }
 
 /** Record a payment against a specific milestone (the ✓ Record payment button).
@@ -328,14 +339,19 @@ async function recordMilestonePaymentAction(formData: FormData) {
     milestone_id,
   });
   if (!result.ok) {
-    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error === "milestone_already_paid" ? "That milestone is already fully paid." : result.error ?? "Failed to record payment."), from));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to record payment."), from));
   }
   await revalidateInvoiceContext(invoice_id);
   if (result.capped && result.applied_cents !== undefined && result.requested_cents !== undefined) {
     const q = new URLSearchParams({ saved: "payment", capped: "1", applied: String(result.applied_cents), requested: String(result.requested_cents) });
+    if (result.warning) q.set("heads_up", result.warning);
     redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
   }
-  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=payment`, from));
+  {
+    const q = new URLSearchParams({ saved: "payment" });
+    if (result.warning) q.set("heads_up", result.warning);
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
+  }
 }
 
 async function changeStatusAction(formData: FormData) {
@@ -898,6 +914,15 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </div>
         );
       })()}
+      {/* Small non-blocking heads-up — we never reject the edit, just flag when
+          it leaves the invoice showing a credit (e.g. milestone lowered/deleted
+          below what was already paid). Kept intentionally small. */}
+      {pickFirst(sp.heads_up) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-[12.5px] text-amber-900 flex items-start gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 mt-0.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+          <span>{pickFirst(sp.heads_up)}</span>
+        </div>
+      )}
 
       {/* Hero */}
       <header className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">

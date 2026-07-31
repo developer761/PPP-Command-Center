@@ -113,10 +113,10 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
             </div>
             <div className="mt-2.5">
               <div className="h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${p.overBilled ? "bg-amber-500" : "bg-cc-brand-500"}`} style={{ width: `${pctBilled}%` }} aria-label={`${pctBilled}% billed`} />
+                <div className={`h-full rounded-full transition-all ${p.overBilled ? "bg-amber-500" : "bg-ppp-blue-500"}`} style={{ width: `${pctBilled}%` }} aria-label={`${pctBilled}% billed`} />
               </div>
               <div className="mt-1 flex items-center justify-between text-[10px]">
-                <span className={`tabular-nums font-semibold ${p.overBilled ? "text-amber-700" : "text-cc-brand-700"}`}>{pctBilled}% billed{p.overBilled ? " · over contract" : ""}</span>
+                <span className={`tabular-nums font-semibold ${p.overBilled ? "text-amber-700" : "text-ppp-blue-700"}`}>{pctBilled}% billed{p.overBilled ? " · over contract" : ""}</span>
                 <span className="tabular-nums font-medium text-ppp-charcoal-500">
                   {p.draftedCents > 0 && (
                     <span className="text-amber-700">{formatCentsCompact(p.draftedCents)} in draft{p.draftInvoiceCount === 1 ? "" : "s"}</span>

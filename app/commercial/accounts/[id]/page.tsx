@@ -186,6 +186,8 @@ type SP = Promise<{
   capped?: string;
   requested?: string;
   applied?: string;
+  /** Small non-blocking heads-up after a payment (never-reject flow). */
+  heads_up?: string;
   /** Karan 2026-07-08: inline "+ New deal" collapsible state. Set from
    *  the retired /commercial/opportunities/new redirect (auto-opens the
    *  form) OR from a redirect after error. `created=1` + `created_title`
@@ -741,6 +743,7 @@ export default async function CommercialAccountDetailPage({
           paymentCapped={sp.capped === "1"}
           paymentRequested={typeof sp.requested === "string" ? Number(sp.requested) || null : null}
           paymentApplied={typeof sp.applied === "string" ? Number(sp.applied) || null : null}
+          paymentHeadsUp={typeof sp.heads_up === "string" ? sp.heads_up : null}
           errorMessage={sp.error}
         />
       )}
@@ -2502,11 +2505,9 @@ async function recordPaymentInlineAction(formData: FormData) {
   if (!UUID_RE.test(account_id)) redirect("/commercial/accounts");
   const returnUrl = `/commercial/accounts/${account_id}?tab=invoices`;
   if (!UUID_RE.test(invoice_id)) redirect(`${returnUrl}&error=${encodeURIComponent("Invalid invoice.")}`);
-  // Milestone invoices are paid per-milestone (keeps a payment tied to the right
-  // one). Reject an invoice-level payment here + point to the invoice.
-  if ((await listMilestonesForInvoice(invoice_id)).length > 0) {
-    redirect(`${returnUrl}&error=${encodeURIComponent("This invoice is billed in milestones — open it and record the payment on the milestone.")}#inv-${invoice_id}`);
-  }
+  // Milestone invoices are normally paid per-milestone, but we never reject a
+  // stale invoice-level post (Karan rule) — addPayment records it invoice-level
+  // and returns a warning we surface as a small heads-up.
   const amountRaw = String(formData.get("amount") ?? "").trim();
   const cents = parseDollarsToCents(amountRaw);
   if (cents === null || cents <= 0) {
@@ -2536,7 +2537,8 @@ async function recordPaymentInlineAction(formData: FormData) {
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
   const cappedMsg = result.capped ? `&capped=1&requested=${cents}&applied=${result.applied_cents ?? cents}` : "";
-  redirect(`${returnUrl}&payment_ok=1${cappedMsg}#inv-${invoice_id}`);
+  const headsUpMsg = result.warning ? `&heads_up=${encodeURIComponent(result.warning)}` : "";
+  redirect(`${returnUrl}&payment_ok=1${cappedMsg}${headsUpMsg}#inv-${invoice_id}`);
 }
 
 async function addTagAction(formData: FormData) {
@@ -6188,6 +6190,7 @@ async function AccountInvoicesTab({
   paymentCapped,
   paymentRequested,
   paymentApplied,
+  paymentHeadsUp = null,
   errorMessage,
 }: {
   accountId: string;
@@ -6196,6 +6199,7 @@ async function AccountInvoicesTab({
   paymentCapped?: boolean;
   paymentRequested?: number | null;
   paymentApplied?: number | null;
+  paymentHeadsUp?: string | null;
   errorMessage?: string;
 }) {
   const [invoices, accountOpps] = await Promise.all([
@@ -6260,6 +6264,12 @@ async function AccountInvoicesTab({
             but only <span className="font-mono">${((paymentApplied ?? 0) / 100).toFixed(2)}</span> was owed. The extra{" "}
             <span className="font-mono">${(((paymentRequested ?? 0) - (paymentApplied ?? 0)) / 100).toFixed(2)}</span> was not recorded.
           </div>
+        </div>
+      )}
+      {paymentHeadsUp && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-[12.5px] text-amber-900 flex items-start gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 mt-0.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+          <span>{paymentHeadsUp}</span>
         </div>
       )}
       {errorMessage && (

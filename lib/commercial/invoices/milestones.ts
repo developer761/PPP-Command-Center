@@ -49,7 +49,10 @@ export type MilestoneDraft = {
   notes?: string | null;
 };
 
-type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+// Karan 2026-08 rule: never hard-reject a reasonable action — do the safe thing
+// and hand back a small `warning` for a gentle heads-up. `error` stays for the
+// genuinely-impossible cases (not found, void).
+type Result<T> = { ok: true; value: T; warning?: string } | { ok: false; error: string };
 
 const MILESTONE_COLS =
   "id, invoice_id, position, name, amount_cents, due_at, line_item_id, lien_waiver_document_id, change_order_id, notes, created_at, updated_at, deleted_at";
@@ -277,16 +280,15 @@ export async function updateMilestone(
     if (!n) return { ok: false, error: "Name can't be blank." };
     update.name = n.slice(0, 200);
   }
+  let lowerBelowPaid = false;
   if (patch.amount_cents !== undefined) {
     const a = Math.round(patch.amount_cents);
     if (!Number.isFinite(a) || a <= 0) return { ok: false, error: "Enter an amount greater than $0." };
-    // Can't lower a milestone below what's already been paid against it —
-    // that would overpay the milestone + drive the invoice into a phantom
-    // credit (edge-case E).
+    // Never block the edit (Karan rule). Lowering below what's already been paid
+    // leaves the milestone/invoice showing a credit — flag it as a heads-up, not
+    // a rejection.
     const paid = (await getMilestonePaidMap(existing.invoice_id)).get(id) ?? 0;
-    if (a < paid) {
-      return { ok: false, error: `This milestone already has payments totaling more than that amount. Remove a payment first.` };
-    }
+    lowerBelowPaid = a < paid;
     update.amount_cents = a;
   }
   if (patch.due_at !== undefined) update.due_at = patch.due_at;
@@ -311,7 +313,11 @@ export async function updateMilestone(
     await sb.from("commercial_invoice_line_items").update(liPatch).eq("id", existing.line_item_id);
     await resyncInvoiceSubtotal(existing.invoice_id);
   }
-  return { ok: true, value: data as InvoiceMilestone };
+  return {
+    ok: true,
+    value: data as InvoiceMilestone,
+    warning: lowerBelowPaid ? "That's below what's already been paid on this milestone — the invoice may now show a credit." : undefined,
+  };
 }
 
 /** Soft-delete a milestone + remove its paired charge (which recomputes the
@@ -319,15 +325,22 @@ export async function updateMilestone(
 export async function deleteMilestone(id: string, actorUserId: string): Promise<Result<null>> {
   const existing = await getMilestone(id);
   if (!existing) return { ok: false, error: "Milestone not found." };
-  // Void invoices are immutable (edge-case void).
+  // Void invoices are immutable — nothing to do (the UI hides these on void).
   const inv = await getCommercialInvoice(existing.invoice_id);
   if (inv?.status === "void") return { ok: false, error: "This invoice is void — its milestones can't be removed." };
-  // Deleting a milestone drops its paired charge from the invoice. If it has
-  // recorded payments, that would strand the cash on the invoice (paid stays,
-  // total drops) → phantom credit. Block it (edge-case A).
-  const paid = (await getMilestonePaidMap(existing.invoice_id)).get(id) ?? 0;
-  if (paid > 0) return { ok: false, error: "This milestone has recorded payments. Remove those payments first, then delete it." };
   const sb = commercialDb();
+  // Never block the delete (Karan rule). If the milestone was paid, RE-TAG its
+  // payments to invoice-level so the cash stays visible on the invoice (not
+  // orphaned to a hidden milestone), then drop the milestone + its charge. If
+  // that leaves the invoice overpaid, it reads as a credit — a heads-up, not a
+  // block. Also frees a CO so it can be re-billed (audit #7).
+  const paid = (await getMilestonePaidMap(existing.invoice_id)).get(id) ?? 0;
+  if (paid > 0) {
+    await sb.from("commercial_invoice_payments").update({ milestone_id: null }).eq("milestone_id", id);
+  }
+  if (existing.change_order_id) {
+    await sb.from("commercial_change_orders").update({ invoiced_invoice_id: null }).eq("id", existing.change_order_id);
+  }
   const { error } = await sb
     .from("commercial_invoice_milestones")
     .update({ deleted_at: new Date().toISOString() })
@@ -339,7 +352,11 @@ export async function deleteMilestone(id: string, actorUserId: string): Promise<
   if (existing.lien_waiver_document_id) {
     await softDeleteDocument(existing.lien_waiver_document_id, actorUserId).catch(() => {});
   }
-  return { ok: true, value: null };
+  return {
+    ok: true,
+    value: null,
+    warning: paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : undefined,
+  };
 }
 
 /** Re-sum this invoice's line items into subtotal_cents (total/balance are

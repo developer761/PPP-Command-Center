@@ -43,7 +43,6 @@ import {
   isLost,
 } from "@/lib/commercial/opportunities/constants";
 import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
-import { listMilestonesForInvoice } from "@/lib/commercial/invoices/milestones";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { getEffectiveContractBaseCents } from "@/lib/commercial/aia/db";
@@ -155,6 +154,7 @@ type SP = Promise<{
   paid_ok?: string;
   paid_invoice?: string;
   paid_capped?: string;
+  paid_heads_up?: string;
   /** Karan 2026-07-08: quick-edit slide-out state on the Invoices tab. */
   edit_invoice?: string;
   details_saved?: string;
@@ -932,10 +932,9 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   if (!UUID_RE.test(opp_id) || !UUID_RE.test(invoice_id)) {
     redirect("/commercial/opportunities");
   }
-  // Milestone invoices are paid per-milestone — reject an invoice-level payment.
-  if ((await listMilestonesForInvoice(invoice_id)).length > 0) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("This invoice is billed in milestones — open it and record the payment on the milestone.")}`);
-  }
+  // Milestone invoices are normally paid per-milestone, but we never reject a
+  // stale invoice-level post (Karan rule) — addPayment records it invoice-level
+  // and returns a warning we surface as a small heads-up.
   const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amount_cents === null || amount_cents <= 0) {
     redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}`);
@@ -987,6 +986,7 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   if (result.capped) {
     flash.set("paid_capped", "1");
   }
+  if (result.warning) flash.set("paid_heads_up", result.warning);
   redirect(`/commercial/opportunities/${opp_id}?${flash.toString()}#inv-${invoice_id}`);
 }
 
@@ -1359,12 +1359,14 @@ export default async function OpportunityDetailPage({
     const paidOk = pickFirst(sp.paid_ok);
     const paidInvoice = pickFirst(sp.paid_invoice);
     const paidCapped = pickFirst(sp.paid_capped);
+    const paidHeadsUp = pickFirst(sp.paid_heads_up);
     const createdN = pickFirst(sp.invoices_created);
     const errN = pickFirst(sp.invoice_errors);
     const errMsg = pickFirst(sp.error);
     if (paidOk) q.set("paid_ok", paidOk);
     if (paidInvoice) q.set("paid_invoice", paidInvoice);
     if (paidCapped) q.set("paid_capped", paidCapped);
+    if (paidHeadsUp) q.set("paid_heads_up", paidHeadsUp);
     if (createdN) q.set("invoices_created", createdN);
     if (errN) q.set("invoice_errors", errN);
     if (errMsg) q.set("error", errMsg);
@@ -1792,6 +1794,7 @@ export default async function OpportunityDetailPage({
           paidOk={pickFirst(sp.paid_ok) === "1"}
           paidInvoiceId={pickFirst(sp.paid_invoice) ?? null}
           paidCapped={pickFirst(sp.paid_capped) === "1"}
+          paidHeadsUp={pickFirst(sp.paid_heads_up) ?? null}
           errorMessage={pickFirst(sp.error)}
           isDealDeleted={isDeletedDeal}
           editInvoiceId={pickFirst(sp.edit_invoice) ?? null}
@@ -1839,6 +1842,7 @@ async function OpportunityInvoicesPanel({
   paidOk,
   paidInvoiceId,
   paidCapped,
+  paidHeadsUp = null,
   errorMessage,
   isDealDeleted = false,
   editInvoiceId = null,
@@ -1853,6 +1857,7 @@ async function OpportunityInvoicesPanel({
   paidOk?: boolean;
   paidInvoiceId?: string | null;
   paidCapped?: boolean;
+  paidHeadsUp?: string | null;
   errorMessage?: string;
   isDealDeleted?: boolean;
   editInvoiceId?: string | null;
@@ -1959,6 +1964,7 @@ async function OpportunityInvoicesPanel({
             {paidCapped && (
               <> Amount was capped to the remaining balance — invoice is fully paid.</>
             )}
+            {paidHeadsUp && <> {paidHeadsUp}</>}
           </span>
           <Link
             href={`/commercial/opportunities/${oppId}?tab=invoices`}
