@@ -60,7 +60,7 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
   const hasContract = p.contractToDateCents > 0;
   // Billing-honest: % billed = invoiced ÷ contract (the number that moves when
   // you invoice). Production % (AIA completed) shown as a secondary note.
-  const pctBilled = hasContract ? Math.min(100, Math.round((p.invoicedCents / p.contractToDateCents) * 100)) : 0;
+  const pctBilled = hasContract ? Math.min(100, Math.round((p.billedContractCents / p.contractToDateCents) * 100)) : 0;
   // Card title → the project's HOME under the account (folded), NOT the edit
   // sheet. Pointing at ?edit= made the edit form auto-pop on navigation
   // (2026-07-29 bug). The project home is a read view with the tool jumps;
@@ -108,8 +108,8 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
           <div className="mt-3 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/50 px-3 py-2.5">
             <div className="grid grid-cols-3 gap-2 text-center">
               <MoneyStat label="Contract" value={formatCentsCompact(p.contractToDateCents)} />
-              <MoneyStat label="Invoiced" value={formatCentsCompact(p.invoicedCents)} tone="emerald" />
-              <MoneyStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={p.overBilled ? formatCentsCompact(p.invoicedCents - p.contractToDateCents) : formatCentsCompact(p.leftToBillCents)} />
+              <MoneyStat label="Invoiced" value={formatCentsCompact(p.billedContractCents)} tone="emerald" />
+              <MoneyStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={p.overBilled ? formatCentsCompact(p.billedContractCents - p.contractToDateCents) : formatCentsCompact(p.leftToBillCents)} />
             </div>
             <div className="mt-2.5">
               <div className="h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">

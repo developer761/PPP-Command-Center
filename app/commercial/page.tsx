@@ -475,8 +475,8 @@ export default async function CommercialDashboardPage() {
             />
             <KpiTile
               tone="emerald"
-              value={formatCentsCompact(production.invoicedCents)}
-              label="Invoiced"
+              value={formatCentsCompact(production.billedContractCents)}
+              label="Billed of contract"
               sub={`${formatCentsCompact(production.paidCents)} paid`}
               href="/commercial/projects"
               icon={<IconChart />}
@@ -485,7 +485,7 @@ export default async function CommercialDashboardPage() {
               tone="blue"
               value={formatCentsCompact(production.leftToBillCents)}
               label="Left to bill"
-              sub="Contract − invoiced"
+              sub="Contract − billed"
               href="/commercial/projects"
               icon={<IconDollar />}
             />

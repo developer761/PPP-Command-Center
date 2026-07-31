@@ -32,8 +32,11 @@ export type ProjectRow = {
   /** Latest application's Total Completed & Stored ÷ contract sum to date. */
   percentCompleteBps: number | null;
   // ── Billing (financial truth, 2026-07-29) ──
-  /** Σ of this project's non-void invoice totals. */
+  /** Σ of this project's non-void invoice totals (WITH tax) — AR / "Invoiced". */
   invoicedCents: number;
+  /** Σ of non-void invoice SUBTOTALS (PRE-tax) — the figure compared to the
+   *  (pre-tax) contract for left-to-bill / over-billed / %-of-contract. */
+  billedContractCents: number;
   /** Σ of payments recorded against those invoices. */
   paidCents: number;
   invoiceCount: number;
@@ -162,11 +165,11 @@ export async function listProjects(opts: {
   // non-void invoice totals; Paid = Σ payments. These drive "left to bill"
   // (contract − invoiced) + "outstanding" (invoiced − paid) so billing
   // actually moves the numbers — the old rollup ignored invoices entirely. ──
-  const invData = await paginateAll<{ opportunity_id: string; status: string; total_cents: number; paid_cents: number }>(
+  const invData = await paginateAll<{ opportunity_id: string; status: string; subtotal_cents: number; total_cents: number; paid_cents: number }>(
     () =>
       sb
         .from("commercial_invoices")
-        .select("opportunity_id, status, total_cents, paid_cents")
+        .select("opportunity_id, status, subtotal_cents, total_cents, paid_cents")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
@@ -175,15 +178,21 @@ export async function listProjects(opts: {
   // draft isn't billed to the GC yet, so it must NOT inflate billed / %-billed
   // / left-to-bill (2026-07-29 audit: a $50k draft was flipping a job to "100%
   // billed"). Drafts are tracked separately + shown as a "$X in N drafts" note.
-  const invByOpp = new Map<string, { invoiced: number; paid: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
+  // `invoiced`/`paid` are WITH tax (AR — what the GC owes/paid). `billedPreTax`
+  // is Σ subtotal (pre-tax): the contract is a pre-tax number (proposal total +
+  // pre-tax CO amounts), so left-to-bill / over-billed / %-of-contract MUST
+  // compare pre-tax against pre-tax — else an 8.875%-taxed full bill looks
+  // "over-billed" (2026-08 money audit #1).
+  const invByOpp = new Map<string, { invoiced: number; billedPreTax: number; paid: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
   for (const inv of invData) {
     if (inv.status === "void") continue;
-    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, paid: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
+    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
     if (inv.status === "draft") {
       e.draftCount += 1;
       e.draftedCents += Number(inv.total_cents);
     } else {
       e.invoiced += Number(inv.total_cents);
+      e.billedPreTax += Number(inv.subtotal_cents);
       e.paid += Number(inv.paid_cents);
       e.invoiceCount += 1;
     }
@@ -314,13 +323,14 @@ export async function listProjects(opts: {
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
     const retainageHeld = latest ? retainageByApp.get(latest.id) ?? 0 : 0;
     const pct = latest && contractToDate > 0 ? Math.round((completed / contractToDate) * 10000) : null;
-    const inv = invByOpp.get(o.id) ?? { invoiced: 0, paid: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
-    // Left to bill = contract − invoiced (clamped). Over-billed when invoiced
-    // exceeds the contract (unapproved CO, deduct CO, or a mistake) — surfaced,
-    // never a negative. hasContract gates whether "left to bill" is meaningful.
+    const inv = invByOpp.get(o.id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
+    // Left to bill = contract − PRE-TAX billed (clamped). Over-billed when the
+    // pre-tax billed exceeds the (pre-tax) contract — unapproved CO, deduct CO,
+    // or a mistake — surfaced, never a negative, and never a phantom over-bill
+    // from sales tax. hasContract gates whether "left to bill" is meaningful.
     const hasContract = contractToDate > 0;
-    const leftToBill = hasContract ? Math.max(0, contractToDate - inv.invoiced) : 0;
-    const overBilled = hasContract && inv.invoiced > contractToDate;
+    const leftToBill = hasContract ? Math.max(0, contractToDate - inv.billedPreTax) : 0;
+    const overBilled = hasContract && inv.billedPreTax > contractToDate;
     return {
       opp: o as CommercialOpportunity,
       accountId: o.account?.id ?? o.account_id,
@@ -337,6 +347,7 @@ export async function listProjects(opts: {
       latestAppStatus: (latest?.status as ProjectRow["latestAppStatus"]) ?? null,
       percentCompleteBps: pct,
       invoicedCents: inv.invoiced,
+      billedContractCents: inv.billedPreTax,
       paidCents: inv.paid,
       invoiceCount: inv.invoiceCount,
       draftInvoiceCount: inv.draftCount,
@@ -369,9 +380,12 @@ export type ProductionSummary = {
   pendingCoCount: number;
   pendingCoCents: number;
   // ── Billing (financial truth) ──
+  /** Σ invoice totals WITH tax — AR / "Invoiced". */
   invoicedCents: number;
+  /** Σ invoice subtotals PRE-tax — the figure compared to the contract. */
+  billedContractCents: number;
   paidCents: number;
-  /** Contract to date − invoiced (clamped ≥ 0). "How much you can still bill." */
+  /** Contract to date − pre-tax billed (clamped ≥ 0). "How much you can still bill." */
   leftToBillCents: number;
   /** Invoiced − paid. Outstanding AR across these projects. */
   outstandingCents: number;
@@ -393,6 +407,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
   let inProductionProjects = 0;
   let billingProjects = 0;
   let invoicedCents = 0;
+  let billedContractCents = 0;
   let paidCents = 0;
   let leftToBillCents = 0;
   for (const r of rows) {
@@ -402,6 +417,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     pendingCoCount += r.pendingCoCount;
     pendingCoCents += r.pendingCoCents;
     invoicedCents += r.invoicedCents;
+    billedContractCents += r.billedContractCents;
     paidCents += r.paidCents;
     // Sum per-project left-to-bill (already clamped ≥0 per project), so one
     // over-billed job can't mask another's remaining headroom.
@@ -419,6 +435,7 @@ export function summarizeProduction(rows: ProjectRow[]): ProductionSummary {
     pendingCoCount,
     pendingCoCents,
     invoicedCents,
+    billedContractCents,
     paidCents,
     leftToBillCents,
     outstandingCents: Math.max(0, invoicedCents - paidCents),

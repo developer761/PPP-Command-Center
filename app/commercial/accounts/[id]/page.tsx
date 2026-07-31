@@ -1080,7 +1080,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   const closeoutReceived = closeoutItems.filter((i) => i.included && i.item_status === "received").length;
   const closeoutIncluded = closeoutItems.filter((i) => i.included).length;
   const hasContract = p.contractToDateCents > 0;
-  const aiaBilledPct = hasContract ? Math.min(100, Math.round((p.invoicedCents / p.contractToDateCents) * 100)) : 0;
+  const aiaBilledPct = hasContract ? Math.min(100, Math.round((p.billedContractCents / p.contractToDateCents) * 100)) : 0;
   // A bid that isn't Won has no signed contract — its "contract" figure is just
   // the bid-range midpoint. Label it honestly as an estimate so the deal header
   // doesn't imply a contract exists (the tools are still fully usable).
@@ -1168,7 +1168,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             sub={!hasContract ? "Set the contract" : isPostSale ? undefined : "not under contract yet"}
           />
           <ProjectStat label="Invoiced" value={formatCentsCompact(p.invoicedCents)} tone="emerald" sub={p.paidCents > 0 ? `${formatCentsCompact(p.paidCents)} paid` : undefined} />
-          <ProjectStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={hasContract ? formatCentsCompact(p.overBilled ? p.invoicedCents - p.contractToDateCents : p.leftToBillCents) : "—"} tone={p.overBilled ? "amber" : undefined} />
+          <ProjectStat label={p.overBilled ? "Over-billed" : "Left to bill"} value={hasContract ? formatCentsCompact(p.overBilled ? p.billedContractCents - p.contractToDateCents : p.leftToBillCents) : "—"} tone={p.overBilled ? "amber" : undefined} />
           <ProjectStat label="Outstanding" value={formatCentsCompact(p.outstandingCents)} sub={p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={p.outstandingCents > 0 ? "amber" : undefined} />
         </div>
         {hasContract && pct != null && (
@@ -6655,9 +6655,9 @@ async function AccountKpisTab({
   // Account-level over-bill: billed net more than the contract to date. The
   // per-project leftToBill is clamped, so surface the net over-bill here (mirrors
   // the deal header's "Over-billed" flip).
-  const overBilledCents = Math.max(0, production.invoicedCents - production.contractValueCents);
+  const overBilledCents = Math.max(0, production.billedContractCents - production.contractValueCents);
   const billedOfContractPct = production.contractValueCents > 0
-    ? Math.min(100, Math.round((production.invoicedCents / production.contractValueCents) * 100))
+    ? Math.min(100, Math.round((production.billedContractCents / production.contractValueCents) * 100))
     : 0;
   return (
     <div className="space-y-5">
@@ -6710,7 +6710,7 @@ async function AccountKpisTab({
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <RollupTile label="Under contract" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
-            <RollupTile label="Billed to date" value={formatCentsFull(production.invoicedCents)} sub={`${formatCentsFull(production.paidCents)} paid`} tone="emerald" />
+            <RollupTile label="Billed to date" value={formatCentsFull(production.billedContractCents)} sub={`${formatCentsFull(production.paidCents)} paid`} tone="emerald" />
             {overBilledCents > 0 ? (
               <RollupTile label="Over-billed" value={formatCentsFull(overBilledCents)} sub="billed past contract" tone="warn" />
             ) : (
@@ -6722,11 +6722,11 @@ async function AccountKpisTab({
             <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
               <ProgressMeter
                 label="Billed of contract"
-                value={production.invoicedCents}
+                value={production.billedContractCents}
                 max={production.contractValueCents}
                 tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"}
-                rightLabel={overBilledCents > 0 ? `${Math.round((production.invoicedCents / production.contractValueCents) * 100)}%` : `${billedOfContractPct}%`}
-                amounts={{ done: formatCentsFull(production.invoicedCents), total: formatCentsFull(production.contractValueCents) }}
+                rightLabel={overBilledCents > 0 ? `${Math.round((production.billedContractCents / production.contractValueCents) * 100)}%` : `${billedOfContractPct}%`}
+                amounts={{ done: formatCentsFull(production.billedContractCents), total: formatCentsFull(production.contractValueCents) }}
                 note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null}
               />
             </div>
