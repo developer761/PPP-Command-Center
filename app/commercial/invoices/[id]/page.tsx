@@ -99,6 +99,17 @@ async function revalidateInvoiceContext(invoice_id: string): Promise<void> {
   if (account_id) revalidatePath(`/commercial/accounts/${account_id}`);
 }
 
+/**
+ * Append the `?from=<url>` return context to an invoice URL so that after ANY
+ * action the Back button (and the next action) still returns the user to where
+ * they opened the invoice from — the deal page, the Invoices tab, wherever.
+ * Open-redirect-guarded: only /commercial/ paths are honored.
+ */
+function withFrom(url: string, from: string): string {
+  if (!from || !from.startsWith("/commercial/")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}from=${encodeURIComponent(from)}`;
+}
+
 async function addLineItemAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -106,6 +117,7 @@ async function addLineItemAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   const description = String(formData.get("description") ?? "").trim();
   const quantity = parseFloat(String(formData.get("quantity") ?? "1"));
@@ -113,14 +125,14 @@ async function addLineItemAction(formData: FormData) {
   const priceRaw = String(formData.get("unit_price") ?? "");
   const unit_price_cents = parseDollarsToCents(priceRaw);
   if (!description || !Number.isFinite(quantity) || quantity <= 0 || unit_price_cents === null) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Fill description, quantity, and price."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Fill description, quantity, and price."), from));
   }
   const result = await addLineItem(invoice_id, { description, quantity, unit, unit_price_cents: unit_price_cents! }, user.id);
   if (!result.ok) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to add line item."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to add line item."), from));
   }
   await revalidateInvoiceContext(invoice_id);
-  redirect(`/commercial/invoices/${invoice_id}`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}`, from));
 }
 
 async function removeLineItemAction(formData: FormData) {
@@ -130,6 +142,7 @@ async function removeLineItemAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   const item_id = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(item_id)) redirect("/commercial/invoices");
   const rm = await removeLineItem(invoice_id, item_id, user.id);
@@ -137,10 +150,10 @@ async function removeLineItemAction(formData: FormData) {
     const msg = rm.error === "milestone_line_item"
       ? "That charge is part of a milestone — remove it from the Milestones section below instead."
       : rm.error ?? "Couldn't remove that line.";
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(msg));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(msg), from));
   }
   await revalidateInvoiceContext(invoice_id);
-  redirect(`/commercial/invoices/${invoice_id}`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}`, from));
 }
 
 async function addPaymentAction(formData: FormData) {
@@ -150,6 +163,7 @@ async function addPaymentAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
   const paid_at = String(formData.get("paid_at") ?? "").trim() || undefined;
@@ -157,7 +171,7 @@ async function addPaymentAction(formData: FormData) {
   const reference = String(formData.get("reference") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   if (amount === null || amount <= 0) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a positive dollar amount (e.g., 250.00)."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a positive dollar amount (e.g., 250.00)."), from));
   }
   // Karan 2026-07-07 TZ bug fix: `<input type="date">` returns
   // YYYY-MM-DD; `new Date(...)` interprets as UTC midnight which
@@ -177,7 +191,7 @@ async function addPaymentAction(formData: FormData) {
     recorded_by_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to record payment."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Failed to record payment."), from));
   }
   await revalidateInvoiceContext(invoice_id);
   // If the payment was over the balance, surface the capped amount so the
@@ -191,9 +205,9 @@ async function addPaymentAction(formData: FormData) {
       applied: String(result.applied_cents),
       requested: String(result.requested_cents),
     });
-    redirect(`/commercial/invoices/${invoice_id}?${q.toString()}`);
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
   }
-  redirect(`/commercial/invoices/${invoice_id}?saved=payment`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=payment`, from));
 }
 
 async function removePaymentAction(formData: FormData) {
@@ -203,11 +217,12 @@ async function removePaymentAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   const payment_id = String(formData.get("payment_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(payment_id)) redirect("/commercial/invoices");
   await removePayment(invoice_id, payment_id, user.id);
   await revalidateInvoiceContext(invoice_id);
-  redirect(`/commercial/invoices/${invoice_id}`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}`, from));
 }
 
 function milestoneDue(raw: string): string | null | undefined {
@@ -224,17 +239,18 @@ async function addMilestoneAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   const name = String(formData.get("name") ?? "").trim();
   const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
   const due_at = milestoneDue(String(formData.get("due_at") ?? "")) ?? null;
   if (!name || amount === null || amount <= 0) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Name the milestone and enter an amount."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Name the milestone and enter an amount."), from));
   }
   const res = await addMilestone(invoice_id, { name, amount_cents: amount!, due_at }, user.id);
-  if (!res.ok) redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(res.error));
+  if (!res.ok) redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(res.error), from));
   await revalidateInvoiceContext(invoice_id);
-  redirect(`/commercial/invoices/${invoice_id}?saved=milestone`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=milestone`, from));
 }
 
 async function updateMilestoneAction(formData: FormData) {
@@ -244,20 +260,21 @@ async function updateMilestoneAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   const milestone_id = String(formData.get("milestone_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(milestone_id)) redirect("/commercial/invoices");
   const name = String(formData.get("name") ?? "").trim();
   const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
   const due_at = milestoneDue(String(formData.get("due_at") ?? ""));
   if (!name || amount === null || amount <= 0) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Name the milestone and enter an amount."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Name the milestone and enter an amount."), from));
   }
   const patch: Parameters<typeof updateMilestone>[1] = { name, amount_cents: amount! };
   if (due_at !== undefined) patch.due_at = due_at;
   const res = await updateMilestone(milestone_id, patch, user.id);
-  if (!res.ok) redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(res.error));
+  if (!res.ok) redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(res.error), from));
   await revalidateInvoiceContext(invoice_id);
-  redirect(`/commercial/invoices/${invoice_id}?saved=milestone`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=milestone`, from));
 }
 
 async function deleteMilestoneAction(formData: FormData) {
@@ -267,11 +284,12 @@ async function deleteMilestoneAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   const milestone_id = String(formData.get("milestone_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(milestone_id)) redirect("/commercial/invoices");
   await deleteMilestone(milestone_id, user.id);
   await revalidateInvoiceContext(invoice_id);
-  redirect(`/commercial/invoices/${invoice_id}?saved=milestone`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=milestone`, from));
 }
 
 /** Record a payment against a specific milestone (the ✓ Record payment button).
@@ -284,6 +302,7 @@ async function recordMilestonePaymentAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   const milestone_id = String(formData.get("milestone_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(milestone_id)) redirect("/commercial/invoices");
   const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
@@ -292,7 +311,7 @@ async function recordMilestonePaymentAction(formData: FormData) {
   const reference = String(formData.get("reference") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   if (amount === null || amount <= 0) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a positive dollar amount for the milestone payment."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a positive dollar amount for the milestone payment."), from));
   }
   const paid_at_iso = paid_at
     ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at)
@@ -309,14 +328,14 @@ async function recordMilestonePaymentAction(formData: FormData) {
     milestone_id,
   });
   if (!result.ok) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error === "milestone_already_paid" ? "That milestone is already fully paid." : result.error ?? "Failed to record payment."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error === "milestone_already_paid" ? "That milestone is already fully paid." : result.error ?? "Failed to record payment."), from));
   }
   await revalidateInvoiceContext(invoice_id);
   if (result.capped && result.applied_cents !== undefined && result.requested_cents !== undefined) {
     const q = new URLSearchParams({ saved: "payment", capped: "1", applied: String(result.applied_cents), requested: String(result.requested_cents) });
-    redirect(`/commercial/invoices/${invoice_id}?${q.toString()}`);
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?${q.toString()}`, from));
   }
-  redirect(`/commercial/invoices/${invoice_id}?saved=payment`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=payment`, from));
 }
 
 async function changeStatusAction(formData: FormData) {
@@ -326,15 +345,35 @@ async function changeStatusAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   const to_status = String(formData.get("to_status") ?? "") as InvoiceStatus;
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   const result = await changeInvoiceStatus({ invoice_id, to_status, acting_user_id: user.id });
   if (!result.ok) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error), from));
   }
   revalidatePath("/commercial/invoices");
   await revalidateInvoiceContext(invoice_id);
-  redirect(`/commercial/invoices/${invoice_id}?saved=status`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=status`, from));
+}
+
+/** Save ONLY the internal notes (the dedicated Notes box at the bottom of the
+ *  invoice). Kept separate from the details form so saving notes never touches
+ *  PO / terms / message / due date. */
+async function saveInvoiceNotesAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
+  if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
+  const notes = (String(formData.get("notes") ?? "").trim() || null) as string | null;
+  const result = await updateInvoiceCoreFields(invoice_id, { notes }, user.id);
+  if (!result.ok) redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Could not save notes."), from));
+  await revalidateInvoiceContext(invoice_id);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=notes`, from));
 }
 
 async function updateCoreFieldsAction(formData: FormData) {
@@ -344,6 +383,7 @@ async function updateCoreFieldsAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   // 2026-07-29 re-audit fix (HIGH): tax field is always present, so blank is
   // an explicit "no tax" (tax-exempt), not "leave unchanged." Blank → 0 so
@@ -373,10 +413,10 @@ async function updateCoreFieldsAction(formData: FormData) {
   if (Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
   const result = await updateInvoiceCoreFields(invoice_id, patch, user.id);
   if (!result.ok) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Could not save details."));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Could not save details."), from));
   }
   await revalidateInvoiceContext(invoice_id);
-  redirect(`/commercial/invoices/${invoice_id}?saved=details`);
+  redirect(withFrom(`/commercial/invoices/${invoice_id}?saved=details`, from));
 }
 
 async function deleteDraftAction(formData: FormData) {
@@ -386,6 +426,7 @@ async function deleteDraftAction(formData: FormData) {
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const invoice_id = String(formData.get("invoice_id") ?? "");
+  const from = String(formData.get("from") ?? "");
   if (!UUID_RE.test(invoice_id)) redirect("/commercial/invoices");
   // Karan 2026-07-15: honor the `from` context so deleting an invoice
   // opened from an account/opportunity Invoices tab returns the user
@@ -415,7 +456,7 @@ async function deleteDraftAction(formData: FormData) {
   const preInvoice = await getCommercialInvoice(invoice_id);
   const result = await softDeleteInvoice(invoice_id, user.id);
   if (!result.ok) {
-    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Delete failed"));
+    redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error ?? "Delete failed"), from));
   }
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
@@ -808,6 +849,12 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <span>Milestones updated.</span>
         </div>
       )}
+      {savedTarget === "notes" && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
+          <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
+          <span>Notes saved.</span>
+        </div>
+      )}
       {savedTarget === "payment" && pickFirst(sp.capped) !== "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
           <span aria-hidden className="shrink-0 text-emerald-600"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg></span>
@@ -923,6 +970,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             )}
             <form action={deleteDraftAction} className="inline">
               <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
               {/* Karan 2026-07-15: honor `from` so deleting an invoice
                   opened from an account or opp Invoices tab lands the
                   undo toast on THAT tab, not the global invoices list. */}
@@ -1061,6 +1109,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             {nextStatuses.map((s) => (
               <form key={s} action={changeStatusAction} className="inline">
                 <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
                 <input type="hidden" name="to_status" value={s} />
                 <button
                   type="submit"
@@ -1084,16 +1133,28 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
-            <h2 className="text-sm font-bold text-ppp-charcoal">What this charge is for</h2>
+            <h2 className="text-sm font-bold text-ppp-charcoal">{hasMilestones ? "Totals" : "What this charge is for"}</h2>
             <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
               {lineItems.length === 0
                 ? "Nothing on this bill yet."
-                : `Subtotal ${formatCentsFull(invoice.subtotal_cents)}${hasMilestones ? " · managed via Milestones below" : ""}`}
+                : hasMilestones
+                ? "The breakdown is in Milestones below."
+                : `Subtotal ${formatCentsFull(invoice.subtotal_cents)}`}
             </p>
           </div>
         </div>
 
-        {lineItems.length > 0 && (
+        {/* Milestone invoices: a compact totals block (the per-line breakdown
+            lives in the Milestones section, so the full table is redundant). */}
+        {lineItems.length > 0 && hasMilestones && (
+          <div className="text-[12.5px] text-ppp-charcoal-600 space-y-1 max-w-xs">
+            <div className="flex justify-between gap-4"><span>Subtotal</span><span className="tabular-nums font-semibold text-ppp-charcoal">{formatCentsFull(invoice.subtotal_cents)}</span></div>
+            {invoice.tax_pct > 0 && <div className="flex justify-between gap-4"><span>Tax ({invoice.tax_pct}%)</span><span className="tabular-nums">{formatCentsFull(invoice.total_cents - invoice.subtotal_cents)}</span></div>}
+            <div className="flex justify-between gap-4 border-t border-ppp-charcoal-100 pt-1 font-bold text-ppp-charcoal"><span>Total</span><span className="tabular-nums text-cc-brand-700">{formatCentsFull(invoice.total_cents)}</span></div>
+          </div>
+        )}
+
+        {lineItems.length > 0 && !hasMilestones && (
           <div className="overflow-x-auto -mx-2 px-2">
             <table className="w-full text-sm border-collapse">
               <thead>
@@ -1123,6 +1184,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       {!isVoid && !hasMilestones && (
                         <form action={removeLineItemAction} className="inline">
                           <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="item_id" value={li.id} />
                           <button
                             type="submit"
@@ -1225,6 +1287,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 {!isVoid && (
                   <form action={removePaymentAction} className="inline">
                     <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
                     <input type="hidden" name="payment_id" value={p.id} />
                     <button
                       type="submit"
@@ -1242,6 +1305,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         {invoice.balance_cents > 0 && !isVoid && (
           <form action={addPaymentAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 grid grid-cols-1 sm:grid-cols-12 gap-2">
             <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
             <div className="sm:col-span-3">
               <label htmlFor="pmt-amount" className={LABEL_CLS}>Amount *</label>
               <input id="pmt-amount" name="amount" type="text" required inputMode="decimal" placeholder={formatCentsFull(invoice.balance_cents)} className={INPUT_CLS} />
@@ -1305,7 +1369,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 ml-[18px]">
               {isVoid
                 ? "This invoice is void. Restore it to draft to make changes."
-                : "Due date, payment terms, PO#, tax %, customer message, internal notes."}
+                : "Payment terms, PO#, tax %, message to the GC, and the invoice due date."}
             </p>
           </div>
           <span className="text-[11px] font-semibold text-cc-brand-700 group-open/details:hidden">Edit</span>
@@ -1319,18 +1383,22 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             span full-width. Same fields, half the vertical footprint. */}
         <form action={updateCoreFieldsAction} className="mt-4 pt-4 border-t border-ppp-charcoal-100 space-y-3">
           <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
           {/* Row 1 — 4 short fields side-by-side on md+, 2 per row on sm,
               stacked on mobile. Due-date presets keep the taller footprint
               but fit within the same 4-col track. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div>
-              <label htmlFor="dt-due" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Due date</label>
+              <label htmlFor="dt-due" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">
+                {hasMilestones ? "Invoice due (overall)" : "Due date"}
+              </label>
               <DueDatePickerWithPresets
                 id="dt-due"
                 name="due_at"
                 defaultValue={invoice.due_at ? invoice.due_at.slice(0, 10) : ""}
                 disabled={isVoid}
               />
+              {hasMilestones && <p className="text-[10px] text-ppp-charcoal-400 mt-1">Each milestone has its own due date — edit those on the milestones above.</p>}
             </div>
             <div>
               <label htmlFor="dt-terms" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Payment terms</label>
@@ -1372,17 +1440,11 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <input id="dt-po" name="po_number" type="text" maxLength={80} defaultValue={invoice.po_number ?? ""} disabled={isVoid} className={INPUT_CLS} />
             </div>
           </div>
-          {/* Row 2 — full-width text areas, 2-col grid on md+ so message
-              and internal notes sit side-by-side without wrapping. */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="dt-msg" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Message to GC</label>
-              <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={isVoid} placeholder="Optional — appears above line items on the GC's copy." className={TEXTAREA_CLS} />
-            </div>
-            <div>
-              <label htmlFor="dt-notes" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Internal notes</label>
-              <textarea id="dt-notes" name="notes" rows={2} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={isVoid} placeholder="Never on the GC copy." className={TEXTAREA_CLS} />
-            </div>
+          {/* Message to the GC — appears on the customer copy. Internal notes
+              moved to their own section at the bottom. */}
+          <div>
+            <label htmlFor="dt-msg" className="block text-[11.5px] font-semibold text-ppp-charcoal-600 mb-1">Message to GC</label>
+            <textarea id="dt-msg" name="customer_message" rows={2} maxLength={1000} defaultValue={invoice.customer_message ?? ""} disabled={isVoid} placeholder="Optional — appears above line items on the GC's copy." className={TEXTAREA_CLS} />
           </div>
           {!isVoid && (
             <div className="flex justify-end">
@@ -1453,12 +1515,13 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                         Remove tuck behind toggles so the card stays clean. */}
                     {!isVoid && !mFullyPaid && (
                       <details className="group/mp mb-2.5">
-                        <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 min-h-[40px] touch-manipulation select-none">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg>
-                          Record payment{mDue > 0 ? ` · ${formatCentsFull(mDue)} due` : ""}
+                        <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 min-h-[32px] select-none">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
+                          Record payment
                         </summary>
                         <form action={recordMilestonePaymentAction} className="px-3 pb-3 pt-1 space-y-2">
                           <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="milestone_id" value={m.id} />
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
@@ -1504,6 +1567,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                             </span>
                             <form action={removePaymentAction} className="inline shrink-0">
                               <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
                               <input type="hidden" name="payment_id" value={pp.id} />
                               <button type="submit" className="text-ppp-charcoal-300 hover:text-rose-600 min-h-[28px] px-1" title="Remove this payment" aria-label="Remove payment">×</button>
                             </form>
@@ -1531,6 +1595,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                           </summary>
                           <form action={updateMilestoneAction} className="grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem_auto] gap-2 items-end mt-2">
                             <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
                             <input type="hidden" name="milestone_id" value={m.id} />
                             <div>
                               <label className={LABEL_CLS} htmlFor={`m-name-${m.id}`}>Name</label>
@@ -1549,6 +1614,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                         </details>
                         <form action={deleteMilestoneAction} className="inline shrink-0">
                           <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="milestone_id" value={m.id} />
                           <button type="submit" className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[32px] px-1.5" title="Remove this milestone (also removes its charge from the invoice)">Remove</button>
                         </form>
@@ -1581,6 +1647,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </summary>
             <form action={addMilestoneAction} className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem_auto] gap-2 items-end">
               <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="from" value={fromRaw ?? ""} />
               <div>
                 <label className={LABEL_CLS} htmlFor="am-name">Name</label>
                 <input id="am-name" name="name" required maxLength={200} placeholder="e.g. Retainage release" className={INPUT_CLS} />
@@ -1598,6 +1665,26 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <p className="text-[10.5px] text-ppp-charcoal-400 mt-1.5">Adds a scheduled charge to this invoice (raises the total by the amount). Each milestone then carries its own lien waiver.</p>
           </details>
         )}
+      </section>
+
+      {/* Notes — a simple internal-notes box that saves on its own (never
+          touches the other fields, never on the GC copy). */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-1 flex items-center gap-2">
+          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-blue-500" />
+          Notes
+        </h2>
+        <p className="text-[12px] text-ppp-charcoal-500 mb-3">Internal only — never shown to the GC. Saved to this invoice and visible on the deal.</p>
+        <form action={saveInvoiceNotesAction} className="space-y-2">
+          <input type="hidden" name="invoice_id" value={invoice.id} />
+          <input type="hidden" name="from" value={fromRaw ?? ""} />
+          <textarea name="notes" rows={3} maxLength={2000} defaultValue={invoice.notes ?? ""} disabled={isVoid} placeholder="Add a note — payment arrangement, GC contact, anything the team should see." className={TEXTAREA_CLS} />
+          {!isVoid && (
+            <div className="flex justify-end">
+              <button type="submit" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px]">Save notes</button>
+            </div>
+          )}
+        </form>
       </section>
 
       {/* Status history */}

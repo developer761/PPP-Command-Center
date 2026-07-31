@@ -2239,12 +2239,12 @@ function FullDetailByOpp({
               <Link
                 href={`/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=invoices#deal-invoices`}
                 className="flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] border-t border-ppp-charcoal-100 touch-manipulation"
-                title="Create another invoice for this deal — flat or broken into milestones"
+                title="Open this deal to bill it — flat or broken into milestones"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M12 5v14 M5 12h14" />
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" />
                 </svg>
-                New invoice for this deal
+                Open deal to bill
                 <span aria-hidden className="ml-auto text-ppp-charcoal-400">→</span>
               </Link>
             )}
