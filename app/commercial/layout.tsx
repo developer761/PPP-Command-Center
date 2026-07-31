@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { isAllowedToSignIn } from "@/lib/auth/admin";
+import { isAllowedToSignIn, isAdminEmail } from "@/lib/auth/admin";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import CommercialChrome from "@/components/commercial-chrome";
 import { UndoToast } from "@/components/commercial/undo-toast";
@@ -30,11 +30,27 @@ export default async function CommercialDashboardLayout({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user || !isAllowedToSignIn(user.email)) {
+  if (!user) {
     redirect("/");
   }
 
   const profile = await getProfileByUserId(user.id);
+  // Two ways in (mirror the dashboard layout so the gates agree):
+  //   1. SSO staff on a PPP domain / admin allow-list (isAllowedToSignIn)
+  //   2. An admin-provisioned email+password account (has a profile row) — e.g.
+  //      the Tomco testers on @tomcopainting.com, who are NOT on the SSO
+  //      allow-list. Before this exemption they were bounced /commercial → /,
+  //      which loops for a commercial-only account. Provisioned users pass.
+  const provisioned = !!profile;
+  if (!isAllowedToSignIn(user.email) && !provisioned) {
+    redirect("/");
+  }
+  // Deactivation is authoritative — locked out on the next request (admins
+  // exempt so the platform can't be bricked). Mirrors the dashboard gate.
+  if (profile && profile.is_active === false && !isAdminEmail(user.email)) {
+    redirect("/?error=access_revoked");
+  }
+
   const access = platformAccess(profile);
   if (!access.hasNewPlatform) {
     redirect("/dashboard"); // they don't have access — bounce to the platform they DO have
