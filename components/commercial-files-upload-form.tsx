@@ -25,6 +25,7 @@ const CATEGORIES = [
   { value: "aia_billing", label: "AIA Billing" },
   { value: "submittal", label: "Submittal" },
   { value: "closeout", label: "Closeout" },
+  { value: "lien_waiver", label: "Lien Waiver" },
   { value: "other", label: "Other" },
 ] as const;
 

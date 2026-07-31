@@ -1035,6 +1035,14 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   ]);
   const dealProposals = await listProposalsForOpp(p.opp.id);
   const recentInvoices = [...dealInvoices].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 4);
+  // Every invoice is a MILESTONE — number them chronologically (oldest = 1),
+  // excluding voids, so the deal reads "Milestone 1, 2, …" with a lien-waiver
+  // status on each.
+  const milestoneNo = new Map<string, number>();
+  [...dealInvoices]
+    .filter((i) => deriveInvoiceStatus(i) !== "void")
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .forEach((inv, i) => milestoneNo.set(inv.id, i + 1));
   // Per-deal activity feed (R3) — the account's activity filtered to THIS deal.
   const dealActivity = (await getAccountRecentActivity(accountId, 100)).filter((e) => e.opportunity_id === p.opp.id).slice(0, 8);
   const recentCos = [...changeOrders].sort((a, b) => b.co_number - a.co_number).slice(0, 3);
@@ -1272,9 +1280,19 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
               return (
                 <li key={inv.id}>
                   <Link href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}&dt=invoices`)}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
-                    <span className="min-w-0 flex items-center gap-2">
-                      <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800">{inv.invoice_number}</span>
-                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{invoiceStatusLabel(st)}</span>
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2 flex-wrap">
+                        {milestoneNo.has(inv.id) && <span className="text-[10px] font-bold uppercase tracking-wide text-ppp-navy-600">Milestone {milestoneNo.get(inv.id)}</span>}
+                        <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800">{inv.invoice_number}</span>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{invoiceStatusLabel(st)}</span>
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold">
+                        {inv.lien_waiver_document_id ? (
+                          <span className="inline-flex items-center gap-0.5 text-emerald-700"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Lien waiver on file</span>
+                        ) : (
+                          <span className="text-amber-700">Lien waiver missing</span>
+                        )}
+                      </span>
                     </span>
                     <span className="text-right shrink-0">
                       <span className="block text-[12.5px] font-bold tabular-nums text-ppp-charcoal">{formatCentsFull(inv.total_cents)}</span>

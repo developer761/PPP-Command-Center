@@ -105,6 +105,9 @@ export type CommercialInvoice = {
    *  billing). NULL for change-order + free-text invoices. */
   proposal_id: string | null;
   proposal_total_cents_at_bill: number | null;
+  /** Migration 089: the stored lien-waiver document for this invoice/milestone
+   *  (parent_type=opportunity, category=lien_waiver). NULL until uploaded. */
+  lien_waiver_document_id: string | null;
   created_by_user_id: string | null;
   created_at: string;
   updated_at: string;

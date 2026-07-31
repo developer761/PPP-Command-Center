@@ -33,6 +33,8 @@ import {
   softDeleteInvoice,
   allowedNextStatuses,
 } from "@/lib/commercial/invoices/status";
+import { getInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
+import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
 import {
   deriveInvoiceStatus,
   invoiceStatusLabel,
@@ -397,13 +399,14 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
   const invoice = await getCommercialInvoice(id);
   if (!invoice) notFound();
-  const [lineItems, payments, statusLog, account, opp, siblingInvoices] = await Promise.all([
+  const [lineItems, payments, statusLog, account, opp, siblingInvoices, lienWaiver] = await Promise.all([
     listInvoiceLineItems(invoice.id),
     listInvoicePayments(invoice.id),
     listInvoiceStatusLog(invoice.id),
     getCommercialAccount(invoice.account_id),
     getCommercialOpportunity(invoice.opportunity_id),
     listCommercialInvoices({ opportunityId: invoice.opportunity_id }),
+    getInvoiceLienWaiver(invoice.id),
   ]);
   // Invoice ↔ proposal: when this invoice bills against a proposal, resolve the
   // proposal + its sibling progress invoices so we can show "invoice N of M
@@ -1209,6 +1212,23 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           )}
         </form>
       </details>
+
+      {/* Lien waiver — every invoice IS a milestone, and every milestone stores
+          its lien waiver (uploaded, never generated). Lands in the deal's
+          Documents automatically. */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-1 flex items-center gap-2">
+          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+          Milestone lien waiver
+        </h2>
+        <p className="text-[12px] text-ppp-charcoal-500 mb-3">This milestone ({invoice.invoice_number}) needs a signed lien waiver on file. Upload the one the GC sends back.</p>
+        <LienWaiverUpload
+          invoiceId={invoice.id}
+          hasWaiver={!!lienWaiver}
+          downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
+          fileName={lienWaiver?.file_name ?? null}
+        />
+      </section>
 
       {/* Status history */}
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">

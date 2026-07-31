@@ -30,6 +30,7 @@ export const DOCUMENT_CATEGORIES = [
   "aia_billing",       // G702/G703 applications + exports
   "submittal",         // transmittals + shop drawings / product data
   "closeout",          // closeout package: as-builts, O&M, waivers, warranty
+  "lien_waiver",       // partial/final lien waivers — stored (never generated)
   "other",             // fallback
 ] as const;
 
@@ -50,6 +51,7 @@ export function documentCategoryLabel(cat: DocumentCategory | string): string {
     case "aia_billing": return "AIA Billing";
     case "submittal": return "Submittal";
     case "closeout": return "Closeout";
+    case "lien_waiver": return "Lien Waiver";
     case "other": return "Other";
     default: return cat;
   }
