@@ -495,26 +495,32 @@ export async function getEffectiveContractBaseCents(opportunity_id: string): Pro
     const lines = await listAiaLineItems(app.id);
     sovTotalCents = lines.reduce((s, l) => s + Math.max(0, Math.round(l.scheduled_value_cents)), 0);
   }
-  // Accepted (won) proposal = the signed contract, used when there's no AIA yet
-  // (2026-07-29 financial truth — keeps this in sync with listProjects).
+  // The signed proposal IS the contract — WON first, else the LATEST proposal
+  // (highest revision). Fetched ALWAYS (even when an AIA app exists) so the
+  // contract follows the won/latest proposal, never a stale AIA original or the
+  // first proposal (Karan 2026-08 smoke-test fix; keeps this in sync with
+  // listProjects.pickContractBaseCents).
+  const { data: propRows } = await sb
+    .from("commercial_proposals")
+    .select("total_cents, status, revision_number")
+    .eq("opportunity_id", opportunity_id)
+    .is("deleted_at", null);
   let acceptedProposalCents = 0;
-  if (!app) {
-    const { data: propRow } = await sb
-      .from("commercial_proposals")
-      .select("total_cents")
-      .eq("opportunity_id", opportunity_id)
-      .eq("status", "won")
-      .is("deleted_at", null)
-      .order("total_cents", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    acceptedProposalCents = Number((propRow as { total_cents: number } | null)?.total_cents ?? 0);
+  let latestProposalCents = 0;
+  let latestRev = -1;
+  for (const r of (propRows ?? []) as { total_cents: number; status: string; revision_number: number }[]) {
+    if (r.status === "won") acceptedProposalCents = Math.max(acceptedProposalCents, Number(r.total_cents));
+    if (r.revision_number > latestRev) {
+      latestRev = r.revision_number;
+      latestProposalCents = Number(r.total_cents);
+    }
   }
   return pickContractBaseCents({
     hasBillingApp: !!app,
     originalContractCents: app?.original_contract_cents ?? 0,
     sovTotalCents,
     acceptedProposalCents,
+    latestProposalCents,
     bidMidCents,
   });
 }

@@ -130,20 +130,24 @@ export function pickContractBaseCents(opts: {
   hasBillingApp: boolean;
   originalContractCents: number;
   sovTotalCents: number;
-  /** Total of the ACCEPTED (won) proposal — the signed contract number. Sits
-   *  above the bid midpoint in the ladder: a won proposal is a real contract,
-   *  a bid range is just an estimate. Optional for backward-compatible callers. */
+  /** Total of the ACCEPTED (won) proposal — the signed contract number. */
   acceptedProposalCents?: number;
+  /** Total of the LATEST proposal on the deal (highest revision), used when no
+   *  proposal is won yet — so the contract tracks the most recent quote, never
+   *  the first one. */
+  latestProposalCents?: number;
   bidMidCents: number;
 }): number {
-  // Once a billing app exists, the AIA doc is the system of record — the base is
-  // its explicit contract or its SOV total (0 when empty), NEVER the bid
-  // midpoint (that would diverge from the AIA page it reconciles with).
+  // Karan 2026-08 (smoke-test fix): a WON proposal IS the signed contract and
+  // must drive the contract EVERYWHERE — never the first proposal, never a stale
+  // AIA original_contract seeded from an old bid. So the proposal sits at the
+  // TOP of the ladder: won first, then the latest proposal if none is won yet.
+  if (opts.acceptedProposalCents && opts.acceptedProposalCents > 0) return opts.acceptedProposalCents;
+  if (opts.latestProposalCents && opts.latestProposalCents > 0) return opts.latestProposalCents;
+  // No proposal at all: fall back to the AIA doc's explicit contract / SOV
+  // (its system-of-record once billing starts), else the bid midpoint.
   if (opts.hasBillingApp) {
     return opts.originalContractCents > 0 ? opts.originalContractCents : opts.sovTotalCents;
   }
-  // No AIA yet: the accepted proposal IS the contract. Fall back to the bid
-  // midpoint only when there's no signed proposal.
-  if (opts.acceptedProposalCents && opts.acceptedProposalCents > 0) return opts.acceptedProposalCents;
   return opts.bidMidCents;
 }

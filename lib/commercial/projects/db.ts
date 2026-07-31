@@ -190,21 +190,29 @@ export async function listProjects(opts: {
     invByOpp.set(inv.opportunity_id, e);
   }
 
-  // ── Batch: accepted (won) proposal total per opp — the signed contract. ──
-  const propData = await paginateAll<{ opportunity_id: string; total_cents: number }>(
+  // ── Batch: proposals per opp — the WON one is the signed contract; if none
+  // is won, the LATEST (highest revision) proposal drives the contract so a deal
+  // never shows its first/oldest quote (Karan 2026-08 smoke-test fix). ──
+  const propData = await paginateAll<{ opportunity_id: string; total_cents: number; status: string; revision_number: number }>(
     () =>
       sb
         .from("commercial_proposals")
-        .select("opportunity_id, total_cents")
+        .select("opportunity_id, total_cents, status, revision_number")
         .in("opportunity_id", oppIds)
-        .eq("status", "won")
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
   const acceptedProposalByOpp = new Map<string, number>();
+  const latestProposalByOpp = new Map<string, { rev: number; cents: number }>();
   for (const p of propData) {
-    // If somehow >1 won proposal, keep the largest (defensive; should be one).
-    acceptedProposalByOpp.set(p.opportunity_id, Math.max(acceptedProposalByOpp.get(p.opportunity_id) ?? 0, Number(p.total_cents)));
+    if (p.status === "won") {
+      // If somehow >1 won proposal, keep the largest (defensive; should be one).
+      acceptedProposalByOpp.set(p.opportunity_id, Math.max(acceptedProposalByOpp.get(p.opportunity_id) ?? 0, Number(p.total_cents)));
+    }
+    const cur = latestProposalByOpp.get(p.opportunity_id);
+    if (!cur || p.revision_number > cur.rev) {
+      latestProposalByOpp.set(p.opportunity_id, { rev: p.revision_number, cents: Number(p.total_cents) });
+    }
   }
 
   // ── Batch: close-out package status per opp. Keep the most-advanced non-void
@@ -299,6 +307,7 @@ export async function listProjects(opts: {
       originalContractCents: latest?.original_contract_cents ?? 0,
       sovTotalCents: sovTotal,
       acceptedProposalCents: acceptedProposalByOpp.get(o.id) ?? 0,
+      latestProposalCents: latestProposalByOpp.get(o.id)?.cents ?? 0,
       bidMidCents: bidMidCents(o),
     });
     const contractToDate = base + co.netApproved;
