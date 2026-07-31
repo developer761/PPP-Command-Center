@@ -1612,7 +1612,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-blue-500" />
           Notes
         </h2>
-        <p className="text-[12px] text-ppp-charcoal-500 mb-3">Internal only — never shown to the GC. Saved to this invoice and visible on the deal.</p>
+        <p className="text-[12px] text-ppp-charcoal-500 mb-3">Internal only — never shown to the GC. Saved to this invoice (which lives under the deal).</p>
         <form action={saveInvoiceNotesAction} className="space-y-2">
           <input type="hidden" name="invoice_id" value={invoice.id} />
           <input type="hidden" name="from" value={fromRaw ?? ""} />

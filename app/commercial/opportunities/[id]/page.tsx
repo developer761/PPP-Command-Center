@@ -2125,7 +2125,7 @@ async function OpportunityInvoicesPanel({
                   }`}
                 >
                   <Link
-                    href={`/commercial/invoices/${inv.id}`}
+                    href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
                     aria-label={`Open invoice ${inv.invoice_number}${inv.due_at ? `, due ${fmtEtDate(inv.due_at)}` : ""}`}
                     className="group/inv block px-3 py-2.5 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded-lg"
                   >
@@ -2296,7 +2296,7 @@ async function OpportunityInvoicesPanel({
                         <p className="sm:col-span-4 text-[11px] text-ppp-charcoal-500">
                           Need to edit line items, change status, or delete this invoice?{" "}
                           <Link
-                            href={`/commercial/invoices/${inv.id}`}
+                            href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
                             className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
                           >
                             Open the full invoice
@@ -2507,7 +2507,7 @@ async function OpportunityInvoicesPanel({
                 <div className="text-[11px] text-ppp-charcoal-500 leading-relaxed">
                   Need to edit line items, change status, void, or delete?{" "}
                   <Link
-                    href={`/commercial/invoices/${editing.id}`}
+                    href={`/commercial/invoices/${editing.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
                     className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
                   >
                     Open the full invoice
