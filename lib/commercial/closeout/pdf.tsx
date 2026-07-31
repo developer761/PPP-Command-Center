@@ -18,6 +18,7 @@ const styles = StyleSheet.create({
   page: { paddingTop: 54, paddingBottom: 54, paddingHorizontal: 54, fontSize: 10, fontFamily: "Helvetica", color: "#1f2937", lineHeight: 1.4 },
   wordmark: { fontSize: 18, fontFamily: "Helvetica-Bold", letterSpacing: 1, textAlign: "center", color: "#172B4D" },
   logoImage: { height: 42, objectFit: "contain", alignSelf: "center", marginBottom: 2 },
+  sigImage: { height: 40, objectFit: "contain", marginBottom: 2, alignSelf: "flex-start" },
   tagline: { fontSize: 8, textAlign: "center", color: "#6b7280", marginTop: 3, fontFamily: "Helvetica-Oblique" },
   contact: { fontSize: 7.5, textAlign: "center", color: "#9ca3af", marginTop: 3, letterSpacing: 0.3 },
   rule: { borderBottomWidth: 2, borderBottomColor: "#EE662E", marginTop: 12, marginBottom: 18 },
@@ -140,7 +141,7 @@ function TransmittalDoc({ pkg, items, dealName, company, logo }: { pkg: PkgInput
   );
 }
 
-function WarrantyDoc({ pkg, dealName, company, logo }: { pkg: PkgInput; dealName: string; company: CompanyContact; logo?: Buffer | null }) {
+function WarrantyDoc({ pkg, dealName, company, logo, signature }: { pkg: PkgInput; dealName: string; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }) {
   const fromCompany = company.name;
   const start = pkg.substantial_completion_date;
   const end = computeWarrantyEndDate(start, pkg.warranty_years);
@@ -181,8 +182,11 @@ function WarrantyDoc({ pkg, dealName, company, logo }: { pkg: PkgInput; dealName
         </Text>
 
         <View style={styles.sig}>
-          <Text style={styles.bold}>{fromCompany}</Text>
-          <Text style={{ fontSize: 8, color: "#6b7280" }}>Authorized signature</Text>
+          {signature ? <Image src={signature} style={styles.sigImage} /> : null}
+          <View style={{ borderTopWidth: signature ? 0 : 1, borderTopColor: "#9ca3af", width: 200, paddingTop: 2 }}>
+            <Text style={styles.bold}>{fromCompany}</Text>
+            <Text style={{ fontSize: 8, color: "#6b7280" }}>Authorized signature</Text>
+          </View>
         </View>
 
         <Text style={styles.footer}>{fromCompany} · Project Warranty</Text>
@@ -195,6 +199,6 @@ export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items
   return renderToBuffer(<TransmittalDoc {...input} />);
 }
 
-export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; company: CompanyContact; logo?: Buffer | null }): Promise<Buffer> {
+export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null }): Promise<Buffer> {
   return renderToBuffer(<WarrantyDoc {...input} />);
 }

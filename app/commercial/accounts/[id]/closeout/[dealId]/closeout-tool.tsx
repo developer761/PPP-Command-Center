@@ -159,8 +159,9 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
     const dealName = derivedOppName(opp, account.company_name);
     const oc = await getOperatingCompany();
     const company = { name: oc.name, phone: oc.phone, website: oc.website };
-    const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
+    const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import("@/lib/commercial/operating-company/assets");
     const logo = await getBrandLogoBuffer();
+    const signature = await getBrandSignatureBuffer();
     const { renderCloseoutTransmittalPdf, renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
     const transmittal = await renderCloseoutTransmittalPdf({ pkg, items, dealName, company, logo });
     await autoFileOpportunityDocument({
@@ -173,7 +174,7 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
       actorUserId: userId,
     });
     if (pkg.warranty_years && pkg.warranty_years > 0) {
-      const warranty = await renderWarrantyLetterPdf({ pkg, dealName, company, logo });
+      const warranty = await renderWarrantyLetterPdf({ pkg, dealName, company, logo, signature });
       await autoFileOpportunityDocument({
         opportunityId: dealId,
         category: "closeout",
