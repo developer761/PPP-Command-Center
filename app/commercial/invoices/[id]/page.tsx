@@ -528,7 +528,11 @@ async function bulkDeleteInvoicesFromDetailAction(formData: FormData) {
   const scope = String(formData.get("scope") ?? "");
   const parent_id = String(formData.get("parent_id") ?? "");
   const confirmed = formData.get("confirm") === "yes";
-  const back_href = String(formData.get("back_href") ?? "/commercial/invoices");
+  // Open-redirect guard (2026-08 sweep): back_href comes from the form, so only
+  // honor a relative /commercial/ path — otherwise a crafted post could 302 the
+  // signed-in user off-domain to a phishing page. Falls back to the invoices list.
+  const rawBack = String(formData.get("back_href") ?? "/commercial/invoices");
+  const back_href = rawBack.startsWith("/commercial/") ? rawBack : "/commercial/invoices";
   if (!UUID_RE.test(parent_id) || (scope !== "opp" && scope !== "account")) {
     redirect("/commercial/invoices");
   }

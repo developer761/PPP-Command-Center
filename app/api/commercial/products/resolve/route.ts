@@ -15,10 +15,8 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  getProfileByUserId,
-  platformAccess,
-} from "@/lib/auth/profile";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { commercialAccessDenied } from "@/lib/commercial/auth";
 import { getProduct } from "@/lib/commercial/products/db";
 import { resolveProductPrice } from "@/lib/commercial/products/pricing";
 
@@ -34,8 +32,7 @@ export async function GET(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const profile = await getProfileByUserId(user.id);
-  const access = platformAccess(profile);
-  if (!access.hasNewPlatform)
+  if (commercialAccessDenied(profile))
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const url = new URL(req.url);

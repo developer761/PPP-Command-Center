@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rawAccessDenied } from "@/lib/commercial/auth";
 
 import { PPP_BRAND } from "@/lib/brand";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
@@ -50,10 +51,10 @@ export async function GET(
   const sb = commercialDb();
   const { data: prof } = await sb
     .from("profiles")
-    .select("has_new_platform_access")
+    .select("has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
     .maybeSingle();
-  if (!prof || !(prof as { has_new_platform_access: boolean }).has_new_platform_access) {
+  if (rawAccessDenied(prof)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

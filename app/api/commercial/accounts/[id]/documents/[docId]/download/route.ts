@@ -44,10 +44,10 @@ export async function GET(
   // valid session must not be able to download commercial documents.
   const { data: profile } = await sb
     .from("profiles")
-    .select("has_new_platform_access")
+    .select("has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
     .maybeSingle();
-  if (!profile?.has_new_platform_access) {
+  if (!profile?.has_new_platform_access || profile?.is_active === false) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const { data: doc } = await sb

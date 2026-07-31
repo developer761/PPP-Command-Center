@@ -3306,14 +3306,13 @@ async function addAssignmentByEmailAction(formData: FormData) {
   if (p.is_active === false) {
     redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(`${rawEmail}'s account is inactive.`)}`);
   }
+  // Security (2026-08 sweep): do NOT auto-grant commercial platform access as a
+  // side-effect of adding a team member — that let any non-admin commercial user
+  // provision arbitrary accounts, unaudited. Granting access is admin-only and
+  // lives at Settings → Access (audited via access_audit). Here we only surface
+  // a clear next step; addAssignment also refuses an assignee without the flag.
   if (!p.has_new_platform_access) {
-    const { error: grantErr } = await sb
-      .from("profiles")
-      .update({ has_new_platform_access: true })
-      .eq("user_id", p.user_id);
-    if (grantErr) {
-      redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(`Couldn't grant access to ${rawEmail}: ${grantErr.message}`)}`);
-    }
+    redirect(`/commercial/accounts/${account_id}?tab=team&error=${encodeURIComponent(`${rawEmail} doesn't have Commercial access yet — an admin has to grant it at Settings → Access first, then you can add them here.`)}`);
   }
   const result = await addAssignment({
     account_id,

@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const profile = await getProfileByUserId(user.id);
-  if (!profile?.has_new_platform_access) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!profile?.has_new_platform_access || profile?.is_active === false) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const form = await req.formData();
   const kind = String(form.get("kind") ?? "");

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rawAccessDenied } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { restoreAccountNote } from "@/lib/commercial/account-notes";
@@ -20,10 +21,10 @@ export async function POST(
   const sb = commercialDb();
   const { data: profile } = await sb
     .from("profiles")
-    .select("has_new_platform_access")
+    .select("has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
     .maybeSingle();
-  if (!(profile as { has_new_platform_access?: boolean } | null)?.has_new_platform_access) {
+  if (rawAccessDenied(profile)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const { id } = await params;

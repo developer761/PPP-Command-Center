@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rawAccessDenied } from "@/lib/commercial/auth";
 import { PPP_BRAND } from "@/lib/brand";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { createClient } from "@/lib/supabase/server";
@@ -20,8 +21,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!auth?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const sb = commercialDb();
-  const { data: prof } = await sb.from("profiles").select("has_new_platform_access").eq("user_id", auth.user.id).maybeSingle();
-  if (!prof || !(prof as { has_new_platform_access: boolean }).has_new_platform_access) {
+  const { data: prof } = await sb.from("profiles").select("has_new_platform_access, is_active").eq("user_id", auth.user.id).maybeSingle();
+  if (rawAccessDenied(prof)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

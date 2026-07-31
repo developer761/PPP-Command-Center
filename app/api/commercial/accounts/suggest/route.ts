@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rawAccessDenied } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { ilikeQuoted } from "@/lib/commercial/search";
@@ -24,10 +25,10 @@ export async function GET(request: Request) {
   // commercial account names via this endpoint.
   const { data: prof } = await commercialDb()
     .from("profiles")
-    .select("has_new_platform_access")
+    .select("has_new_platform_access, is_active")
     .eq("user_id", auth.user.id)
     .maybeSingle();
-  if (!prof || !(prof as { has_new_platform_access: boolean }).has_new_platform_access) {
+  if (rawAccessDenied(prof)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

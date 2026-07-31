@@ -21,7 +21,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // Non-redirecting access check — a route handler must return a JSON 403, not
   // redirect (a 307 the client would mistake for success).
   const profile = await getProfileByUserId(user.id);
-  if (!profile?.has_new_platform_access) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!profile?.has_new_platform_access || profile?.is_active === false) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const form = await req.formData();
 

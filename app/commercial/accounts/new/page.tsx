@@ -162,19 +162,13 @@ async function createAction(formData: FormData) {
         teamSkipReasons.push(`${rawEmail}: account is inactive`);
         continue;
       }
-      // Auto-grant Commercial CC access on the email-add path. Admin
-      // explicitly said "add this person to the team" — that intent
-      // overrides the access flag. They'll show in the dropdown for
-      // every future picker without admin going to /admin/users.
+      // Security (2026-08 sweep): do NOT auto-grant Commercial access here — a
+      // non-admin could otherwise provision arbitrary users just by naming them
+      // on the team. Granting is admin-only (Settings → Access, audited). Skip
+      // with a clear reason; addAssignment also refuses a no-flag assignee.
       if (!p.has_new_platform_access) {
-        const { error: grantErr } = await sb
-          .from("profiles")
-          .update({ has_new_platform_access: true })
-          .eq("user_id", p.user_id);
-        if (grantErr) {
-          teamSkipReasons.push(`${rawEmail}: couldn't grant access (${grantErr.message})`);
-          continue;
-        }
+        teamSkipReasons.push(`${rawEmail}: no Commercial access yet — an admin must grant it at Settings → Access first`);
+        continue;
       }
       member_user_id = p.user_id;
     } else {

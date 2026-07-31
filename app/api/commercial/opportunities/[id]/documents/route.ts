@@ -47,10 +47,10 @@ export async function POST(
     const sb = commercialDb();
     const { data: profile } = await sb
       .from("profiles")
-      .select("has_new_platform_access")
+      .select("has_new_platform_access, is_active")
       .eq("user_id", authData.user.id)
       .maybeSingle();
-    if (!profile?.has_new_platform_access) {
+    if (!profile?.has_new_platform_access || profile?.is_active === false) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
     const { data: opp } = await sb
