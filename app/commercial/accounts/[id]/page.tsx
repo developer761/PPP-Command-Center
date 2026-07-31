@@ -63,6 +63,7 @@ import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } f
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
+import { ProgressMeter } from "@/components/commercial/progress-meter";
 import { listCommercialInvoices, addPayment, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
@@ -1156,12 +1157,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
           <ProjectStat label="Outstanding" value={formatCentsCompact(p.outstandingCents)} sub={p.pendingCoCount > 0 ? `${p.pendingCoCount} CO${p.pendingCoCount === 1 ? "" : "s"} pending` : undefined} tone={p.outstandingCents > 0 ? "amber" : undefined} />
         </div>
         {hasContract && pct != null && (
-          <div className="mt-3">
-            <div className="h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} aria-label={`${pct}% complete`} />
-            </div>
-            <div className="mt-1 text-[10.5px] font-semibold text-emerald-700 tabular-nums">{pct}% complete</div>
-          </div>
+          <ProgressMeter className="mt-3" label="Complete" pct={pct} tone="emerald" />
         )}
       </div>
 
@@ -1198,7 +1194,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             <div>
               <div className="text-[11.5px] font-semibold text-ppp-charcoal">Application No. {p.latestAppNumber}</div>
               <div className="text-[10.5px] text-ppp-charcoal-500 mt-0.5 tabular-nums">{formatCentsCompact(p.invoicedCents)} of {formatCentsCompact(p.contractToDateCents)} billed</div>
-              <div className="mt-1.5 h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden"><div className="h-full bg-ppp-navy-600 rounded-full" style={{ width: `${aiaBilledPct}%` }} /></div>
+              <ProgressMeter className="mt-1.5" pct={aiaBilledPct} tone="navy" size="sm" />
             </div>
           )}
         </ToolMiniCard>
@@ -1225,7 +1221,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             <div>
               <div className="text-[11.5px] font-semibold text-ppp-charcoal tabular-nums">{closeoutReceived}/{closeoutIncluded} items received{latestPkg.warranty_years ? ` · ${latestPkg.warranty_years}-yr warranty` : ""}</div>
               {closeoutPct != null && (
-                <div className="mt-1.5 h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{ width: `${closeoutPct}%` }} /></div>
+                <ProgressMeter className="mt-1.5" pct={closeoutPct} tone="emerald" size="sm" />
               )}
             </div>
           )}
@@ -1241,7 +1237,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
               { label: "Won", value: String(propWon), tone: propWon > 0 ? "emerald" : undefined },
               { label: "Highest bid", value: highestBidCents > 0 ? formatCentsCompact(highestBidCents) : "—" },
             ]}
-            bar={propWinPct != null ? { label: "Win rate", pct: propWinPct, barClass: "bg-emerald-500", valueClass: "text-emerald-700" } : undefined}
+            bar={propWinPct != null ? { label: "Win rate", pct: propWinPct, tone: "emerald" } : undefined}
           />
           <DealProposalsSection accountId={accountId} oppId={p.opp.id} proposals={dealProposals} />
         </>
@@ -1259,7 +1255,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
             ? { label: "Overdue", value: String(overdueInvCount), tone: "amber" as const }
             : { label: "Open", value: String(openInvCount) },
         ]}
-        bar={hasContract ? { label: "Billed of contract", pct: aiaBilledPct, barClass: "bg-cc-brand-600", valueClass: "text-cc-brand-700" } : undefined}
+        bar={hasContract ? { label: "Billed of contract", pct: aiaBilledPct, tone: p.overBilled ? "rose" : "brand" } : undefined}
       />
       {sp?.created === "1" && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800">Invoice created.</div>
@@ -1559,7 +1555,7 @@ function DealPanelLead({
   bar,
 }: {
   stats: { label: string; value: string; sub?: string; tone?: "emerald" | "amber" }[];
-  bar?: { label: string; pct: number; barClass: string; valueClass: string };
+  bar?: { label: string; pct: number; tone: import("@/components/commercial/progress-meter").MeterTone };
 }) {
   const cols = stats.length === 2 ? "grid-cols-2" : stats.length >= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
   return (
@@ -1569,17 +1565,7 @@ function DealPanelLead({
           <ProjectStat key={i} label={s.label} value={s.value} sub={s.sub} tone={s.tone} />
         ))}
       </div>
-      {bar && (
-        <div className="mt-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold text-ppp-charcoal-500 uppercase tracking-wide">{bar.label}</span>
-            <span className={`text-[10.5px] font-bold tabular-nums ${bar.valueClass}`}>{bar.pct}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${bar.barClass}`} style={{ width: `${bar.pct}%` }} aria-label={`${bar.label} ${bar.pct}%`} />
-          </div>
-        </div>
-      )}
+      {bar && <ProgressMeter className="mt-3" label={bar.label} pct={bar.pct} tone={bar.tone} />}
     </div>
   );
 }
@@ -6629,6 +6615,16 @@ async function AccountKpisTab({
     ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}`
     : "—";
   const hasInvoicing = rollup.invoiced_cents > 0;
+  // Credit: a negative balance means paid > invoiced (a refund/overpayment).
+  // Show it as a credit rather than a scary negative "unpaid" figure.
+  const isCredit = rollup.balance_cents < 0;
+  // Account-level over-bill: billed net more than the contract to date. The
+  // per-project leftToBill is clamped, so surface the net over-bill here (mirrors
+  // the deal header's "Over-billed" flip).
+  const overBilledCents = Math.max(0, production.invoicedCents - production.contractValueCents);
+  const billedOfContractPct = production.contractValueCents > 0
+    ? Math.min(100, Math.round((production.invoicedCents / production.contractValueCents) * 100))
+    : 0;
   return (
     <div className="space-y-5">
       {/* Financials group — account-wide invoicing. Collected % lives ONLY on
@@ -6641,25 +6637,23 @@ async function AccountKpisTab({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
           <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={hasInvoicing ? "collected" : undefined} tone="emerald" />
-          <RollupTile label="Balance" value={formatCentsFull(rollup.balance_cents)} sub={!hasInvoicing ? "not billed yet" : rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents > 0 ? "warn" : "neutral"} />
+          <RollupTile
+            label={isCredit ? "Credit" : "Balance"}
+            value={formatCentsFull(Math.abs(rollup.balance_cents))}
+            sub={!hasInvoicing ? "not billed yet" : isCredit ? "overpaid" : rollup.balance_cents === 0 ? "settled" : "unpaid"}
+            tone={isCredit ? "emerald" : rollup.balance_cents > 0 ? "warn" : "neutral"}
+          />
           <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : "past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
         </div>
         {hasInvoicing && (
           <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-ppp-charcoal mb-1.5">
-              <span className="uppercase tracking-wide text-ppp-charcoal-500">Collected</span>
-              <span className="tabular-nums">{paidPct}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
-              <div
-                className={`h-full transition-all ${paidPct === 100 ? "bg-emerald-500" : rollup.overdue_count > 0 ? "bg-rose-500" : "bg-amber-500"}`}
-                style={{ width: `${paidPct}%` }}
-                aria-label={`${paidPct}% of invoiced amount collected`}
-              />
-            </div>
-            <p className="text-[11px] text-ppp-charcoal-500 mt-1.5 tabular-nums">
-              {formatCentsFull(rollup.paid_cents)} of {formatCentsFull(rollup.invoiced_cents)} collected
-            </p>
+            <ProgressMeter
+              label="Collected"
+              value={rollup.paid_cents}
+              max={rollup.invoiced_cents}
+              tone={paidPct === 100 ? "emerald" : rollup.overdue_count > 0 ? "rose" : "brand"}
+              amounts={{ done: formatCentsFull(rollup.paid_cents), total: formatCentsFull(rollup.invoiced_cents) }}
+            />
           </div>
         )}
       </section>
@@ -6683,9 +6677,26 @@ async function AccountKpisTab({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <RollupTile label="Under contract" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
             <RollupTile label="Billed to date" value={formatCentsFull(production.invoicedCents)} sub={`${formatCentsFull(production.paidCents)} paid`} tone="emerald" />
-            <RollupTile label="Left to bill" value={formatCentsFull(production.leftToBillCents)} sub="contract − billed" tone="neutral" />
+            {overBilledCents > 0 ? (
+              <RollupTile label="Over-billed" value={formatCentsFull(overBilledCents)} sub="billed past contract" tone="danger" />
+            ) : (
+              <RollupTile label="Left to bill" value={formatCentsFull(production.leftToBillCents)} sub="contract − billed" tone="neutral" />
+            )}
             <RollupTile label="Outstanding" value={formatCentsFull(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO${production.pendingCoCount === 1 ? "" : "s"} pending` : "billed − paid"} tone={production.outstandingCents > 0 ? "warn" : "neutral"} />
           </div>
+          {production.contractValueCents > 0 && (
+            <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
+              <ProgressMeter
+                label="Billed of contract"
+                value={production.invoicedCents}
+                max={production.contractValueCents}
+                tone={overBilledCents > 0 ? "rose" : billedOfContractPct === 100 ? "emerald" : "brand"}
+                rightLabel={overBilledCents > 0 ? `${Math.round((production.invoicedCents / production.contractValueCents) * 100)}%` : `${billedOfContractPct}%`}
+                amounts={{ done: formatCentsFull(production.invoicedCents), total: formatCentsFull(production.contractValueCents) }}
+                note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null}
+              />
+            </div>
+          )}
         </section>
       )}
 
@@ -6718,20 +6729,12 @@ async function AccountKpisTab({
         </div>
         {decidedCount > 0 && (
           <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-ppp-charcoal mb-1.5">
-              <span className="uppercase tracking-wide text-ppp-charcoal-500">Win rate</span>
-              <span className="tabular-nums">{winRatePct}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-ppp-charcoal-100 overflow-hidden">
-              <div
-                className="h-full bg-emerald-500 transition-all"
-                style={{ width: `${winRatePct ?? 0}%` }}
-                aria-label={`${winRatePct}% of decided deals won`}
-              />
-            </div>
-            <p className="text-[11px] text-ppp-charcoal-500 mt-1.5 tabular-nums">
-              {overview?.won_opps_count ?? 0} won · {overview?.lost_opps_count ?? 0} lost
-            </p>
+            <ProgressMeter
+              label="Win rate"
+              pct={winRatePct ?? 0}
+              tone="emerald"
+              note={`${overview?.won_opps_count ?? 0} won · ${overview?.lost_opps_count ?? 0} lost`}
+            />
           </div>
         )}
       </section>

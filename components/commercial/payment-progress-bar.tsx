@@ -179,12 +179,13 @@ export function PaymentProgressBar({
         :root {
           --cc-prog-emerald-a: #34d399; --cc-prog-emerald-b: #10b981;
           --cc-prog-rose-a: #fb7185; --cc-prog-rose-b: #f43f5e;
-          --cc-prog-brand-a: #6366f1; --cc-prog-brand-b: #4f46e5;
+          /* On-brand orange (#EE662E) for the in-progress tone. */
+          --cc-prog-brand-a: #f2814e; --cc-prog-brand-b: #ee662e;
         }
         :root[data-theme="dark"] {
           --cc-prog-emerald-a: #10b981; --cc-prog-emerald-b: #34d399;
           --cc-prog-rose-a: #f43f5e; --cc-prog-rose-b: #fb7185;
-          --cc-prog-brand-a: #4f46e5; --cc-prog-brand-b: #818cf8;
+          --cc-prog-brand-a: #ee662e; --cc-prog-brand-b: #f2814e;
         }
         @keyframes cc-prog-sheen-kf {
           0% { transform: translateX(-120%); }
