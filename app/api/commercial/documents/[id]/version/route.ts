@@ -33,7 +33,7 @@ export async function POST(
     }
 
     const { id: previousDocumentId } = await params;
-    if (!previousDocumentId || !/^[0-9a-f-]{36}$/i.test(previousDocumentId)) {
+    if (!previousDocumentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(previousDocumentId)) {
       return NextResponse.json({ error: "invalid_document_id" }, { status: 400 });
     }
 

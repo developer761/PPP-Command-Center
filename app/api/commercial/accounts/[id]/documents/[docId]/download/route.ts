@@ -31,10 +31,10 @@ export async function GET(
   }
 
   const { id: accountId, docId } = await params;
-  if (!accountId || !/^[0-9a-f-]{36}$/i.test(accountId)) {
+  if (!accountId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId)) {
     return NextResponse.json({ error: "invalid_account_id" }, { status: 400 });
   }
-  if (!docId || !/^[0-9a-f-]{36}$/i.test(docId)) {
+  if (!docId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(docId)) {
     return NextResponse.json({ error: "invalid_doc_id" }, { status: 400 });
   }
 

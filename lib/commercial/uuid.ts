@@ -10,7 +10,11 @@
  * (opportunities) can import the same constant.
  */
 
-export const UUID_RE = /^[0-9a-f-]{36}$/i;
+// Strict 8-4-4-4-12 shape. The previous pattern matched any 36-char run of hex
+// digits and dashes (even all-dashes), letting malformed ids reach Postgres as
+// opaque cast errors. Real Supabase UUIDs are always canonical, so this only
+// rejects junk. (2026-08 cleanup.)
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Convenience predicate — slightly nicer to read in conditionals. */
 export function isUuid(s: unknown): s is string {

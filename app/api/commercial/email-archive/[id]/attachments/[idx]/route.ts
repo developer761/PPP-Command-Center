@@ -35,7 +35,7 @@ export async function GET(
   }
 
   const { id, idx: idxStr } = await params;
-  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     return NextResponse.json({ error: "invalid_email_id" }, { status: 400 });
   }
   const idx = Number(idxStr);

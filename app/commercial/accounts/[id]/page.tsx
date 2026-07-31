@@ -156,7 +156,7 @@ export const dynamic = "force-dynamic";
 /** Cheap UUID sanity check used by every server action that pulls an
  *  id out of formData. We don't trust the client to send a real UUID —
  *  malformed values must fail fast, not propagate to Postgres. */
-const UUID_RE = /^[0-9a-f-]{36}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type PP = Promise<{ id: string }>;
 type SP = Promise<{
@@ -338,7 +338,7 @@ export default async function CommercialAccountDetailPage({
 }) {
   const { id } = await params;
   // UUID gate — refuse garbage path segments before they reach the DB.
-  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) notFound();
   const sp = await searchParams;
   const rawTab = sp.tab;
   const rawSub = sp.sub;
@@ -374,7 +374,7 @@ export default async function CommercialAccountDetailPage({
   // strip + primary nav) is suppressed below to avoid stacked/duplicate nav +
   // numbers. Keyed on a VALID uuid so ?project=garbage doesn't strip the chrome
   // off the projects-list fallback.
-  const inDealDrillIn = tab === "projects" && typeof sp.project === "string" && /^[0-9a-f-]{36}$/i.test(sp.project);
+  const inDealDrillIn = tab === "projects" && typeof sp.project === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.project);
   // The persistent Financial-snapshot strip is a money glance while scanning the
   // deal blocks — so show it only on the Deals tab. On Overview it duplicates the
   // dashboard's Financials group; on Documents it's unrelated to the content.
@@ -695,12 +695,12 @@ export default async function CommercialAccountDetailPage({
           createdTitle={sp.created === "1" ? sp.created_title ?? null : null}
           projectStartedOppId={
             typeof sp.project_started === "string" &&
-            /^[0-9a-f-]{36}$/i.test(sp.project_started)
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.project_started)
               ? sp.project_started
               : null
           }
           editDealId={
-            typeof sp.edit === "string" && /^[0-9a-f-]{36}$/i.test(sp.edit)
+            typeof sp.edit === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.edit)
               ? sp.edit
               : null
           }
@@ -708,7 +708,7 @@ export default async function CommercialAccountDetailPage({
           deletedFlash={typeof sp.deleted === "string" ? sp.deleted : null}
           errorMessage={sp.error}
           duplicateWarning={
-            typeof sp.dup_id === "string" && /^[0-9a-f-]{36}$/i.test(sp.dup_id)
+            typeof sp.dup_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.dup_id)
               ? { id: sp.dup_id, label: typeof sp.dup_label === "string" ? sp.dup_label : "" }
               : null
           }
@@ -751,7 +751,7 @@ export default async function CommercialAccountDetailPage({
       {tab === "projects" && (
         <AccountProjectsTab
           accountId={account.id}
-          projectId={typeof sp.project === "string" && /^[0-9a-f-]{36}$/i.test(sp.project) ? sp.project : null}
+          projectId={typeof sp.project === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.project) ? sp.project : null}
           dealTab={typeof sp.dt === "string" ? sp.dt : "overview"}
           projectTool={typeof sp.pt === "string" ? sp.pt : "change-orders"}
           sp={sp}
@@ -1607,7 +1607,7 @@ async function createDealInvoiceAction(formData: FormData) {
   await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const opp_id = String(formData.get("opp_id") ?? "");
-  if (!/^[0-9a-f-]{36}$/i.test(account_id) || !/^[0-9a-f-]{36}$/i.test(opp_id)) redirect("/commercial/accounts");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(account_id) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(opp_id)) redirect("/commercial/accounts");
   const back = `/commercial/accounts/${account_id}?tab=projects&project=${opp_id}&dt=invoices`;
   const mode = String(formData.get("mode") ?? "flat") === "milestones" ? "milestones" : "flat";
 
@@ -1620,7 +1620,7 @@ async function createDealInvoiceAction(formData: FormData) {
   const propRaw = String(formData.get("proposal_id") ?? "").trim();
   let proposal_id: string | null = null;
   let proposal_total_cents_at_bill: number | null = null;
-  if (/^[0-9a-f-]{36}$/i.test(propRaw)) {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(propRaw)) {
     const prop = await getProposal(propRaw);
     if (prop && prop.opportunity_id === opp_id) {
       proposal_id = prop.id;

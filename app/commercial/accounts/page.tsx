@@ -65,7 +65,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const UUID_RE = /^[0-9a-f-]{36}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Returns only the entries from formData.getAll("account_id") that look
  *  like valid UUIDs. Caps the list at BULK_MAX_ACCOUNTS. */

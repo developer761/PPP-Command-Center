@@ -54,7 +54,7 @@ async function updateAction(formData: FormData) {
   await assertCommercialAccess(user.id);
 
   const id = String(formData.get("id") ?? "");
-  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) redirect("/commercial/accounts");
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/commercial/accounts");
 
   const get = (k: string) => {
     const v = formData.get(k);
@@ -149,7 +149,7 @@ async function deleteAction(formData: FormData) {
   await assertCommercialAccess(user.id);
 
   const id = String(formData.get("id") ?? "");
-  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) redirect("/commercial/accounts");
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/commercial/accounts");
 
   const result = await softDeleteCommercialAccount(id, user.id);
   if (!result.ok) {

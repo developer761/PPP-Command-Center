@@ -38,7 +38,7 @@ export async function POST(
     }
 
     const { id: accountId } = await params;
-    if (!accountId || !/^[0-9a-f-]{36}$/i.test(accountId)) {
+    if (!accountId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId)) {
       return NextResponse.json({ error: "invalid_account_id" }, { status: 400 });
     }
 
