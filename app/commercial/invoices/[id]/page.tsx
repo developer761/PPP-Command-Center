@@ -11,6 +11,7 @@
  *   6. Status history timeline
  */
 import Link from "next/link";
+import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -179,11 +180,7 @@ async function addPaymentAction(formData: FormData) {
   // YYYY-MM-DD; `new Date(...)` interprets as UTC midnight which
   // renders one calendar day earlier in ET. Anchor at 16:00 UTC (noon
   // ET) so the payment displays on the day the recorder actually typed.
-  const paid_at_iso = paid_at
-    ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at)
-      ? `${paid_at}T16:00:00.000Z`
-      : new Date(paid_at).toISOString()
-    : undefined;
+  const paid_at_iso = paid_at ? (anchorDateOnlyIso(paid_at) ?? new Date(paid_at).toISOString()) : undefined;
   const result = await addPayment(invoice_id, {
     amount_cents: amount!,
     paid_at: paid_at_iso,
@@ -324,11 +321,7 @@ async function recordMilestonePaymentAction(formData: FormData) {
   if (amount === null || amount <= 0) {
     redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a positive dollar amount for the milestone payment."), from));
   }
-  const paid_at_iso = paid_at
-    ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at)
-      ? `${paid_at}T16:00:00.000Z`
-      : new Date(paid_at).toISOString()
-    : undefined;
+  const paid_at_iso = paid_at ? (anchorDateOnlyIso(paid_at) ?? new Date(paid_at).toISOString()) : undefined;
   const result = await addPayment(invoice_id, {
     amount_cents: amount!,
     paid_at: paid_at_iso,

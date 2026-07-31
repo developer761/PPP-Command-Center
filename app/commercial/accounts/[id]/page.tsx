@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -2514,9 +2515,9 @@ async function recordPaymentInlineAction(formData: FormData) {
     redirect(`${returnUrl}&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}#inv-${invoice_id}`);
   }
   const paidAtRaw = String(formData.get("paid_at") ?? "").trim();
-  const paid_at = paidAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(paidAtRaw)
-    ? `${paidAtRaw}T12:00:00.000Z`
-    : new Date().toISOString();
+  // Anchor a picked date at noon ET (shared helper); empty/malformed → now.
+  // Was T12 here vs T16 everywhere else — standardized (2026-08 cleanup).
+  const paid_at = anchorDateOnlyIso(paidAtRaw) ?? new Date().toISOString();
   const method = String(formData.get("method") ?? "").trim() || null;
   const reference = String(formData.get("reference") ?? "").trim() || null;
   const result = await addPayment(invoice_id, {

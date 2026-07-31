@@ -8,20 +8,21 @@
  *   - Clean row hierarchy
  */
 import { Fragment } from "react";
+import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { listCommercialInvoices, addPayment, getInvoiceContext, createCommercialInvoice, sumCommercialPaymentsSince, type CommercialInvoice } from "@/lib/commercial/invoices/db";
+import { listCommercialInvoices, addPayment, getInvoiceContext, sumCommercialPaymentsSince, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { listMilestonesForInvoices } from "@/lib/commercial/invoices/milestones";
 import { listCommercialAccounts, getCommercialAccount, getCommercialAccountIncludingDeleted } from "@/lib/commercial/accounts/db";
 import { listCommercialOpportunities, derivedOppName, type CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 import { isPostSaleProject } from "@/lib/commercial/opportunities/constants";
 import { listProposalsForOpp, formatProposalNumber, type CommercialProposal } from "@/lib/commercial/proposals/db";
-import { getProposal, getAcceptedProposalForOpp } from "@/lib/commercial/proposals/db";
+import { getAcceptedProposalForOpp } from "@/lib/commercial/proposals/db";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
-import { ProposalBillingFields, type ProposalBillingOption } from "@/components/commercial/proposal-billing-fields";
+import { type ProposalBillingOption } from "@/components/commercial/proposal-billing-fields";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   invoiceStatusLabel,
@@ -58,7 +59,7 @@ type SP = Promise<{
   paid_capped?: string;
   paid_heads_up?: string;
   error?: string;
-  /** Set by createInvoiceInlineAction with the new invoice id (for flash + scroll). */
+  /** New invoice id after a create (deal builder) — drives flash + scroll. */
   created?: string;
   /** Set by /commercial/invoices/new?opp=<id> redirect shim — auto-opens
    *  the inline "+ New invoice" collapsible for the matching opp so
@@ -95,11 +96,7 @@ async function recordInvoicePaymentFromListAction(formData: FormData) {
     redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}`);
   }
   const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
-  const paid_at = paid_at_raw
-    ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at_raw)
-      ? `${paid_at_raw}T16:00:00.000Z`
-      : new Date(paid_at_raw).toISOString()
-    : undefined;
+  const paid_at = paid_at_raw ? (anchorDateOnlyIso(paid_at_raw) ?? new Date(paid_at_raw).toISOString()) : undefined;
   const method = String(formData.get("method") ?? "").trim() || null;
   const reference = String(formData.get("reference") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
@@ -154,92 +151,6 @@ function proposalOptionLabel(p: CommercialProposal): string {
   return `${proposalDisplayNumber(p)} · ${formatCentsFull(p.total_cents)} · ${status}`;
 }
 
-/** Server action for the inline "+ New invoice" collapsible on the
- *  account-filtered detail view (Karan 2026-07-07: retired the batch
- *  creator page — everything happens inline on this one page). Creates
- *  a single invoice with a single line item, then redirects back to
- *  the same page with an anchor to the new invoice. */
-async function createInvoiceInlineAction(formData: FormData) {
-  "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
-  const account_id = String(formData.get("account_id") ?? "");
-  const opp_id = String(formData.get("opp_id") ?? "");
-  if (!UUID_RE.test(account_id) || !UUID_RE.test(opp_id)) {
-    redirect("/commercial/invoices");
-  }
-  const description = String(formData.get("description") ?? "").trim();
-  if (!description) {
-    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a description for what this charge is for.")}`);
-  }
-  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
-  if (amount_cents === null || amount_cents <= 0) {
-    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Enter a valid amount.")}`);
-  }
-  const due_at_raw = String(formData.get("due_at") ?? "").trim();
-  const due_at = due_at_raw && /^\d{4}-\d{2}-\d{2}$/.test(due_at_raw)
-    ? `${due_at_raw}T16:00:00.000Z`
-    : undefined;
-  const po_number = String(formData.get("po_number") ?? "").trim() || undefined;
-  const payment_terms = String(formData.get("payment_terms") ?? "").trim() || undefined;
-  const customer_message = String(formData.get("customer_message") ?? "").trim() || null;
-  const notes = String(formData.get("notes") ?? "").trim() || null;
-  const tax_pct_raw = String(formData.get("tax_pct") ?? "").trim();
-  const tax_pct_parsed = tax_pct_raw !== "" ? parseFloat(tax_pct_raw) : NaN;
-  const tax_pct = Number.isFinite(tax_pct_parsed) && tax_pct_parsed >= 0 && tax_pct_parsed <= 100
-    ? tax_pct_parsed
-    : undefined;
-
-  // Invoice ↔ proposal link: when the user bills against a specific proposal,
-  // record it + snapshot the proposal total AT bill time (so a later proposal
-  // edit doesn't rewrite what this invoice was billed against). Chain-of-trust:
-  // the proposal must belong to this opp, else the link is dropped.
-  const proposal_id_raw = String(formData.get("proposal_id") ?? "").trim();
-  let proposal_id: string | null = null;
-  let proposal_total_cents_at_bill: number | null = null;
-  if (UUID_RE.test(proposal_id_raw)) {
-    const prop = await getProposal(proposal_id_raw);
-    if (prop && prop.opportunity_id === opp_id) {
-      proposal_id = prop.id;
-      proposal_total_cents_at_bill = prop.total_cents;
-    }
-  }
-
-  const result = await createCommercialInvoice({
-    opportunity_id: opp_id,
-    account_id,
-    created_by_user_id: user.id,
-    po_number,
-    payment_terms,
-    customer_message,
-    notes,
-    tax_pct,
-    due_at,
-    proposal_id,
-    proposal_total_cents_at_bill,
-    line_items: [{
-      description: description.slice(0, 500),
-      quantity: 1,
-      unit_price_cents: amount_cents!,
-      // Phase D: optional catalog FK — set when the user picked from
-      // ProductPicker. Enables SKU-grouped margin reports later without
-      // rewriting historical unit_price_cents.
-      product_id: UUID_RE.test(String(formData.get("product_id") ?? "")) ? String(formData.get("product_id")) : null,
-    }],
-  });
-  if (!result.ok) {
-    redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent(`Couldn't create invoice: ${result.error}`)}`);
-  }
-
-  revalidatePath(`/commercial/opportunities/${opp_id}`);
-  revalidatePath(`/commercial/accounts/${account_id}`);
-  revalidatePath("/commercial/invoices");
-  revalidatePath("/commercial");
-
-  redirect(`/commercial/invoices?account_id=${account_id}&created=${result.invoice.id}#inv-${result.invoice.id}`);
-}
 
 /**
  * Karan 2026-07-08: bulk-delete every invoice attached to a specific
@@ -2277,13 +2188,9 @@ function FullDetailByOpp({
                 );
               })}
             </ul>
-            {/* Inline "+ New invoice" collapsible per opp — Karan
-                2026-07-07: retired the batch creator page, everything
-                inline. Description + amount + due date is the minimum;
-                progressive disclosure ("More details") for tax %, PO,
-                terms, message, internal notes. Submits to
-                createInvoiceInlineAction which redirects back here
-                with an anchor to the newly-created row. */}
+            {/* "+ New invoice" per opp — links into the deal builder (the one
+                authoritative create surface, with milestones). The old inline
+                create form here was retired in favor of that flow. */}
             {opp && isPostSaleProject(opp) && (
               <Link
                 href={`/commercial/accounts/${accountId}?tab=projects&project=${oppId}&dt=invoices#deal-invoices`}

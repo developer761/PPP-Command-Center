@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -948,11 +949,7 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   // and stays on the intended calendar day when displayed in ET). Same
   // approach used for due_at on the invoice detail page.
   const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
-  const paid_at = paid_at_raw
-    ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at_raw)
-      ? `${paid_at_raw}T16:00:00.000Z`
-      : new Date(paid_at_raw).toISOString()
-    : undefined;
+  const paid_at = paid_at_raw ? (anchorDateOnlyIso(paid_at_raw) ?? new Date(paid_at_raw).toISOString()) : undefined;
   const method = String(formData.get("method") ?? "").trim() || null;
   const reference = String(formData.get("reference") ?? "").trim() || null;
 

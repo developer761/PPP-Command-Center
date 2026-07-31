@@ -17,6 +17,19 @@ const MS_PER_HOUR = 3_600_000;
 const MS_PER_DAY = 86_400_000;
 
 /**
+ * Anchor a bare `YYYY-MM-DD` (what `<input type="date">` posts) at noon ET so it
+ * renders on the day the user actually picked. Storing it as UTC midnight would
+ * display one calendar day earlier in ET; 16:00 UTC is noon-ish ET and stays on
+ * the intended day in both EST and EDT. Returns `null` for anything that isn't a
+ * date-only string, so callers pick their own fallback (leave unchanged / clear
+ * / parse-as-full-timestamp). Standardizes the ~dozen inline copies that had
+ * drifted between T16 and T12 anchors (2026-08 cleanup).
+ */
+export function anchorDateOnlyIso(dateOnly: string): string | null {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? `${dateOnly}T16:00:00.000Z` : null;
+}
+
+/**
  * "3 minutes ago" / "5 hours ago" / "yesterday" / "3d ago" style.
  * Falls back to a short absolute date once we're past ~14 days
  * (older-than-two-weeks reads more meaningfully as a date).

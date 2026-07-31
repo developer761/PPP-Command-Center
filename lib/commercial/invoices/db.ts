@@ -653,7 +653,7 @@ export async function removeLineItem(
  *   - paid_cents > 0 → partial
  *   - paid_cents = 0 AND status IN (paid,partial) → sent
  *   - else unchanged */
-async function recomputeSubtotal(invoice_id: string): Promise<void> {
+export async function recomputeSubtotal(invoice_id: string): Promise<void> {
   const sb = commercialDb();
   const { data: items } = await sb
     .from("commercial_invoice_line_items")

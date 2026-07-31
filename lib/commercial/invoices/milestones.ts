@@ -6,6 +6,7 @@ import {
   removeLineItem,
   listInvoiceLineItems,
   getCommercialInvoice,
+  recomputeSubtotal,
 } from "@/lib/commercial/invoices/db";
 import { uploadDocument, getDocument, softDeleteDocument } from "@/lib/commercial/documents/db";
 import type { CommercialDocument } from "@/lib/commercial/documents/db";
@@ -311,7 +312,7 @@ export async function updateMilestone(
     if (patch.name !== undefined) liPatch.description = (update.name as string).slice(0, 500);
     if (patch.amount_cents !== undefined) liPatch.unit_price_cents = update.amount_cents;
     await sb.from("commercial_invoice_line_items").update(liPatch).eq("id", existing.line_item_id);
-    await resyncInvoiceSubtotal(existing.invoice_id);
+    await recomputeSubtotal(existing.invoice_id);
   }
   return {
     ok: true,
@@ -357,44 +358,6 @@ export async function deleteMilestone(id: string, actorUserId: string): Promise<
     value: null,
     warning: paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : undefined,
   };
-}
-
-/** Re-sum this invoice's line items into subtotal_cents (total/balance are
- *  GENERATED so they follow), then reconcile paid/partial/sent status the same
- *  way db.recomputeSubtotal + the payment trigger do — so lowering a milestone
- *  below what's already paid flips the invoice to paid, etc. */
-async function resyncInvoiceSubtotal(invoiceId: string): Promise<void> {
-  const sb = commercialDb();
-  const { data: items } = await sb
-    .from("commercial_invoice_line_items")
-    .select("subtotal_cents")
-    .eq("invoice_id", invoiceId);
-  const subtotal = (items ?? []).reduce((acc, r) => acc + ((r.subtotal_cents as number) ?? 0), 0);
-  await sb
-    .from("commercial_invoices")
-    .update({ subtotal_cents: subtotal, updated_at: new Date().toISOString() })
-    .eq("id", invoiceId);
-  // Re-read the GENERATED total, then reconcile status (mirrors the trigger).
-  const { data: inv } = await sb
-    .from("commercial_invoices")
-    .select("total_cents, paid_cents, status")
-    .eq("id", invoiceId)
-    .maybeSingle();
-  if (!inv) return;
-  const total = (inv.total_cents as number) ?? 0;
-  const paid = (inv.paid_cents as number) ?? 0;
-  const status = inv.status as string;
-  if (status === "void") return; // terminal
-  let next = status;
-  if (paid >= total && total > 0) next = "paid";
-  else if (paid > 0) next = "partial";
-  else if (paid === 0 && (status === "paid" || status === "partial")) next = "sent";
-  if (next !== status) {
-    await sb
-      .from("commercial_invoices")
-      .update({ status: next, paid_at: next === "paid" ? new Date().toISOString() : null })
-      .eq("id", invoiceId);
-  }
 }
 
 // ────────────── Change-order → milestone ──────────────
