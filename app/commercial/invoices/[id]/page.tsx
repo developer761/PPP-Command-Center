@@ -40,7 +40,7 @@ import {
   addMilestone,
   updateMilestone,
   deleteMilestone,
-  getMilestoneLienWaiver,
+  getMilestoneLienWaivers,
   getMilestonePaidMap,
   allocateMilestonePaid,
 } from "@/lib/commercial/invoices/milestones";
@@ -609,10 +609,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
     listMilestonesForInvoice(invoice.id),
   ]);
   // Per-milestone lien-waiver docs (for the ✓/download state on each row).
-  const milestoneWaivers = new Map<string, Awaited<ReturnType<typeof getMilestoneLienWaiver>>>();
-  await Promise.all(
-    milestones.map(async (m) => milestoneWaivers.set(m.id, await getMilestoneLienWaiver(m.id)))
-  );
+  // One documents query for all milestones (was a 3N-query loop).
+  const milestoneWaivers = await getMilestoneLienWaivers(milestones);
   const hasMilestones = milestones.length > 0;
   const milestoneSum = milestones.reduce((s, m) => s + m.amount_cents, 0);
   // Per-milestone paid (Σ payments tagged to each). Invoice paid_cents is

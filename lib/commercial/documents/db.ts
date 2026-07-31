@@ -157,6 +157,23 @@ export async function getDocument(id: string): Promise<CommercialDocument | null
   return (data as CommercialDocument | null) ?? null;
 }
 
+/** Batch variant of {@link getDocument} — one query for many ids, returned as a
+ *  id→doc map (soft-deleted excluded). Kills N+1 loops that fetched docs one at
+ *  a time (e.g. per-milestone lien waivers on the invoice page). */
+export async function getDocumentsByIds(ids: string[]): Promise<Map<string, CommercialDocument>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return new Map();
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_documents")
+    .select("*")
+    .in("id", unique)
+    .is("deleted_at", null);
+  const map = new Map<string, CommercialDocument>();
+  for (const d of (data ?? []) as CommercialDocument[]) map.set(d.id, d);
+  return map;
+}
+
 /**
  * Walk the version chain backwards for a document — returns the chain
  * from newest → oldest (excluding the doc itself). Used by the

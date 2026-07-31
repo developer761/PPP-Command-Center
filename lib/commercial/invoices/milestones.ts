@@ -8,7 +8,7 @@ import {
   getCommercialInvoice,
   recomputeSubtotal,
 } from "@/lib/commercial/invoices/db";
-import { uploadDocument, getDocument, softDeleteDocument } from "@/lib/commercial/documents/db";
+import { uploadDocument, getDocumentsByIds, softDeleteDocument } from "@/lib/commercial/documents/db";
 import type { CommercialDocument } from "@/lib/commercial/documents/db";
 
 /**
@@ -433,10 +433,22 @@ async function fetchMilestoneScope(
   };
 }
 
-export async function getMilestoneLienWaiver(milestoneId: string): Promise<CommercialDocument | null> {
-  const scope = await fetchMilestoneScope(milestoneId);
-  if (!scope?.lien_waiver_document_id) return null;
-  return (await getDocument(scope.lien_waiver_document_id)) ?? null;
+/**
+ * Batch resolve per-milestone lien-waiver docs from milestones the caller
+ * ALREADY has (each carries `lien_waiver_document_id`). Returns milestoneId →
+ * doc|null in ONE documents query — replaces the 3N-query loop that called
+ * getMilestoneLienWaiver per row (each re-fetching the milestone + invoice).
+ */
+export async function getMilestoneLienWaivers(
+  milestones: InvoiceMilestone[]
+): Promise<Map<string, CommercialDocument | null>> {
+  const docIds = milestones.map((m) => m.lien_waiver_document_id).filter((x): x is string => !!x);
+  const docs = await getDocumentsByIds(docIds);
+  const out = new Map<string, CommercialDocument | null>();
+  for (const m of milestones) {
+    out.set(m.id, m.lien_waiver_document_id ? docs.get(m.lien_waiver_document_id) ?? null : null);
+  }
+  return out;
 }
 
 /** Store a lien waiver against a milestone: file → per-deal document (category
