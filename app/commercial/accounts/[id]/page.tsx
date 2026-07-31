@@ -64,7 +64,7 @@ import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction, type ProjectRow } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
 import { listCommercialInvoices, addPayment, createCommercialInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
-import { seedMilestonesFromLineItems, listMilestonesForInvoices, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
+import { seedMilestonesFromLineItems, listMilestonesForInvoices, getMilestonePaidMapForInvoices, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
@@ -1043,6 +1043,7 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
   // (name · amount · due · lien waiver). Fetch them for the deal's invoices so
   // the list nests them + we can surface the next one due.
   const milestonesByInvoice = await listMilestonesForInvoices(dealInvoices.map((i) => i.id));
+  const milestonePaidByDeal = await getMilestonePaidMapForInvoices(dealInvoices.map((i) => i.id));
   const upcomingMilestone =
     [...milestonesByInvoice.entries()]
       .flatMap(([invId, ms]) => {
@@ -1335,11 +1336,21 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                   {/* Milestone schedule for this invoice (name · amount · due · waiver). */}
                   {ms.length > 0 && (
                     <ul className="px-4 pb-2 -mt-0.5 space-y-1">
-                      {ms.map((m) => (
+                      {ms.map((m) => {
+                        const mPaid = milestonePaidByDeal.get(m.id) ?? 0;
+                        const mFullyPaid = m.amount_cents > 0 && mPaid >= m.amount_cents;
+                        const mPartial = mPaid > 0 && !mFullyPaid;
+                        return (
                         <li key={m.id} className="flex items-center justify-between gap-2 pl-3 border-l-2 border-ppp-charcoal-100 text-[11px]">
                           <span className="min-w-0 flex items-center gap-1.5">
                             <span className="font-semibold text-ppp-charcoal-700 truncate">{m.name}</span>
-                            {m.due_at && <span className="text-ppp-charcoal-400 shrink-0">· due {fmtEtDate(m.due_at)}</span>}
+                            {mFullyPaid ? (
+                              <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title="Paid"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>paid</span>
+                            ) : mPartial ? (
+                              <span className="text-amber-600 shrink-0 tabular-nums" title="Partially paid">{formatCentsCompact(mPaid)} paid</span>
+                            ) : m.due_at ? (
+                              <span className="text-ppp-charcoal-400 shrink-0">· due {fmtEtDate(m.due_at)}</span>
+                            ) : null}
                             {m.lien_waiver_document_id ? (
                               <span className="inline-flex items-center gap-0.5 text-emerald-600 shrink-0" title="Lien waiver on file"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg></span>
                             ) : (
@@ -1348,7 +1359,8 @@ async function AccountProjectHome({ p, accountId, dealTab = "overview", projectT
                           </span>
                           <span className="tabular-nums font-semibold text-ppp-charcoal-700 shrink-0">{formatCentsFull(m.amount_cents)}</span>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   )}
                 </li>

@@ -99,6 +99,42 @@ export async function listMilestonesForInvoices(
   return out;
 }
 
+/** Σ payments tagged to each milestone, for one invoice. Keyed by milestone_id.
+ *  A milestone's own "paid" is derived here (invoice paid_cents is unchanged —
+ *  the trigger sums ALL payments regardless of milestone). */
+export async function getMilestonePaidMap(invoiceId: string): Promise<Map<string, number>> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_invoice_payments")
+    .select("milestone_id, amount_cents")
+    .eq("invoice_id", invoiceId)
+    .not("milestone_id", "is", null);
+  const out = new Map<string, number>();
+  if (error) return out; // tolerate unapplied migration
+  for (const r of (data ?? []) as { milestone_id: string; amount_cents: number }[]) {
+    out.set(r.milestone_id, (out.get(r.milestone_id) ?? 0) + (r.amount_cents ?? 0));
+  }
+  return out;
+}
+
+/** Batch of getMilestonePaidMap across many invoices (deal list). Keyed by
+ *  milestone_id (unique platform-wide). */
+export async function getMilestonePaidMapForInvoices(invoiceIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (invoiceIds.length === 0) return out;
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_invoice_payments")
+    .select("milestone_id, amount_cents")
+    .in("invoice_id", invoiceIds)
+    .not("milestone_id", "is", null);
+  if (error) return out;
+  for (const r of (data ?? []) as { milestone_id: string; amount_cents: number }[]) {
+    out.set(r.milestone_id, (out.get(r.milestone_id) ?? 0) + (r.amount_cents ?? 0));
+  }
+  return out;
+}
+
 export async function getMilestone(id: string): Promise<InvoiceMilestone | null> {
   const sb = commercialDb();
   const { data } = await sb
@@ -154,7 +190,7 @@ export async function addMilestone(
   const name = draft.name.trim();
   if (!name) return { ok: false, error: "Name the milestone." };
   const amount = Math.round(draft.amount_cents);
-  if (!Number.isFinite(amount) || amount < 0) return { ok: false, error: "Enter a valid amount." };
+  if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Enter an amount greater than $0." };
 
   // 1) The paired line item (also recomputes subtotal + status + audit).
   const li = await addLineItem(
@@ -204,6 +240,10 @@ export async function updateMilestone(
 ): Promise<Result<InvoiceMilestone>> {
   const existing = await getMilestone(id);
   if (!existing) return { ok: false, error: "Milestone not found." };
+  // Void invoices are immutable — updateMilestone writes the paired line item +
+  // subtotal directly (bypassing verifyEditable), so gate it here (edge-case A/void).
+  const inv = await getCommercialInvoice(existing.invoice_id);
+  if (inv?.status === "void") return { ok: false, error: "This invoice is void — its milestones can't be edited." };
 
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) {
@@ -213,7 +253,14 @@ export async function updateMilestone(
   }
   if (patch.amount_cents !== undefined) {
     const a = Math.round(patch.amount_cents);
-    if (!Number.isFinite(a) || a < 0) return { ok: false, error: "Enter a valid amount." };
+    if (!Number.isFinite(a) || a <= 0) return { ok: false, error: "Enter an amount greater than $0." };
+    // Can't lower a milestone below what's already been paid against it —
+    // that would overpay the milestone + drive the invoice into a phantom
+    // credit (edge-case E).
+    const paid = (await getMilestonePaidMap(existing.invoice_id)).get(id) ?? 0;
+    if (a < paid) {
+      return { ok: false, error: `This milestone already has payments totaling more than that amount. Remove a payment first.` };
+    }
     update.amount_cents = a;
   }
   if (patch.due_at !== undefined) update.due_at = patch.due_at;
@@ -246,6 +293,14 @@ export async function updateMilestone(
 export async function deleteMilestone(id: string, actorUserId: string): Promise<Result<null>> {
   const existing = await getMilestone(id);
   if (!existing) return { ok: false, error: "Milestone not found." };
+  // Void invoices are immutable (edge-case void).
+  const inv = await getCommercialInvoice(existing.invoice_id);
+  if (inv?.status === "void") return { ok: false, error: "This invoice is void — its milestones can't be removed." };
+  // Deleting a milestone drops its paired charge from the invoice. If it has
+  // recorded payments, that would strand the cash on the invoice (paid stays,
+  // total drops) → phantom credit. Block it (edge-case A).
+  const paid = (await getMilestonePaidMap(existing.invoice_id)).get(id) ?? 0;
+  if (paid > 0) return { ok: false, error: "This milestone has recorded payments. Remove those payments first, then delete it." };
   const sb = commercialDb();
   const { error } = await sb
     .from("commercial_invoice_milestones")
@@ -304,25 +359,56 @@ async function resyncInvoiceSubtotal(invoiceId: string): Promise<void> {
 /**
  * Bill a change order as a milestone on the deal's invoice. Adds a milestone
  * (+ paired line item, so the invoice total grows by the CO amount) tagged with
- * the CO. Only additive COs bill as a milestone (a credit CO isn't a payable
- * milestone). Returns the new milestone.
+ * the CO, then CLAIMS the CO's `invoiced_invoice_id` so it can't also be billed
+ * as its own invoice (the double-bill guard the own-invoice path uses).
+ *
+ * Guards (edge-cases B + C): the CO must exist, be APPROVED, have a positive
+ * amount, and not already be billed anywhere.
  */
 export async function addChangeOrderMilestone(
   invoiceId: string,
-  co: { id: string; title: string; amount_cents: number; due_at?: string | null },
+  changeOrderId: string,
   actorUserId: string
 ): Promise<Result<InvoiceMilestone>> {
-  if (co.amount_cents <= 0) return { ok: false, error: "Only added-scope change orders bill as a milestone." };
-  return addMilestone(
+  const sb = commercialDb();
+  const { data: co } = await sb
+    .from("commercial_change_orders")
+    .select("id, title, amount_cents, status, invoiced_invoice_id, opportunity_id, deleted_at")
+    .eq("id", changeOrderId)
+    .maybeSingle();
+  if (!co || (co as { deleted_at: string | null }).deleted_at) return { ok: false, error: "Change order not found." };
+  const c = co as { id: string; title: string; amount_cents: number; status: string; invoiced_invoice_id: string | null; opportunity_id: string };
+  if (c.status !== "approved") return { ok: false, error: "Only an approved change order can be billed." };
+  if (c.amount_cents <= 0) return { ok: false, error: "Only an added-scope (positive) change order bills as a milestone. Credits reduce the contract instead." };
+  if (c.invoiced_invoice_id) return { ok: false, error: "This change order has already been billed." };
+  // Chain-of-trust: the CO and the host invoice must belong to the same deal.
+  const inv = await getCommercialInvoice(invoiceId);
+  if (!inv || inv.opportunity_id !== c.opportunity_id) return { ok: false, error: "That change order belongs to a different deal." };
+
+  const created = await addMilestone(
     invoiceId,
-    {
-      name: co.title.slice(0, 200),
-      amount_cents: co.amount_cents,
-      due_at: co.due_at ?? null,
-      change_order_id: co.id,
-    },
+    { name: c.title.slice(0, 200), amount_cents: c.amount_cents, change_order_id: c.id },
     actorUserId
   );
+  if (!created.ok) return created;
+
+  // Claim the CO so the own-invoice path can't double-bill it. If the claim
+  // loses a race (already set), roll the milestone back.
+  const { error: claimErr } = await sb
+    .from("commercial_change_orders")
+    .update({ invoiced_invoice_id: invoiceId })
+    .eq("id", c.id)
+    .is("invoiced_invoice_id", null);
+  const { data: check } = await sb
+    .from("commercial_change_orders")
+    .select("invoiced_invoice_id")
+    .eq("id", c.id)
+    .maybeSingle();
+  if (claimErr || (check as { invoiced_invoice_id: string | null } | null)?.invoiced_invoice_id !== invoiceId) {
+    await deleteMilestone(created.value.id, actorUserId).catch(() => {});
+    return { ok: false, error: "This change order was billed elsewhere at the same time." };
+  }
+  return created;
 }
 
 // ────────────── Per-milestone lien waiver ──────────────

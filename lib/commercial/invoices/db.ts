@@ -129,6 +129,10 @@ export type CommercialInvoiceLineItem = {
 export type CommercialInvoicePayment = {
   id: string;
   invoice_id: string;
+  /** Migration 091: the milestone this payment is credited to. NULL =
+   *  invoice-level payment. Invoice paid_cents = SUM of all payments (trigger);
+   *  a milestone's paid = SUM of payments with its milestone_id. */
+  milestone_id: string | null;
   amount_cents: number;
   paid_at: string;
   method: string | null;
@@ -591,6 +595,17 @@ export async function removeLineItem(
   const gate = await verifyEditable(invoice_id);
   if (!gate.ok) return gate;
   const sb = commercialDb();
+  // Guard (edge-case D): a line item paired to a live milestone can't be removed
+  // directly — that would orphan the milestone (its schedule row + due date +
+  // lien waiver survive with no charge, breaking Σ milestones == subtotal).
+  // Remove it via the milestone instead. Tolerates an unapplied 090 migration.
+  const { data: pairedMs } = await sb
+    .from("commercial_invoice_milestones")
+    .select("id")
+    .eq("line_item_id", item_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (pairedMs) return { ok: false, error: "milestone_line_item" };
   // Capture the row before delete so the audit trail records what was removed.
   const { data: beforeLi } = await sb
     .from("commercial_invoice_line_items")
@@ -681,6 +696,10 @@ export async function addPayment(
     reference?: string | null;
     notes?: string | null;
     recorded_by_user_id: string;
+    /** Migration 091: credit this payment to a specific milestone. Must belong
+     *  to this invoice. Caps the payment to that milestone's remaining balance
+     *  (as well as the invoice balance). NULL/undefined = invoice-level. */
+    milestone_id?: string | null;
   }
 ): Promise<{ ok: boolean; error?: string; applied_cents?: number; requested_cents?: number; capped?: boolean }> {
   const sb = commercialDb();
@@ -701,14 +720,40 @@ export async function addPayment(
   // automatically as payments come in. "Mark as sent" is now a passive
   // status pill Alex flips when he actually sends the customer copy.
   const balance = inv.balance_cents as number;
-  const cappedAmount = Math.min(input.amount_cents, balance);
-  if (cappedAmount <= 0) return { ok: false, error: "no_balance_due" };
-  const capped = input.amount_cents > balance;
+
+  // Milestone-scoped payment (Karan 2026-08): validate the milestone belongs to
+  // this invoice, then cap to its REMAINING balance too so a milestone can't be
+  // over-collected. Milestone remaining = its amount − Σ payments already tagged
+  // to it.
+  let milestone_id: string | null = null;
+  let milestoneCap = Infinity;
+  if (input.milestone_id) {
+    const { data: ms } = await sb
+      .from("commercial_invoice_milestones")
+      .select("id, invoice_id, amount_cents, deleted_at")
+      .eq("id", input.milestone_id)
+      .maybeSingle();
+    if (!ms || (ms as { invoice_id: string }).invoice_id !== invoice_id || (ms as { deleted_at: string | null }).deleted_at) {
+      return { ok: false, error: "milestone_not_found" };
+    }
+    const { data: prior } = await sb
+      .from("commercial_invoice_payments")
+      .select("amount_cents")
+      .eq("milestone_id", input.milestone_id);
+    const milestonePaid = (prior ?? []).reduce((s, r) => s + ((r.amount_cents as number) ?? 0), 0);
+    milestoneCap = Math.max(0, (ms as { amount_cents: number }).amount_cents - milestonePaid);
+    milestone_id = input.milestone_id;
+  }
+
+  const cappedAmount = Math.min(input.amount_cents, balance, milestoneCap);
+  if (cappedAmount <= 0) return { ok: false, error: milestone_id ? "milestone_already_paid" : "no_balance_due" };
+  const capped = input.amount_cents > cappedAmount;
 
   const { data: insertedPayment, error } = await sb
     .from("commercial_invoice_payments")
     .insert({
       invoice_id,
+      milestone_id,
       amount_cents: cappedAmount,
       paid_at: input.paid_at ?? new Date().toISOString(),
       method: input.method ?? null,

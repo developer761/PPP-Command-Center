@@ -40,6 +40,7 @@ import {
   updateMilestone,
   deleteMilestone,
   getMilestoneLienWaiver,
+  getMilestonePaidMap,
 } from "@/lib/commercial/invoices/milestones";
 import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
 import {
@@ -129,7 +130,13 @@ async function removeLineItemAction(formData: FormData) {
   const invoice_id = String(formData.get("invoice_id") ?? "");
   const item_id = String(formData.get("item_id") ?? "");
   if (!UUID_RE.test(invoice_id) || !UUID_RE.test(item_id)) redirect("/commercial/invoices");
-  await removeLineItem(invoice_id, item_id, user.id);
+  const rm = await removeLineItem(invoice_id, item_id, user.id);
+  if (!rm.ok) {
+    const msg = rm.error === "milestone_line_item"
+      ? "That charge is part of a milestone — remove it from the Milestones section below instead."
+      : rm.error ?? "Couldn't remove that line.";
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(msg));
+  }
   await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}`);
 }
@@ -263,6 +270,51 @@ async function deleteMilestoneAction(formData: FormData) {
   await deleteMilestone(milestone_id, user.id);
   await revalidateInvoiceContext(invoice_id);
   redirect(`/commercial/invoices/${invoice_id}?saved=milestone`);
+}
+
+/** Record a payment against a specific milestone (the ✓ Record payment button).
+ *  Captures method / reference / date / notes; caps to the milestone's balance
+ *  and rolls up to the invoice via the same trigger as invoice-level payments. */
+async function recordMilestonePaymentAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const invoice_id = String(formData.get("invoice_id") ?? "");
+  const milestone_id = String(formData.get("milestone_id") ?? "");
+  if (!UUID_RE.test(invoice_id) || !UUID_RE.test(milestone_id)) redirect("/commercial/invoices");
+  const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  const paid_at = String(formData.get("paid_at") ?? "").trim() || undefined;
+  const method = String(formData.get("method") ?? "").trim() || null;
+  const reference = String(formData.get("reference") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  if (amount === null || amount <= 0) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Enter a positive dollar amount for the milestone payment."));
+  }
+  const paid_at_iso = paid_at
+    ? /^\d{4}-\d{2}-\d{2}$/.test(paid_at)
+      ? `${paid_at}T16:00:00.000Z`
+      : new Date(paid_at).toISOString()
+    : undefined;
+  const result = await addPayment(invoice_id, {
+    amount_cents: amount!,
+    paid_at: paid_at_iso,
+    method,
+    reference,
+    notes,
+    recorded_by_user_id: user.id,
+    milestone_id,
+  });
+  if (!result.ok) {
+    redirect(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent(result.error === "milestone_already_paid" ? "That milestone is already fully paid." : result.error ?? "Failed to record payment."));
+  }
+  await revalidateInvoiceContext(invoice_id);
+  if (result.capped && result.applied_cents !== undefined && result.requested_cents !== undefined) {
+    const q = new URLSearchParams({ saved: "payment", capped: "1", applied: String(result.applied_cents), requested: String(result.requested_cents) });
+    redirect(`/commercial/invoices/${invoice_id}?${q.toString()}`);
+  }
+  redirect(`/commercial/invoices/${invoice_id}?saved=payment`);
 }
 
 async function changeStatusAction(formData: FormData) {
@@ -487,6 +539,9 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   );
   const hasMilestones = milestones.length > 0;
   const milestoneSum = milestones.reduce((s, m) => s + m.amount_cents, 0);
+  // Per-milestone paid (Σ payments tagged to each). Invoice paid_cents is
+  // unchanged — the trigger sums ALL payments; this is just the milestone slice.
+  const milestonePaid = hasMilestones ? await getMilestonePaidMap(invoice.id) : new Map<string, number>();
   // Invoice ↔ proposal: when this invoice bills against a proposal, resolve the
   // proposal + its sibling progress invoices so we can show "invoice N of M
   // against PROP-000N · $billed of $contract." Snapshot total (at bill time)
@@ -1328,12 +1383,24 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <ul className="space-y-3">
               {milestones.map((m, idx) => {
                 const w = milestoneWaivers.get(m.id) ?? null;
+                const mPaid = milestonePaid.get(m.id) ?? 0;
+                const mDue = Math.max(0, m.amount_cents - mPaid);
+                const mFullyPaid = m.amount_cents > 0 && mPaid >= m.amount_cents;
+                const mPartial = mPaid > 0 && !mFullyPaid;
+                const mPayments = payments.filter((pp) => pp.milestone_id === m.id);
                 return (
                   <li key={m.id} className="rounded-xl border border-ppp-charcoal-100 p-3.5">
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="text-[10.5px] font-bold uppercase tracking-wide text-cc-brand-700">
-                        Milestone {idx + 1}
-                        {m.change_order_id && <span className="ml-1.5 text-ppp-navy-600">· from change order</span>}
+                      <span className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10.5px] font-bold uppercase tracking-wide text-cc-brand-700">
+                          Milestone {idx + 1}
+                          {m.change_order_id && <span className="ml-1.5 text-ppp-navy-600">· from change order</span>}
+                        </span>
+                        {mFullyPaid ? (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9.5px] font-bold uppercase tracking-wide text-emerald-700"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>Paid</span>
+                        ) : mPartial ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[9.5px] font-bold uppercase tracking-wide text-amber-800 tabular-nums">{formatCentsFull(mPaid)} of {formatCentsFull(m.amount_cents)}</span>
+                        ) : null}
                       </span>
                       {!isVoid && (
                         <form action={deleteMilestoneAction} className="inline">
@@ -1362,6 +1429,71 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                         <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">Save</button>
                       )}
                     </form>
+
+                    {/* ✓ Record payment for THIS milestone — captures method /
+                        reference / date / notes; the note shows in the history
+                        below. Hidden once fully paid or on a void invoice. */}
+                    {!isVoid && !mFullyPaid && (
+                      <details className="group mb-2.5 rounded-lg border border-emerald-200 bg-emerald-50/40">
+                        <summary className="list-none cursor-pointer flex items-center gap-1.5 px-3 py-2 min-h-[44px] text-[12px] font-semibold text-emerald-800 select-none">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" /></svg>
+                          Record payment{mDue > 0 ? ` · ${formatCentsFull(mDue)} due` : ""}
+                        </summary>
+                        <form action={recordMilestonePaymentAction} className="px-3 pb-3 pt-1 space-y-2">
+                          <input type="hidden" name="invoice_id" value={invoice.id} />
+                          <input type="hidden" name="milestone_id" value={m.id} />
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <div>
+                              <label className={LABEL_CLS} htmlFor={`mp-amt-${m.id}`}>Amount</label>
+                              <input id={`mp-amt-${m.id}`} name="amount" required inputMode="decimal" defaultValue={(mDue / 100).toFixed(2)} className={INPUT_CLS} />
+                            </div>
+                            <div>
+                              <label className={LABEL_CLS} htmlFor={`mp-date-${m.id}`}>Paid on</label>
+                              <input id={`mp-date-${m.id}`} name="paid_at" type="date" className={INPUT_CLS} />
+                            </div>
+                            <div>
+                              <label className={LABEL_CLS} htmlFor={`mp-method-${m.id}`}>Method</label>
+                              <select id={`mp-method-${m.id}`} name="method" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+                                <option value="">—</option>
+                                {PAYMENT_METHODS.map((pm) => <option key={pm.key} value={pm.key}>{pm.label}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className={LABEL_CLS} htmlFor={`mp-ref-${m.id}`}>Reference</label>
+                              <input id={`mp-ref-${m.id}`} name="reference" maxLength={200} placeholder="Check #" className={INPUT_CLS} />
+                            </div>
+                          </div>
+                          <div>
+                            <label className={LABEL_CLS} htmlFor={`mp-notes-${m.id}`}>Notes</label>
+                            <input id={`mp-notes-${m.id}`} name="notes" maxLength={500} placeholder="Optional — deposit received, partial, etc." className={INPUT_CLS} />
+                          </div>
+                          <div className="flex justify-end">
+                            <button type="submit" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 min-h-[44px] touch-manipulation">Record payment</button>
+                          </div>
+                        </form>
+                      </details>
+                    )}
+
+                    {/* Payment history for this milestone — where the notes land. */}
+                    {mPayments.length > 0 && (
+                      <ul className="mb-2.5 space-y-1">
+                        {mPayments.map((pp) => (
+                          <li key={pp.id} className="flex items-start justify-between gap-2 text-[11px] pl-2.5 border-l-2 border-emerald-200">
+                            <span className="min-w-0">
+                              <span className="font-semibold text-emerald-700 tabular-nums">{formatCentsFull(pp.amount_cents)}</span>
+                              <span className="text-ppp-charcoal-400"> · {fmtEtDate(pp.paid_at)}{pp.method ? ` · ${pp.method}` : ""}{pp.reference ? ` · ${pp.reference}` : ""}</span>
+                              {pp.notes && <span className="block text-ppp-charcoal-500">{pp.notes}</span>}
+                            </span>
+                            <form action={removePaymentAction} className="inline shrink-0">
+                              <input type="hidden" name="invoice_id" value={invoice.id} />
+                              <input type="hidden" name="payment_id" value={pp.id} />
+                              <button type="submit" className="text-ppp-charcoal-300 hover:text-rose-600 min-h-[28px] px-1" title="Remove this payment" aria-label="Remove payment">×</button>
+                            </form>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
                     <LienWaiverUpload
                       milestoneId={m.id}
                       hasWaiver={!!w}
