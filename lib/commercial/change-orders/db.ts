@@ -359,6 +359,12 @@ export async function billChangeOrder(
     account_id: co.account_id,
     created_by_user_id: userId,
     notes: `Bills ${formatChangeOrderNumber(co.co_number)} — ${co.title}`,
+    // Auto-issue for consistency with deal invoices (createDealInvoiceAction):
+    // billing an already-APPROVED change order is a real bill, so it counts as
+    // INVOICED the moment it's made — not a phantom draft that under-reports the
+    // account/deal Invoiced KPI. A claim-loser is voided below (sent → void is a
+    // clean, history-preserving transition).
+    issue: true,
     // Suppress the create-time notification — we only want the team to hear
     // about this invoice if it wins the claim below (a loser gets voided).
     skipCreatedNotification: true,
