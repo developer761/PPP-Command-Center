@@ -33,6 +33,9 @@ async function createSubmittalAction(formData: FormData) {
   await assertCommercialAccess(user.id);
   const account_id = String(formData.get("account_id") ?? "");
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const backQ = back && back.startsWith("/commercial/post-job/") ? `&back=${encodeURIComponent(back)}` : "";
+  const backQfirst = back && back.startsWith("/commercial/post-job/") ? `?back=${encodeURIComponent(back)}` : "";
   if (!UUID_RE.test(account_id) || !UUID_RE.test(opportunity_id)) redirect("/commercial/accounts");
   // Canonical home = the deal's Project sub-tab (carries a query already).
   const base = `/commercial/accounts/${account_id}?tab=projects&project=${opportunity_id}&dt=project&pt=submittals`;
@@ -62,13 +65,13 @@ async function createSubmittalAction(formData: FormData) {
     re_subject: "Submittals",
     created_by_user_id: user.id,
   });
-  if (!result.ok) redirect(`${base}&error=${encodeURIComponent(result.error)}`);
+  if (!result.ok) redirect(`${base}&error=${encodeURIComponent(result.error)}${backQ}`);
   revalidatePath(`/commercial/accounts/${account_id}/submittals/${opportunity_id}`);
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/post-job/submittals");
   // Hand off to the account-scoped detail page so the cover + items can be
-  // filled in — never bounces to /opportunities anymore.
-  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${result.submittal.id}`);
+  // filled in — carry the sidebar-tool origin so its Back stays correct.
+  redirect(`/commercial/accounts/${account_id}/submittals/${opportunity_id}/${result.submittal.id}${backQfirst}`);
 }
 
 export type SubmittalsSP = { error?: string; back?: string };
@@ -140,6 +143,7 @@ export async function SubmittalsTool({
           </div>
           <input type="hidden" name="account_id" value={id} />
           <input type="hidden" name="opportunity_id" value={dealId} />
+          <input type="hidden" name="back" value={sp.back ?? ""} />
           <button type="submit" className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 transition-colors shadow-sm min-h-[44px] touch-manipulation shrink-0">
             + New submittal
           </button>

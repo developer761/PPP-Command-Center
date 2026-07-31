@@ -61,6 +61,7 @@ export function AiaApplicationDetail({
   application,
   accountId,
   dealId,
+  back = "",
   lines,
   g702,
   basePath,
@@ -75,6 +76,8 @@ export function AiaApplicationDetail({
   application: AiaApplication;
   accountId: string;
   dealId: string;
+  /** ?back= sidebar-tool origin, carried through every form action. */
+  back?: string;
   lines: AiaLineItem[];
   g702: AiaG702;
   basePath: string; // list URL (drop ?app)
@@ -97,6 +100,7 @@ export function AiaApplicationDetail({
     <>
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="opp_id" value={dealId} />
+      <input type="hidden" name="back" value={back} />
     </>
   );
 

@@ -1,15 +1,17 @@
--- 092 · Grant Commercial Command Center access to the Tomco smoke-test users
--- (2026-08). Brendan Dwyer (Tomco CEO) + Stephanie Drewis.
+-- 092 · Commercial-only access for the Tomco smoke-test users (2026-08).
+-- Brendan Dwyer (Tomco CEO) + Stephanie Drewis.
 --
 -- Run this AFTER creating their accounts in Settings → Access (which upserts
--- their profile rows). This flips the one flag that gates the Commercial
--- platform — `profiles.has_new_platform_access` — plus keeps them active.
--- Roles are open (everyone has full access for now), so no role row is needed
--- for access; RBAC can be layered later.
+-- their profile rows + gives them residential Command Center access by default).
 --
--- Idempotent + safe to re-run. Only sets flags TRUE; never downgrades. If a
--- profile row isn't there yet (account not created), it simply updates 0 rows
--- for that email — create the account, then re-run.
+-- We want them on the COMMERCIAL side ONLY — so this both GRANTS the commercial
+-- platform (has_new_platform_access = true) and TURNS OFF residential
+-- (has_command_center_access = false). With commercial-only access the login
+-- flow auto-lands them straight on /commercial (no platform picker, never the
+-- PPP Command Center).
+--
+-- Idempotent + safe to re-run. If a profile row isn't there yet (account not
+-- created), it updates 0 rows — create the account, then re-run.
 
 DO $$
 DECLARE
@@ -21,15 +23,12 @@ DECLARE
 BEGIN
   UPDATE public.profiles
      SET has_new_platform_access = true,
+         has_command_center_access = false,
          is_active = true
-   WHERE LOWER(email) = ANY(target_emails)
-     AND (has_new_platform_access = false OR is_active = false OR has_new_platform_access IS NULL);
+   WHERE LOWER(email) = ANY(target_emails);
   GET DIAGNOSTICS updated_count = ROW_COUNT;
-  RAISE NOTICE '[092] Tomco testers granted Commercial access (rows changed: %)', updated_count;
+  RAISE NOTICE '[092] Tomco testers set to Commercial-only (rows changed: %)', updated_count;
 
-  -- Report any email that has no profile row yet, so you know to create it in
-  -- Settings → Access first, then re-run.
-  PERFORM 1;
   IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE LOWER(email) = 'brendan@tomcopainting.com') THEN
     RAISE NOTICE '[092] NOTE — no account yet for brendan@tomcopainting.com (create it in Settings → Access, then re-run)';
   END IF;
