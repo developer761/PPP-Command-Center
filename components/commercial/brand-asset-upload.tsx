@@ -69,7 +69,7 @@ export function BrandAssetUpload({
             fd.append("file", f);
             void submit(fd);
           }}
-          className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[40px] file:touch-manipulation cursor-pointer"
+          className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[44px] file:touch-manipulation cursor-pointer"
         />
         {hasAsset && (
           <button
@@ -81,7 +81,7 @@ export function BrandAssetUpload({
               fd.append("clear", "1");
               void submit(fd);
             }}
-            className="text-[11.5px] font-medium text-ppp-charcoal-500 hover:text-rose-700 min-h-[40px] px-2"
+            className="text-[11.5px] font-medium text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] px-2"
           >
             Remove
           </button>

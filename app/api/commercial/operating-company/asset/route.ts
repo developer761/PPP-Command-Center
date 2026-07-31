@@ -1,22 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
-import { isAdminEmail } from "@/lib/auth/admin";
 import { uploadBrandAsset, clearBrandAsset, MAX_BRAND_BYTES } from "@/lib/commercial/operating-company/assets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Upload (or clear) the operating company's logo / signature image. Admin-only. */
+/** Upload (or clear) the operating company's logo / signature image. Any
+ *  commercial user (roles are open for now). Non-redirecting JSON responses. */
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  await assertCommercialAccess(user.id);
   const profile = await getProfileByUserId(user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
-  if (!isAdmin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!profile?.has_new_platform_access) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const form = await req.formData();
   const kind = String(form.get("kind") ?? "");

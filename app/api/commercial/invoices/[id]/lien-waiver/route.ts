@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { assertCommercialAccess } from "@/lib/commercial/auth";
+import { getProfileByUserId } from "@/lib/auth/profile";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { attachInvoiceLienWaiver, removeInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
 
@@ -18,7 +18,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  await assertCommercialAccess(user.id);
+  // Non-redirecting access check — a route handler must return a JSON 403, not
+  // redirect (a 307 the client would mistake for success).
+  const profile = await getProfileByUserId(user.id);
+  if (!profile?.has_new_platform_access) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const form = await req.formData();
 

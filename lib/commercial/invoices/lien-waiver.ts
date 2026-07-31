@@ -65,7 +65,12 @@ export async function attachInvoiceLienWaiver(input: {
     .from("commercial_invoices")
     .update({ lien_waiver_document_id: uploaded.document.id })
     .eq("id", input.invoiceId);
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // Don't leave the freshly-uploaded doc orphaned in Documents if the link
+    // failed — retire it (best-effort) before surfacing the error.
+    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch(() => {});
+    return { ok: false, error: error.message };
+  }
 
   // Replace: retire the previous waiver doc so the Documents tab isn't cluttered
   // with stale copies (best-effort).

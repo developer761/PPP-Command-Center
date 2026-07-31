@@ -2,13 +2,12 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
-import { getProfileByUserId } from "@/lib/auth/profile";
-import { isAdminEmail } from "@/lib/auth/admin";
 import { revalidatePath } from "next/cache";
 import { getOperatingCompany, updateOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { BrandAssetUpload } from "@/components/commercial/brand-asset-upload";
+import { SignaturePad } from "@/components/commercial/signature-pad";
 
 /**
  * Operating Company — the single identity that flows into every generated
@@ -24,13 +23,12 @@ export const dynamic = "force-dynamic";
 const BASE = "/commercial/settings/operating-company";
 
 async function requireAdmin() {
+  // Roles are open for now (Karan 2026-07-31) — any commercial user can manage
+  // the operating company (so e.g. Brendan can set up his own signature).
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
-  const profile = await getProfileByUserId(user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
-  if (!isAdmin) redirect("/commercial");
   return user;
 }
 
@@ -148,9 +146,27 @@ export default async function OperatingCompanyPage({
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" /> Branding
         </h2>
         <p className="text-[11.5px] text-ppp-charcoal-500 mb-3">The logo appears on every generated PDF (proposals, invoices, transmittals, warranties, work orders). The signature is what &ldquo;Tap to sign&rdquo; drops onto documents that need a signature.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <BrandAssetUpload kind="logo" label="Logo / letterhead" hint="PNG, JPEG or WEBP · max 5 MB. Transparent PNG works best." hasAsset={!!c.logo_asset_key} />
-          <BrandAssetUpload kind="signature" label="Signature image" hint="PNG/JPEG of an authorized signature (e.g. Brendan's), used by Tap to sign." hasAsset={!!c.signature_asset_key} />
+
+          <div className="rounded-lg border border-ppp-charcoal-100 bg-surface p-3.5">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <span className="text-[12px] font-semibold text-ppp-charcoal">Signature</span>
+              {c.signature_asset_key && (
+                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wide text-emerald-700">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+                  On file
+                </span>
+              )}
+            </div>
+            <SignaturePad hasSignature={!!c.signature_asset_key} />
+            <details className="mt-3">
+              <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[36px] inline-flex items-center">Or upload a signature image / remove it</summary>
+              <div className="mt-2">
+                <BrandAssetUpload kind="signature" label="Signature image" hint="PNG/JPEG of a scanned signature — used the same way as a drawn one." hasAsset={!!c.signature_asset_key} />
+              </div>
+            </details>
+          </div>
         </div>
       </section>
     </div>

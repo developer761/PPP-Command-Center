@@ -58,7 +58,7 @@ export function LienWaiverUpload({
       </div>
 
       {hasWaiver && downloadHref && (
-        <a href={downloadHref} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-ppp-charcoal-50 min-h-[40px] group mb-1.5">
+        <a href={downloadHref} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-ppp-charcoal-50 min-h-[44px] group mb-1.5">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
           <span className="text-[12px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{fileName || "Download waiver"}</span>
         </a>
@@ -78,7 +78,7 @@ export function LienWaiverUpload({
             fd.append("file", f);
             void send(fd);
           }}
-          className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[40px] file:touch-manipulation cursor-pointer"
+          className="block text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[44px] file:touch-manipulation cursor-pointer"
         />
         {hasWaiver && (
           <button
@@ -89,7 +89,7 @@ export function LienWaiverUpload({
               fd.append("remove", "1");
               void send(fd);
             }}
-            className="text-[11.5px] font-medium text-ppp-charcoal-500 hover:text-rose-700 min-h-[40px] px-2"
+            className="text-[11.5px] font-medium text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] px-2"
           >
             Remove
           </button>
