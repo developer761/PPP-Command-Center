@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PPP_BRAND } from "@/lib/brand";
+import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
@@ -40,7 +41,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   let pdf: Buffer;
   try {
     const { renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
-    pdf = await renderWarrantyLetterPdf({ pkg, dealName, fromCompany: PPP_BRAND.name.replace("®", "").trim() });
+    const oc = await getOperatingCompany();
+    pdf = await renderWarrantyLetterPdf({ pkg, dealName, company: { name: oc.name, phone: oc.phone, website: oc.website } });
   } catch (err) {
     console.error("[closeout-warranty-pdf] render failed:", err);
     return NextResponse.json({ error: "pdf_render_failed" }, { status: 500 });

@@ -43,6 +43,7 @@ import {
   type CloseoutTransmittedAs,
 } from "@/lib/commercial/closeout/constants";
 import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
+import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
@@ -156,9 +157,10 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
     ]);
     if (!opp || !account) return;
     const dealName = derivedOppName(opp, account.company_name);
-    const fromCompany = "Precision Painting Plus";
+    const oc = await getOperatingCompany();
+    const company = { name: oc.name, phone: oc.phone, website: oc.website };
     const { renderCloseoutTransmittalPdf, renderWarrantyLetterPdf } = await import("@/lib/commercial/closeout/pdf");
-    const transmittal = await renderCloseoutTransmittalPdf({ pkg, items, dealName, fromCompany });
+    const transmittal = await renderCloseoutTransmittalPdf({ pkg, items, dealName, company });
     await autoFileOpportunityDocument({
       opportunityId: dealId,
       category: "closeout",
@@ -169,7 +171,7 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
       actorUserId: userId,
     });
     if (pkg.warranty_years && pkg.warranty_years > 0) {
-      const warranty = await renderWarrantyLetterPdf({ pkg, dealName, fromCompany });
+      const warranty = await renderWarrantyLetterPdf({ pkg, dealName, company });
       await autoFileOpportunityDocument({
         opportunityId: dealId,
         category: "closeout",

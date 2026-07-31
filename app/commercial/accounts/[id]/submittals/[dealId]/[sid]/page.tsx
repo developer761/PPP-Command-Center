@@ -10,6 +10,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { PPP_BRAND } from "@/lib/brand";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
+import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import {
@@ -482,7 +483,7 @@ async function autoFileSubmittalTransmittal(accountId: string, opportunityId: st
       items,
       opp,
       accountName: account?.company_name ?? null,
-      fromCompany: PPP_BRAND.name.replace("®", "").trim(),
+      fromCompany: (await getOperatingCompany()).name,
     });
     const subLabel = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${submittal.revision_number > 0 ? `_Rev${submittal.revision_number}` : ""}`;
     await autoFileOpportunityDocument({

@@ -1,7 +1,6 @@
 import "server-only";
 
 import { Document, Page, View, Text, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
-import { PPP_BRAND } from "@/lib/brand";
 import * as React from "react";
 import {
   CLOSEOUT_ITEM_KIND_LABEL,
@@ -59,25 +58,28 @@ function fmtDate(ymd: string | null): string {
   return `${months[parseInt(m[2], 10) - 1]} ${parseInt(m[3], 10)}, ${m[1]}`;
 }
 
-function LogoBlock({ from }: { from: string }) {
-  const website = PPP_BRAND.contact.website.replace(/^https?:\/\//, "").replace(/\/$/, "");
+export type CompanyContact = { name: string; phone?: string | null; website?: string | null };
+
+function LogoBlock({ company }: { company: CompanyContact }) {
+  const website = (company.website ?? "").replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const contact = [company.phone, website].filter(Boolean).join("   ·   ");
   return (
     <View>
-      <Text style={styles.wordmark}>{from}</Text>
-      <Text style={styles.tagline}>{PPP_BRAND.tagline}</Text>
-      <Text style={styles.contact}>{PPP_BRAND.contact.phone}   ·   {website}</Text>
+      <Text style={styles.wordmark}>{company.name}</Text>
+      {contact ? <Text style={styles.contact}>{contact}</Text> : null}
       <View style={styles.rule} />
     </View>
   );
 }
 
-function TransmittalDoc({ pkg, items, dealName, fromCompany }: { pkg: PkgInput; items: ItemInput[]; dealName: string; fromCompany: string }) {
+function TransmittalDoc({ pkg, items, dealName, company }: { pkg: PkgInput; items: ItemInput[]; dealName: string; company: CompanyContact }) {
+  const fromCompany = company.name;
   const included = items.filter((i) => i.included);
   const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
-        <LogoBlock from={fromCompany} />
+        <LogoBlock company={company} />
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
             <Text style={styles.label}>Transmitted to</Text>
@@ -133,14 +135,15 @@ function TransmittalDoc({ pkg, items, dealName, fromCompany }: { pkg: PkgInput; 
   );
 }
 
-function WarrantyDoc({ pkg, dealName, fromCompany }: { pkg: PkgInput; dealName: string; fromCompany: string }) {
+function WarrantyDoc({ pkg, dealName, company }: { pkg: PkgInput; dealName: string; company: CompanyContact }) {
+  const fromCompany = company.name;
   const start = pkg.substantial_completion_date;
   const end = computeWarrantyEndDate(start, pkg.warranty_years);
   const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
-        <LogoBlock from={fromCompany} />
+        <LogoBlock company={company} />
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
             <Text style={styles.bold}>{pkg.to_company || "—"}</Text>
@@ -183,10 +186,10 @@ function WarrantyDoc({ pkg, dealName, fromCompany }: { pkg: PkgInput; dealName: 
   );
 }
 
-export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; fromCompany: string }): Promise<Buffer> {
+export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; company: CompanyContact }): Promise<Buffer> {
   return renderToBuffer(<TransmittalDoc {...input} />);
 }
 
-export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; fromCompany: string }): Promise<Buffer> {
+export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; company: CompanyContact }): Promise<Buffer> {
   return renderToBuffer(<WarrantyDoc {...input} />);
 }

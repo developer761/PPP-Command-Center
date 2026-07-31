@@ -31,6 +31,7 @@ import {
 import { AIA_STATUS_META, DEFAULT_RETAINAGE_PCT, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { buildAiaWorkbookBuffer } from "@/lib/commercial/aia/export";
 import { autoFileOpportunityDocument, safeDocName, sentStampNote } from "@/lib/commercial/documents/auto-file";
+import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { AiaApplicationDetail } from "@/components/commercial/aia-application-detail";
 import type { AiaLineSaveResult } from "@/components/commercial/aia-line-row";
 import { AiaSettingsForm } from "@/components/commercial/aia-settings-form";
@@ -197,7 +198,7 @@ async function autoFileAiaApplication(accountId: string, dealId: string, appId: 
       g702,
       projectLabel,
       ownerLabel: account.company_name,
-      contractorLabel: "Precision Painting Plus",
+      contractorLabel: (await getOperatingCompany()).name,
     });
     await autoFileOpportunityDocument({
       opportunityId: dealId,

@@ -6,6 +6,7 @@ import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { getAiaApplication, listAiaLineItems, resolveG702 } from "@/lib/commercial/aia/db";
 import { buildAiaWorkbookBuffer } from "@/lib/commercial/aia/export";
+import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 
 /**
  * GET /api/commercial/aia/<applicationId>/export
@@ -47,7 +48,7 @@ export async function GET(
     projectLabel,
     ownerLabel: account.company_name,
     // PPP is the contractor submitting the application.
-    contractorLabel: "Precision Painting Plus",
+    contractorLabel: (await getOperatingCompany()).name,
   });
 
   const safeName = `AIA_App_${application.application_number}_${dealName}`
