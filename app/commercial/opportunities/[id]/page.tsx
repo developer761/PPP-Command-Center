@@ -1896,6 +1896,10 @@ async function OpportunityInvoicesPanel({
   const nonVoid = invoices.filter((i) => i.status !== "void");
   const issued = nonVoid.filter((i) => i.status !== "draft");
   const totalInvoicedCents = issued.reduce((acc, i) => acc + i.total_cents, 0);
+  // Pre-tax billed for CONTRACT math (% of contract). Contract figures carry no
+  // tax, so comparing the tax-inclusive invoiced total against them overstates
+  // "% of contract billed" on any taxed invoice. AR figures below stay with-tax.
+  const issuedSubtotalCents = issued.reduce((acc, i) => acc + i.subtotal_cents, 0);
   const totalPaidCents = issued.reduce((acc, i) => acc + i.paid_cents, 0);
   const totalBalanceCents = totalInvoicedCents - totalPaidCents;
   const draftInvoices = invoices.filter((i) => i.status === "draft");
@@ -1918,7 +1922,7 @@ async function OpportunityInvoicesPanel({
       : anyOverdue
       ? "bg-rose-500"
       : totalPaidCents > 0
-      ? "bg-cc-brand-500"
+      ? "bg-ppp-blue-500"
       : "bg-ppp-charcoal-300";
   // % of contract billed — how much of the CONTRACT TO DATE (original/SOV +
   // approved change orders, via the shared ladder) have we actually invoiced?
@@ -1927,7 +1931,7 @@ async function OpportunityInvoicesPanel({
   const contractDenomCents = contractToDateCents > 0 ? contractToDateCents : bidMidpointCents ?? 0;
   const pctBilled =
     contractDenomCents > 0
-      ? Math.round((totalInvoicedCents / contractDenomCents) * 100)
+      ? Math.round((issuedSubtotalCents / contractDenomCents) * 100)
       : null;
   return (
     <div className="space-y-3">
@@ -2047,7 +2051,7 @@ async function OpportunityInvoicesPanel({
               <MiniStat
                 label="% of contract"
                 value={`${pctBilled}%`}
-                tone={pctBilled > 100 ? "cc-brand" : "blue"}
+                tone={pctBilled > 100 ? "amber" : "blue"}
               />
             )}
           </div>
@@ -2543,7 +2547,7 @@ async function OpportunityInvoicesPanel({
   );
 }
 
-function MiniStat({ label, value, tone }: { label: string; value: string; tone: "cc-brand" | "emerald" | "blue" | "neutral" }) {
+function MiniStat({ label, value, tone }: { label: string; value: string; tone: "cc-brand" | "emerald" | "blue" | "amber" | "neutral" }) {
   const cls =
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-cc-brand-50/50"
@@ -2551,6 +2555,8 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
       ? "border-emerald-200 bg-emerald-50/50"
       : tone === "blue"
       ? "border-ppp-blue-200 bg-ppp-blue-50/50"
+      : tone === "amber"
+      ? "border-amber-200 bg-amber-50/50"
       : "border-ppp-charcoal-200 bg-ppp-charcoal-50/50";
   return (
     <div className={`border rounded-lg px-3 py-2 ${cls}`}>

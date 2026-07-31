@@ -6339,7 +6339,7 @@ async function AccountInvoicesTab({
               : dealOverdue
               ? "bg-rose-500"
               : dealPaid > 0
-              ? "bg-amber-500"
+              ? "bg-ppp-blue-500"
               : "bg-ppp-charcoal-300";
             return (
               <section

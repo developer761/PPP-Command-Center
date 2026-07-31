@@ -474,7 +474,11 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   const billedByProposal = new Map<string, number>();
   for (const inv of invoicesRaw) {
     if (!inv.proposal_id || inv.status === "draft" || inv.status === "void") continue;
-    billedByProposal.set(inv.proposal_id, (billedByProposal.get(inv.proposal_id) ?? 0) + inv.total_cents);
+    // Contract math is PRE-TAX: proposal total_cents = Σ qty×unit_price (no tax),
+    // so bill-against-proposal must compare against invoice SUBTOTAL, not the
+    // tax-inclusive total — else a taxed invoice looks like it over-billed the
+    // contract and remaining-to-bill under-reports.
+    billedByProposal.set(inv.proposal_id, (billedByProposal.get(inv.proposal_id) ?? 0) + inv.subtotal_cents);
   }
   await Promise.all(
     [...ctxOppIds].map(async (oppId) => {

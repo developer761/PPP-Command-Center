@@ -656,7 +656,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         .sort((a, b) => a.created_at.localeCompare(b.created_at))
     : [];
   const proposalIssuedSiblings = proposalSiblings.filter((s) => s.status !== "draft");
-  const billedAgainstProposalCents = proposalIssuedSiblings.reduce((s, i) => s + i.total_cents, 0);
+  // Contract math is PRE-TAX (proposal total = Σ line items, no tax), so bill-
+  // against-proposal sums invoice SUBTOTALS — using tax-inclusive totals would
+  // overstate "billed of contract" on any taxed invoice.
+  const billedAgainstProposalCents = proposalIssuedSiblings.reduce((s, i) => s + i.subtotal_cents, 0);
   const proposalContractCents = invoice.proposal_total_cents_at_bill ?? linkedProposal?.total_cents ?? null;
   const thisInvoiceProposalIndex = proposalSiblings.findIndex((s) => s.id === invoice.id);
   // Karan 2026-07-07: sibling-invoice nav. If this opp has multiple

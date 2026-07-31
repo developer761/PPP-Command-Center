@@ -671,7 +671,10 @@ export default async function ProposalEditorPage({
   const issuedForProposal = proposalInvoices.filter(
     (inv) => inv.proposal_id === proposalId && inv.status !== "draft" && inv.status !== "void",
   );
-  const billedCents = issuedForProposal.reduce((s, inv) => s + inv.total_cents, 0);
+  // Contract math is PRE-TAX (proposal total + CO amounts carry no tax), so
+  // "billed of contract" sums invoice SUBTOTALS — tax-inclusive totals would
+  // inflate billedPct and falsely trip overBilled on any taxed invoice.
+  const billedCents = issuedForProposal.reduce((s, inv) => s + inv.subtotal_cents, 0);
   const netCoForProposal = dealChangeOrders
     .filter((c) => c.status === "approved" && c.proposal_id === proposalId)
     .reduce((s, c) => s + c.amount_cents, 0);
@@ -987,7 +990,7 @@ export default async function ProposalEditorPage({
             </div>
           </div>
           <div className="mt-3 h-2 rounded-full bg-ppp-charcoal-200/70 overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${overBilled ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${billedPct}%` }} aria-label={`${billedPct}% billed`} />
+            <div className={`h-full rounded-full transition-all ${overBilled ? "bg-amber-500" : "bg-ppp-blue-500"}`} style={{ width: `${billedPct}%` }} aria-label={`${billedPct}% billed`} />
           </div>
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-[11px] text-ppp-charcoal-500">{proposal.status === "won" ? "Accepted contract" : "Not yet accepted"}</span>
