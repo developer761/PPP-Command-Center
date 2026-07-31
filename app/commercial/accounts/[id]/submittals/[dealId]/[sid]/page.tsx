@@ -478,12 +478,14 @@ async function autoFileSubmittalTransmittal(accountId: string, opportunityId: st
     const opp = oppRow as { title: string; ppp_job_number: string | null; client_name?: string | null; property_street?: string | null };
     const account = await getCommercialAccount(accountId);
     const { renderLetterOfTransmittalPdf } = await import("@/lib/commercial/opportunities/submittal-pdf");
+    const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
     const pdf = await renderLetterOfTransmittalPdf({
       submittal,
       items,
       opp,
       accountName: account?.company_name ?? null,
       fromCompany: (await getOperatingCompany()).name,
+      logo: await getBrandLogoBuffer(),
     });
     const subLabel = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${submittal.revision_number > 0 ? `_Rev${submittal.revision_number}` : ""}`;
     await autoFileOpportunityDocument({

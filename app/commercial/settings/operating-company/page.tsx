@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { getOperatingCompany, updateOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { BrandAssetUpload } from "@/components/commercial/brand-asset-upload";
 
 /**
  * Operating Company — the single identity that flows into every generated
@@ -133,16 +134,25 @@ export default async function OperatingCompanyPage({
           </div>
         </section>
 
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-ppp-charcoal-200 bg-ppp-charcoal-50/40 px-4 py-3">
-          <p className="text-[11.5px] text-ppp-charcoal-500">Logo, letterhead &amp; signature image upload arrive in the next update — they&rsquo;ll render on every PDF.</p>
-        </div>
-
         <div className="flex justify-end">
           <PendingSubmitButton className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation" pendingLabel="Saving…">
             Save company identity
           </PendingSubmitButton>
         </div>
       </form>
+
+      {/* Branding assets — self-submitting uploaders (outside the identity form
+          so they don't nest). Render on every generated PDF. */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <h2 className="text-[13px] font-bold text-ppp-charcoal mb-1 flex items-center gap-2">
+          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" /> Branding
+        </h2>
+        <p className="text-[11.5px] text-ppp-charcoal-500 mb-3">The logo appears on every generated PDF (proposals, invoices, transmittals, warranties, work orders). The signature is what &ldquo;Tap to sign&rdquo; drops onto documents that need a signature.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <BrandAssetUpload kind="logo" label="Logo / letterhead" hint="PNG, JPEG or WEBP · max 5 MB. Transparent PNG works best." hasAsset={!!c.logo_asset_key} />
+          <BrandAssetUpload kind="signature" label="Signature image" hint="PNG/JPEG of an authorized signature (e.g. Brendan's), used by Tap to sign." hasAsset={!!c.signature_asset_key} />
+        </div>
+      </section>
     </div>
   );
 }

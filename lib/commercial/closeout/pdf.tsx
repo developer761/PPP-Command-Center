@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Document, Page, View, Text, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
 import * as React from "react";
 import {
   CLOSEOUT_ITEM_KIND_LABEL,
@@ -17,6 +17,7 @@ Font.registerHyphenationCallback((word) => [word]);
 const styles = StyleSheet.create({
   page: { paddingTop: 54, paddingBottom: 54, paddingHorizontal: 54, fontSize: 10, fontFamily: "Helvetica", color: "#1f2937", lineHeight: 1.4 },
   wordmark: { fontSize: 18, fontFamily: "Helvetica-Bold", letterSpacing: 1, textAlign: "center", color: "#172B4D" },
+  logoImage: { height: 42, objectFit: "contain", alignSelf: "center", marginBottom: 2 },
   tagline: { fontSize: 8, textAlign: "center", color: "#6b7280", marginTop: 3, fontFamily: "Helvetica-Oblique" },
   contact: { fontSize: 7.5, textAlign: "center", color: "#9ca3af", marginTop: 3, letterSpacing: 0.3 },
   rule: { borderBottomWidth: 2, borderBottomColor: "#EE662E", marginTop: 12, marginBottom: 18 },
@@ -60,26 +61,30 @@ function fmtDate(ymd: string | null): string {
 
 export type CompanyContact = { name: string; phone?: string | null; website?: string | null };
 
-function LogoBlock({ company }: { company: CompanyContact }) {
+function LogoBlock({ company, logo }: { company: CompanyContact; logo?: Buffer | null }) {
   const website = (company.website ?? "").replace(/^https?:\/\//, "").replace(/\/$/, "");
   const contact = [company.phone, website].filter(Boolean).join("   ·   ");
   return (
     <View>
-      <Text style={styles.wordmark}>{company.name}</Text>
+      {logo ? (
+        <Image src={logo} style={styles.logoImage} />
+      ) : (
+        <Text style={styles.wordmark}>{company.name}</Text>
+      )}
       {contact ? <Text style={styles.contact}>{contact}</Text> : null}
       <View style={styles.rule} />
     </View>
   );
 }
 
-function TransmittalDoc({ pkg, items, dealName, company }: { pkg: PkgInput; items: ItemInput[]; dealName: string; company: CompanyContact }) {
+function TransmittalDoc({ pkg, items, dealName, company, logo }: { pkg: PkgInput; items: ItemInput[]; dealName: string; company: CompanyContact; logo?: Buffer | null }) {
   const fromCompany = company.name;
   const included = items.filter((i) => i.included);
   const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
-        <LogoBlock company={company} />
+        <LogoBlock company={company} logo={logo} />
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
             <Text style={styles.label}>Transmitted to</Text>
@@ -135,7 +140,7 @@ function TransmittalDoc({ pkg, items, dealName, company }: { pkg: PkgInput; item
   );
 }
 
-function WarrantyDoc({ pkg, dealName, company }: { pkg: PkgInput; dealName: string; company: CompanyContact }) {
+function WarrantyDoc({ pkg, dealName, company, logo }: { pkg: PkgInput; dealName: string; company: CompanyContact; logo?: Buffer | null }) {
   const fromCompany = company.name;
   const start = pkg.substantial_completion_date;
   const end = computeWarrantyEndDate(start, pkg.warranty_years);
@@ -143,7 +148,7 @@ function WarrantyDoc({ pkg, dealName, company }: { pkg: PkgInput; dealName: stri
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
-        <LogoBlock company={company} />
+        <LogoBlock company={company} logo={logo} />
         <View style={styles.row}>
           <View style={{ width: "60%" }}>
             <Text style={styles.bold}>{pkg.to_company || "—"}</Text>
@@ -186,10 +191,10 @@ function WarrantyDoc({ pkg, dealName, company }: { pkg: PkgInput; dealName: stri
   );
 }
 
-export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; company: CompanyContact }): Promise<Buffer> {
+export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; company: CompanyContact; logo?: Buffer | null }): Promise<Buffer> {
   return renderToBuffer(<TransmittalDoc {...input} />);
 }
 
-export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; company: CompanyContact }): Promise<Buffer> {
+export async function renderWarrantyLetterPdf(input: { pkg: PkgInput; dealName: string; company: CompanyContact; logo?: Buffer | null }): Promise<Buffer> {
   return renderToBuffer(<WarrantyDoc {...input} />);
 }

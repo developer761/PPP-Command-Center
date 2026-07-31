@@ -42,8 +42,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   let pdf: Buffer;
   try {
     const { renderCloseoutTransmittalPdf } = await import("@/lib/commercial/closeout/pdf");
+    const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
     const oc = await getOperatingCompany();
-    pdf = await renderCloseoutTransmittalPdf({ pkg, items, dealName, company: { name: oc.name, phone: oc.phone, website: oc.website } });
+    pdf = await renderCloseoutTransmittalPdf({ pkg, items, dealName, company: { name: oc.name, phone: oc.phone, website: oc.website }, logo: await getBrandLogoBuffer() });
   } catch (err) {
     console.error("[closeout-transmittal-pdf] render failed:", err);
     return NextResponse.json({ error: "pdf_render_failed" }, { status: 500 });

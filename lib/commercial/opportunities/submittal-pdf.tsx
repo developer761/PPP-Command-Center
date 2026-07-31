@@ -5,6 +5,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
   renderToBuffer,
   Font,
@@ -80,6 +81,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: colors.brand,
   },
+  logoImage: { height: 34, objectFit: "contain", marginBottom: 2 },
   brand: {
     fontSize: 11,
     fontFamily: "Helvetica-Bold",
@@ -304,7 +306,8 @@ type SubmittalPdfInput = {
     property_street?: string | null;
   };
   accountName?: string | null;
-  fromCompany: string; // PPP entity name — hardcoded for now, could be tenant-configurable
+  fromCompany: string; // operating-company name (Tomco) — from getOperatingCompany()
+  logo?: Buffer | null; // operating-company logo; falls back to the text brand
 };
 
 // Source-of-truth arrays come from submittal-constants.ts. Don't
@@ -327,7 +330,7 @@ function safeDateLabel(value: string | null | undefined, fmt: Intl.DateTimeForma
   return d.toLocaleDateString("en-US", { timeZone: "America/New_York", ...fmt });
 }
 
-function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromCompany }: SubmittalPdfInput) {
+function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromCompany, logo }: SubmittalPdfInput) {
   const issueDate = submittal.sent_at ?? submittal.created_at;
   const dateLabel = safeDateLabel(issueDate, { year: "numeric", month: "long", day: "numeric" });
   const submittalNumber = `SUB-${String(submittal.submittal_number).padStart(3, "0")}${
@@ -376,8 +379,14 @@ function LetterOfTransmittalDocument({ submittal, items, opp, accountName, fromC
         {/* Header band */}
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.brand}>{fromCompany.toUpperCase()}</Text>
-            <Text style={styles.brandSub}>Commercial Painting</Text>
+            {logo ? (
+              <Image src={logo} style={styles.logoImage} />
+            ) : (
+              <>
+                <Text style={styles.brand}>{fromCompany.toUpperCase()}</Text>
+                <Text style={styles.brandSub}>Commercial Painting</Text>
+              </>
+            )}
           </View>
           <View style={styles.titleBlock}>
             <Text style={styles.title}>Letter of Transmittal</Text>

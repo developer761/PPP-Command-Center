@@ -104,15 +104,15 @@ export async function GET(
     const { renderLetterOfTransmittalPdf } = await import(
       "@/lib/commercial/opportunities/submittal-pdf"
     );
+    const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
     pdfBuffer = await renderLetterOfTransmittalPdf({
       submittal,
       items,
       opp,
       accountName,
-      // PPP entity name — sourced from lib/brand.ts (single source of
-      // truth, audit backend M2). Strip the ® for PDF rendering so it
-      // doesn't show as a fallback glyph in Helvetica.
+      // Operating-company identity (Tomco) — single source via getOperatingCompany().
       fromCompany: (await getOperatingCompany()).name,
+      logo: await getBrandLogoBuffer(),
     });
   } catch (err) {
     console.error("[submittal-pdf] render failed:", err);
