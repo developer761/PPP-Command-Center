@@ -5951,16 +5951,16 @@ function AccountOverviewStrip({
           tone="emerald"
         />
         <MoneyTile
-          label="Balance"
-          value={formatCentsCompact(invoiceRollup.balance_cents)}
-          sub={balanceCountLabel}
+          label={invoiceRollup.balance_cents < 0 ? "Credit" : "Balance"}
+          value={formatCentsCompact(Math.abs(invoiceRollup.balance_cents))}
+          sub={invoiceRollup.balance_cents < 0 ? "overpaid" : balanceCountLabel}
           subTone={invoiceRollup.overdue_count > 0 ? "rose" : "muted"}
           href={
             invoiceRollup.overdue_count > 0
               ? `/commercial/invoices?account_id=${accountId}&status=overdue`
               : `/commercial/invoices?account_id=${accountId}&status=sent`
           }
-          tone={invoiceRollup.balance_cents > 0 ? "blue" : "muted"}
+          tone={invoiceRollup.balance_cents < 0 ? "emerald" : invoiceRollup.balance_cents > 0 ? "blue" : "muted"}
         />
       </div>
 
@@ -6287,7 +6287,7 @@ async function AccountInvoicesTab({
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
         <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={`${paidPct}% collected`} tone="emerald" />
-        <RollupTile label="Balance" value={formatCentsFull(rollup.balance_cents)} sub={rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents > 0 ? "warn" : "neutral"} />
+        <RollupTile label={rollup.balance_cents < 0 ? "Credit" : "Balance"} value={formatCentsFull(Math.abs(rollup.balance_cents))} sub={rollup.balance_cents < 0 ? "overpaid" : rollup.balance_cents === 0 ? "settled" : "unpaid"} tone={rollup.balance_cents < 0 ? "emerald" : rollup.balance_cents > 0 ? "warn" : "neutral"} />
         <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : rollup.overdue_count === 1 ? "invoice past due" : "invoices past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
       </section>
 
@@ -6378,6 +6378,13 @@ async function AccountInvoicesTab({
                               {formatCentsFull(dealBalance)}
                             </strong>{" "}
                             owed
+                          </span>
+                        )}
+                        {dealBalance < 0 && (
+                          <span className="text-ppp-charcoal-500">
+                            {" · "}
+                            <strong className="text-emerald-700">{formatCentsFull(-dealBalance)}</strong>{" "}
+                            credit
                           </span>
                         )}
                       </div>

@@ -2043,9 +2043,9 @@ async function OpportunityInvoicesPanel({
             <MiniStat label="Invoiced" value={formatCentsCompact(totalInvoicedCents)} tone="neutral" />
             <MiniStat label="Paid" value={formatCentsCompact(totalPaidCents)} tone="emerald" />
             <MiniStat
-              label="Balance"
-              value={formatCentsCompact(totalBalanceCents)}
-              tone={totalBalanceCents > 0 ? "blue" : "neutral"}
+              label={totalBalanceCents < 0 ? "Credit" : "Balance"}
+              value={formatCentsCompact(Math.abs(totalBalanceCents))}
+              tone={totalBalanceCents < 0 ? "emerald" : totalBalanceCents > 0 ? "blue" : "neutral"}
             />
             {pctBilled !== null && (
               <MiniStat

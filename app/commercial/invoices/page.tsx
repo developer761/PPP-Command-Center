@@ -1499,6 +1499,12 @@ function GroupedByOpp({
                       <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
                     </>
                   )}
+                  {totalBalance < 0 && (
+                    <>
+                      <span className="text-ppp-charcoal-300"> · </span>
+                      <span className="text-emerald-700 font-medium">{formatCentsFull(-totalBalance)} credit</span>
+                    </>
+                  )}
                   {totalPaid > 0 && (
                     <>
                       <span className="text-ppp-charcoal-300"> · </span>
@@ -1661,6 +1667,12 @@ function GroupedByOpp({
                         <>
                           <span className="text-ppp-charcoal-300"> · </span>
                           <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
+                        </>
+                      )}
+                      {totalBalance < 0 && (
+                        <>
+                          <span className="text-ppp-charcoal-300"> · </span>
+                          <span className="text-emerald-700 font-medium">{formatCentsFull(-totalBalance)} credit</span>
                         </>
                       )}
                       {totalPaid > 0 && (
@@ -2039,8 +2051,8 @@ function FullDetailByOpp({
                   <div className={`border rounded-lg px-2.5 py-1.5 ${
                     totalBalance > 0 ? "border-cc-brand-200 bg-cc-brand-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
                   }`}>
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Balance</div>
-                    <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance)}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{totalBalance < 0 ? "Credit" : "Balance"}</div>
+                    <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(Math.abs(totalBalance))}</div>
                   </div>
                 </div>
               )}
