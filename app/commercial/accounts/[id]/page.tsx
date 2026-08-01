@@ -240,6 +240,11 @@ type SP = Promise<{
   /** Phase 2 Costs & P&L tool. */
   cost_ok?: string;
   edit_purchase?: string;
+  pu_cat?: string;
+  pu_vendor?: string;
+  pu_amt?: string;
+  pu_date?: string;
+  pu_desc?: string;
 }>;
 /** Resolved (awaited) shape of SP — passed to the inline Project tools. */
 type SPShape = Awaited<SP>;
@@ -951,7 +956,7 @@ async function AccountProjectsTab({ accountId, projectId, dealTab: dealTabRaw = 
   // rather than rendering just the header with a blank panel below it.
   const dealTab = ["overview", "proposals", "invoices", "project", "documents"].includes(dealTabRaw) ? dealTabRaw : "overview";
   // Normalize the Project sub-tab tool the same way.
-  const projectTool = ["change-orders", "aia", "submittals", "closeout"].includes(projectToolRaw) ? projectToolRaw : "change-orders";
+  const projectTool = ["change-orders", "aia", "costs", "submittals", "closeout"].includes(projectToolRaw) ? projectToolRaw : "change-orders";
   // Drill-in: one deal's home, folded under the account. EVERY deal — a bid or
   // a Won job — opens the same full project view (allDeals:true), so the tools
   // + invoicing are never gated on Won. Nothing is locked.
@@ -1529,7 +1534,17 @@ async function ProjectToolsPanel({
           id={accountId}
           dealId={dealId}
           variant="inline"
-          sp={{ cost_ok: sp?.cost_ok, error: sp?.error, edit_purchase: sp?.edit_purchase }}
+          sp={{
+            cost_ok: sp?.cost_ok,
+            error: sp?.error,
+            heads_up: sp?.heads_up,
+            edit_purchase: sp?.edit_purchase,
+            pu_cat: sp?.pu_cat,
+            pu_vendor: sp?.pu_vendor,
+            pu_amt: sp?.pu_amt,
+            pu_date: sp?.pu_date,
+            pu_desc: sp?.pu_desc,
+          }}
         />
       )}
       {projectTool === "closeout" && (

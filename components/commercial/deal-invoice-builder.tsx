@@ -85,8 +85,8 @@ export function DealInvoiceBuilder({
   }
 
   return (
-    <details className="group bg-cc-brand-50/40 border border-cc-brand-200 rounded-xl">
-      <summary className="list-none cursor-pointer flex items-center gap-2 px-4 py-3 min-h-[44px] text-[13px] font-semibold text-cc-brand-800 select-none">
+    <details className="group bg-ppp-blue-50/40 border border-ppp-blue-200 rounded-xl">
+      <summary className="list-none cursor-pointer flex items-center gap-2 px-4 py-3 min-h-[44px] text-[13px] font-semibold text-ppp-blue-800 select-none">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-45"><path d="M12 5v14 M5 12h14" /></svg>
         New invoice for this deal
       </summary>
@@ -96,10 +96,10 @@ export function DealInvoiceBuilder({
         <input type="hidden" name="mode" value={mode} />
 
         {/* Running invoice total — always visible at the TOP. */}
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-cc-brand-200 bg-surface px-4 py-2.5">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-ppp-blue-200 bg-surface px-4 py-2.5">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-ppp-charcoal-500">Invoice total</div>
-            <div className="font-condensed text-2xl font-black leading-none tabular-nums text-cc-brand-800">{fmtUSD(liveTotal)}</div>
+            <div className="font-condensed text-2xl font-black leading-none tabular-nums text-ppp-blue-800">{fmtUSD(liveTotal)}</div>
           </div>
           {mode === "milestones" && (
             <div className="text-right text-[11px] text-ppp-charcoal-500">
@@ -110,13 +110,13 @@ export function DealInvoiceBuilder({
         </div>
 
         {/* Mode toggle — flat amount vs a milestone breakdown. */}
-        <div className="inline-flex rounded-lg border border-cc-brand-200 bg-surface p-0.5 text-[12px] font-semibold">
+        <div className="inline-flex rounded-lg border border-ppp-blue-200 bg-surface p-0.5 text-[12px] font-semibold">
           {(["flat", "milestones"] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
-              className={`px-3 py-1.5 rounded-md min-h-[44px] touch-manipulation transition-colors ${mode === m ? "bg-cc-brand-600 text-white" : "text-ppp-charcoal-600 hover:text-ppp-charcoal"}`}
+              className={`px-3 py-1.5 rounded-md min-h-[44px] touch-manipulation transition-colors ${mode === m ? "bg-ppp-blue-600 text-white" : "text-ppp-charcoal-600 hover:text-ppp-charcoal"}`}
             >
               {m === "flat" ? "One amount" : "Break into milestones"}
             </button>
@@ -139,7 +139,7 @@ export function DealInvoiceBuilder({
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="dni-waiver" className={LABEL_CLS}>Signed lien waiver (optional)</label>
-              <input id="dni-waiver" name="flat_waiver" type="file" accept={WAIVER_ACCEPT} className="block w-full text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-cc-brand-600 file:text-white hover:file:bg-cc-brand-700 file:min-h-[40px] cursor-pointer" />
+              <input id="dni-waiver" name="flat_waiver" type="file" accept={WAIVER_ACCEPT} className="block w-full text-[12px] text-ppp-charcoal-600 file:mr-3 file:py-2 file:px-3.5 file:rounded-lg file:border-0 file:text-[12px] file:font-semibold file:bg-ppp-blue-600 file:text-white hover:file:bg-ppp-blue-700 file:min-h-[40px] cursor-pointer" />
               <p className="text-[10.5px] text-ppp-charcoal-400 mt-1">You can also add it later from the invoice — waivers usually arrive after billing.</p>
             </div>
           </div>
@@ -155,16 +155,16 @@ export function DealInvoiceBuilder({
                   {Math.abs(remainingToAllocate) < 0.005 ? "fully allocated" : remainingToAllocate > 0 ? <><strong className="tabular-nums">{fmtUSD(remainingToAllocate)}</strong> left to allocate</> : <><strong className="tabular-nums">{fmtUSD(-remainingToAllocate)}</strong> over</>}
                 </span>
                 {remainingToAllocate > 0.005 && (
-                  <button type="button" onClick={() => addRow(remainingToAllocate)} className="shrink-0 font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] px-1">Fill remaining →</button>
+                  <button type="button" onClick={() => addRow(remainingToAllocate)} className="shrink-0 font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[44px] px-1">Fill remaining →</button>
                 )}
               </div>
             )}
             <input type="hidden" name="ms_count" value={rows.length} />
             <div className="space-y-2">
               {rows.map((r, i) => (
-                <div key={i} className="rounded-lg border border-cc-brand-200/70 bg-surface p-2.5">
+                <div key={i} className="rounded-lg border border-ppp-blue-200/70 bg-surface p-2.5">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-[10.5px] font-bold uppercase tracking-wide text-cc-brand-700">Milestone {i + 1}</span>
+                    <span className="text-[10.5px] font-bold uppercase tracking-wide text-ppp-blue-700">Milestone {i + 1}</span>
                     {rows.length > 1 && (
                       <button type="button" onClick={() => removeRow(i)} className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] px-1.5" aria-label={`Remove milestone ${i + 1}`}>Remove</button>
                     )}
@@ -181,7 +181,7 @@ export function DealInvoiceBuilder({
                 </div>
               ))}
             </div>
-            <button type="button" onClick={() => addRow()} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[40px]">
+            <button type="button" onClick={() => addRow()} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[40px]">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
               Add milestone
             </button>
@@ -210,12 +210,12 @@ export function DealInvoiceBuilder({
         {taxNote && <p className="text-[10.5px] text-ppp-charcoal-500">{taxNote}</p>}
 
         {/* Create — right under everything, per Karan. */}
-        <div className="flex items-center justify-between gap-3 flex-wrap border-t border-cc-brand-200/60 pt-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap border-t border-ppp-blue-200/60 pt-3">
           <div className="text-[12px] text-ppp-charcoal-600">
             <span className="font-semibold text-ppp-charcoal">Total </span>
-            <span className="font-bold tabular-nums text-cc-brand-800">{fmtUSD(liveTotal)}</span>
+            <span className="font-bold tabular-nums text-ppp-blue-800">{fmtUSD(liveTotal)}</span>
           </div>
-          <PendingSubmitButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation disabled:opacity-60" pendingLabel="Creating…">
+          <PendingSubmitButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation disabled:opacity-60" pendingLabel="Creating…">
             Create invoice
           </PendingSubmitButton>
         </div>

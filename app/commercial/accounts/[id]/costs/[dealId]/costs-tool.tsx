@@ -38,6 +38,12 @@ export type CostsSP = {
   heads_up?: string;
   edit_purchase?: string;
   back?: string;
+  // Preserved add-form inputs after a validation error (audit M3).
+  pu_cat?: string;
+  pu_vendor?: string;
+  pu_amt?: string;
+  pu_date?: string;
+  pu_desc?: string;
 };
 
 async function requireCommercialUser(): Promise<string> {
@@ -88,6 +94,13 @@ async function readReceiptFile(formData: FormData): Promise<{ file_name: string;
   return { file_name: f.name || "receipt.pdf", mime_type: f.type || "application/octet-stream", data: new Uint8Array(await f.arrayBuffer()) };
 }
 
+/** Today's ET calendar date (YYYY-MM-DD) — used to anchor a blank purchase date
+ *  at 16:00Z so display + edit-prefill agree (audit L6). */
+function etToday(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+const RECEIPT_FAILED_NOTE = "Purchase saved, but the receipt didn't upload — add it from Edit.";
+
 async function addPurchaseAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
@@ -101,28 +114,33 @@ async function addPurchaseAction(formData: FormData) {
   const rawAmount = String(formData.get("amount") ?? "");
   const rawDate = String(formData.get("purchased_at") ?? "");
   const description = String(formData.get("description") ?? "");
+  // Round-trip the typed values on a validation error (audit M3).
+  const preserve = { pu_cat: category, pu_vendor: vendor.slice(0, 200), pu_amt: rawAmount.slice(0, 40), pu_date: rawDate.slice(0, 10), pu_desc: description.slice(0, 1000) };
   const cents = parseDollarsToCents(rawAmount);
   if (cents === null || cents <= 0) {
-    costsRedirect(account_id, opp_id, { error: "Enter a purchase amount greater than $0." }, back);
+    costsRedirect(account_id, opp_id, { error: "Enter a purchase amount greater than $0.", ...preserve }, back);
   }
-  const purchased_at = rawDate ? new Date(`${rawDate}T16:00:00Z`).toISOString() : undefined;
+  // Blank date → today's ET date at 16:00Z (stable, matches the edit prefill).
+  const purchased_at = new Date(`${rawDate || etToday()}T16:00:00Z`).toISOString();
   const res = await addPurchase({
     opportunity_id: opp_id,
     category,
     vendor: vendor || null,
     amount_cents: cents!,
-    purchased_at: purchased_at ?? null,
+    purchased_at,
     description: description || null,
     created_by_user_id: userId,
   });
-  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error }, back);
-  // Optional receipt — best-effort, never blocks the purchase.
+  if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, ...preserve }, back);
+  // Optional receipt — best-effort, never blocks the purchase; warn if it fails.
   const receipt = await readReceiptFile(formData);
+  let receiptFailed = false;
   if (receipt) {
-    await attachPurchaseReceipt({ purchaseId: res.value.id, ...receipt, actorUserId: userId }).catch(() => {});
+    const r = await attachPurchaseReceipt({ purchaseId: res.value.id, ...receipt, actorUserId: userId }).catch(() => ({ ok: false as const }));
+    receiptFailed = !r.ok;
   }
   revalidateCostSurfaces(account_id, opp_id);
-  costsRedirect(account_id, opp_id, { cost_ok: "added" }, back);
+  costsRedirect(account_id, opp_id, { cost_ok: "added", ...(receiptFailed ? { heads_up: RECEIPT_FAILED_NOTE } : {}) }, back);
 }
 
 async function updatePurchaseAction(formData: FormData) {
@@ -157,11 +175,13 @@ async function updatePurchaseAction(formData: FormData) {
   );
   if (!res.ok) costsRedirect(account_id, opp_id, { error: res.error, edit_purchase: purchase_id }, back);
   const receipt = await readReceiptFile(formData);
+  let receiptFailed = false;
   if (receipt) {
-    await attachPurchaseReceipt({ purchaseId: purchase_id, ...receipt, actorUserId: userId }).catch(() => {});
+    const r = await attachPurchaseReceipt({ purchaseId: purchase_id, ...receipt, actorUserId: userId }).catch(() => ({ ok: false as const }));
+    receiptFailed = !r.ok;
   }
   revalidateCostSurfaces(account_id, opp_id);
-  costsRedirect(account_id, opp_id, { cost_ok: "saved" }, back);
+  costsRedirect(account_id, opp_id, { cost_ok: "saved", ...(receiptFailed ? { heads_up: RECEIPT_FAILED_NOTE } : {}) }, back);
 }
 
 async function deletePurchaseAction(formData: FormData) {
@@ -235,6 +255,12 @@ export async function ProjectCostsTool({
           <Link href={costsBase(id, dealId)} className="text-[12px] underline shrink-0 min-h-[44px] inline-flex items-center">Dismiss</Link>
         </div>
       ) : null}
+      {sp.heads_up ? (
+        <div className="rounded-lg px-4 py-2.5 text-[12.5px] flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-900">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="mt-0.5 shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+          <span>{sp.heads_up}</span>
+        </div>
+      ) : null}
 
       {/* ── Job P&L ── */}
       <section className="bg-gradient-to-br from-cc-brand-50/60 to-surface border border-cc-brand-100 rounded-xl p-4 sm:p-5">
@@ -271,6 +297,18 @@ export async function ProjectCostsTool({
             </div>
           </div>
         )}
+        {/* Per-category cost breakdown — where the money went. */}
+        {fin.costs.total > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => (
+              <span key={c} className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-1 text-[11px]">
+                <span className="font-semibold text-ppp-charcoal-600">{PURCHASE_CATEGORY_META[c].label}</span>
+                <span className="tabular-nums font-bold text-ppp-charcoal">{formatCentsFull(fin.costs[c])}</span>
+                <span className="text-ppp-charcoal-400 tabular-nums">{Math.round((fin.costs[c] / fin.costs.total) * 100)}%</span>
+              </span>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* ── Add + list ── */}
@@ -283,7 +321,7 @@ export async function ProjectCostsTool({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-45 transition-transform"><path d="M12 5v14 M5 12h14" /></svg>
             Log a purchase
           </summary>
-          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} recentVendors={recentVendors} submitLabel="Add purchase" />
+          <PurchaseForm action={addPurchaseAction} oppId={dealId} accountId={id} back={sp.back ?? ""} recentVendors={recentVendors} submitLabel="Add purchase" preserve={{ cat: sp.pu_cat, vendor: sp.pu_vendor, amt: sp.pu_amt, date: sp.pu_date, desc: sp.pu_desc }} />
         </details>
 
         {purchases.length > 0 && (
@@ -363,6 +401,7 @@ function PurchaseForm({
   submitLabel,
   purchase,
   cancelHref,
+  preserve,
 }: {
   action: CoAction;
   oppId: string;
@@ -372,8 +411,9 @@ function PurchaseForm({
   submitLabel: string;
   purchase?: CommercialProjectPurchase;
   cancelHref?: string;
+  preserve?: { cat?: string; vendor?: string; amt?: string; date?: string; desc?: string };
 }) {
-  const defDate = purchase ? purchase.purchased_at.slice(0, 10) : "";
+  const defDate = purchase ? purchase.purchased_at.slice(0, 10) : (preserve?.date ?? "");
   return (
     <form action={action} className="px-3.5 pb-3.5 pt-1 space-y-3" encType="multipart/form-data">
       <input type="hidden" name="opp_id" value={oppId} />
@@ -383,19 +423,19 @@ function PurchaseForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className={LABEL_CLS} htmlFor="pu-category">Category</label>
-          <select id="pu-category" name="category" defaultValue={purchase?.category ?? "materials"} className={SELECT_CLS} style={SELECT_BG_STYLE}>
+          <select id="pu-category" name="category" defaultValue={purchase?.category ?? preserve?.cat ?? "materials"} className={SELECT_CLS} style={SELECT_BG_STYLE}>
             {PURCHASE_CATEGORIES.map((c) => (<option key={c} value={c}>{CATEGORY_LABELS[c]}</option>))}
           </select>
         </div>
         <div>
           <label className={LABEL_CLS} htmlFor="pu-amount">Amount</label>
-          <input id="pu-amount" name="amount" required inputMode="decimal" defaultValue={purchase ? (purchase.amount_cents / 100).toFixed(2) : ""} className={INPUT_CLS} placeholder="1,250.00" />
+          <input id="pu-amount" name="amount" required inputMode="decimal" defaultValue={purchase ? (purchase.amount_cents / 100).toFixed(2) : (preserve?.amt ?? "")} className={INPUT_CLS} placeholder="1,250.00" />
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className={LABEL_CLS} htmlFor="pu-vendor">Vendor <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-          <input id="pu-vendor" name="vendor" list="pu-vendor-list" maxLength={200} defaultValue={purchase?.vendor ?? ""} className={INPUT_CLS} placeholder="Sherwin-Williams" />
+          <input id="pu-vendor" name="vendor" list="pu-vendor-list" maxLength={200} defaultValue={purchase?.vendor ?? preserve?.vendor ?? ""} className={INPUT_CLS} placeholder="Sherwin-Williams" />
           <datalist id="pu-vendor-list">
             {recentVendors.map((v) => (<option key={v} value={v} />))}
           </datalist>
@@ -407,7 +447,7 @@ function PurchaseForm({
       </div>
       <div>
         <label className={LABEL_CLS} htmlFor="pu-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-        <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={purchase?.description ?? ""} className={TEXTAREA_CLS} placeholder="What was purchased" />
+        <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={purchase?.description ?? preserve?.desc ?? ""} className={TEXTAREA_CLS} placeholder="What was purchased" />
       </div>
       <div>
         <label className={LABEL_CLS} htmlFor="pu-receipt">Receipt <span className="font-normal text-ppp-charcoal-400">(optional — PDF or photo)</span></label>
