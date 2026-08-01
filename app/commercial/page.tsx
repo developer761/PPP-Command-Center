@@ -477,18 +477,21 @@ export default async function CommercialDashboardPage() {
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
           <div className="flex items-center justify-between gap-2 mb-3">
-            <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
-              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-              Awarded value
-            </h3>
-            <span className="text-[11px] text-ppp-charcoal-500">last 6 months</span>
+            <div>
+              <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+                <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+                Value of jobs won
+              </h3>
+              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 pl-8">Total $ of bids marked Won each month</p>
+            </div>
+            <span className="text-[11px] text-ppp-charcoal-500 shrink-0">last 6 months</span>
           </div>
           {awardedTrendHasData ? (
             <TrendChart data={awardedMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[180px] sm:h-[220px]" />
           ) : (
             <div className="h-[180px] sm:h-[220px] flex flex-col items-center justify-center text-center gap-1">
-              <div className="text-[13px] font-semibold text-ppp-charcoal-500">No wins recorded in the last 6 months</div>
-              <div className="text-[11px] text-ppp-charcoal-400">Awarded value appears here as deals are won.</div>
+              <div className="text-[13px] font-semibold text-ppp-charcoal-500">No jobs won in the last 6 months</div>
+              <div className="text-[11px] text-ppp-charcoal-400">Each month&rsquo;s won-bid value shows here as deals close.</div>
             </div>
           )}
         </div>

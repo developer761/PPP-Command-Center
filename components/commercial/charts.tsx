@@ -1,20 +1,23 @@
+"use client";
+
 /**
  * Commercial chart kit — lightweight, dependency-free SVG viz that reads the
  * brand CSS color tokens (so it's automatically light/dark-mode correct, same
- * as TrendChart). Pure components (no hooks) → render on the server; native
- * <title> tooltips keep them interactive without client JS.
+ * as TrendChart). Interactive: donut segments + bars highlight on hover and the
+ * donut center flips to whatever you point at.
  *
  *   GaugeRing   — one percentage as a 270° arc + center value (win rate, % billed)
- *   DonutChart  — a money/count mix as a ring + legend (Invoiced/Paid/Outstanding)
- *   MiniBars    — a tiny sparkline for KPI tiles (monthly trend at a glance)
- *   StatCard    — a KPI tile that optionally embeds a MiniBars sparkline + delta
+ *   DonutChart  — a money/count mix as a ring + legend; hover a segment/legend row
+ *                 → it pops, the others dim, and the center shows that slice
+ *   HBars       — labeled horizontal comparison bars (per-project billing, mix)
+ *   MiniBars    — a tiny sparkline for KPI tiles
+ *   StatCard    — a KPI tile with an embedded sparkline + delta chip
  */
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 export type ChartTone = "blue" | "brand" | "emerald" | "amber" | "rose" | "navy" | "neutral";
 
-/** Brand CSS-var stroke/fill per tone (light + dark safe — the token flips). */
 export function toneVar(tone: ChartTone): string {
   switch (tone) {
     case "blue": return "var(--color-ppp-blue-500)";
@@ -39,23 +42,19 @@ export function GaugeRing({
   value,
   label,
 }: {
-  /** 0–100. Clamped. */
   pct: number;
   tone?: ChartTone;
   size?: number;
   thickness?: number;
-  /** Big center text (defaults to `${pct}%`). */
   value?: ReactNode;
-  /** Small caption under the value. */
   label?: ReactNode;
 }) {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-  // 270° arc: 75% of the circle, gap centered at the bottom (rotate 135°).
   return (
     <div className="relative inline-flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" className="w-full h-full" role="img" aria-label={typeof label === "string" ? `${label}: ${clamped}%` : `${clamped}%`}>
         <circle cx="50" cy="50" r="42" fill="none" stroke={TRACK} strokeWidth={thickness} pathLength={100} strokeDasharray="75 100" strokeLinecap="round" transform="rotate(135 50 50)" />
-        <circle cx="50" cy="50" r="42" fill="none" stroke={toneVar(tone)} strokeWidth={thickness} pathLength={100} strokeDasharray={`${(clamped / 100) * 75} 100`} strokeLinecap="round" transform="rotate(135 50 50)" />
+        <circle cx="50" cy="50" r="42" fill="none" stroke={toneVar(tone)} strokeWidth={thickness} pathLength={100} strokeDasharray={`${(clamped / 100) * 75} 100`} strokeLinecap="round" transform="rotate(135 50 50)" style={{ transition: "stroke-dasharray .5s ease" }} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center px-2 text-center">
         <div className="font-condensed text-xl sm:text-2xl font-black leading-none tabular-nums text-ppp-charcoal">{value ?? `${Math.round(clamped)}%`}</div>
@@ -65,14 +64,14 @@ export function GaugeRing({
   );
 }
 
-// ─────────────────────────── DonutChart ───────────────────────────
+// ─────────────────────────── DonutChart (interactive) ───────────────────────────
 
-export type DonutSegment = { label: string; value: number; tone: ChartTone };
+export type DonutSegment = { label: string; value: number; tone: ChartTone; valueLabel?: string };
 
 export function DonutChart({
   segments,
-  size = 132,
-  thickness = 13,
+  size = 148,
+  thickness = 16,
   centerValue,
   centerLabel,
   legend = true,
@@ -84,9 +83,12 @@ export function DonutChart({
   centerLabel?: ReactNode;
   legend?: boolean;
 }) {
+  const [hover, setHover] = useState<number | null>(null);
   const clean = segments.map((s) => ({ ...s, value: Math.max(0, Number.isFinite(s.value) ? s.value : 0) }));
   const total = clean.reduce((acc, s) => acc + s.value, 0);
   let offset = 0;
+  const active = hover !== null ? clean[hover] : null;
+
   return (
     <div className="flex items-center gap-4">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
@@ -96,6 +98,8 @@ export function DonutChart({
             clean.map((seg, i) => {
               const frac = (seg.value / total) * 100;
               if (frac <= 0) return null;
+              const isHover = hover === i;
+              const dimmed = hover !== null && !isHover;
               const el = (
                 <circle
                   key={i}
@@ -104,37 +108,87 @@ export function DonutChart({
                   r="42"
                   fill="none"
                   stroke={toneVar(seg.tone)}
-                  strokeWidth={thickness}
+                  strokeWidth={isHover ? thickness + 4 : thickness}
                   pathLength={100}
                   strokeDasharray={`${frac} ${100 - frac}`}
                   strokeDashoffset={-offset}
+                  onMouseEnter={() => setHover(i)}
+                  onMouseLeave={() => setHover(null)}
+                  style={{ opacity: dimmed ? 0.35 : 1, transition: "opacity .15s, stroke-width .15s", cursor: "pointer" }}
                 >
-                  <title>{`${seg.label}: ${Math.round(frac)}%`}</title>
+                  <title>{`${seg.label}: ${seg.valueLabel ?? `${Math.round(frac)}%`}`}</title>
                 </circle>
               );
               offset += frac;
               return el;
             })}
         </svg>
-        {(centerValue || centerLabel) && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-2 text-center">
-            {centerValue && <div className="font-condensed text-lg sm:text-xl font-black leading-none tabular-nums text-ppp-charcoal">{centerValue}</div>}
-            {centerLabel && <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mt-0.5">{centerLabel}</div>}
-          </div>
-        )}
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-2 text-center pointer-events-none">
+          {active ? (
+            <>
+              <div className="font-condensed text-base sm:text-lg font-black leading-none tabular-nums" style={{ color: toneVar(active.tone) }}>{active.valueLabel ?? `${total > 0 ? Math.round((active.value / total) * 100) : 0}%`}</div>
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mt-0.5 leading-tight max-w-[76px]">{active.label}</div>
+            </>
+          ) : (
+            <>
+              {centerValue && <div className="font-condensed text-lg sm:text-xl font-black leading-none tabular-nums text-ppp-charcoal">{centerValue}</div>}
+              {centerLabel && <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mt-0.5">{centerLabel}</div>}
+            </>
+          )}
+        </div>
       </div>
       {legend && (
         <ul className="min-w-0 space-y-1.5">
           {clean.map((seg, i) => (
-            <li key={i} className="flex items-center gap-2 text-[11.5px]">
+            <li
+              key={i}
+              className="flex items-center gap-2 text-[11.5px] rounded px-1 -mx-1 cursor-default"
+              style={{ backgroundColor: hover === i ? "var(--color-ppp-charcoal-50)" : "transparent" }}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+            >
               <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: toneVar(seg.tone) }} />
               <span className="text-ppp-charcoal-600 truncate">{seg.label}</span>
-              <span className="ml-auto font-bold tabular-nums text-ppp-charcoal">{total > 0 ? Math.round((seg.value / total) * 100) : 0}%</span>
+              <span className="ml-auto font-bold tabular-nums text-ppp-charcoal">{seg.valueLabel ?? `${total > 0 ? Math.round((seg.value / total) * 100) : 0}%`}</span>
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────── HBars (comparison) ───────────────────────────
+
+export type HBarItem = { label: string; value: number; tone?: ChartTone; valueLabel?: string; sub?: string; href?: string };
+
+export function HBars({ items, max }: { items: HBarItem[]; max?: number }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const hi = max ?? Math.max(1, ...items.map((i) => Math.max(0, i.value)));
+  return (
+    <ul className="space-y-2.5">
+      {items.map((it, i) => {
+        const pct = Math.max(2, Math.min(100, (Math.max(0, it.value) / hi) * 100));
+        const tone = it.tone ?? "blue";
+        const row = (
+          <>
+            <div className="flex items-baseline justify-between gap-2 mb-1">
+              <span className="text-[12px] font-medium text-ppp-charcoal truncate">{it.label}</span>
+              <span className="text-[12px] font-bold tabular-nums text-ppp-charcoal shrink-0">{it.valueLabel ?? it.value}</span>
+            </div>
+            <div className="h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: TRACK }}>
+              <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: toneVar(tone), opacity: hover !== null && hover !== i ? 0.5 : 1, transition: "width .5s ease, opacity .15s" }} />
+            </div>
+            {it.sub && <div className="text-[10.5px] text-ppp-charcoal-400 mt-0.5">{it.sub}</div>}
+          </>
+        );
+        return (
+          <li key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+            {it.href ? <Link href={it.href} className="block rounded-lg -mx-1 px-1 py-0.5 hover:bg-ppp-charcoal-50/60 transition-colors">{row}</Link> : row}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -149,7 +203,6 @@ export function MiniBars({
   values: number[];
   tone?: ChartTone;
   className?: string;
-  /** Optional per-bar hover title (e.g. month names). */
   labels?: string[];
 }) {
   const max = Math.max(1, ...values.map((v) => (Number.isFinite(v) ? v : 0)));
@@ -161,7 +214,7 @@ export function MiniBars({
         return (
           <div
             key={i}
-            className="flex-1 rounded-[1px] min-w-[2px]"
+            className="flex-1 rounded-[1px] min-w-[2px] transition-opacity hover:opacity-100"
             style={{ height: `${h}%`, backgroundColor: toneVar(tone), opacity: last ? 1 : 0.45 }}
             title={labels?.[i]}
           />
@@ -188,10 +241,8 @@ export function StatCard({
   value: ReactNode;
   sub?: ReactNode;
   tone?: ChartTone;
-  /** Optional monthly sparkline series. */
   spark?: number[];
   sparkLabels?: string[];
-  /** Optional signed delta chip (e.g. +3 vs last month). */
   delta?: { value: number; suffix?: string } | null;
   href?: string;
   icon?: ReactNode;

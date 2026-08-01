@@ -69,7 +69,8 @@ import { ProgressMeter } from "@/components/commercial/progress-meter";
 import { listCommercialInvoices, addPayment, createCommercialInvoice, invoiceIdsWithChangeOrderLine, changeOrderLineCentsByInvoice, type CommercialInvoice } from "@/lib/commercial/invoices/db";
 import { seedMilestonesFromLineItems, listMilestonesForInvoices, listMilestonesForInvoice, getMilestonePaidMapForInvoices, allocateMilestonePaid, attachMilestoneLienWaiver, type MilestoneDraft } from "@/lib/commercial/invoices/milestones";
 import { attachInvoiceLienWaiver, waiverCoverageByInvoice } from "@/lib/commercial/invoices/lien-waiver";
-import { DonutChart, GaugeRing } from "@/components/commercial/charts";
+import { DonutChart, GaugeRing, HBars, type ChartTone } from "@/components/commercial/charts";
+import TrendChart from "@/components/trend-chart";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
@@ -6804,75 +6805,115 @@ async function AccountKpisTab({
   overview: AccountOverview | null;
   rollup: AccountInvoiceRollup;
 }) {
-  // Production roll-up for THIS GC's jobs under contract (Phase G/H numbers).
-  const production = summarizeProduction(await listProjects({ accountId }));
-  const completedPctOfContract =
-    production.contractValueCents > 0
-      ? Math.round((production.completedToDateCents / production.contractValueCents) * 100)
-      : null;
-  // Audit fix 2026-07-08: winRate() returns a 0..1 decimal (won/total),
-  // NOT a percentage. Previously the tab was rendering ".67%" instead
-  // of "67%" — multiply by 100 + round for display.
+  // ── Data ── one project fetch (rows for per-project bars + summary totals) +
+  // the account's invoices for a monthly billing trend.
+  const projectRows = await listProjects({ accountId });
+  const production = summarizeProduction(projectRows);
+  const accountInvoices = await listCommercialInvoices({ accountId });
+
+  // winRate() returns a 0..1 decimal — ×100 for display.
   const winRateRaw = overview ? winRate(overview) : null;
   const winRatePct = winRateRaw === null ? null : Math.round(winRateRaw * 100);
-  const paidPct =
-    rollup.invoiced_cents > 0
-      ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))
-      : 0;
-  const decidedCount =
-    (overview?.won_opps_count ?? 0) + (overview?.lost_opps_count ?? 0);
+  const paidPct = rollup.invoiced_cents > 0 ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100)) : 0;
+  const decidedCount = (overview?.won_opps_count ?? 0) + (overview?.lost_opps_count ?? 0);
   const bidLow = overview?.total_active_bid_low_cents ?? 0;
   const bidHigh = overview?.total_active_bid_high_cents ?? 0;
-  const bidRangeLabel = bidLow > 0 || bidHigh > 0
-    ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}`
-    : "—";
+  const bidRangeLabel = bidLow > 0 || bidHigh > 0 ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}` : "—";
   const hasInvoicing = rollup.invoiced_cents > 0;
-  // Credit-only: no real open balance anywhere, but an overpayment left a credit.
-  // Uses the per-invoice-clamped open balance so this ties out with the AR
-  // statement + the Invoices-tab tile (audit F3), not the netted balance.
   const isCredit = rollup.open_balance_cents === 0 && rollup.credit_cents > 0;
-  // Account-level over-bill: billed net more than the contract to date. The
-  // per-project leftToBill is clamped, so surface the net over-bill here (mirrors
-  // the deal header's "Over-billed" flip).
+  const hasContract = production.contractValueCents > 0;
   const overBilledCents = Math.max(0, production.billedContractCents - production.contractValueCents);
-  const billedOfContractPct = production.contractValueCents > 0
-    ? Math.min(100, Math.round((production.billedContractCents / production.contractValueCents) * 100))
-    : 0;
+  const billedOfContractPct = production.contractValueCents > 0 ? Math.min(100, Math.round((production.billedContractCents / production.contractValueCents) * 100)) : 0;
+  const openBidCount = overview?.open_opps_count ?? 0;
+
+  // Monthly billing trend ($K) — issued invoices by created month, last 6 months.
+  const billedMonthly: { label: string; value: number }[] = [];
+  {
+    const base = new Date();
+    for (let m = 5; m >= 0; m--) {
+      const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
+      const start = d.getTime();
+      const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
+      const cents = accountInvoices.reduce((acc, inv) => {
+        if (inv.status === "void" || inv.status === "draft") return acc;
+        const t = inv.created_at ? new Date(inv.created_at).getTime() : NaN;
+        return t >= start && t < end ? acc + inv.total_cents : acc;
+      }, 0);
+      billedMonthly.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
+    }
+  }
+  const billedTrendHasData = billedMonthly.some((p) => p.value > 0);
+
+  // Per-project billing bars (biggest contract first).
+  const projectBars = projectRows
+    .filter((p) => (p.contractToDateCents ?? 0) > 0)
+    .sort((a, b) => (b.contractToDateCents ?? 0) - (a.contractToDateCents ?? 0))
+    .slice(0, 6)
+    .map((p) => {
+      const contract = p.contractToDateCents ?? 0;
+      const billed = p.billedContractCents ?? 0;
+      const pctBilled = contract > 0 ? Math.min(100, Math.round((billed / contract) * 100)) : 0;
+      return {
+        label: derivedOppName(p.opp, ""),
+        value: contract,
+        tone: (pctBilled >= 100 ? "emerald" : "blue") as ChartTone,
+        valueLabel: formatCentsCompact(contract),
+        sub: `${formatCentsCompact(billed)} billed · ${pctBilled}%`,
+        href: `/commercial/accounts/${accountId}?tab=projects&project=${p.opp.id}`,
+      };
+    });
+
+  // Everything is empty — show one friendly panel instead of a wall of $0 blocks.
+  const allEmpty = !hasInvoicing && !hasContract && decidedCount === 0 && openBidCount === 0;
   return (
-    <div className="space-y-5">
-      {/* Financials group — account-wide invoicing. Collected % lives ONLY on
-          the bar below (not echoed on the Paid tile) so no number repeats. */}
-      <section>
-        <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
-          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-          Financials
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <RollupTile label="Invoiced" value={formatCentsFull(rollup.invoiced_cents)} sub={`${rollup.invoice_count} invoice${rollup.invoice_count === 1 ? "" : "s"}`} tone="neutral" />
-          <RollupTile label="Paid" value={formatCentsFull(rollup.paid_cents)} sub={hasInvoicing ? "collected" : undefined} tone="emerald" />
-          <RollupTile
-            label={isCredit ? "Credit" : "Balance"}
-            value={formatCentsFull(isCredit ? rollup.credit_cents : rollup.open_balance_cents)}
-            sub={!hasInvoicing ? "not billed yet" : isCredit ? "overpaid" : rollup.open_balance_cents === 0 ? "settled" : rollup.credit_cents > 0 ? `unpaid · ${formatCentsFull(rollup.credit_cents)} credit` : "unpaid"}
-            tone={isCredit ? "emerald" : rollup.open_balance_cents > 0 ? "warn" : "neutral"}
-          />
-          <RollupTile label="Overdue" value={rollup.overdue_count.toString()} sub={rollup.overdue_count === 0 ? "on track" : "past due"} tone={rollup.overdue_count > 0 ? "danger" : "neutral"} />
+    <div className="space-y-4">
+      {allEmpty && (
+        <div className="bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl px-5 py-8 text-center">
+          <div className="text-sm font-semibold text-ppp-charcoal">Nothing to chart yet</div>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">Win a bid and send an invoice — this dashboard fills with billing, collections and pipeline charts as soon as money starts moving on this GC.</p>
         </div>
-        {hasInvoicing && (
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-center">
-              <DonutChart
-                size={120}
-                segments={[
-                  { label: "Paid", value: rollup.paid_cents, tone: "emerald" },
-                  { label: rollup.overdue_count > 0 ? "Balance · overdue" : "Balance", value: Math.max(0, rollup.open_balance_cents), tone: rollup.overdue_count > 0 ? "rose" : "blue" },
-                ]}
-                centerValue={formatCentsCompact(rollup.invoiced_cents)}
-                centerLabel="invoiced"
-              />
-            </div>
-            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center">
-              <div className="w-full">
+      )}
+
+      {/* ── Collections ── donut (Paid vs Balance) + monthly billing trend + bar */}
+      {(hasInvoicing || openBidCount > 0 || decidedCount > 0) && (
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+              Collections
+            </h3>
+            <Link href={`/commercial/invoices?account_id=${accountId}`} className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Invoices →</Link>
+          </div>
+          {hasInvoicing ? (
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-center">
+              <div className="lg:col-span-2 flex items-center justify-center">
+                <DonutChart
+                  size={150}
+                  segments={[
+                    { label: "Paid", value: rollup.paid_cents, tone: "emerald", valueLabel: formatCentsCompact(rollup.paid_cents) },
+                    { label: rollup.overdue_count > 0 ? "Overdue" : "Open balance", value: Math.max(0, rollup.open_balance_cents), tone: rollup.overdue_count > 0 ? "rose" : "blue", valueLabel: formatCentsCompact(rollup.open_balance_cents) },
+                  ]}
+                  centerValue={formatCentsCompact(rollup.invoiced_cents)}
+                  centerLabel="invoiced"
+                />
+              </div>
+              <div className="lg:col-span-3 space-y-3">
+                {billedTrendHasData && (
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-1">Billed / month · last 6 mo</div>
+                    <TrendChart data={billedMonthly} yFormat="currency-k" colorToken="ppp-blue-500" area heightClassName="h-[120px]" />
+                  </div>
+                )}
+                <div className="grid grid-cols-3 gap-2">
+                  <MiniFig label="Invoiced" value={formatCentsCompact(rollup.invoiced_cents)} tone="neutral" />
+                  <MiniFig label="Paid" value={formatCentsCompact(rollup.paid_cents)} tone="emerald" sub={`${paidPct}%`} />
+                  <MiniFig
+                    label={isCredit ? "Credit" : rollup.overdue_count > 0 ? "Overdue" : "Balance"}
+                    value={isCredit ? formatCentsCompact(rollup.credit_cents) : rollup.overdue_count > 0 ? String(rollup.overdue_count) : formatCentsCompact(rollup.open_balance_cents)}
+                    tone={rollup.overdue_count > 0 ? "rose" : rollup.open_balance_cents > 0 ? "blue" : "emerald"}
+                    sub={rollup.overdue_count > 0 ? "past due" : rollup.open_balance_cents === 0 ? "settled" : undefined}
+                  />
+                </div>
                 <ProgressMeter
                   label="Collected"
                   value={rollup.paid_cents}
@@ -6882,113 +6923,119 @@ async function AccountKpisTab({
                 />
               </div>
             </div>
-          </div>
-        )}
-      </section>
-
-      {/* Production group — only once this GC has a job under contract. The
-          "Billed to date" tile is deliberately NOT labeled "Invoiced" — that
-          label is taken by the account-wide Financials tile above, and this one
-          is contract-scoped (different number). */}
-      {production.activeProjects > 0 && (
-        <section>
-          <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
-            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-            Under contract
-            <span className="text-[11px] font-medium text-ppp-charcoal-500">
-              — {production.activeProjects} active {production.activeProjects === 1 ? "project" : "projects"}
-            </span>
-            <Link href="/commercial/projects" className="ml-auto text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">
-              Projects →
-            </Link>
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <RollupTile label="Under contract" value={formatCentsFull(production.contractValueCents)} sub="incl. approved COs" tone="blue" />
-            <RollupTile label="Billed to date" value={formatCentsFull(production.billedContractCents)} sub={`${formatCentsFull(production.paidCents)} paid`} tone="emerald" />
-            {overBilledCents > 0 ? (
-              <RollupTile label="Over-billed" value={formatCentsFull(overBilledCents)} sub="billed past contract" tone="warn" />
-            ) : (
-              <RollupTile label="Left to bill" value={formatCentsFull(production.leftToBillCents)} sub="contract − billed" tone="neutral" />
-            )}
-            <RollupTile label="Outstanding" value={formatCentsFull(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO${production.pendingCoCount === 1 ? "" : "s"} pending` : "billed − paid"} tone={production.outstandingCents > 0 ? "warn" : "neutral"} />
-          </div>
-          {production.contractValueCents > 0 && (
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center justify-center">
-                <DonutChart
-                  size={120}
-                  segments={[
-                    { label: "Collected", value: production.paidCents, tone: "emerald" },
-                    { label: "Billed · unpaid", value: production.outstandingCents, tone: "amber" },
-                    { label: "Left to bill", value: production.leftToBillCents, tone: "blue" },
-                  ]}
-                  centerValue={formatCentsCompact(production.contractValueCents)}
-                  centerLabel="contract"
-                />
-              </div>
-              <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center">
-                <div className="w-full">
-                  <ProgressMeter
-                    label="Billed of contract"
-                    value={production.billedContractCents}
-                    max={production.contractValueCents}
-                    tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"}
-                    rightLabel={overBilledCents > 0 ? `${Math.round((production.billedContractCents / production.contractValueCents) * 100)}%` : `${billedOfContractPct}%`}
-                    amounts={{ done: formatCentsFull(production.billedContractCents), total: formatCentsFull(production.contractValueCents) }}
-                    note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null}
-                  />
-                </div>
-              </div>
+          ) : (
+            <div className="rounded-lg bg-ppp-charcoal-50/50 border border-ppp-charcoal-100 px-4 py-6 text-center">
+              <div className="text-[13px] font-semibold text-ppp-charcoal-600">No invoices yet</div>
+              <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">Bill a won deal to start tracking collections here.</p>
             </div>
           )}
         </section>
       )}
 
-      {/* Pipeline group — Win rate is shown ONCE, as the bar below (no separate
-          tile), so the % isn't printed twice. */}
-      <section>
-        <h3 className="text-sm font-bold text-ppp-charcoal mb-2 flex items-center gap-2">
-          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-          Pipeline
-        </h3>
-        <div className="grid grid-cols-3 gap-3">
-          <RollupTile
-            label="Open bids"
-            value={(overview?.open_opps_count ?? 0).toString()}
-            sub={(overview?.open_opps_count ?? 0) === 0 ? "no live bids" : "in progress"}
-            tone="blue"
-          />
-          <RollupTile
-            label="Bid range"
-            value={bidRangeLabel}
-            sub="low – high (open)"
-            tone="neutral"
-          />
-          <RollupTile
-            label="Won"
-            value={(overview?.won_opps_count ?? 0).toString()}
-            sub={decidedCount === 0 ? "no history" : `of ${decidedCount} decided`}
-            tone="blue"
-          />
-        </div>
-        {decidedCount > 0 && (
-          <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 flex items-center gap-5">
-            <GaugeRing pct={winRatePct ?? 0} tone="emerald" value={`${winRatePct ?? 0}%`} label="win rate" size={104} />
-            <div className="min-w-0">
-              <div className="text-[13px] font-bold text-ppp-charcoal">Win rate</div>
-              <div className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-                <strong className="text-emerald-700 tabular-nums">{overview?.won_opps_count ?? 0}</strong> won
-                <span className="text-ppp-charcoal-300"> · </span>
-                <strong className="text-ppp-charcoal-500 tabular-nums">{overview?.lost_opps_count ?? 0}</strong> lost
-                <span className="text-ppp-charcoal-400"> of {decidedCount} decided</span>
-              </div>
-              {renderWinRateSub(overview!) && (
-                <div className="text-[11px] text-ppp-charcoal-400 mt-1">{renderWinRateSub(overview!)}</div>
-              )}
-            </div>
+      {/* ── Under contract ── contract-mix donut + per-project billing bars */}
+      {production.activeProjects > 0 && (
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+              Under contract
+              <span className="text-[11px] font-medium text-ppp-charcoal-500">— {production.activeProjects} active {production.activeProjects === 1 ? "project" : "projects"}</span>
+            </h3>
+            <Link href="/commercial/projects" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Projects →</Link>
           </div>
+          {hasContract ? (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-center">
+                <div className="flex items-center justify-center">
+                  <DonutChart
+                    size={150}
+                    segments={[
+                      { label: "Collected", value: production.paidCents, tone: "emerald", valueLabel: formatCentsCompact(production.paidCents) },
+                      { label: "Billed · unpaid", value: production.outstandingCents, tone: "amber", valueLabel: formatCentsCompact(production.outstandingCents) },
+                      { label: "Left to bill", value: production.leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(production.leftToBillCents) },
+                    ]}
+                    centerValue={formatCentsCompact(production.contractValueCents)}
+                    centerLabel="contract"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 mb-2">Contract by project</div>
+                  {projectBars.length > 0 ? (
+                    <HBars items={projectBars} />
+                  ) : (
+                    <p className="text-[12px] text-ppp-charcoal-400">Project totals appear as contracts are set.</p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-4">
+                <ProgressMeter
+                  label="Billed of contract"
+                  value={production.billedContractCents}
+                  max={production.contractValueCents}
+                  tone={overBilledCents > 0 ? "amber" : billedOfContractPct === 100 ? "emerald" : "blue"}
+                  rightLabel={overBilledCents > 0 ? `${Math.round((production.billedContractCents / production.contractValueCents) * 100)}%` : `${billedOfContractPct}%`}
+                  amounts={{ done: formatCentsFull(production.billedContractCents), total: formatCentsFull(production.contractValueCents) }}
+                  note={overBilledCents > 0 ? `Over the contract by ${formatCentsFull(overBilledCents)} — check for an unapproved change order or a billing error.` : null}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="rounded-lg bg-ppp-charcoal-50/50 border border-ppp-charcoal-100 px-4 py-6 text-center">
+              <div className="text-[13px] font-semibold text-ppp-charcoal-600">Contract value not set</div>
+              <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">This GC has a won deal — set its bid range or an accepted proposal to track billing progress here.</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Pipeline ── win-rate gauge + compact figures */}
+      <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            Pipeline
+          </h3>
+          <Link href="/commercial/opportunities" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Board →</Link>
+        </div>
+        <div className="flex items-center gap-5 flex-wrap sm:flex-nowrap">
+          {decidedCount > 0 ? (
+            <GaugeRing pct={winRatePct ?? 0} tone="emerald" value={`${winRatePct ?? 0}%`} label="win rate" size={116} />
+          ) : (
+            <div className="shrink-0 flex flex-col items-center justify-center h-[116px] w-[116px] rounded-full border-[9px] border-ppp-charcoal-100">
+              <div className="font-condensed text-2xl font-black text-ppp-charcoal-300 leading-none">—</div>
+              <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mt-1">win rate</div>
+            </div>
+          )}
+          <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+            <MiniFig label="Open bids" value={String(openBidCount)} tone="blue" sub={openBidCount === 0 ? "no live bids" : "in progress"} />
+            <MiniFig label="Bid range" value={bidRangeLabel} tone="neutral" sub="open bids" />
+            <MiniFig label="Won / lost" value={`${overview?.won_opps_count ?? 0} / ${overview?.lost_opps_count ?? 0}`} tone="emerald" sub={decidedCount === 0 ? "no history" : `of ${decidedCount} decided`} />
+          </div>
+        </div>
+        {decidedCount > 0 && overview && renderWinRateSub(overview) && (
+          <p className="mt-2.5 text-[11px] text-ppp-charcoal-400">{renderWinRateSub(overview)}</p>
         )}
       </section>
+    </div>
+  );
+}
+
+/** Compact figure used inside the chart cards — label + value + optional sub,
+ *  with a left tone accent (a lighter cousin of RollupTile/StatCard). */
+function MiniFig({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: ChartTone }) {
+  const valueCls =
+    tone === "emerald" ? "text-emerald-700"
+    : tone === "rose" ? "text-rose-700"
+    : tone === "amber" ? "text-amber-700"
+    : tone === "blue" ? "text-ppp-blue-700"
+    : tone === "brand" ? "text-cc-brand-700"
+    : tone === "navy" ? "text-ppp-navy-700"
+    : "text-ppp-charcoal";
+  return (
+    <div className="rounded-lg border border-ppp-charcoal-100 bg-surface/70 px-3 py-2">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+      <div className={`font-condensed text-lg font-black tabular-nums leading-none mt-0.5 ${valueCls}`}>{value}</div>
+      {sub && <div className="text-[10px] text-ppp-charcoal-400 mt-0.5">{sub}</div>}
     </div>
   );
 }
