@@ -532,9 +532,8 @@ export default async function CommercialDashboardPage() {
               <DonutChart
                 size={128}
                 segments={[
-                  { label: "Collected", value: production.paidCents, tone: "emerald" },
-                  { label: "Billed · unpaid", value: production.outstandingCents, tone: "amber" },
-                  { label: "Left to bill", value: production.leftToBillCents, tone: "blue" },
+                  { label: "Billed", value: production.billedContractCents, tone: "emerald", valueLabel: formatCentsCompact(production.billedContractCents) },
+                  { label: "Left to bill", value: production.leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(production.leftToBillCents) },
                 ]}
                 centerValue={formatCentsCompact(production.contractValueCents)}
                 centerLabel="contract"

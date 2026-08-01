@@ -6892,7 +6892,10 @@ async function AccountKpisTab({
             <DonutChart
               size={150}
               segments={[
-                { label: "Paid", value: rollup.paid_cents, tone: "emerald", valueLabel: formatCentsCompact(rollup.paid_cents) },
+                // Paid capped at invoiced so an overpaid (credit) account can't show
+                // a Paid slice larger than the invoiced center; the credit shows in
+                // the KPI box above.
+                { label: "Paid", value: Math.min(rollup.paid_cents, rollup.invoiced_cents), tone: "emerald", valueLabel: formatCentsCompact(Math.min(rollup.paid_cents, rollup.invoiced_cents)) },
                 { label: rollup.overdue_count > 0 ? "Overdue" : "Open balance", value: Math.max(0, rollup.open_balance_cents), tone: rollup.overdue_count > 0 ? "rose" : "blue", valueLabel: formatCentsCompact(rollup.open_balance_cents) },
               ]}
               centerValue={formatCentsCompact(rollup.invoiced_cents)}
@@ -6946,8 +6949,7 @@ async function AccountKpisTab({
               <DonutChart
                 size={150}
                 segments={[
-                  { label: "Collected", value: production.paidCents, tone: "emerald", valueLabel: formatCentsCompact(production.paidCents) },
-                  { label: "Billed · unpaid", value: production.outstandingCents, tone: "amber", valueLabel: formatCentsCompact(production.outstandingCents) },
+                  { label: "Billed", value: production.billedContractCents, tone: "emerald", valueLabel: formatCentsCompact(production.billedContractCents) },
                   { label: "Left to bill", value: production.leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(production.leftToBillCents) },
                 ]}
                 centerValue={formatCentsCompact(production.contractValueCents)}

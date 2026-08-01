@@ -164,7 +164,8 @@ export type HBarItem = { label: string; value: number; tone?: ChartTone; valueLa
 
 export function HBars({ items, max }: { items: HBarItem[]; max?: number }) {
   const [hover, setHover] = useState<number | null>(null);
-  const hi = max ?? Math.max(1, ...items.map((i) => Math.max(0, i.value)));
+  // Guard: a caller passing max={0} would otherwise divide by zero → NaN width.
+  const hi = Math.max(1, max ?? Math.max(0, ...items.map((i) => Math.max(0, i.value))));
   return (
     <ul className="space-y-2.5">
       {items.map((it, i) => {

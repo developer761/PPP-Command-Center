@@ -82,8 +82,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
               <DonutChart
                 size={158}
                 segments={[
-                  { label: "Collected", value: activeSummary.paidCents, tone: "emerald", valueLabel: formatCentsCompact(activeSummary.paidCents) },
-                  { label: "Billed · unpaid", value: activeSummary.outstandingCents, tone: "amber", valueLabel: formatCentsCompact(activeSummary.outstandingCents) },
+                  { label: "Billed", value: activeSummary.billedContractCents, tone: "emerald", valueLabel: formatCentsCompact(activeSummary.billedContractCents) },
                   { label: "Left to bill", value: activeSummary.leftToBillCents, tone: "blue", valueLabel: formatCentsCompact(activeSummary.leftToBillCents) },
                 ]}
                 centerValue={formatCentsCompact(activeSummary.contractValueCents)}
