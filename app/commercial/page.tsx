@@ -35,10 +35,16 @@ import { listCommercialAccounts } from "@/lib/commercial/accounts/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
 import { deriveInvoiceStatus, BILLABLE_INVOICE_STATUSES } from "@/lib/commercial/invoices/constants";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
+import { costBreakdownByOpp, emptyCostBreakdown } from "@/lib/commercial/purchases/db";
+import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { KpiTile } from "@/components/commercial/kpi-tile";
 import TrendChart from "@/components/trend-chart";
-import { GaugeRing, DonutChart } from "@/components/commercial/charts";
+import { GaugeRing, DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
+
+const DASH_COST_TONE: Record<string, ChartTone> = {
+  materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "emerald", other: "neutral",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -225,6 +231,59 @@ export default async function CommercialDashboardPage() {
     }
   }
   const awardedTrendHasData = awardedMonthly.some((p) => p.value > 0);
+
+  // ─── Revenue & P&L (whole Command Center) ───
+  // Gross = pre-tax billed-to-date; Net = gross − job costs; Margin = net ÷ gross.
+  const activeProjectRows = projectRows.filter((p) => p.opp.status !== "post_sale_closed");
+  const byOpp = await costBreakdownByOpp(activeProjectRows.map((p) => p.opp.id));
+  const costs = emptyCostBreakdown();
+  for (const b of byOpp.values()) {
+    for (const c of PURCHASE_CATEGORIES) costs[c] += b[c];
+    costs.total += b.total;
+  }
+  const grossRevenueCents = production.billedContractCents;
+  const netProfitCents = grossRevenueCents - costs.total;
+  const revMarginPct = grossRevenueCents > 0 ? Math.round((netProfitCents / grossRevenueCents) * 100) : null;
+  const revMarginTone: ChartTone = revMarginPct === null ? "neutral" : revMarginPct < 0 ? "rose" : revMarginPct < 15 ? "amber" : "emerald";
+  // Monthly billed revenue ($K, pre-tax subtotal of issued invoices).
+  const revenueMonthly: { label: string; value: number }[] = [];
+  {
+    const base = new Date();
+    for (let m = 5; m >= 0; m--) {
+      const d = new Date(base.getFullYear(), base.getMonth() - m, 1);
+      const start = d.getTime();
+      const end = new Date(base.getFullYear(), base.getMonth() - m + 1, 1).getTime();
+      const cents = invoices.reduce((acc, inv) => {
+        if (inv.status === "void" || inv.status === "draft") return acc;
+        const t = inv.created_at ? new Date(inv.created_at).getTime() : NaN;
+        return t >= start && t < end ? acc + inv.subtotal_cents : acc;
+      }, 0);
+      revenueMonthly.push({ label: d.toLocaleString("en-US", { month: "short" }), value: cents / 100000 });
+    }
+  }
+  const revCostSegments: DonutSegment[] = PURCHASE_CATEGORIES.filter((c) => costs[c] > 0).map((c) => ({
+    label: PURCHASE_CATEGORY_META[c].label,
+    value: costs[c],
+    tone: DASH_COST_TONE[c] ?? "neutral",
+    valueLabel: formatCentsCompact(costs[c]),
+  }));
+  const revProjectBars = activeProjectRows
+    .filter((p) => p.billedContractCents > 0)
+    .map((p) => {
+      const gross = p.billedContractCents;
+      const net = gross - p.costsCents;
+      const mPct = gross > 0 ? Math.round((net / gross) * 100) : null;
+      return {
+        label: derivedOppName(p.opp, accountNameById.get(p.opp.account_id) ?? ""),
+        value: gross,
+        tone: (net < 0 ? "rose" : "emerald") as ChartTone,
+        valueLabel: formatCentsCompact(gross),
+        sub: p.costsCents > 0 ? `${formatCentsCompact(net)} net · ${mPct ?? 0}%` : "no costs logged",
+        href: `/commercial/accounts/${p.opp.account_id}?tab=projects&project=${p.opp.id}&dt=pnl`,
+      };
+    })
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -471,6 +530,56 @@ export default async function CommercialDashboardPage() {
           href="/commercial/reports/win-loss"
           icon={<IconTrophy />}
         />
+      </section>
+
+      {/* ─── Revenue & P&L (whole Command Center) ─── */}
+      <section>
+        <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+          <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+          Revenue &amp; P&amp;L
+          <span className="text-[11px] font-medium text-ppp-charcoal-500">— gross = billed · net = billed − costs · tax excluded</span>
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
+          <StatCard label="Job costs" value={formatCentsCompact(costs.total)} tone="amber" sub={costs.total === 0 ? "none logged" : "materials · labor · subs"} />
+          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
+          <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : "net ÷ gross"} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
+          <div className="lg:col-span-2 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed</h3>
+              <span className="text-[11px] text-ppp-charcoal-500">last 6 months · pre-tax</span>
+            </div>
+            <TrendChart data={revenueMonthly} yFormat="currency-k" colorToken="cc-brand-500" area heightClassName="h-[150px] sm:h-[180px]" />
+          </div>
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col items-center justify-center text-center">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500 mb-2 self-start flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-emerald-500" />Gross margin</h3>
+            <GaugeRing pct={revMarginPct ?? 0} tone={revMarginTone} value={revMarginPct === null ? "—" : `${revMarginPct}%`} label="net ÷ gross" size={116} />
+            <div className="mt-2 text-[11.5px] text-ppp-charcoal-500 tabular-nums">{formatCentsCompact(grossRevenueCents)} gross · {formatCentsCompact(costs.total)} cost</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
+            <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3">Where the money goes</h3>
+            {revCostSegments.length > 0 ? (
+              <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(costs.total)} centerLabel="job costs" />
+            ) : (
+              <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No job costs logged yet. Add them on any project&rsquo;s Costs &amp; P&amp;L tab.</p>
+            )}
+          </div>
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue by project</h3>
+              <Link href="/commercial/projects" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Projects →</Link>
+            </div>
+            {revProjectBars.length > 0 ? (
+              <HBars items={revProjectBars} />
+            ) : (
+              <p className="text-[12px] text-ppp-charcoal-400 py-6 text-center">No billed revenue yet.</p>
+            )}
+          </div>
+        </div>
       </section>
 
       {/* ─── Trends: awarded value over time + win-rate gauge ─── */}
