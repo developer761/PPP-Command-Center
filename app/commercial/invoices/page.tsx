@@ -2,7 +2,7 @@
  * `/commercial/invoices` — Phase 3 invoicing list page.
  *
  * Same design language as accounts + opportunities lists:
- *   - PageHeader hero with red accent bar
+ *   - PageHeader hero with blue accent bar (invoice surfaces are ppp-blue)
  *   - 4-tile KPI strip (Outstanding · Overdue · Paid this month · Draft)
  *   - Unified toolbar (search + status filter popover + sort)
  *   - Clean row hierarchy
@@ -613,7 +613,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <Link
             href="/commercial/invoices"
             aria-label="Back to all invoices"
-            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 touch-manipulation shrink-0 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-md text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 touch-manipulation shrink-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/40"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M15 18l-6-6 6-6" /></svg>
           </Link>
@@ -631,7 +631,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <Link
             href="/commercial/invoices"
             aria-label="Back to all invoices"
-            className="inline-flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-md text-ppp-charcoal-600 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 shrink-0"
+            className="inline-flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-md text-ppp-charcoal-600 hover:text-ppp-charcoal hover:bg-ppp-charcoal-100 touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/40 shrink-0"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M15 18l-6-6 6-6" />
@@ -726,9 +726,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         // "Open account" chip on the right gives users the option to
         // navigate but requires an explicit click (labeled, not
         // ambient) so nobody misclicks into the wrong context.
-        <div className="bg-surface border border-cc-brand-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center justify-between gap-3 flex-wrap">
+        <div className="bg-surface border border-ppp-blue-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 rounded px-1.5 py-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-200 rounded px-1.5 py-0.5">
               Filtered
             </span>
             <span>
@@ -741,14 +741,14 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           <div className="flex items-center gap-2 flex-wrap">
             <Link
               href={`/commercial/accounts/${accountFilter.id}`}
-              className="text-[12px] font-medium text-ppp-charcoal-600 hover:text-cc-brand-700 hover:underline inline-flex items-center gap-1 min-h-[36px] px-2 touch-manipulation"
+              className="text-[12px] font-medium text-ppp-charcoal-600 hover:text-ppp-blue-700 hover:underline inline-flex items-center gap-1 min-h-[36px] px-2 touch-manipulation"
               title="Open the account detail page in a new context"
             >
               Open account
             </Link>
             <Link
               href="/commercial/invoices"
-              className="text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-1 min-h-[44px] px-3 touch-manipulation"
+              className="text-[12px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 inline-flex items-center gap-1 min-h-[44px] px-3 touch-manipulation"
             >
               Show all invoices
               <span aria-hidden>→</span>
@@ -760,7 +760,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
       <header className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
           <div>
-            <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+            <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-ppp-blue-600" />
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ppp-charcoal">
               Invoices
             </h1>
@@ -786,7 +786,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               return (
                 <Link
                   href={`/commercial/invoices/new?opp=${singleOppTarget}`}
-                  className="sm:self-end inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                  className="sm:self-end inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30 focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/40"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <path d="M12 5v14 M5 12h14" />
@@ -804,7 +804,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           ) && (
           <details className="relative sm:self-end group">
             <summary
-              className="list-none cursor-pointer inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+              className="list-none cursor-pointer inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30 focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/40"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M12 5v14 M5 12h14" />
@@ -827,7 +827,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                       </div>
                       <Link
                         href={`/commercial/accounts/${accountIdFilter}?tab=deals`}
-                        className="inline-flex items-center gap-1 text-cc-brand-700 font-semibold hover:underline"
+                        className="inline-flex items-center gap-1 text-ppp-blue-700 font-semibold hover:underline"
                       >
                         Open {accountFilter?.company_name ?? "this customer"}'s deals →
                       </Link>
@@ -835,7 +835,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   ) : (
                     <>
                       <div>No Won opportunities yet — an invoice needs a Won opportunity to attach to.</div>
-                      <Link href="/commercial/opportunities" className="inline-flex items-center gap-1 text-cc-brand-700 font-semibold hover:underline">
+                      <Link href="/commercial/opportunities" className="inline-flex items-center gap-1 text-ppp-blue-700 font-semibold hover:underline">
                         Go to pipeline →
                       </Link>
                     </>
@@ -882,7 +882,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                                 <Link
                                   key={o.id}
                                   href={`/commercial/invoices/new?opp=${o.id}`}
-                                  className="flex items-start justify-between gap-3 pl-5 pr-3 py-2 rounded-lg hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
+                                  className="flex items-start justify-between gap-3 pl-5 pr-3 py-2 rounded-lg hover:bg-ppp-blue-50 min-h-[44px] touch-manipulation"
                                 >
                                   <div className="min-w-0 flex-1">
                                     <div className="text-[13px] font-semibold text-ppp-charcoal truncate">
@@ -894,7 +894,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                                       </div>
                                     )}
                                   </div>
-                                  <span aria-hidden className="text-cc-brand-600 shrink-0 mt-1">→</span>
+                                  <span aria-hidden className="text-ppp-blue-600 shrink-0 mt-1">→</span>
                                 </Link>
                               );
                             })}
@@ -916,7 +916,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
         {/* KPI strip */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
-            tone="cc-brand"
+            tone="ppp-blue"
             label="Outstanding"
             value={formatCentsCompact(outstandingCents)}
             sub={outstandingCents === 0 ? "no unpaid invoices" : "unpaid balance across the book"}
@@ -989,7 +989,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               type="search"
               defaultValue={search ?? ""}
               placeholder="Search by invoice # or opportunity title…"
-              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 min-h-[44px]"
+              className="w-full pl-10 pr-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600 min-h-[44px]"
             />
           </div>
           {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
@@ -1011,7 +1011,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   aria-current={active ? "page" : undefined}
                   className={`flex-1 sm:flex-none justify-center px-3 py-2 text-[12px] font-semibold min-h-[44px] inline-flex items-center touch-manipulation border-l first:border-l-0 border-ppp-charcoal-200 ${
                     active
-                      ? "bg-cc-brand-50 text-cc-brand-700"
+                      ? "bg-ppp-blue-50 text-ppp-blue-700"
                       : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
                   }`}
                 >
@@ -1024,9 +1024,9 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
           {/* Sort popover */}
           <details className="relative inline-block group">
             <summary
-              className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 ${
+              className={`list-none cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-[13px] font-semibold min-h-[44px] touch-manipulation transition-colors focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30 focus:border-ppp-blue-600 ${
                 sortKey !== "recent"
-                  ? "bg-cc-brand-50 border-cc-brand-200 text-cc-brand-700 hover:bg-cc-brand-100"
+                  ? "bg-ppp-blue-50 border-ppp-blue-200 text-ppp-blue-700 hover:bg-ppp-blue-100"
                   : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
@@ -1047,18 +1047,18 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                       key={o.key}
                       href={setSortHref(o.key)}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
-                        active ? "bg-cc-brand-50 hover:bg-cc-brand-100" : "hover:bg-ppp-charcoal-50"
+                        active ? "bg-ppp-blue-50 hover:bg-ppp-blue-100" : "hover:bg-ppp-charcoal-50"
                       }`}
                     >
                       <span
                         className={`inline-flex items-center justify-center h-4 w-4 rounded-full border shrink-0 ${
-                          active ? "border-cc-brand-600" : "border-ppp-charcoal-300"
+                          active ? "border-ppp-blue-600" : "border-ppp-charcoal-300"
                         }`}
                         aria-hidden
                       >
-                        {active && <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />}
+                        {active && <span className="block h-2 w-2 rounded-full bg-ppp-blue-600" />}
                       </span>
-                      <span className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal-700"}`}>
+                      <span className={`text-[13px] font-semibold ${active ? "text-ppp-blue-800" : "text-ppp-charcoal-700"}`}>
                         {o.label}
                       </span>
                     </Link>
@@ -1141,7 +1141,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
               </p>
               <Link
                 href="/commercial/opportunities"
-                className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+                className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 active:bg-ppp-blue-800 min-h-[44px] shadow-sm shadow-ppp-blue-600/30"
               >
                 Go to pipeline
               </Link>
@@ -1268,16 +1268,16 @@ function GroupedByOpp({
           <div key={accountId} className={acctIdx > 0 ? "border-t border-ppp-charcoal-200" : ""}>
             <Link
               href={`/commercial/invoices?account_id=${accountId}`}
-              className="group/acct block px-4 sm:px-5 py-2.5 bg-gradient-to-b from-ppp-charcoal-50 to-surface border-b border-ppp-charcoal-100 hover:bg-cc-brand-50/40 focus:outline-none focus:bg-cc-brand-50/40 transition-colors touch-manipulation"
+              className="group/acct block px-4 sm:px-5 py-2.5 bg-gradient-to-b from-ppp-charcoal-50 to-surface border-b border-ppp-charcoal-100 hover:bg-ppp-blue-50/40 focus:outline-none focus:bg-ppp-blue-50/40 transition-colors touch-manipulation"
               title={`View ${acct?.company_name ?? "this customer"}'s invoices`}
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[13px] font-bold text-ppp-charcoal group-hover/acct:text-cc-brand-700 truncate">
+                <div className="text-[13px] font-bold text-ppp-charcoal group-hover/acct:text-ppp-blue-700 truncate">
                   {acct?.company_name ?? "—"}
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-ppp-charcoal-500 shrink-0">
                   <span>{dealRows.length} deal{dealRows.length === 1 ? "" : "s"}</span>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 group-hover/acct:text-cc-brand-600">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 group-hover/acct:text-ppp-blue-600">
                     <path d="M9 18l6-6-6-6" />
                   </svg>
                 </div>
@@ -1345,7 +1345,7 @@ function GroupedByOpp({
               <div className="min-w-0 flex-1">
                 {/* Row 1: title + account chip + N invoices + overdue badge */}
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
-                  <span className={`font-semibold text-[14px] truncate ${isOrphan ? "text-ppp-charcoal-500" : "text-ppp-charcoal group-hover/oppInv:text-cc-brand-800"}`}>
+                  <span className={`font-semibold text-[14px] truncate ${isOrphan ? "text-ppp-charcoal-500" : "text-ppp-charcoal group-hover/oppInv:text-ppp-blue-800"}`}>
                     {opp ? derivedOppName(opp, account?.company_name ?? null) : (
                       <span className="inline-flex items-center gap-1.5">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-600">
@@ -1374,7 +1374,7 @@ function GroupedByOpp({
                   {totalBalance > 0 && (
                     <>
                       <span className="text-ppp-charcoal-300"> · </span>
-                      <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
+                      <span className="text-ppp-blue-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
                     </>
                   )}
                   {totalCredit > 0 && (
@@ -1421,7 +1421,7 @@ function GroupedByOpp({
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="shrink-0 mt-1 text-ppp-charcoal-300 group-hover/oppInv:text-cc-brand-600 transition-colors"
+                  className="shrink-0 mt-1 text-ppp-charcoal-300 group-hover/oppInv:text-ppp-blue-600 transition-colors"
                   aria-hidden
                 >
                   <path d="M9 18l6-6-6-6" />
@@ -1455,7 +1455,7 @@ function GroupedByOpp({
                           : invStatus === "void"
                           ? "bg-ppp-charcoal-100 text-ppp-charcoal-500 border-ppp-charcoal-200"
                           // sent / viewed = billed-and-waiting → ppp-blue, clearly
-                          // distinct from overdue (rose). Was cc-brand red, which
+                          // distinct from overdue (rose). Was ppp-blue red, which
                           // sat one hue from overdue — the two states Alex most
                           // needs to tell apart (2026-07-28 color audit).
                           : "bg-ppp-blue-100 text-ppp-blue-700 border-ppp-blue-200";
@@ -1463,7 +1463,7 @@ function GroupedByOpp({
                         <li key={inv.id}>
                           <Link
                             href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/invoices?opportunity_id=${oppId}`)}`}
-                            className="group/invRow flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-cc-brand-50/40 focus:outline-none focus:bg-cc-brand-50/60 transition-colors touch-manipulation"
+                            className="group/invRow flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-ppp-blue-50/40 focus:outline-none focus:bg-ppp-blue-50/60 transition-colors touch-manipulation"
                           >
                             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${statusTone} shrink-0`}>
                               {invoiceStatusLabel(invStatus)}
@@ -1486,7 +1486,7 @@ function GroupedByOpp({
                               strokeWidth="2.5"
                               strokeLinecap="round"
                               strokeLinejoin="round"
-                              className="shrink-0 text-ppp-charcoal-300 group-hover/invRow:text-cc-brand-600 transition-colors"
+                              className="shrink-0 text-ppp-charcoal-300 group-hover/invRow:text-ppp-blue-600 transition-colors"
                               aria-hidden
                             >
                               <path d="M9 18l6-6-6-6" />
@@ -1500,7 +1500,7 @@ function GroupedByOpp({
               ) : (
                 <Link
                   href={rowHref}
-                  className="group/oppInv block px-4 sm:px-5 py-3.5 hover:bg-cc-brand-50/40 focus:outline-none focus:bg-cc-brand-50/60 transition-colors touch-manipulation"
+                  className="group/oppInv block px-4 sm:px-5 py-3.5 hover:bg-ppp-blue-50/40 focus:outline-none focus:bg-ppp-blue-50/60 transition-colors touch-manipulation"
                 >
                   {headerBody}
                 </Link>
@@ -1545,7 +1545,7 @@ function GroupedByOpp({
                       {totalBalance > 0 && (
                         <>
                           <span className="text-ppp-charcoal-300"> · </span>
-                          <span className="text-cc-brand-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
+                          <span className="text-ppp-blue-700 font-medium">{formatCentsFull(totalBalance)} outstanding</span>
                         </>
                       )}
                       {totalCredit > 0 && (
@@ -1715,7 +1715,7 @@ function FullDetailByOpp({
             </p>
             <Link
               href={`/commercial/accounts/${accountId}?tab=deals`}
-              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+              className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 min-h-[44px] shadow-sm shadow-ppp-blue-600/30"
             >
               Open this customer's deals
             </Link>
@@ -1734,7 +1734,7 @@ function FullDetailByOpp({
           className={`rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 ${
             paidCapped
               ? "bg-amber-50 border border-amber-200 text-amber-900"
-              : "bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800"
+              : "bg-ppp-blue-50 border border-ppp-blue-200 text-ppp-blue-800"
           }`}
         >
           <span>
@@ -1751,7 +1751,7 @@ function FullDetailByOpp({
         </div>
       )}
       {createdInvoiceId && (
-        <div className="rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-800">
+        <div className="rounded-xl px-4 py-3 text-sm flex items-start justify-between gap-3 bg-ppp-blue-50 border border-ppp-blue-200 text-ppp-blue-800">
           <span>Invoice created.</span>
           <Link
             href={`/commercial/invoices?account_id=${accountId}`}
@@ -1838,7 +1838,7 @@ function FullDetailByOpp({
                     {opp ? (
                       <Link
                         href={`/commercial/opportunities/${opp.id}?tab=invoices`}
-                        className="text-[15px] font-bold text-ppp-charcoal hover:text-cc-brand-700 hover:underline underline-offset-2 truncate"
+                        className="text-[15px] font-bold text-ppp-charcoal hover:text-ppp-blue-700 hover:underline underline-offset-2 truncate"
                       >
                         {derivedOppName(opp, account?.company_name ?? null)}
                       </Link>
@@ -1852,7 +1852,7 @@ function FullDetailByOpp({
                       </span>
                     )}
                     {groupInvoices.length === 0 ? (
-                      <span className="text-[10px] font-semibold text-cc-brand-700 bg-cc-brand-50 border border-cc-brand-200 rounded px-1.5 py-0.5">
+                      <span className="text-[10px] font-semibold text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-200 rounded px-1.5 py-0.5">
                         First invoice
                       </span>
                     ) : (
@@ -1912,7 +1912,7 @@ function FullDetailByOpp({
               </div>
               {groupInvoices.length > 0 && (
                 <div className="mt-3 grid grid-cols-3 gap-2">
-                  <div className="border border-cc-brand-200 bg-cc-brand-50/40 rounded-lg px-2.5 py-1.5">
+                  <div className="border border-ppp-blue-200 bg-ppp-blue-50/40 rounded-lg px-2.5 py-1.5">
                     <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Invoiced</div>
                     <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalInvoiced)}</div>
                   </div>
@@ -1921,7 +1921,7 @@ function FullDetailByOpp({
                     <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalPaid)}</div>
                   </div>
                   <div className={`border rounded-lg px-2.5 py-1.5 ${
-                    totalBalance > 0 ? "border-cc-brand-200 bg-cc-brand-50/40" : totalCredit > 0 ? "border-emerald-200 bg-emerald-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
+                    totalBalance > 0 ? "border-ppp-blue-200 bg-ppp-blue-50/40" : totalCredit > 0 ? "border-emerald-200 bg-emerald-50/40" : "border-ppp-charcoal-200 bg-ppp-charcoal-50/40"
                   }`}>
                     <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{totalCredit > 0 && totalBalance === 0 ? "Credit" : "Balance"}</div>
                     <div className="text-[13px] font-bold text-ppp-charcoal tabular-nums">{formatCentsCompact(totalBalance > 0 ? totalBalance : totalCredit)}</div>
@@ -1967,16 +1967,16 @@ function FullDetailByOpp({
                   )}
                   <li
                     id={`inv-${inv.id}`}
-                    className={`scroll-mt-4 ${isFlashRow ? "bg-cc-brand-50/40" : ""}`}
+                    className={`scroll-mt-4 ${isFlashRow ? "bg-ppp-blue-50/40" : ""}`}
                   >
                     <Link
                       href={`/commercial/invoices/${inv.id}`}
-                      className="group/inv block px-4 sm:px-5 py-3 hover:bg-cc-brand-50/30 transition-colors touch-manipulation"
+                      className="group/inv block px-4 sm:px-5 py-3 hover:bg-ppp-blue-50/30 transition-colors touch-manipulation"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-cc-brand-800 group-hover/inv:underline">
+                            <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-ppp-blue-800 group-hover/inv:underline">
                               {inv.invoice_number}
                             </span>
                             <StatusPill status={displayStatus} />
@@ -1988,7 +1988,7 @@ function FullDetailByOpp({
                             {inv.due_at && (
                               <span
                                 className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
-                                  isOverdue ? "text-rose-700" : daysUntilDue !== null && daysUntilDue <= 7 ? "text-amber-700" : "text-cc-brand-700"
+                                  isOverdue ? "text-rose-700" : daysUntilDue !== null && daysUntilDue <= 7 ? "text-amber-700" : "text-ppp-blue-700"
                                 }`}
                               >
                                 Due {fmtEtDate(inv.due_at)}
@@ -2000,7 +2000,7 @@ function FullDetailByOpp({
                             {inv.balance_cents > 0 && !isVoid && (
                               <>
                                 {" · "}
-                                <span className="text-cc-brand-700 font-medium">{formatCentsFull(inv.balance_cents)} outstanding</span>
+                                <span className="text-ppp-blue-700 font-medium">{formatCentsFull(inv.balance_cents)} outstanding</span>
                               </>
                             )}
                             {inv.paid_at && isPaidInFull && (
@@ -2011,7 +2011,7 @@ function FullDetailByOpp({
                             )}
                           </div>
                         </div>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/inv:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/inv:text-ppp-blue-600 shrink-0 mt-1 transition-colors" aria-hidden>
                           <path d="M9 18l6-6-6-6" />
                         </svg>
                       </div>
@@ -2042,7 +2042,7 @@ function FullDetailByOpp({
                     ) : milestoneInvoiceIds.has(inv.id) ? (
                       <Link
                         href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/invoices${accountId ? `?account_id=${accountId}` : ""}`)}`}
-                        className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 min-h-[44px] touch-manipulation"
+                        className="border-t border-ppp-charcoal-100 px-4 sm:px-5 py-2 flex items-center gap-1.5 text-[12px] font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50/60 min-h-[44px] touch-manipulation"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 5v14 M5 12h14" /></svg>
                         Record milestone payment
@@ -2051,7 +2051,7 @@ function FullDetailByOpp({
                       </Link>
                     ) : (
                       <details className="group/pay border-t border-ppp-charcoal-100">
-                        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-4 sm:px-5 py-2 text-[12px] font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50/60 min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/40">
                           <span className="inline-flex items-center gap-1.5">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                               <path d="M12 5v14 M5 12h14" />
@@ -2078,7 +2078,7 @@ function FullDetailByOpp({
                               required
                               defaultValue={(inv.balance_cents / 100).toFixed(2)}
                               placeholder="0.00"
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
                             />
                           </label>
                           <label className="block">
@@ -2087,7 +2087,7 @@ function FullDetailByOpp({
                               type="date"
                               name="paid_at"
                               defaultValue={todayEtIso}
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
                             />
                           </label>
                           <label className="block">
@@ -2109,7 +2109,7 @@ function FullDetailByOpp({
                           <div className="flex items-end">
                             <button
                               type="submit"
-                              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-ppp-blue-600 text-white text-[13px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30 focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/40"
                             >
                               Record
                             </button>
@@ -2122,7 +2122,7 @@ function FullDetailByOpp({
                               type="text"
                               name="reference"
                               maxLength={128}
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
                             />
                           </label>
                           {/* Karan 2026-07-07: Notes field parity with the
@@ -2138,7 +2138,7 @@ function FullDetailByOpp({
                               name="notes"
                               rows={2}
                               maxLength={500}
-                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[44px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
                             />
                           </label>
                         </form>
@@ -2155,7 +2155,7 @@ function FullDetailByOpp({
             {opp && isPostSaleProject(opp) && (
               <Link
                 href={`/commercial/invoices/new?opp=${oppId}`}
-                className="flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/40 min-h-[44px] border-t border-ppp-charcoal-100 touch-manipulation"
+                className="flex items-center gap-2 px-4 sm:px-5 py-3 text-[12px] font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50/40 min-h-[44px] border-t border-ppp-charcoal-100 touch-manipulation"
                 title="New invoice for this deal — flat or broken into milestones"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2216,7 +2216,7 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
       ? "bg-rose-50/50 hover:bg-rose-100/60"
       : overdueDays >= 15
       ? "bg-amber-50/40 hover:bg-amber-100/60"
-      : "hover:bg-cc-brand-50/30";
+      : "hover:bg-ppp-blue-50/30";
   return (
     <li className={`relative group/row transition-colors ${overdueTint}`}>
       <Link href={`/commercial/invoices/${invoice.id}`} className="block px-4 py-4 touch-manipulation">
@@ -2238,7 +2238,7 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
               {invoice.balance_cents > 0 && (
                 <>
                   <span aria-hidden>·</span>
-                  <span className="text-cc-brand-700 font-medium">
+                  <span className="text-ppp-blue-700 font-medium">
                     {formatCentsFull(invoice.balance_cents)} outstanding
                   </span>
                 </>
@@ -2292,7 +2292,7 @@ function InvoiceRow({ invoice, accountName }: { invoice: CommercialInvoice; acco
               </div>
             )}
           </div>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/row:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/row:text-ppp-blue-600 shrink-0 mt-1 transition-colors" aria-hidden>
             <path d="M9 18l6-6-6-6" />
           </svg>
         </div>
@@ -2307,14 +2307,14 @@ function KpiCard({
   value,
   sub,
 }: {
-  tone: "cc-brand" | "blue" | "rose" | "neutral";
+  tone: "ppp-blue" | "blue" | "rose" | "neutral";
   label: string;
   value: string;
   sub: string;
 }) {
   const ring =
-    tone === "cc-brand"
-      ? "border-cc-brand-200 bg-gradient-to-br from-surface to-cc-brand-50/50"
+    tone === "ppp-blue"
+      ? "border-ppp-blue-200 bg-gradient-to-br from-surface to-ppp-blue-50/50"
       : tone === "blue"
       ? "border-ppp-blue-200 bg-gradient-to-br from-surface to-ppp-blue-50/50"
       : tone === "rose"
@@ -2323,7 +2323,7 @@ function KpiCard({
   // "blue" uses the ppp-blue brand cyan to match the dashboard (was raw
   // Tailwind blue). Value type = Roboto Condensed black, also per dashboard.
   const stripe =
-    tone === "cc-brand" ? "bg-cc-brand-600" : tone === "blue" ? "bg-ppp-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+    tone === "ppp-blue" ? "bg-ppp-blue-600" : tone === "blue" ? "bg-ppp-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   return (
     <div className={`relative border rounded-xl px-4 py-3 overflow-hidden shadow-sm ${ring}`}>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-[3px] ${stripe}`} />

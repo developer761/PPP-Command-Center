@@ -141,9 +141,9 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
               const tone = st === "paid" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : st === "overdue" ? "text-rose-700 bg-rose-50 border-rose-200" : st === "draft" ? "text-ppp-charcoal-600 bg-ppp-charcoal-50 border-ppp-charcoal-200" : "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-200";
               return (
                 <li key={inv.id}>
-                  <Link href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(returnTo)}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-cc-brand-50/30 min-h-[44px] group">
+                  <Link href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(returnTo)}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-ppp-blue-50/30 min-h-[44px] group">
                     <span className="min-w-0 flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-cc-brand-800">{inv.invoice_number}</span>
+                      <span className="font-mono text-[11.5px] font-bold text-ppp-charcoal group-hover:text-ppp-blue-800">{inv.invoice_number}</span>
                       <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${tone}`}>{invoiceStatusLabel(st)}</span>
                       {inv.due_at ? <span className="text-[10.5px] text-ppp-charcoal-400">due {fmtEtDate(inv.due_at)}</span> : null}
                     </span>
@@ -172,7 +172,7 @@ function MoneyTile({ label, value, sub, tone = "neutral", href }: { label: strin
     </>
   );
   return href ? (
-    <Link href={href} className="rounded-lg border border-ppp-charcoal-100 bg-surface/70 px-2.5 py-2 hover:border-cc-brand-200 hover:bg-cc-brand-50/30 transition-colors">{inner}</Link>
+    <Link href={href} className="rounded-lg border border-ppp-charcoal-100 bg-surface/70 px-2.5 py-2 hover:border-ppp-blue-200 hover:bg-ppp-blue-50/30 transition-colors">{inner}</Link>
   ) : (
     <div className="rounded-lg border border-ppp-charcoal-100 bg-surface/70 px-2.5 py-2">{inner}</div>
   );

@@ -730,7 +730,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
         <Link
           href="/commercial/invoices"
-          className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation"
+          className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[32px] px-1 touch-manipulation"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
@@ -742,7 +742,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <span aria-hidden className="text-ppp-charcoal-300">/</span>
             <Link
               href={`/commercial/accounts/${account.id}`}
-              className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+              className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
               title={account.company_name}
             >
               {account.company_name}
@@ -754,7 +754,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <span aria-hidden className="text-ppp-charcoal-300">/</span>
             <Link
               href={`/commercial/opportunities/${opp.id}`}
-              className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
+              className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[32px] px-1 touch-manipulation max-w-[220px] truncate"
               title={derivedOppName(opp, account?.company_name ?? null)}
             >
               {derivedOppName(opp, account?.company_name ?? null)}
@@ -812,7 +812,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                   account tab's list) and the user lands on a bare page. */}
               <Link
                 href={`/commercial/accounts/${opp.account_id}?tab=opportunities&edit=${opp.id}${opp.archived_at ? "&archived=1" : ""}#deal-row-${opp.id}`}
-                className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
+                className="text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2"
               >
                 {derivedOppName(opp, account?.company_name ?? null)}
               </Link>
@@ -823,7 +823,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/${prevSibling.id}`}
                 aria-label={`Previous invoice: ${prevSibling.invoice_number}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-blue-50 hover:border-ppp-blue-300 min-h-[36px] touch-manipulation"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M15 18l-6-6 6-6" />
@@ -842,7 +842,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <Link
                 href={`/commercial/invoices/${nextSibling.id}`}
                 aria-label={`Next invoice: ${nextSibling.invoice_number}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[36px] touch-manipulation"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-blue-50 hover:border-ppp-blue-300 min-h-[36px] touch-manipulation"
               >
                 <span className="font-mono">{nextSibling.invoice_number.replace(/^(PPP-INV|INV)-/, "…")}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -937,7 +937,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
       {/* Hero */}
       <header className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
-        <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-cc-brand-600" />
+        <span aria-hidden className="block h-[3px] w-10 rounded-full mb-3 bg-ppp-blue-600" />
         {/* In-hero "Invoices" back-link removed — the top Back button + the
             breadcrumb directly above already cover it (was a 3rd back path in
             the first ~200px). */}
@@ -952,7 +952,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
               {account && (
                 <>
-                  <Link href={`/commercial/accounts/${account.id}`} className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 font-medium">
+                  <Link href={`/commercial/accounts/${account.id}`} className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2 font-medium">
                     {account.company_name}
                     {formatAccountNumber(account.account_seq) && (
                       <span className="no-underline font-mono text-[10px] text-ppp-navy-600">
@@ -969,7 +969,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                       sheet), archived-safe — /opportunities/[id] bounces. */}
                   <Link
                     href={`/commercial/accounts/${opp.account_id}?tab=opportunities&edit=${opp.id}${opp.archived_at ? "&archived=1" : ""}#deal-row-${opp.id}`}
-                    className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
+                    className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-800 underline underline-offset-2"
                   >
                     {derivedOppName(opp, account?.company_name ?? null)}
                     {formatOpportunityNumber(opp.project_number) && (
@@ -1015,7 +1015,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             {opp && isWon(opp) && (
               <Link
                 href={`/commercial/invoices/new?opp=${opp.id}`}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-ppp-blue-600 text-white text-[12px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation shadow-sm shadow-ppp-blue-600/30"
                 title={`Add another invoice for ${derivedOppName(opp, account?.company_name ?? null)}. Progress-billing friendly.`}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1103,7 +1103,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         {invoice.total_cents > 0 && !isVoid && (
           <a
             href="#payments"
-            className="mt-5 block rounded-lg -mx-1 px-1 py-1 hover:bg-ppp-charcoal-50/60 transition-colors focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+            className="mt-5 block rounded-lg -mx-1 px-1 py-1 hover:bg-ppp-charcoal-50/60 transition-colors focus:outline-none focus:ring-2 focus:ring-ppp-blue-600/30"
             title="Jump to Payments"
           >
             <PaymentProgressBar
@@ -1128,14 +1128,14 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
         {/* Big numbers */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
-          <BigNumber label="Total invoiced" value={formatCentsFull(invoice.total_cents)} tone="cc-brand" />
+          <BigNumber label="Total invoiced" value={formatCentsFull(invoice.total_cents)} tone="ppp-blue" />
           <BigNumber label="Paid" value={formatCentsFull(invoice.paid_cents)} tone="emerald" />
           {invoice.balance_cents < 0 ? (
             // Overpaid (a line item was removed after payment, or an overpayment
             // landed) — show it as a credit, not a negative "outstanding".
             <BigNumber label="Overpaid (credit)" value={formatCentsFull(-invoice.balance_cents)} tone="emerald" />
           ) : (
-            <BigNumber label="Outstanding balance" value={formatCentsFull(invoice.balance_cents)} tone={invoice.balance_cents > 0 ? "cc-brand" : "neutral"} />
+            <BigNumber label="Outstanding balance" value={formatCentsFull(invoice.balance_cents)} tone={invoice.balance_cents > 0 ? "ppp-blue" : "neutral"} />
           )}
           <BigNumber
             label="Due"
@@ -1152,7 +1152,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
       {/* Status actions */}
       {nextStatuses.length > 0 && !isVoid && (
-        <section className="bg-surface border border-cc-brand-200 rounded-xl p-5 shadow-sm">
+        <section className="bg-surface border border-ppp-blue-200 rounded-xl p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
             <div>
               <h2 className="text-sm font-bold text-ppp-charcoal">Status</h2>
@@ -1172,7 +1172,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                   className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors ${
                     s === "void"
                       ? "border border-rose-200 text-rose-700 bg-surface hover:bg-rose-50"
-                      : "bg-cc-brand-600 text-white hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-sm shadow-cc-brand-600/30"
+                      : "bg-ppp-blue-600 text-white hover:bg-ppp-blue-700 active:bg-ppp-blue-800 shadow-sm shadow-ppp-blue-600/30"
                   }`}
                 >
                   {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : invoiceStatusLabel(s)}
@@ -1206,7 +1206,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           <div className="text-[12.5px] text-ppp-charcoal-600 space-y-1 max-w-xs">
             <div className="flex justify-between gap-4"><span>Subtotal</span><span className="tabular-nums font-semibold text-ppp-charcoal">{formatCentsFull(invoice.subtotal_cents)}</span></div>
             {invoice.tax_pct > 0 && <div className="flex justify-between gap-4"><span>Tax ({invoice.tax_pct}%)</span><span className="tabular-nums">{formatCentsFull(invoice.total_cents - invoice.subtotal_cents)}</span></div>}
-            <div className="flex justify-between gap-4 border-t border-ppp-charcoal-100 pt-1 font-bold text-ppp-charcoal"><span>Total</span><span className="tabular-nums text-cc-brand-700">{formatCentsFull(invoice.total_cents)}</span></div>
+            <div className="flex justify-between gap-4 border-t border-ppp-charcoal-100 pt-1 font-bold text-ppp-charcoal"><span>Total</span><span className="tabular-nums text-ppp-blue-700">{formatCentsFull(invoice.total_cents)}</span></div>
           </div>
         )}
 
@@ -1231,7 +1231,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                   <tr key={li.id} className="border-b border-ppp-charcoal-50 last:border-b-0 hover:bg-ppp-charcoal-50/40">
                     <td className="py-2.5 pr-3 text-ppp-charcoal align-top">
                       {isCo && (
-                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 mr-1.5 text-[10px] font-bold uppercase tracking-wider border ${isCredit ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-cc-brand-50 text-cc-brand-700 border-cc-brand-200"}`}>
+                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 mr-1.5 text-[10px] font-bold uppercase tracking-wider border ${isCredit ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"}`}>
                           {isCredit ? "CO credit" : "Change order"}
                         </span>
                       )}
@@ -1282,8 +1282,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                   </tr>
                 )}
                 <tr className="border-t border-ppp-charcoal-100">
-                  <td colSpan={4} className="py-2 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-cc-brand-700">Total invoiced</td>
-                  <td className="py-2 pr-3 text-right font-bold text-cc-brand-700 tabular-nums">{formatCentsFull(invoice.total_cents)}</td>
+                  <td colSpan={4} className="py-2 pr-3 text-right text-[11px] font-bold uppercase tracking-wider text-ppp-blue-700">Total invoiced</td>
+                  <td className="py-2 pr-3 text-right font-bold text-ppp-blue-700 tabular-nums">{formatCentsFull(invoice.total_cents)}</td>
                   <td />
                 </tr>
                 {/* Karan 2026-07-07: inline paid + balance rows so the
@@ -1340,7 +1340,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                     <span className="font-semibold text-ppp-charcoal tabular-nums">{formatCentsFull(p.amount_cents)}</span>
                     <span className="text-[11px] text-ppp-charcoal-500">· {fmtEtDate(p.paid_at)}</span>
                     {p.method && (
-                      <span className="inline-flex items-center px-1.5 py-0 rounded bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200 text-[10px] font-medium">
+                      <span className="inline-flex items-center px-1.5 py-0 rounded bg-ppp-blue-50 text-ppp-blue-700 border border-ppp-blue-200 text-[10px] font-medium">
                         {PAYMENT_METHODS.find((m) => m.key === p.method)?.label ?? p.method}
                       </span>
                     )}
@@ -1407,7 +1407,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <div className="sm:col-span-1 flex items-end">
               <button
                 type="submit"
-                className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
+                className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 active:bg-ppp-blue-800 min-h-[44px] shadow-sm shadow-ppp-blue-600/30"
               >
                 Record
               </button>
@@ -1449,7 +1449,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
         <div className="flex items-start justify-between gap-3 mb-1 flex-wrap">
           <h2 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
-            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-ppp-blue-600" />
             {hasMilestones ? "Milestones & lien waivers" : "Lien waiver"}
           </h2>
           {hasMilestones && (
@@ -1628,7 +1628,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             Also how a flat invoice gets broken into milestones. */}
         {!isVoid && (
           <details className="group mt-3">
-            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[40px]">
+            <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-ppp-blue-700 hover:text-ppp-blue-800 min-h-[40px]">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open:rotate-45"><path d="M12 5v14 M5 12h14" /></svg>
               Add a milestone
             </summary>
@@ -1647,7 +1647,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 <label className={LABEL_CLS} htmlFor="am-due">Due date</label>
                 <input id="am-due" name="due_at" type="date" className={INPUT_CLS} />
               </div>
-              <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">Add</button>
+              <button type="submit" className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-ppp-blue-600 text-white text-[12px] font-semibold hover:bg-ppp-blue-700 min-h-[44px] touch-manipulation">Add</button>
             </form>
             <p className="text-[10.5px] text-ppp-charcoal-400 mt-1.5">Adds a scheduled charge to this invoice (raises the total by the amount). Each milestone then carries its own lien waiver.</p>
           </details>
@@ -1685,7 +1685,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               <li key={row.id} className="ml-4 relative">
                 <span
                   aria-hidden
-                  className="absolute -left-[21px] top-1 h-3 w-3 rounded-full bg-cc-brand-500 border-2 border-white shadow-sm"
+                  className="absolute -left-[21px] top-1 h-3 w-3 rounded-full bg-ppp-blue-500 border-2 border-white shadow-sm"
                 />
                 <div className="text-sm font-semibold text-ppp-charcoal">
                   {row.from_status ? `${invoiceStatusLabel(row.from_status as InvoiceStatus)} → ${invoiceStatusLabel(row.to_status as InvoiceStatus)}` : invoiceStatusLabel(row.to_status as InvoiceStatus)}
@@ -1703,10 +1703,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   );
 }
 
-function BigNumber({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "cc-brand" | "blue" | "emerald" | "rose" | "neutral" }) {
-  // "Paid" is a success metric → emerald; blue stripe now paints real blue
-  // (was cc-brand-500 red on a blue label).
-  const stripe = tone === "cc-brand" ? "bg-cc-brand-600" : tone === "emerald" ? "bg-emerald-500" : tone === "blue" ? "bg-ppp-blue-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
+function BigNumber({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "ppp-blue" | "emerald" | "rose" | "neutral" }) {
+  // Invoice surfaces are blue (matches the builder + detail chrome); "Paid" is a
+  // success metric → emerald; overdue balance → rose.
+  const stripe = tone === "ppp-blue" ? "bg-ppp-blue-600" : tone === "emerald" ? "bg-emerald-500" : tone === "rose" ? "bg-rose-500" : "bg-ppp-charcoal-200";
   const valueCls = tone === "rose" ? "text-rose-700" : tone === "emerald" ? "text-emerald-700" : "text-ppp-charcoal";
   return (
     <div className="relative border border-ppp-charcoal-100 rounded-lg px-4 py-3 overflow-hidden bg-gradient-to-br from-surface to-ppp-charcoal-50/40">
