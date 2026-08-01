@@ -26,6 +26,9 @@ const CATEGORIES = [
   { value: "submittal", label: "Submittal" },
   { value: "closeout", label: "Closeout" },
   { value: "lien_waiver", label: "Lien Waiver" },
+  { value: "receipt", label: "Receipt" },
+  { value: "invoice_attachment", label: "Invoice Attachment" },
+  { value: "proposal", label: "Proposal" },
   { value: "other", label: "Other" },
 ] as const;
 

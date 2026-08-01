@@ -1875,7 +1875,36 @@ function DealProposalsSection({ accountId, oppId, proposals }: { accountId: stri
 
 /** Per-deal documents section — shared by the post-sale project home + the
  *  pre-sale deal home. Direct upload + a list with download links. */
+/** The deal Documents "filing cabinet": every one of the 18 doc categories maps
+ *  into exactly ONE labeled box, so an uploaded file always has a home and no
+ *  category is ever orphaned. Ordered money/delivery-first. */
+const DEAL_DOC_BOXES: { key: string; label: string; categories: string[] }[] = [
+  { key: "receipt", label: "Receipts", categories: ["receipt"] },
+  { key: "lien_waiver", label: "Lien Waivers", categories: ["lien_waiver"] },
+  { key: "invoice_attachment", label: "Invoice Attachments", categories: ["invoice_attachment"] },
+  { key: "change_order", label: "Change Orders", categories: ["change_order"] },
+  { key: "aia_billing", label: "AIA Billing", categories: ["aia_billing"] },
+  { key: "submittal", label: "Submittals", categories: ["submittal"] },
+  { key: "closeout", label: "Closeout", categories: ["closeout"] },
+  { key: "proposal", label: "Proposals", categories: ["proposal"] },
+  { key: "contract", label: "Contracts & Permits", categories: ["contract", "permit", "insurance", "bid_set"] },
+  // Catch-all — anything not claimed above (rfi, meeting_minutes, site_photo,
+  // correspondence, other, or an unknown future category) lands here.
+  { key: "other", label: "Other", categories: ["rfi", "meeting_minutes", "site_photo", "correspondence", "other"] },
+];
+
 function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: import("@/lib/commercial/documents/db").CommercialDocument[] }) {
+  // Bucket every doc into its box; anything unmapped falls to "Other" so the
+  // grand total across boxes always equals documents.length (nothing dropped).
+  const catToBox = new Map<string, string>();
+  for (const box of DEAL_DOC_BOXES) for (const c of box.categories) catToBox.set(c, box.key);
+  const byBox = new Map<string, typeof documents>();
+  for (const box of DEAL_DOC_BOXES) byBox.set(box.key, []);
+  for (const d of documents) {
+    const boxKey = catToBox.get(d.category) ?? "other";
+    byBox.get(boxKey)!.push(d);
+  }
+
   return (
     <section id="deal-documents" className="scroll-mt-4 bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ppp-charcoal-100">
@@ -1885,28 +1914,44 @@ function DealDocumentsSection({ oppId, documents }: { oppId: string; documents: 
         <h3 className="text-[13px] font-bold text-ppp-charcoal">Documents</h3>
         <span className="text-[10.5px] font-semibold text-ppp-charcoal-400 tabular-nums">{documents.length}</span>
       </div>
-      <div className="p-4 space-y-3">
+      <div className="p-4 space-y-4">
         <CommercialFilesUploadForm parentType="opportunity" parentId={oppId} />
-        {documents.length === 0 ? (
-          <p className="text-[11.5px] text-ppp-charcoal-500">No documents yet — upload plans, spec books, signed contracts, lien waivers, etc. Sent proposals also file here automatically.</p>
-        ) : (
-          <ul className="divide-y divide-ppp-charcoal-50">
-            {documents.map((d) => (
-              <li key={d.id}>
-                <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-3 py-2 px-1 rounded-lg hover:bg-ppp-charcoal-50 min-h-[44px] group">
-                  <span className="min-w-0 flex items-center gap-2">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
-                    <span className="min-w-0">
-                      <span className="block text-[12.5px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
-                      <span className="block text-[10.5px] text-ppp-charcoal-500">{commercialDocCategoryLabel(d.category)} · {(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
-                    </span>
-                  </span>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
+        <p className="text-[11px] text-ppp-charcoal-500">Everything filed against this deal — receipts from Costs &amp; P&amp;L, lien waivers, invoice attachments, and the PDFs the tools generate — sorts into its box below. Pick a category above to file a new one.</p>
+
+        {/* Filing cabinet — one labeled box per document type. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {DEAL_DOC_BOXES.map((box) => {
+            const docs = byBox.get(box.key) ?? [];
+            return (
+              <div key={box.key} className={`rounded-xl border ${docs.length ? "border-ppp-charcoal-200 bg-surface" : "border-dashed border-ppp-charcoal-100 bg-ppp-charcoal-50/30"} overflow-hidden`}>
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-ppp-charcoal-100">
+                  <span className="text-[11.5px] font-bold text-ppp-charcoal">{box.label}</span>
+                  <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full ${docs.length ? "bg-ppp-charcoal-100 text-ppp-charcoal-600" : "text-ppp-charcoal-300"}`}>{docs.length}</span>
+                </div>
+                {docs.length === 0 ? (
+                  <p className="px-3 py-2.5 text-[10.5px] text-ppp-charcoal-400">None yet.</p>
+                ) : (
+                  <ul className="divide-y divide-ppp-charcoal-50">
+                    {docs.map((d) => (
+                      <li key={d.id}>
+                        <a href={`/api/commercial/documents/${d.id}/download`} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-ppp-charcoal-50 min-h-[44px] group">
+                          <span className="min-w-0 flex items-center gap-2">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-400 shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6" /></svg>
+                            <span className="min-w-0">
+                              <span className="block text-[12px] font-medium text-ppp-charcoal truncate group-hover:text-cc-brand-800">{d.file_name}</span>
+                              <span className="block text-[10px] text-ppp-charcoal-500">{commercialDocCategoryLabel(d.category)} · {(d.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
+                            </span>
+                          </span>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-ppp-charcoal-300 shrink-0 group-hover:text-cc-brand-600"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" /></svg>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
